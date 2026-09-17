@@ -1,0 +1,220 @@
+"""CONVERSATIONS service — the conversation/message core.
+
+Durable ingest rule: the message row is written FIRST; the outbox/stream entry
+is a trigger. Duplicate channel_message_id → return the existing row (idempotent
+ingest at the service level as well as the DB unique constraint).
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import UTC, datetime
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.errors import NotFoundError, ValidationError
+from app.modules.conversations.models import Assignment, Conversation, Message
+from app.modules.platform.models import AuditLog
+
+
+class ConversationService:
+    @staticmethod
+    async def get_or_create(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        *,
+        customer_id: uuid.UUID,
+        channel: str,
+    ) -> Conversation:
+        conversation = (
+            await session.execute(
+                select(Conversation)
+                .where(
+                    Conversation.tenant_id == tenant_id,
+                    Conversation.customer_id == customer_id,
+                    Conversation.channel == channel,
+                    Conversation.status != "closed",
+                )
+                .order_by(Conversation.last_message_at.desc().nullslast())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if conversation is None:
+            conversation = Conversation(
+                tenant_id=tenant_id, customer_id=customer_id, channel=channel
+            )
+            session.add(conversation)
+            await session.flush()
+        return conversation
+
+    @staticmethod
+    async def get(
+        session: AsyncSession, tenant_id: uuid.UUID, conversation_id: uuid.UUID
+    ) -> Conversation:
+        conversation = (
+            await session.execute(
+                select(Conversation).where(
+                    Conversation.tenant_id == tenant_id,
+                    Conversation.id == conversation_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if conversation is None:
+            raise NotFoundError("conversation not found")
+        return conversation
+
+    @staticmethod
+    async def add_message(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        *,
+        conversation_id: uuid.UUID,
+        direction: str,
+        sender_type: str,
+        body: str | None = None,
+        media_url: str | None = None,
+        media_type: str | None = None,
+        channel_message_id: str | None = None,
+        sender_user_id: uuid.UUID | None = None,
+        payload: dict | None = None,
+    ) -> Message:
+        await ConversationService.get(session, tenant_id, conversation_id)
+        if not body and not media_url:
+            raise ValidationError("message needs body or media")
+        if channel_message_id is not None:
+            existing = (
+                await session.execute(
+                    select(Message).where(
+                        Message.tenant_id == tenant_id,
+                        Message.channel_message_id == channel_message_id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if existing is not None:
+                return existing  # idempotent ingest
+
+        message = Message(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            direction=direction,
+            sender_type=sender_type,
+            sender_user_id=sender_user_id,
+            body=body,
+            media_url=media_url,
+            media_type=media_type,
+            channel_message_id=channel_message_id,
+            payload=payload or {},
+            status="received" if direction == "inbound" else "queued",
+        )
+        session.add(message)
+        conversation = await ConversationService.get(session, tenant_id, conversation_id)
+        conversation.last_message_at = datetime.now(UTC)
+        if direction == "inbound":
+            conversation.unread_count += 1
+        await session.flush()
+        return message
+
+    @staticmethod
+    async def assign(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        *,
+        assigned_to_user_id: uuid.UUID | None,
+        assigned_by_user_id: uuid.UUID,
+    ) -> Assignment:
+        conversation = await ConversationService.get(session, tenant_id, conversation_id)
+        conversation.assignee_user_id = assigned_to_user_id
+        assignment = Assignment(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            assigned_to_user_id=assigned_to_user_id,
+            assigned_by_user_id=assigned_by_user_id,
+        )
+        session.add(assignment)
+        await session.flush()
+        return assignment
+
+    @staticmethod
+    async def close(
+        session: AsyncSession, tenant_id: uuid.UUID, conversation_id: uuid.UUID
+    ) -> Conversation:
+        conversation = await ConversationService.get(session, tenant_id, conversation_id)
+        conversation.status = "closed"
+        conversation.unread_count = 0
+        return conversation
+
+    @staticmethod
+    async def list_inbox(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        *,
+        status: str | None = None,
+        assignee_user_id: uuid.UUID | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[Conversation]:
+        stmt = select(Conversation).where(Conversation.tenant_id == tenant_id)
+        if status:
+            stmt = stmt.where(Conversation.status == status)
+        if assignee_user_id:
+            stmt = stmt.where(Conversation.assignee_user_id == assignee_user_id)
+        stmt = (
+            stmt.order_by(Conversation.last_message_at.desc().nullslast())
+            .limit(limit)
+            .offset(offset)
+        )
+        return list((await session.execute(stmt)).scalars().all())
+
+    @staticmethod
+    async def list_messages(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        *,
+        limit: int = 100,
+        before_created_at=None,
+    ) -> list[Message]:
+        await ConversationService.get(session, tenant_id, conversation_id)
+        stmt = (
+            select(Message)
+            .where(Message.tenant_id == tenant_id, Message.conversation_id == conversation_id)
+            .order_by(Message.created_at.desc())
+            .limit(limit)
+        )
+        return list((await session.execute(stmt)).scalars().all())[::-1]
+
+    @staticmethod
+    async def mark_read(
+        session: AsyncSession, tenant_id: uuid.UUID, conversation_id: uuid.UUID
+    ) -> Conversation:
+        conversation = await ConversationService.get(session, tenant_id, conversation_id)
+        conversation.unread_count = 0
+        await session.execute(
+            select(Message).where(
+                Message.tenant_id == tenant_id,
+                Message.conversation_id == conversation_id,
+                Message.direction == "inbound",
+                Message.status == "received",
+            )
+        )
+        return conversation
+
+    @staticmethod
+    async def audit(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        actor_user_id: uuid.UUID | None,
+        action: str,
+        resource_id: str,
+    ) -> None:
+        session.add(
+            AuditLog(
+                tenant_id=tenant_id,
+                actor_user_id=actor_user_id,
+                action=action,
+                resource_type="conversation",
+                resource_id=resource_id,
+            )
+        )
