@@ -200,3 +200,70 @@ async def campaign_roas(session: AsyncSession, tenant_id: UUID, days: int = 30) 
             }
         )
     return result
+
+async def dashboard_summary(session: AsyncSession, tenant_id: UUID) -> dict:
+    """One-call aggregate for the dashboard home screen."""
+
+    from app.modules.catalog.models import Product
+    from app.modules.conversations.models import Conversation
+    from app.modules.customers.models import Customer
+    from app.modules.inventory.models import InventoryBalance
+
+    orders = await orders_summary(session, tenant_id, days=30)
+
+    conv_open = (
+        await session.execute(
+            select(func.count())
+            .select_from(Conversation)
+            .where(Conversation.tenant_id == tenant_id, Conversation.status == "open")
+        )
+    ).scalar_one()
+    conv_unread = (
+        await session.execute(
+            select(func.coalesce(func.sum(Conversation.unread_count), 0)).where(
+                Conversation.tenant_id == tenant_id
+            )
+        )
+    ).scalar_one()
+    customers_count = (
+        await session.execute(
+            select(func.count()).select_from(Customer).where(Customer.tenant_id == tenant_id)
+        )
+    ).scalar_one()
+    products_active = (
+        await session.execute(
+            select(func.count())
+            .select_from(Product)
+            .where(Product.tenant_id == tenant_id, Product.status == "active")
+        )
+    ).scalar_one()
+    ai_orders = (
+        await session.execute(
+            select(func.count())
+            .select_from(Order)
+            .where(
+                Order.tenant_id == tenant_id,
+                Order.channel == "ai",
+                Order.created_at >= _cutoff(30),
+            ),
+        )
+    ).scalar_one()
+    low_stock = (
+        await session.execute(
+            select(func.count())
+            .select_from(InventoryBalance)
+            .where(
+                InventoryBalance.tenant_id == tenant_id,
+                InventoryBalance.on_hand - InventoryBalance.reserved <= 2,
+            )
+        )
+    ).scalar_one()
+
+    return {
+        "orders": orders,
+        "ai_orders_30d": ai_orders,
+        "conversations": {"open": conv_open, "unread": int(conv_unread)},
+        "customers": customers_count,
+        "products_active": products_active,
+        "low_stock": low_stock,
+    }

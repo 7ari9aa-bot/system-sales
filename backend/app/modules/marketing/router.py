@@ -171,3 +171,12 @@ async def analytics_summary(ctx: TenantCtxDep, days: int = 30):
 @analytics_router.get("/daily-orders")
 async def analytics_daily_orders(ctx: TenantCtxDep, days: int = 30):
     return await analytics.daily_orders(ctx.session, ctx.tenant_id, days=days)
+
+
+@analytics_router.get("/dashboard")
+async def dashboard(ctx: TenantCtxDep, days: int = 14):
+    """One-call aggregate powering the dashboard home screen."""
+    summary = await analytics.dashboard_summary(ctx.session, ctx.tenant_id)
+    summary["daily_orders"] = await analytics.daily_orders(ctx.session, ctx.tenant_id, days=days)
+    summary["revenue_by_source"] = await analytics.revenue_by_source(ctx.session, ctx.tenant_id)
+    return summary

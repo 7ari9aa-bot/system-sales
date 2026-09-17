@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.modules.identity.deps import TenantCtxDep
 from app.modules.orders.service import OrderService
@@ -75,3 +75,35 @@ async def change_status(ctx: TenantCtxDep, order_id: uuid.UUID, body: StatusChan
         note=body.note,
     )
     return {"ok": True}
+
+
+class OrderItemRequest(BaseModel):
+    variant_id: uuid.UUID
+    quantity: int = Field(gt=0)
+
+
+class CreateOrderRequest(BaseModel):
+    customer_id: uuid.UUID
+    items: list[OrderItemRequest] = Field(min_length=1)
+    channel: str = "dashboard"
+    shipping_address: dict | None = None
+
+
+@router.post("/orders", status_code=201)
+async def create_order(ctx: TenantCtxDep, body: CreateOrderRequest):
+    """Transactional order creation: stock reservation + snapshot + outbox."""
+    order = await OrderService.create_order(
+        ctx.session,
+        ctx.tenant_id,
+        body.customer_id,
+        [{"variant_id": i.variant_id, "quantity": i.quantity} for i in body.items],
+        channel=body.channel,
+        shipping_address=body.shipping_address,
+    )
+    return {
+        "id": str(order.id),
+        "number": order.number,
+        "status": order.status,
+        "grand_total": str(order.grand_total),
+        "currency": order.currency,
+    }

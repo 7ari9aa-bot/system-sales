@@ -13,6 +13,7 @@ from app.core.errors import DomainError
 from app.core.middleware import RateLimitMiddleware
 from app.core.observability import RequestLoggingMiddleware, configure_logging
 from app.core.redis import close_redis, get_redis
+from app.modules.ai.router import router as ai_router
 from app.modules.billing.router import (
     billing_router,
     webhooks_router,
@@ -91,6 +92,7 @@ def create_app() -> FastAPI:
     app.include_router(webhooks_router)
     app.include_router(marketing_router)
     app.include_router(analytics_router)
+    app.include_router(ai_router)
 
     @app.get("/healthz", tags=["ops"])
     async def healthz() -> dict[str, str]:

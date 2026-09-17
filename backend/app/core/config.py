@@ -33,6 +33,12 @@ class Settings(BaseSettings):
     worker_max_attempts: int = 5
     worker_backoff_base_seconds: float = 2.0
 
+    # AI providers (OpenAI-compatible endpoints; per-tenant overrides via
+    # model_configs table take precedence over these defaults)
+    ai_provider_primary: str = ""
+    ai_api_key_primary: str = ""
+    ai_base_url_primary: str = ""
+
     # channels
     whatsapp_app_secret: str = ""
     whatsapp_verify_token: str = ""
