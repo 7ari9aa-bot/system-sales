@@ -139,7 +139,16 @@ class WhatsAppAdapter:
         message: OutboundMessage,
         _client: httpx.AsyncClient | None = None,
     ) -> str:
-        """_client is an injection point for tests (MockTransport)."""
+        """_client is an injection point for tests (MockTransport).
+
+        n8n mode: when credentials carry outbound_webhook_url, delivery is
+        proxied through the n8n outbound workflow — WhatsApp tokens then live
+        in n8n env only, never in our database.
+        """
+        n8n_url = credentials.get("outbound_webhook_url")
+        if n8n_url:
+            return await self._send_via_n8n(n8n_url, credentials, message, _client)
+
         phone_number_id = credentials.get("phone_number_id")
         token = credentials.get("access_token")
         if not phone_number_id or not token:
@@ -168,6 +177,41 @@ class WhatsAppAdapter:
             return data["messages"][0]["id"]
         except (KeyError, IndexError, TypeError) as exc:
             raise ExternalProviderError("whatsapp send: no message id in response") from exc
+
+    async def _send_via_n8n(
+        self,
+        n8n_url: str,
+        credentials: ProviderCredentials,
+        message: OutboundMessage,
+        _client: httpx.AsyncClient | None,
+    ) -> str:
+        """Proxy delivery through the n8n outbound workflow."""
+        phone_number_id = credentials.get("phone_number_id")
+        if not phone_number_id:
+            raise ExternalProviderError("whatsapp n8n mode missing phone_number_id")
+        body = {
+            "phone_number_id": phone_number_id,
+            "to": message.customer_ref,
+            "payload": self._build_send_payload(message),
+        }
+        headers = {"Authorization": f"Bearer {credentials.get('n8n_service_token', '')}"}
+        if _client is not None:
+            response = await _client.post(n8n_url, json=body, headers=headers)
+        else:
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.post(n8n_url, json=body, headers=headers)
+        if response.status_code >= 400:
+            raise ExternalProviderError(
+                f"whatsapp n8n send failed: {response.status_code} {response.text[:200]}"
+            )
+        data = response.json()
+        # n8n lastNode returns the Graph response shape; unwrap either form.
+        try:
+            if "messages" in data:
+                return data["messages"][0]["id"]
+            return data["message_id"]
+        except (KeyError, IndexError, TypeError) as exc:
+            raise ExternalProviderError("whatsapp n8n send: no message id") from exc
 
     def _build_send_payload(self, message: OutboundMessage) -> dict:
         base = {

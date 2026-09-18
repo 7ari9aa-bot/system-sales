@@ -25,9 +25,24 @@ from app.core.errors import DomainError, NotFoundError
 from app.modules.ai.gateway import AIGateway, estimate_cost
 from app.modules.ai.models import Agent, AgentRun, AgentTool, ToolCall
 from app.modules.ai.providers import ToolCallRequest
-from app.modules.ai.tools import tool_to_openai_schema
-from app.modules.ai.usage import record_usage
-from app.modules.conversations import models as _conversations_models  # noqa: F401
+
+
+def _assistant_tool_call(tc: ToolCallRequest) -> dict:
+    """OpenAI tool_call entry — with Gemini 3.x thought_signature when present
+    (required on the next turn, otherwise the provider 400s)."""
+    entry: dict = {
+        "id": tc.id,
+        "type": "function",
+        "function": {"name": tc.name, "arguments": json.dumps(tc.arguments or {})},
+    }
+    if tc.thought_signature:
+        entry["extra_content"] = {"google": {"thought_signature": tc.thought_signature}}
+    return entry
+
+
+from app.modules.ai.tools import tool_to_openai_schema  # noqa: E402
+from app.modules.ai.usage import record_usage  # noqa: E402
+from app.modules.conversations import models as _conversations_models  # noqa: E402,F401
 
 # Importing the conversations models registers their tables in the shared
 # metadata so agent_runs' FK to conversations.id resolves even when the AI
@@ -224,23 +239,16 @@ class AgentRunner:
                 content = chat_result.content
                 break
 
-            messages.append(
-                {
-                    "role": "assistant",
-                    "content": chat_result.content,
-                    "tool_calls": [
-                        {
-                            "id": tc.id,
-                            "type": "function",
-                            "function": {
-                                "name": tc.name,
-                                "arguments": json.dumps(tc.arguments or {}),
-                            },
-                        }
-                        for tc in chat_result.tool_calls
-                    ],
-                }
-            )
+            # Gemini 3.x requires each tool_call entry to carry its
+            # thought_signature on the next turn, otherwise it 400s.
+            assistant_msg: dict = {
+                "role": "assistant",
+                "content": chat_result.content,
+                "tool_calls": [
+                    _assistant_tool_call(tc) for tc in chat_result.tool_calls
+                ],
+            }
+            messages.append(assistant_msg)
             for tc in chat_result.tool_calls:
                 outcome = await self._execute_tool(
                     session, tenant_id, run=run, agent_tools=agent_tools, request=tc

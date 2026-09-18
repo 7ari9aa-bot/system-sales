@@ -10,6 +10,7 @@ logic lives here — that is the gateway's and the runtime's job.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from dataclasses import dataclass, field
 
@@ -17,7 +18,7 @@ import httpx
 
 from app.core.errors import ExternalProviderError
 
-_TIMEOUT_SECONDS = 60.0
+_TIMEOUT_SECONDS = 120.0  # reasoning models with tool schemas can be slow
 
 
 @dataclass(slots=True)
@@ -27,6 +28,7 @@ class ToolCallRequest:
     id: str
     name: str
     arguments: dict = field(default_factory=dict)
+    thought_signature: str | None = None  # Gemini 3.x: echo back per call
 
 
 @dataclass(slots=True)
@@ -36,6 +38,9 @@ class ChatCompletionResult:
     tokens_in: int
     tokens_out: int
     raw_model: str
+    # Gemini 3.x: must be echoed back on the assistant tool-call message,
+    # otherwise the next turn fails with 400 (missing thought_signature).
+    thought_signature: str | None = None
 
 
 def _auth_headers(api_key: str) -> dict[str, str]:
@@ -73,17 +78,28 @@ class AIProvider:
 
         client, owned = _acquire_client(_client)
         try:
-            try:
-                response = await client.post(url, json=payload, headers=_auth_headers(api_key))
-            except httpx.HTTPError as exc:
-                raise ExternalProviderError(f"chat request failed: {exc}") from exc
+            response = None
+            for attempt in range(2):  # one retry for transient provider load
+                try:
+                    response = await client.post(url, json=payload, headers=_auth_headers(api_key))
+                except httpx.HTTPError as exc:
+                    if attempt == 0:
+                        await asyncio.sleep(2)
+                        continue
+                    raise ExternalProviderError(f"chat request failed: {exc}") from exc
+                if response.status_code in (429, 502, 503) and attempt == 0:
+                    await asyncio.sleep(2)
+                    continue
+                break
+            assert response is not None
         finally:
             if owned:
                 await client.aclose()
 
         if response.status_code >= 400:
             raise ExternalProviderError(
-                f"chat completion failed with HTTP {response.status_code}",
+                f"chat completion failed with HTTP {response.status_code}: "
+                f"{response.text[:300]}",
                 details={"status_code": response.status_code},
             )
 
@@ -96,16 +112,21 @@ class AIProvider:
                     id=str(entry["id"]),
                     name=str(entry["function"]["name"]),
                     arguments=json.loads(entry["function"].get("arguments") or "{}"),
+                    thought_signature=(entry.get("extra_content") or {})
+                    .get("google", {})
+                    .get("thought_signature"),
                 )
                 for entry in raw_calls
             ]
             usage = body.get("usage") or {}
+            google_extra = (message.get("extra_content") or {}).get("google") or {}
             return ChatCompletionResult(
                 content=message.get("content"),
                 tool_calls=tool_calls,
                 tokens_in=int(usage.get("prompt_tokens") or 0),
                 tokens_out=int(usage.get("completion_tokens") or 0),
                 raw_model=str(body.get("model") or model),
+                thought_signature=google_extra.get("thought_signature"),
             )
         except ExternalProviderError:
             raise
@@ -123,10 +144,13 @@ class EmbeddingProvider:
         api_key: str,
         model: str,
         texts: list[str],
+        dimensions: int | None = None,
         _client: httpx.AsyncClient | None = None,
     ) -> list[list[float]]:
         url = f"{base_url.rstrip('/')}/embeddings"
-        payload = {"model": model, "input": texts}
+        payload: dict = {"model": model, "input": texts}
+        if dimensions is not None:
+            payload["dimensions"] = dimensions
 
         client, owned = _acquire_client(_client)
         try:

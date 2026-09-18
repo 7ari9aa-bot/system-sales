@@ -7,11 +7,13 @@ import { api, getTokens, setTokens } from "@/lib/api";
 import { t } from "@/lib/t";
 
 const NAV = [
+  { href: "/dashboard", label: t.dashboard },
   { href: "/inbox", label: t.inbox },
   { href: "/products", label: t.products },
   { href: "/inventory", label: t.inventory },
   { href: "/orders", label: t.orders },
   { href: "/customers", label: t.customers },
+  { href: "/marketing", label: t.marketing },
   { href: "/ai", label: t.ai },
   { href: "/settings", label: t.settings },
 ];

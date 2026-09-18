@@ -65,6 +65,7 @@ async def resolve_model_config(
             "model": row.model,
             "base_url": str(config.get("base_url") or ""),
             "api_key": str(config.get("api_key") or ""),
+            "extra": config,
         }
 
     settings = get_settings()
@@ -182,6 +183,7 @@ class AIGateway:
                 api_key=config["api_key"],
                 model=config["model"],
                 texts=texts,
+                dimensions=(config.get("extra") or {}).get("dimensions"),
                 _client=_client,
             )
             return vectors
