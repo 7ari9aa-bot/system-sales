@@ -75,7 +75,7 @@ export function DemoChat() {
 
       <div className="fh-chat" role="region" aria-label={t.chat.title}>
         <div className="fh-chat-head">
-          <span className="fh-chat-avatar" aria-hidden="true">F</span>
+          <span className="fh-chat-avatar" aria-hidden="true"><span>F</span></span>
           <span className="fh-chat-title">
             <strong>{t.chat.title}</strong>
             <small><span className="fh-status-dot" aria-hidden="true" /> {t.chat.status}</small>

@@ -10,7 +10,7 @@ export function PublicFooter() {
       <div className="fh-container fh-footer-grid">
         <div>
           <span className="fh-brand">
-            <span className="fh-brand-mark" aria-hidden="true">F</span>
+            <span className="fh-brand-mark" aria-hidden="true"><span>F</span></span>
             <span className="fh-brand-name">FIHRIST</span>
           </span>
           <p className="fh-footer-tag">{t.footer.tag}</p>

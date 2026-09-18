@@ -197,6 +197,9 @@ const ar = {
       ["العمليات", "−1%", "alert"],
     ],
     insightTag: "استنتاج",
+    chartLabel: "الإيرادات — آخر 6 أسابيع (بيانات تجريبية)",
+    chartStart: "قبل 6 أسابيع",
+    chartEnd: "هذا الأسبوع",
     insight: ["نسبة التحويل انخفضت أساسًا لدى ", "العملاء العائدين", " — بعد تغيير سياسة الشحن الأسبوع الماضي."],
     inspect: "فحص السجلات",
     act: "تعامل مع الأمر",
@@ -504,6 +507,9 @@ const en: typeof ar = {
       ["Operations", "−1%", "alert"],
     ],
     insightTag: "Insight",
+    chartLabel: "Revenue — last 6 weeks (sample data)",
+    chartStart: "6 weeks ago",
+    chartEnd: "This week",
     insight: ["Conversion dropped mainly among ", "returning customers", " — after last week's shipping-policy change."],
     inspect: "Inspect records",
     act: "Take action",
@@ -717,7 +723,15 @@ export function useTheme(): ThemeCtx {
 }
 
 /** جذر الموقع العام: بيحمل الاتجاه واللغة والثيم + كلاس العزل */
-export function FihristRoot({ children, bare = false }: { children: React.ReactNode; bare?: boolean }) {
+export function FihristRoot({
+  children,
+  bare = false,
+  className = "",
+}: {
+  children: React.ReactNode;
+  bare?: boolean;
+  className?: string;
+}) {
   const { dir, locale } = useI18n();
   const { theme } = useTheme();
   return (
@@ -725,7 +739,7 @@ export function FihristRoot({ children, bare = false }: { children: React.ReactN
       dir={dir}
       lang={locale}
       data-theme={theme}
-      className={bare ? "fh-root fh-root-bare" : "fh-root"}
+      className={`fh-root${bare ? " fh-root-bare" : ""} ${className}`.trim()}
     >
       {children}
     </div>

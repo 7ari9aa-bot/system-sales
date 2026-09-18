@@ -3,7 +3,42 @@
 /** التحليلات + مركز التحكم + الأسعار + التكاملات + الأمان + الختامي. */
 
 import { useI18n } from "@/components/public/i18n";
+import { useEffect, useRef } from "react";
 import { Reveal } from "@/components/public/reveal";
+
+/** رسم بياني بأعمدة بتكبر أول ما يدخل الشاشة */
+function ChartBars() {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      el.classList.add("fh-in");
+      return;
+    }
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          el.classList.add("fh-in");
+          io.disconnect();
+        }
+      },
+      { threshold: 0.4 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  return (
+    <div ref={ref} className="fh-chart" aria-hidden="true">
+      <div className="fh-bar" />
+      <div className="fh-bar" />
+      <div className="fh-bar" />
+      <div className="fh-bar" />
+      <div className="fh-bar" />
+      <div className="fh-bar" />
+    </div>
+  );
+}
 
 export function Analytics() {
   const { t } = useI18n();
@@ -19,6 +54,27 @@ export function Analytics() {
           <span className="fh-demo-dot" /> {t.analytics.demo}
         </div>
 
+        <Reveal className="fh-snapshot" >
+          <div className="fh-panel">
+            <div className="fh-panel-label">{t.analytics.chartLabel}</div>
+            <ChartBars />
+            <div className="fh-chart-foot">
+              <span>{t.analytics.chartStart}</span>
+              <span>{t.analytics.chartEnd}</span>
+            </div>
+          </div>
+          <div className="fh-panel">
+            <div className="fh-panel-label">{t.analytics.insightTag}</div>
+            <p style={{ fontSize: 16, marginBottom: "1.1rem" }}>
+              {t.analytics.insight[0]}<b>{t.analytics.insight[1]}</b>{t.analytics.insight[2]}
+            </p>
+            <div className="fh-insight-actions" style={{ marginTop: "auto" }}>
+              <span className="fh-chip">{t.analytics.inspect}</span>
+              <span className="fh-chip">{t.analytics.act}</span>
+            </div>
+          </div>
+        </Reveal>
+
         <Reveal className="fh-metrics" stagger>
           {(t.analytics.metrics as [string, string, string][]).map(([label, delta, tone]) => (
             <div key={label} className="fh-card fh-card-hover fh-metric">
@@ -28,16 +84,7 @@ export function Analytics() {
           ))}
         </Reveal>
 
-        <Reveal className="fh-card fh-insight">
-          <span className="fh-insight-badge">{t.analytics.insightTag}</span>
-          <p>
-            {t.analytics.insight[0]}<b>{t.analytics.insight[1]}</b>{t.analytics.insight[2]}
-          </p>
-          <div className="fh-insight-actions">
-            <span className="fh-chip">{t.analytics.inspect}</span>
-            <span className="fh-chip">{t.analytics.act}</span>
-          </div>
-        </Reveal>
+        {/* الكارت القديم اتدمج في الـsnapshot فوق */}
       </div>
     </section>
   );
@@ -46,7 +93,7 @@ export function Analytics() {
 export function ControlCenter() {
   const { t } = useI18n();
   return (
-    <section className="fh-section" id="control">
+    <section className="fh-section fh-band" id="control">
       <div className="fh-container">
         <Reveal className="fh-section-head">
           <h2>{t.control.title}</h2>

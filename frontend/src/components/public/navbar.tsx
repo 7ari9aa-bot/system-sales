@@ -49,7 +49,7 @@ export function PublicNavbar() {
     <header className={`fh-nav${scrolled ? " is-scrolled" : ""}`}>
       <div className="fh-container fh-nav-inner">
         <Link href="/" className="fh-brand" aria-label="FIHRIST">
-          <span className="fh-brand-mark" aria-hidden="true">F</span>
+          <span className="fh-brand-mark" aria-hidden="true"><span>F</span></span>
           <span className="fh-brand-name">FIHRIST</span>
           <span className="fh-brand-tag">{t.brandTag}</span>
         </Link>
