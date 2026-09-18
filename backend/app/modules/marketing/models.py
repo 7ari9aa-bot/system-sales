@@ -24,10 +24,11 @@ from app.core.model_kit import (
     AppendOnlyCreatedAtMixin,
     TenantMixin,
     TimestampMixin,
+    VersionMixin,
 )
 
 
-class Campaign(TenantMixin, TimestampMixin, Base):
+class Campaign(TenantMixin, TimestampMixin, VersionMixin, Base):
     __tablename__ = "campaigns"
 
     id: Mapped[uuid.UUID] = mapped_column(

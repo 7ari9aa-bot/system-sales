@@ -30,7 +30,7 @@ export default function MarketingPage() {
   const load = useCallback(async () => {
     try {
       const [c, s] = await Promise.all([
-        api<Campaign[]>("/marketing/campaigns"),
+        api<{ items: Campaign[] }>("/marketing/campaigns").then((r) => r.items),
         api<Summary>("/analytics/summary"),
       ]);
       setCampaigns(c);

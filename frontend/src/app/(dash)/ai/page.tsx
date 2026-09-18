@@ -23,7 +23,7 @@ export default function AIPage() {
   const load = useCallback(async () => {
     try {
       const [k, a, u] = await Promise.all([
-        api<KnowledgeItem[]>("/ai/knowledge"),
+        api<{ items: KnowledgeItem[] }>("/ai/knowledge").then((r) => r.items),
         api<Agent[]>("/ai/agents"),
         api<{ summary: UsageRow[] }>("/ai/usage/summary"),
       ]);

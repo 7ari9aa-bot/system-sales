@@ -29,7 +29,7 @@ class _ConfiguredSettings:
 
 
 def _patch_fixed_embeddings(monkeypatch, value: float = 0.01) -> None:
-    async def fake_embed(self, *, base_url, api_key, model, texts, _client=None):
+    async def fake_embed(self, *, base_url, api_key, model, texts, _client=None, dimensions=None):
         return [[value] * VECTOR_DIM for _ in texts]
 
     monkeypatch.setattr(EmbeddingProvider, "embed", fake_embed)

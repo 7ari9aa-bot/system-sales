@@ -40,7 +40,7 @@ export default function InboxPage() {
 
   const loadConversations = useCallback(async () => {
     try {
-      const rows = await api<Conversation[]>("/conversations");
+      const rows = (await api<{ items: Conversation[] }>("/conversations")).items;
       setConversations(rows);
       return rows;
     } catch (err) {
@@ -51,7 +51,7 @@ export default function InboxPage() {
 
   const loadMessages = useCallback(async (conversationId: string) => {
     try {
-      const rows = await api<Message[]>(`/conversations/${conversationId}/messages`);
+      const rows = (await api<{ items: Message[] }>(`/conversations/${conversationId}/messages`)).items;
       setMessages(rows);
       await api(`/conversations/${conversationId}/read`, { method: "POST" });
     } catch (err) {

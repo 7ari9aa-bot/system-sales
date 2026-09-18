@@ -25,10 +25,11 @@ from app.core.model_kit import (
     AppendOnlyCreatedAtMixin,
     TenantMixin,
     TimestampMixin,
+    VersionMixin,
 )
 
 
-class Customer(TenantMixin, TimestampMixin, Base):
+class Customer(TenantMixin, TimestampMixin, VersionMixin, Base):
     __tablename__ = "customers"
 
     id: Mapped[uuid.UUID] = mapped_column(

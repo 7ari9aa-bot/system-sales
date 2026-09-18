@@ -111,3 +111,35 @@ class InventoryTransfer(TenantMixin, TimestampMixin, IdMixin, Base):
     status: Mapped[str] = mapped_column(String(15), server_default="draft")
     lines: Mapped[list] = mapped_column(JSONB, server_default="[]")  # [{variant_id, quantity}]
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class InventoryReservation(TenantMixin, TimestampMixin, IdMixin, Base):
+    """Durable stock reservation (spec §140).
+
+    Created when stock is reserved for an order/cart. Expiry frees abandoned
+    carts via the maintenance worker. Only ACTIVE reservations count against
+    availability.
+    """
+
+    __tablename__ = "inventory_reservations"
+
+    variant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("product_variants.id", ondelete="CASCADE")
+    )
+    warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("warehouses.id", ondelete="CASCADE")
+    )
+    order_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("orders.id", ondelete="SET NULL")
+    )
+    quantity: Mapped[int] = mapped_column(Integer, server_default="0")
+    # allowed: ACTIVE | EXPIRED | CONVERTED | CANCELLED
+    status: Mapped[str] = mapped_column(String(15), server_default="ACTIVE")
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    converted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("ix_inv_res_tenant_variant_status", "tenant_id", "variant_id", "status"),
+        Index("ix_inv_res_status_expires", "status", "expires_at"),
+    )

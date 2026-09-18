@@ -21,7 +21,7 @@ export default function CustomersPage() {
   const load = useCallback(async () => {
     try {
       const q = search.trim() ? `?search=${encodeURIComponent(search.trim())}` : "";
-      setCustomers(await api<Customer[]>(`/customers${q}`));
+      setCustomers((await api<{ items: Customer[] }>(`/customers${q}`)).items);
     } catch (err) {
       setError(err instanceof Error ? err.message : "خطأ");
     }

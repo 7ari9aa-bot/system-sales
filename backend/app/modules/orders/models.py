@@ -22,10 +22,11 @@ from app.core.model_kit import (
     AppendOnlyCreatedAtMixin,
     TenantMixin,
     TimestampMixin,
+    VersionMixin,
 )
 
 
-class Order(TenantMixin, TimestampMixin, Base):
+class Order(TenantMixin, TimestampMixin, VersionMixin, Base):
     __tablename__ = "orders"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -125,7 +126,7 @@ class Shipment(TenantMixin, TimestampMixin, Base):
     )
 
 
-class OrderPayment(TenantMixin, TimestampMixin, Base):
+class OrderPayment(TenantMixin, TimestampMixin, VersionMixin, Base):
     __tablename__ = "order_payments"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -150,7 +151,7 @@ class OrderPayment(TenantMixin, TimestampMixin, Base):
     )
 
 
-class Refund(TenantMixin, TimestampMixin, Base):
+class Refund(TenantMixin, TimestampMixin, VersionMixin, Base):
     __tablename__ = "refunds"
 
     id: Mapped[uuid.UUID] = mapped_column(

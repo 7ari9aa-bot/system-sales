@@ -50,7 +50,7 @@ export default function OrdersPage() {
   const load = useCallback(async () => {
     try {
       const [o, p, c] = await Promise.all([
-        api<Order[]>("/orders"),
+        api<{ items: Order[] }>("/orders").then((r) => r.items),
         api<Product[]>("/products"),
         api<Customer[]>("/customers"),
       ]);

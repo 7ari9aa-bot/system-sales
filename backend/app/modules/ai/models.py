@@ -33,10 +33,11 @@ from app.core.model_kit import (
     AppendOnlyCreatedAtMixin,
     TenantMixin,
     TimestampMixin,
+    VersionMixin,
 )
 
 
-class Agent(TenantMixin, TimestampMixin, Base):
+class Agent(TenantMixin, TimestampMixin, VersionMixin, Base):
     __tablename__ = "agents"
 
     id: Mapped[uuid.UUID] = mapped_column(
