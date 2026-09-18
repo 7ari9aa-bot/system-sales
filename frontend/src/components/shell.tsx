@@ -1,10 +1,10 @@
 "use client";
 
 import * as React from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import {
-  LayoutDashboard,
+import { LayoutDashboard,
   MessagesSquare,
   ListChecks,
   Users,
@@ -21,9 +21,13 @@ import {
   Menu,
   LogOut,
   Building2,
+  Sun,
+  Moon,
+  Languages,
 } from "lucide-react";
 import { api, getTokens, setTokens } from "@/lib/api";
 import { t } from "@/lib/t";
+import { getLang, getTheme, applyTheme, toggleTheme, setLang, type Lang } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -182,6 +186,19 @@ export function Shell({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  const [lang, setLangState] = useState<Lang>("ar");
+
+  useEffect(() => {
+    applyTheme(getTheme());
+    setLangState(getLang());
+  }, []);
+
+  function toggleLang() {
+    const next: Lang = lang === "ar" ? "en" : "ar";
+    setLang(next);
+    window.location.reload(); // strings re-render; layout never flips
+  }
+
   function logout() {
     setTokens(null);
     router.replace("/login");
@@ -195,7 +212,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-3">
-          <span className="flex size-10 items-center justify-center rounded-lg bg-primary text-lg font-bold text-white">س</span>
+          <span className="flex size-10 items-center justify-center rounded-lg bg-primary text-lg font-bold text-white">{lang === "ar" ? "س" : "S"}</span>
           <p className="text-[13px] text-muted-foreground">{t.loading}</p>
         </div>
       </div>
@@ -203,7 +220,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-dvh bg-background">
+    <div className="flex min-h-dvh flex-row-reverse bg-background">
       {/* Sidebar — RTL: على اليمين (أول عنصر في flex باتجاه rtl) */}
       <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-e border-border bg-card lg:flex">
         <SidebarNav />
@@ -226,7 +243,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
           {/* brand */}
           <Link href="/dashboard" className="flex items-center gap-2" aria-label={t.brand}>
-            <span className="flex size-7 items-center justify-center rounded-lg bg-primary text-sm font-bold text-white">س</span>
+            <span className="flex size-7 items-center justify-center rounded-lg bg-primary text-sm font-bold text-white">{lang === "ar" ? "س" : "S"}</span>
             <span className="hidden text-[15px] font-bold sm:inline">{t.brand}</span>
           </Link>
 
@@ -290,6 +307,30 @@ export function Shell({ children }: { children: React.ReactNode }) {
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
+
+          {/* theme toggle */}
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => toggleTheme()}
+            aria-label="تبديل المظهر"
+            data-testid="theme-toggle"
+          >
+            <Sun aria-hidden="true" className="hidden dark:block" />
+            <Moon aria-hidden="true" className="block dark:hidden" />
+          </Button>
+
+          {/* language toggle — strings only, layout never flips */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="px-2 font-bold"
+            onClick={() => toggleLang()}
+            aria-label="Switch language"
+            data-testid="lang-toggle"
+          >
+            {lang === "ar" ? "EN" : "ع"}
+          </Button>
 
           {/* user menu */}
           <DropdownMenu>

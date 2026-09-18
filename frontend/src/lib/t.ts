@@ -1,6 +1,9 @@
-/** Shared Arabic vocabulary — reuse exact terms across screens (no half-translated UI). */
+/** Shared vocabulary — bilingual (ar default / en) via a language-aware
+ * proxy. The LAYOUT never flips (direction stays RTL per directive); only
+ * strings switch. Screens keep `import { t }` unchanged. */
 
-export const t = {
+import { makeT, type Lang } from "@/lib/i18n";
+const ar = {
   brand: "سيلز أو إس",
   // nav groups (§89)
   groupHome: "الرئيسية",
@@ -210,3 +213,91 @@ export const t = {
   aov: "متوسط قيمة الطلب",
   nearlyOut: (n: number) => `${n} منتج شبه نافد`,
 } as const;
+
+
+const en = {
+  brand: "Sales OS",
+  groupHome: "Home",
+  groupWork: "Work",
+  groupBusiness: "Business",
+  groupGrowth: "Growth",
+  groupAi: "AI",
+  groupAdmin: "Admin",
+  dashboard: "Home",
+  inbox: "Inbox",
+  myTasks: "My Tasks",
+  products: "Products",
+  inventory: "Inventory",
+  orders: "Orders",
+  customers: "Customers",
+  marketing: "Marketing",
+  ai: "AI",
+  settings: "Settings",
+  logout: "Sign out",
+  login: "Sign in",
+  register: "Create account",
+  email: "Email",
+  password: "Password",
+  fullName: "Full name",
+  storeName: "Store name",
+  writeReply: "Write a reply…",
+  send: "Send",
+  noConversations: "No conversations yet",
+  selectConversation: "Select a conversation",
+  addProduct: "Add product",
+  productTitle: "Product title",
+  price: "Price",
+  sku: "SKU",
+  status: "Status",
+  createOrder: "Create order",
+  orderNumber: "Order no.",
+  grandTotal: "Total",
+  customer: "Customer",
+  quantity: "Qty",
+  warehouse: "Warehouse",
+  onHand: "On hand",
+  reserved: "Reserved",
+  knowledge: "Knowledge",
+  addKnowledge: "Add knowledge",
+  searchKnowledge: "Search knowledge",
+  agents: "Agents",
+  usageCost: "Usage & cost",
+  team: "Team",
+  invite: "Invite member",
+  role: "Role",
+  owner: "Owner",
+  manager: "Manager",
+  staff: "Staff",
+  integrations: "Integrations",
+  save: "Save",
+  cancel: "Cancel",
+  loading: "Loading…",
+  actions: "Actions",
+  date: "Date",
+  total: "Total",
+  search: "Search",
+  create: "Create",
+  workspace: "Workspace",
+  switchWorkspace: "Switch workspace",
+  addWorkspace: "Add workspace",
+  quickActions: "Quick actions",
+  theme: "Theme",
+  language: "Language",
+} as const;
+
+
+
+const dictionaries: Record<Lang, Record<string, unknown>> = {
+  ar,
+  en: en as unknown as Record<string, unknown>,
+};
+
+/** Language-aware vocabulary proxy — reads the active language at access
+ * time, so a reload after setLang() re-renders everything in that language
+ * while the layout direction stays exactly as-is. */
+export const t = makeT(dictionaries) as typeof ar;
+
+export const languages: { code: Lang; label: string }[] = [
+  { code: "ar", label: "العربية" },
+  { code: "en", label: "English" },
+];

@@ -4,6 +4,36 @@
    Design tokens (§91–92) — Arabic-first, warm-neutral light theme.
    One brand color (indigo/blue #2F5CFF family) + semantic colors.
    ========================================================================= */
+@custom-variant dark (&:where(.dark, .dark *));
+
+.dark {
+  --color-background: #0c0c0d;
+  --color-foreground: #e8e6e3;
+  --color-card: #161618;
+  --color-card-foreground: #e8e6e3;
+  --color-surface: #161618;
+  --color-muted: #232326;
+  --color-muted-foreground: #9b9893;
+  --color-border: #2b2b2e;
+  --color-input: #2b2b2e;
+  --color-accent: #232326;
+  --color-accent-foreground: #e8e6e3;
+  --color-popover: #1c1c1f;
+  --color-popover-foreground: #e8e6e3;
+  --color-primary: #6b8aff;
+  --color-primary-foreground: #0c0c0d;
+  --color-primary-hover: #85a0ff;
+  --color-primary-soft: #1c2440;
+  --color-primary-soft-border: #2a3559;
+  --color-ring: #6b8aff;
+  --color-success: #22c55e;
+  --color-success-soft: #0c2418;
+  --color-danger: #ef4444;
+  --color-danger-soft: #2c1210;
+  --color-warning: #f59e0b;
+  --color-warning-soft: #2c2009;
+}
+
 @theme {
   /* surfaces — warm neutral */
   --color-background: #fafaf9;
