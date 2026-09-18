@@ -120,12 +120,20 @@ class Integration(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     )
     provider: Mapped[str] = mapped_column(String(63))  # whatsapp | gmail | sheets | ...
     kind: Mapped[str] = mapped_column(String(31))  # channel | oauth | api_key
-    # allowed: connected | disconnected | error
+    # allowed (§145 lifecycle): pending | connecting | active
+    #        | reauth_required | restricted | disconnected | disabled
+    # legacy: pre-§145 rows carry 'connected' (and 'error'); the migration
+    # maps 'connected' -> 'active' and 'error' -> 'reauth_required'. The
+    # server_default keeps 'connected' until the ingest gateway (which still
+    # filters on it) is updated alongside that migration.
     status: Mapped[str] = mapped_column(String(15), server_default="connected")
     config: Mapped[dict] = mapped_column(JSONB, server_default="{}")
     # NOTE: secrets land here only encrypted at rest (Stage 9 hardening).
     credentials: Mapped[dict] = mapped_column(JSONB, server_default="{}")
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # §145: rolling webhook health (last webhook at, consecutive failures,
+    # last error) — consumed by the integration health surface.
+    webhook_health: Mapped[dict] = mapped_column(JSONB, server_default="{}")
 
     __table_args__ = (
         UniqueConstraint(

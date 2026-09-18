@@ -14,7 +14,13 @@ from sqlalchemy import select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import NotFoundError, ValidationError
-from app.modules.conversations.models import Assignment, Conversation, Message
+from app.modules.conversations.models import (
+    Assignment,
+    CONVERSATION_STATUSES,
+    Conversation,
+    Message,
+    normalize_conversation_status,
+)
 from app.modules.platform.models import AuditLog
 
 
@@ -78,6 +84,9 @@ class ConversationService:
         channel_message_id: str | None = None,
         sender_user_id: uuid.UUID | None = None,
         payload: dict | None = None,
+        content_type: str = "text",
+        reply_to_message_id: uuid.UUID | None = None,
+        provider_metadata: dict | None = None,
     ) -> Message:
         await ConversationService.get(session, tenant_id, conversation_id)
         if not body and not media_url:
@@ -105,6 +114,10 @@ class ConversationService:
             media_type=media_type,
             channel_message_id=channel_message_id,
             payload=payload or {},
+            # §155 canonical columns.
+            content_type=content_type,
+            reply_to_message_id=reply_to_message_id,
+            provider_metadata=provider_metadata or {},
             status="received" if direction == "inbound" else "queued",
         )
         session.add(message)
@@ -114,6 +127,29 @@ class ConversationService:
             conversation.unread_count += 1
         await session.flush()
         return message
+
+    @staticmethod
+    async def set_status(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        status: str,
+    ) -> Conversation:
+        """Move a conversation through the §156 lifecycle states.
+
+        open | waiting_customer | waiting_human | waiting_ai | paused | closed
+        Legacy "pending" is accepted and normalized to "open"; anything else
+        outside the lifecycle is rejected.
+        """
+        normalized = normalize_conversation_status(status)
+        if normalized not in CONVERSATION_STATUSES:
+            raise ValidationError(
+                f"status must be one of {sorted(CONVERSATION_STATUSES)}, got {status!r}"
+            )
+        conversation = await ConversationService.get(session, tenant_id, conversation_id)
+        conversation.status = normalized
+        await session.flush()
+        return conversation
 
     @staticmethod
     async def assign(

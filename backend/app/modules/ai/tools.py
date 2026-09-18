@@ -35,6 +35,10 @@ class ToolSpec:
     handler: Handler
     # extra metadata surfaced in logs/UI
     tags: list[str] = field(default_factory=list)
+    # §135: HIGH-risk tools mutate business state and must pass through a
+    # durable ApprovalRequest (human-in-the-loop) before execution; LOW runs
+    # inline. See requires_approval().
+    risk_level: str = "LOW"
 
 
 TOOLS: dict[str, ToolSpec] = {}
@@ -47,6 +51,16 @@ def register_tool(spec: ToolSpec) -> ToolSpec:
 
 def get_tool(name: str) -> ToolSpec | None:
     return TOOLS.get(name)
+
+
+async def requires_approval(spec: ToolSpec) -> bool:
+    """§135: True when a call to this tool must wait for human approval.
+
+    The agent runtime awaits this before executing; HIGH tools persist an
+    ApprovalRequest (status PENDING) and the run parks in WAITING_APPROVAL
+    until a user decides.
+    """
+    return spec.risk_level == "HIGH"
 
 
 def tool_to_openai_schema(spec: ToolSpec) -> dict:
@@ -246,6 +260,7 @@ def _bootstrap() -> None:
             args_schema=CreateOrderArgs,
             handler=_create_order,
             tags=["orders"],
+            risk_level="HIGH",  # §135: mutating tool — human approval required
         )
     )
 

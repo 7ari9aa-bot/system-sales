@@ -32,6 +32,20 @@ from app.core.model_kit import (
 )
 
 
+# §156 lifecycle states — String values, never sa.Enum (migration-friendly).
+CONVERSATION_STATUSES = frozenset(
+    {"open", "waiting_customer", "waiting_human", "waiting_ai", "paused", "closed"}
+)
+# Legacy alias: rows (and API calls) written before §156 may carry "pending";
+# it normalizes to "open" wherever the service reads or sets status.
+CONVERSATION_STATUS_ALIASES = {"pending": "open"}
+
+
+def normalize_conversation_status(status: str) -> str:
+    """Map legacy 'pending' to 'open'; pass canonical values through."""
+    return CONVERSATION_STATUS_ALIASES.get(status, status)
+
+
 class Conversation(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "conversations"
     __table_args__ = (
@@ -50,9 +64,13 @@ class Conversation(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     )
     # channel: whatsapp | instagram | messenger | telegram | webchat
     channel: Mapped[str] = mapped_column(String(31), nullable=False)
-    # status: open | pending | closed
+    # status (§156): open | waiting_customer | waiting_human | waiting_ai
+    #              | paused | closed
+    # legacy: "pending" is accepted as an alias of "open" on read/write
+    # (normalize_conversation_status); the pre-§156 migration maps existing
+    # 'pending' rows to 'open'. Width 31 fits the longest value.
     status: Mapped[str] = mapped_column(
-        String(15), nullable=False, default="open", server_default="open"
+        String(31), nullable=False, default="open", server_default="open"
     )
     last_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     unread_count: Mapped[int] = mapped_column(default=0, server_default="0")
@@ -75,6 +93,11 @@ class Message(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
             "conversation_id",
             "created_at",
         ),
+        Index(
+            "ix_messages_tenant_reply_to",
+            "tenant_id",
+            "reply_to_message_id",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -93,6 +116,24 @@ class Message(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     body: Mapped[str | None] = mapped_column(Text, nullable=True)
     media_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     media_type: Mapped[str | None] = mapped_column(String(31), nullable=True)
+    # §155 canonical content kind — ONE column every surface reads:
+    # text | image | voice | video | file | location | contact
+    #    | buttons | list | reaction | unsupported
+    content_type: Mapped[str] = mapped_column(
+        String(31), nullable=False, default="text", server_default="text"
+    )
+    # §155 threading: the message this one replies to (self-FK, SET NULL).
+    reply_to_message_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("messages.id", ondelete="SET NULL"), nullable=True
+    )
+    # §155 edit/delete tombstones (UI renders "edited"/"deleted" placeholders).
+    edited: Mapped[bool] = mapped_column(default=False, server_default="false")
+    deleted: Mapped[bool] = mapped_column(default=False, server_default="false")
+    # §155 provider-specific extras (wamid, button payloads, quick replies) —
+    # kept OUT of body so the canonical columns stay clean.
+    provider_metadata: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'")
+    )
     # Normalized provider payload.
     payload: Mapped[dict] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'")

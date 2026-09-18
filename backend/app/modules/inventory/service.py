@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +20,7 @@ from app.modules.errors import ConflictError, NotFoundError
 from app.modules.inventory.models import (
     InventoryBalance,
     InventoryMovement,
+    InventoryReservation,
     InventoryTransfer,
     Warehouse,
 )
@@ -399,3 +400,53 @@ class InventoryService:
             )
         ).scalars().all()
         return list(rows)
+
+
+class InventoryReservationService:
+    """Lifecycle of the durable reservation rows (spec §140).
+
+    Rows are created by OrderService.create_order next to the balance hold;
+    CONVERTED on payment capture, CANCELLED on order cancellation, EXPIRED by
+    the maintenance worker. Only ACTIVE reservations count against
+    availability (the balances above are the operational truth).
+    """
+
+    @staticmethod
+    async def convert(
+        session: AsyncSession, tenant_id: UUID, order_id: UUID
+    ) -> int:
+        """Mark the order's ACTIVE reservations CONVERTED (payment captured).
+
+        Returns the number of rows flipped; already EXPIRED/CANCELLED rows
+        are left alone (they no longer hold stock).
+        """
+        result = await session.execute(
+            update(InventoryReservation)
+            .where(
+                InventoryReservation.tenant_id == tenant_id,
+                InventoryReservation.order_id == order_id,
+                InventoryReservation.status == "ACTIVE",
+            )
+            .values(status="CONVERTED", converted_at=_now())
+        )
+        return result.rowcount or 0
+
+    @staticmethod
+    async def cancel_for_order(
+        session: AsyncSession, tenant_id: UUID, order_id: UUID
+    ) -> int:
+        """Mark the order's ACTIVE reservations CANCELLED (order cancelled).
+
+        The balance-level stock release itself stays the caller's job
+        (InventoryService.release) — this only flips the durable rows.
+        """
+        result = await session.execute(
+            update(InventoryReservation)
+            .where(
+                InventoryReservation.tenant_id == tenant_id,
+                InventoryReservation.order_id == order_id,
+                InventoryReservation.status == "ACTIVE",
+            )
+            .values(status="CANCELLED", cancelled_at=_now())
+        )
+        return result.rowcount or 0

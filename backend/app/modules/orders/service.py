@@ -7,7 +7,7 @@ stage the outbox event. The SERVICE NEVER COMMITS.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from uuid import UUID, uuid4
 
@@ -21,8 +21,8 @@ from app.modules.catalog.models import Product, ProductVariant
 from app.modules.catalog.service import CatalogService
 from app.modules.customers.service import CustomerService
 from app.modules.errors import ConflictError, NotFoundError
-from app.modules.inventory.models import Warehouse
-from app.modules.inventory.service import InventoryService
+from app.modules.inventory.models import InventoryReservation, Warehouse
+from app.modules.inventory.service import InventoryReservationService, InventoryService
 from app.modules.orders.models import (
     Order,
     OrderItem,
@@ -45,6 +45,9 @@ TRANSITIONS: dict[str, set[str]] = {
 _CANCELLABLE_STATUSES = {"pending", "confirmed"}
 _PAYMENT_METHODS = {"cash", "card", "wallet", "bank_transfer", "cod", "manual"}
 _NUMBER_ATTEMPTS = 2
+# §140: a durable reservation row expires after 15 minutes if the order never
+# completes (abandoned cart) — the maintenance worker flips it to EXPIRED.
+_RESERVATION_TTL = timedelta(minutes=15)
 
 
 def _now() -> datetime:
@@ -203,6 +206,22 @@ class OrderService:
             placed_at=_now(),
             extra={"warehouse_id": str(warehouse.id)},
         )
+
+        # §140: durable reservation rows next to the balance hold — one per
+        # line, expiring in 15 minutes unless the order completes.
+        expires_at = _now() + _RESERVATION_TTL
+        for variant, quantity, _price in prepared:
+            session.add(
+                InventoryReservation(
+                    tenant_id=tenant_id,
+                    variant_id=variant.id,
+                    warehouse_id=warehouse.id,
+                    order_id=order.id,
+                    quantity=quantity,
+                    status="ACTIVE",
+                    expires_at=expires_at,
+                )
+            )
 
         # Line snapshots (title/sku frozen at purchase time).
         product_ids = {variant.product_id for variant, _q, _p in prepared}
@@ -381,7 +400,11 @@ class OrderService:
     async def _release_order_stock(
         session: AsyncSession, tenant_id: UUID, order: Order
     ) -> None:
-        """Release every item's reservation at the warehouse the order used."""
+        """Release every item's reservation at the warehouse the order used.
+
+        §140: the balance hold goes back AND the durable reservation rows are
+        flipped to CANCELLED.
+        """
         items = getattr(order, "items", None)
         if items is None:
             items = (
@@ -404,6 +427,9 @@ class OrderService:
             await InventoryService.release(
                 session, tenant_id, item.variant_id, warehouse_id, item.quantity
             )
+        await InventoryReservationService.cancel_for_order(
+            session, tenant_id, order.id
+        )
 
     # --------------------------------------------------------- payment ----
 
@@ -417,7 +443,13 @@ class OrderService:
         amount: object,
         provider: str | None = None,
     ) -> OrderPayment:
-        """Capture a payment; a paid pending order becomes confirmed."""
+        """Capture a payment; a paid pending order becomes confirmed.
+
+        "captured" is written only when the result is definitive; provider-
+        timeout paths (result lost mid-flight) map to status "unknown" in the
+        Stage payments adapter and are reconciled there — never retried
+        blindly (§141).
+        """
         if method not in _PAYMENT_METHODS:
             raise ValueError(
                 f"method must be one of {sorted(_PAYMENT_METHODS)}, got {method!r}"
@@ -437,6 +469,10 @@ class OrderService:
         )
         session.add(payment)
         await session.flush()
+
+        # §140: a captured payment converts the order's stock reservations
+        # into a sale (ACTIVE -> CONVERTED).
+        await InventoryReservationService.convert(session, tenant_id, order.id)
 
         if order.status == "pending":
             await OrderService._transition(

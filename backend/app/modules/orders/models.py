@@ -138,8 +138,11 @@ class OrderPayment(TenantMixin, TimestampMixin, WorkspaceScopeMixin, VersionMixi
     )
     # allowed: cash | card | wallet | bank_transfer | cod | manual
     method: Mapped[str] = mapped_column(String(31))
-    # allowed: pending | authorized | captured | failed | refunded
+    # allowed: pending | authorized | captured | failed | unknown | refunded
     #        | partially_refunded
+    # "unknown": provider-timeout paths (result lost mid-flight) — the Stage
+    # payments adapter maps those to it; reconciliation decides, never a
+    # blind retry (§141). add_payment only ever writes definitive states.
     status: Mapped[str] = mapped_column(String(31), server_default="pending")
     amount: Mapped[float] = mapped_column(MONEY)
     currency: Mapped[str] = mapped_column(String(3), server_default="EGP")

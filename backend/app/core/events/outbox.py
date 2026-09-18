@@ -10,7 +10,11 @@ Flow (the core of "order created / event never lost"):
 
 The outbox_events table is created by the Stage-1 migrations; this module is
 the runtime that drains it. Rows are claimed with FOR UPDATE SKIP LOCKED so
-multiple relay instances can run concurrently.
+multiple relay instances can run concurrently. Rows stranded in 'publishing'
+by a crashed relay are reclaimed after 5 minutes (§128) — the SKIP LOCKED
+lock dies with the connection, so the row is safe to re-claim. Every
+successfully published event is also appended to event_log (§152), the
+durable replay history: the outbox is only a publication buffer.
 """
 
 from __future__ import annotations
@@ -18,15 +22,26 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import uuid
 from typing import Any
 
 import sqlalchemy as sa
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.core.db import SessionLocal
+from app.core.db import SessionLocal, bind_tenant
 from app.core.events.bus import EventBus
 
 logger = logging.getLogger(__name__)
+
+_RECLAIM_SQL = sa.text(
+    """
+    UPDATE outbox_events
+       SET status = 'pending'
+     WHERE status = 'publishing'
+       AND created_at < now() - interval '5 minutes'
+    """
+)
 
 _CLAIM_SQL = sa.text(
     """
@@ -40,7 +55,7 @@ _CLAIM_SQL = sa.text(
          FOR UPDATE SKIP LOCKED
          LIMIT :batch
      )
-    RETURNING id, stream, payload, meta
+    RETURNING id, stream, payload, meta, aggregate_type, aggregate_id, created_at
     """
 )
 
@@ -50,6 +65,24 @@ _MARK_PUBLISHED_SQL = sa.text(
 
 _MARK_FAILED_SQL = sa.text(
     "UPDATE outbox_events SET status = 'failed', last_error = :err WHERE id = :id"
+)
+
+# §152: durable replay history — written in the same transaction that marks
+# the outbox row published. ON CONFLICT keeps a reclaimed-and-republished row
+# from double-landing in the history.
+_EVENT_LOG_SQL = sa.text(
+    """
+    INSERT INTO event_log (
+        id, event_id, event_type, aggregate_type, aggregate_id,
+        aggregate_version, schema_version, occurred_at, producer,
+        correlation_id, causation_id, payload, tenant_id
+    ) VALUES (
+        :id, :event_id, :event_type, :aggregate_type, :aggregate_id,
+        :aggregate_version, :schema_version, :occurred_at, :producer,
+        :correlation_id, :causation_id, CAST(:payload AS jsonb), :tenant_id
+    )
+    ON CONFLICT (event_id) DO NOTHING
+    """
 )
 
 
@@ -81,6 +114,10 @@ class OutboxRelay:
     async def _drain_once(self, batch: int, max_attempts: int) -> int:
         published = 0
         async with SessionLocal() as session:
+            # §128: reclaim rows stranded in 'publishing' by a crashed relay.
+            # The claim transaction (and its SKIP LOCKED lock) died with that
+            # connection; anything stuck past 5 minutes is safe to re-queue.
+            await session.execute(_RECLAIM_SQL)
             rows = (
                 (
                     await session.execute(
@@ -91,12 +128,10 @@ class OutboxRelay:
                 .all()
             )
             for row in rows:
+                payload = _loads(row["payload"])
+                meta = _loads(row["meta"])
                 try:
-                    await self._bus.publish(
-                        row["stream"],
-                        _loads(row["payload"]),
-                        _loads(row["meta"]),
-                    )
+                    await self._bus.publish(row["stream"], payload, meta)
                     await session.execute(_MARK_PUBLISHED_SQL, {"id": row["id"]})
                     published += 1
                 except Exception as exc:  # noqa: BLE001 — one bad event must not stop the relay
@@ -104,8 +139,65 @@ class OutboxRelay:
                     await session.execute(
                         _MARK_FAILED_SQL, {"id": row["id"], "err": str(exc)[:500]}
                     )
+                    continue
+                # §152 history is written after the publish is marked; a
+                # history failure must not flip a published row to failed.
+                try:
+                    await self._write_event_log(session, row, payload, meta)
+                except Exception:  # noqa: BLE001 — relay survives, ops replays
+                    logger.exception(
+                        "outbox.relay.event_log_failed id=%s", row["id"]
+                    )
             await session.commit()
         return published
+
+    async def _write_event_log(
+        self, session: AsyncSession, row: Any, payload: dict, meta: dict
+    ) -> None:
+        """§152: append the published event to event_log (durable replay).
+
+        v2 envelope lineage (tenant_id / correlation_id / causation_id /
+        producer / schema_version / aggregate_version) rides inside the
+        outbox row's meta — mapped defensively with .get(). event_log is
+        RLS-guarded, so the tenant GUC is bound for each row before insert.
+        """
+        tenant_raw = meta.get("tenant_id")
+        if not tenant_raw:
+            logger.warning(
+                "outbox.relay.event_log_skipped_no_tenant id=%s", row["id"]
+            )
+            return
+        try:
+            schema_version = int(meta.get("schema_version") or 1)
+        except (TypeError, ValueError):
+            schema_version = 1
+        aggregate_version = meta.get("aggregate_version")
+        if aggregate_version is not None:
+            try:
+                aggregate_version = int(aggregate_version)
+            except (TypeError, ValueError):
+                aggregate_version = None
+
+        await bind_tenant(session, str(tenant_raw))
+        await session.execute(
+            _EVENT_LOG_SQL,
+            {
+                "id": uuid.uuid4(),
+                "event_id": row["id"],
+                "event_type": payload.get("event_type")
+                or f"{row['aggregate_type']}.changed",
+                "aggregate_type": row["aggregate_type"],
+                "aggregate_id": row["aggregate_id"],
+                "aggregate_version": aggregate_version,
+                "schema_version": schema_version,
+                "occurred_at": row["created_at"],
+                "producer": meta.get("producer") or "core",
+                "correlation_id": meta.get("correlation_id"),
+                "causation_id": meta.get("causation_id"),
+                "payload": json.dumps(payload, default=str),
+                "tenant_id": str(tenant_raw),
+            },
+        )
 
 
 def _loads(value: Any) -> dict:
