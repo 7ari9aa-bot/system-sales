@@ -69,21 +69,29 @@ async def search_knowledge(
     query: str,
     *,
     limit: int = 5,
+    visibility: str | None = "customer_facing",
 ) -> list[tuple[KnowledgeItem, float]]:
-    """Semantic search over the tenant's indexed knowledge items."""
+    """Semantic search over the tenant's indexed knowledge items.
+
+    §157: retrieval is tenant- AND visibility-scoped — the AI customer
+    context only sees customer_facing items by default; staff surfaces
+    pass visibility=None for everything.
+    """
     vectors = await _embed(session, tenant_id, [query])
     distance = KnowledgeItem.embedding.cosine_distance(vectors[0])
-    rows = (
-        await session.execute(
-            select(KnowledgeItem, distance)
-            .where(
-                KnowledgeItem.tenant_id == tenant_id,
-                KnowledgeItem.embedding.is_not(None),
-            )
-            .order_by(distance)
-            .limit(limit)
+    stmt = (
+        select(KnowledgeItem, distance)
+        .where(
+            KnowledgeItem.tenant_id == tenant_id,
+            KnowledgeItem.embedding.is_not(None),
+            KnowledgeItem.status == "indexed",
         )
-    ).all()
+        .order_by(distance)
+        .limit(limit)
+    )
+    if visibility is not None:
+        stmt = stmt.where(KnowledgeItem.visibility == visibility)
+    rows = (await session.execute(stmt)).all()
     return [(row[0], float(row[1])) for row in rows]
 
 

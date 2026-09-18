@@ -121,6 +121,13 @@ class Memory(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     conversation_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True
     )
+    # §158: governed provenance — "customer said X" ≠ "system verified X"
+    # allowed sources: customer_stated | system_verified | agent_inferred | staff_entered
+    source: Mapped[str] = mapped_column(String(31), server_default="customer_stated")
+    verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    confidence: Mapped[float] = mapped_column(Numeric(5, 4), server_default="0.5")
     # kind: summary | preference | fact
     kind: Mapped[str] = mapped_column(String(15))
     content: Mapped[str] = mapped_column(Text)
@@ -146,6 +153,11 @@ class KnowledgeItem(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     embedding: Mapped[list[float] | None] = mapped_column(Vector(1536), nullable=True)
     # status: pending | indexed | failed
     status: Mapped[str] = mapped_column(String(15), server_default="pending")
+    # §157 visibility: retrieval filters on this BEFORE context injection
+    # allowed: customer_facing | staff_only | internal | admin_only
+    visibility: Mapped[str] = mapped_column(
+        String(15), server_default="customer_facing"
+    )
 
     __table_args__ = (
         Index("ix_knowledge_tenant_status", "tenant_id", "status"),
