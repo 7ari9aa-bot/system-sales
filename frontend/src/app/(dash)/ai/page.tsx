@@ -1,177 +1,294 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import * as React from "react";
+import { BookOpen, Plus, Sparkles } from "lucide-react";
+import {
+  useAddKnowledge,
+  useAgents,
+  useKnowledge,
+  useKnowledgeSearch,
+  useUsageSummary,
+  type KnowledgeItem,
+} from "@/lib/queries";
 import { t } from "@/lib/t";
+import { formatDate, formatNumber } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Input, Label, Textarea } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { EmptyState, PageHeader } from "@/components/ui/states";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
-type KnowledgeItem = { id: string; title: string; status: string; created_at: string };
-type Agent = { id: string; name: string; model: string | null; is_active: boolean };
-type UsageRow = { date: string; tokens_in: number; tokens_out: number; cost: number };
-type SearchHit = { id: string; title: string; distance: number };
+function StatCard({ label, value }: { label: string; value: string | number }) {
+  return (
+    <Card>
+      <CardContent className="p-5">
+        <div className="text-[26px] font-bold leading-tight" dir="ltr">
+          {value}
+        </div>
+        <div className="mt-0.5 text-[13px] text-muted-foreground">{label}</div>
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function AIPage() {
-  const [items, setItems] = useState<KnowledgeItem[]>([]);
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [usage, setUsage] = useState<UsageRow[]>([]);
-  const [title, setTitle] = useState("");
-  const [content, setContent] = useState("");
-  const [query, setQuery] = useState("");
-  const [hits, setHits] = useState<SearchHit[] | null>(null);
-  const [error, setError] = useState("");
-  const [ok, setOk] = useState("");
+  const [addOpen, setAddOpen] = React.useState(false);
+  const [title, setTitle] = React.useState("");
+  const [content, setContent] = React.useState("");
+  const [query, setQuery] = React.useState("");
 
-  const load = useCallback(async () => {
-    try {
-      const [k, a, u] = await Promise.all([
-        api<{ items: KnowledgeItem[] }>("/ai/knowledge").then((r) => r.items),
-        api<Agent[]>("/ai/agents"),
-        api<{ summary: UsageRow[] }>("/ai/usage/summary"),
-      ]);
-      setItems(k);
-      setAgents(a);
-      setUsage(u.summary ?? []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "خطأ");
+  const knowledgeQuery = useKnowledge();
+  const agentsQuery = useAgents();
+  const usageQuery = useUsageSummary();
+  const addKnowledge = useAddKnowledge();
+  const search = useKnowledgeSearch();
+
+  const items = knowledgeQuery.data ?? [];
+  const agents = agentsQuery.data ?? [];
+  const usage = usageQuery.data ?? [];
+
+  React.useEffect(() => {
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("new") === "1") {
+      setAddOpen(true);
     }
   }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  async function addKnowledge() {
-    setError("");
-    setOk("");
-    try {
-      await api("/ai/knowledge", { method: "POST", body: { title, content } });
-      setTitle("");
-      setContent("");
-      setOk("تمت الإضافة");
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "خطأ");
-    }
-  }
-
-  async function doSearch() {
-    setError("");
-    setHits(null);
-    try {
-      const res = await api<SearchHit[]>(
-        `/ai/knowledge/search?q=${encodeURIComponent(query.trim())}`,
-      );
-      setHits(res);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "خطأ");
-    }
-  }
 
   const totalCost = usage.reduce((sum, r) => sum + Number(r.cost), 0);
   const totalTokens = usage.reduce((sum, r) => sum + r.tokens_in + r.tokens_out, 0);
 
+  function submitKnowledge() {
+    if (!title.trim() || !content.trim()) return;
+    addKnowledge.mutate(
+      { title, content },
+      {
+        onSuccess: () => {
+          setAddOpen(false);
+          setTitle("");
+          setContent("");
+        },
+      },
+    );
+  }
+
+  function doSearch() {
+    const q = query.trim();
+    if (q) search.mutate(q);
+  }
+
   return (
     <div>
-      <h1 className="page-title">{t.ai}</h1>
-      {error && <p className="error-text">{error}</p>}
-      {ok && <p className="ok-text">{ok}</p>}
+      <PageHeader
+        title={t.ai}
+        description="قاعدة المعرفة والوكلاء والاستهلاك"
+        actions={
+          <Button onClick={() => setAddOpen(true)} data-testid="open-knowledge-form">
+            <Plus aria-hidden="true" />
+            {t.addKnowledge}
+          </Button>
+        }
+      />
 
-      <div className="stats-grid">
-        <div className="card stat">
-          <div className="value" dir="ltr">{totalTokens.toLocaleString("en-US")}</div>
-          <div className="label">إجمالي التوكنات</div>
+      {knowledgeQuery.isError || agentsQuery.isError || usageQuery.isError ? (
+        <EmptyState
+          title={
+            (knowledgeQuery.error as Error | undefined ?? agentsQuery.error as Error | undefined ?? usageQuery.error as Error).message
+          }
+        />
+      ) : knowledgeQuery.isLoading || agentsQuery.isLoading || usageQuery.isLoading ? (
+        <div className="space-y-4" aria-busy="true" aria-label={t.loading}>
+          <div className="grid gap-4 sm:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-24" />
+            ))}
+          </div>
+          <Skeleton className="h-64" />
         </div>
-        <div className="card stat">
-          <div className="value" dir="ltr">{totalCost.toFixed(2)}</div>
-          <div className="label">{t.usageCost} ($)</div>
-        </div>
-        <div className="card stat">
-          <div className="value" dir="ltr">{agents.length}</div>
-          <div className="label">{t.agents}</div>
-        </div>
-      </div>
+      ) : (
+        <>
+          <div className="mb-4 grid gap-4 sm:grid-cols-3">
+            <StatCard label={t.totalTokens} value={formatNumber(totalTokens)} />
+            <StatCard label={`${t.usageCost} ($)`} value={totalCost.toFixed(2)} />
+            <StatCard label={t.agents} value={agents.length} />
+          </div>
 
-      <div className="card" style={{ marginBottom: "1rem" }}>
-        <h3 style={{ marginTop: 0 }}>{t.addKnowledge}</h3>
-        <div className="form-grid">
-          <div>
-            <label htmlFor="k-title">العنوان</label>
-            <input id="k-title" value={title} onChange={(e) => setTitle(e.target.value)} />
+          <Tabs defaultValue="knowledge">
+            <TabsList>
+              <TabsTrigger value="knowledge">{t.aiTabKnowledge}</TabsTrigger>
+              <TabsTrigger value="search">{t.aiTabSearch}</TabsTrigger>
+              <TabsTrigger value="usage">{t.aiTabUsage}</TabsTrigger>
+            </TabsList>
+
+            {/* knowledge list */}
+            <TabsContent value="knowledge">
+              <Card>
+                <CardContent className="p-0 pb-2">
+                  {items.length === 0 ? (
+                    <EmptyState
+                      icon={<BookOpen aria-hidden="true" />}
+                      title={t.knowledgeEmpty}
+                      description={t.knowledgeEmptyHint}
+                      action={
+                        <Button size="sm" onClick={() => setAddOpen(true)}>
+                          {t.addKnowledge}
+                        </Button>
+                      }
+                    />
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>{t.title}</TableHead>
+                          <TableHead>{t.status}</TableHead>
+                          <TableHead>{t.date}</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {items.map((k: KnowledgeItem) => (
+                          <TableRow key={k.id}>
+                            <TableCell className="font-semibold">{k.title}</TableCell>
+                            <TableCell>
+                              <Badge variant={k.status === "indexed" ? "success" : "warning"}>
+                                {k.status === "indexed" ? t.indexed : t.aiProcessing}
+                              </Badge>
+                            </TableCell>
+                            <TableCell dir="ltr" className="text-xs text-muted-foreground">
+                              {formatDate(k.created_at)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* semantic search */}
+            <TabsContent value="search">
+              <Card>
+                <CardHeader>
+                  <CardTitle>{t.searchKnowledge}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder={t.askPlaceholder}
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && doSearch()}
+                      data-testid="knowledge-search-input"
+                      className="flex-1"
+                    />
+                    <Button onClick={doSearch} disabled={!query.trim() || search.isPending}>
+                      {t.ask}
+                    </Button>
+                  </div>
+                  {search.data && (
+                    <ul className="mt-4 space-y-2">
+                      {search.data.length === 0 && (
+                        <li className="text-[13px] text-muted-foreground">{t.noHits}</li>
+                      )}
+                      {search.data.map((h) => (
+                        <li
+                          key={h.id}
+                          className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm"
+                        >
+                          <span className="font-semibold">{h.title}</span>
+                          <span className="text-xs text-muted-foreground" dir="ltr">
+                            ({t.distance} {h.distance.toFixed(3)})
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* usage rows */}
+            <TabsContent value="usage">
+              <Card>
+                <CardHeader>
+                  <CardTitle>{t.usageCost}</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0 pb-2">
+                  {usage.length === 0 ? (
+                    <EmptyState title="لا يوجد استهلاك بعد" />
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>{t.date}</TableHead>
+                          <TableHead dir="ltr">Tokens in</TableHead>
+                          <TableHead dir="ltr">Tokens out</TableHead>
+                          <TableHead>التكلفة ($)</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {usage.map((r) => (
+                          <TableRow key={r.date}>
+                            <TableCell dir="ltr" className="text-xs text-muted-foreground">
+                              {r.date}
+                            </TableCell>
+                            <TableCell dir="ltr">{formatNumber(r.tokens_in)}</TableCell>
+                            <TableCell dir="ltr">{formatNumber(r.tokens_out)}</TableCell>
+                            <TableCell dir="ltr">{Number(r.cost).toFixed(4)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </>
+      )}
+
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t.addKnowledge}</DialogTitle>
+            <DialogDescription>علّم الوكيل إجابات الأسئلة المتكررة.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="k-title">{t.title}</Label>
+              <Input id="k-title" value={title} onChange={(e) => setTitle(e.target.value)} />
+            </div>
+            <div>
+              <Label htmlFor="k-content">{t.content}</Label>
+              <Textarea id="k-content" rows={4} value={content} onChange={(e) => setContent(e.target.value)} />
+            </div>
           </div>
-          <div style={{ gridColumn: "1 / -1" }}>
-            <label htmlFor="k-content">المحتوى</label>
-            <textarea id="k-content" rows={3} value={content} onChange={(e) => setContent(e.target.value)} />
-          </div>
-          <div style={{ alignSelf: "end" }}>
-            <button className="btn" onClick={addKnowledge} disabled={!title.trim() || !content.trim()}>
+          <DialogFooter>
+            <Button onClick={submitKnowledge} disabled={addKnowledge.isPending || !title.trim() || !content.trim()}>
               {t.save}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="card" style={{ marginBottom: "1rem" }}>
-        <h3 style={{ marginTop: 0 }}>{t.searchKnowledge}</h3>
-        <div className="form-grid">
-          <div style={{ gridColumn: "1 / -1" }}>
-            <input
-              placeholder="اكتب سؤالك…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && query.trim() && doSearch()}
-            />
-          </div>
-          <div>
-            <button className="btn" onClick={doSearch} disabled={!query.trim()}>
-              بحث
-            </button>
-          </div>
-        </div>
-        {hits && (
-          <ul>
-            {hits.length === 0 && <li className="muted">لا نتائج</li>}
-            {hits.map((h) => (
-              <li key={h.id}>
-                {h.title} <span className="muted" dir="ltr">(distance {h.distance.toFixed(3)})</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      <div className="card">
-        <h3 style={{ marginTop: 0 }}>{t.knowledge}</h3>
-        <table className="table">
-          <thead>
-            <tr>
-              <th>العنوان</th>
-              <th>{t.status}</th>
-              <th>{t.date}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((k) => (
-              <tr key={k.id}>
-                <td>{k.title}</td>
-                <td>
-                  <span className={`badge ${k.status === "indexed" ? "badge-success" : "badge-warning"}`}>
-                    {k.status === "indexed" ? "مفهرس" : "قيد المعالجة"}
-                  </span>
-                </td>
-                <td dir="ltr" style={{ fontSize: 12 }}>
-                  {new Date(k.created_at).toLocaleDateString("ar-EG-u-nu-latn")}
-                </td>
-              </tr>
-            ))}
-            {items.length === 0 && (
-              <tr>
-                <td colSpan={3} className="empty">
-                  قاعدة المعرفة فارغة
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            </Button>
+            <Button variant="ghost" onClick={() => setAddOpen(false)}>
+              {t.cancel}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

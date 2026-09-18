@@ -181,19 +181,14 @@ async def test_list_customers_search(db: AsyncSession, tenant_ctx):
 
 async def test_identity_merge_full_flow(db, tenant_ctx):
     """§27-28: merge remaps children, tombstones loser, writes event+audit."""
-    import uuid as _uuid
-    from datetime import UTC, datetime
-
-    from sqlalchemy import select, text
+    from sqlalchemy import select
 
     from app.core.events.writer import add_outbox_event
-    from app.modules.customers.models import (
-        Customer,
-        IdentityMergeCandidate,
-        IdentityMergeEvent,
-    )
+    from app.modules.conversations.models import Conversation
+    from app.modules.conversations.service import ConversationService
+    from app.modules.customers.models import Customer, IdentityMergeEvent
     from app.modules.customers.service import CustomerService, IdentityMergeService
-    from app.modules.platform.models import AuditLog, OutboxEvent
+    from app.modules.platform.models import AuditLog
 
     # two customers, each with an identity + a conversation each
     cust_a = await CustomerService.get_or_create_by_identity(
@@ -202,9 +197,8 @@ async def test_identity_merge_full_flow(db, tenant_ctx):
     cust_b = await CustomerService.get_or_create_by_identity(
         db, tenant_ctx.tenant_id, channel="whatsapp", external_id="222", name="Ahmed B"
     )
-    from app.modules.conversations.service import ConversationService
 
-    convo_a = await ConversationService.get_or_create(
+    await ConversationService.get_or_create(
         db, tenant_ctx.tenant_id, customer_id=cust_a.id, channel="whatsapp"
     )
     convo_b = await ConversationService.get_or_create(
@@ -224,14 +218,22 @@ async def test_identity_merge_full_flow(db, tenant_ctx):
     )
     assert canonical_id == cust_a.id
 
-    # loser tombstoned with redirect
-    away = await db.get(Customer, cust_b.id)
-    assert away.merged_into_customer_id == cust_a.id
-    assert away.merged_at is not None
+    # Raw-SQL updates bypass the identity map — read columns directly
+    # (column selects bypass identity-map staleness).
+    away_merged = await db.scalar(
+        select(Customer.merged_into_customer_id).where(Customer.id == cust_b.id)
+    )
+    away_merged_at = await db.scalar(
+        select(Customer.merged_at).where(Customer.id == cust_b.id)
+    )
+    assert away_merged == cust_a.id
+    assert away_merged_at is not None
 
     # children remapped to canonical
-    convo_a_after = await db.get(Conversation, convo_b.id)
-    assert convo_a_after.customer_id == cust_a.id
+    convo_customer = await db.scalar(
+        select(Conversation.customer_id).where(Conversation.id == convo_b.id)
+    )
+    assert convo_customer == cust_a.id
 
     # merge event + audit + outbox exist
     merge_event = (
@@ -243,14 +245,15 @@ async def test_identity_merge_full_flow(db, tenant_ctx):
         await db.execute(select(AuditLog).where(AuditLog.action == "customer.merged"))
     ).scalars().all()
     assert len(audit) == 1
-    outbox = (
-        await db.execute(select(OutboxEvent).where(OutboxEvent.event_type.is_not(None)))
-    ).scalars().all()
 
-    # candidate flow: create → resolve merged
-    candidate = await IdentityMergeService.create_merge_candidate(
-        db, tenant_ctx.tenant_id,
-        customer_a_id=cust_a.id,
-        customer_b_id=cust_a.id,  # same → conflict expected below
-        match_type="deterministic", confidence=1.0,
-    )
+    # candidate creation service exists and validates distinct customers
+    from app.core.errors import ConflictError
+
+    try:
+        await IdentityMergeService.create_merge_candidate(
+            db, tenant_ctx.tenant_id,
+            customer_a_id=cust_a.id, customer_b_id=cust_a.id,
+        )
+        raise AssertionError("self-candidate must be rejected")
+    except ConflictError:
+        pass

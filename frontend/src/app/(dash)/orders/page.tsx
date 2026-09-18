@@ -1,77 +1,71 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import * as React from "react";
+import type { ColumnDef } from "@tanstack/react-table";
+import { Plus, ShoppingCart, Trash2 } from "lucide-react";
+import { useCreateOrder, useCustomers, useOrders, useProducts, type Order } from "@/lib/queries";
 import { t } from "@/lib/t";
+import { formatDate, formatMoney } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/input";
+import { Select } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { EmptyState, PageHeader } from "@/components/ui/states";
+import { DataTable } from "@/components/data-table";
 
-type Order = {
-  id: string;
-  number: string;
-  customer_id: string;
-  status: string;
-  grand_total: string;
-  currency: string;
-  placed_at: string | null;
-  created_at: string;
-};
-
-type Product = {
-  id: string;
-  title: string;
-  variants?: { id: string; title: string | null; sku: string | null; price: string }[];
-};
-
-type Customer = { id: string; name: string; phone: string | null };
-
-const STATUS_BADGE: Record<string, string> = {
-  pending: "badge-warning",
-  confirmed: "badge-primary",
-  processing: "badge-primary",
-  shipped: "badge-primary",
-  delivered: "badge-success",
-  completed: "badge-success",
-  cancelled: "badge-danger",
-  refunded: "badge-danger",
+const STATUS_VARIANT: Record<string, "warning" | "primary" | "success" | "danger" | "default"> = {
+  pending: "warning",
+  confirmed: "primary",
+  processing: "primary",
+  shipped: "primary",
+  delivered: "success",
+  completed: "success",
+  cancelled: "danger",
+  refunded: "danger",
 };
 
 type Line = { variant_id: string; quantity: number };
 
 export default function OrdersPage() {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [customerId, setCustomerId] = useState("");
-  const [lines, setLines] = useState<Line[]>([{ variant_id: "", quantity: 1 }]);
-  const [error, setError] = useState("");
-  const [ok, setOk] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [showForm, setShowForm] = useState(false);
+  const [open, setOpen] = React.useState(false);
+  const [customerId, setCustomerId] = React.useState("");
+  const [lines, setLines] = React.useState<Line[]>([{ variant_id: "", quantity: 1 }]);
 
-  const load = useCallback(async () => {
-    try {
-      const [o, p, c] = await Promise.all([
-        api<{ items: Order[] }>("/orders").then((r) => r.items),
-        api<Product[]>("/products"),
-        api<Customer[]>("/customers"),
-      ]);
-      setOrders(o);
-      setProducts(p);
-      setCustomers(c);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "خطأ");
+  const ordersQuery = useOrders();
+  const productsQuery = useProducts();
+  const customersQuery = useCustomers();
+  const createOrder = useCreateOrder();
+
+  const orders = ordersQuery.data ?? [];
+  const customers = customersQuery.data ?? [];
+
+  // فتح النموذج من قائمة "إنشاء" في الشريط العلوي (?new=1) أو من لوحة الأوامر
+  React.useEffect(() => {
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("new") === "1") {
+      setOpen(true);
     }
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const allVariants = products.flatMap((p) =>
-    (p.variants ?? []).map((v) => ({
-      ...v,
-      label: `${p.title}${v.title ? ` — ${v.title}` : ""}${v.sku ? ` (${v.sku})` : ""}`,
-      price: Number(v.price),
-    })),
+  const allVariants = React.useMemo(
+    () =>
+      (productsQuery.data ?? []).flatMap((p) =>
+        (p.variants ?? []).map((v) => ({
+          ...v,
+          label: `${p.title}${v.title ? ` — ${v.title}` : ""}${v.sku ? ` (${v.sku})` : ""}`,
+          price: Number(v.price),
+        })),
+      ),
+    [productsQuery.data],
   );
 
   const total = lines.reduce((sum, line) => {
@@ -79,157 +73,215 @@ export default function OrdersPage() {
     return sum + (variant ? variant.price * line.quantity : 0);
   }, 0);
 
-  async function createOrder() {
-    setBusy(true);
-    setError("");
-    setOk("");
-    try {
-      const items = lines.filter((l) => l.variant_id).map((l) => ({ variant_id: l.variant_id, quantity: l.quantity }));
-      if (!customerId || items.length === 0) throw new Error("اختر عميل وواحد منتج على الأقل");
-      const created = await api<{ number: string }>("/orders", {
-        method: "POST",
-        body: { customer_id: customerId, items, channel: "dashboard" },
-      });
-      setOk(`تم إنشاء الطلب ${created.number}`);
-      setLines([{ variant_id: "", quantity: 1 }]);
-      setCustomerId("");
-      setShowForm(false);
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "خطأ");
-    } finally {
-      setBusy(false);
-    }
+  const columns = React.useMemo<ColumnDef<Order, unknown>[]>(
+    () => [
+      {
+        accessorKey: "number",
+        header: t.orderNumber,
+        cell: ({ row }) => (
+          <span dir="ltr" className="font-semibold">
+            {row.original.number}
+          </span>
+        ),
+      },
+      {
+        accessorFn: (row) => customers.find((c) => c.id === row.customer_id)?.name ?? row.customer_id,
+        id: "customer",
+        header: t.customer,
+        cell: ({ row }) => {
+          const name = customers.find((c) => c.id === row.original.customer_id)?.name;
+          return (
+            <span dir="ltr" className="text-[13px] text-muted-foreground">
+              {name ?? `${row.original.customer_id.slice(0, 8)}…`}
+            </span>
+          );
+        },
+      },
+      {
+        accessorKey: "grand_total",
+        header: t.grandTotal,
+        cell: ({ row }) => (
+          <span dir="ltr" className="font-semibold">
+            {formatMoney(row.original.grand_total, row.original.currency)}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "status",
+        header: t.status,
+        cell: ({ row }) => (
+          <Badge variant={STATUS_VARIANT[row.original.status] ?? "default"}>{row.original.status}</Badge>
+        ),
+      },
+      {
+        accessorFn: (row) => new Date(row.placed_at ?? row.created_at).getTime(),
+        id: "date",
+        header: t.date,
+        cell: ({ row }) => (
+          <span dir="ltr" className="text-[13px] text-muted-foreground">
+            {formatDate(row.original.placed_at ?? row.original.created_at)}
+          </span>
+        ),
+      },
+    ],
+    [customers],
+  );
+
+  function submit() {
+    const items = lines
+      .filter((l) => l.variant_id)
+      .map((l) => ({ variant_id: l.variant_id, quantity: l.quantity }));
+    if (!customerId || items.length === 0) return;
+    createOrder.mutate(
+      { customer_id: customerId, items, channel: "dashboard" },
+      {
+        onSuccess: () => {
+          setOpen(false);
+          setLines([{ variant_id: "", quantity: 1 }]);
+          setCustomerId("");
+        },
+      },
+    );
   }
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h1 className="page-title">{t.orders}</h1>
-        <button className="btn" onClick={() => setShowForm(!showForm)} data-testid="toggle-order-form">
-          {showForm ? t.cancel : t.createOrder}
-        </button>
-      </div>
-      {error && <p className="error-text">{error}</p>}
-      {ok && <p className="ok-text">{ok}</p>}
+      <PageHeader
+        title={t.orders}
+        description="متابعة كل الطلبات وحالاتها"
+        actions={
+          <Button onClick={() => setOpen(true)} data-testid="toggle-order-form">
+            <Plus aria-hidden="true" />
+            {t.createOrder}
+          </Button>
+        }
+      />
 
-      {showForm && (
-        <div className="card" style={{ marginBottom: "1rem" }}>
-          <div className="form-grid">
+      {ordersQuery.isError ? (
+        <EmptyState title={(ordersQuery.error as Error).message} />
+      ) : ordersQuery.isLoading ? (
+        <TableLoading />
+      ) : (
+        <DataTable
+          columns={columns}
+          data={orders}
+          testid="orders-table"
+          empty={
+            <EmptyState
+              icon={<ShoppingCart aria-hidden="true" />}
+              title={t.noOrders}
+              description={t.noOrdersHint}
+              action={
+                <Button size="sm" onClick={() => setOpen(true)}>
+                  <Plus aria-hidden="true" />
+                  {t.createOrder}
+                </Button>
+              }
+            />
+          }
+        />
+      )}
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>{t.createOrder}</DialogTitle>
+            <DialogDescription>اختر العميل والأصناف — سيُسجَّل الطلب فورًا.</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
             <div>
-              <label htmlFor="o-customer">{t.customer}</label>
-              <select id="o-customer" value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
-                <option value="">— اختر عميل —</option>
+              <Label htmlFor="o-customer">{t.customer}</Label>
+              <Select id="o-customer" value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
+                <option value="">{t.chooseCustomer}</option>
                 {customers.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name} {c.phone ? `(${c.phone})` : ""}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
-          </div>
 
-          {lines.map((line, index) => (
-            <div className="form-grid" key={index} style={{ gridTemplateColumns: "2fr 1fr auto", alignItems: "end" }}>
-              <div>
-                <label>المنتج {index + 1}</label>
-                <select
-                  value={line.variant_id}
-                  onChange={(e) =>
-                    setLines(lines.map((l, i) => (i === index ? { ...l, variant_id: e.target.value } : l)))
-                  }
-                >
-                  <option value="">— اختر منتج —</option>
-                  {allVariants.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.label} — {v.price.toFixed(2)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label>{t.quantity}</label>
-                <input
-                  type="number"
-                  dir="ltr"
-                  min={1}
-                  value={line.quantity}
-                  onChange={(e) =>
-                    setLines(
-                      lines.map((l, i) => (i === index ? { ...l, quantity: Math.max(1, Number(e.target.value)) } : l)),
-                    )
-                  }
-                />
-              </div>
-              <div>
-                {lines.length > 1 && (
-                  <button
-                    className="btn btn-danger"
-                    onClick={() => setLines(lines.filter((_, i) => i !== index))}
+            <div className="space-y-2">
+              <Label>{t.lineItems}</Label>
+              {lines.map((line, index) => (
+                <div key={index} className="flex items-end gap-2">
+                  <div className="flex-1">
+                    <Select
+                      aria-label={`${t.products} ${index + 1}`}
+                      value={line.variant_id}
+                      onChange={(e) =>
+                        setLines(lines.map((l, i) => (i === index ? { ...l, variant_id: e.target.value } : l)))
+                      }
+                    >
+                      <option value="">{t.chooseProduct}</option>
+                      {allVariants.map((v) => (
+                        <option key={v.id} value={v.id}>
+                          {v.label} — {v.price.toFixed(2)}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                  <Input
+                    type="number"
+                    dir="ltr"
+                    min={1}
+                    aria-label={t.quantity}
+                    className="w-20"
+                    value={line.quantity}
+                    onChange={(e) =>
+                      setLines(
+                        lines.map((l, i) =>
+                          i === index ? { ...l, quantity: Math.max(1, Number(e.target.value) || 1) } : l,
+                        ),
+                      )
+                    }
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon"
                     aria-label="حذف السطر"
+                    onClick={() => setLines(lines.filter((_, i) => i !== index))}
+                    disabled={lines.length === 1}
                   >
-                    ×
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
-
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "0.75rem" }}>
-            <button className="btn btn-secondary" onClick={() => setLines([...lines, { variant_id: "", quantity: 1 }])}>
-              + سطر
-            </button>
-            <div>
-              <strong dir="ltr" style={{ marginInlineEnd: "1rem" }}>
-                {total.toFixed(2)} EGP
-              </strong>
-              <button className="btn" onClick={createOrder} disabled={busy || !customerId || total === 0} data-testid="submit-order">
-                {t.createOrder}
-              </button>
+                    <Trash2 aria-hidden="true" className="text-danger" />
+                  </Button>
+                </div>
+              ))}
+              <Button variant="outline" size="sm" onClick={() => setLines([...lines, { variant_id: "", quantity: 1 }])}>
+                {t.addLine}
+              </Button>
             </div>
           </div>
-        </div>
-      )}
 
-      <div className="card">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>{t.orderNumber}</th>
-              <th>{t.customer}</th>
-              <th>{t.grandTotal}</th>
-              <th>{t.status}</th>
-              <th>{t.date}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {orders.map((o) => (
-              <tr key={o.id}>
-                <td dir="ltr">{o.number}</td>
-                <td dir="ltr" style={{ fontSize: 12 }}>
-                  {customers.find((c) => c.id === o.customer_id)?.name ?? `${o.customer_id.slice(0, 8)}…`}
-                </td>
-                <td dir="ltr">
-                  {Number(o.grand_total).toFixed(2)} {o.currency}
-                </td>
-                <td>
-                  <span className={`badge ${STATUS_BADGE[o.status] ?? ""}`}>{o.status}</span>
-                </td>
-                <td dir="ltr" style={{ fontSize: 12 }}>
-                  {new Date(o.placed_at ?? o.created_at).toLocaleDateString("ar-EG-u-nu-latn")}
-                </td>
-              </tr>
-            ))}
-            {orders.length === 0 && (
-              <tr>
-                <td colSpan={5} className="empty">
-                  لا توجد طلبات
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+          <DialogFooter className="items-center justify-between gap-3 sm:justify-between">
+            <strong dir="ltr">{formatMoney(total)}</strong>
+            <Button
+              onClick={submit}
+              disabled={createOrder.isPending || !customerId || total === 0}
+              data-testid="submit-order"
+            >
+              {t.createOrder}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
+  );
+}
+
+function TableLoading() {
+  return (
+    <Card className="space-y-3 p-4" aria-busy="true" aria-label={t.loading}>
+      <div className="h-9 w-64 animate-pulse rounded-lg bg-muted" />
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} className="flex gap-3">
+          <div className="h-8 flex-1 animate-pulse rounded-lg bg-muted" />
+          <div className="h-8 flex-1 animate-pulse rounded-lg bg-muted" />
+          <div className="h-8 flex-1 animate-pulse rounded-lg bg-muted" />
+          <div className="h-8 w-24 animate-pulse rounded-lg bg-muted" />
+        </div>
+      ))}
+    </Card>
   );
 }

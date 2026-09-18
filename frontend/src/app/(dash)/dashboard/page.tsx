@@ -1,19 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import Link from "next/link";
+import { TriangleAlert } from "lucide-react";
+import { useDashboard } from "@/lib/queries";
 import { t } from "@/lib/t";
-
-type Dashboard = {
-  orders: { orders_count: number; revenue: number; aov: number };
-  ai_orders_30d: number;
-  conversations: { open: number; unread: number };
-  customers: number;
-  products_active: number;
-  low_stock: number;
-  daily_orders: { day: string; orders: number; revenue: number }[];
-  revenue_by_source: { source: string; revenue: number; conversions: number }[];
-};
+import { formatNumber } from "@/lib/utils";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState, ErrorState, PageHeader } from "@/components/ui/states";
 
 function Stat({
   label,
@@ -27,34 +22,30 @@ function Stat({
   testid?: string;
 }) {
   return (
-    <div className="card stat" data-testid={testid}>
-      <div className="value" dir="ltr">
-        {typeof value === "number" ? value.toLocaleString("en-US") : value}
-      </div>
-      <div className="label">{label}</div>
-      {hint && <div className="muted" style={{ fontSize: 12 }}>{hint}</div>}
-    </div>
+    <Card data-testid={testid}>
+      <CardContent className="p-5">
+        <div className="text-[26px] font-bold leading-tight" dir="ltr">
+          {typeof value === "number" ? value.toLocaleString("en-US") : value}
+        </div>
+        <div className="mt-0.5 text-[13px] text-muted-foreground">{label}</div>
+        {hint && <div className="mt-1 text-xs text-muted-foreground">{hint}</div>}
+      </CardContent>
+    </Card>
   );
 }
 
 function BarChart({ data }: { data: { day: string; revenue: number }[] }) {
   const max = Math.max(1, ...data.map((d) => d.revenue));
-  if (data.length === 0) return <div className="empty">لا توجد بيانات بعد</div>;
+  if (data.length === 0) return <EmptyState title="لا توجد بيانات بعد" className="py-8" />;
   return (
-    <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: 140, paddingTop: 8 }}>
+    <div className="flex h-40 items-end gap-1 pt-2">
       {data.map((d) => (
-        <div key={d.day} style={{ flex: 1, textAlign: "center" }} title={`${d.day}: ${d.revenue}`}>
+        <div key={d.day} className="flex-1 text-center" title={`${d.day}: ${d.revenue}`}>
           <div
-            style={{
-              height: `${Math.max(4, (d.revenue / max) * 110)}px`,
-              background: "var(--primary)",
-              borderRadius: 4,
-              opacity: 0.85,
-            }}
+            className="mx-auto w-full max-w-6 rounded-md bg-primary/85 transition-all duration-300 ease-smooth"
+            style={{ height: `${Math.max(4, (d.revenue / max) * 110)}px` }}
           />
-          <div className="muted" style={{ fontSize: 10, marginTop: 4 }}>
-            {new Date(d.day).getDate()}
-          </div>
+          <div className="mt-1 text-[10px] text-muted-foreground">{new Date(d.day).getDate()}</div>
         </div>
       ))}
     </div>
@@ -62,94 +53,115 @@ function BarChart({ data }: { data: { day: string; revenue: number }[] }) {
 }
 
 export default function DashboardPage() {
-  const [data, setData] = useState<Dashboard | null>(null);
-  const [error, setError] = useState("");
+  const { data, error, refetch, isLoading } = useDashboard();
 
-  const load = useCallback(async () => {
-    try {
-      setData(await api<Dashboard>("/analytics/dashboard"));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "خطأ");
-    }
-  }, []);
+  if (error) return <ErrorState message={error.message} onRetry={() => refetch()} />;
 
-  useEffect(() => {
-    load();
-    const timer = setInterval(load, 20000);
-    return () => clearInterval(timer);
-  }, [load]);
-
-  if (error) return <p className="error-text">{error}</p>;
-  if (!data) return <div className="empty">{t.loading}</div>;
+  if (isLoading || !data) return <PageSkeleton />;
 
   const sources = [...data.revenue_by_source].sort((a, b) => b.revenue - a.revenue).slice(0, 5);
   const maxSource = Math.max(1, ...sources.map((s) => s.revenue));
 
   return (
     <div>
-      <h1 className="page-title">{t.dashboard}</h1>
-      <div className="stats-grid">
+      <PageHeader title={t.dashboard} description="نظرة سريعة على أداء متجرك" />
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <Stat
-          label="إيرادات 30 يوم"
-          value={`${Number(data.orders.revenue).toFixed(0)} ${"ج.م"}`}
+          label={t.revenue30}
+          value={`${Number(data.orders.revenue).toFixed(0)} ج.م`}
           testid="stat-revenue"
         />
-        <Stat label="الطلبات (30 يوم)" value={data.orders.orders_count} testid="stat-orders" />
+        <Stat label={t.orders30} value={data.orders.orders_count} testid="stat-orders" />
+        <Stat label={t.aov} value={Number(data.orders.aov).toFixed(0)} testid="stat-aov" />
         <Stat
-          label="متوسط قيمة الطلب"
-          value={Number(data.orders.aov).toFixed(0)}
-          testid="stat-aov"
-        />
-        <Stat
-          label="محادثات مفتوحة"
+          label={t.openConversations}
           value={data.conversations.open}
-          hint={`${data.conversations.unread} غير مقروءة`}
+          hint={`${data.conversations.unread} ${t.unread}`}
           testid="stat-conversations"
         />
-        <Stat label="العملاء" value={data.customers} testid="stat-customers" />
+        <Stat label={t.customers} value={data.customers} testid="stat-customers" />
         <Stat
-          label="منتجات مفعّلة"
+          label={t.activeProducts}
           value={data.products_active}
-          hint={data.low_stock > 0 ? `${data.low_stock} منتج شبه نافد` : undefined}
+          hint={data.low_stock > 0 ? t.nearlyOut(data.low_stock) : undefined}
           testid="stat-products"
         />
       </div>
 
       {data.low_stock > 0 && (
-        <div className="card" style={{ marginBottom: "1rem", borderInlineStart: "3px solid var(--warning)" }}>
-          ⚠️ عندك {data.low_stock} صنف مخزونه على وشك النفاد — راجع صفحة {t.inventory}.
-        </div>
+        <Card className="mt-4 border-s-4 border-s-warning" data-testid="low-stock-alert">
+          <CardContent className="flex items-center gap-3 p-4">
+            <TriangleAlert aria-hidden="true" className="size-5 shrink-0 text-warning" />
+            <p className="flex-1 text-sm font-semibold">{t.lowStockAlert(data.low_stock)}</p>
+            <Link
+              href="/inventory"
+              className="text-[13px] font-bold text-primary underline-offset-4 hover:underline"
+            >
+              {t.inventory}
+            </Link>
+          </CardContent>
+        </Card>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
-        <div className="card">
-          <h3 style={{ marginTop: 0 }}>الإيرادات اليومية (14 يوم)</h3>
-          <BarChart data={data.daily_orders} />
-        </div>
-        <div className="card">
-          <h3 style={{ marginTop: 0 }}>الإيرادات حسب المصدر</h3>
-          {sources.length === 0 && <div className="empty">لا توجد تحويلات مرتبطة بمصادر</div>}
-          {sources.map((s) => (
-            <div key={s.source} style={{ marginBottom: "0.7rem" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                <strong>{s.source}</strong>
-                <span dir="ltr">
-                  {Number(s.revenue).toFixed(0)} ({s.conversions})
-                </span>
+      <div className="mt-6 grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>{t.dailyRevenue}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <BarChart data={data.daily_orders} />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>{t.revenueBySource}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {sources.length === 0 ? (
+              <EmptyState title={t.noSourceData} className="py-8" />
+            ) : (
+              <div className="space-y-3">
+                {sources.map((s) => (
+                  <div key={s.source}>
+                    <div className="flex items-center justify-between text-[13px]">
+                      <span className="flex items-center gap-2 font-semibold">
+                        <Badge variant="outline">{s.source}</Badge>
+                      </span>
+                      <span dir="ltr" className="text-muted-foreground">
+                        {Number(s.revenue).toFixed(0)} ({formatNumber(s.conversions)})
+                      </span>
+                    </div>
+                    <div className="mt-1 h-2 rounded-full bg-muted">
+                      <div
+                        className="h-2 rounded-full bg-success transition-all duration-300 ease-smooth"
+                        style={{ width: `${(s.revenue / maxSource) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
               </div>
-              <div style={{ background: "#eef1f8", borderRadius: 4, height: 8 }}>
-                <div
-                  style={{
-                    width: `${(s.revenue / maxSource) * 100}%`,
-                    background: "var(--success)",
-                    height: 8,
-                    borderRadius: 4,
-                  }}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function PageSkeleton() {
+  return (
+    <div className="space-y-6" aria-busy="true" aria-label={t.loading}>
+      <Skeleton className="h-7 w-40" />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <Skeleton key={i} className="h-24" />
+        ))}
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Skeleton className="h-72" />
+        <Skeleton className="h-72" />
       </div>
     </div>
   );

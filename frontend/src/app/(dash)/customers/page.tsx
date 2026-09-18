@@ -1,77 +1,96 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import * as React from "react";
+import type { ColumnDef } from "@tanstack/react-table";
+import { Users } from "lucide-react";
+import { useCustomers, type Customer } from "@/lib/queries";
 import { t } from "@/lib/t";
-
-type Customer = {
-  id: string;
-  name: string;
-  phone: string | null;
-  email: string | null;
-  lifetime_value: string;
-  is_blocked: boolean;
-};
+import { DataTable } from "@/components/data-table";
+import { EmptyState, PageHeader } from "@/components/ui/states";
 
 export default function CustomersPage() {
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [search, setSearch] = useState("");
-  const [error, setError] = useState("");
+  const customersQuery = useCustomers();
+  const customers = customersQuery.data ?? [];
 
-  const load = useCallback(async () => {
-    try {
-      const q = search.trim() ? `?search=${encodeURIComponent(search.trim())}` : "";
-      setCustomers((await api<{ items: Customer[] }>(`/customers${q}`)).items);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "خطأ");
-    }
-  }, [search]);
+  const columns = React.useMemo<ColumnDef<Customer, unknown>[]>(
+    () => [
+      {
+        accessorKey: "name",
+        header: t.name,
+        cell: ({ row }) => <span className="font-semibold">{row.original.name}</span>,
+      },
+      {
+        accessorFn: (row) => row.phone ?? "",
+        id: "phone",
+        header: t.phone,
+        cell: ({ row }) => (
+          <span dir="ltr" className="text-[13px]">
+            {row.original.phone ?? "—"}
+          </span>
+        ),
+      },
+      {
+        accessorFn: (row) => row.email ?? "",
+        id: "email",
+        header: t.email,
+        cell: ({ row }) => (
+          <span dir="ltr" className="text-[13px] text-muted-foreground">
+            {row.original.email ?? "—"}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "lifetime_value",
+        header: t.totalSpent,
+        cell: ({ row }) => (
+          <span dir="ltr" className="font-semibold">
+            {Number(row.original.lifetime_value).toFixed(2)}
+          </span>
+        ),
+      },
+    ],
+    [],
+  );
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  if (customersQuery.isError) {
+    return (
+      <div>
+        <PageHeader title={t.customers} />
+        <EmptyState title={(customersQuery.error as Error).message} />
+      </div>
+    );
+  }
+
+  if (customersQuery.isLoading) {
+    return (
+      <div>
+        <PageHeader title={t.customers} />
+        <div className="space-y-3 rounded-xl border border-border bg-card p-4" aria-busy="true" aria-label={t.loading}>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="h-8 animate-pulse rounded-lg bg-muted" />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
-      <h1 className="page-title">{t.customers}</h1>
-      {error && <p className="error-text">{error}</p>}
-      <div style={{ marginBottom: "1rem", maxWidth: 320 }}>
-        <input
-          placeholder="بحث بالاسم أو الهاتف…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          data-testid="customer-search"
-        />
-      </div>
-      <div className="card">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>الاسم</th>
-              <th>الهاتف</th>
-              <th>{t.email}</th>
-              <th>إجمالي الشراء</th>
-            </tr>
-          </thead>
-          <tbody>
-            {customers.map((c) => (
-              <tr key={c.id}>
-                <td>{c.name}</td>
-                <td dir="ltr">{c.phone ?? "—"}</td>
-                <td dir="ltr">{c.email ?? "—"}</td>
-                <td dir="ltr">{Number(c.lifetime_value).toFixed(2)}</td>
-              </tr>
-            ))}
-            {customers.length === 0 && (
-              <tr>
-                <td colSpan={4} className="empty">
-                  لا يوجد عملاء
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <PageHeader title={t.customers} description="قاعدة عملائك وسجل الشراء" />
+      <DataTable
+        columns={columns}
+        data={customers}
+        testid="customers-table"
+        searchPlaceholder={t.searchCustomers}
+        searchTestid="customer-search"
+        empty={
+          <EmptyState
+            icon={<Users aria-hidden="true" />}
+            title={t.noCustomers}
+            description={t.noCustomersHint}
+          />
+        }
+      />
     </div>
   );
 }

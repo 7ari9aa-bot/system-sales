@@ -1,150 +1,209 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import * as React from "react";
+import { Plug, UserPlus, Users } from "lucide-react";
+import {
+  useCreateInvitation,
+  useIntegrations,
+  useInvitations,
+  type Integration,
+  type Invitation,
+} from "@/lib/queries";
 import { t } from "@/lib/t";
-
-type Invitation = { id: string; email: string; status: string; role_code: string | null; token?: string };
-type Integration = { id: string; provider: string; kind: string; status: string };
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Input, Label, Select } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { EmptyState, PageHeader } from "@/components/ui/states";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export default function SettingsPage() {
-  const [email, setEmail] = useState("");
-  const [roleCode, setRoleCode] = useState("staff");
-  const [invitation, setInvitation] = useState<Invitation | null>(null);
-  const [invitations, setInvitations] = useState<Invitation[]>([]);
-  const [integrations, setIntegrations] = useState<Integration[]>([]);
-  const [error, setError] = useState("");
-  const [ok, setOk] = useState("");
+  const [email, setEmail] = React.useState("");
+  const [roleCode, setRoleCode] = React.useState("staff");
+  const [created, setCreated] = React.useState<Invitation | null>(null);
 
-  const load = useCallback(async () => {
-    try {
-      const [inv, integ] = await Promise.all([
-        api<Invitation[]>("/invitations"),
-        api<Integration[]>("/integrations"),
-      ]);
-      setInvitations(inv);
-      setIntegrations(integ);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "خطأ");
+  const invitationsQuery = useInvitations();
+  const integrationsQuery = useIntegrations();
+  const invite = useCreateInvitation();
+
+  const invitations = invitationsQuery.data ?? [];
+  const integrations = integrationsQuery.data ?? [];
+
+  React.useEffect(() => {
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("new") === "1") {
+      document.getElementById("inv-email")?.focus();
     }
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  async function invite() {
-    setError("");
-    setOk("");
-    try {
-      const tenantId = await api<{ id: string; tenants: { id: string }[] }>("/auth/me");
-      const tenant_id = tenantId.tenants?.[0]?.id ?? tenantId.id;
-      const created = await api<Invitation>(`/tenants/${tenant_id}/invitations`, {
-        method: "POST",
-        body: { email, role_code: roleCode },
-      });
-      setInvitation(created);
-      setEmail("");
-      setOk("تم إنشاء الدعوة — أرسل الرابط لعضو الفريق");
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "خطأ");
-    }
+  function submit() {
+    if (!email.trim()) return;
+    setCreated(null);
+    invite.mutate(
+      { email, role_code: roleCode },
+      {
+        onSuccess: (invitation) => {
+          setCreated(invitation);
+          setEmail("");
+        },
+      },
+    );
   }
 
   return (
     <div>
-      <h1 className="page-title">{t.settings}</h1>
-      {error && <p className="error-text">{error}</p>}
-      {ok && <p className="ok-text">{ok}</p>}
+      <PageHeader title={t.settings} description="الفريق والتكاملات" />
 
-      <div className="card" style={{ marginBottom: "1rem" }}>
-        <h3 style={{ marginTop: 0 }}>{t.invite}</h3>
-        <div className="form-grid">
-          <div>
-            <label htmlFor="inv-email">{t.email}</label>
-            <input id="inv-email" type="email" dir="ltr" value={email} onChange={(e) => setEmail(e.target.value)} />
-          </div>
-          <div>
-            <label htmlFor="inv-role">{t.role}</label>
-            <select id="inv-role" value={roleCode} onChange={(e) => setRoleCode(e.target.value)}>
-              <option value="staff">{t.staff}</option>
-              <option value="manager">{t.manager}</option>
-              <option value="owner">{t.owner}</option>
-            </select>
-          </div>
-          <div style={{ alignSelf: "end" }}>
-            <button className="btn" onClick={invite} disabled={!email.trim()} data-testid="create-invitation">
-              {t.invite}
-            </button>
-          </div>
+      {invitationsQuery.isError || integrationsQuery.isError ? (
+        <EmptyState
+          title={(invitationsQuery.error as Error | undefined ?? integrationsQuery.error as Error).message}
+        />
+      ) : invitationsQuery.isLoading || integrationsQuery.isLoading ? (
+        <div className="space-y-4" aria-busy="true" aria-label={t.loading}>
+          <Skeleton className="h-64" />
+          <Skeleton className="h-64" />
         </div>
-        {invitation && (
-          <p className="muted">
-            رابط القبول:{" "}
-            <code dir="ltr" style={{ fontSize: 12 }}>
-              /accept?token={invitation.token}
-            </code>
-          </p>
-        )}
-        {invitations.length > 0 && (
-          <table className="table" style={{ marginTop: "0.75rem" }}>
-            <thead>
-              <tr>
-                <th>{t.email}</th>
-                <th>{t.role}</th>
-                <th>{t.status}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {invitations.map((inv) => (
-                <tr key={inv.id}>
-                  <td dir="ltr">{inv.email}</td>
-                  <td>{inv.role_code ?? "—"}</td>
-                  <td>
-                    <span className={`badge ${inv.status === "pending" ? "badge-warning" : "badge-success"}`}>
-                      {inv.status === "pending" ? "قيد الانتظار" : inv.status}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+      ) : (
+        <Tabs defaultValue="team">
+          <TabsList>
+            <TabsTrigger value="team">{t.team}</TabsTrigger>
+            <TabsTrigger value="integrations">{t.integrations}</TabsTrigger>
+          </TabsList>
 
-      <div className="card">
-        <h3 style={{ marginTop: 0 }}>{t.integrations}</h3>
-        <table className="table">
-          <thead>
-            <tr>
-              <th>القناة / المزوّد</th>
-              <th>النوع</th>
-              <th>{t.status}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {integrations.map((i) => (
-              <tr key={i.id}>
-                <td>{i.provider}</td>
-                <td>{i.kind}</td>
-                <td>
-                  <span className={`badge ${i.status === "connected" ? "badge-success" : "badge-danger"}`}>
-                    {i.status === "connected" ? "متصل" : "غير متصل"}
-                  </span>
-                </td>
-              </tr>
-            ))}
-            {integrations.length === 0 && (
-              <tr>
-                <td colSpan={3} className="empty">
-                  لا توجد تكاملات — أضف قناة واتساب أو تليجرام من لوحة التحكم
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+          {/* team + invitations */}
+          <TabsContent value="team">
+            <Card>
+              <CardHeader>
+                <CardTitle>{t.invite}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-3 sm:grid-cols-[1fr_180px_auto] sm:items-end">
+                  <div>
+                    <Label htmlFor="inv-email">{t.email}</Label>
+                    <Input
+                      id="inv-email"
+                      type="email"
+                      dir="ltr"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="inv-role">{t.role}</Label>
+                    <Select id="inv-role" value={roleCode} onChange={(e) => setRoleCode(e.target.value)}>
+                      <option value="staff">{t.staff}</option>
+                      <option value="manager">{t.manager}</option>
+                      <option value="owner">{t.owner}</option>
+                    </Select>
+                  </div>
+                  <Button
+                    onClick={submit}
+                    disabled={invite.isPending || !email.trim()}
+                    data-testid="create-invitation"
+                  >
+                    <UserPlus aria-hidden="true" />
+                    {t.invite}
+                  </Button>
+                </div>
+
+                {created && (
+                  <p className="mt-3 rounded-lg bg-muted px-3 py-2 text-[13px] text-muted-foreground">
+                    {t.acceptLink}:{" "}
+                    <code dir="ltr" className="font-bold">
+                      /accept?token={created.token}
+                    </code>
+                  </p>
+                )}
+
+                {invitations.length === 0 ? (
+                  <EmptyState
+                    icon={<Users aria-hidden="true" />}
+                    title={t.noInvitations}
+                    description={t.noInvitationsHint}
+                    className="mt-2"
+                  />
+                ) : (
+                  <div className="mt-4">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>{t.email}</TableHead>
+                          <TableHead>{t.role}</TableHead>
+                          <TableHead>{t.status}</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {invitations.map((inv: Invitation) => (
+                          <TableRow key={inv.id}>
+                            <TableCell dir="ltr">{inv.email}</TableCell>
+                            <TableCell>{inv.role_code ?? "—"}</TableCell>
+                            <TableCell>
+                              <Badge variant={inv.status === "pending" ? "warning" : "success"}>
+                                {inv.status === "pending" ? t.pendingStatus : inv.status}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* integrations */}
+          <TabsContent value="integrations">
+            <Card>
+              <CardHeader>
+                <CardTitle>{t.integrations}</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0 pb-2">
+                {integrations.length === 0 ? (
+                  <EmptyState
+                    icon={<Plug aria-hidden="true" />}
+                    title={t.noIntegrations}
+                    description={t.noIntegrationsHint}
+                  />
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>{t.channelProvider}</TableHead>
+                        <TableHead>{t.kind}</TableHead>
+                        <TableHead>{t.status}</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {integrations.map((i: Integration) => (
+                        <TableRow key={i.id}>
+                          <TableCell className="font-semibold">{i.provider}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{i.kind}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={i.status === "connected" ? "success" : "danger"}>
+                              {i.status === "connected" ? t.connected : t.disconnected}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      )}
     </div>
   );
 }

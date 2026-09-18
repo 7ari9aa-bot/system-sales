@@ -1,123 +1,181 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import * as React from "react";
+import type { ColumnDef } from "@tanstack/react-table";
+import { Package, Plus } from "lucide-react";
+import { useCreateProduct, useProducts, type Product } from "@/lib/queries";
 import { t } from "@/lib/t";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input, Label } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { EmptyState, PageHeader } from "@/components/ui/states";
+import { DataTable } from "@/components/data-table";
 
-type Variant = { id: string; sku: string | null; title: string | null; price: string };
-type Product = {
-  id: string;
-  title: string;
-  slug: string;
-  status: string;
-  variants?: Variant[];
+const STATUS_VARIANT: Record<string, "success" | "default" | "danger"> = {
+  active: "success",
+  draft: "default",
+  archived: "danger",
 };
 
 export default function ProductsPage() {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [title, setTitle] = useState("");
-  const [price, setPrice] = useState("");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = React.useState(false);
+  const [title, setTitle] = React.useState("");
+  const [price, setPrice] = React.useState("");
 
-  const load = useCallback(async () => {
-    try {
-      setProducts(await api<Product[]>("/products"));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "خطأ");
+  const productsQuery = useProducts();
+  const createProduct = useCreateProduct();
+  const products = productsQuery.data ?? [];
+
+  React.useEffect(() => {
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("new") === "1") {
+      setOpen(true);
     }
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  const columns = React.useMemo<ColumnDef<Product, unknown>[]>(
+    () => [
+      {
+        accessorKey: "title",
+        header: t.productTitle,
+        cell: ({ row }) => <span className="font-semibold">{row.original.title}</span>,
+      },
+      {
+        accessorFn: (row) => row.variants?.[0]?.sku ?? "",
+        id: "sku",
+        header: t.sku,
+        cell: ({ row }) => (
+          <span dir="ltr" className="text-[13px] text-muted-foreground">
+            {row.original.variants?.[0]?.sku ?? "—"}
+          </span>
+        ),
+      },
+      {
+        accessorFn: (row) => Number(row.variants?.[0]?.price ?? 0),
+        id: "price",
+        header: t.price,
+        cell: ({ row }) => (
+          <span dir="ltr" className="font-semibold">
+            {row.original.variants?.[0]?.price ?? "—"}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "status",
+        header: t.status,
+        cell: ({ row }) => (
+          <Badge variant={STATUS_VARIANT[row.original.status] ?? "default"}>{row.original.status}</Badge>
+        ),
+      },
+    ],
+    [],
+  );
 
-  async function create() {
+  function submit() {
     if (!title.trim() || !price) return;
-    setBusy(true);
-    setError("");
-    try {
-      await api("/products", {
-        method: "POST",
-        body: { title, slug: `${title.trim().toLowerCase().replace(/\s+/g, "-")}-${Date.now().toString(36)}`, price: Number(price) },
-      });
-      setTitle("");
-      setPrice("");
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "خطأ");
-    } finally {
-      setBusy(false);
-    }
+    createProduct.mutate(
+      {
+        title,
+        slug: `${title.trim().toLowerCase().replace(/\s+/g, "-")}-${Date.now().toString(36)}`,
+        price: Number(price),
+      },
+      {
+        onSuccess: () => {
+          setOpen(false);
+          setTitle("");
+          setPrice("");
+        },
+      },
+    );
   }
-
-  const STATUS_BADGE: Record<string, string> = {
-    active: "badge-success",
-    draft: "badge",
-    archived: "badge-danger",
-  };
 
   return (
     <div>
-      <h1 className="page-title">{t.products}</h1>
-      <div className="card" style={{ marginBottom: "1rem" }}>
-        <div className="form-grid">
-          <div>
-            <label htmlFor="p-title">{t.productTitle}</label>
-            <input id="p-title" value={title} onChange={(e) => setTitle(e.target.value)} />
-          </div>
-          <div>
-            <label htmlFor="p-price">{t.price}</label>
-            <input
-              id="p-price"
-              type="number"
-              dir="ltr"
-              min="0"
-              step="0.01"
-              value={price}
-              onChange={(e) => setPrice(e.target.value)}
-            />
-          </div>
-          <div style={{ alignSelf: "end" }}>
-            <button className="btn" onClick={create} disabled={busy || !title.trim() || !price} data-testid="create-product">
-              {t.addProduct}
-            </button>
-          </div>
-        </div>
-        {error && <p className="error-text">{error}</p>}
-      </div>
+      <PageHeader
+        title={t.products}
+        description="كتالوج منتجاتك وأسعارها"
+        actions={
+          <Button onClick={() => setOpen(true)} data-testid="open-product-form">
+            <Plus aria-hidden="true" />
+            {t.addProduct}
+          </Button>
+        }
+      />
 
-      <div className="card">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>{t.productTitle}</th>
-              <th>SKU</th>
-              <th>{t.price}</th>
-              <th>{t.status}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {products.map((p) => (
-              <tr key={p.id}>
-                <td>{p.title}</td>
-                <td dir="ltr">{p.variants?.[0]?.sku ?? "—"}</td>
-                <td dir="ltr">{p.variants?.[0]?.price ?? "—"}</td>
-                <td>
-                  <span className={`badge ${STATUS_BADGE[p.status] ?? ""}`}>{p.status}</span>
-                </td>
-              </tr>
-            ))}
-            {products.length === 0 && (
-              <tr>
-                <td colSpan={4} className="empty">
-                  لا توجد منتجات
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      {productsQuery.isError ? (
+        <EmptyState title={(productsQuery.error as Error).message} />
+      ) : productsQuery.isLoading ? (
+        <div className="space-y-3 rounded-xl border border-border bg-card p-4" aria-busy="true" aria-label={t.loading}>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="h-8 animate-pulse rounded-lg bg-muted" />
+          ))}
+        </div>
+      ) : (
+        <DataTable
+          columns={columns}
+          data={products}
+          testid="products-table"
+          empty={
+            <EmptyState
+              icon={<Package aria-hidden="true" />}
+              title="لا توجد منتجات بعد"
+              description="أضف أول منتج ليظهر للوكلاء في المحادثات."
+              action={
+                <Button size="sm" onClick={() => setOpen(true)}>
+                  <Plus aria-hidden="true" />
+                  {t.addProduct}
+                </Button>
+              }
+            />
+          }
+        />
+      )}
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t.addProduct}</DialogTitle>
+            <DialogDescription>أقل حقلين مطلوبين: الاسم والسعر.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="p-title">{t.productTitle}</Label>
+              <Input id="p-title" value={title} onChange={(e) => setTitle(e.target.value)} />
+            </div>
+            <div>
+              <Label htmlFor="p-price">{t.price}</Label>
+              <Input
+                id="p-price"
+                type="number"
+                dir="ltr"
+                min="0"
+                step="0.01"
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              onClick={submit}
+              disabled={createProduct.isPending || !title.trim() || !price}
+              data-testid="create-product"
+            >
+              {t.addProduct}
+            </Button>
+            <Button variant="ghost" onClick={() => setOpen(false)}>
+              {t.cancel}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

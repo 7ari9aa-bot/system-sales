@@ -382,7 +382,7 @@ class IdentityMergeService:
             await session.execute(
                 text(
                     f"UPDATE {table} SET {fk} = :canonical "
-                    f"WHERE tenant_id = :t AND {fk} = :away"
+                    f"WHERE tenant_id = :t AND {fk} = :mid"
                 ),
                 {
                     "canonical": canonical_customer_id,
@@ -396,7 +396,7 @@ class IdentityMergeService:
             text(
                 "UPDATE customers SET merged_into_customer_id = :canonical, "
                 "merged_at = :now, updated_at = now() "
-                "WHERE tenant_id = :t AND id = :away"
+                "WHERE tenant_id = :t AND id = :mid"
             ),
             {
                 "canonical": canonical_customer_id,

@@ -135,3 +135,43 @@ class BillingService:
             )
         )
         await session.flush()
+
+
+class EntitlementService:
+    """Spec §165: centralized CanX enforcement — one place, not per-module.
+
+    Flow: Auth → Tenant → Permission → Entitlement → Domain rule.
+    """
+
+    @staticmethod
+    async def can(session: AsyncSession, tenant_id: uuid.UUID, capability: str) -> bool:
+        """Canonical capability checks. Unknown capabilities are allowed by
+        default; known ones consult plan entitlements + tenant status."""
+        from app.modules.identity.models import Tenant
+
+        tenant = (
+            await session.execute(select(Tenant).where(Tenant.id == tenant_id))
+        ).scalar_one_or_none()
+        if tenant is None or not tenant.is_active:
+            return False
+
+        if capability in ("CanUseAI", "CanSendCampaign", "CanUseVoice", "CanUseAPI"):
+            allowed = await BillingService.check_entitlement(
+                session, tenant_id, capability, requested=1
+            )
+            return allowed
+        if capability in ("CanCreateChannel", "CanAddUser"):
+            return await BillingService.check_entitlement(
+                session, tenant_id, capability, requested=1
+            )
+        return True
+
+    @staticmethod
+    async def ensure(session: AsyncSession, tenant_id: uuid.UUID, capability: str) -> None:
+        from app.core.errors import RateLimitExceededError
+
+        if not await EntitlementService.can(session, tenant_id, capability):
+            raise RateLimitExceededError(
+                f"plan does not allow: {capability}",
+                details={"capability": capability},
+            )

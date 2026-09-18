@@ -1,182 +1,210 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import * as React from "react";
+import { ArrowDownToLine, ArrowUpFromLine, Scale, Warehouse } from "lucide-react";
+import { useBalances, useMovements, useRecordMovement, type Balance, type Movement } from "@/lib/queries";
 import { t } from "@/lib/t";
-
-type Balance = {
-  variant_id: string;
-  warehouse_id: string;
-  on_hand: number;
-  reserved: number;
-};
-
-type Movement = {
-  id: string;
-  variant_id: string;
-  direction: string;
-  quantity: number;
-  reason: string;
-  balance_after: number;
-  created_at: string;
-};
+import { formatNumber } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Input, Label, Select } from "@/components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { EmptyState, PageHeader } from "@/components/ui/states";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export default function InventoryPage() {
-  const [balances, setBalances] = useState<Balance[]>([]);
-  const [movements, setMovements] = useState<Movement[]>([]);
-  const [variantId, setVariantId] = useState("");
-  const [warehouseId, setWarehouseId] = useState("");
-  const [direction, setDirection] = useState("in");
-  const [quantity, setQuantity] = useState("1");
-  const [error, setError] = useState("");
-  const [ok, setOk] = useState("");
+  const [variantId, setVariantId] = React.useState("");
+  const [warehouseId, setWarehouseId] = React.useState("");
+  const [direction, setDirection] = React.useState("in");
+  const [quantity, setQuantity] = React.useState("1");
 
-  const load = useCallback(async () => {
-    try {
-      const [b, m] = await Promise.all([
-        api<Balance[]>("/inventory/balances"),
-        api<Movement[]>("/inventory/movements"),
-      ]);
-      setBalances(b);
-      setMovements(m);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "خطأ");
-    }
-  }, []);
+  const balancesQuery = useBalances();
+  const movementsQuery = useMovements();
+  const record = useRecordMovement();
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  const balances = balancesQuery.data ?? [];
+  const movements = movementsQuery.data ?? [];
 
-  async function record() {
-    setError("");
-    setOk("");
-    try {
-      await api("/inventory/movements", {
-        method: "POST",
-        body: {
-          variant_id: variantId,
-          warehouse_id: warehouseId,
-          direction,
-          quantity: Number(quantity),
-          reason: direction === "in" ? "purchase" : direction === "out" ? "sale" : "adjustment",
-        },
-      });
-      setOk("تم تسجيل الحركة");
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "خطأ");
-    }
+  function submit() {
+    if (!variantId || !warehouseId) return;
+    record.mutate({
+      variant_id: variantId,
+      warehouse_id: warehouseId,
+      direction,
+      quantity: Number(quantity),
+      reason: direction === "in" ? "purchase" : direction === "out" ? "sale" : "adjustment",
+    });
   }
 
   return (
     <div>
-      <h1 className="page-title">{t.inventory}</h1>
+      <PageHeader title={t.inventory} description="أرصدة المخزون وحركات الإضافة والصرف" />
 
-      <div className="card" style={{ marginBottom: "1rem" }}>
-        <div className="form-grid">
-          <div>
-            <label htmlFor="iv-variant">Variant ID</label>
-            <input id="iv-variant" dir="ltr" value={variantId} onChange={(e) => setVariantId(e.target.value)} />
+      <Card className="mb-4">
+        <CardHeader>
+          <CardTitle>{t.recordMovement}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <div>
+              <Label htmlFor="iv-variant">Variant ID</Label>
+              <Input id="iv-variant" dir="ltr" value={variantId} onChange={(e) => setVariantId(e.target.value)} />
+            </div>
+            <div>
+              <Label htmlFor="iv-wh">{t.warehouse}</Label>
+              <Input id="iv-wh" dir="ltr" value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)} />
+            </div>
+            <div>
+              <Label htmlFor="iv-dir">{t.movementType}</Label>
+              <Select id="iv-dir" value={direction} onChange={(e) => setDirection(e.target.value)}>
+                <option value="in">{t.in}</option>
+                <option value="out">{t.out}</option>
+                <option value="adjust">{t.adjust}</option>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="iv-qty">{t.quantity}</Label>
+              <Input
+                id="iv-qty"
+                type="number"
+                dir="ltr"
+                min="1"
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+              />
+            </div>
+            <div className="flex items-end">
+              <Button
+                onClick={submit}
+                disabled={record.isPending || !variantId || !warehouseId}
+                data-testid="record-movement"
+                className="w-full"
+              >
+                {t.recordMovement}
+              </Button>
+            </div>
           </div>
-          <div>
-            <label htmlFor="iv-wh">{t.warehouse}</label>
-            <input id="iv-wh" dir="ltr" value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)} />
-          </div>
-          <div>
-            <label htmlFor="iv-dir">نوع الحركة</label>
-            <select id="iv-dir" value={direction} onChange={(e) => setDirection(e.target.value)}>
-              <option value="in">{t.in}</option>
-              <option value="out">{t.out}</option>
-              <option value="adjust">{t.adjust}</option>
-            </select>
-          </div>
-          <div>
-            <label htmlFor="iv-qty">{t.quantity}</label>
-            <input
-              id="iv-qty"
-              type="number"
-              dir="ltr"
-              min="1"
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
+        </CardContent>
+      </Card>
+
+      {/* balances */}
+      <Card className="mb-4">
+        <CardHeader>
+          <CardTitle>{t.balances}</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0 pb-2 [&>div]:px-0">
+          {balancesQuery.isLoading ? (
+            <div className="space-y-2 p-5" aria-busy="true" aria-label={t.loading}>
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-9" />
+              ))}
+            </div>
+          ) : balances.length === 0 ? (
+            <EmptyState
+              icon={<Warehouse aria-hidden="true" />}
+              title={t.noBalances}
+              description={t.noBalancesHint}
             />
-          </div>
-          <div style={{ alignSelf: "end" }}>
-            <button className="btn" onClick={record} disabled={!variantId || !warehouseId} data-testid="record-movement">
-              {t.recordMovement}
-            </button>
-          </div>
-        </div>
-        {error && <p className="error-text">{error}</p>}
-        {ok && <p className="ok-text">{ok}</p>}
-      </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Variant</TableHead>
+                  <TableHead>{t.warehouse}</TableHead>
+                  <TableHead>{t.onHand}</TableHead>
+                  <TableHead>{t.reserved}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {balances.map((b: Balance) => (
+                  <TableRow key={`${b.variant_id}-${b.warehouse_id}`}>
+                    <TableCell dir="ltr" className="text-xs text-muted-foreground">
+                      {b.variant_id.slice(0, 8)}…
+                    </TableCell>
+                    <TableCell dir="ltr" className="text-xs text-muted-foreground">
+                      {b.warehouse_id.slice(0, 8)}…
+                    </TableCell>
+                    <TableCell dir="ltr" className="font-semibold">
+                      {b.on_hand}
+                    </TableCell>
+                    <TableCell dir="ltr">{b.reserved}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
 
-      <div className="card" style={{ marginBottom: "1rem" }}>
-        <h3 style={{ marginTop: 0 }}>الأرصدة</h3>
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Variant</th>
-              <th>{t.warehouse}</th>
-              <th>{t.onHand}</th>
-              <th>{t.reserved}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {balances.map((b) => (
-              <tr key={`${b.variant_id}-${b.warehouse_id}`}>
-                <td dir="ltr" style={{ fontSize: 12 }}>{b.variant_id.slice(0, 8)}…</td>
-                <td dir="ltr" style={{ fontSize: 12 }}>{b.warehouse_id.slice(0, 8)}…</td>
-                <td dir="ltr">{b.on_hand}</td>
-                <td dir="ltr">{b.reserved}</td>
-              </tr>
-            ))}
-            {balances.length === 0 && (
-              <tr>
-                <td colSpan={4} className="empty">لا توجد أرصدة</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="card">
-        <h3 style={{ marginTop: 0 }}>سجل الحركات</h3>
-        <table className="table">
-          <thead>
-            <tr>
-              <th>{t.date}</th>
-              <th>Variant</th>
-              <th>النوع</th>
-              <th>{t.quantity}</th>
-              <th>الرصيد بعد</th>
-              <th>السبب</th>
-            </tr>
-          </thead>
-          <tbody>
-            {movements.slice(0, 20).map((m) => (
-              <tr key={m.id}>
-                <td dir="ltr" style={{ fontSize: 12 }}>{new Date(m.created_at).toLocaleString("ar-EG-u-nu-latn")}</td>
-                <td dir="ltr" style={{ fontSize: 12 }}>{m.variant_id.slice(0, 8)}…</td>
-                <td>
-                  <span className={`badge ${m.direction === "in" ? "badge-success" : m.direction === "out" ? "badge-danger" : ""}`}>
-                    {m.direction === "in" ? t.in : m.direction === "out" ? t.out : t.adjust}
-                  </span>
-                </td>
-                <td dir="ltr">{m.quantity}</td>
-                <td dir="ltr">{m.balance_after}</td>
-                <td>{m.reason}</td>
-              </tr>
-            ))}
-            {movements.length === 0 && (
-              <tr>
-                <td colSpan={6} className="empty">لا توجد حركات</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      {/* movements log */}
+      <Card>
+        <CardHeader>
+          <CardTitle>{t.movementsLog}</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0 pb-2">
+          {movementsQuery.isLoading ? (
+            <div className="space-y-2 p-5" aria-busy="true" aria-label={t.loading}>
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-9" />
+              ))}
+            </div>
+          ) : movements.length === 0 ? (
+            <EmptyState
+              icon={<Scale aria-hidden="true" />}
+              title={t.noMovements}
+              description={t.noMovementsHint}
+            />
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t.date}</TableHead>
+                  <TableHead>Variant</TableHead>
+                  <TableHead>{t.movementType}</TableHead>
+                  <TableHead>{t.quantity}</TableHead>
+                  <TableHead>{t.balanceAfter}</TableHead>
+                  <TableHead>{t.reason}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {movements.slice(0, 20).map((m: Movement) => (
+                  <TableRow key={m.id}>
+                    <TableCell dir="ltr" className="text-xs text-muted-foreground">
+                      {new Date(m.created_at).toLocaleString("ar-EG-u-nu-latn")}
+                    </TableCell>
+                    <TableCell dir="ltr" className="text-xs text-muted-foreground">
+                      {m.variant_id.slice(0, 8)}…
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={m.direction === "in" ? "success" : m.direction === "out" ? "danger" : "default"}>
+                        <span className="flex items-center gap-1">
+                          {m.direction === "in" ? (
+                            <ArrowDownToLine className="size-3" aria-hidden="true" />
+                          ) : m.direction === "out" ? (
+                            <ArrowUpFromLine className="size-3" aria-hidden="true" />
+                          ) : null}
+                          {m.direction === "in" ? t.in : m.direction === "out" ? t.out : t.adjust}
+                        </span>
+                      </Badge>
+                    </TableCell>
+                    <TableCell dir="ltr">{formatNumber(m.quantity)}</TableCell>
+                    <TableCell dir="ltr">{m.balance_after}</TableCell>
+                    <TableCell className="text-[13px] text-muted-foreground">{m.reason}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
