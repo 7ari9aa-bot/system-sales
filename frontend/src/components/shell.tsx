@@ -212,7 +212,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-3">
-          <span className="flex size-10 items-center justify-center rounded-lg bg-primary text-lg font-bold text-white">{lang === "ar" ? "س" : "S"}</span>
+          <span className="flex size-10 items-center justify-center rounded-lg bg-primary text-lg font-bold text-white">ف</span>
           <p className="text-[13px] text-muted-foreground">{t.loading}</p>
         </div>
       </div>
@@ -243,7 +243,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
           {/* brand */}
           <Link href="/dashboard" className="flex items-center gap-2" aria-label={t.brand}>
-            <span className="flex size-7 items-center justify-center rounded-lg bg-primary text-sm font-bold text-white">{lang === "ar" ? "س" : "S"}</span>
+            <span className="flex size-7 items-center justify-center rounded-lg bg-primary text-sm font-bold text-white">ف</span>
             <span className="hidden text-[15px] font-bold sm:inline">{t.brand}</span>
           </Link>
 

@@ -4,7 +4,7 @@
 
 import { makeT, type Lang } from "@/lib/i18n";
 const ar = {
-  brand: "سيلز أو إس",
+  brand: "FIHRIST",
   // nav groups (§89)
   groupHome: "الرئيسية",
   groupWork: "المحادثات",
