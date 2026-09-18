@@ -371,7 +371,7 @@ class IdentityMergeService:
                     "AND id = :mid AND merged_into_customer_id IS NULL "
                     "AND deleted_at IS NULL FOR UPDATE"
                 ),
-                {"t": tenant_id, "cid": merged_away_customer_id},
+                {"t": tenant_id, "mid": merged_away_customer_id},
             )
         ).scalar_one_or_none()
         if merged_away is None:

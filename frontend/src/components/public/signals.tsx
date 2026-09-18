@@ -6,7 +6,6 @@ import { useState } from "react";
 
 type Signal = {
   id: string;
-  icon: string;
   count: number;
   label: string;
   tone: "info" | "warn" | "danger" | "success";
@@ -15,23 +14,23 @@ type Signal = {
 
 const SIGNALS: Signal[] = [
   {
-    id: "convos", icon: "💬", count: 12, label: "محادثة جديدة", tone: "info",
+    id: "convos", count: 12, label: "محادثة جديدة", tone: "info",
     rows: { title: "أحمد محمد — واتساب", meta: "النية: حالة طلب · منذ دقيقتين", badge: "AI يعالج" },
   },
   {
-    id: "orders", icon: "📦", count: 4, label: "طلبات تحتاج انتباه", tone: "warn",
+    id: "orders", count: 4, label: "طلبات تحتاج انتباه", tone: "warn",
     rows: { title: "طلب #1042 — دفع عند الاستلام", meta: "مستودع القاهرة · منذ ساعة", badge: "بانر المراجعة" },
   },
   {
-    id: "automations", icon: "⚙️", count: 2, label: "أتمتة فشلت", tone: "danger",
+    id: "automations", count: 2, label: "أتمتة فشلت", tone: "danger",
     rows: { title: "مسار: تذكير السلة المتروكة", meta: "فشل نداء المزود · محاولة 3/3", badge: "قابلة لإعادة التشغيل" },
   },
   {
-    id: "leads", icon: "🎯", count: 3, label: "عملاء محتملون عالي القيمة", tone: "success",
+    id: "leads", count: 3, label: "عملاء محتملون عالي القيمة", tone: "success",
     rows: { title: "منى خالد — من حملة الصيف", meta: "قيمة متوقعة: عالية · أول تواصل", badge: "توزيع تلقائي" },
   },
   {
-    id: "sla", icon: "⏱️", count: 1, label: "SLA في خطر", tone: "danger",
+    id: "sla", count: 1, label: "SLA في خطر", tone: "danger",
     rows: { title: "سارة علي — تليجرام", meta: "لم يُرد خلال 8 دقائق من أصل 10", badge: "تحويل بشري" },
   },
 ];
@@ -62,7 +61,7 @@ export function BusinessSignals() {
                 className={`mk-signal-row${active === sig.id ? " is-active" : ""}`}
                 onClick={() => setActive(sig.id)}
               >
-                <span className="mk-signal-icon" aria-hidden="true">{sig.icon}</span>
+                <span className={`mk-signal-dot mk-dot-${sig.tone}`} aria-hidden="true" />
                 <span className="mk-signal-count">{sig.count}</span>
                 <span>{sig.label}</span>
               </button>

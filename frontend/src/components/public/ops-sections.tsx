@@ -36,7 +36,7 @@ export function Analytics() {
           {METRICS.map((m) => (
             <div key={m.label} className="card mk-metric">
               <small>{m.label}</small>
-              <b className={`mk-delta mk-delta-${m.tone}`}>{m.delta}</b>
+              <b className={`mk-delta mk-delta-${m.tone}`} dir="ltr">{m.delta}</b>
             </div>
           ))}
         </div>

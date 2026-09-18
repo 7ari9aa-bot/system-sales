@@ -1,12 +1,13 @@
 "use client";
 
-/** /auth/login — شغّال ضد الـAPI الحقيقي (/api/v1/auth/login).
+/** /auth/login — شغّال ضد الـAPI الحقيقي.
  *  الحالات: افتراضي · تحميل · بيانات غير صحيحة · تجاوز المحاولات · خطأ شبكة.
  *  مفيش Google/SSO — مش موجودين في الـbackend فعلًا. */
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { API_BASE_URL, API_PREFIX, getTokens, setTokens } from "@/lib/api";
+import { getTokens, setTokens } from "@/lib/api";
+import { authPost } from "@/lib/auth-api";
 import Link from "next/link";
 
 type ErrState = { message: string; retryable: boolean } | null;
@@ -38,28 +39,21 @@ export default function AuthLoginPage() {
     if (busy) return; // لا إعادة إرسال أثناء التحميل
     setBusy(true);
     setErr(null);
-    try {
-      const res = await fetch(`${API_BASE_URL}${API_PREFIX}/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw Object.assign(new Error(), { status: res.status, apiMessage: data?.error?.message ?? data?.detail });
-      }
-      const pair = await res.json();
-      setTokens({ access_token: pair.access_token, refresh_token: pair.refresh_token });
+    const res = await authPost<{ access_token: string; refresh_token: string }>(
+      "/auth/login",
+      { email, password },
+    ).catch(() => ({ ok: false as const, status: 0, message: undefined }));
+    if (res.ok) {
+      setTokens({ access_token: res.data.access_token, refresh_token: res.data.refresh_token });
       router.replace("/inbox");
-    } catch (e) {
-      if (e instanceof TypeError) {
-        setErr({ message: "مش قادرين نوصل للسيرفر. اتأكد من اتصالك وحاول تاني.", retryable: true });
-      } else {
-        const ex = e as Error & { status?: number; apiMessage?: string };
-        setErr(mapError(ex.status ?? 0, ex.apiMessage));
-      }
-      setBusy(false);
+      return;
     }
+    if (res.status === 0) {
+      setErr({ message: "مش قادرين نوصل للسيرفر. اتأكد من اتصالك وحاول تاني.", retryable: true });
+    } else {
+      setErr(mapError(res.status, res.message));
+    }
+    setBusy(false);
   }
 
   return (

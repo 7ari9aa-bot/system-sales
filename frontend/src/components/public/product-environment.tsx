@@ -98,6 +98,9 @@ export function ProductEnvironment() {
           <div className="mk-env-col mk-env-thread">
             <div className="mk-env-col-title">المحادثة الحالية</div>
             <div className="mk-env-msgs">
+              {!at(1) && (
+                <div className="mk-env-empty-hint">بانتظار الرسالة الأولى…</div>
+              )}
               {at(1) && (
                 <div className="bubble mk-env-anim">
                   أهلًا، بسال على الطلب رقم <span dir="ltr">#1042</span> — وصل فين؟
