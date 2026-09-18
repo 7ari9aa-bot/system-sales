@@ -384,3 +384,18 @@ class InventoryService:
                 index_elements=["tenant_id", "warehouse_id", "variant_id"]
             )
         )
+
+    @staticmethod
+    async def list_balances(
+        session: AsyncSession, tenant_id: UUID, *, limit: int = 200
+    ) -> list:
+        from app.modules.inventory.models import InventoryBalance
+
+        rows = (
+            await session.execute(
+                select(InventoryBalance)
+                .where(InventoryBalance.tenant_id == tenant_id)
+                .limit(limit)
+            )
+        ).scalars().all()
+        return list(rows)

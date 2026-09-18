@@ -4,7 +4,7 @@ Idempotent: re-running skips if the demo tenant already exists.
 
     .venv/bin/python scripts/seed_demo.py
 
-Creates: demo@salesos.local (password: Demo-1234) / tenant "متجر الديمو"
+Creates: demo@salesos-demo.com (password: Demo-1234) / tenant "متجر الديمو"
 with products, inventory, customers, conversations, and orders placed via
 OrderService (exercising reservation + outbox for real).
 """
@@ -50,7 +50,7 @@ async def main() -> int:
                 session,
                 tenant_name="متجر الديمو",
                 tenant_slug="demo-store",
-                email="demo@salesos.local",
+                email="demo@salesos-demo.com",
                 password="Demo-1234",
                 full_name="مالك المتجر",
             )
@@ -185,7 +185,7 @@ async def main() -> int:
             )
             print("marketing seeded")
 
-    print("\nDEMO READY → login: demo@salesos.local / Demo-1234")
+    print("\nDEMO READY → login: demo@salesos-demo.com / Demo-1234")
     return 0
 
 

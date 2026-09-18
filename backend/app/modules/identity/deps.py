@@ -98,6 +98,11 @@ async def get_tenant_ctx(
     if tenant_id is None:
         raise PermissionDeniedError("no active tenant — switch or pick a tenant")
 
+    # Bind the user GUC first: the tenant_users self-access policy requires
+    # it before any membership row is visible (pre-tenant-context stage).
+    await session.execute(
+        sa.text("SELECT set_config('app.user_id', :uid, true)"), {"uid": str(user.id)}
+    )
     membership = (
         await session.execute(
             select(TenantUser, Role.code)

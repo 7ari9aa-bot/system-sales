@@ -107,6 +107,11 @@ class AuthService:
         if not user.is_active:
             raise PermissionDeniedError("account disabled")
 
+        # Membership discovery at login: bind the user GUC so the
+        # tenant_users self-access policy lets us see our own rows.
+        await session.execute(
+            sa.text("SELECT set_config('app.user_id', :uid, true)"), {"uid": str(user.id)}
+        )
         membership = (
             await session.execute(
                 select(TenantUser)

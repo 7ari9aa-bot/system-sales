@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 
 from app.modules.ai import knowledge
-from app.modules.ai.models import Agent, AIUsage
+from app.modules.ai.models import Agent, AIUsage, KnowledgeItem
 from app.modules.ai.schemas import AgentCreateRequest, AgentOut, KnowledgeIngestRequest
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
 
@@ -106,3 +106,24 @@ async def usage_summary(ctx: TenantCtxDep, days: Annotated[int, Query(ge=1, le=3
             for period, tokens_in, tokens_out, cost in rows
         ],
     }
+
+
+@router.get("/knowledge")
+async def list_knowledge(ctx: SettingsCtx, limit: int = 50):
+    rows = (
+        await ctx.session.execute(
+            select(KnowledgeItem)
+            .where(KnowledgeItem.tenant_id == ctx.tenant_id)
+            .order_by(KnowledgeItem.created_at.desc())
+            .limit(limit)
+        )
+    ).scalars().all()
+    return [
+        {
+            "id": str(item.id),
+            "title": item.title,
+            "status": item.status,
+            "created_at": item.created_at.isoformat(),
+        }
+        for item in rows
+    ]

@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     outbox_poll_interval_seconds: float = 0.5
     outbox_batch_size: int = 100
 
+    # CORS: comma-separated origins, "*" allows all (dev); set explicitly in prod
+    cors_origins: str = "*"
+
     # internal service auth (n8n -> core)
     service_token_internal: str = "change-me-too"
 

@@ -6,7 +6,7 @@ import { t } from "@/lib/t";
 
 type KnowledgeItem = { id: string; title: string; status: string; created_at: string };
 type Agent = { id: string; name: string; model: string | null; is_active: boolean };
-type UsageRow = { period_date: string; tokens_in: number; tokens_out: number; cost: string };
+type UsageRow = { date: string; tokens_in: number; tokens_out: number; cost: number };
 type SearchHit = { id: string; title: string; distance: number };
 
 export default function AIPage() {
@@ -25,11 +25,11 @@ export default function AIPage() {
       const [k, a, u] = await Promise.all([
         api<KnowledgeItem[]>("/ai/knowledge"),
         api<Agent[]>("/ai/agents"),
-        api<UsageRow[]>("/ai/usage/summary"),
+        api<{ summary: UsageRow[] }>("/ai/usage/summary"),
       ]);
       setItems(k);
       setAgents(a);
-      setUsage(u);
+      setUsage(u.summary ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "خطأ");
     }

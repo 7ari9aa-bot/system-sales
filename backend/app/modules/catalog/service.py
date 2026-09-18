@@ -303,3 +303,34 @@ class CatalogService:
         session.add(category)
         await session.flush()
         return category
+
+    @staticmethod
+    async def list_products(
+        session: AsyncSession, tenant_id: UUID, *, limit: int = 100, offset: int = 0
+    ) -> list[Product]:
+        rows = (
+            await session.execute(
+                select(Product)
+                .where(Product.tenant_id == tenant_id)
+                .order_by(Product.created_at.desc())
+                .limit(limit)
+                .offset(offset)
+            )
+        ).scalars().all()
+        return list(rows)
+
+    @staticmethod
+    async def list_variants(
+        session: AsyncSession, tenant_id: UUID, product_id: UUID
+    ) -> list[ProductVariant]:
+        rows = (
+            await session.execute(
+                select(ProductVariant)
+                .where(
+                    ProductVariant.tenant_id == tenant_id,
+                    ProductVariant.product_id == product_id,
+                )
+                .order_by(ProductVariant.created_at)
+            )
+        ).scalars().all()
+        return list(rows)
