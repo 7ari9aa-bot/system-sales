@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { API_BASE_URL, setTokens } from "@/lib/api";
+import { API_BASE_URL, API_PREFIX, setTokens } from "@/lib/api";
 import { t } from "@/lib/t";
 
 type Mode = "login" | "register";
@@ -22,7 +22,10 @@ export default function LoginPage() {
     setBusy(true);
     setError("");
     try {
-      const url = mode === "login" ? `${API_BASE_URL}/auth/login` : `${API_BASE_URL}/auth/register`;
+      const url =
+        mode === "login"
+          ? `${API_BASE_URL}${API_PREFIX}/auth/login`
+          : `${API_BASE_URL}${API_PREFIX}/auth/register`;
       const body =
         mode === "login"
           ? { email, password }
@@ -52,7 +55,7 @@ export default function LoginPage() {
         router.replace("/inbox");
       } else {
         // registration returns profile → then log in
-        const login = await fetch(`${API_BASE_URL}/auth/login`, {
+        const login = await fetch(`${API_BASE_URL}${API_PREFIX}/auth/login`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email, password }),

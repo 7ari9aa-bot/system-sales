@@ -5,6 +5,9 @@
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+/** Versioned API prefix — every path is relative to it (/api/v1/...). */
+export const API_PREFIX = "/api/v1";
+
 type Tokens = { access_token: string; refresh_token: string };
 
 export function getTokens(): Tokens | null {
@@ -26,7 +29,7 @@ async function tryRefresh(): Promise<boolean> {
   refreshing = (async () => {
     const tokens = getTokens();
     if (!tokens?.refresh_token) return false;
-    const res = await fetch(`${API}/auth/refresh`, {
+    const res = await fetch(`${API}${API_PREFIX}/auth/refresh`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refresh_token: tokens.refresh_token }),
@@ -54,7 +57,7 @@ export async function api<T = unknown>(
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (tokens?.access_token) headers["Authorization"] = `Bearer ${tokens.access_token}`;
 
-  const res = await fetch(`${API}${path}`, {
+  const res = await fetch(`${API}${API_PREFIX}${path}`, {
     method: options.method ?? "GET",
     headers,
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,

@@ -59,17 +59,17 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     await close_redis()
 
 
-class _RequestIDMiddleware:  # noqa: Too small for BaseHTTPMiddleware ceremony
+class _RequestIDMiddleware:
     """Publishes the request id into a contextvar for the error contract.
 
     Honors an incoming ``x-request-id`` (or generates one); the same id is
     echoed by the unified error body's ``request_id`` field.
     """
 
-    def __init__(self, app) -> None:  # noqa: ANN001 — ASGI signature
+    def __init__(self, app) -> None:  # ASGI app signature
         self.app = app
 
-    async def __call__(self, scope, receive, send) -> None:  # noqa: ANN001
+    async def __call__(self, scope, receive, send) -> None:  # ASGI signature
         if scope["type"] != "http":  # pragma: no cover — lifespan etc.
             await self.app(scope, receive, send)
             return

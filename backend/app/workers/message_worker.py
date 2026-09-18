@@ -1,10 +1,19 @@
 """Message worker: consumes message events from the outbox relay.
 
 Routing by payload["event_type"]:
-- message.received → conversation pipeline (AI hook lands in Stage 6)
-- message.outbound → deliver via the channel adapter, update status
+- message.received → conversation pipeline (AI hook, serialized by lease)
+- message.outbound → deliver via the channel adapter
 
-Retry/DLQ semantics come from StreamWorker (base).
+Outbound state machine (spec §129):
+    QUEUED → SENDING → SENT → DELIVERED → READ
+                    ├→ UNKNOWN   (no provider result: timeout/connection lost
+                    │             — NEVER blindly retried; reconciled via
+                    │             provider lookup / delivery webhooks)
+                    └→ FAILED    (definitive rejection — retries via worker
+                                  runtime for transient errors only)
+
+All processing runs under the conversation lease (§126) so two processors can
+never mutate one conversation concurrently.
 """
 
 from __future__ import annotations
@@ -16,12 +25,13 @@ from sqlalchemy import select
 
 from app.core.db import SessionLocal, bind_tenant
 from app.core.events.bus import Event
+from app.core.lease import conversation_lease
 from app.modules.conversations.gateway.base import OutboundMessage, ProviderCredentials
 from app.modules.conversations.gateway.registry import get_adapter
 from app.modules.conversations.models import Conversation, Message
 from app.modules.customers.models import CustomerIdentity
 from app.modules.platform.models import Integration
-from app.workers.base import StreamWorker
+from app.workers.base import PermanentError, StreamWorker
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +59,6 @@ class MessageWorker(StreamWorker):
     async def _on_received(self, event: Event, tenant_id: uuid.UUID) -> None:
         conversation_id = event.payload.get("conversation_id")
         logger.info("message.received conversation=%s", conversation_id)
-        # AI auto-reply hook (Stage 6) — lazy import, never breaks ingest.
         if not conversation_id:
             return
         try:
@@ -58,9 +67,11 @@ class MessageWorker(StreamWorker):
             async with SessionLocal() as session:
                 async with session.begin():
                     await bind_tenant(session, tenant_id)
-                    await maybe_auto_reply(
-                        session, tenant_id, uuid.UUID(conversation_id)
-                    )
+                    # §126: one state-mutating processor per conversation.
+                    async with conversation_lease(session, uuid.UUID(conversation_id)):
+                        await maybe_auto_reply(
+                            session, tenant_id, uuid.UUID(conversation_id)
+                        )
         except ImportError:
             logger.debug("ai.hooks not installed — skipping auto-reply")
         except Exception:  # noqa: BLE001 — AI failures must not kill the hot path
@@ -76,14 +87,26 @@ class MessageWorker(StreamWorker):
                 await bind_tenant(session, tenant_id)
                 await self._deliver_one(session, tenant_id, uuid.UUID(message_id))
 
-    async def _deliver_one(self, session, tenant_id: uuid.UUID, message_id: uuid.UUID) -> None:
+    async def _deliver_one(
+        self, session, tenant_id: uuid.UUID, message_id: uuid.UUID
+    ) -> None:
         message = (
             await session.execute(
-                select(Message).where(Message.tenant_id == tenant_id, Message.id == message_id)
+                select(Message).where(
+                    Message.tenant_id == tenant_id, Message.id == message_id
+                )
             )
         ).scalar_one_or_none()
-        if message is None or message.status == "sent":
+        if message is None:
             return
+        # Idempotent re-delivery guard: never resend something already in
+        # flight or delivered (dedupe on republish/replay).
+        if message.status not in ("queued",):
+            logger.info(
+                "outbound.skip_not_queued id=%s status=%s", message.id, message.status
+            )
+            return
+
         conversation = (
             await session.execute(
                 select(Conversation).where(
@@ -92,6 +115,7 @@ class MessageWorker(StreamWorker):
                 )
             )
         ).scalar_one()
+
         identity = (
             await session.execute(
                 select(CustomerIdentity).where(
@@ -104,7 +128,8 @@ class MessageWorker(StreamWorker):
         if identity is None:
             message.status = "failed"
             message.error = "no channel identity for customer"
-            return
+            raise PermanentError("no channel identity for customer")
+
         integration = (
             await session.execute(
                 select(Integration).where(
@@ -119,7 +144,7 @@ class MessageWorker(StreamWorker):
         if adapter is None:
             message.status = "failed"
             message.error = f"channel not configured: {conversation.channel}"
-            return
+            raise PermanentError(f"channel not configured: {conversation.channel}")
 
         outbound = OutboundMessage(
             tenant_id=tenant_id,
@@ -132,12 +157,39 @@ class MessageWorker(StreamWorker):
         credentials = ProviderCredentials(
             config=(integration.credentials if integration else {}) or {}
         )
+
+        # SENDING persists before the provider call so a crash mid-request
+        # leaves an observable in-flight state, never a silent re-queue.
+        message.status = "sending"
+        await session.flush()
         try:
             provider_id = await adapter.send(credentials, outbound)
-            message.status = "sent"
-            if conversation.channel != "webchat" and message.channel_message_id is None:
-                message.channel_message_id = provider_id
-        except Exception as exc:  # noqa: BLE001 — surfaced into message.error
-            message.status = "failed"
+        except Exception as exc:  # noqa: BLE001 — classified below
+            message.status = _classify_send_failure(exc)
             message.error = str(exc)[:500]
+            if message.status == "failed":
+                raise PermanentError(str(exc)) from exc
+            # UNKNOWN/timeout: surface as retryable so the runtime retries,
+            # but status stays UNKNOWN — reconciliation decides the outcome,
+            # blind resending is forbidden (§129).
             raise
+        message.status = "sent"
+        if conversation.channel != "webchat" and message.channel_message_id is None:
+            message.channel_message_id = provider_id
+
+
+def _classify_send_failure(exc: Exception) -> str:
+    """Map a provider call failure to UNKNOWN (result unknown) or FAILED
+    (definitive rejection). Timeouts/connection errors mid-request are
+    UNKNOWN — the request may have reached the provider."""
+    from httpx import HTTPError, TimeoutException
+
+    if isinstance(exc, TimeoutException | HTTPError):
+        return "unknown"
+    text = str(exc).lower()
+    if any(
+        marker in text
+        for marker in ("timeout", "timed out", "connection", "unreachable")
+    ):
+        return "unknown"
+    return "failed"

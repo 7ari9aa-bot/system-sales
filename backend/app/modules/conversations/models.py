@@ -92,7 +92,9 @@ class Message(TenantMixin, AppendOnlyCreatedAtMixin, Base):
     payload: Mapped[dict] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'")
     )
-    # status: received | queued | sent | delivered | read | failed
+    # status: received | queued | sending | sent | delivered | read
+    #       | unknown (send result lost — reconciled via provider events)
+    #       | failed
     status: Mapped[str] = mapped_column(
         String(15), nullable=False, default="received", server_default="received"
     )
