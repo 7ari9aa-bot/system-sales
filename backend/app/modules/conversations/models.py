@@ -31,7 +31,6 @@ from app.core.model_kit import (
     WorkspaceScopeMixin,
 )
 
-
 # §156 lifecycle states — String values, never sa.Enum (migration-friendly).
 CONVERSATION_STATUSES = frozenset(
     {"open", "waiting_customer", "waiting_human", "waiting_ai", "paused", "closed"}

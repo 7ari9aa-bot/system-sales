@@ -43,6 +43,7 @@ NO_TENANT_TABLES = {
     "idempotency_keys",
     "plans",
     "refresh_tokens",  # user-scoped, not tenant-scoped
+    "webhook_events",  # pre-auth ingress: rows land BEFORE tenant resolution (§125)
 }  # system/global
 ASSOCIATION_VIA = {"customer_tags": ("customers", "customer_id")}
 

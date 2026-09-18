@@ -15,8 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import NotFoundError, ValidationError
 from app.modules.conversations.models import (
-    Assignment,
     CONVERSATION_STATUSES,
+    Assignment,
     Conversation,
     Message,
     normalize_conversation_status,
