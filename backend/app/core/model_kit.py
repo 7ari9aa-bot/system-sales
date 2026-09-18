@@ -55,6 +55,28 @@ class TenantMixin:
     )
 
 
+class WorkspaceScopeMixin:
+    """Optional finer scoping columns (spec §151). Nullable = tenant-wide.
+
+    Declared with real FKs so every tenant-scoped table can optionally pin a
+    row to a workspace and/or location; NULL keeps the row tenant-wide.
+    ondelete SET NULL keeps the rows alive when a hierarchy node is removed.
+    """
+
+    workspace_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    location_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("locations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+
 class AppendOnlyCreatedAtMixin:
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

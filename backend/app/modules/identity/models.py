@@ -9,12 +9,21 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, Table
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    String,
+    Table,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
-from app.core.model_kit import TimestampMixin
+from app.core.ids import uuid7
+from app.core.model_kit import AppendOnlyCreatedAtMixin, IdMixin, TimestampMixin
 
 
 class Tenant(TimestampMixin, Base):
@@ -142,3 +151,86 @@ class Invitation(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(15), server_default="pending")
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Workspace(TimestampMixin, IdMixin, Base):
+    """Workspace — first level of the tenancy hierarchy (spec §151).
+
+    A tenant may split operations into workspaces; each workspace holds
+    locations. Columns below are tenant-scoped; slug is unique per tenant.
+    """
+
+    __tablename__ = "workspaces"
+
+    # uuid7 PK default — spec §142: ALL new tables use time-sortable ids
+    # (overrides IdMixin's uuid4 default, which only predates that decision).
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid7)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String(255))
+    slug: Mapped[str] = mapped_column(String(63))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+
+    __table_args__ = (UniqueConstraint("tenant_id", "slug", name="uq_workspaces_tenant_slug"),)
+
+
+class Location(TimestampMixin, IdMixin, Base):
+    """Location — a branch/outlet within a workspace (spec §151).
+
+    code is unique per (tenant, workspace); NULL code rows are unconstrained
+    (PG unique ignores NULLs) — they are locations without a business code.
+    """
+
+    __tablename__ = "locations"
+
+    # uuid7 PK default — spec §142 (see Workspace).
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid7)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        index=True,
+    )
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String(255))
+    code: Mapped[str | None] = mapped_column(String(31))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "workspace_id",
+            "code",
+            name="uq_locations_tenant_workspace_code",
+        ),
+    )
+
+
+class UserLocationAccess(AppendOnlyCreatedAtMixin, Base):
+    """Grants a user access to a location, with optional role override (§151).
+
+    Global table like tenant_users (no tenant_id of its own): tenancy resolves
+    through the location row and RLS keys on app.user_id (location_access
+    policy), so a member only reaches locations they were granted.
+    """
+
+    __tablename__ = "user_location_access"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    location_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("locations.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    role_override: Mapped[str | None] = mapped_column(String(63))
+    granted_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))

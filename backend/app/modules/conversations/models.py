@@ -24,10 +24,15 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
-from app.core.model_kit import AppendOnlyCreatedAtMixin, TenantMixin, TimestampMixin
+from app.core.model_kit import (
+    AppendOnlyCreatedAtMixin,
+    TenantMixin,
+    TimestampMixin,
+    WorkspaceScopeMixin,
+)
 
 
-class Conversation(TenantMixin, TimestampMixin, Base):
+class Conversation(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "conversations"
     __table_args__ = (
         Index(
@@ -56,7 +61,7 @@ class Conversation(TenantMixin, TimestampMixin, Base):
     )
 
 
-class Message(TenantMixin, AppendOnlyCreatedAtMixin, Base):
+class Message(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "messages"
     __table_args__ = (
         UniqueConstraint(
@@ -101,7 +106,7 @@ class Message(TenantMixin, AppendOnlyCreatedAtMixin, Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
-class Assignment(TenantMixin, AppendOnlyCreatedAtMixin, Base):
+class Assignment(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "assignments"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -120,7 +125,7 @@ class Assignment(TenantMixin, AppendOnlyCreatedAtMixin, Base):
     )
 
 
-class AISession(TenantMixin, TimestampMixin, Base):
+class AISession(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "ai_sessions"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -138,7 +143,7 @@ class AISession(TenantMixin, TimestampMixin, Base):
     )
 
 
-class MessageTemplate(TenantMixin, TimestampMixin, Base):
+class MessageTemplate(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     """Spec §31: first-class outbound template (WhatsApp HSM etc.).
 
     AI/Automation MUST reference an APPROVED template — never compose
@@ -166,7 +171,7 @@ class MessageTemplate(TenantMixin, TimestampMixin, Base):
     )
 
 
-class TemplateApproval(TenantMixin, AppendOnlyCreatedAtMixin, Base):
+class TemplateApproval(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "template_approvals"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -181,7 +186,7 @@ class TemplateApproval(TenantMixin, AppendOnlyCreatedAtMixin, Base):
     reviewer: Mapped[str | None] = mapped_column(String(63))  # provider or staff
 
 
-class Attachment(TenantMixin, AppendOnlyCreatedAtMixin, Base):
+class Attachment(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     """Spec §33-34: durable media object — provider URLs are never the
     source of truth. scan/processing pipeline lands in the media worker."""
 

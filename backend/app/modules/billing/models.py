@@ -30,6 +30,7 @@ from app.core.model_kit import (
     IdMixin,
     TenantMixin,
     TimestampMixin,
+    WorkspaceScopeMixin,
 )
 
 
@@ -50,7 +51,7 @@ class Plan(IdMixin, TimestampMixin, Base):
     __table_args__ = (UniqueConstraint("code", name="uq_plans_code"),)
 
 
-class Subscription(TenantMixin, TimestampMixin, Base):
+class Subscription(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "subscriptions"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -74,7 +75,7 @@ class Subscription(TenantMixin, TimestampMixin, Base):
     )
 
 
-class Entitlement(TenantMixin, TimestampMixin, Base):
+class Entitlement(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "entitlements"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -97,7 +98,7 @@ class Entitlement(TenantMixin, TimestampMixin, Base):
     )
 
 
-class UsageRecord(TenantMixin, AppendOnlyCreatedAtMixin, Base):
+class UsageRecord(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "usage_records"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -119,7 +120,7 @@ class UsageRecord(TenantMixin, AppendOnlyCreatedAtMixin, Base):
     )
 
 
-class Invoice(TenantMixin, TimestampMixin, Base):
+class Invoice(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "invoices"
 
     id: Mapped[uuid.UUID] = mapped_column(

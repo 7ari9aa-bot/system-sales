@@ -23,10 +23,11 @@ from app.core.model_kit import (
     TenantMixin,
     TimestampMixin,
     VersionMixin,
+    WorkspaceScopeMixin,
 )
 
 
-class Order(TenantMixin, TimestampMixin, VersionMixin, Base):
+class Order(TenantMixin, TimestampMixin, WorkspaceScopeMixin, VersionMixin, Base):
     __tablename__ = "orders"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -58,7 +59,7 @@ class Order(TenantMixin, TimestampMixin, VersionMixin, Base):
     )
 
 
-class OrderItem(TenantMixin, AppendOnlyCreatedAtMixin, Base):
+class OrderItem(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     """Line item snapshot at purchase time (title/sku frozen from the variant)."""
 
     __tablename__ = "order_items"
@@ -83,7 +84,7 @@ class OrderItem(TenantMixin, AppendOnlyCreatedAtMixin, Base):
     )
 
 
-class OrderStatusHistory(TenantMixin, AppendOnlyCreatedAtMixin, Base):
+class OrderStatusHistory(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "order_status_history"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -104,7 +105,7 @@ class OrderStatusHistory(TenantMixin, AppendOnlyCreatedAtMixin, Base):
     )
 
 
-class Shipment(TenantMixin, TimestampMixin, Base):
+class Shipment(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "shipments"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -126,7 +127,7 @@ class Shipment(TenantMixin, TimestampMixin, Base):
     )
 
 
-class OrderPayment(TenantMixin, TimestampMixin, VersionMixin, Base):
+class OrderPayment(TenantMixin, TimestampMixin, WorkspaceScopeMixin, VersionMixin, Base):
     __tablename__ = "order_payments"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -151,7 +152,7 @@ class OrderPayment(TenantMixin, TimestampMixin, VersionMixin, Base):
     )
 
 
-class Refund(TenantMixin, TimestampMixin, VersionMixin, Base):
+class Refund(TenantMixin, TimestampMixin, WorkspaceScopeMixin, VersionMixin, Base):
     __tablename__ = "refunds"
 
     id: Mapped[uuid.UUID] = mapped_column(

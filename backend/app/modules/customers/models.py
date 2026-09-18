@@ -27,10 +27,11 @@ from app.core.model_kit import (
     TenantMixin,
     TimestampMixin,
     VersionMixin,
+    WorkspaceScopeMixin,
 )
 
 
-class Customer(TenantMixin, TimestampMixin, VersionMixin, Base):
+class Customer(TenantMixin, TimestampMixin, WorkspaceScopeMixin, VersionMixin, Base):
     __tablename__ = "customers"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -65,7 +66,7 @@ class Customer(TenantMixin, TimestampMixin, VersionMixin, Base):
     )
 
 
-class CustomerIdentity(TenantMixin, TimestampMixin, Base):
+class CustomerIdentity(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     """Maps a channel handle (e.g. WhatsApp wa_id) to a customer."""
 
     __tablename__ = "customer_identities"
@@ -91,7 +92,7 @@ class CustomerIdentity(TenantMixin, TimestampMixin, Base):
     )
 
 
-class Address(TenantMixin, TimestampMixin, Base):
+class Address(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "addresses"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -114,7 +115,7 @@ class Address(TenantMixin, TimestampMixin, Base):
     )
 
 
-class Tag(TenantMixin, TimestampMixin, Base):
+class Tag(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "tags"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -144,7 +145,7 @@ customer_tags = Table(
 )
 
 
-class Note(TenantMixin, AppendOnlyCreatedAtMixin, Base):
+class Note(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "notes"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -161,7 +162,7 @@ class Note(TenantMixin, AppendOnlyCreatedAtMixin, Base):
     __table_args__ = (Index("ix_notes_tenant_customer", "tenant_id", "customer_id"),)
 
 
-class CustomerEvent(TenantMixin, AppendOnlyCreatedAtMixin, Base):
+class CustomerEvent(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "customer_events"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -183,7 +184,7 @@ class CustomerEvent(TenantMixin, AppendOnlyCreatedAtMixin, Base):
     )
 
 
-class IdentityMergeCandidate(TenantMixin, AppendOnlyCreatedAtMixin, Base):
+class IdentityMergeCandidate(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     """Spec §27: candidate duplicate pairs awaiting resolution.
 
     Layer 3 (AI-assisted) creates candidates; humans decide (layer 4).
@@ -222,7 +223,7 @@ class IdentityMergeCandidate(TenantMixin, AppendOnlyCreatedAtMixin, Base):
     )
 
 
-class IdentityMergeEvent(TenantMixin, AppendOnlyCreatedAtMixin, Base):
+class IdentityMergeEvent(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     """Spec §28: audit trail of an executed merge (reversible reference)."""
 
     __tablename__ = "identity_merge_events"

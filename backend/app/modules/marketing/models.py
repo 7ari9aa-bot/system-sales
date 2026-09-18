@@ -25,10 +25,11 @@ from app.core.model_kit import (
     TenantMixin,
     TimestampMixin,
     VersionMixin,
+    WorkspaceScopeMixin,
 )
 
 
-class Campaign(TenantMixin, TimestampMixin, VersionMixin, Base):
+class Campaign(TenantMixin, TimestampMixin, WorkspaceScopeMixin, VersionMixin, Base):
     __tablename__ = "campaigns"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -52,7 +53,7 @@ class Campaign(TenantMixin, TimestampMixin, VersionMixin, Base):
     )
 
 
-class AdSet(TenantMixin, TimestampMixin, Base):
+class AdSet(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "ad_sets"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -71,7 +72,7 @@ class AdSet(TenantMixin, TimestampMixin, Base):
     __table_args__ = (Index("ix_ad_sets_tenant_campaign", "tenant_id", "campaign_id"),)
 
 
-class Ad(TenantMixin, TimestampMixin, Base):
+class Ad(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "ads"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -89,7 +90,7 @@ class Ad(TenantMixin, TimestampMixin, Base):
     __table_args__ = (Index("ix_ads_tenant_adset", "tenant_id", "ad_set_id"),)
 
 
-class Touchpoint(TenantMixin, AppendOnlyCreatedAtMixin, Base):
+class Touchpoint(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     """A marketing contact point: ad click / UTM visit / channel entry."""
 
     __tablename__ = "touchpoints"
@@ -125,7 +126,7 @@ class Touchpoint(TenantMixin, AppendOnlyCreatedAtMixin, Base):
     )
 
 
-class Lead(TenantMixin, TimestampMixin, Base):
+class Lead(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "leads"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -151,7 +152,7 @@ class Lead(TenantMixin, TimestampMixin, Base):
     __table_args__ = (Index("ix_leads_tenant_status", "tenant_id", "status"),)
 
 
-class Conversion(TenantMixin, TimestampMixin, Base):
+class Conversion(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "conversions"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -177,7 +178,7 @@ class Conversion(TenantMixin, TimestampMixin, Base):
     )
 
 
-class Attribution(TenantMixin, AppendOnlyCreatedAtMixin, Base):
+class Attribution(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     """Credited value of a touchpoint for a conversion under a given model."""
 
     __tablename__ = "attributions"

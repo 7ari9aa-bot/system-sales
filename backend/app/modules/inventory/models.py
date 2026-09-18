@@ -31,10 +31,11 @@ from app.core.model_kit import (
     IdMixin,
     TenantMixin,
     TimestampMixin,
+    WorkspaceScopeMixin,
 )
 
 
-class Warehouse(TenantMixin, TimestampMixin, IdMixin, Base):
+class Warehouse(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, Base):
     __tablename__ = "warehouses"
 
     name: Mapped[str] = mapped_column(String(255))
@@ -45,7 +46,7 @@ class Warehouse(TenantMixin, TimestampMixin, IdMixin, Base):
     __table_args__ = (UniqueConstraint("tenant_id", "code", name="uq_warehouses_tenant_code"),)
 
 
-class InventoryBalance(TenantMixin, TimestampMixin, IdMixin, Base):
+class InventoryBalance(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, Base):
     """Current stock position per (warehouse, variant)."""
 
     __tablename__ = "inventory_balances"
@@ -69,7 +70,7 @@ class InventoryBalance(TenantMixin, TimestampMixin, IdMixin, Base):
     )
 
 
-class InventoryMovement(TenantMixin, AppendOnlyCreatedAtMixin, IdMixin, Base):
+class InventoryMovement(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, IdMixin, Base):
     """Append-only stock ledger — one row per stock change."""
 
     __tablename__ = "inventory_movements"
@@ -96,7 +97,7 @@ class InventoryMovement(TenantMixin, AppendOnlyCreatedAtMixin, IdMixin, Base):
     )
 
 
-class InventoryTransfer(TenantMixin, TimestampMixin, IdMixin, Base):
+class InventoryTransfer(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, Base):
     """Stock transfer between two warehouses of the same tenant."""
 
     __tablename__ = "inventory_transfers"
@@ -113,7 +114,7 @@ class InventoryTransfer(TenantMixin, TimestampMixin, IdMixin, Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
-class InventoryReservation(TenantMixin, TimestampMixin, IdMixin, Base):
+class InventoryReservation(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, Base):
     """Durable stock reservation (spec §140).
 
     Created when stock is reserved for an order/cart. Expiry frees abandoned

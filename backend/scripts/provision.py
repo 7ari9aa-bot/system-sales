@@ -7,6 +7,9 @@ RLS strategy (defense in depth — the app ALSO enforces tenant scoping):
   that (SET LOCAL, pooler-safe).
 - tenant_users is FORCE-EXEMPT: it is how we DISCOVER a user's memberships
   before any tenant context exists (chicken-and-egg). App-layer rules cover it.
+- user_location_access (spec §151) has no tenant_id of its own: its RLS is a
+  second, user-keyed policy (location_access) in the tenant_users style — a
+  member only reaches locations they were explicitly granted.
 - audit_logs: RLS enabled, NOT forced (platform-level actions write NULL
   tenant_id); policy still applies to non-owner roles.
 - customer_tags has no tenant_id column (association) — its policy resolves
@@ -88,6 +91,22 @@ def _rls_statements() -> list[str]:
             f'AND p.tenant_id = {guard})) '
             f'WITH CHECK (EXISTS (SELECT 1 FROM public.{parent} p WHERE p.id = {name}.{fk_col} '
             f'AND p.tenant_id = {guard}));'
+        )
+
+    # user_location_access (spec §151): tenant-scoping comes from the location
+    # row, so the policy keys on the request user (tenant_users-style user
+    # GUC) instead of app.tenant_id. The general tenant_isolation policy is
+    # untouched; this is the only table with this variant.
+    ula = "user_location_access"
+    if ula in Base.metadata.tables:
+        ula_user_guard = f"NULLIF(current_setting('{USER_GUC}', true), '')::uuid"
+        stmts.append(f'ALTER TABLE public.{ula} ENABLE ROW LEVEL SECURITY;')
+        stmts.append(f'ALTER TABLE public.{ula} FORCE ROW LEVEL SECURITY;')
+        stmts.append(f'DROP POLICY IF EXISTS location_access ON public.{ula};')
+        stmts.append(
+            f'CREATE POLICY location_access ON public.{ula} '
+            f'USING (user_id = {ula_user_guard}) '
+            f'WITH CHECK (user_id = {ula_user_guard});'
         )
 
     audit = "audit_logs"

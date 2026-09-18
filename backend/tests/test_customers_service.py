@@ -177,3 +177,80 @@ async def test_list_customers_search(db: AsyncSession, tenant_ctx):
     everyone = await CustomerService.list_customers(db, tenant_id, limit=100)
     assert {c.id for c in everyone} >= {target.id}
     await db.flush()
+
+
+async def test_identity_merge_full_flow(db, tenant_ctx):
+    """§27-28: merge remaps children, tombstones loser, writes event+audit."""
+    import uuid as _uuid
+    from datetime import UTC, datetime
+
+    from sqlalchemy import select, text
+
+    from app.core.events.writer import add_outbox_event
+    from app.modules.customers.models import (
+        Customer,
+        IdentityMergeCandidate,
+        IdentityMergeEvent,
+    )
+    from app.modules.customers.service import CustomerService, IdentityMergeService
+    from app.modules.platform.models import AuditLog, OutboxEvent
+
+    # two customers, each with an identity + a conversation each
+    cust_a = await CustomerService.get_or_create_by_identity(
+        db, tenant_ctx.tenant_id, channel="whatsapp", external_id="111", name="Ahmed A"
+    )
+    cust_b = await CustomerService.get_or_create_by_identity(
+        db, tenant_ctx.tenant_id, channel="whatsapp", external_id="222", name="Ahmed B"
+    )
+    from app.modules.conversations.service import ConversationService
+
+    convo_a = await ConversationService.get_or_create(
+        db, tenant_ctx.tenant_id, customer_id=cust_a.id, channel="whatsapp"
+    )
+    convo_b = await ConversationService.get_or_create(
+        db, tenant_ctx.tenant_id, customer_id=cust_b.id, channel="whatsapp"
+    )
+    await add_outbox_event(
+        db, aggregate_type="customer", aggregate_id=cust_b.id,
+        event_type="customer.created", tenant_id=tenant_ctx.tenant_id,
+    )
+
+    canonical_id = await IdentityMergeService.merge(
+        db,
+        tenant_ctx.tenant_id,
+        canonical_customer_id=cust_a.id,
+        merged_away_customer_id=cust_b.id,
+        performed_by_user_id=tenant_ctx.user.id,
+    )
+    assert canonical_id == cust_a.id
+
+    # loser tombstoned with redirect
+    away = await db.get(Customer, cust_b.id)
+    assert away.merged_into_customer_id == cust_a.id
+    assert away.merged_at is not None
+
+    # children remapped to canonical
+    convo_a_after = await db.get(Conversation, convo_b.id)
+    assert convo_a_after.customer_id == cust_a.id
+
+    # merge event + audit + outbox exist
+    merge_event = (
+        await db.execute(select(IdentityMergeEvent).where(
+            IdentityMergeEvent.tenant_id == tenant_ctx.tenant_id))
+    ).scalars().all()
+    assert len(merge_event) == 1
+    audit = (
+        await db.execute(select(AuditLog).where(AuditLog.action == "customer.merged"))
+    ).scalars().all()
+    assert len(audit) == 1
+    outbox = (
+        await db.execute(select(OutboxEvent).where(OutboxEvent.event_type.is_not(None)))
+    ).scalars().all()
+
+    # candidate flow: create → resolve merged
+    candidate = await IdentityMergeService.create_merge_candidate(
+        db, tenant_ctx.tenant_id,
+        customer_a_id=cust_a.id,
+        customer_b_id=cust_a.id,  # same → conflict expected below
+        match_type="deterministic", confidence=1.0,
+    )

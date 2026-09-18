@@ -30,10 +30,11 @@ from app.core.model_kit import (
     IdMixin,
     TenantMixin,
     TimestampMixin,
+    WorkspaceScopeMixin,
 )
 
 
-class Brand(TenantMixin, TimestampMixin, IdMixin, Base):
+class Brand(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, Base):
     __tablename__ = "brands"
 
     name: Mapped[str] = mapped_column(String(255))
@@ -41,7 +42,7 @@ class Brand(TenantMixin, TimestampMixin, IdMixin, Base):
     __table_args__ = (UniqueConstraint("tenant_id", "name", name="uq_brands_tenant_name"),)
 
 
-class Category(TenantMixin, TimestampMixin, IdMixin, Base):
+class Category(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, Base):
     __tablename__ = "categories"
 
     name: Mapped[str] = mapped_column(String(255))
@@ -52,7 +53,7 @@ class Category(TenantMixin, TimestampMixin, IdMixin, Base):
     )
 
 
-class Product(TenantMixin, TimestampMixin, IdMixin, Base):
+class Product(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, Base):
     __tablename__ = "products"
 
     title: Mapped[str] = mapped_column(String(255))
@@ -78,7 +79,7 @@ class Product(TenantMixin, TimestampMixin, IdMixin, Base):
     )
 
 
-class ProductVariant(TenantMixin, TimestampMixin, IdMixin, Base):
+class ProductVariant(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, Base):
     __tablename__ = "product_variants"
 
     product_id: Mapped[uuid.UUID] = mapped_column(
@@ -97,7 +98,7 @@ class ProductVariant(TenantMixin, TimestampMixin, IdMixin, Base):
     )
 
 
-class ProductImage(TenantMixin, AppendOnlyCreatedAtMixin, IdMixin, Base):
+class ProductImage(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, IdMixin, Base):
     """Append-only image gallery entries."""
 
     __tablename__ = "product_images"
@@ -110,7 +111,7 @@ class ProductImage(TenantMixin, AppendOnlyCreatedAtMixin, IdMixin, Base):
     position: Mapped[int] = mapped_column(Integer, server_default="0")
 
 
-class ProductPrice(TenantMixin, AppendOnlyCreatedAtMixin, IdMixin, Base):
+class ProductPrice(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, IdMixin, Base):
     """Append-only price history per variant/currency/quantity tier."""
 
     __tablename__ = "product_prices"

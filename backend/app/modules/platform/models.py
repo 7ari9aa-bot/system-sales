@@ -33,6 +33,7 @@ from app.core.model_kit import (
     AppendOnlyCreatedAtMixin,
     TenantMixin,
     TimestampMixin,
+    WorkspaceScopeMixin,
 )
 
 
@@ -111,7 +112,7 @@ class AuditLog(Base):
     __table_args__ = (Index("ix_audit_tenant_created", "tenant_id", "created_at"),)
 
 
-class Integration(TenantMixin, TimestampMixin, Base):
+class Integration(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "integrations"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -133,7 +134,7 @@ class Integration(TenantMixin, TimestampMixin, Base):
     )
 
 
-class WebhookEndpoint(TenantMixin, TimestampMixin, Base):
+class WebhookEndpoint(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     """Tenant-configured outbound webhooks (we call them, with signatures)."""
 
     __tablename__ = "webhooks"
@@ -147,7 +148,7 @@ class WebhookEndpoint(TenantMixin, TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, server_default="true")
 
 
-class WebhookDelivery(TenantMixin, TimestampMixin, Base):
+class WebhookDelivery(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "webhook_deliveries"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -167,7 +168,7 @@ class WebhookDelivery(TenantMixin, TimestampMixin, Base):
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
-class Notification(TenantMixin, TimestampMixin, Base):
+class Notification(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "notifications"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -188,7 +189,7 @@ class Notification(TenantMixin, TimestampMixin, Base):
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
-class Automation(TenantMixin, TimestampMixin, Base):
+class Automation(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     """Event-triggered automation definitions (executed by workers/n8n)."""
 
     __tablename__ = "automations"
@@ -237,7 +238,7 @@ class WebhookEvent(Base):
     )
 
 
-class EventLog(TenantMixin, AppendOnlyCreatedAtMixin, Base):
+class EventLog(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     """Spec §152: append-only durable event history — the replay source.
     The outbox is only a publication buffer and may be cleaned."""
 
@@ -287,7 +288,7 @@ class ProcessedEvent(Base):
     )
 
 
-class ScheduledJob(TenantMixin, TimestampMixin, Base):
+class ScheduledJob(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     """Spec §154: durable scheduler — Redis is never the scheduler."""
 
     __tablename__ = "scheduled_jobs"
@@ -314,7 +315,7 @@ class ScheduledJob(TenantMixin, TimestampMixin, Base):
     )
 
 
-class DeliveryAttempt(TenantMixin, AppendOnlyCreatedAtMixin, Base):
+class DeliveryAttempt(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     """Spec §129/§148: outbound provider call audit (per attempt)."""
 
     __tablename__ = "delivery_attempts"
@@ -387,7 +388,7 @@ class SecurityEvent(AppendOnlyCreatedAtMixin, Base):
     )
 
 
-class SecretReference(TenantMixin, TimestampMixin, Base):
+class SecretReference(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     """Spec §68: business tables hold REFERENCES only — secrets live in
     Supabase Vault behind SecretStorePort."""
 
@@ -410,7 +411,7 @@ class SecretReference(TenantMixin, TimestampMixin, Base):
     )
 
 
-class FeatureFlag(TenantMixin, TimestampMixin, Base):
+class FeatureFlag(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     """Spec §76: per-tenant/workspace/role feature flags (not authorization)."""
 
     __tablename__ = "feature_flags"
@@ -429,7 +430,7 @@ class FeatureFlag(TenantMixin, TimestampMixin, Base):
     )
 
 
-class MetricDefinition(TenantMixin, TimestampMixin, Base):
+class MetricDefinition(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     """Spec §167: one canonical definition per metric (Revenue, FRT...)."""
 
     __tablename__ = "metric_definitions"

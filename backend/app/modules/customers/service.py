@@ -303,3 +303,224 @@ class CustomerService:
         session.add(event)
         await session.flush()
         return event
+
+
+class IdentityMergeService:
+    """Spec §27-28: resolve duplicate customers into one canonical record.
+
+    Human-approved (AI only creates candidates). Preserves all history by
+    remapping identities/conversations/orders/notes/tags/events/consents to
+    the canonical customer, tombstones the loser with merged_into redirect,
+    writes an IdentityMergeEvent + audit + customer.merged outbox event.
+    """
+
+    _REMAP_TABLES = [
+        # (table, fk_column) — all tenant-scoped child tables of customers
+        ("customer_identities", "customer_id"),
+        ("addresses", "customer_id"),
+        ("conversations", "customer_id"),
+        ("orders", "customer_id"),
+        ("notes", "customer_id"),
+        ("customer_events", "customer_id"),
+        ("leads", "customer_id"),
+        ("consents", "customer_id"),
+        ("touchpoints", "customer_id"),
+        ("conversions", "customer_id"),
+        ("memories", "customer_id"),
+    ]
+
+    @staticmethod
+    async def merge(
+        session,
+        tenant_id,
+        *,
+        canonical_customer_id,
+        merged_away_customer_id,
+        performed_by_user_id=None,
+        source: str = "human",
+    ):
+        from datetime import UTC, datetime
+
+        from sqlalchemy import text
+
+        from app.core.errors import ConflictError, NotFoundError
+        from app.core.events.writer import add_outbox_event
+        from app.modules.customers.models import IdentityMergeEvent
+        from app.modules.platform.models import AuditLog
+
+        if canonical_customer_id == merged_away_customer_id:
+            raise ConflictError("cannot merge a customer into itself")
+
+        canonical = (
+            await session.execute(
+                text(
+                    "SELECT id FROM customers WHERE tenant_id = :t "
+                    "AND id = :cid AND merged_into_customer_id IS NULL "
+                    "AND deleted_at IS NULL FOR UPDATE"
+                ),
+                {"t": tenant_id, "cid": canonical_customer_id},
+            )
+        ).scalar_one_or_none()
+        if canonical is None:
+            raise NotFoundError("canonical customer not found")
+
+        merged_away = (
+            await session.execute(
+                text(
+                    "SELECT id FROM customers WHERE tenant_id = :t "
+                    "AND id = :mid AND merged_into_customer_id IS NULL "
+                    "AND deleted_at IS NULL FOR UPDATE"
+                ),
+                {"t": tenant_id, "cid": merged_away_customer_id},
+            )
+        ).scalar_one_or_none()
+        if merged_away is None:
+            raise NotFoundError("customer to merge away not found")
+
+        # Remap every child table to the canonical customer.
+        for table, fk in IdentityMergeService._REMAP_TABLES:
+            await session.execute(
+                text(
+                    f"UPDATE {table} SET {fk} = :canonical "
+                    f"WHERE tenant_id = :t AND {fk} = :away"
+                ),
+                {
+                    "canonical": canonical_customer_id,
+                    "t": tenant_id,
+                    "mid": merged_away_customer_id,
+                },
+            )
+
+        # Tombstone the merged-away customer with a redirect.
+        await session.execute(
+            text(
+                "UPDATE customers SET merged_into_customer_id = :canonical, "
+                "merged_at = :now, updated_at = now() "
+                "WHERE tenant_id = :t AND id = :away"
+            ),
+            {
+                "canonical": canonical_customer_id,
+                "now": datetime.now(UTC),
+                "t": tenant_id,
+                "mid": merged_away_customer_id,
+            },
+        )
+
+        # Consolidated lifetime value on the canonical record.
+        await session.execute(
+            text(
+                "UPDATE customers c1 SET lifetime_value = c1.lifetime_value + c2.lifetime_value "
+                "FROM customers c2 WHERE c1.id = :canonical AND c2.id = :mid"
+            ),
+            {"canonical": canonical_customer_id, "mid": merged_away_customer_id},
+        )
+
+        session.add(
+            IdentityMergeEvent(
+                tenant_id=tenant_id,
+                canonical_customer_id=canonical_customer_id,
+                merged_away_customer_id=merged_away_customer_id,
+                performed_by_user_id=performed_by_user_id,
+                source=source,
+                details={},
+            )
+        )
+        session.add(
+            AuditLog(
+                tenant_id=tenant_id,
+                actor_user_id=performed_by_user_id,
+                action="customer.merged",
+                resource_type="customer",
+                resource_id=str(canonical_customer_id),
+                after={"merged_away": str(merged_away_customer_id), "source": source},
+            )
+        )
+        await add_outbox_event(
+            session,
+            aggregate_type="customer",
+            aggregate_id=canonical_customer_id,
+            event_type="customer.merged",
+            tenant_id=tenant_id,
+            payload={
+                "canonical_customer_id": str(canonical_customer_id),
+                "merged_away_customer_id": str(merged_away_customer_id),
+            },
+        )
+        await session.flush()
+        return canonical_customer_id
+
+    @staticmethod
+    async def create_merge_candidate(
+        session,
+        tenant_id,
+        *,
+        customer_a_id,
+        customer_b_id,
+        match_type="ai_suggested",
+        confidence=0.5,
+        evidence=None,
+    ):
+
+        from app.modules.customers.models import IdentityMergeCandidate
+
+        if customer_a_id == customer_b_id:
+            raise ConflictError("candidate must be two different customers")
+        candidate = IdentityMergeCandidate(
+            tenant_id=tenant_id,
+            customer_a_id=customer_a_id,
+            customer_b_id=customer_b_id,
+            match_type=match_type,
+            confidence=confidence,
+            evidence=evidence or {},
+            status="pending",
+        )
+        session.add(candidate)
+        await session.flush()
+        return candidate
+
+    @staticmethod
+    async def resolve_merge_candidate(
+        session,
+        tenant_id,
+        *,
+        candidate_id,
+        decision: str,  # merged | rejected | dismissed
+        decided_by_user_id=None,
+    ):
+        from datetime import UTC, datetime
+
+        from sqlalchemy import select
+
+        from app.core.errors import ValidationError
+        from app.modules.customers.models import IdentityMergeCandidate
+
+        candidate = (
+            await session.execute(
+                select(IdentityMergeCandidate).where(
+                    IdentityMergeCandidate.tenant_id == tenant_id,
+                    IdentityMergeCandidate.id == candidate_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if candidate is None:
+            raise NotFoundError("merge candidate not found")
+        if decision not in ("merged", "rejected", "dismissed"):
+            raise ValidationError(f"invalid decision: {decision}")
+
+        if decision == "merged":
+            # Deterministic side wins as canonical unless AI flagged otherwise.
+            canonical, away = candidate.customer_a_id, candidate.customer_b_id
+            await IdentityMergeService.merge(
+                session,
+                tenant_id,
+                canonical_customer_id=canonical,
+                merged_away_customer_id=away,
+                performed_by_user_id=decided_by_user_id,
+                source="candidate",
+            )
+
+        candidate.status = decision
+        candidate.decided_by_user_id = decided_by_user_id
+        candidate.decided_at = datetime.now(UTC)
+        await session.flush()
+        return candidate

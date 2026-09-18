@@ -10,10 +10,15 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
-from app.core.model_kit import AppendOnlyCreatedAtMixin, TenantMixin, TimestampMixin
+from app.core.model_kit import (
+    AppendOnlyCreatedAtMixin,
+    TenantMixin,
+    TimestampMixin,
+    WorkspaceScopeMixin,
+)
 
 
-class Consent(TenantMixin, AppendOnlyCreatedAtMixin, Base):
+class Consent(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     """Spec §32: NOT a boolean — scoped by channel + purpose, with proof."""
 
     __tablename__ = "consents"
@@ -41,7 +46,7 @@ class Consent(TenantMixin, AppendOnlyCreatedAtMixin, Base):
     )
 
 
-class DataSubjectRequest(TenantMixin, TimestampMixin, Base):
+class DataSubjectRequest(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     """Spec §51: access/export/delete/rectify requests with full lifecycle."""
 
     __tablename__ = "data_subject_requests"
@@ -69,7 +74,7 @@ class DataSubjectRequest(TenantMixin, TimestampMixin, Base):
     )
 
 
-class RetentionPolicy(TenantMixin, TimestampMixin, Base):
+class RetentionPolicy(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     """Spec §52: per data-class retention; executed by retention workers."""
 
     __tablename__ = "retention_policies"

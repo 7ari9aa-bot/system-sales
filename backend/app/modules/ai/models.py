@@ -35,10 +35,11 @@ from app.core.model_kit import (
     TenantMixin,
     TimestampMixin,
     VersionMixin,
+    WorkspaceScopeMixin,
 )
 
 
-class Agent(TenantMixin, TimestampMixin, VersionMixin, Base):
+class Agent(TenantMixin, TimestampMixin, WorkspaceScopeMixin, VersionMixin, Base):
     __tablename__ = "agents"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -53,7 +54,7 @@ class Agent(TenantMixin, TimestampMixin, VersionMixin, Base):
     is_active: Mapped[bool] = mapped_column(default=True, server_default="true")
 
 
-class AgentTool(TenantMixin, TimestampMixin, Base):
+class AgentTool(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "agent_tools"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -72,7 +73,7 @@ class AgentTool(TenantMixin, TimestampMixin, Base):
     )
 
 
-class Prompt(TenantMixin, TimestampMixin, Base):
+class Prompt(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "prompts"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -92,7 +93,7 @@ class Prompt(TenantMixin, TimestampMixin, Base):
     )
 
 
-class ModelConfig(TenantMixin, TimestampMixin, Base):
+class ModelConfig(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "model_configs"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -108,7 +109,7 @@ class ModelConfig(TenantMixin, TimestampMixin, Base):
     __table_args__ = (UniqueConstraint("tenant_id", "alias", name="uq_model_configs_tenant_alias"),)
 
 
-class Memory(TenantMixin, AppendOnlyCreatedAtMixin, Base):
+class Memory(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "memories"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -131,7 +132,7 @@ class Memory(TenantMixin, AppendOnlyCreatedAtMixin, Base):
     )
 
 
-class KnowledgeItem(TenantMixin, TimestampMixin, Base):
+class KnowledgeItem(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "knowledge_items"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -151,7 +152,7 @@ class KnowledgeItem(TenantMixin, TimestampMixin, Base):
     )
 
 
-class AgentRun(TenantMixin, AppendOnlyCreatedAtMixin, Base):
+class AgentRun(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "agent_runs"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -184,7 +185,7 @@ class AgentRun(TenantMixin, AppendOnlyCreatedAtMixin, Base):
     )
 
 
-class ToolCall(TenantMixin, AppendOnlyCreatedAtMixin, Base):
+class ToolCall(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "tool_calls"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -207,7 +208,7 @@ class ToolCall(TenantMixin, AppendOnlyCreatedAtMixin, Base):
     __table_args__ = (Index("ix_tool_calls_tenant_run", "tenant_id", "run_id"),)
 
 
-class ModelCall(TenantMixin, AppendOnlyCreatedAtMixin, Base):
+class ModelCall(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "model_calls"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -232,7 +233,7 @@ class ModelCall(TenantMixin, AppendOnlyCreatedAtMixin, Base):
     )
 
 
-class AIUsage(TenantMixin, AppendOnlyCreatedAtMixin, Base):
+class AIUsage(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     """Daily per-agent AI usage rollup."""
 
     __tablename__ = "ai_usage"
@@ -257,7 +258,7 @@ class AIUsage(TenantMixin, AppendOnlyCreatedAtMixin, Base):
     )
 
 
-class ApprovalRequest(TenantMixin, TimestampMixin, Base):
+class ApprovalRequest(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     """Spec §135: durable human-in-the-loop approval for HIGH-risk AI actions.
 
     The AI run persists WAITING_APPROVAL state; approval resumes/rejects it.
@@ -297,7 +298,7 @@ class ApprovalRequest(TenantMixin, TimestampMixin, Base):
     )
 
 
-class BudgetPolicy(TenantMixin, TimestampMixin, Base):
+class BudgetPolicy(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     """Spec §42: per-tenant AI budget with reserve/settle + alert thresholds."""
 
     __tablename__ = "ai_budget_policies"
@@ -321,7 +322,7 @@ class BudgetPolicy(TenantMixin, TimestampMixin, Base):
     )
 
 
-class AIProviderPolicy(TenantMixin, TimestampMixin, Base):
+class AIProviderPolicy(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     """Spec §43: per-tenant provider allow/deny + data governance."""
 
     __tablename__ = "ai_provider_policies"
@@ -342,7 +343,7 @@ class AIProviderPolicy(TenantMixin, TimestampMixin, Base):
     )
 
 
-class AIHandover(TenantMixin, AppendOnlyCreatedAtMixin, Base):
+class AIHandover(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     """Spec §37/§150: AI → human handover with reason and outcome."""
 
     __tablename__ = "ai_handovers"
@@ -370,7 +371,7 @@ class AIHandover(TenantMixin, AppendOnlyCreatedAtMixin, Base):
     )
 
 
-class AIEvaluation(TenantMixin, TimestampMixin, Base):
+class AIEvaluation(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     """Spec §169: offline evaluation of an agent/prompt version before rollout."""
 
     __tablename__ = "ai_evaluations"
