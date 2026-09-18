@@ -113,11 +113,13 @@ async def enforce_budget(
 
     for scope_policy in (
         await session.execute(
-            sa_select(BudgetPolicy).where(
+            sa_select(BudgetPolicy)
+            .where(
                 BudgetPolicy.tenant_id == tenant_id,
                 BudgetPolicy.period == "monthly",
-
             )
+            # agent-specific policies win over tenant-level ones
+            .order_by(BudgetPolicy.agent_id.is_(None))
         )
     ).scalars().all():
         if scope_policy.agent_id is not None and scope_policy.agent_id != agent_id:

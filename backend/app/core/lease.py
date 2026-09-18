@@ -23,11 +23,20 @@ from contextlib import asynccontextmanager
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import ConflictError
+from app.core.errors import DomainError
 
 
-class ConversationBusy(ConflictError):
-    """Another processor holds the conversation lease."""
+class ConversationBusy(DomainError):
+    """Another processor holds the conversation lease.
+
+    TRANSIENT by definition — extends DomainError directly (NOT
+    ConflictError) so the worker retry classification treats it as
+    retryable instead of dead-lettering the event.
+    """
+
+    code = "conversation_busy"
+    http_status = 409
+    retryable = True
 
     def __init__(self, conversation_id: uuid.UUID) -> None:
         super().__init__(
