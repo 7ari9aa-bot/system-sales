@@ -14,7 +14,7 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from pydantic import ValidationError as PydanticValidationError
@@ -220,7 +220,16 @@ class AgentRunner:
         tokens_out = 0
         content: str | None = None
 
+        # §134 run limits: the agent may never loop unbounded.
+        started_at = datetime.now(UTC)
+        max_wall_time = timedelta(seconds=120)
+        max_tool_calls = 10
+        hit_limit: str | None = None
+
         for _iteration in range(MAX_ITERATIONS):
+            if datetime.now(UTC) - started_at > max_wall_time:
+                hit_limit = "max_wall_time"
+                break
             chat_result = await self.gateway.chat(
                 session,
                 tenant_id,
@@ -250,6 +259,9 @@ class AgentRunner:
             }
             messages.append(assistant_msg)
             for tc in chat_result.tool_calls:
+                if len(tool_calls_made) >= max_tool_calls:
+                    hit_limit = "max_tool_calls"
+                    break
                 outcome = await self._execute_tool(
                     session, tenant_id, run=run, agent_tools=agent_tools, request=tc
                 )
@@ -262,6 +274,11 @@ class AgentRunner:
                     }
                 )
             content = chat_result.content or content
+
+        if hit_limit:
+            run.error = f"run limit hit: {hit_limit}"
+            await session.flush()
+            logger.warning("ai.run_limit_hit run=%s limit=%s", run.id, hit_limit)
 
         return AgentRunResult(
             content=content,
