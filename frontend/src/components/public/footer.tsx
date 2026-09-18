@@ -1,62 +1,59 @@
-import Link from "next/link";
+"use client";
 
-/** الفوتر: الأعمدة كاملة حسب الخطة، لكن العناصر اللي ملهاش صفحات فعلية بعد
- *  تظهر كنص ثابت مش لينكات — لا روابط وهمية. */
+import Link from "next/link";
+import { useI18n } from "@/components/public/i18n";
+
 export function PublicFooter() {
+  const { t } = useI18n();
   return (
-    <footer className="mk-footer">
-      <div className="mk-container mk-footer-grid">
-        <div className="mk-footer-brand">
-          <span className="mk-brand">
-            <span className="mk-brand-mark" aria-hidden="true">س</span>
-            <span className="mk-brand-name">سيلز أو إس</span>
+    <footer className="fh-footer">
+      <div className="fh-container fh-footer-grid">
+        <div>
+          <span className="fh-brand">
+            <span className="fh-brand-mark" aria-hidden="true">F</span>
+            <span className="fh-brand-name">FIHRIST</span>
           </span>
-          <p className="mk-footer-tag">
-            سياق عمل واحد. نظام تشغيل واحد.
-          </p>
+          <p className="fh-footer-tag">{t.footer.tag}</p>
         </div>
 
-        <nav aria-label="المنتج">
-          <h4>المنتج</h4>
-          <a href="#product">نظرة عامة</a>
-          <a href="#context">سياق العمل</a>
-          <a href="#inbox">المحادثات</a>
-          <a href="#ai">الذكاء الاصطناعي</a>
-          <a href="#automation">الأتمتة</a>
-          <a href="#analytics">التحليلات</a>
+        <nav aria-label={t.footer.product}>
+          <h4>{t.footer.product}</h4>
+          <a href="#product">{t.footer.overview}</a>
+          <a href="#context">{t.nav.context}</a>
+          <a href="#inbox">{t.nav.inbox}</a>
+          <a href="#ai">{t.footer.aiF}</a>
+          <a href="#automation">{t.footer.automationF}</a>
+          <a href="#analytics">{t.footer.analyticsF}</a>
         </nav>
 
-        <nav aria-label="الحلول">
-          <h4>الحلول</h4>
-          <span className="mk-footer-soon">خدمة العملاء</span>
-          <span className="mk-footer-soon">المبيعات</span>
-          <span className="mk-footer-soon">التسويق</span>
-          <span className="mk-footer-soon">التجارة</span>
+        <nav aria-label={t.footer.solutions}>
+          <h4>{t.footer.solutions}</h4>
+          {t.footer.solutionsItems.map((s) => (
+            <span key={s} className="fh-footer-soon">{s}</span>
+          ))}
         </nav>
 
-        <nav aria-label="الموارد">
-          <h4>الموارد</h4>
-          <span className="mk-footer-soon">التوثيق</span>
-          <span className="mk-footer-soon">الأدلة</span>
-          <span className="mk-footer-soon">المدونة</span>
-          <span className="mk-footer-soon">سجل التغييرات</span>
+        <nav aria-label={t.footer.resources}>
+          <h4>{t.footer.resources}</h4>
+          {t.footer.resourcesItems.map((s) => (
+            <span key={s} className="fh-footer-soon">{s}</span>
+          ))}
         </nav>
 
-        <nav aria-label="الشركة والنظام">
-          <h4>الشركة</h4>
-          <span className="mk-footer-soon">من نحن</span>
-          <Link href="/auth/signup">ابدأ الآن</Link>
-          <Link href="/auth/login">تسجيل الدخول</Link>
-          <h4 className="mk-footer-h4-gap">النظام</h4>
-          <span className="mk-footer-soon">الحالة</span>
-          <span className="mk-footer-soon">الخصوصية</span>
-          <span className="mk-footer-soon">الشروط</span>
+        <nav aria-label={t.footer.company}>
+          <h4>{t.footer.company}</h4>
+          <Link href="/auth/signup">{t.footer.start}</Link>
+          <Link href="/auth/login">{t.footer.login}</Link>
+          <h4 className="gap">{t.footer.system}</h4>
+          <span className="fh-footer-soon">{t.footer.status}</span>
+          <span className="fh-footer-soon">{t.footer.privacy}</span>
+          <span className="fh-footer-soon">{t.footer.terms}</span>
         </nav>
       </div>
 
-      <div className="mk-container mk-footer-bottom">
-        <span>© 2026 سيلز أو إس</span>
-        <span className="mk-lang">العربية</span>
+      <div className="fh-container fh-footer-bottom">
+        <span>{t.footer.rights}</span>
+        <span className="fh-badge">{t.brand} · {t.brandTag}</span>
       </div>
     </footer>
   );

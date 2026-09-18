@@ -84,6 +84,32 @@ async def maybe_auto_reply(
         if not result.content:
             return
 
+        # §173 output guardrail: block/handover BEFORE anything is queued.
+        from app.modules.ai.guardrails import default_guardrail
+
+        verdict = default_guardrail().evaluate(
+            result.content, {"tool_results": result.tool_calls_made}
+        )
+        if verdict.decision != "allow":
+            from app.modules.ai.models import AIHandover
+
+            session.add(
+                AIHandover(
+                    tenant_id=tenant_id,
+                    conversation_id=conversation_id,
+                    run_id=None,
+                    reason="guardrail",
+                    status="pending",
+                    note=f"guardrail:{verdict.reason}",
+                )
+            )
+            logger.warning(
+                "ai.guardrail_blocked conversation=%s reason=%s",
+                conversation_id,
+                verdict.reason,
+            )
+            return
+
         message = await ConversationService.add_message(
             session,
             tenant_id,

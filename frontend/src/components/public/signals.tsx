@@ -1,92 +1,64 @@
 "use client";
 
-/** إشارات العمل — كل إشارة قابلة للاختيار وتعرض معاينة مصغرة (بيانات تجريبية). */
+/** إشارات العمل — كل الإشارات مجردة بالكامل: بدون أسماء أو بيانات شخصية. */
 
 import { useState } from "react";
+import { useI18n } from "@/components/public/i18n";
+import { Reveal } from "@/components/public/reveal";
 
-type Signal = {
-  id: string;
-  count: number;
-  label: string;
-  tone: "info" | "warn" | "danger" | "success";
-  rows: { title: string; meta: string; badge?: string };
-};
-
-const SIGNALS: Signal[] = [
-  {
-    id: "convos", count: 12, label: "محادثة جديدة", tone: "info",
-    rows: { title: "أحمد محمد — واتساب", meta: "النية: حالة طلب · منذ دقيقتين", badge: "AI يعالج" },
-  },
-  {
-    id: "orders", count: 4, label: "طلبات تحتاج انتباه", tone: "warn",
-    rows: { title: "طلب #1042 — دفع عند الاستلام", meta: "مستودع القاهرة · منذ ساعة", badge: "بانر المراجعة" },
-  },
-  {
-    id: "automations", count: 2, label: "أتمتة فشلت", tone: "danger",
-    rows: { title: "مسار: تذكير السلة المتروكة", meta: "فشل نداء المزود · محاولة 3/3", badge: "قابلة لإعادة التشغيل" },
-  },
-  {
-    id: "leads", count: 3, label: "عملاء محتملون عالي القيمة", tone: "success",
-    rows: { title: "منى خالد — من حملة الصيف", meta: "قيمة متوقعة: عالية · أول تواصل", badge: "توزيع تلقائي" },
-  },
-  {
-    id: "sla", count: 1, label: "SLA في خطر", tone: "danger",
-    rows: { title: "سارة علي — تليجرام", meta: "لم يُرد خلال 8 دقائق من أصل 10", badge: "تحويل بشري" },
-  },
-];
+const TONES = ["info", "warn", "danger", "success", "danger"] as const;
 
 export function BusinessSignals() {
-  const [active, setActive] = useState(SIGNALS[0].id);
-  const current = SIGNALS.find((s) => s.id === active) ?? SIGNALS[0];
+  const { t } = useI18n();
+  const [active, setActive] = useState(0);
+  const item = t.signals.items[active];
 
   return (
-    <section className="mk-section" id="signals">
-      <div className="mk-container">
-        <header className="mk-section-head">
-          <h2>اعرف اللي محتاج انتباهك.</h2>
-          <p>النظام بيرتّب أولوياتك — مش مجرد تقارير.</p>
-        </header>
+    <section className="fh-section" id="signals">
+      <div className="fh-container">
+        <Reveal className="fh-section-head">
+          <h2>{t.signals.title}</h2>
+          <p>{t.signals.sub}</p>
+        </Reveal>
 
-        <div className="mk-demo-chip mk-demo-chip-float" aria-hidden="true">
-          <span className="mk-demo-dot" /> مساحة تجريبية
+        <div className="fh-demo-chip" style={{ marginInlineStart: "auto", marginBottom: ".8rem" }}>
+          <span className="fh-demo-dot" /> {t.signals.demo}
         </div>
 
-        <div className="mk-signals">
-          <div className="mk-signals-list" role="tablist" aria-label="إشارات العمل">
-            {SIGNALS.map((sig) => (
+        <Reveal className="fh-signals" stagger>
+          <div className="fh-signal-list" role="tablist" aria-label={t.signals.title}>
+            {t.signals.items.map((sig, i) => (
               <button
-                key={sig.id}
+                key={sig.label}
                 role="tab"
-                aria-selected={active === sig.id}
-                className={`mk-signal-row${active === sig.id ? " is-active" : ""}`}
-                onClick={() => setActive(sig.id)}
+                aria-selected={active === i}
+                className={`fh-signal-row${active === i ? " is-active" : ""}`}
+                onClick={() => setActive(i)}
               >
-                <span className={`mk-signal-dot mk-dot-${sig.tone}`} aria-hidden="true" />
-                <span className="mk-signal-count">{sig.count}</span>
+                <span className={`fh-signal-dot fh-dot-${TONES[i]}`} aria-hidden="true" />
+                <span className="fh-signal-count">{t.signals.counts[i]}</span>
                 <span>{sig.label}</span>
               </button>
             ))}
           </div>
 
-          <div className="card mk-signals-preview" role="tabpanel">
-            <div className="mk-signals-preview-head">
-              <strong>{current.label}</strong>
-              <span className={`badge badge-${current.tone === "danger" ? "danger" : current.tone === "warn" ? "warning" : current.tone === "success" ? "success" : "primary"}`}>
-                {current.count} عنصر
+          <div className="fh-card fh-signal-preview" role="tabpanel">
+            <div className="fh-signal-preview-head">
+              <strong>{item.label}</strong>
+              <span className={`fh-badge ${TONES[active] === "danger" ? "fh-badge-danger" : TONES[active] === "warn" ? "fh-badge-warning" : TONES[active] === "success" ? "fh-badge-success" : "fh-badge-primary"}`}>
+                {t.signals.counts[active]} {t.signals.element}
               </span>
             </div>
-            <div className="mk-signals-row">
+            <div className="fh-signal-detail">
               <div>
-                <strong>{current.rows.title}</strong>
-                <small>{current.rows.meta}</small>
+                <strong>{item.label}</strong>
+                <small>{item.detail}</small>
               </div>
-              {current.rows.badge && <span className="badge">{current.rows.badge}</span>}
+              <span className="fh-badge">{item.badge}</span>
             </div>
-            <p className="mk-muted-note">
-              داخل التطبيق، كل إشارة بتفتح الشاشة المناسبة مع السياق الكامل — دي معاينة مبسطة.
-            </p>
+            <p className="fh-note">{t.signals.note}</p>
           </div>
-        </div>
+        </Reveal>
       </div>
     </section>
   );

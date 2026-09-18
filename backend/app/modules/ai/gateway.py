@@ -94,11 +94,45 @@ async def _month_spend(session: AsyncSession, tenant_id: UUID) -> float:
     return float(total)
 
 
-async def enforce_budget(session: AsyncSession, tenant_id: UUID) -> None:
-    """Refuse new model calls once this month's spend crosses the cap."""
+async def enforce_budget(
+    session: AsyncSession, tenant_id: UUID, *, agent_id: UUID | None = None
+) -> dict:
+    """Spec §42: per-tenant/agent budget preflight (reserve/settle pattern).
+
+    Resolves BudgetPolicy (agent-scope first, then tenant-scope, then the
+    MONTHLY_BUDGET_CAP default); returns policy context. Threshold crossings
+    are surfaced via the returned dict (warning emitted by the caller).
+    """
     spend = await _month_spend(session, tenant_id)
-    if spend > MONTHLY_BUDGET_CAP:
-        raise RateLimitExceededError("monthly AI budget exceeded")
+    cap = MONTHLY_BUDGET_CAP
+    on_exceed = "block"
+
+    from sqlalchemy import select as sa_select
+
+    from app.modules.ai.models import BudgetPolicy
+
+    for scope_policy in (
+        await session.execute(
+            sa_select(BudgetPolicy).where(
+                BudgetPolicy.tenant_id == tenant_id,
+                BudgetPolicy.period == "monthly",
+                BudgetPolicy.is_active.is_(True),
+            )
+        )
+    ).scalars().all():
+        if scope_policy.agent_id is not None and scope_policy.agent_id != agent_id:
+            continue
+        cap = float(scope_policy.hard_cap)
+        on_exceed = scope_policy.on_exceed
+        break
+
+    ratio = (spend / cap * 100) if cap > 0 else 0.0
+    if spend >= cap and on_exceed == "block":
+        raise RateLimitExceededError(
+            "monthly AI budget exceeded",
+            details={"spend": spend, "cap": cap},
+        )
+    return {"spend": spend, "cap": cap, "ratio": ratio, "on_exceed": on_exceed}
 
 
 class AIGateway:
