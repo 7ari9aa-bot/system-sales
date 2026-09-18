@@ -10,7 +10,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import NotFoundError, ValidationError
@@ -154,17 +154,24 @@ class ConversationService:
         assignee_user_id: uuid.UUID | None = None,
         limit: int = 50,
         offset: int = 0,
+        before_created_at: datetime | None = None,
+        before_id: uuid.UUID | None = None,
     ) -> list[Conversation]:
+        """Keyset-aware inbox listing: pass before_created_at + before_id to page."""
         stmt = select(Conversation).where(Conversation.tenant_id == tenant_id)
         if status:
             stmt = stmt.where(Conversation.status == status)
         if assignee_user_id:
             stmt = stmt.where(Conversation.assignee_user_id == assignee_user_id)
-        stmt = (
-            stmt.order_by(Conversation.last_message_at.desc().nullslast())
-            .limit(limit)
-            .offset(offset)
-        )
+        if before_created_at is not None and before_id is not None:
+            stmt = stmt.where(
+                tuple_(Conversation.created_at, Conversation.id)
+                < tuple_(before_created_at, before_id)
+            )
+            stmt = stmt.order_by(Conversation.created_at.desc(), Conversation.id.desc())
+        else:
+            stmt = stmt.order_by(Conversation.last_message_at.desc().nullslast())
+        stmt = stmt.limit(limit).offset(offset)
         return list((await session.execute(stmt)).scalars().all())
 
     @staticmethod
@@ -175,14 +182,25 @@ class ConversationService:
         *,
         limit: int = 100,
         before_created_at=None,
+        before_id: uuid.UUID | None = None,
     ) -> list[Message]:
+        """Newest-first keyset fetch, returned oldest-first for display.
+
+        Pass before_created_at (with before_id for stable ties) to page
+        backwards through the history.
+        """
         await ConversationService.get(session, tenant_id, conversation_id)
-        stmt = (
-            select(Message)
-            .where(Message.tenant_id == tenant_id, Message.conversation_id == conversation_id)
-            .order_by(Message.created_at.desc())
-            .limit(limit)
+        stmt = select(Message).where(
+            Message.tenant_id == tenant_id, Message.conversation_id == conversation_id
         )
+        if before_created_at is not None and before_id is not None:
+            stmt = stmt.where(
+                tuple_(Message.created_at, Message.id)
+                < tuple_(before_created_at, before_id)
+            )
+        elif before_created_at is not None:
+            stmt = stmt.where(Message.created_at < before_created_at)
+        stmt = stmt.order_by(Message.created_at.desc(), Message.id.desc()).limit(limit)
         return list((await session.execute(stmt)).scalars().all())[::-1]
 
     @staticmethod

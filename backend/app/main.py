@@ -1,16 +1,23 @@
-"""FastAPI application factory."""
+"""FastAPI application factory.
 
+All domain routes are versioned under ``/api/v1`` (breaking W1 contract);
+operational probes (/healthz, /readyz) stay at the root for load balancers.
+"""
+
+from __future__ import annotations
+
+import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import APIRouter, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from app.core.config import get_settings
 from app.core.db import engine
-from app.core.errors import DomainError
+from app.core.errors import DomainError, build_error_body, request_id_contextvar
 from app.core.middleware import RateLimitMiddleware
 from app.core.observability import RequestLoggingMiddleware, configure_logging
 from app.core.redis import close_redis, get_redis
@@ -52,12 +59,35 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     await close_redis()
 
 
+class _RequestIDMiddleware:  # noqa: Too small for BaseHTTPMiddleware ceremony
+    """Publishes the request id into a contextvar for the error contract.
+
+    Honors an incoming ``x-request-id`` (or generates one); the same id is
+    echoed by the unified error body's ``request_id`` field.
+    """
+
+    def __init__(self, app) -> None:  # noqa: ANN001 — ASGI signature
+        self.app = app
+
+    async def __call__(self, scope, receive, send) -> None:  # noqa: ANN001
+        if scope["type"] != "http":  # pragma: no cover — lifespan etc.
+            await self.app(scope, receive, send)
+            return
+        headers = {k.decode().lower(): v.decode() for k, v in scope.get("headers", [])}
+        request_id = headers.get("x-request-id") or uuid.uuid4().hex[:16]
+        token = request_id_contextvar.set(request_id)
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            request_id_contextvar.reset(token)
+
+
 def _exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(DomainError)
     async def domain_error_handler(_: Request, exc: DomainError) -> JSONResponse:
         return JSONResponse(
             status_code=exc.http_status,
-            content={"error": {"code": exc.code, "message": str(exc)}},
+            content=build_error_body(exc, request_id=request_id_contextvar.get()),
         )
 
     @app.exception_handler(PermissionError)
@@ -85,21 +115,28 @@ def create_app() -> FastAPI:
     )
     app.add_middleware(RequestLoggingMiddleware)
     app.add_middleware(RateLimitMiddleware)
-    app.include_router(identity_router)
-    app.include_router(conversations_router)
-    app.include_router(conversations_public_router)
-    app.include_router(conversations_webhook_router)
-    app.include_router(catalog_router)
-    app.include_router(inventory_router)
-    app.include_router(orders_router)
-    app.include_router(customers_router)
-    app.include_router(platform_router)
-    app.include_router(billing_platform_router)
-    app.include_router(billing_router)
-    app.include_router(webhooks_router)
-    app.include_router(marketing_router)
-    app.include_router(analytics_router)
-    app.include_router(ai_router)
+    app.add_middleware(_RequestIDMiddleware)
+
+    api_v1 = APIRouter(prefix="/api/v1")
+    for router in (
+        identity_router,
+        conversations_router,
+        conversations_public_router,
+        conversations_webhook_router,
+        catalog_router,
+        inventory_router,
+        orders_router,
+        customers_router,
+        platform_router,
+        billing_platform_router,
+        billing_router,
+        webhooks_router,
+        marketing_router,
+        analytics_router,
+        ai_router,
+    ):
+        api_v1.include_router(router)
+    app.include_router(api_v1)
 
     @app.get("/healthz", tags=["ops"])
     async def healthz() -> dict[str, str]:

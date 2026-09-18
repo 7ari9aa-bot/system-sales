@@ -25,15 +25,31 @@ async def add_outbox_event(
     tenant_id: UUID,
     payload: dict | None = None,
     meta: dict | None = None,
+    correlation_id: str | None = None,
+    causation_id: str | None = None,
+    producer: str = "core",
+    aggregate_version: int | None = None,
+    schema_version: int = 1,
 ) -> OutboxEvent:
     """Insert a pending OutboxEvent within the caller's transaction.
 
     - stream: "{aggregate_type}.events" (the bus topic consumers subscribe to)
     - payload: flat dict, the event_type is always the first key
-    - meta: always carries tenant_id (the relay is cross-tenant)
+    - meta: always carries tenant_id (the relay is cross-tenant). Envelope v2
+      lineage (correlation_id / causation_id / producer / schema_version /
+      aggregate_version) rides inside meta too — the outbox_events table
+      columns are frozen, so no migration is needed for v2.
     """
     merged_meta = dict(meta or {})
     merged_meta["tenant_id"] = str(tenant_id)
+    if correlation_id is not None:
+        merged_meta["correlation_id"] = correlation_id
+    if causation_id is not None:
+        merged_meta["causation_id"] = causation_id
+    merged_meta["producer"] = producer
+    merged_meta["schema_version"] = schema_version
+    if aggregate_version is not None:
+        merged_meta["aggregate_version"] = aggregate_version
 
     event = OutboxEvent(
         aggregate_type=aggregate_type,

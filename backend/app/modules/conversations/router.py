@@ -6,10 +6,11 @@ import json
 import time
 import uuid
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Query, Request, Response
 from pydantic import BaseModel, Field
 
 from app.core.errors import NotFoundError, PermissionDeniedError
+from app.core.pagination import decode_cursor, encode_cursor
 from app.modules.conversations.gateway.ingest import IngestService
 from app.modules.conversations.gateway.registry import get_adapter
 from app.modules.conversations.service import ConversationService
@@ -33,43 +34,81 @@ class AssignRequest(BaseModel):
 
 @router.get("/conversations")
 async def list_conversations(
-    ctx: TenantCtxDep, status: str | None = None, limit: int = 50, offset: int = 0
+    ctx: TenantCtxDep,
+    status: str | None = None,
+    cursor: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
 ):
+    before_created_at, before_id = decode_cursor(cursor) if cursor else (None, None)
     rows = await ConversationService.list_inbox(
-        ctx.session, ctx.tenant_id, status=status, limit=limit, offset=offset
+        ctx.session,
+        ctx.tenant_id,
+        status=status,
+        limit=limit + 1,
+        before_created_at=before_created_at,
+        before_id=before_id,
     )
-    return [
-        {
-            "id": str(c.id),
-            "customer_id": str(c.customer_id),
-            "channel": c.channel,
-            "status": c.status,
-            "unread_count": c.unread_count,
-            "assignee_user_id": str(c.assignee_user_id) if c.assignee_user_id else None,
-            "last_message_at": c.last_message_at.isoformat() if c.last_message_at else None,
-        }
-        for c in rows
-    ]
+    page = rows[:limit]
+    next_cursor = None
+    if len(rows) > limit:  # full page → cursor at the page's oldest boundary
+        boundary = page[-1]
+        next_cursor = encode_cursor(boundary.created_at, boundary.id)
+    return {
+        "items": [
+            {
+                "id": str(c.id),
+                "customer_id": str(c.customer_id),
+                "channel": c.channel,
+                "status": c.status,
+                "unread_count": c.unread_count,
+                "assignee_user_id": str(c.assignee_user_id) if c.assignee_user_id else None,
+                "last_message_at": c.last_message_at.isoformat() if c.last_message_at else None,
+            }
+            for c in page
+        ],
+        "next_cursor": next_cursor,
+    }
 
 
 @router.get("/conversations/{conversation_id}/messages")
-async def list_messages(ctx: TenantCtxDep, conversation_id: uuid.UUID, limit: int = 100):
+async def list_messages(
+    ctx: TenantCtxDep,
+    conversation_id: uuid.UUID,
+    cursor: str | None = None,
+    limit: int = Query(default=100, ge=1, le=200),
+):
+    before_created_at, before_id = decode_cursor(cursor) if cursor else (None, None)
+    # The service fetches newest-first (keyset) and returns oldest-first for
+    # display; the extra (oldest) row only signals that more history exists.
     rows = await ConversationService.list_messages(
-        ctx.session, ctx.tenant_id, conversation_id, limit=limit
+        ctx.session,
+        ctx.tenant_id,
+        conversation_id,
+        limit=limit + 1,
+        before_created_at=before_created_at,
+        before_id=before_id,
     )
-    return [
-        {
-            "id": str(m.id),
-            "direction": m.direction,
-            "sender_type": m.sender_type,
-            "body": m.body,
-            "media_url": m.media_url,
-            "media_type": m.media_type,
-            "status": m.status,
-            "created_at": m.created_at.isoformat(),
-        }
-        for m in rows
-    ]
+    next_cursor = None
+    if len(rows) > limit:
+        rows = rows[1:]  # drop the overflow row (oldest) from the display page
+        boundary = rows[0]  # oldest displayed row = next page's keyset boundary
+        next_cursor = encode_cursor(boundary.created_at, boundary.id)
+    return {
+        "items": [
+            {
+                "id": str(m.id),
+                "direction": m.direction,
+                "sender_type": m.sender_type,
+                "body": m.body,
+                "media_url": m.media_url,
+                "media_type": m.media_type,
+                "status": m.status,
+                "created_at": m.created_at.isoformat(),
+            }
+            for m in rows
+        ],
+        "next_cursor": next_cursor,
+    }
 
 
 @router.post("/conversations/{conversation_id}/messages", status_code=201)

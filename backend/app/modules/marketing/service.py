@@ -21,7 +21,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import NotFoundError, ValidationError
@@ -92,16 +92,23 @@ class MarketingService:
         status: str | None = None,
         limit: int = 100,
         offset: int = 0,
+        before_created_at: datetime | None = None,
+        before_id: UUID | None = None,
     ) -> list[Campaign]:
+        """Keyset-aware listing: pass before_created_at + before_id to page."""
+        stmt = select(Campaign).where(Campaign.tenant_id == tenant_id)
+        if status is not None:
+            stmt = stmt.where(Campaign.status == status)
+        if before_created_at is not None and before_id is not None:
+            stmt = stmt.where(
+                tuple_(Campaign.created_at, Campaign.id)
+                < tuple_(before_created_at, before_id)
+            )
         stmt = (
-            select(Campaign)
-            .where(Campaign.tenant_id == tenant_id)
-            .order_by(Campaign.created_at.desc(), Campaign.id.desc())
+            stmt.order_by(Campaign.created_at.desc(), Campaign.id.desc())
             .limit(limit)
             .offset(offset)
         )
-        if status is not None:
-            stmt = stmt.where(Campaign.status == status)
         return list((await session.execute(stmt)).scalars().all())
 
     # ------------------------------------------------------ touchpoints ----

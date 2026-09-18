@@ -15,7 +15,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Numeric, func
+from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -38,6 +38,12 @@ class TimestampMixin:
         onupdate=func.now(),
         nullable=False,
     )
+
+
+class VersionMixin:
+    """Optimistic-concurrency counter (attached to concrete models by migration)."""
+
+    version: Mapped[int] = mapped_column(Integer, server_default="1", nullable=False)
 
 
 class TenantMixin:

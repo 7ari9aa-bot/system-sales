@@ -11,9 +11,10 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
+from app.core.pagination import decode_cursor, page_slice
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
 from app.modules.marketing import analytics
 from app.modules.marketing.service import MarketingService
@@ -60,23 +61,38 @@ class LeadStatusRequest(BaseModel):
 
 
 @router.get("/marketing/campaigns")
-async def list_campaigns(ctx: TenantCtxDep, status: str | None = None, limit: int = 100):
-    campaigns = await MarketingService.list_campaigns(
-        ctx.session, ctx.tenant_id, status=status, limit=limit
+async def list_campaigns(
+    ctx: TenantCtxDep,
+    status: str | None = None,
+    cursor: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+):
+    before_created_at, before_id = decode_cursor(cursor) if cursor else (None, None)
+    rows = await MarketingService.list_campaigns(
+        ctx.session,
+        ctx.tenant_id,
+        status=status,
+        limit=limit + 1,
+        before_created_at=before_created_at,
+        before_id=before_id,
     )
-    return [
-        {
-            "id": str(c.id),
-            "name": c.name,
-            "provider": c.provider,
-            "external_id": c.external_id,
-            "objective": c.objective,
-            "status": c.status,
-            "budget": float(c.budget) if c.budget is not None else None,
-            "created_at": c.created_at.isoformat(),
-        }
-        for c in campaigns
-    ]
+    page, next_cursor = page_slice(rows, limit)
+    return {
+        "items": [
+            {
+                "id": str(c.id),
+                "name": c.name,
+                "provider": c.provider,
+                "external_id": c.external_id,
+                "objective": c.objective,
+                "status": c.status,
+                "budget": float(c.budget) if c.budget is not None else None,
+                "created_at": c.created_at.isoformat(),
+            }
+            for c in page
+        ],
+        "next_cursor": next_cursor,
+    }
 
 
 @router.post("/marketing/campaigns", status_code=201)

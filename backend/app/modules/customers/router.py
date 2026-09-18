@@ -3,10 +3,11 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
+from app.core.pagination import decode_cursor, page_slice
 from app.modules.customers.service import CustomerService
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
 from app.modules.identity.models import Invitation, Role
@@ -18,22 +19,35 @@ platform_router = APIRouter(tags=["platform"])
 
 @router.get("/customers")
 async def list_customers(
-    ctx: TenantCtxDep, search: str | None = None, limit: int = 50, offset: int = 0
+    ctx: TenantCtxDep,
+    search: str | None = None,
+    cursor: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
 ):
+    before_created_at, before_id = decode_cursor(cursor) if cursor else (None, None)
     rows = await CustomerService.list_customers(
-        ctx.session, ctx.tenant_id, search=search, limit=limit, offset=offset
+        ctx.session,
+        ctx.tenant_id,
+        search=search,
+        limit=limit + 1,
+        before_created_at=before_created_at,
+        before_id=before_id,
     )
-    return [
-        {
-            "id": str(c.id),
-            "name": c.name,
-            "phone": c.phone,
-            "email": c.email,
-            "lifetime_value": str(c.lifetime_value),
-            "is_blocked": c.is_blocked,
-        }
-        for c in rows
-    ]
+    page, next_cursor = page_slice(rows, limit)
+    return {
+        "items": [
+            {
+                "id": str(c.id),
+                "name": c.name,
+                "phone": c.phone,
+                "email": c.email,
+                "lifetime_value": str(c.lifetime_value),
+                "is_blocked": c.is_blocked,
+            }
+            for c in page
+        ],
+        "next_cursor": next_cursor,
+    }
 
 
 class IntegrationBody(BaseModel):

@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, or_, select, tuple_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -59,8 +59,14 @@ class CustomerService:
         search: str | None = None,
         limit: int = 50,
         offset: int = 0,
+        before_created_at: datetime | None = None,
+        before_id: UUID | None = None,
     ) -> list[Customer]:
-        """Tenant-scoped listing with optional name/phone/email search."""
+        """Tenant-scoped listing with optional name/phone/email search.
+
+        Pass before_created_at + before_id for stable keyset pages; the keyset
+        path orders by (created_at, id) so cursors stay consistent.
+        """
         stmt = select(Customer).where(Customer.tenant_id == tenant_id)
         if search:
             pattern = f"%{search.strip()}%"
@@ -71,11 +77,15 @@ class CustomerService:
                     Customer.email.ilike(pattern),
                 )
             )
-        stmt = (
-            stmt.order_by(Customer.created_at.desc(), Customer.name.asc())
-            .limit(limit)
-            .offset(offset)
-        )
+        if before_created_at is not None and before_id is not None:
+            stmt = stmt.where(
+                tuple_(Customer.created_at, Customer.id)
+                < tuple_(before_created_at, before_id)
+            )
+            stmt = stmt.order_by(Customer.created_at.desc(), Customer.id.desc())
+        else:
+            stmt = stmt.order_by(Customer.created_at.desc(), Customer.name.asc())
+        stmt = stmt.limit(limit).offset(offset)
         return list((await session.execute(stmt)).scalars().all())
 
     # ---------------------------------------------------------- identity ----

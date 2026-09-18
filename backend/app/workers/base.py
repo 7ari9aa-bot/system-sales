@@ -5,6 +5,11 @@ incremented attempts counter after an exponential backoff with full jitter; the
 original entry is acked so the consumer group keeps moving. After max_attempts
 the event is routed to the DLQ stream (source stream + ".dlq").
 
+Failures are classified: PermanentError and the domain "expected failure"
+errors (validation / permission / not found / conflict — see app.core.errors)
+can never succeed on retry and go STRAIGHT to the DLQ with reason
+"permanent failure"; everything else follows the backoff/retry path above.
+
 Stage 3 hardens this with not_before scheduling through the outbox so a crash
 between ack and republish can never lose an event.
 """
@@ -23,6 +28,49 @@ from app.core.events.bus import ATTEMPTS_META_KEY, Event, EventBus
 logger = logging.getLogger(__name__)
 
 MAX_BACKOFF_SECONDS = 60.0
+
+
+class RetryableError(Exception):
+    """Marker for transient failures — retried with backoff (the default path)."""
+
+
+class PermanentError(Exception):
+    """Marker for non-retryable failures — the event goes straight to the DLQ."""
+
+
+def _is_permanent_failure(exc: BaseException) -> bool:
+    """True when exc (or anything it wraps) must not be retried.
+
+    PermanentError markers and the domain "expected failure" errors (validation,
+    permission denied, not found, conflict) can never succeed on retry, so the
+    worker dead-letters immediately instead of burning attempts. app.core.errors
+    is imported lazily inside the call to avoid import cycles.
+    """
+    from app.core.errors import (
+        ConflictError,
+        NotFoundError,
+        PermissionDeniedError,
+        ValidationError,
+    )
+
+    permanent_types: tuple[type[BaseException], ...] = (
+        PermanentError,
+        ValidationError,
+        PermissionDeniedError,
+        NotFoundError,
+        ConflictError,
+    )
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, permanent_types):
+            return True
+        if current.__suppress_context__:
+            current = current.__cause__
+        else:
+            current = current.__cause__ or current.__context__
+    return False
 
 
 class StreamWorker:
@@ -62,13 +110,23 @@ class StreamWorker:
         attempts = int(event.meta.get(ATTEMPTS_META_KEY, 0)) + 1
         try:
             await self.handle(event)
-        except Exception:
+        except Exception as exc:
             logger.exception(
                 "worker.handle_failed stream=%s id=%s attempt=%s",
                 self.stream,
                 event.id,
                 attempts,
             )
+            if _is_permanent_failure(exc):
+                logger.warning(
+                    "worker.permanent_failure stream=%s id=%s attempt=%s",
+                    self.stream,
+                    event.id,
+                    attempts,
+                )
+                await self._bus.send_to_dlq(self.stream, event, "permanent failure")
+                await self._bus.ack(self.stream, self.group, event)
+                return
             if attempts >= settings.worker_max_attempts:
                 await self._bus.send_to_dlq(self.stream, event, "max attempts exceeded")
                 await self._bus.ack(self.stream, self.group, event)

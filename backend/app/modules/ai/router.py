@@ -12,6 +12,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 
+from app.core.pagination import paginate
 from app.modules.ai import knowledge
 from app.modules.ai.models import Agent, AIUsage, KnowledgeItem
 from app.modules.ai.schemas import AgentCreateRequest, AgentOut, KnowledgeIngestRequest
@@ -109,21 +110,22 @@ async def usage_summary(ctx: TenantCtxDep, days: Annotated[int, Query(ge=1, le=3
 
 
 @router.get("/knowledge")
-async def list_knowledge(ctx: SettingsCtx, limit: int = 50):
-    rows = (
-        await ctx.session.execute(
-            select(KnowledgeItem)
-            .where(KnowledgeItem.tenant_id == ctx.tenant_id)
-            .order_by(KnowledgeItem.created_at.desc())
-            .limit(limit)
-        )
-    ).scalars().all()
-    return [
-        {
-            "id": str(item.id),
-            "title": item.title,
-            "status": item.status,
-            "created_at": item.created_at.isoformat(),
-        }
-        for item in rows
-    ]
+async def list_knowledge(
+    ctx: SettingsCtx,
+    cursor: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+):
+    stmt = select(KnowledgeItem).where(KnowledgeItem.tenant_id == ctx.tenant_id)
+    items, next_cursor = await paginate(ctx.session, stmt, cursor=cursor, limit=limit)
+    return {
+        "items": [
+            {
+                "id": str(item.id),
+                "title": item.title,
+                "status": item.status,
+                "created_at": item.created_at.isoformat(),
+            }
+            for item in items
+        ],
+        "next_cursor": next_cursor,
+    }

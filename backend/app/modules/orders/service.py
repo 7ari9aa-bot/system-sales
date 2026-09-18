@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, tuple_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -119,10 +119,18 @@ class OrderService:
         status: str | None = None,
         limit: int = 50,
         offset: int = 0,
+        before_created_at: datetime | None = None,
+        before_id: UUID | None = None,
     ) -> list[Order]:
+        """Keyset-aware listing: pass before_created_at + before_id to page."""
         stmt = select(Order).where(Order.tenant_id == tenant_id)
         if status is not None:
             stmt = stmt.where(Order.status == status)
+        if before_created_at is not None and before_id is not None:
+            stmt = stmt.where(
+                tuple_(Order.created_at, Order.id)
+                < tuple_(before_created_at, before_id)
+            )
         stmt = (
             stmt.order_by(Order.created_at.desc(), Order.id.desc())
             .limit(limit)

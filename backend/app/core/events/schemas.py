@@ -61,6 +61,13 @@ class EventEnvelope(BaseModel):
     aggregate_id: UUID
     payload: dict[str, Any] = Field(default_factory=dict)
     meta: dict[str, Any] = Field(default_factory=dict)
+    # envelope v2 lineage fields — all optional with defaults so v1 callers
+    # (and subclasses that only narrow payload/meta) keep working unchanged.
+    correlation_id: str | None = None
+    causation_id: str | None = None
+    producer: str = "core"
+    schema_version: int = 1
+    aggregate_version: int | None = None
 
 
 def build_envelope(

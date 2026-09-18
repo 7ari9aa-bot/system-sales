@@ -3,6 +3,9 @@
 outbox_events and idempotency_keys are system tables (no tenant_id): they are
 drained by the relay/ingestion layer across tenants and stay outside RLS.
 audit_logs is tenant-scoped with a nullable tenant for platform-level actions.
+webhook_events is a system-ingress table (inbound provider webhooks): its
+tenant_id is a plain nullable column resolved after signature verification,
+and it stays outside RLS.
 """
 
 from __future__ import annotations
@@ -194,3 +197,37 @@ class Automation(TenantMixin, TimestampMixin, Base):
     trigger: Mapped[dict] = mapped_column(JSONB)  # {event, filters}
     actions: Mapped[list] = mapped_column(JSONB)  # ordered action list
     is_active: Mapped[bool] = mapped_column(Boolean, server_default="true")
+
+
+class WebhookEvent(Base):
+    """Inbound webhook ingress (provider -> us) — every delivery lands here first.
+
+    System table like outbox_events: rows are written before authentication, so
+    tenant_id is a plain nullable column (resolved once the signature is
+    verified) with no FK and the table stays outside RLS.
+    """
+
+    __tablename__ = "webhook_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    provider: Mapped[str] = mapped_column(String(31))  # whatsapp | telegram | stripe | ...
+    external_event_id: Mapped[str | None] = mapped_column(String(255))
+    # plain column on purpose: no FK, no TenantMixin, no RLS (system ingress)
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    signature_valid: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    payload: Mapped[dict] = mapped_column(JSONB)
+    # allowed: pending | processing | processed | failed | dead
+    processing_status: Mapped[str] = mapped_column(String(15), server_default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, server_default="0")
+    last_error: Mapped[str | None] = mapped_column(Text)
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index("ix_webhook_events_provider_ext", "provider", "external_event_id"),
+        Index("ix_webhook_events_status_created", "processing_status", "received_at"),
+    )

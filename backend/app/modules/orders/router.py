@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
+from app.core.pagination import decode_cursor, page_slice
 from app.modules.identity.deps import TenantCtxDep
 from app.modules.orders.service import OrderService
 
@@ -20,24 +21,37 @@ class StatusChangeRequest(BaseModel):
 
 @router.get("/orders")
 async def list_orders(
-    ctx: TenantCtxDep, status: str | None = None, limit: int = 50, offset: int = 0
+    ctx: TenantCtxDep,
+    status: str | None = None,
+    cursor: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
 ):
-    orders = await OrderService.list_orders(
-        ctx.session, ctx.tenant_id, status=status, limit=limit, offset=offset
+    before_created_at, before_id = decode_cursor(cursor) if cursor else (None, None)
+    rows = await OrderService.list_orders(
+        ctx.session,
+        ctx.tenant_id,
+        status=status,
+        limit=limit + 1,
+        before_created_at=before_created_at,
+        before_id=before_id,
     )
-    return [
-        {
-            "id": str(o.id),
-            "number": o.number,
-            "customer_id": str(o.customer_id),
-            "status": o.status,
-            "grand_total": str(o.grand_total),
-            "currency": o.currency,
-            "placed_at": o.placed_at.isoformat() if o.placed_at else None,
-            "created_at": o.created_at.isoformat(),
-        }
-        for o in orders
-    ]
+    page, next_cursor = page_slice(rows, limit)
+    return {
+        "items": [
+            {
+                "id": str(o.id),
+                "number": o.number,
+                "customer_id": str(o.customer_id),
+                "status": o.status,
+                "grand_total": str(o.grand_total),
+                "currency": o.currency,
+                "placed_at": o.placed_at.isoformat() if o.placed_at else None,
+                "created_at": o.created_at.isoformat(),
+            }
+            for o in page
+        ],
+        "next_cursor": next_cursor,
+    }
 
 
 @router.get("/orders/{order_id}")
