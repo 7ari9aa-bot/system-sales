@@ -15,9 +15,15 @@ _client: Redis | None = None
 def get_redis() -> Redis:
     global _client
     if _client is None:
+        # socket_timeout MUST exceed the workers' XREADGROUP block window,
+        # otherwise idle streams raise TimeoutError on every poll.
         _client = from_url(
             get_settings().redis_url,
             decode_responses=True,
+            socket_timeout=30.0,
+            socket_connect_timeout=10.0,
+            health_check_interval=15,
+            retry_on_timeout=True,
         )
     return _client
 

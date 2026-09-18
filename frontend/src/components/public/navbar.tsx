@@ -5,13 +5,13 @@ import { useEffect, useState } from "react";
 import { useI18n, useTheme, type Theme } from "@/components/public/i18n";
 
 const LINKS = [
-  { href: "#product", key: "product" },
-  { href: "#context", key: "context" },
-  { href: "#inbox", key: "inbox" },
-  { href: "#ai", key: "ai" },
-  { href: "#automation", key: "automation" },
-  { href: "#pricing", key: "pricing" },
-  { href: "#security", key: "security" },
+  { href: "/product", key: "product" },
+  { href: "/context", key: "context" },
+  { href: "/conversations", key: "inbox" },
+  { href: "/assistant", key: "ai" },
+  { href: "/automation", key: "automation" },
+  { href: "/pricing", key: "pricing" },
+  { href: "/security", key: "security" },
 ] as const;
 
 function ThemeIcon({ theme }: { theme: Theme }) {

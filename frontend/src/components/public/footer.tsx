@@ -14,40 +14,31 @@ export function PublicFooter() {
             <span className="fh-brand-name">FIHRIST</span>
           </span>
           <p className="fh-footer-tag">{t.footer.tag}</p>
+          <span className="fh-badge" style={{ marginTop: ".8rem" }}>{t.footer.earlyAccess}</span>
         </div>
 
         <nav aria-label={t.footer.product}>
           <h4>{t.footer.product}</h4>
-          <a href="#product">{t.footer.overview}</a>
-          <a href="#context">{t.nav.context}</a>
-          <a href="#inbox">{t.nav.inbox}</a>
-          <a href="#ai">{t.footer.aiF}</a>
-          <a href="#automation">{t.footer.automationF}</a>
-          <a href="#analytics">{t.footer.analyticsF}</a>
+          <Link href="/product">{t.nav.product}</Link>
+          <Link href="/context">{t.nav.context}</Link>
+          <Link href="/conversations">{t.nav.inbox}</Link>
+          <Link href="/assistant">{t.nav.ai}</Link>
+          <Link href="/automation">{t.nav.automation}</Link>
+          <Link href="/pricing">{t.nav.pricing}</Link>
+          <Link href="/security">{t.nav.security}</Link>
         </nav>
 
-        <nav aria-label={t.footer.solutions}>
-          <h4>{t.footer.solutions}</h4>
-          {t.footer.solutionsItems.map((s) => (
-            <span key={s} className="fh-footer-soon">{s}</span>
-          ))}
-        </nav>
-
-        <nav aria-label={t.footer.resources}>
-          <h4>{t.footer.resources}</h4>
-          {t.footer.resourcesItems.map((s) => (
-            <span key={s} className="fh-footer-soon">{s}</span>
-          ))}
-        </nav>
-
-        <nav aria-label={t.footer.company}>
-          <h4>{t.footer.company}</h4>
-          <Link href="/auth/signup">{t.footer.start}</Link>
-          <Link href="/auth/login">{t.footer.login}</Link>
-          <h4 className="gap">{t.footer.system}</h4>
+        <nav aria-label={t.footer.system}>
+          <h4>{t.footer.system}</h4>
+          <Link href="/auth/signup">{t.nav.start}</Link>
+          <Link href="/auth/login">{t.nav.login}</Link>
           <span className="fh-footer-soon">{t.footer.status}</span>
-          <span className="fh-footer-soon">{t.footer.privacy}</span>
-          <span className="fh-footer-soon">{t.footer.terms}</span>
+        </nav>
+
+        <nav aria-label={t.footer.privacy}>
+          <h4>{t.footer.privacy}</h4>
+          <Link href="/privacy">{t.footer.privacy}</Link>
+          <Link href="/terms">{t.footer.terms}</Link>
         </nav>
       </div>
 

@@ -270,7 +270,18 @@ async def main() -> None:
     dsn = url.replace("postgresql+asyncpg://", "postgresql://").replace(
         "postgresql.iixxqitfopsgvaheedlg", "postgres.iixxqitfopsgvaheedlg"
     )
-    app_password = settings.sales_app_db_password or _random_password()
+    # Reuse the existing password when present — rotating on every run
+    # breaks already-deployed services using the previous DSN.
+    env_path = Path(__file__).resolve().parent.parent / ".env"
+    existing = {}
+    if env_path.exists():
+        for line in env_path.read_text().splitlines():
+            if line.startswith("DATABASE_URL_APP="):
+                try:
+                    existing = line.split("=", 1)[1].split("@")[0].split(":")[-1]
+                except Exception:
+                    existing = {}
+    app_password = existing or settings.sales_app_db_password or _random_password()
     conn = await asyncpg.connect(dsn, timeout=20)
     try:
         await setup_app_role(conn, app_password)

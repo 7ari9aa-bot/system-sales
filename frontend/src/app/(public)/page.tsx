@@ -1,36 +1,33 @@
 import { Hero } from "@/components/public/hero";
-import { BusinessSignals } from "@/components/public/signals";
-import { ContextGraph, Customer360, InboxPreview } from "@/components/public/context-sections";
-import { AISection, Handoff, Automation } from "@/components/public/ai-sections";
 import {
-  Analytics,
-  ControlCenter,
-  Pricing,
+  HowItWorks,
+  ContextSection,
+  TrySection,
+  AutomationSection,
   Integrations,
-  SecuritySection,
+  SecurityTeaser,
+  PricingPreview,
   FinalCTA,
-} from "@/components/public/ops-sections";
+} from "@/components/public/home-sections";
+import { DemoChat } from "@/components/public/demo-chat";
 
-/** Homepage flow: NAVBAR → HERO(تفاعلي) → SIGNALS → CONTEXT → CUSTOMER 360
- *  → INBOX → AI → HUMAN+AI → AUTOMATION → INTELLIGENCE → CONTROL
- *  → PRICING → INTEGRATIONS → SECURITY → FINAL CTA → FOOTER */
+/** Homepage — تدرج منطقي: عام → إزاي بيشتغل → السياق → تجربة حقيقية
+ *  → الأتمتة → التكاملات → الأمان → الأسعار → CTA.
+ *  مفيش معاينات داخلية للداشبورد — المهتم يشوف كل حاجة بنفسه جوه النظام. */
 
 export default function HomePage() {
   return (
     <main>
       <Hero />
-      <BusinessSignals />
-      <ContextGraph />
-      <Customer360 />
-      <InboxPreview />
-      <AISection />
-      <Handoff />
-      <Automation />
-      <Analytics />
-      <ControlCenter />
-      <Pricing />
+      <HowItWorks />
+      <ContextSection />
+      <TrySection>
+        <DemoChat />
+      </TrySection>
+      <AutomationSection />
       <Integrations />
-      <SecuritySection />
+      <SecurityTeaser />
+      <PricingPreview />
       <FinalCTA />
     </main>
   );

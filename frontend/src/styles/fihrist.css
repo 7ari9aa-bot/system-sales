@@ -117,7 +117,7 @@
 
 /* ---------- سيكشنز ---------- */
 .fh-section { padding-block: clamp(56px, 8vw, 92px); position: relative; }
-.fh-section-alt { background: var(--card-soft); }
+.fh-section-alt { background: transparent; }
 .fh-section-head { max-width: 660px; margin-bottom: clamp(36px, 5vw, 52px); }
 .fh-section-head h2 { font-size: clamp(24px, 3.4vw, 32px); margin-bottom: 12px; }
 .fh-section-head p { color: var(--muted); font-size: 15.5px; font-weight: 300; }
@@ -191,7 +191,7 @@
 }
 .fh-icon-btn:hover { border-color: var(--forest); color: var(--forest); }
 .fh-lang-btn { width: auto; padding: 0 .85rem; border-radius: 3px; font-size: 13px; font-weight: 500; }
-.fh-nav-login { font-size: 14.5px; color: var(--muted); padding: .4rem .4rem; }
+.fh-nav-login { font-size: 14.5px; color: var(--muted); padding: .4rem .4rem; white-space: nowrap; }
 .fh-nav-login:hover { color: var(--ink); }
 .fh-burger { display: none; }
 .fh-mobile-menu {
@@ -292,12 +292,11 @@
 .fh-chat-input input:focus { outline: 2px solid var(--focus); outline-offset: 0; border-color: var(--forest); }
 .fh-chat-tools { border-top: 1px solid var(--rule); padding: .85rem 1.1rem 1rem; }
 .fh-chat-tools h4 { font-size: 12px; color: var(--muted); font-weight: 500; font-family: var(--font-archivo), sans-serif; letter-spacing: .03em; margin-bottom: .55rem; }
-.fh-tools-row { display: flex; gap: .45rem; flex-wrap: wrap; }
+.fh-tools-row { display: flex; gap: .35rem 1rem; flex-wrap: wrap; align-items: center; }
 .fh-tool-chip {
-  font-size: 12px; font-weight: 400; color: var(--muted);
-  border: 1px solid var(--rule); border-radius: 3px;
-  background: var(--paper); padding: .3rem .7rem;
+  font-size: 12.5px; font-weight: 400; color: var(--muted);
 }
+.fh-tool-chip::before { content: "·"; color: var(--forest); margin-inline-end: .45rem; font-weight: 700; }
 
 /* ---------- كروت ---------- */
 .fh-card {
@@ -350,9 +349,7 @@
 .fh-node {
   background: var(--card); border: 1px solid var(--rule); border-radius: 3px;
   padding: .55rem 1.15rem; font-size: 14px; font-weight: 500;
-  transition: border-color .2s ease;
 }
-.fh-node:hover { border-color: var(--forest); }
 .fh-graph-link { width: 1px; height: 26px; background: var(--rule); }
 .fh-graph-hub {
   background: var(--forest); color: var(--on-forest);
@@ -702,3 +699,69 @@
 }
 html { scroll-behavior: smooth; }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+
+/* ---------- صفحات المنتج الداخلية ---------- */
+.fh-hero-page { padding-block: clamp(48px, 7vw, 88px) clamp(36px, 5vw, 56px); }
+.fh-hero-page .fh-hero-copy { max-width: 760px; }
+.fh-more-link { margin-top: 1.75rem; }
+.fh-more-link a { color: var(--forest); font-weight: 600; font-size: 15px; }
+.fh-more-link a:hover { color: var(--forest-strong); }
+.fh-inline-link { color: var(--forest); font-weight: 600; }
+.fh-hero-trust { margin-top: 1.1rem; font-size: 13.5px; color: var(--muted); }
+
+/* خطوات How it works */
+.fh-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem; }
+.fh-step {
+  background: var(--card); border: 1px solid var(--rule); border-radius: 3px;
+  padding: 1.5rem 1.4rem; display: flex; flex-direction: column; gap: .5rem; align-items: flex-start;
+}
+.fh-step-num {
+  display: inline-grid; place-items: center; width: 30px; height: 30px;
+  border: 1px solid var(--forest); color: var(--forest); border-radius: 50%;
+  font-family: var(--font-grotesk), sans-serif; font-weight: 700; font-size: 14px;
+  margin-bottom: .35rem;
+}
+.fh-step b { font-size: 15.5px; }
+.fh-step p { color: var(--muted); font-size: 14px; font-weight: 300; }
+
+/* شبكات المميزات */
+.fh-feat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.25rem; }
+.fh-feat-grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+.fh-feat {
+  background: var(--card); border: 1px solid var(--rule); border-radius: 3px;
+  padding: 1.35rem 1.4rem; display: flex; flex-direction: column; gap: .4rem;
+}
+.fh-feat b { font-size: 15px; }
+.fh-feat p { color: var(--muted); font-size: 13.5px; font-weight: 300; }
+.fh-cap {
+  display: inline-flex; align-items: center; gap: .45rem; width: fit-content;
+  font-size: 13.5px; font-weight: 500; color: var(--ink);
+}
+.fh-cap { color: var(--forest); }
+
+/* FAQ */
+.fh-faq { max-width: 760px; display: flex; flex-direction: column; gap: .6rem; }
+.fh-faq-item {
+  background: var(--card); border: 1px solid var(--rule); border-radius: 3px;
+  padding: 1rem 1.25rem;
+}
+.fh-faq-item summary {
+  cursor: pointer; font-weight: 600; font-size: 15px; list-style: none;
+  display: flex; justify-content: space-between; align-items: center; gap: .75rem;
+}
+.fh-faq-item summary::after { content: "+"; color: var(--forest); font-size: 18px; font-weight: 500; }
+.fh-faq-item[open] summary::after { content: "−"; }
+.fh-faq-item p { color: var(--muted); font-size: 14px; font-weight: 300; margin-top: .6rem; }
+
+/* صفحات السياسات */
+.fh-prose { max-width: 720px; }
+.fh-prose-updated { font-family: var(--font-archivo), sans-serif; font-size: 12px; color: var(--muted); margin-bottom: 1rem; }
+.fh-prose-intro { font-size: 16px; color: var(--muted); font-weight: 300; margin-bottom: 2rem; }
+.fh-prose h2 { font-size: 18px; margin: 2rem 0 .6rem; }
+.fh-prose p { color: var(--ink); font-size: 14.5px; font-weight: 300; line-height: 1.85; }
+
+@media (max-width: 900px) {
+  .fh-steps { grid-template-columns: 1fr; }
+  .fh-feat-grid, .fh-feat-grid.cols-3 { grid-template-columns: 1fr; }
+}

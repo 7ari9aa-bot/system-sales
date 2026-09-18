@@ -69,10 +69,6 @@ export function DemoChat() {
 
   return (
     <div className="fh-chat-wrap">
-      <div className="fh-demo-chip" style={{ marginInlineStart: 0, marginBottom: ".8rem" }}>
-        <span className="fh-demo-dot" /> {t.hero.demo}
-      </div>
-
       <div className="fh-chat" role="region" aria-label={t.chat.title}>
         <div className="fh-chat-head">
           <span className="fh-chat-avatar" aria-hidden="true"><span>F</span></span>

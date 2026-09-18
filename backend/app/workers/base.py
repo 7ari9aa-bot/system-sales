@@ -88,6 +88,8 @@ class StreamWorker:
         raise NotImplementedError
 
     async def run(self) -> None:
+        import asyncio
+
         consumer = f"{socket.gethostname()}:{os.getpid()}"
         self._running = True
         logger.info(
@@ -97,10 +99,22 @@ class StreamWorker:
             self.group,
             consumer,
         )
-        async for event in self._bus.consume(self.stream, self.group, consumer):
-            if not self._running:
-                break
-            await self._process(event)
+        while self._running:
+            try:
+                async for event in self._bus.consume(self.stream, self.group, consumer):
+                    if not self._running:
+                        break
+                    await self._process(event)
+            except TimeoutError as exc:
+                # Blocked XREADGROUP idle timeout or a network hiccup —
+                # reconnect and keep polling. Never kill the pool process.
+                logger.warning("worker.stream_timeout stream=%s err=%s", self.stream, exc)
+                await asyncio.sleep(1.0)
+            except Exception:
+                logger.exception("worker.loop_crashed stream=%s", self.stream)
+                await asyncio.sleep(2.0)
+                if not self._running:
+                    break
 
     def stop(self) -> None:
         self._running = False

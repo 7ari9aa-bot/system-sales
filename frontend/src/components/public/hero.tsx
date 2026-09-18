@@ -1,7 +1,7 @@
 "use client";
 
+import Link from "next/link";
 import { useI18n } from "@/components/public/i18n";
-import { DemoChat } from "@/components/public/demo-chat";
 import { Reveal } from "@/components/public/reveal";
 
 /** الشكل الهندسي الدوّار — ديكور بطيء جدًا (دورة كل 100 ثانية) */
@@ -32,12 +32,10 @@ export function Hero() {
           <h1>{t.hero.h1}</h1>
           <p className="fh-hero-sub">{t.hero.sub}</p>
           <div className="fh-hero-cta">
-            <a href="/auth/signup" className="fh-btn fh-btn-lg">{t.hero.start}</a>
-            <a href="#context" className="fh-btn fh-btn-secondary fh-btn-lg">{t.hero.explore}</a>
+            <Link href="/auth/signup" className="fh-btn fh-btn-lg">{t.hero.start}</Link>
+            <Link href="/product" className="fh-btn fh-btn-secondary fh-btn-lg">{t.hero.explore}</Link>
           </div>
-        </Reveal>
-        <Reveal className="fh-hero-env">
-          <DemoChat />
+          <p className="fh-hero-trust">{t.hero.trust}</p>
         </Reveal>
       </div>
     </section>
