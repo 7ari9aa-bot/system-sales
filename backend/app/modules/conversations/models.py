@@ -136,3 +136,84 @@ class AISession(TenantMixin, TimestampMixin, Base):
     token_usage: Mapped[dict] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'")
     )
+
+
+class MessageTemplate(TenantMixin, TimestampMixin, Base):
+    """Spec §31: first-class outbound template (WhatsApp HSM etc.).
+
+    AI/Automation MUST reference an APPROVED template — never compose
+    template-like content inline outside the 24h window.
+    """
+
+    __tablename__ = "message_templates"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    name: Mapped[str] = mapped_column(String(127))
+    # allowed: draft | submitted | approved | rejected | paused | archived
+    status: Mapped[str] = mapped_column(String(15), server_default="draft")
+    language: Mapped[str] = mapped_column(String(15), server_default="ar")
+    body_text: Mapped[str] = mapped_column(Text)
+    variables: Mapped[list] = mapped_column(JSONB, server_default="[]")
+    provider: Mapped[str] = mapped_column(String(31), server_default="whatsapp")
+    provider_template_id: Mapped[str | None] = mapped_column(String(127))
+    version: Mapped[int] = mapped_column(default=1)
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "name", "language", name="uq_templates_tenant_name_lang"),
+        Index("ix_templates_tenant_status", "tenant_id", "status"),
+    )
+
+
+class TemplateApproval(TenantMixin, AppendOnlyCreatedAtMixin, Base):
+    __tablename__ = "template_approvals"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    template_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("message_templates.id", ondelete="CASCADE")
+    )
+    # allowed: submitted | approved | rejected
+    status: Mapped[str] = mapped_column(String(15), server_default="submitted")
+    rejection_reason: Mapped[str | None] = mapped_column(Text)
+    reviewer: Mapped[str | None] = mapped_column(String(63))  # provider or staff
+
+
+class Attachment(TenantMixin, AppendOnlyCreatedAtMixin, Base):
+    """Spec §33-34: durable media object — provider URLs are never the
+    source of truth. scan/processing pipeline lands in the media worker."""
+
+    __tablename__ = "attachments"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("conversations.id", ondelete="SET NULL")
+    )
+    message_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("messages.id", ondelete="CASCADE")
+    )
+    storage_key: Mapped[str | None] = mapped_column(String(512))  # our S3 key
+    provider_url: Mapped[str | None] = mapped_column(Text)  # expiring original
+    mime_type: Mapped[str | None] = mapped_column(String(127))
+    size: Mapped[int | None] = mapped_column()
+    checksum: Mapped[str | None] = mapped_column(String(128))
+    width: Mapped[int | None] = mapped_column()
+    height: Mapped[int | None] = mapped_column()
+    duration: Mapped[int | None] = mapped_column()  # seconds (audio/video)
+    # allowed: pending | downloading | stored | scanned | failed
+    scan_status: Mapped[str] = mapped_column(String(15), server_default="pending")
+    # allowed: pending | processing | ready | failed
+    processing_status: Mapped[str] = mapped_column(String(15), server_default="pending")
+    # audio: spec §35
+    transcription_status: Mapped[str | None] = mapped_column(String(15))
+    transcript_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    language: Mapped[str | None] = mapped_column(String(15))
+
+    __table_args__ = (
+        Index("ix_attachments_tenant_message", "tenant_id", "message_id"),
+        Index("ix_attachments_tenant_conversation", "tenant_id", "conversation_id"),
+    )

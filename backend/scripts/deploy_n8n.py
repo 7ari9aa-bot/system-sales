@@ -15,7 +15,6 @@ import argparse
 import json
 import secrets
 import sys
-import time
 
 import httpx
 

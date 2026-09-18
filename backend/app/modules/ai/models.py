@@ -15,6 +15,7 @@ from datetime import date, datetime
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     ARRAY,
+    Boolean,
     Date,
     DateTime,
     ForeignKey,
@@ -253,4 +254,142 @@ class AIUsage(TenantMixin, AppendOnlyCreatedAtMixin, Base):
             "tenant_id", "period_date", "agent_id", name="uq_ai_usage_tenant_period_agent"
         ),
         Index("ix_ai_usage_tenant_period", "tenant_id", "period_date"),
+    )
+
+
+class ApprovalRequest(TenantMixin, TimestampMixin, Base):
+    """Spec §135: durable human-in-the-loop approval for HIGH-risk AI actions.
+
+    The AI run persists WAITING_APPROVAL state; approval resumes/rejects it.
+    Stale on new customer message (re-evaluate context, never auto-continue).
+    """
+
+    __tablename__ = "approval_requests"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_runs.id", ondelete="CASCADE")
+    )
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("conversations.id", ondelete="SET NULL")
+    )
+    # requested_by: ai | automation | system
+    requested_by: Mapped[str] = mapped_column(String(31), server_default="ai")
+    entity_type: Mapped[str] = mapped_column(String(63))
+    entity_id: Mapped[str] = mapped_column(String(64))
+    action: Mapped[str] = mapped_column(String(127))
+    # allowed: LOW | MEDIUM | HIGH
+    risk_level: Mapped[str] = mapped_column(String(15), server_default="HIGH")
+    payload: Mapped[dict] = mapped_column(JSONB, server_default="{}")
+    # allowed: PENDING | APPROVED | REJECTED | EXPIRED | CANCELLED
+    status: Mapped[str] = mapped_column(String(15), server_default="PENDING")
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    approved_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rejection_reason: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        Index("ix_approvals_tenant_status", "tenant_id", "status", "expires_at"),
+    )
+
+
+class BudgetPolicy(TenantMixin, TimestampMixin, Base):
+    """Spec §42: per-tenant AI budget with reserve/settle + alert thresholds."""
+
+    __tablename__ = "ai_budget_policies"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    scope: Mapped[str] = mapped_column(String(15), server_default="tenant")  # tenant|agent
+    agent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agents.id", ondelete="CASCADE")
+    )
+    period: Mapped[str] = mapped_column(String(15), server_default="monthly")  # daily|monthly
+    hard_cap: Mapped[float] = mapped_column(MONEY, server_default="0")
+    warning_threshold: Mapped[int] = mapped_column(default=80)  # percent
+    # allowed: block | fallback | warn
+    on_exceed: Mapped[str] = mapped_column(String(15), server_default="block")
+    fallback_alias: Mapped[str | None] = mapped_column(String(31))
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "scope", "period", "agent_id", name="uq_budget_scope"),
+    )
+
+
+class AIProviderPolicy(TenantMixin, TimestampMixin, Base):
+    """Spec §43: per-tenant provider allow/deny + data governance."""
+
+    __tablename__ = "ai_provider_policies"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    provider: Mapped[str] = mapped_column(String(31))
+    # allowed: allowed | denied
+    status: Mapped[str] = mapped_column(String(15), server_default="allowed")
+    allowed_models: Mapped[list] = mapped_column(JSONB, server_default="[]")
+    pii_redaction_required: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    data_classification: Mapped[str] = mapped_column(String(31), server_default="internal")
+    notes: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "provider", name="uq_ai_provider_policy"),
+    )
+
+
+class AIHandover(TenantMixin, AppendOnlyCreatedAtMixin, Base):
+    """Spec §37/§150: AI → human handover with reason and outcome."""
+
+    __tablename__ = "ai_handovers"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("conversations.id", ondelete="CASCADE")
+    )
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_runs.id", ondelete="SET NULL")
+    )
+    # allowed: budget | policy | low_confidence | customer_request | failure | guardrail
+    reason: Mapped[str] = mapped_column(String(31))
+    # allowed: pending | claimed | resolved
+    status: Mapped[str] = mapped_column(String(15), server_default="pending")
+    claimed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    note: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        Index("ix_handovers_tenant_status", "tenant_id", "status", "created_at"),
+    )
+
+
+class AIEvaluation(TenantMixin, TimestampMixin, Base):
+    """Spec §169: offline evaluation of an agent/prompt version before rollout."""
+
+    __tablename__ = "ai_evaluations"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    agent_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agents.id", ondelete="CASCADE")
+    )
+    prompt_version: Mapped[int] = mapped_column(default=1)
+    dataset_ref: Mapped[str | None] = mapped_column(String(255))
+    # allowed: pending | running | passed | failed | approved | rolled_back
+    status: Mapped[str] = mapped_column(String(15), server_default="pending")
+    quality_metrics: Mapped[dict] = mapped_column(JSONB, server_default="{}")
+    # allowed: none | canary | full
+    rollout_status: Mapped[str] = mapped_column(String(15), server_default="none")
+    notes: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        Index("ix_evaluations_tenant_agent", "tenant_id", "agent_id", "created_at"),
     )

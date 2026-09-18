@@ -11,6 +11,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Numeric,
     String,
     Table,
     Text,
@@ -43,10 +44,24 @@ class Customer(TenantMixin, TimestampMixin, VersionMixin, Base):
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     lifetime_value: Mapped[float] = mapped_column(MONEY, server_default="0")
     extra: Mapped[dict] = mapped_column(JSONB, server_default="{}")
+    # §28 identity merge: canonical redirect when this customer was merged away
+    merged_into_customer_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("customers.id", ondelete="SET NULL")
+    )
+    merged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # §143 tombstones / soft delete
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    deletion_reason: Mapped[str | None] = mapped_column(String(255))
 
     __table_args__ = (
         UniqueConstraint("tenant_id", "phone", name="uq_customers_tenant_phone"),
         Index("ix_customers_tenant_name", "tenant_id", "name"),
+        Index(
+            "ix_customers_tenant_merged_into",
+            "tenant_id",
+            "merged_into_customer_id",
+        ),
     )
 
 
@@ -164,5 +179,73 @@ class CustomerEvent(TenantMixin, AppendOnlyCreatedAtMixin, Base):
             "tenant_id",
             "customer_id",
             "created_at",
+        ),
+    )
+
+
+class IdentityMergeCandidate(TenantMixin, AppendOnlyCreatedAtMixin, Base):
+    """Spec §27: candidate duplicate pairs awaiting resolution.
+
+    Layer 3 (AI-assisted) creates candidates; humans decide (layer 4).
+    """
+
+    __tablename__ = "identity_merge_candidates"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    customer_a_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("customers.id", ondelete="CASCADE")
+    )
+    customer_b_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("customers.id", ondelete="CASCADE")
+    )
+    # allowed: deterministic | verified | ai_suggested | manual
+    match_type: Mapped[str] = mapped_column(String(31), server_default="ai_suggested")
+    confidence: Mapped[float] = mapped_column(Numeric(5, 4), server_default="0")
+    # allowed: pending | merged | rejected | dismissed
+    status: Mapped[str] = mapped_column(String(15), server_default="pending")
+    decided_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    evidence: Mapped[dict] = mapped_column(JSONB, server_default="{}")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "customer_a_id",
+            "customer_b_id",
+            name="uq_merge_candidates_pair",
+        ),
+        Index("ix_merge_candidates_tenant_status", "tenant_id", "status"),
+    )
+
+
+class IdentityMergeEvent(TenantMixin, AppendOnlyCreatedAtMixin, Base):
+    """Spec §28: audit trail of an executed merge (reversible reference)."""
+
+    __tablename__ = "identity_merge_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    canonical_customer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("customers.id", ondelete="CASCADE")
+    )
+    merged_away_customer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("customers.id", ondelete="CASCADE")
+    )
+    performed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    source: Mapped[str] = mapped_column(String(31), server_default="human")
+    details: Mapped[dict] = mapped_column(JSONB, server_default="{}")
+
+    __table_args__ = (
+        Index(
+            "ix_merge_events_tenant_canonical",
+            "tenant_id",
+            "canonical_customer_id",
         ),
     )

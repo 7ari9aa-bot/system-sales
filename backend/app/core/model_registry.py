@@ -15,3 +15,4 @@ from app.modules.inventory import models as inventory  # noqa: F401
 from app.modules.marketing import models as marketing  # noqa: F401
 from app.modules.orders import models as orders  # noqa: F401
 from app.modules.platform import models as platform  # noqa: F401
+from app.modules.privacy import models as privacy  # noqa: F401
