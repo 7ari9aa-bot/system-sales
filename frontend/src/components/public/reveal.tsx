@@ -10,12 +10,13 @@ export function Reveal({
   className = "",
   stagger = false,
   as: Tag = "div",
+  ...rest
 }: {
   children: React.ReactNode;
   className?: string;
   stagger?: boolean;
-  as?: "div" | "section" | "header";
-}) {
+  as?: "div" | "section" | "header" | "p";
+} & Omit<React.HTMLAttributes<HTMLElement>, "children" | "className">) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -42,6 +43,7 @@ export function Reveal({
     <Tag
       ref={ref as React.RefObject<never>}
       className={`fh-reveal${stagger ? " fh-reveal-stagger" : ""} ${className}`.trim()}
+      {...rest}
     >
       {children}
     </Tag>

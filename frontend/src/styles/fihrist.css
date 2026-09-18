@@ -146,10 +146,10 @@
 }
 .fh-brand-name { font-size: 16.5px; letter-spacing: .04em; }
 .fh-brand-tag { font-size: 12px; color: var(--fh-muted); font-weight: 600; }
-.fh-nav-links { display: flex; gap: .15rem; margin-inline-start: 1rem; flex: 1; }
+.fh-nav-links { display: flex; gap: .05rem; margin-inline-start: .75rem; flex: 1; flex-wrap: nowrap; }
 .fh-nav-links a {
-  padding: .5rem .8rem; border-radius: 9px;
-  font-size: 14px; font-weight: 600; color: var(--fh-muted);
+  padding: .5rem .7rem; border-radius: 9px; white-space: nowrap;
+  font-size: 13.5px; font-weight: 600; color: var(--fh-muted);
   transition: color .15s var(--fh-ease), background .15s var(--fh-ease);
 }
 .fh-nav-links a:hover { color: var(--fh-text); background: var(--fh-primary-soft); }
@@ -613,6 +613,7 @@
 .fh-auth-foot { display: flex; justify-content: center; gap: .5rem; color: var(--fh-muted); font-size: 12.5px; padding-block: 1.5rem; }
 
 /* ---------- responsive ---------- */
+@media (max-width: 1280px) { .fh-brand-tag { display: none; } }
 @media (max-width: 1080px) {
   .fh-inboxp { grid-template-columns: 240px 1fr; }
   .fh-inboxp-col:last-child { display: none; }
@@ -634,6 +635,7 @@
   .fh-security { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 640px) {
+  .fh-nav-actions .fh-btn { display: none; }
   .fh-metrics { grid-template-columns: repeat(2, 1fr); }
   .fh-controls { grid-template-columns: repeat(2, 1fr); }
   .fh-pricing-grid { grid-template-columns: 1fr; }

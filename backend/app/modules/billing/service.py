@@ -175,3 +175,55 @@ class EntitlementService:
                 f"plan does not allow: {capability}",
                 details={"capability": capability},
             )
+
+
+class BillingSnapshotService:
+    """Spec §54: immutable period snapshot — never live-recalculate invoices."""
+
+    @staticmethod
+    async def close_period(
+        session: AsyncSession, tenant_id: uuid.UUID, *, period_start, period_end
+    ) -> dict:
+        from datetime import datetime
+
+        from sqlalchemy import select
+
+        from app.modules.billing.models import Invoice, UsageRecord
+
+        rows = (
+            await session.execute(
+                select(
+                    UsageRecord.feature,
+                    UsageRecord.quantity,
+                ).where(
+                    UsageRecord.tenant_id == tenant_id,
+                    UsageRecord.period_date >= period_start,
+                    UsageRecord.period_date < period_end,
+                )
+            )
+        ).all()
+        by_feature: dict[str, float] = {}
+        for feature, quantity in rows:
+            by_feature[feature] = by_feature.get(feature, 0) + float(quantity or 0)
+
+        lines = [
+            {"feature": feature, "quantity": quantity}
+            for feature, quantity in sorted(by_feature.items())
+        ]
+        invoice = Invoice(
+            tenant_id=tenant_id,
+            number=f"INV-{period_start.strftime('%Y%m')}-{uuid.uuid4().hex[:6].upper()}",
+            status="open",
+            subtotal=0,
+            total=0,
+            currency="EGP",
+            issued_at=datetime.now(UTC),
+            extra={
+                "snapshot": lines,
+                "period_start": period_start.isoformat(),
+                "period_end": period_end.isoformat(),
+            },
+        )
+        session.add(invoice)
+        await session.flush()
+        return {"invoice_id": str(invoice.id), "lines": lines}

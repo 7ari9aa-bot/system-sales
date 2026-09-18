@@ -116,7 +116,7 @@ async def enforce_budget(
             sa_select(BudgetPolicy).where(
                 BudgetPolicy.tenant_id == tenant_id,
                 BudgetPolicy.period == "monthly",
-                BudgetPolicy.is_active.is_(True),
+
             )
         )
     ).scalars().all():

@@ -1,148 +1,108 @@
-/** أقسام الذكاء الاصطناعي + التكامل البشري + الأتمتة. */
+"use client";
 
-const AI_STEPS = ["يفهم", "يجيب السياق", "يستنتج", "يستخدم أدوات", "يتحقق", "ينفذ", "يراجع", "يحوّل للبشر"];
+/** الذكاء الاصطناعي + التكامل البشري + الأتمتة — كلها من القاموس. */
+
+import { useI18n } from "@/components/public/i18n";
+import { Reveal } from "@/components/public/reveal";
 
 export function AISection() {
+  const { t } = useI18n();
   return (
-    <section className="mk-section" id="ai">
-      <div className="mk-container">
-        <header className="mk-section-head">
-          <h2>ذكاء اصطناعي بيشتغل — جوه قواعدك.</h2>
-          <p>
-            مش نافذة شات. عامل جوه النظام: بيشوف السياق المسموح له بس،
-            وبينفذ عبر أدوات بصلاحيات محددة، وكل خطوة بتتسجل.
-          </p>
-        </header>
+    <section className="fh-section" id="ai">
+      <div className="fh-container">
+        <Reveal className="fh-section-head">
+          <h2>{t.ai.title}</h2>
+          <p>{t.ai.sub}</p>
+        </Reveal>
 
-        <ol className="mk-pipeline" aria-label="مسار عمل الذكاء الاصطناعي">
-          {AI_STEPS.map((label, i) => (
+        <Reveal className="fh-pipeline" stagger aria-label={t.ai.title}>
+          {t.ai.steps.map((label, i) => (
             <li key={label}>
-              <span className="mk-pipeline-num" aria-hidden="true">{i + 1}</span>
+              <span className="fh-pipeline-num" aria-hidden="true">{i + 1}</span>
               {label}
             </li>
           ))}
-        </ol>
+        </Reveal>
 
-        <div className="mk-flow-demo">
-          <span className="mk-flow-node">محادثة</span>
-          <span className="mk-flow-arrow" aria-hidden="true">←</span>
-          <span className="mk-flow-node">سياق العميل</span>
-          <span className="mk-flow-arrow" aria-hidden="true">←</span>
-          <span className="mk-flow-node mk-flow-node-ai">AI</span>
-          <span className="mk-flow-arrow" aria-hidden="true">←</span>
-          <span className="mk-flow-node">أداة</span>
-          <span className="mk-flow-arrow" aria-hidden="true">←</span>
-          <span className="mk-flow-node">طلب</span>
-          <span className="mk-flow-arrow" aria-hidden="true">←</span>
-          <span className="mk-flow-node">أتمتة</span>
-        </div>
+        <Reveal className="fh-flow" aria-hidden="true">
+          {t.ai.flow.map((node, i) => (
+            <span key={node} style={{ display: "inline-flex", alignItems: "center", gap: ".6rem" }}>
+              {i > 0 && <span className="fh-flow-arrow" aria-hidden="true">←</span>}
+              <span className={`fh-flow-node${node === "AI" ? " is-ai" : ""}`}>{node}</span>
+            </span>
+          ))}
+        </Reveal>
 
-        <div className="mk-chip-grid">
-          <span className="mk-chip">صلاحيات وأدوار محددة</span>
-          <span className="mk-chip">سياسات وأدوات معتمدة</span>
-          <span className="mk-chip">موافقات بشرية للخطوات الحساسة</span>
-          <span className="mk-chip">حدود تكلفة لكل مستأجر</span>
-          <span className="mk-chip">تدقيق كامل لكل تشغيل</span>
-          <span className="mk-chip">مصادر معرفة مجمّعة بالصلاحيات</span>
-        </div>
+        <Reveal className="fh-chip-grid" stagger>
+          {t.ai.chips.map((c) => <span key={c} className="fh-chip">{c}</span>)}
+        </Reveal>
       </div>
     </section>
   );
 }
 
 export function Handoff() {
+  const { t } = useI18n();
+  const badges = ["fh-badge-primary", "fh-badge-warning", "fh-badge-danger", "fh-badge-success"];
   return (
-    <section className="mk-section mk-section-alt" id="handoff">
-      <div className="mk-container">
-        <header className="mk-section-head">
-          <h2>الـAI بيشتغل مع فريقك، مش براه.</h2>
-          <p>لما الحالة تعقّد، التحويل بيحصل بسطر واحد — والسياق الكامل بيوصل مع الموظف. بدون إعادة من الصفر.</p>
-        </header>
+    <section className="fh-section fh-section-alt" id="handoff">
+      <div className="fh-container">
+        <Reveal className="fh-section-head">
+          <h2>{t.handoff.title}</h2>
+          <p>{t.handoff.sub}</p>
+        </Reveal>
 
-        <div className="mk-handoff">
-          <div className="mk-handoff-step">
-            <span className="badge badge-primary">AI</span>
-            <b>الـAI بيعالج المحادثة</b>
-            <small>فهم النية · تنفيذ مسموح · ردود مسودة</small>
-          </div>
-          <span className="mk-handoff-arrow" aria-hidden="true">←</span>
-          <div className="mk-handoff-step">
-            <span className="badge badge-warning">اكتشاف</span>
-            <b>حالة معقدة تكتشف</b>
-            <small>شكوى · استرجاع · عميل غاضب</small>
-          </div>
-          <span className="mk-handoff-arrow" aria-hidden="true">←</span>
-          <div className="mk-handoff-step">
-            <span className="badge badge-danger">تحويل</span>
-            <b>تحويل لحد من الفريق</b>
-            <small>حسب التخصص والعبء</small>
-          </div>
-          <span className="mk-handoff-arrow" aria-hidden="true">←</span>
-          <div className="mk-handoff-step">
-            <span className="badge badge-success">إنسان</span>
-            <b>الموظف يستلم جاهز</b>
-            <small>الملخص + الطلب + الدفع + تاريخ العميل</small>
-          </div>
-        </div>
+        <Reveal className="fh-handoff" stagger>
+          {(t.handoff.steps as [string, string, string][]).map(([badge, title, detail], i) => (
+            <span key={title} style={{ display: "contents" }}>
+              {i > 0 && <span className="fh-handoff-arrow" aria-hidden="true">←</span>}
+              <div className="fh-handoff-step">
+                <span className={`fh-badge ${badges[i]}`}>{badge}</span>
+                <b>{title}</b>
+                <small>{detail}</small>
+              </div>
+            </span>
+          ))}
+        </Reveal>
 
-        <div className="mk-chip-grid mk-chip-grid-subtle">
-          <span className="mk-chip">حالة الـAI ظاهرة دايمًا</span>
-          <span className="mk-chip">ملكية بشرية واضحة</span>
-          <span className="mk-chip">موافقة على الخطوات الحساسة</span>
-          <span className="mk-chip">تدقيق لكل انتقال</span>
-        </div>
+        <Reveal className="fh-chip-grid subtle" stagger>
+          {t.handoff.chips.map((c) => <span key={c} className="fh-chip">{c}</span>)}
+        </Reveal>
       </div>
     </section>
   );
 }
 
-const AUTO_CHAIN = ["حدث", "شرط", "AI / منطق", "أداة", "تحقق", "موافقة", "تنفيذ", "مراجعة", "تدقيق"];
-const AUTO_EXAMPLE = [
-  "عميل عالي القيمة يبعت رسالة",
-  "تعريف العميل من السياق",
-  "فحص قيمة العميل",
-  "انتظار 10 دقايق",
-  "مفيش رد بشري؟",
-  "الـAI يصنّف الرسالة",
-  "إشعار الفريق",
-  "تصعيد لو مفيش استجابة",
-];
-
 export function Automation() {
+  const { t } = useI18n();
   return (
-    <section className="mk-section" id="automation">
-      <div className="mk-container">
-        <header className="mk-section-head">
-          <h2>اوصفها. ابنِها. شغّلها.</h2>
-          <p>أتمتة تشغيلية حقيقية — بتنفذ إجراءات عمل جوه النظام، مش إشعارات بس.</p>
-        </header>
+    <section className="fh-section" id="automation">
+      <div className="fh-container">
+        <Reveal className="fh-section-head">
+          <h2>{t.automation.title}</h2>
+          <p>{t.automation.sub}</p>
+        </Reveal>
 
-        <ol className="mk-pipeline mk-pipeline-compact" aria-label="بنية مسار الأتمتة">
-          {AUTO_CHAIN.map((label) => (
-            <li key={label}>{label}</li>
-          ))}
-        </ol>
+        <Reveal className="fh-pipeline fh-pipeline-compact" stagger aria-label={t.automation.title}>
+          {t.automation.chain.map((label) => <li key={label}>{label}</li>)}
+        </Reveal>
 
-        <div className="mk-automation">
-          <div className="card mk-automation-flow">
-            <h4>مثال: مسار العملاء عالي القيمة</h4>
-            <ol className="mk-auto-steps">
-              {AUTO_EXAMPLE.map((step, i) => (
+        <Reveal className="fh-automation" stagger>
+          <div className="fh-card fh-automation-flow">
+            <h4>{t.automation.example}</h4>
+            <ol className="fh-auto-steps">
+              {t.automation.steps.map((step, i) => (
                 <li key={step}>
-                  <span className="mk-auto-num" aria-hidden="true">{i + 1}</span>
+                  <span className="fh-auto-num" aria-hidden="true">{i + 1}</span>
                   {step}
                 </li>
               ))}
             </ol>
           </div>
-          <div className="mk-automation-caps">
-            <span className="mk-chip">سجل إصدارات</span>
-            <span className="mk-chip">تشغيل تجريبي</span>
-            <span className="mk-chip">سجل تنفيذ</span>
-            <span className="mk-chip">إعادة تشغيل</span>
-            <span className="mk-chip">استرجاع بعد الفشل</span>
+          <div className="fh-automation-caps">
+            {t.automation.caps.map((c) => <span key={c} className="fh-chip">{c}</span>)}
           </div>
-        </div>
+        </Reveal>
       </div>
     </section>
   );

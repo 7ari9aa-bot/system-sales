@@ -1,205 +1,177 @@
-/** سياق العمل الواحد + Customer 360 + الـInbox الموحد — أقسام ثابتة (Server Components). */
+"use client";
+
+/** سياق العمل + ملف العميل الموحد (مجرد بالكامل — بدون أسماء) + الـInbox. */
+
+import { useI18n } from "@/components/public/i18n";
+import { Reveal } from "@/components/public/reveal";
+
+function PersonIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 20c1.5-3.5 4.5-5 8-5s6.5 1.5 8 5" />
+    </svg>
+  );
+}
 
 export function ContextGraph() {
+  const { t } = useI18n();
   return (
-    <section className="mk-section mk-section-alt" id="context">
-      <div className="mk-container">
-        <header className="mk-section-head">
-          <h2>شركتك مش المفروض تعيش في أدوات مفككة.</h2>
-          <p>
-            مش CRM قاعدة بيانات لوحدها + Inbox قاعدة بيانات لوحدها + AI لوحده.
-            سياق واحد بيظهر في كل مكان — نفس العميل بنفس التاريخ والقيمة في كل شاشة.
-          </p>
-        </header>
-
-        <div className="mk-graph" role="img" aria-label="مخطط: العميل في المركز متصل بالمحادثة والطلب والتسويق والدفع والأتمتة والذكاء الاصطناعي والتحليلات">
-          <div className="mk-graph-row">
-            <span className="mk-node">محادثة</span>
-            <span className="mk-node">طلب</span>
-            <span className="mk-node">تسويق</span>
+    <section className="fh-section fh-section-alt" id="context">
+      <div className="fh-container">
+        <Reveal className="fh-section-head">
+          <h2>{t.context.title}</h2>
+          <p>{t.context.sub}</p>
+        </Reveal>
+        <Reveal className="fh-graph" role="img" aria-label={t.context.hub}>
+          <div className="fh-graph-row">
+            {t.context.nodes.slice(0, 3).map((n) => <span key={n} className="fh-node">{n}</span>)}
           </div>
-          <div className="mk-graph-link" aria-hidden="true" />
-          <div className="mk-graph-hub">العميل — سياق واحد</div>
-          <div className="mk-graph-link" aria-hidden="true" />
-          <div className="mk-graph-row">
-            <span className="mk-node">دفع</span>
-            <span className="mk-node">أتمتة</span>
-            <span className="mk-node">AI</span>
+          <div className="fh-graph-link" aria-hidden="true" />
+          <div className="fh-graph-hub">{t.context.hub}</div>
+          <div className="fh-graph-link" aria-hidden="true" />
+          <div className="fh-graph-row">
+            {t.context.nodes.slice(3, 6).map((n) => <span key={n} className="fh-node">{n}</span>)}
           </div>
-          <div className="mk-graph-tail" aria-hidden="true" />
-          <span className="mk-node mk-node-wide">تحليلات</span>
-        </div>
+          <div className="fh-graph-tail" aria-hidden="true" />
+          <span className="fh-node">{t.context.nodes[6]}</span>
+        </Reveal>
       </div>
     </section>
   );
 }
 
 export function Customer360() {
+  const { t } = useI18n();
   return (
-    <section className="mk-section" id="customer">
-      <div className="mk-container">
-        <header className="mk-section-head">
-          <h2>كل عميل بيجي معاه السياق الكامل.</h2>
-          <p>سجل عميل حقيقي من النظام — المحادثة والطلب والدفع والتاريخ في مكان واحد.</p>
-        </header>
+    <section className="fh-section" id="customer">
+      <div className="fh-container">
+        <Reveal className="fh-section-head">
+          <h2>{t.c360.title}</h2>
+          <p>{t.c360.sub}</p>
+        </Reveal>
 
-        <div className="mk-demo-chip mk-demo-chip-float" aria-hidden="true">
-          <span className="mk-demo-dot" /> بيانات تجريبية
+        <div className="fh-demo-chip" style={{ marginInlineStart: "auto", marginBottom: ".8rem" }}>
+          <span className="fh-demo-dot" /> {t.c360.demo}
         </div>
 
-        <div className="card mk-c360">
-          <div className="mk-c360-head">
-            <span className="mk-env-avatar mk-avatar-lg" aria-hidden="true">أ م</span>
-            <div className="mk-c360-id">
-              <strong>أحمد محمد</strong>
-              <div className="mk-c360-badges">
-                <span className="badge badge-primary">VIP</span>
-                <span className="badge badge-success">نشط</span>
+        <Reveal className="fh-card fh-record">
+          <div className="fh-record-head">
+            <span className="fh-record-avatar" aria-hidden="true"><PersonIcon /></span>
+            <div className="fh-record-id">
+              <strong>{t.c360.name}</strong>
+              <div className="fh-record-badges">
+                <span className="fh-badge fh-badge-primary">{t.c360.vip}</span>
+                <span className="fh-badge fh-badge-success">{t.c360.active}</span>
               </div>
             </div>
-            <div className="mk-c360-stats">
-              <div><small>الإيرادات</small><b>8,420 ج.م</b></div>
-              <div><small>الطلبات</small><b>14</b></div>
-              <div><small>آخر نشاط</small><b>منذ 5 د</b></div>
+            <div className="fh-record-stats">
+              <div><small>{t.c360.revenue}</small><b>8,420</b></div>
+              <div><small>{t.c360.orders}</small><b>14</b></div>
+              <div><small>{t.c360.last}</small><b>{t.c360.demo}</b></div>
             </div>
           </div>
 
-          <div className="mk-c360-tabs" aria-hidden="true">
-            <span className="is-active">نظرة عامة</span>
-            <span>الخط الزمني</span>
-            <span>المحادثات</span>
-            <span>الطلبات</span>
-            <span>المدفوعات</span>
-            <span>التسويق</span>
-            <span>المهام</span>
-            <span>AI</span>
+          <div className="fh-record-tabs" aria-hidden="true">
+            {t.c360.tabs.map((tab, i) => (
+              <span key={tab} className={i === 0 ? "is-active" : ""}>{tab}</span>
+            ))}
           </div>
 
-          <div className="mk-c360-body">
-            <div className="mk-c360-panel">
-              <h4>معلومات العميل</h4>
-              <div className="mk-kv"><span>الهاتف</span><b dir="ltr">+20 100 123 4567</b></div>
-              <div className="mk-kv"><span>البريد</span><b dir="ltr">ahmed@example.com</b></div>
-              <div className="mk-kv"><span>الوسوم</span><b>تجزئة · عميل دائم</b></div>
-              <div className="mk-kv"><span>المسؤول</span><b>نورا — فريق المبيعات</b></div>
+          <div className="fh-record-body">
+            <div className="fh-record-panel">
+              <h4>{t.c360.info}</h4>
+              <div className="fh-kv"><span>{t.c360.phone}</span><b>{t.c360.masked}</b></div>
+              <div className="fh-kv"><span>{t.c360.email}</span><b>{t.c360.masked}</b></div>
+              <div className="fh-kv"><span>{t.c360.tags}</span><b>{t.c360.vip}</b></div>
+              <div className="fh-kv"><span>{t.c360.owner}</span><b>{t.c360.demo}</b></div>
             </div>
-            <div className="mk-c360-panel">
-              <h4>سياق العمل</h4>
-              <div className="mk-kv"><span>طلبات مفتوحة</span><b>2</b></div>
-              <div className="mk-kv"><span>مدفوعات</span><b>14 مكتملة</b></div>
-              <div className="mk-kv"><span>مشاكل مفتوحة</span><b>لا يوجد</b></div>
-              <div className="mk-kv"><span>قناة مفضلة</span><b>واتساب</b></div>
+            <div className="fh-record-panel">
+              <h4>{t.c360.work}</h4>
+              <div className="fh-kv"><span>{t.c360.openOrders}</span><b>2</b></div>
+              <div className="fh-kv"><span>{t.c360.payments}</span><b>14</b></div>
+              <div className="fh-kv"><span>{t.c360.issues}</span><b>—</b></div>
+              <div className="fh-kv"><span>{t.c360.channel}</span><b>{t.inbox.channels[1]}</b></div>
             </div>
-            <div className="mk-c360-panel mk-c360-panel-ai">
-              <h4>سياق AI</h4>
-              <div className="mk-kv"><span>النية</span><b>حالة طلب · مرتفعة</b></div>
-              <div className="mk-kv"><span>قيمة العميل</span><b>مرتفعة</b></div>
-              <div className="mk-kv"><span>الخطر</span><b>منخفض</b></div>
-              <div className="mk-kv"><span>الإجراء التالي</span><b>متابعة بعد التوصيل</b></div>
+            <div className="fh-record-panel is-ai">
+              <h4>{t.c360.aiCtx}</h4>
+              <div className="fh-kv"><span>{t.c360.intent}</span><b>{t.inbox.intentVal}</b></div>
+              <div className="fh-kv"><span>{t.c360.value}</span><b>{t.c360.vip}</b></div>
+              <div className="fh-kv"><span>{t.c360.risk}</span><b>—</b></div>
+              <div className="fh-kv"><span>{t.c360.next}</span><b>{t.inbox.nextVal}</b></div>
             </div>
           </div>
-        </div>
+        </Reveal>
 
-        <div className="mk-timeline-wrap">
-          <h3 className="mk-h3">خط زمني مترابط — مش سجلات متفرقة</h3>
-          <ol className="mk-timeline">
-            <li><b>محادثة</b><small>سأل على الطلب على واتساب</small></li>
-            <li><b>عميل محتمل</b><small>اتسجل من حملة إنستجرام</small></li>
-            <li><b>طلب</b><small dir="ltr">#1042 · 1,250 ج.م</small></li>
-            <li><b>دفعة</b><small>دفع عند الاستلام · مؤكدة</small></li>
-            <li><b>حملة</b><small>كود خصم للعميل الدائم</small></li>
-            <li><b>أتمتة</b><small>إشعار الشحن تلقائي</small></li>
-            <li><b>تفاعل AI</b><small>ملخص + إجراء مقترح</small></li>
+        <Reveal className="fh-timeline-wrap">
+          <h3>{t.c360.timelineTitle}</h3>
+          <ol className="fh-timeline">
+            {(t.c360.timeline as [string, string][]).map(([label, detail]) => (
+              <li key={label}><b>{label}</b><small>{detail}</small></li>
+            ))}
           </ol>
-        </div>
+        </Reveal>
       </div>
     </section>
   );
 }
 
 export function InboxPreview() {
+  const { t } = useI18n();
   return (
-    <section className="mk-section mk-section-alt" id="inbox">
-      <div className="mk-container">
-        <header className="mk-section-head">
-          <h2>كل محادثة بتوصل ومعاها السياق.</h2>
-          <p>
-            الموظف مش بيخرج من المحادثة عشان يدور على العميل أو الطلب أو الدفع —
-            كل ده ظاهر جنب شغله.
-          </p>
-        </header>
+    <section className="fh-section fh-section-alt" id="inbox">
+      <div className="fh-container">
+        <Reveal className="fh-section-head">
+          <h2>{t.inbox.title}</h2>
+          <p>{t.inbox.sub}</p>
+        </Reveal>
 
-        <div className="mk-channels" aria-label="القنوات المدعومة">
-          <span className="mk-channel is-live">شات الموقع<span>شغّال</span></span>
-          <span className="mk-channel">واتساب<span>قريبًا</span></span>
-          <span className="mk-channel">إنستجرام<span>قريبًا</span></span>
-          <span className="mk-channel">ماسنجر<span>قريبًا</span></span>
-          <span className="mk-channel">تليجرام<span>قريبًا</span></span>
+        <Reveal className="fh-channels" stagger>
+          {t.inbox.channels.map((ch, i) => (
+            <span key={ch} className={`fh-channel${i === 0 ? " is-live" : ""}`}>
+              {ch}
+              <small>{i === 0 ? t.inbox.live : t.inbox.soon}</small>
+            </span>
+          ))}
+        </Reveal>
+
+        <div className="fh-demo-chip" style={{ marginInlineStart: "auto", marginBottom: ".8rem" }}>
+          <span className="fh-demo-dot" /> {t.inbox.demo}
         </div>
 
-        <div className="mk-demo-chip mk-demo-chip-float" aria-hidden="true">
-          <span className="mk-demo-dot" /> بيانات تجريبية
-        </div>
-
-        <div className="card mk-inbox-preview">
-          <div className="mk-inbox-col">
-            <div className="mk-env-col-title">المحادثات</div>
-            <div className="mk-env-convo is-active">
-              <span className="mk-env-avatar">أ م</span>
-              <span className="mk-env-convo-meta">
-                <strong>أحمد محمد</strong>
-                <small>واتساب · منذ دقيقتين</small>
-              </span>
+        <Reveal className="fh-card fh-inboxp">
+          <div className="fh-inboxp-col">
+            <div className="fh-col-title">{t.inbox.list}</div>
+            {(t.inbox.convos as [string, string][]).map(([title, meta], i) => (
+              <div key={title} className={`fh-convo${i === 0 ? " is-active" : ""}`}>
+                <span className="fh-convo-avatar" aria-hidden="true"><PersonIcon /></span>
+                <span className="fh-convo-meta">
+                  <strong>{title}</strong>
+                  <small>{meta}</small>
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="fh-inboxp-col fh-thread">
+            <div className="fh-col-title">{t.inbox.thread}</div>
+            <div className="fh-thread-msgs">
+              <div className="fh-bubble">{t.inbox.m1}<span className="fh-bubble-tag">· 10m</span></div>
+              <div className="fh-bubble fh-bubble-user">{t.inbox.m2}<span className="fh-bubble-tag">{t.inbox.agent} · 8m</span></div>
+              <div className="fh-bubble">{t.inbox.m3}<span className="fh-bubble-tag">· 2m</span></div>
             </div>
-            <div className="mk-env-convo">
-              <span className="mk-env-avatar">س ع</span>
-              <span className="mk-env-convo-meta">
-                <strong>سارة علي</strong>
-                <small>تليجرام · منذ 12 د</small>
-              </span>
-            </div>
-            <div className="mk-env-convo">
-              <span className="mk-env-avatar">و ح</span>
-              <span className="mk-env-convo-meta">
-                <strong>عمر حسن</strong>
-                <small>شات الموقع · منذ ساعة</small>
-              </span>
+            <div className="fh-inbox-suggest">
+              <span className="fh-badge fh-badge-primary">{t.inbox.suggestTag}</span>
+              <small>{t.inbox.suggest}</small>
             </div>
           </div>
-          <div className="mk-inbox-col mk-inbox-col-thread">
-            <div className="mk-env-col-title">المحادثة</div>
-            <div className="mk-env-msgs">
-              <div className="bubble">
-                هل الطلب هيتوصل قبل الجمعة؟
-                <span className="time">منذ 10 د</span>
-              </div>
-              <div className="bubble outbound">
-                أيوه، مجدول يوم الخميس — وابعتلك التتبع أول ما يتحرك.
-                <span className="time">رد الفريق · منذ 8 د</span>
-              </div>
-              <div className="bubble">
-                ممكن أغير العنوان لبيت والدتي؟
-                <span className="time">منذ دقيقتين</span>
-              </div>
-              <div className="mk-env-typing" aria-hidden="true"><span /><span /><span /></div>
-            </div>
-            <div className="mk-inbox-suggest">
-              <span className="badge badge-primary">مسودة AI</span>
-              <small>«أكيد — ابعت العنوان الجديد وهحدّث الشحنة فورًا.»</small>
-            </div>
+          <div className="fh-inboxp-col">
+            <div className="fh-col-title">{t.inbox.ctx}</div>
+            <div className="fh-kv"><span>{t.c360.name}</span><b>{t.inbox.newCustomer}</b></div>
+            <div className="fh-kv"><span>{t.inbox.orders}</span><b>1</b></div>
+            <div className="fh-kv"><span>{t.inbox.intent}</span><b>{t.inbox.intentVal}</b></div>
+            <div className="fh-kv"><span>{t.inbox.next}</span><b>{t.inbox.nextVal}</b></div>
           </div>
-          <div className="mk-inbox-col">
-            <div className="mk-env-col-title">سياق العميل</div>
-            <div className="mk-env-cust">
-              <strong>سارة علي</strong>
-              <span className="badge">عميل جديد</span>
-            </div>
-            <div className="mk-kv"><span>الطلبات</span><b>1 مكتمل</b></div>
-            <div className="mk-kv"><span>القيمة</span><b>690 ج.م</b></div>
-            <div className="mk-kv"><span>النية</span><b>تعديل شحنة</b></div>
-            <div className="mk-kv"><span>الإجراء التالي</span><b>تحديث العنوان</b></div>
-          </div>
-        </div>
+        </Reveal>
       </div>
     </section>
   );

@@ -1,27 +1,25 @@
 "use client";
 
-/** /auth/signup — إنشاء حساب ضد الـAPI الحقيقي (register ثم login).
- *  التسجيل بسيط: الحقول المطلوبة من الـAPI فقط — كل باقي الإعداد يجي على مرحلة
- *  الإعداد بعد أول دخول (progressive onboarding). */
+/** /auth/signup — إنشاء حساب ضد الـAPI الحقيقي (register ثم login)، ثنائي اللغة. */
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { getTokens, setTokens } from "@/lib/api";
 import { authPost } from "@/lib/auth-api";
+import { useI18n } from "@/components/public/i18n";
 import Link from "next/link";
-
-type ErrState = { message: string; retryable: boolean } | null;
 
 const PASSWORD_MIN = 8;
 
 export default function AuthSignupPage() {
+  const { t } = useI18n();
   const router = useRouter();
   const [fullName, setFullName] = useState("");
   const [storeName, setStoreName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<ErrState>(null);
+  const [err, setErr] = useState<{ message: string; retryable: boolean } | null>(null);
 
   useEffect(() => {
     if (getTokens()) router.replace("/inbox");
@@ -33,7 +31,7 @@ export default function AuthSignupPage() {
     e.preventDefault();
     if (busy) return;
     if (!pwValid) {
-      setErr({ message: `كلمة المرور لازم تكون ${PASSWORD_MIN} حروف على الأقل.`, retryable: false });
+      setErr({ message: t.auth.errPw, retryable: false });
       return;
     }
     setBusy(true);
@@ -51,21 +49,20 @@ export default function AuthSignupPage() {
     }).catch(() => ({ ok: false as const, status: 0, message: undefined }));
     if (!reg.ok) {
       if (reg.status === 0) {
-        setErr({ message: "مش قادرين نوصل للسيرفر. اتأكد من اتصالك وحاول تاني.", retryable: true });
+        setErr({ message: t.auth.errNetwork, retryable: true });
       } else if (reg.status === 409) {
-        setErr({ message: "البريد ده مستخدم بالفعل. سجّل الدخول أو استخدم بريد تاني.", retryable: false });
+        setErr({ message: t.auth.errExists, retryable: false });
       } else if (reg.status === 429) {
-        setErr({ message: "محاولات كثيرة جدًا. حاول مرة تانية بعد شوية.", retryable: true });
+        setErr({ message: t.auth.errRate, retryable: true });
       } else if (reg.message) {
         setErr({ message: reg.message, retryable: true });
       } else {
-        setErr({ message: "تعذر إنشاء الحساب. حاول مرة تانية.", retryable: true });
+        setErr({ message: t.auth.errCreate, retryable: true });
       }
       setBusy(false);
       return;
     }
 
-    // التسجيل بيرجع البروفايل بدون توكنات — ندخل مباشرة
     const login = await authPost<{ access_token: string; refresh_token: string }>(
       "/auth/login",
       { email, password },
@@ -75,21 +72,18 @@ export default function AuthSignupPage() {
       router.replace("/inbox");
       return;
     }
-    setErr({
-      message: "الحساب اتعمل لكن تعذر الدخول التلقائي — سجّل الدخول يدويًا.",
-      retryable: false,
-    });
+    setErr({ message: t.auth.errAutoLogin, retryable: false });
     setBusy(false);
   }
 
   return (
-    <div className="card auth-card" data-testid="auth-signup-card">
-      <h1>أنشئ حسابك</h1>
-      <p className="auth-sub">دقيقة واحدة وتكون جوه — باقي الإعداد بيتم بعد أول دخول.</p>
+    <div className="fh-card fh-auth-card" data-testid="auth-signup-card">
+      <h1>{t.auth.signupTitle}</h1>
+      <p className="fh-auth-sub">{t.auth.signupSub}</p>
 
-      <form className="auth-form" onSubmit={submit} noValidate>
+      <form className="fh-auth-form" onSubmit={submit} noValidate>
         <div>
-          <label htmlFor="storeName">اسم المتجر / النشاط</label>
+          <label htmlFor="storeName">{t.auth.storeName}</label>
           <input
             id="storeName"
             autoComplete="organization"
@@ -99,7 +93,7 @@ export default function AuthSignupPage() {
           />
         </div>
         <div>
-          <label htmlFor="fullName">الاسم بالكامل</label>
+          <label htmlFor="fullName">{t.auth.fullName}</label>
           <input
             id="fullName"
             autoComplete="name"
@@ -109,7 +103,7 @@ export default function AuthSignupPage() {
           />
         </div>
         <div>
-          <label htmlFor="email">البريد الإلكتروني</label>
+          <label htmlFor="email">{t.auth.email}</label>
           <input
             id="email"
             type="email"
@@ -121,7 +115,7 @@ export default function AuthSignupPage() {
           />
         </div>
         <div>
-          <label htmlFor="password">كلمة المرور</label>
+          <label htmlFor="password">{t.auth.password}</label>
           <input
             id="password"
             type="password"
@@ -132,25 +126,28 @@ export default function AuthSignupPage() {
             required
             aria-describedby="pw-hint"
           />
-          <small id="pw-hint" className={`pw-hint${pwValid ? " is-ok" : ""}`}>
-            {pwValid ? "✓" : "•"} {PASSWORD_MIN} حروف على الأقل
+          <small id="pw-hint" className={`fh-pw-hint${pwValid ? " is-ok" : ""}`}>
+            {pwValid ? "✓" : "•"} {t.auth.pwHint}
           </small>
         </div>
 
         {err && (
-          <div className="auth-error" role="alert">
+          <div className="fh-auth-error" role="alert">
             <p>{err.message}</p>
-            {err.retryable && <button type="button" className="auth-error-retry" onClick={() => setErr(null)}>حاول مرة تانية</button>}
+            {err.retryable && (
+              <button type="button" onClick={() => setErr(null)}>{t.auth.retry}</button>
+            )}
           </div>
         )}
 
-        <button className="btn auth-submit" disabled={busy} data-testid="submit-signup">
-          {busy ? "جارٍ إنشاء الحساب…" : "إنشاء الحساب"}
+        <button className="fh-btn fh-auth-submit" disabled={busy} data-testid="submit-signup">
+          {busy ? t.auth.submittingSignup : t.auth.submitSignup}
         </button>
       </form>
 
-      <p className="auth-alt">
-        عندك حساب بالفعل؟ <Link href="/auth/login">سجّل الدخول</Link>
+      <p className="fh-auth-alt">
+        {t.auth.haveAccount}{" "}
+        <Link href="/auth/login">{t.auth.signin}</Link>
       </p>
     </div>
   );

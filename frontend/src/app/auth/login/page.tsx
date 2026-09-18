@@ -1,34 +1,22 @@
 "use client";
 
-/** /auth/login — شغّال ضد الـAPI الحقيقي.
- *  الحالات: افتراضي · تحميل · بيانات غير صحيحة · تجاوز المحاولات · خطأ شبكة.
+/** /auth/login — شغّال ضد الـAPI الحقيقي، ثنائي اللغة، فاتح/داكن.
  *  مفيش Google/SSO — مش موجودين في الـbackend فعلًا. */
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { getTokens, setTokens } from "@/lib/api";
 import { authPost } from "@/lib/auth-api";
+import { useI18n } from "@/components/public/i18n";
 import Link from "next/link";
 
-type ErrState = { message: string; retryable: boolean } | null;
-
-function mapError(status: number, apiMessage?: string): ErrState {
-  if (status === 401 || status === 403 || status === 400) {
-    return { message: "البريد الإلكتروني أو كلمة المرور غير صحيحة.", retryable: false };
-  }
-  if (status === 429) {
-    return { message: "محاولات كثيرة جدًا. حاول مرة تانية بعد شوية.", retryable: true };
-  }
-  if (apiMessage) return { message: apiMessage, retryable: true };
-  return { message: "حدث خطأ غير متوقع. حاول مرة تانية.", retryable: true };
-}
-
 export default function AuthLoginPage() {
+  const { t } = useI18n();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<ErrState>(null);
+  const [err, setErr] = useState<{ message: string; retryable: boolean } | null>(null);
 
   useEffect(() => {
     if (getTokens()) router.replace("/inbox");
@@ -36,7 +24,7 @@ export default function AuthLoginPage() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (busy) return; // لا إعادة إرسال أثناء التحميل
+    if (busy) return;
     setBusy(true);
     setErr(null);
     const res = await authPost<{ access_token: string; refresh_token: string }>(
@@ -49,21 +37,27 @@ export default function AuthLoginPage() {
       return;
     }
     if (res.status === 0) {
-      setErr({ message: "مش قادرين نوصل للسيرفر. اتأكد من اتصالك وحاول تاني.", retryable: true });
+      setErr({ message: t.auth.errNetwork, retryable: true });
+    } else if (res.status === 401 || res.status === 403 || res.status === 400) {
+      setErr({ message: t.auth.errInvalid, retryable: false });
+    } else if (res.status === 429) {
+      setErr({ message: t.auth.errRate, retryable: true });
+    } else if (res.message) {
+      setErr({ message: res.message, retryable: true });
     } else {
-      setErr(mapError(res.status, res.message));
+      setErr({ message: t.auth.errGeneric, retryable: true });
     }
     setBusy(false);
   }
 
   return (
-    <div className="card auth-card" data-testid="auth-login-card">
-      <h1>أهلًا بعودتك</h1>
-      <p className="auth-sub">سجّل الدخول للمتابعة إلى مساحة عملك.</p>
+    <div className="fh-card fh-auth-card" data-testid="auth-login-card">
+      <h1>{t.auth.loginTitle}</h1>
+      <p className="fh-auth-sub">{t.auth.loginSub}</p>
 
-      <form className="auth-form" onSubmit={submit} noValidate>
+      <form className="fh-auth-form" onSubmit={submit} noValidate>
         <div>
-          <label htmlFor="email">البريد الإلكتروني</label>
+          <label htmlFor="email">{t.auth.email}</label>
           <input
             id="email"
             type="email"
@@ -72,11 +66,10 @@ export default function AuthLoginPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
-            aria-describedby={err ? "auth-error" : undefined}
           />
         </div>
         <div>
-          <label htmlFor="password">كلمة المرور</label>
+          <label htmlFor="password">{t.auth.password}</label>
           <input
             id="password"
             type="password"
@@ -89,19 +82,21 @@ export default function AuthLoginPage() {
         </div>
 
         {err && (
-          <div className="auth-error" id="auth-error" role="alert">
+          <div className="fh-auth-error" role="alert">
             <p>{err.message}</p>
-            {err.retryable && <button type="button" className="auth-error-retry" onClick={() => setErr(null)}>حاول مرة تانية</button>}
+            {err.retryable && (
+              <button type="button" onClick={() => setErr(null)}>{t.auth.retry}</button>
+            )}
           </div>
         )}
 
-        <button className="btn auth-submit" disabled={busy} data-testid="submit-login">
-          {busy ? "جارٍ تسجيل الدخول…" : "تسجيل الدخول"}
+        <button className="fh-btn fh-auth-submit" disabled={busy} data-testid="submit-login">
+          {busy ? t.auth.submittingLogin : t.auth.submitLogin}
         </button>
       </form>
 
-      <p className="auth-alt">
-        معندكش حساب؟ <Link href="/auth/signup">أنشئ حساب</Link>
+      <p className="fh-auth-alt">
+        {t.auth.noAccount} <Link href="/auth/signup">{t.auth.createAccount}</Link>
       </p>
     </div>
   );

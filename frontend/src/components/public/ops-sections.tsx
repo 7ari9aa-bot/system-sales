@@ -1,180 +1,187 @@
-/** التحليلات + مركز التحكم + التكاملات + الأمان + الـCTA الختامي. */
+"use client";
 
-const METRICS = [
-  { label: "الإيرادات", delta: "+12%", tone: "up" },
-  { label: "الطلبات", delta: "+8%", tone: "up" },
-  { label: "التحويل", delta: "−3%", tone: "down" },
-  { label: "العملاء", delta: "+6%", tone: "up" },
-  { label: "نشاط AI", delta: "↑", tone: "up" },
-  { label: "العمليات", delta: "!", tone: "alert" },
-];
+/** التحليلات + مركز التحكم + الأسعار + التكاملات + الأمان + الختامي. */
 
-const CONTROLS = [
-  { label: "وكلاء AI", value: "24 نشط" },
-  { label: "أتمتة", value: "182 شغالة" },
-  { label: "موافقات معلقة", value: "7" },
-  { label: "مهام فاشلة", value: "2" },
-  { label: "SLA في خطر", value: "4" },
-  { label: "استخدام AI", value: "$184" },
-  { label: "تحويلات بشرية", value: "31" },
-];
+import { useI18n } from "@/components/public/i18n";
+import { Reveal } from "@/components/public/reveal";
 
 export function Analytics() {
+  const { t } = useI18n();
   return (
-    <section className="mk-section mk-section-alt" id="analytics">
-      <div className="mk-container">
-        <header className="mk-section-head">
-          <h2>اعرف اللي بيحصل. واعرف اللي محتاج فعل.</h2>
-          <p>مقياس → استنتاج → السجلات اللي وراه → إجراء. مش رسومات على الفاضي.</p>
-        </header>
+    <section className="fh-section fh-section-alt" id="analytics">
+      <div className="fh-container">
+        <Reveal className="fh-section-head">
+          <h2>{t.analytics.title}</h2>
+          <p>{t.analytics.sub}</p>
+        </Reveal>
 
-        <div className="mk-demo-chip mk-demo-chip-float" aria-hidden="true">
-          <span className="mk-demo-dot" /> بيانات تجريبية
+        <div className="fh-demo-chip" style={{ marginInlineStart: "auto", marginBottom: ".8rem" }}>
+          <span className="fh-demo-dot" /> {t.analytics.demo}
         </div>
 
-        <div className="mk-metrics">
-          {METRICS.map((m) => (
-            <div key={m.label} className="card mk-metric">
-              <small>{m.label}</small>
-              <b className={`mk-delta mk-delta-${m.tone}`} dir="ltr">{m.delta}</b>
+        <Reveal className="fh-metrics" stagger>
+          {(t.analytics.metrics as [string, string, string][]).map(([label, delta, tone]) => (
+            <div key={label} className="fh-card fh-card-hover fh-metric">
+              <small>{label}</small>
+              <b className={`fh-delta-${tone}`} dir="ltr">{delta}</b>
             </div>
           ))}
-        </div>
+        </Reveal>
 
-        <div className="card mk-insight">
-          <div className="mk-insight-badge">استنتاج</div>
+        <Reveal className="fh-card fh-insight">
+          <span className="fh-insight-badge">{t.analytics.insightTag}</span>
           <p>
-            نسبة التحويل انخفضت أساسًا لدى <b>العملاء العائدين</b> —
-            بعد تغيير سياسة الشحن الأسبوع الماضي.
+            {t.analytics.insight[0]}<b>{t.analytics.insight[1]}</b>{t.analytics.insight[2]}
           </p>
-          <div className="mk-insight-actions" aria-hidden="true">
-            <span className="btn btn-secondary">فحص السجلات</span>
-            <span className="btn">تعامل مع الأمر</span>
+          <div className="fh-insight-actions">
+            <span className="fh-btn fh-btn-secondary">{t.analytics.inspect}</span>
+            <span className="fh-btn">{t.analytics.act}</span>
           </div>
-        </div>
+        </Reveal>
       </div>
     </section>
   );
 }
 
 export function ControlCenter() {
+  const { t } = useI18n();
   return (
-    <section className="mk-section" id="control">
-      <div className="mk-container">
-        <header className="mk-section-head">
-          <h2>كل حاجة النظام بيعملها ظاهرة وقابلة للتحكم.</h2>
-          <p>قوي، لكنه مش صندوق أسود: تراقب، تتحكم، تحقق، توافق، تراجع، تسترجع.</p>
-        </header>
+    <section className="fh-section" id="control">
+      <div className="fh-container">
+        <Reveal className="fh-section-head">
+          <h2>{t.control.title}</h2>
+          <p>{t.control.sub}</p>
+        </Reveal>
 
-        <div className="mk-demo-chip mk-demo-chip-float" aria-hidden="true">
-          <span className="mk-demo-dot" /> بيانات تجريبية
+        <div className="fh-demo-chip" style={{ marginInlineStart: "auto", marginBottom: ".8rem" }}>
+          <span className="fh-demo-dot" /> {t.control.demo}
         </div>
 
-        <div className="mk-controls">
-          {CONTROLS.map((c) => (
-            <div key={c.label} className="card mk-control">
-              <b>{c.value}</b>
-              <small>{c.label}</small>
+        <Reveal className="fh-controls" stagger>
+          {(t.control.counters as [string, string][]).map(([value, label]) => (
+            <div key={label} className="fh-card fh-card-hover fh-control">
+              <b>{value}</b>
+              <small>{label}</small>
             </div>
           ))}
-        </div>
+        </Reveal>
 
-        <div className="mk-chip-grid">
-          <span className="mk-chip">سياسات</span>
-          <span className="mk-chip">صلاحيات</span>
-          <span className="mk-chip">تدقيق</span>
-          <span className="mk-chip">أمان</span>
-          <span className="mk-chip">صحة النظام</span>
-        </div>
+        <Reveal className="fh-chip-grid" stagger>
+          {t.control.chips.map((c) => <span key={c} className="fh-chip">{c}</span>)}
+        </Reveal>
       </div>
     </section>
   );
 }
 
-const INTEGRATIONS = [
-  { name: "Gemini", desc: "النماذج اللغوية", status: "شغّال", live: true },
-  { name: "n8n", desc: "الأتمتة والتكاملات", status: "شغّال", live: true },
-  { name: "شات الموقع", desc: "قناة مباشرة بدون اعتماديات", status: "شغّال", live: true },
-  { name: "WhatsApp", desc: "القناة الأهم للتجارة", status: "قريبًا", live: false },
-  { name: "Telegram", desc: "محادثات ومجتمعات", status: "قريبًا", live: false },
-  { name: "Instagram · Messenger", desc: "التواصل الاجتماعي", status: "قريبًا", live: false },
-];
+export function Pricing() {
+  const { t } = useI18n();
+  return (
+    <section className="fh-section fh-section-alt" id="pricing">
+      <div className="fh-container">
+        <Reveal className="fh-section-head" >
+          <span className="fh-eyebrow">{t.pricing.badge}</span>
+          <h2>{t.pricing.title}</h2>
+          <p>{t.pricing.sub}</p>
+        </Reveal>
+
+        <Reveal className="fh-pricing-grid" stagger>
+          {t.pricing.tiers.map((tier, i) => (
+            <div key={tier.name} className={`fh-card fh-card-hover fh-tier${i === 1 ? " is-popular" : ""}`}>
+              {i === 1 && <span className="fh-badge fh-badge-primary fh-tier-badge">{t.pricing.popular}</span>}
+              <h3>{tier.name}</h3>
+              <p className="fh-tier-desc">{tier.desc}</p>
+              <div className="fh-tier-price">
+                <b>{t.pricing.free}</b>
+                <small>{t.pricing.freeNote}</small>
+              </div>
+              <ul className="fh-tier-features">
+                {tier.features.map((f) => <li key={f}>{f}</li>)}
+              </ul>
+              <a href="/auth/signup" className={`fh-btn ${i === 1 ? "" : "fh-btn-secondary"}`}>
+                {t.pricing.cta}
+              </a>
+            </div>
+          ))}
+        </Reveal>
+
+        <Reveal as="p" className="fh-pricing-note">
+          {t.pricing.note}
+        </Reveal>
+      </div>
+    </section>
+  );
+}
 
 export function Integrations() {
+  const { t } = useI18n();
   return (
-    <section className="mk-section" id="integrations">
-      <div className="mk-container">
-        <header className="mk-section-head">
-          <h2>شغلك عايش فعلًا في أماكن كتير.</h2>
-          <p>وصّل الأنظمة اللي بتستخدمها — النظام يستقبلها في نفس السياق الواحد.</p>
-        </header>
+    <section className="fh-section" id="integrations">
+      <div className="fh-container">
+        <Reveal className="fh-section-head">
+          <h2>{t.integrations.title}</h2>
+          <p>{t.integrations.sub}</p>
+        </Reveal>
 
-        <div className="mk-flow-demo" aria-hidden="true">
-          <span className="mk-flow-node">وصّل</span>
-          <span className="mk-flow-arrow">←</span>
-          <span className="mk-flow-node">زامن</span>
-          <span className="mk-flow-arrow">←</span>
-          <span className="mk-flow-node">نفّذ</span>
-        </div>
+        <Reveal className="fh-flow" aria-hidden="true">
+          {t.integrations.flow.map((node, i) => (
+            <span key={node} style={{ display: "inline-flex", alignItems: "center", gap: ".6rem" }}>
+              {i > 0 && <span className="fh-flow-arrow" aria-hidden="true">←</span>}
+              <span className="fh-flow-node">{node}</span>
+            </span>
+          ))}
+        </Reveal>
 
-        <div className="mk-integrations">
-          {INTEGRATIONS.map((i) => (
-            <div key={i.name} className="card mk-integration">
-              <div className="mk-integration-name">{i.name}</div>
-              <small>{i.desc}</small>
-              <span className={`badge ${i.live ? "badge-success" : ""}`}>{i.status}</span>
+        <Reveal className="fh-integrations" stagger>
+          {(t.integrations.items as [string, string, string, boolean][]).map(([name, desc, status, live]) => (
+            <div key={name} className="fh-card fh-card-hover fh-integration">
+              <b>{name}</b>
+              <small>{desc}</small>
+              <span className={`fh-badge ${live ? "fh-badge-success" : ""}`}>{status}</span>
             </div>
           ))}
-        </div>
+        </Reveal>
       </div>
     </section>
   );
 }
 
-const SECURITY_ITEMS = [
-  { title: "عزل بيانات لكل مستأجر", desc: "فصل على مستوى قاعدة البيانات (RLS) — بيانات كل شركة معزولة فعليًا، مش على مستوى الواجهة بس." },
-  { title: "صلاحيات وأدوار", desc: "كل مستخدم يشوف ويعمل اللي دوره يسمح بيه فقط — على مستوى الـAPI مش الواجهة." },
-  { title: "مصادقة بجلسات آمنة", desc: "توكنات قصيرة العمر + تدوير تلقائي + خروج آمن." },
-  { title: "سجلات تدقيق", desc: "كل تغيير مهم مسجل: مين، إمتى، وإيه اللي حصل." },
-  { title: "صلاحيات منفصلة للـAI", desc: "الذكاء الاصطناعي بينفذ عبر أدوات بصلاحيات محددة مسبقًا — ومفيش وصول مباشر لقاعدة البيانات." },
-  { title: "حماية نداءات النظام", desc: "التحقق من توقيع الـwebhooks ومنع الطلبات المكررة (idempotency)." },
-];
-
 export function SecuritySection() {
+  const { t } = useI18n();
   return (
-    <section className="mk-section mk-section-alt" id="security">
-      <div className="mk-container">
-        <header className="mk-section-head">
-          <h2>مبني للتحكم والخصوصية والمساءلة.</h2>
-          <p>اللي تحت دي قدرات مبنية فعلًا في النظام — بنكتب بس اللي شغال.</p>
-        </header>
+    <section className="fh-section fh-section-alt" id="security">
+      <div className="fh-container">
+        <Reveal className="fh-section-head">
+          <h2>{t.security.title}</h2>
+          <p>{t.security.sub}</p>
+        </Reveal>
 
-        <div className="mk-security">
-          {SECURITY_ITEMS.map((s) => (
-            <div key={s.title} className="mk-security-item">
-              <b>{s.title}</b>
-              <p>{s.desc}</p>
+        <Reveal className="fh-security" stagger>
+          {(t.security.items as [string, string][]).map(([title, desc]) => (
+            <div key={title} className="fh-card fh-card-hover fh-security-item">
+              <b>{title}</b>
+              <p>{desc}</p>
             </div>
           ))}
-        </div>
+        </Reveal>
       </div>
     </section>
   );
 }
 
 export function FinalCTA() {
+  const { t } = useI18n();
   return (
-    <section className="mk-final" id="start">
-      <div className="mk-container mk-final-inner">
-        <h2>سياق عمل واحد. نظام تشغيل واحد.</h2>
-        <p>
-          اجمع العملاء والمحادثات والتجارة والأتمتة والذكاء الاصطناعي والعمليات
-          في نظام واحد متصل.
-        </p>
-        <div className="mk-hero-cta mk-hero-cta-center">
-          <a href="/auth/signup" className="btn mk-btn-lg">ابدأ الآن</a>
-          <a href="#product" className="btn btn-secondary mk-btn-lg">استعرض المنتج</a>
-        </div>
+    <section className="fh-final" id="start">
+      <div className="fh-container fh-final-inner">
+        <Reveal>
+          <h2>{t.final.title}</h2>
+          <p>{t.final.sub}</p>
+          <div className="fh-hero-cta">
+            <a href="/auth/signup" className="fh-btn fh-btn-lg">{t.final.start}</a>
+            <a href="#product" className="fh-btn fh-btn-secondary fh-btn-lg">{t.final.explore}</a>
+          </div>
+        </Reveal>
       </div>
     </section>
   );
