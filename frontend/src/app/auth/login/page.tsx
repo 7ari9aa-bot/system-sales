@@ -84,9 +84,7 @@ export default function AuthLoginPage() {
         {err && (
           <div className="fh-auth-error" role="alert">
             <p>{err.message}</p>
-            {err.retryable && (
-              <button type="button" onClick={() => setErr(null)}>{t.auth.retry}</button>
-            )}
+            <button type="button" onClick={() => setErr(null)}>{t.auth.dismiss}</button>
           </div>
         )}
 

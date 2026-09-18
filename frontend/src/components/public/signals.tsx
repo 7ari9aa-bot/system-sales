@@ -31,6 +31,8 @@ export function BusinessSignals() {
               <button
                 key={sig.label}
                 role="tab"
+                id={`signal-tab-${i}`}
+                aria-controls="signal-panel"
                 aria-selected={active === i}
                 className={`fh-signal-row${active === i ? " is-active" : ""}`}
                 onClick={() => setActive(i)}
@@ -42,11 +44,11 @@ export function BusinessSignals() {
             ))}
           </div>
 
-          <div className="fh-card fh-signal-preview" role="tabpanel">
+          <div className="fh-card fh-signal-preview" role="tabpanel" id="signal-panel" aria-labelledby={`signal-tab-${active}`}>
             <div className="fh-signal-preview-head">
               <strong>{item.label}</strong>
               <span className={`fh-badge ${TONES[active] === "danger" ? "fh-badge-danger" : TONES[active] === "warn" ? "fh-badge-warning" : TONES[active] === "success" ? "fh-badge-success" : "fh-badge-primary"}`}>
-                {t.signals.counts[active]} {t.signals.element}
+                {t.signals.counts[active]}
               </span>
             </div>
             <div className="fh-signal-detail">

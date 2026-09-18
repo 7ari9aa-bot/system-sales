@@ -34,7 +34,8 @@ export async function authPost<T = unknown>(
     let message: string | undefined;
     try {
       const data = await res.json();
-      message = data?.error?.message ?? data?.detail;
+      const raw = data?.error?.message ?? data?.detail;
+      if (typeof raw === "string" && raw) message = raw;
     } catch {
       /* بدون جسم JSON */
     }

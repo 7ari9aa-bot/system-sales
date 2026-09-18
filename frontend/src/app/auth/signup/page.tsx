@@ -30,6 +30,14 @@ export default function AuthSignupPage() {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (busy) return;
+    if (!storeName.trim() || !fullName.trim() || !email.trim()) {
+      setErr({ message: t.auth.errGeneric, retryable: false });
+      return;
+    }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      setErr({ message: t.auth.errEmail, retryable: false });
+      return;
+    }
     if (!pwValid) {
       setErr({ message: t.auth.errPw, retryable: false });
       return;
@@ -134,9 +142,7 @@ export default function AuthSignupPage() {
         {err && (
           <div className="fh-auth-error" role="alert">
             <p>{err.message}</p>
-            {err.retryable && (
-              <button type="button" onClick={() => setErr(null)}>{t.auth.retry}</button>
-            )}
+            <button type="button" onClick={() => setErr(null)}>{t.auth.dismiss}</button>
           </div>
         )}
 

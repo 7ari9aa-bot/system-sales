@@ -34,8 +34,8 @@ export function Analytics() {
             {t.analytics.insight[0]}<b>{t.analytics.insight[1]}</b>{t.analytics.insight[2]}
           </p>
           <div className="fh-insight-actions">
-            <span className="fh-btn fh-btn-secondary">{t.analytics.inspect}</span>
-            <span className="fh-btn">{t.analytics.act}</span>
+            <span className="fh-chip">{t.analytics.inspect}</span>
+            <span className="fh-chip">{t.analytics.act}</span>
           </div>
         </Reveal>
       </div>

@@ -57,12 +57,15 @@ const ar = {
     thinking: "بيكتب…",
     toolsTitle: "قدرات المساعد داخل النظام",
     tools: ["فهم نية العميل", "تنفيذ إجراءات مسموحة", "ملخص المحادثة", "اقتراح الرد التالي", "تصعيد للفريق"],
+    simulated: "محاكاة",
+    userTag: "أنت",
+    botTag: "مساعد FIHRIST · عرض تجريبي",
     s1: "إيه هو FIHRIST؟",
     s2: "إزاي الأتمتة بتشتغل؟",
     s3: "إيه بروتوكولات الأمان؟",
     r_intro: "FIHRIST نظام تشغيل متكامل لشركتك: المحادثات من كل القنوات، العملاء، الطلبات، الأتمتة والذكاء الاصطناعي — كلها في سياق واحد متصل بدل أدوات مفككة.",
     r_pricing: "دلوقتي الوصول المبكر مجاني لكل الخطط. عندنا 3 طبقات (البداية / النمو / التوسع) بتفرق في حجم الفريق والقنوات وحدود الـAI — التفاصيل في قسم الأسعار تحت.",
-    r_automation: "الأتمتة بتشتغل بمسار واضح: حدث بيبدأ المسار → شرط → منطق أو AI → تحقق → موافقة عند الحاجة → تنفيذ → مراجعة وتدقيق. مثال: عميل عالي القيمة يبعت رسالة ومحدش يرد خلال 10 دقايق — المسار يصنّف الرسالة وي notify الفريق ويصعّد لو محتاج.",
+    r_automation: "الأتمتة بتشتغل بمسار واضح: حدث بيبدأ المسار → شرط → منطق أو AI → تحقق → موافقة عند الحاجة → تنفيذ → مراجعة وتدقيق. مثال: عميل عالي القيمة يبعت رسالة ومحدش يرد خلال 10 دقايق — المسار يصنّف الرسالة ويُنبّه الفريق ويصعّد لو محتاج.",
     r_security: "الأمان مبني من الأول: عزل بيانات لكل مستأجر على مستوى قاعدة البيانات (RLS)، صلاحيات وأدوار، جلسات مصادقة آمنة، سجلات تدقيق كاملة، والذكاء الاصطناعي بينفذ عبر أدوات بصلاحيات محددة مسبقًا — بدون أي وصول مباشر لقاعدة البيانات.",
     r_channels: "شات الموقع شغّال حاليًا، وواتساب وتليجرام وإنستجرام وماسنجر في خطة التكامل القادمة. كل القنوات بتوصل لنفس الـInbox ونفس سياق العميل.",
     r_fallback: "سؤال ممتاز. باختصار: FIHRIST بيجمع المحادثات والعملاء والطلبات والأتمتة والـAI في نظام واحد — جرب تسألني عن الأسعار أو الأتمتة أو الأمان لتفاصيل أكتر.",
@@ -90,7 +93,7 @@ const ar = {
   },
   c360: {
     title: "كل عميل بيجي معاه السياق الكامل.",
-    sub: "سجل عميل حقيقي من النظام — المحادثة والطلب والدفع والتاريخ في مكان واحد.",
+    sub: "بيانات عميل كما تظهر في النظام — المحادثة والطلب والدفع والتاريخ في مكان واحد.",
     demo: "بيانات تجريبية",
     name: "عميل مسجّل",
     vip: "VIP",
@@ -190,8 +193,8 @@ const ar = {
       ["الطلبات", "+8%", "up"],
       ["التحويل", "−3%", "down"],
       ["العملاء", "+6%", "up"],
-      ["نشاط AI", "↑", "up"],
-      ["العمليات", "!", "alert"],
+      ["نشاط AI", "+31%", "up"],
+      ["العمليات", "−1%", "alert"],
     ],
     insightTag: "استنتاج",
     insight: ["نسبة التحويل انخفضت أساسًا لدى ", "العملاء العائدين", " — بعد تغيير سياسة الشحن الأسبوع الماضي."],
@@ -317,8 +320,9 @@ const ar = {
     errExists: "البريد ده مستخدم بالفعل. سجّل الدخول أو استخدم بريد تاني.",
     errCreate: "تعذر إنشاء الحساب. حاول مرة تانية.",
     errPw: "كلمة المرور لازم تكون 8 حروف على الأقل.",
+    errEmail: "البريد الإلكتروني غير صحيح.",
     errAutoLogin: "الحساب اتعمل لكن تعذر الدخول التلقائي — سجّل الدخول يدويًا.",
-    retry: "حاول مرة تانية",
+    dismiss: "حسّن",
     privacy: "الخصوصية",
     terms: "الشروط",
   },
@@ -360,6 +364,9 @@ const en: typeof ar = {
     thinking: "Typing…",
     toolsTitle: "Assistant capabilities inside the system",
     tools: ["Understand customer intent", "Run permitted actions", "Summarize conversations", "Suggest next reply", "Escalate to the team"],
+    simulated: "Simulated",
+    userTag: "You",
+    botTag: "FIHRIST assistant · demo",
     s1: "What is FIHRIST?",
     s2: "How does automation work?",
     s3: "What are the security practices?",
@@ -393,7 +400,7 @@ const en: typeof ar = {
   },
   c360: {
     title: "Every customer comes with the full context.",
-    sub: "A real customer record from the system — conversations, orders, payments and history in one place.",
+    sub: "A customer record as it appears in the system — conversations, orders, payments and history in one place.",
     demo: "Sample data",
     name: "Registered customer",
     vip: "VIP",
@@ -493,8 +500,8 @@ const en: typeof ar = {
       ["Orders", "+8%", "up"],
       ["Conversion", "−3%", "down"],
       ["Customers", "+6%", "up"],
-      ["AI activity", "↑", "up"],
-      ["Operations", "!", "alert"],
+      ["AI activity", "+31%", "up"],
+      ["Operations", "−1%", "alert"],
     ],
     insightTag: "Insight",
     insight: ["Conversion dropped mainly among ", "returning customers", " — after last week's shipping-policy change."],
@@ -620,8 +627,9 @@ const en: typeof ar = {
     errExists: "This email is already registered. Sign in or use another email.",
     errCreate: "Couldn't create the account. Please try again.",
     errPw: "Password must be at least 8 characters.",
+    errEmail: "That email address doesn't look right.",
     errAutoLogin: "Account created but automatic sign-in failed — please sign in manually.",
-    retry: "Try again",
+    dismiss: "OK",
     privacy: "Privacy",
     terms: "Terms",
   },
@@ -667,18 +675,18 @@ export function FihristProvider({ children }: { children: React.ReactNode }) {
 
   const setLocale = useCallback((l: Locale) => {
     setLocaleState(l);
-    window.localStorage.setItem(LOCALE_KEY, l);
+    try { window.localStorage.setItem(LOCALE_KEY, l); } catch { /* private mode */ }
   }, []);
 
   const setTheme = useCallback((t: Theme) => {
     setThemeState(t);
-    window.localStorage.setItem(THEME_KEY, t);
+    try { window.localStorage.setItem(THEME_KEY, t); } catch { /* private mode */ }
   }, []);
 
   const toggleTheme = useCallback(() => {
     setThemeState((prev) => {
       const next = prev === "light" ? "dark" : "light";
-      window.localStorage.setItem(THEME_KEY, next);
+      try { window.localStorage.setItem(THEME_KEY, next); } catch { /* private mode */ }
       return next;
     });
   }, []);

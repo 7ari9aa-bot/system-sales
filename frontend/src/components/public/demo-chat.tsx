@@ -10,13 +10,14 @@ import { useI18n } from "@/components/public/i18n";
 type Msg = { id: number; from: "user" | "bot"; text: string };
 
 export function DemoChat() {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
   const [busy, setBusy] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const idRef = useRef(0);
+  const timerRef = useRef<number | null>(null);
 
   // رسالة الترحيب + إعادة التهيئة عند تغيير اللغة
   useEffect(() => {
@@ -30,6 +31,10 @@ export function DemoChat() {
     const el = listRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [msgs, thinking]);
+
+  useEffect(() => () => {
+    if (timerRef.current) window.clearTimeout(timerRef.current);
+  }, []);
 
   function replyFor(text: string): string {
     const q = text.toLowerCase();
@@ -55,7 +60,7 @@ export function DemoChat() {
     setMsgs((m) => [...m, { id: ++idRef.current, from: "user", text }]);
     setThinking(true);
     const delay = 700 + Math.min(text.length * 15, 900);
-    window.setTimeout(() => {
+    timerRef.current = window.setTimeout(() => {
       setThinking(false);
       setMsgs((m) => [...m, { id: ++idRef.current, from: "bot", text: replyFor(text) }]);
       setBusy(false);
@@ -75,7 +80,7 @@ export function DemoChat() {
             <strong>{t.chat.title}</strong>
             <small><span className="fh-status-dot" aria-hidden="true" /> {t.chat.status}</small>
           </span>
-          <span className="fh-chat-badge">{locale === "ar" ? "محاكاة" : "Simulated"}</span>
+          <span className="fh-chat-badge">{t.chat.simulated}</span>
         </div>
 
         <div className="fh-chat-msgs" ref={listRef} aria-live="polite">
@@ -83,9 +88,7 @@ export function DemoChat() {
             <div key={m.id} className={`fh-bubble fh-msg-in${m.from === "user" ? " fh-bubble-user" : ""}`}>
               {m.text}
               <span className="fh-bubble-tag">
-                {m.from === "user"
-                  ? (locale === "ar" ? "أنت" : "You")
-                  : (locale === "ar" ? "مساعد FIHRIST · عرض تجريبي" : "FIHRIST assistant · demo")}
+                {m.from === "user" ? t.chat.userTag : t.chat.botTag}
               </span>
             </div>
           ))}
