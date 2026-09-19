@@ -51,6 +51,8 @@ class Agent(TenantMixin, TimestampMixin, WorkspaceScopeMixin, VersionMixin, Base
     system_prompt: Mapped[str | None] = mapped_column(Text)
     temperature: Mapped[float] = mapped_column(Numeric(3, 2), default=0.7, server_default="0.7")
     max_output_tokens: Mapped[int | None] = mapped_column()
+    # Per-agent execution guardrails; omitted keys use runtime defaults.
+    run_limits: Mapped[dict] = mapped_column(JSONB, server_default="{}")
     is_active: Mapped[bool] = mapped_column(default=True, server_default="true")
 
 

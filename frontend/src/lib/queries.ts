@@ -104,8 +104,18 @@ export type KnowledgeItem = { id: string; title: string; status: string; created
 export type Agent = { id: string; name: string; model: string | null; is_active: boolean };
 export type UsageRow = { date: string; tokens_in: number; tokens_out: number; cost: number };
 export type SearchHit = { id: string; title: string; distance: number };
+export type GlobalSearchHit = { entity_type: string; entity_id: string; title: string; snippet: string | null };
 export type Invitation = { id: string; email: string; status: string; role_code: string | null; token?: string };
 export type Integration = { id: string; provider: string; kind: string; status: string };
+export type Task = {
+  id: string;
+  title: string;
+  status: "todo" | "in_progress" | "done" | "cancelled";
+  priority: number;
+  assignee_user_id: string | null;
+  due_date: string | null;
+  source: string;
+};
 
 /* ------------------------------------------------------------------ keys */
 
@@ -126,6 +136,7 @@ export const qk = {
   usage: ["ai", "usage"] as QueryKey,
   invitations: ["invitations"] as QueryKey,
   integrations: ["integrations"] as QueryKey,
+  tasks: ["operations", "tasks"] as QueryKey,
 };
 
 function errMessage(err: unknown) {
@@ -254,6 +265,13 @@ export function useIntegrations() {
   });
 }
 
+export function useTasks() {
+  return useQuery({
+    queryKey: qk.tasks,
+    queryFn: () => api<Task[]>("/tasks"),
+  });
+}
+
 /* ------------------------------------------------------------------ mutations */
 
 export function useMarkConversationRead() {
@@ -370,6 +388,13 @@ export function useKnowledgeSearch() {
   });
 }
 
+export function useGlobalSearch() {
+  return useMutation({
+    mutationFn: (query: string) =>
+      api<GlobalSearchHit[]>(`/search?q=${encodeURIComponent(query)}&limit=8`),
+  });
+}
+
 export function useCreateInvitation() {
   const qc = useQueryClient();
   return useMutation({
@@ -385,6 +410,29 @@ export function useCreateInvitation() {
       toast({ title: t.invitationCreated, description: t.invitationCreatedHint, variant: "success" });
       qc.invalidateQueries({ queryKey: qk.invitations });
     },
+    onError: (err) => toast({ title: t.somethingWentWrong, description: errMessage(err), variant: "danger" }),
+  });
+}
+
+export function useCreateTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { title: string; description?: string; priority: number }) =>
+      api<{ id: string; status: string }>("/tasks", { method: "POST", body }),
+    onSuccess: () => {
+      toast({ title: t.taskCreated, variant: "success" });
+      qc.invalidateQueries({ queryKey: qk.tasks });
+    },
+    onError: (err) => toast({ title: t.somethingWentWrong, description: errMessage(err), variant: "danger" }),
+  });
+}
+
+export function useUpdateTaskStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ taskId, status }: { taskId: string; status: Task["status"] }) =>
+      api(`/tasks/${taskId}/status`, { method: "POST", body: { status } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.tasks }),
     onError: (err) => toast({ title: t.somethingWentWrong, description: errMessage(err), variant: "danger" }),
   });
 }

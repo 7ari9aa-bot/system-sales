@@ -35,6 +35,7 @@ from app.modules.inventory.models import InventoryBalance, InventoryReservation,
 from app.modules.inventory.service import InventoryService
 from app.modules.orders.service import OrderService
 from app.modules.platform.models import EventLog, Integration, ProcessedEvent, WebhookEvent
+from app.workers.run import POOLS
 
 # ---------------------------------------------------------------- helpers --
 
@@ -389,6 +390,12 @@ async def test_conversation_lifecycle_states_and_legacy_alias(db, tenant_ctx):
 
 
 # -------------------------- (§145) Integration webhook_health --------------
+
+
+def test_scheduler_worker_is_registered():
+    from app.workers.scheduler_worker import SchedulerWorker
+
+    assert POOLS["scheduler"] is SchedulerWorker
 
 
 async def test_integration_webhook_health_column(db, tenant_ctx):

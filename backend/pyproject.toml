@@ -58,3 +58,6 @@ extend-immutable-calls = [
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
+markers = [
+    "gate: pre-production architecture gate scenarios",
+]

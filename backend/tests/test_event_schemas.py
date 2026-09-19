@@ -104,6 +104,29 @@ def test_serialize_round_trip(tenant_id: UUID) -> None:
     assert rebuilt.meta == {"trace_id": "abc"}  # routing keys stay out of user meta
 
 
+def test_lineage_fields_survive_round_trip(tenant_id: UUID) -> None:
+    register_event("test.lineage")(EventEnvelope)
+    envelope = EventEnvelope(
+        type="test.lineage",
+        tenant_id=tenant_id,
+        aggregate_type="order",
+        aggregate_id=uuid4(),
+        correlation_id="corr-1",
+        causation_id="cause-1",
+        producer="orders",
+        schema_version=3,
+        aggregate_version=7,
+    )
+
+    rebuilt = deserialize(serialize(envelope))
+
+    assert rebuilt.correlation_id == "corr-1"
+    assert rebuilt.causation_id == "cause-1"
+    assert rebuilt.producer == "orders"
+    assert rebuilt.schema_version == 3
+    assert rebuilt.aggregate_version == 7
+
+
 def test_deserialize_accepts_parsed_bus_fields(tenant_id: UUID) -> None:
     envelope = build_envelope(
         "test.order.created",

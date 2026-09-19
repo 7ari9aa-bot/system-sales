@@ -24,7 +24,20 @@ EVENT_TYPES: dict[str, type[EventEnvelope]] = {}
 
 # Meta keys that carry envelope routing rather than user-supplied metadata.
 ROUTING_KEYS: frozenset[str] = frozenset(
-    {"id", "type", "version", "tenant_id", "occurred_at", "aggregate_type", "aggregate_id"}
+    {
+        "id",
+        "type",
+        "version",
+        "tenant_id",
+        "occurred_at",
+        "aggregate_type",
+        "aggregate_id",
+        "correlation_id",
+        "causation_id",
+        "producer",
+        "schema_version",
+        "aggregate_version",
+    }
 )
 
 
@@ -117,6 +130,11 @@ def serialize(envelope: EventEnvelope) -> dict[str, str]:
             "occurred_at": data["occurred_at"],
             "aggregate_type": data["aggregate_type"],
             "aggregate_id": data["aggregate_id"],
+            "correlation_id": data["correlation_id"],
+            "causation_id": data["causation_id"],
+            "producer": data["producer"],
+            "schema_version": data["schema_version"],
+            "aggregate_version": data["aggregate_version"],
         }
     )
     return {
@@ -148,6 +166,11 @@ def deserialize(fields: Mapping[str, Any]) -> EventEnvelope:
         occurred_at=datetime.fromisoformat(meta["occurred_at"]),
         aggregate_type=meta["aggregate_type"],
         aggregate_id=meta["aggregate_id"],
+        correlation_id=meta.get("correlation_id"),
+        causation_id=meta.get("causation_id"),
+        producer=meta.get("producer", "core"),
+        schema_version=int(meta.get("schema_version", 1)),
+        aggregate_version=meta.get("aggregate_version"),
         payload=payload,
         meta={k: v for k, v in meta.items() if k not in ROUTING_KEYS},
     )

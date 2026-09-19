@@ -151,6 +151,43 @@ async def test_agent_run_calls_tool_then_answers(db, tenant_ctx, monkeypatch):
     assert usage.model_calls == 1
 
 
+async def test_agent_run_uses_configured_step_limit(db, tenant_ctx, monkeypatch):
+    agent = await _agent_with_tool(db, tenant_ctx.tenant_id)
+    agent.run_limits = {"max_steps": 1}
+    await db.flush()
+
+    calls = _patch_gateway_chat(
+        monkeypatch,
+        [
+            _result(
+                tool_calls=[
+                    ToolCallRequest(
+                        id="limited_call",
+                        name="search_products",
+                        arguments={"query": "widget"},
+                    )
+                ]
+            ),
+            _result(content="should not run"),
+        ],
+    )
+
+    result = await AgentRunner(gateway=AIGateway()).run(
+        db, tenant_ctx.tenant_id, agent_id=agent.id, user_message="search"
+    )
+
+    assert calls["count"] == 1
+    assert result.content is None
+
+    run = (
+        (await db.execute(select(AgentRun).where(AgentRun.agent_id == agent.id)))
+        .scalars()
+        .one()
+    )
+    assert run.status == "timeout"
+    assert run.error == "run limit hit: max_steps"
+
+
 async def test_agent_run_denies_tool_by_policy(db, tenant_ctx, monkeypatch):
     tenant_id = tenant_ctx.tenant_id
     agent = await _agent_with_tool(db, tenant_id, policy={"denied": ["search_products"]})

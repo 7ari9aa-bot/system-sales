@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { TriangleAlert } from "lucide-react";
+import { ArrowUpRight, CircleCheck, TriangleAlert } from "lucide-react";
 import { useDashboard } from "@/lib/queries";
 import { t } from "@/lib/t";
 import { formatNumber } from "@/lib/utils";
@@ -65,6 +65,50 @@ export default function DashboardPage() {
   return (
     <div>
       <PageHeader title={t.dashboard} description="نظرة سريعة على أداء متجرك" />
+
+      <Card className="mt-4" data-testid="needs-attention">
+        <CardHeader className="flex-row items-center justify-between space-y-0">
+          <CardTitle>{t.needsAttention}</CardTitle>
+          <span className="text-xs text-muted-foreground">{t.today}</span>
+        </CardHeader>
+        <CardContent>
+          {data.conversations.unread === 0 && data.low_stock === 0 ? (
+            <div className="flex items-center gap-2 text-sm text-success">
+              <CircleCheck aria-hidden="true" className="size-4" />
+              <span>{t.allClear}</span>
+            </div>
+          ) : (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {data.conversations.unread > 0 && (
+                <Link
+                  href="/inbox"
+                  data-testid="attention-unread"
+                  className="group flex items-center justify-between rounded-lg border border-border p-3 transition-colors hover:border-primary/40 hover:bg-muted"
+                >
+                  <span className="flex items-center gap-2 text-sm font-semibold">
+                    <span className="size-2 rounded-full bg-primary" aria-hidden="true" />
+                    {data.conversations.unread} {t.unread}
+                  </span>
+                  <ArrowUpRight aria-hidden="true" className="size-4 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+                </Link>
+              )}
+              {data.low_stock > 0 && (
+                <Link
+                  href="/inventory"
+                  data-testid="attention-low-stock"
+                  className="group flex items-center justify-between rounded-lg border border-warning/40 p-3 transition-colors hover:bg-warning/10"
+                >
+                  <span className="flex items-center gap-2 text-sm font-semibold">
+                    <TriangleAlert aria-hidden="true" className="size-4 text-warning" />
+                    {t.nearlyOut(data.low_stock)}
+                  </span>
+                  <ArrowUpRight aria-hidden="true" className="size-4 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+                </Link>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <Stat

@@ -20,13 +20,14 @@ import {
 } from "lucide-react";
 import { t } from "@/lib/t";
 import { cn } from "@/lib/utils";
+import { useGlobalSearch } from "@/lib/queries";
 
 /** Command palette (§96) — Cmd+K للتنقل والإجراءات السريعة. */
 
 type CommandItem = {
   id: string;
   label: string;
-  group: "nav" | "actions";
+  group: "nav" | "actions" | "search";
   icon: React.ReactNode;
   keywords?: string;
   href: string;
@@ -79,16 +80,46 @@ function matches(query: string, item: CommandItem) {
   return false;
 }
 
+function searchHref(entityType: string, entityId: string) {
+  const routes: Record<string, string> = {
+    customer: "/customers",
+    conversation: `/inbox?conversation=${encodeURIComponent(entityId)}`,
+    order: "/orders",
+    product: "/products",
+    task: "/tasks",
+  };
+  return routes[entityType] ?? "/dashboard";
+}
+
 export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const router = useRouter();
   const [query, setQuery] = React.useState("");
   const [active, setActive] = React.useState(0);
+  const globalSearch = useGlobalSearch();
 
   const results = React.useMemo(() => {
     const nav = NAV_ITEMS.filter((i) => matches(query, i));
     const actions = ACTION_ITEMS.filter((i) => matches(query, i));
-    return [...nav, ...actions];
-  }, [query]);
+    const search = (globalSearch.data ?? []).map((hit) => ({
+      id: `search-${hit.entity_type}-${hit.entity_id}`,
+      label: hit.title,
+      group: "search" as const,
+      href: searchHref(hit.entity_type, hit.entity_id),
+      icon: <Search aria-hidden="true" />,
+      keywords: hit.snippet ?? hit.entity_type,
+    }));
+    return [...nav, ...actions, ...search];
+  }, [globalSearch.data, query]);
+
+  React.useEffect(() => {
+    const normalized = query.trim();
+    if (normalized.length < 2) {
+      globalSearch.reset();
+      return;
+    }
+    const timer = window.setTimeout(() => globalSearch.mutate(normalized), 250);
+    return () => window.clearTimeout(timer);
+  }, [globalSearch, query]);
 
   React.useEffect(() => {
     if (open) {
@@ -117,6 +148,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
 
   const navResults = results.filter((i) => i.group === "nav");
   const actionResults = results.filter((i) => i.group === "actions");
+  const searchResults = results.filter((i) => i.group === "search");
   let flatIndex = -1;
 
   return (
@@ -152,9 +184,11 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
           </div>
 
           <div className="max-h-80 overflow-y-auto p-2" data-testid="command-list">
-            {results.length === 0 && (
+            {results.length === 0 && !globalSearch.isPending && (
               <p className="px-3 py-8 text-center text-[13px] text-muted-foreground">{t.noResultsFound}</p>
             )}
+
+            {globalSearch.isPending && <p className="px-3 py-3 text-xs text-muted-foreground">{t.searching}</p>}
 
             {navResults.length > 0 && (
               <>
@@ -171,6 +205,17 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
               <>
                 <p className="px-3 pb-1 pt-2 text-xs font-bold text-muted-foreground">{t.quickActions}</p>
                 {actionResults.map((item) => {
+                  flatIndex++;
+                  const idx = flatIndex;
+                  return <CommandRow key={item.id} item={item} active={idx === active} onRun={() => run(item)} onHover={() => setActive(idx)} />;
+                })}
+              </>
+            )}
+
+            {searchResults.length > 0 && (
+              <>
+                <p className="px-3 pb-1 pt-2 text-xs font-bold text-muted-foreground">{t.searchResults}</p>
+                {searchResults.map((item) => {
                   flatIndex++;
                   const idx = flatIndex;
                   return <CommandRow key={item.id} item={item} active={idx === active} onRun={() => run(item)} onHover={() => setActive(idx)} />;

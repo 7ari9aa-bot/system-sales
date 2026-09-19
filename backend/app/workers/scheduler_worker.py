@@ -62,13 +62,17 @@ class SchedulerWorker(StreamWorker):
         processed = 0
         async with SessionLocal() as session:
             async with session.begin():
+                now = datetime.now(UTC)
                 rows = (
                     await session.execute(
                         select(ScheduledJob)
                         .where(
                             ScheduledJob.status.in_(["queued", "retrying"]),
-                            ScheduledJob.run_at <= datetime.now(UTC),
+                            ScheduledJob.run_at <= now,
+                            (ScheduledJob.next_attempt_at.is_(None))
+                            | (ScheduledJob.next_attempt_at <= now),
                         )
+                        .with_for_update(skip_locked=True)
                         .limit(10)
                     )
                 ).scalars().all()

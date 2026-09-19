@@ -19,6 +19,11 @@ class StatusChangeRequest(BaseModel):
     note: str | None = None
 
 
+class PaymentReconciliationRequest(BaseModel):
+    provider_status: str = Field(min_length=1, max_length=31)
+    provider_ref: str | None = Field(default=None, max_length=255)
+
+
 @router.get("/orders")
 async def list_orders(
     ctx: TenantCtxDep,
@@ -89,6 +94,28 @@ async def change_status(ctx: TenantCtxDep, order_id: uuid.UUID, body: StatusChan
         note=body.note,
     )
     return {"ok": True}
+
+
+@router.post("/orders/{order_id}/payments/{payment_id}/reconcile")
+async def reconcile_payment(
+    ctx: TenantCtxDep,
+    order_id: uuid.UUID,
+    payment_id: uuid.UUID,
+    body: PaymentReconciliationRequest,
+):
+    payment = await OrderService.reconcile_payment(
+        ctx.session,
+        ctx.tenant_id,
+        order_id,
+        payment_id,
+        provider_status=body.provider_status,
+        provider_ref=body.provider_ref,
+    )
+    return {
+        "id": str(payment.id),
+        "status": payment.status,
+        "provider_ref": payment.provider_ref,
+    }
 
 
 class OrderItemRequest(BaseModel):

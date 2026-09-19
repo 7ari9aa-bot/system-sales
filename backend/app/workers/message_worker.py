@@ -101,6 +101,19 @@ class MessageWorker(StreamWorker):
             async with SessionLocal() as session:
                 async with session.begin():
                     await bind_tenant(session, tenant_id)
+                    try:
+                        async with session.begin_nested():
+                            session.add(
+                                ProcessedEvent(
+                                    consumer_name=self.name,
+                                    event_id=uuid.UUID(str(event.id)),
+                                    status="done",
+                                )
+                            )
+                            await session.flush()
+                    except IntegrityError:
+                        logger.info("received.event_already_processed id=%s", event.id)
+                        return
                     # §126: one state-mutating processor per conversation.
                     async with conversation_lease(session, uuid.UUID(conversation_id)):
                         await maybe_auto_reply(

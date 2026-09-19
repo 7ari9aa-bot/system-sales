@@ -44,6 +44,19 @@ TRANSITIONS: dict[str, set[str]] = {
 
 _CANCELLABLE_STATUSES = {"pending", "confirmed"}
 _PAYMENT_METHODS = {"cash", "card", "wallet", "bank_transfer", "cod", "manual"}
+_PAYMENT_PROVIDER_STATUSES = {
+    "pending": "pending",
+    "processing": "pending",
+    "authorized": "authorized",
+    "captured": "captured",
+    "paid": "captured",
+    "succeeded": "captured",
+    "failed": "failed",
+    "rejected": "failed",
+    "unknown": "unknown",
+    "refunded": "refunded",
+    "partially_refunded": "partially_refunded",
+}
 _NUMBER_ATTEMPTS = 2
 # §140: a durable reservation row expires after 15 minutes if the order never
 # completes (abandoned cart) — the maintenance worker flips it to EXPIRED.
@@ -478,6 +491,55 @@ class OrderService:
             await OrderService._transition(
                 session, tenant_id, order, "confirmed", note=f"paid via {method}"
             )
+        return payment
+
+    @staticmethod
+    async def reconcile_payment(
+        session: AsyncSession,
+        tenant_id: UUID,
+        order_id: UUID,
+        payment_id: UUID,
+        *,
+        provider_status: str,
+        provider_ref: str | None = None,
+    ) -> OrderPayment:
+        """Resolve an external payment result without retrying the charge.
+
+        Provider adapters perform the lookup and pass only the observed status
+        here. A captured result applies reservation/order effects exactly once.
+        """
+        status = _PAYMENT_PROVIDER_STATUSES.get(provider_status.lower())
+        if status is None:
+            raise ValueError(f"unsupported provider payment status: {provider_status}")
+        order = await OrderService.get(session, tenant_id, order_id, with_items=False)
+        payment = (
+            await session.execute(
+                select(OrderPayment).where(
+                    OrderPayment.id == payment_id,
+                    OrderPayment.tenant_id == tenant_id,
+                    OrderPayment.order_id == order.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if payment is None:
+            raise NotFoundError(f"payment {payment_id} not found for order {order_id}")
+
+        if payment.status in {"refunded", "partially_refunded"} and status == "captured":
+            raise ValueError("cannot reconcile a refunded payment back to captured")
+        if payment.status == "captured" and status == "captured":
+            return payment
+
+        payment.status = status
+        if provider_ref:
+            payment.provider_ref = provider_ref
+        if status == "captured":
+            payment.paid_at = payment.paid_at or _now()
+            await InventoryReservationService.convert(session, tenant_id, order.id)
+            if order.status == "pending":
+                await OrderService._transition(
+                    session, tenant_id, order, "confirmed", note="payment reconciled"
+                )
+        await session.flush()
         return payment
 
     @staticmethod

@@ -15,7 +15,7 @@ from app.modules.errors import ConflictError, NotFoundError
 from app.modules.inventory.models import InventoryBalance, Warehouse
 from app.modules.inventory.service import InventoryService
 from app.modules.orders.errors import InsufficientStockError
-from app.modules.orders.models import OrderItem, OrderStatusHistory
+from app.modules.orders.models import OrderItem, OrderPayment, OrderStatusHistory
 from app.modules.orders.service import OrderService
 from app.modules.platform.models import OutboxEvent
 
@@ -324,6 +324,43 @@ async def test_add_payment_confirms_pending_order(db: AsyncSession, tenant_ctx):
 
     with pytest.raises(ValueError):
         await OrderService.add_payment(db, tenant_id, order.id, method="cash", amount=0)
+
+
+async def test_reconcile_unknown_payment_captures_once(db: AsyncSession, tenant_ctx):
+    tenant_id = tenant_ctx.tenant_id
+    customer, variant, _wh = await _customer_and_variant(db, tenant_id, stock=6)
+    order = await OrderService.create_order(
+        db, tenant_id, customer.id, [{"variant_id": variant.id, "quantity": 1}]
+    )
+    payment = OrderPayment(
+        tenant_id=tenant_id,
+        order_id=order.id,
+        method="card",
+        status="unknown",
+        amount=25.5,
+        currency="EGP",
+        provider="test-gateway",
+    )
+    db.add(payment)
+    await db.flush()
+
+    resolved = await OrderService.reconcile_payment(
+        db,
+        tenant_id,
+        order.id,
+        payment.id,
+        provider_status="succeeded",
+        provider_ref="pay_123",
+    )
+
+    assert resolved.status == "captured"
+    assert resolved.provider_ref == "pay_123"
+    assert order.status == "confirmed"
+
+    again = await OrderService.reconcile_payment(
+        db, tenant_id, order.id, payment.id, provider_status="captured"
+    )
+    assert again.status == "captured"
 
 
 async def test_register_refund_tracks_payment_state(db: AsyncSession, tenant_ctx):

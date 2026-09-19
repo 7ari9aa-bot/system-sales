@@ -144,6 +144,7 @@ class AuthService:
                 SecurityEvent(
                     event_type="login_failure",
                     details={"email_domain": domain_part},
+                    ip=ip,
                 )
             )
             raise PermissionDeniedError("invalid credentials")

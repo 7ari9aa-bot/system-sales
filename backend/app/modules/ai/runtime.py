@@ -54,6 +54,29 @@ MAX_ITERATIONS = 5
 HISTORY_MESSAGES = 10
 DEFAULT_SYSTEM_PROMPT = "You are a helpful sales assistant."
 ALIASES = frozenset({"fast", "strong", "cheap", "embedding", "fallback"})
+DEFAULT_RUN_LIMITS = {
+    "max_steps": MAX_ITERATIONS,
+    "max_tool_calls": 10,
+    "max_wall_time_seconds": 120,
+}
+RUN_LIMITS_CEILINGS = {
+    "max_steps": 25,
+    "max_tool_calls": 100,
+    "max_wall_time_seconds": 900,
+}
+
+
+def _run_limits(agent: Agent) -> dict[str, int]:
+    """Return bounded per-agent limits while preserving old agent rows."""
+    configured = agent.run_limits if isinstance(agent.run_limits, dict) else {}
+    limits: dict[str, int] = {}
+    for name, default in DEFAULT_RUN_LIMITS.items():
+        try:
+            value = int(configured.get(name, default))
+        except (TypeError, ValueError):
+            value = default
+        limits[name] = max(1, min(value, RUN_LIMITS_CEILINGS[name]))
+    return limits
 
 
 def _tool_for(agent_tool: AgentTool):
@@ -130,7 +153,8 @@ class AgentRunner:
                 raise
             raise DomainError(f"agent run failed: {exc}") from exc
 
-        run.status = "succeeded"
+        if run.status == "running":
+            run.status = "succeeded"
         run.output = {"content": result.content}
         run.tokens_in = result.tokens_in
         run.tokens_out = result.tokens_out
@@ -222,13 +246,14 @@ class AgentRunner:
         tokens_out = 0
         content: str | None = None
 
-        # §134 run limits: the agent may never loop unbounded.
+        # §134 run limits: configured per agent, bounded by server policy.
+        limits = _run_limits(agent)
         started_at = datetime.now(UTC)
-        max_wall_time = timedelta(seconds=120)
-        max_tool_calls = 10
+        max_wall_time = timedelta(seconds=limits["max_wall_time_seconds"])
+        max_tool_calls = limits["max_tool_calls"]
         hit_limit: str | None = None
 
-        for _iteration in range(MAX_ITERATIONS):
+        for _iteration in range(limits["max_steps"]):
             if datetime.now(UTC) - started_at > max_wall_time:
                 hit_limit = "max_wall_time"
                 break
@@ -279,6 +304,7 @@ class AgentRunner:
             content = chat_result.content or content
 
         if hit_limit:
+            run.status = "timeout"
             run.error = f"run limit hit: {hit_limit}"
             await session.flush()
             logger.warning("ai.run_limit_hit run=%s limit=%s", run.id, hit_limit)
