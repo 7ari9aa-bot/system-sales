@@ -330,6 +330,89 @@ class IdentityMergeService:
     ]
 
     @staticmethod
+    async def _merge_open_conversations(
+        session, tenant_id, canonical_customer_id, merged_away_customer_id
+    ) -> None:
+        """Resolve open-conversation conflicts BEFORE the generic FK remap.
+
+        The partial unique index uq_conversations_open_tenant_customer_channel
+        (tenant, customer, channel WHERE status <> 'closed') forbids two open
+        conversations for one customer on one channel. A blind remap of
+        conversations.customer_id violates it whenever both customers already
+        talk to us on the same channel. Open conflicts are folded here: the
+        merged conversation's messages move into the canonical conversation and
+        the merged conversation is closed, after which the generic remap can
+        re-point it safely.
+        """
+        from sqlalchemy import text
+
+        merged_open = (
+            await session.execute(
+                text(
+                    "SELECT id, channel FROM conversations "
+                    "WHERE tenant_id = :t AND customer_id = :mid AND status <> 'closed' "
+                    "FOR UPDATE"
+                ),
+                {"t": tenant_id, "mid": merged_away_customer_id},
+            )
+        ).mappings().all()
+
+        for row in merged_open:
+            canonical_open = (
+                await session.execute(
+                    text(
+                        "SELECT id FROM conversations "
+                        "WHERE tenant_id = :t AND customer_id = :canonical "
+                        "AND channel = :channel AND status <> 'closed' "
+                        "LIMIT 1"
+                    ),
+                    {
+                        "t": tenant_id,
+                        "canonical": canonical_customer_id,
+                        "channel": row["channel"],
+                    },
+                )
+            ).scalar_one_or_none()
+
+            if canonical_open is None:
+                # No conflict: re-point now so the conversation stays open
+                # under the canonical customer.
+                await session.execute(
+                    text(
+                        "UPDATE conversations SET customer_id = :canonical "
+                        "WHERE tenant_id = :t AND id = :cid"
+                    ),
+                    {
+                        "t": tenant_id,
+                        "canonical": canonical_customer_id,
+                        "cid": row["id"],
+                    },
+                )
+                continue
+
+            # Both customers had an open conversation on this channel: fold the
+            # merged one into the canonical one, then close the merged one
+            # (mirrors ConversationService.close: status + unread_count reset).
+            await session.execute(
+                text(
+                    "UPDATE messages SET conversation_id = :canonical_conv "
+                    "WHERE tenant_id = :t AND conversation_id = :merged_conv"
+                ),
+                {
+                    "t": tenant_id,
+                    "canonical_conv": canonical_open,
+                    "merged_conv": row["id"],
+                },
+            )
+            await session.execute(
+                text(
+                    "UPDATE conversations SET status = 'closed', unread_count = 0 "
+                    "WHERE tenant_id = :t AND id = :cid"
+                ),
+                {"t": tenant_id, "cid": row["id"]},
+            )
+
+    @staticmethod
     async def merge(
         session,
         tenant_id,
@@ -376,6 +459,15 @@ class IdentityMergeService:
         ).scalar_one_or_none()
         if merged_away is None:
             raise NotFoundError("customer to merge away not found")
+
+        # Merge open conversations FIRST: the generic remap below is a blind
+        # UPDATE of conversations.customer_id, which violates the partial
+        # unique index uq_conversations_open_tenant_customer_channel whenever
+        # both customers already have an open conversation on the same
+        # channel. Fold those conflicts here, then the remap is safe.
+        await IdentityMergeService._merge_open_conversations(
+            session, tenant_id, canonical_customer_id, merged_away_customer_id
+        )
 
         # Remap every child table to the canonical customer.
         for table, fk in IdentityMergeService._REMAP_TABLES:

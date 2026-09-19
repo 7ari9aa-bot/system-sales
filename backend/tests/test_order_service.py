@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.catalog.service import CatalogService
 from app.modules.customers.service import CustomerService
-from app.modules.errors import ConflictError, NotFoundError
+from app.modules.errors import ConflictError, NotFoundError, ValidationError
 from app.modules.inventory.models import InventoryBalance, Warehouse
 from app.modules.inventory.service import InventoryService
 from app.modules.orders.errors import InsufficientStockError
@@ -369,25 +369,30 @@ async def test_register_refund_tracks_payment_state(db: AsyncSession, tenant_ctx
     order = await OrderService.create_order(
         db, tenant_id, customer.id, [{"variant_id": variant.id, "quantity": 1}]
     )
+    # Pay the order's exact balance: the over-payment guard rejects anything
+    # above it (the old test paid 100 on a 25.50 order, which is no longer
+    # allowed by design).
     payment = await OrderService.add_payment(
-        db, tenant_id, order.id, method="card", amount=100
+        db, tenant_id, order.id, method="card", amount="25.50"
     )
 
+    # Refund scenario aligned to the real 25.50 balance (the old 30/71/70
+    # amounts were built on the over-payment the guard now forbids).
     partial = await OrderService.register_refund(
-        db, tenant_id, order.id, payment.id, amount=30, reason="damaged item"
+        db, tenant_id, order.id, payment.id, amount=10, reason="damaged item"
     )
-    assert Decimal(str(partial.amount)) == Decimal("30")
+    assert Decimal(str(partial.amount)) == Decimal("10")
     assert partial.status == "processed"
     assert payment.status == "partially_refunded"
 
     with pytest.raises(ValueError):
-        await OrderService.register_refund(db, tenant_id, order.id, payment.id, amount=71)
+        await OrderService.register_refund(db, tenant_id, order.id, payment.id, amount=20)
 
     final = await OrderService.register_refund(
-        db, tenant_id, order.id, payment.id, amount=70
+        db, tenant_id, order.id, payment.id, amount=Decimal("15.50")
     )
     assert payment.status == "refunded"
-    assert Decimal(str(final.amount)) == Decimal("70")
+    assert Decimal(str(final.amount)) == Decimal("15.50")
 
     with pytest.raises(NotFoundError):
         await OrderService.register_refund(
@@ -408,7 +413,9 @@ async def test_create_order_input_validation(db: AsyncSession, tenant_ctx):
         await OrderService.create_order(
             db, tenant_id, uuid.uuid4(), [{"variant_id": uuid.uuid4(), "quantity": 1}]
         )
-    with pytest.raises(ValueError):
+    # Empty items → domain ValidationError (error contract v2), not a bare
+    # ValueError. This was the contract change the old test predated.
+    with pytest.raises(ValidationError):
         await OrderService.create_order(db, tenant_id, customer.id, [])
     await db.flush()
 
