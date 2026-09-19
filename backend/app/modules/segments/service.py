@@ -109,52 +109,39 @@ def _field_sql(field: str) -> str:
     return mapping[field]
 
 
-def _condition_sql(node: dict) -> str:
+def _compile_where(node: dict, params: dict) -> str:
+    """Compile the DSL into a WHERE fragment with monotonic bind params.
+
+    §M2: param names are minted sequentially (p0, p1, …) so two conditions on
+    the same field can never collide and flip each other's values.
+    """
+    if "all" in node or "any" in node:
+        joiner = " AND " if "all" in node else " OR "
+        parts = [_compile_where(child, params) for child in node["all" if "all" in node else "any"]]
+        return "(" + joiner.join(parts) + ")"
+    if "not" in node:
+        return "(NOT " + _compile_where(node["not"], params) + ")"
+
+    # leaf condition
     field_sql = _field_sql(node["field"])
     op = node["op"]
     value = node["value"]
-    ops = {
-        "eq": "=",
-        "neq": "<>",
-        "gt": ">",
-        "gte": ">=",
-        "lt": "<",
-        "lte": "<=",
-    }
-    if op in ops:
-        return f"({field_sql} {ops[op]} :v_{node['field']}_{abs(hash(str(value))) % 10000})"
+    key = f"p{len(params)}"
+    params[key] = value
+
+    ops = {"eq": "=", "neq": "<>", "gt": ">", "gte": ">=", "lt": "<", "lte": "<="}
     if op == "in":
-        return f"({field_sql} = ANY(:v_{node['field']}))"
+        values = value if isinstance(value, list) else [value]
+        marks = []
+        for i, item in enumerate(values):
+            item_key = f"{key}_{i}"
+            params[item_key] = item
+            marks.append(f":{item_key}")
+        return f"({field_sql} IN ({', '.join(marks)}))"
     if op == "contains":
-        return f"({field_sql} ILIKE '%' || :v_{node['field']} || '%')"
-    raise ValidationError(f"operator not allowed: {op}")
-
-
-def _collect_params(node: dict, params: dict) -> None:
-    if "all" in node or "any" in node:
-        key = "all" if "all" in node else "any"
-        for child in node[key]:
-            _collect_params(child, params)
-        return
-    if "not" in node:
-        _collect_params(node["not"], params)
-        return
-    key = (
-        f"v_{node['field']}_{abs(hash(str(node['value']))) % 10000}"
-        if node["op"] not in ("in", "contains")
-        else f"v_{node['field']}"
-    )
-    params[key] = node["value"]
-
-
-def _build_where(node: dict, params: dict) -> str:
-    if "all" in node:
-        return "(" + " AND ".join(_build_where(c, params) for c in node["all"]) + ")"
-    if "any" in node:
-        return "(" + " OR ".join(_build_where(c, params) for c in node["any"]) + ")"
-    if "not" in node:
-        return "(NOT " + _build_where(node["not"], params) + ")"
-    return _condition_sql(node)
+        params[key] = f"%{value}%"
+        return f"({field_sql} ILIKE :{key})"
+    return f"({field_sql} {ops[op]} :{key})"
 
 
 class SegmentService:
@@ -178,7 +165,7 @@ class SegmentService:
         """
         validate_dsl(segment.definition)
         params: dict = {"t": tenant_id}
-        where = _build_where(segment.definition, params)
+        where = _compile_where(segment.definition, params)
         # inject since_days filter as relative date if used
         sql = f"SELECT id FROM customers WHERE tenant_id = :t AND deleted_at IS NULL AND {where}"
         await bind_tenant(session, tenant_id)

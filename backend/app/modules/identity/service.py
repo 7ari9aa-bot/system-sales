@@ -61,7 +61,12 @@ class AuthService:
         full_name: str | None,
     ) -> tuple[User, Tenant]:
         local_part = email.split("@", 1)[0]
-        display_name = " ".join(re.split(r"[._-]+", local_part)) .strip().title() or local_part
+        # Display name ignores plus-addressing and trailing unique suffixes
+        # ("hamed.adel+a12@x.com", "hamed.adel-3f2a1b@x.com" -> "Hamed Adel").
+        segments = [seg for seg in re.split(r"[._-]+", local_part.split("+", 1)[0]) if seg]
+        if len(segments) > 1 and re.fullmatch(r"\d+|[0-9a-f]{6,}", segments[-1]):
+            segments = segments[:-1]
+        display_name = " ".join(segments).strip().title() or local_part
         tenant_name = tenant_name or display_name
         full_name = full_name or display_name
 

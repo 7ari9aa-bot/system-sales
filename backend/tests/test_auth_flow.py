@@ -186,14 +186,14 @@ async def test_register_minimal_email_password_only(db):
 
 async def test_register_minimal_slug_collision_dedupes(db):
     """Two minimal signups with the same email local part get distinct slugs."""
-    email = f"collision-{uuid.uuid4().hex[:4]}@test.local"
+    local = f"collision-{uuid.uuid4().hex[:4]}"
     _u1, t1 = await AuthService.register(
-        db, tenant_name=None, tenant_slug=None, email=email,
+        db, tenant_name=None, tenant_slug=None, email=f"{local}@test.local",
         password="Probe-1234", full_name=None,
     )
     u2, t2 = await AuthService.register(
-        db, tenant_name=None, tenant_slug=None, email=email,
+        db, tenant_name=None, tenant_slug=None, email=f"{local}@other.local",
         password="Probe-1234", full_name=None,
     )
-    assert u2.email == email
     assert t1.slug != t2.slug
+    assert t2.slug.startswith(t1.slug)  # نفس الأساس + لاحقة تفريد
