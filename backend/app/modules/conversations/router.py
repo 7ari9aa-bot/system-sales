@@ -32,7 +32,13 @@ webhook_router = APIRouter(tags=["channels"])
 
 
 class SendMessageRequest(BaseModel):
-    body: str = Field(min_length=1, max_length=4096)
+    """§30: outside the customer-service window a free-form reply is refused,
+    so the caller must supply an APPROVED template instead."""
+
+    body: str | None = Field(default=None, max_length=4096)
+    template_name: str | None = Field(default=None, max_length=127)
+    template_vars: dict | None = None
+    template_language: str = Field(default="ar", max_length=15)
 
 
 class AssignRequest(BaseModel):
@@ -127,7 +133,11 @@ async def send_message(ctx: TenantCtxDep, conversation_id: uuid.UUID, body: Send
     conversation = await ConversationService.get(ctx.session, ctx.tenant_id, conversation_id)
     if conversation.status == "closed":
         raise ConflictError("conversation is closed")
+    if not body.body and not body.template_name:
+        raise ValidationError("message needs body or template_name")
 
+    # The policy decision lives in ConversationService.add_message so that the
+    # AI, automation and campaigns are bound by exactly the same rule.
     message = await ConversationService.add_message(
         ctx.session,
         ctx.tenant_id,
@@ -136,6 +146,8 @@ async def send_message(ctx: TenantCtxDep, conversation_id: uuid.UUID, body: Send
         sender_type="agent",
         body=body.body,
         sender_user_id=ctx.user.id,
+        template_name=body.template_name,
+        template_vars=body.template_vars,
     )
     await add_outbox_event(
         ctx.session,

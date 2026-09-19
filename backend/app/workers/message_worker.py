@@ -51,6 +51,7 @@ from app.modules.conversations.gateway.base import (
 )
 from app.modules.conversations.gateway.registry import get_adapter
 from app.modules.conversations.models import Conversation, Message
+from app.modules.conversations.policy import MessagingPolicyService
 from app.modules.customers.models import CustomerIdentity
 from app.modules.platform.models import Integration, ProcessedEvent
 from app.workers.base import PermanentError, RetryableError, StreamWorker
@@ -257,6 +258,19 @@ class MessageWorker(StreamWorker):
             )
         ).scalar_one()
 
+        # §30: re-evaluate the channel policy at SEND time, not only when the
+        # message was created. A reply queued during a backlog can easily be
+        # delivered after the 24h window has closed, and the provider would
+        # reject it silently — the sender would never know the customer was not
+        # reached.
+        decision = await MessagingPolicyService.evaluate_for_conversation(
+            session, tenant_id, conversation, template_name=message.template_name
+        )
+        if not decision.allowed:
+            message.status = "failed"
+            message.error = f"blocked by messaging policy: {decision.reason}"
+            raise PermanentError(decision.reason)
+
         identity = (
             await session.execute(
                 select(CustomerIdentity).where(
@@ -317,6 +331,10 @@ class MessageWorker(StreamWorker):
                 customer_ref=identity.external_id,
                 body=message.body,
                 media_url=message.media_url,
+                # §31: previously never passed, so an approved template could
+                # not actually be delivered even when one was required.
+                template_name=message.template_name,
+                template_vars=message.template_vars or {},
             ),
             set_channel_message_id=conversation.channel != "webchat",
         )

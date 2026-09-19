@@ -108,11 +108,16 @@ def _exception_handlers(app: FastAPI) -> None:
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    # Production exposes NO schema surface: /docs was already off, but
+    # /openapi.json stayed readable and published the entire API surface
+    # (every route, parameter and model) to anonymous callers.
+    _expose_schema = settings.environment != "production"
     app = FastAPI(
         title="Sales OS Core API",
         version="0.1.0",
         lifespan=lifespan,
-        docs_url="/docs" if settings.environment != "production" else None,
+        docs_url="/docs" if _expose_schema else None,
+        openapi_url="/openapi.json" if _expose_schema else None,
         redoc_url=None,
     )
 

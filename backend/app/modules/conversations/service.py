@@ -21,6 +21,7 @@ from app.modules.conversations.models import (
     Message,
     normalize_conversation_status,
 )
+from app.modules.conversations.policy import MessagingPolicyService, OutboundBlockedError
 from app.modules.platform.models import AuditLog
 
 
@@ -87,10 +88,39 @@ class ConversationService:
         content_type: str = "text",
         reply_to_message_id: uuid.UUID | None = None,
         provider_metadata: dict | None = None,
+        template_name: str | None = None,
+        template_vars: dict | None = None,
     ) -> Message:
-        await ConversationService.get(session, tenant_id, conversation_id)
-        if not body and not media_url:
-            raise ValidationError("message needs body or media")
+        conversation = await ConversationService.get(session, tenant_id, conversation_id)
+        if not body and not media_url and not template_name:
+            raise ValidationError("message needs body, media or a template")
+
+        # §30-31: EVERY outbound producer (human composer, AI auto-reply,
+        # automation, journeys, campaigns) funnels through here, so this is the
+        # only place the channel policy has to be enforced. Outside the
+        # customer-service window an approved template is mandatory — without
+        # this the provider silently rejects the send and the agent believes
+        # the customer was answered.
+        decision = None
+        if direction == "outbound":
+            decision = await MessagingPolicyService.evaluate_for_conversation(
+                session, tenant_id, conversation, template_name=template_name
+            )
+            if not decision.allowed:
+                raise OutboundBlockedError(
+                    decision.reason,
+                    details={
+                        "conversation_id": str(conversation_id),
+                        "channel": conversation.channel,
+                        "requires_template": decision.requires_template,
+                        "window_expires_at": (
+                            decision.window_expires_at.isoformat()
+                            if decision.window_expires_at
+                            else None
+                        ),
+                    },
+                )
+
         if channel_message_id is not None:
             existing = (
                 await session.execute(
@@ -118,13 +148,23 @@ class ConversationService:
             content_type=content_type,
             reply_to_message_id=reply_to_message_id,
             provider_metadata=provider_metadata or {},
+            template_name=template_name,
+            template_vars=template_vars or {},
             status="received" if direction == "inbound" else "queued",
         )
         session.add(message)
-        conversation = await ConversationService.get(session, tenant_id, conversation_id)
-        conversation.last_message_at = datetime.now(UTC)
+        now = datetime.now(UTC)
+        conversation.last_message_at = now
         if direction == "inbound":
+            # §30: the window anchor. Only INBOUND moves it — last_message_at
+            # also moves on outbound and would keep the window open forever.
+            conversation.last_customer_message_at = now
             conversation.unread_count += 1
+        elif decision is not None:
+            # Record the standing so the UI and the policy engine agree.
+            conversation.messaging_policy_state = (
+                "template_only" if decision.requires_template else "open"
+            )
         await session.flush()
         return message
 

@@ -82,6 +82,17 @@ class Conversation(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
         String(31), nullable=False, default="open", server_default="open"
     )
     last_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # §30: the anchor for the channel's customer-service window. Distinct from
+    # last_message_at, which also moves on OUTBOUND messages and therefore
+    # cannot answer "when did the customer last write to us?".
+    last_customer_message_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # §30: standing messaging state (open | template_only | ...). Kept so the
+    # UI and the policy engine read the same value.
+    messaging_policy_state: Mapped[str] = mapped_column(
+        String(31), nullable=False, server_default="open"
+    )
     unread_count: Mapped[int] = mapped_column(default=0, server_default="0")
     assignee_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
@@ -141,6 +152,13 @@ class Message(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     # §155 provider-specific extras (wamid, button payloads, quick replies) —
     # kept OUT of body so the canonical columns stay clean.
     provider_metadata: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'")
+    )
+    # §31: set when this outbound message was sent AS an approved template
+    # (the only legal way to reach a customer outside the service window).
+    # Recorded so the policy decision is auditable after the fact.
+    template_name: Mapped[str | None] = mapped_column(String(127), nullable=True)
+    template_vars: Mapped[dict] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'")
     )
     # Normalized provider payload.

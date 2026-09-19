@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.ai.knowledge import search_knowledge
 from app.modules.ai.models import Agent
 from app.modules.ai.runtime import AgentRunner
+from app.modules.conversations.policy import OutboundBlockedError
 
 logger = logging.getLogger(__name__)
 
@@ -133,14 +134,38 @@ async def _do_auto_reply(
         )
         return
 
-    message = await ConversationService.add_message(
-        session,
-        tenant_id,
-        conversation_id=conversation_id,
-        direction="outbound",
-        sender_type="ai",
-        body=result.content,
-    )
+    try:
+        message = await ConversationService.add_message(
+            session,
+            tenant_id,
+            conversation_id=conversation_id,
+            direction="outbound",
+            sender_type="ai",
+            body=result.content,
+        )
+    except OutboundBlockedError as exc:
+        # §30: outside the customer-service window a free-form AI reply is not
+        # allowed on this channel. Hand over to a human (who can send an
+        # approved template) instead of letting the event fail — the customer
+        # still needs an answer, and a failed event would be retried forever.
+        from app.modules.ai.models import AIHandover
+
+        session.add(
+            AIHandover(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                run_id=None,
+                reason="messaging_window_closed",
+                status="pending",
+                note=f"policy:{exc.message}",
+            )
+        )
+        logger.warning(
+            "ai.reply_blocked_by_policy conversation=%s reason=%s",
+            conversation_id,
+            exc.message,
+        )
+        return
     await add_outbox_event(
         session,
         aggregate_type="message",
