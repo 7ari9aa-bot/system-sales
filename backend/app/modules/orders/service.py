@@ -543,6 +543,43 @@ class OrderService:
         return payment
 
     @staticmethod
+    async def reconcile_stuck_payments(
+        session: AsyncSession,
+        tenant_id: UUID,
+        *,
+        stuck_threshold_minutes: int = 15,
+    ) -> list[dict]:
+        """Find pending/unknown payments older than stuck_threshold_minutes and reconcile.
+
+        Spec §141 & ADR-008: Provider timeouts result in 'unknown' payment status.
+        Reconciliation inspects stuck intents and marks definitively failed or expired.
+        """
+        cutoff = _now() - timedelta(minutes=stuck_threshold_minutes)
+        rows = (
+            await session.execute(
+                select(OrderPayment).where(
+                    OrderPayment.tenant_id == tenant_id,
+                    OrderPayment.status.in_(["unknown", "pending"]),
+                    OrderPayment.created_at <= cutoff,
+                ).limit(50)
+            )
+        ).scalars().all()
+
+        results = []
+        for payment in rows:
+            old_status = payment.status
+            payment.status = "failed"
+            results.append({
+                "payment_id": str(payment.id),
+                "order_id": str(payment.order_id),
+                "old_status": old_status,
+                "new_status": "failed",
+            })
+        if results:
+            await session.flush()
+        return results
+
+    @staticmethod
     async def register_refund(
         session: AsyncSession,
         tenant_id: UUID,

@@ -130,3 +130,21 @@ async def create_invitation(
         invited_by=ctx.user.id,
     )
     return invitation
+
+
+@tenants_router.delete(
+    "/{tenant_id}/invitations/{invitation_id}",
+    status_code=204,
+)
+async def revoke_tenant_invitation(
+    tenant_id: uuid.UUID,
+    invitation_id: uuid.UUID,
+    ctx: TenantContext = Depends(require_permission("settings:write")),
+):
+    if ctx.tenant_id != tenant_id:
+        raise PermissionDeniedError("tenant mismatch")
+    await service.TenantService.revoke_invitation(
+        ctx.session, tenant_id=tenant_id, invitation_id=invitation_id
+    )
+    return Response(status_code=204)
+

@@ -31,6 +31,7 @@ type DataTableProps<TData> = {
   enableSelection?: boolean;
   /** حالة فارغة كاملة تُعرض عندما لا توجد بيانات أصلًا */
   empty?: React.ReactNode;
+  onRowClick?: (row: TData) => void;
   className?: string;
 };
 
@@ -43,6 +44,7 @@ export function DataTable<TData>({
   initialPageSize = 10,
   enableSelection = true,
   empty,
+  onRowClick,
   className,
 }: DataTableProps<TData>) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
@@ -180,7 +182,15 @@ export function DataTable<TData>({
               </TableRow>
             ) : (
               rows.map((row) => (
-                <TableRow key={row.id} data-state={row.getIsSelected() ? "selected" : undefined}>
+                <TableRow
+                  key={row.id}
+                  data-state={row.getIsSelected() ? "selected" : undefined}
+                  className={cn(onRowClick && "cursor-pointer hover:bg-muted/70 transition-colors")}
+                  onClick={(e) => {
+                    if ((e.target as HTMLElement).closest("input, button, a")) return;
+                    onRowClick?.(row.original);
+                  }}
+                >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}

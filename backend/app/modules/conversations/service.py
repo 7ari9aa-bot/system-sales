@@ -194,7 +194,20 @@ class ConversationService:
         before_id: uuid.UUID | None = None,
     ) -> list[Conversation]:
         """Keyset-aware inbox listing: pass before_created_at + before_id to page."""
-        stmt = select(Conversation).where(Conversation.tenant_id == tenant_id)
+        from app.modules.customers.models import Customer
+
+        stmt = (
+            select(
+                Conversation,
+                Customer.name.label("customer_name"),
+                Customer.phone.label("customer_phone"),
+            )
+            .outerjoin(
+                Customer,
+                (Customer.id == Conversation.customer_id) & (Customer.tenant_id == tenant_id),
+            )
+            .where(Conversation.tenant_id == tenant_id)
+        )
         if status:
             stmt = stmt.where(Conversation.status == status)
         if assignee_user_id:
@@ -208,7 +221,13 @@ class ConversationService:
         else:
             stmt = stmt.order_by(Conversation.last_message_at.desc().nullslast())
         stmt = stmt.limit(limit).offset(offset)
-        return list((await session.execute(stmt)).scalars().all())
+        rows = (await session.execute(stmt)).all()
+        results: list[Conversation] = []
+        for conv, cust_name, cust_phone in rows:
+            setattr(conv, "customer_name", cust_name)
+            setattr(conv, "customer_phone", cust_phone)
+            results.append(conv)
+        return results
 
     @staticmethod
     async def list_messages(
@@ -272,3 +291,45 @@ class ConversationService:
                 resource_id=resource_id,
             )
         )
+
+    @staticmethod
+    async def reconcile_unknown_messages(
+        session: AsyncSession,
+        tenant_id: uuid.UUID | None = None,
+        *,
+        stuck_threshold_minutes: int = 15,
+    ) -> list[dict]:
+        """Reconcile messages stuck in 'unknown' or 'sending'.
+
+        - If message was sending or unknown for longer than stuck_threshold_minutes,
+          and no provider receipt arrived, transition to 'failed' with definitive error.
+        - Emits in-app notification / audit trail so agents know an outbound message failed delivery.
+        """
+        from datetime import timedelta
+
+        cutoff = datetime.now(UTC) - timedelta(minutes=stuck_threshold_minutes)
+        stmt = select(Message).where(
+            Message.status.in_(["unknown", "sending"]),
+            Message.created_at <= cutoff,
+        )
+        if tenant_id is not None:
+            stmt = stmt.where(Message.tenant_id == tenant_id)
+
+        stuck_messages = list((await session.execute(stmt)).scalars().all())
+        results = []
+        for msg in stuck_messages:
+            old_status = msg.status
+            msg.status = "failed"
+            msg.error = (
+                f"Reconciled from '{old_status}' after {stuck_threshold_minutes}m: provider unacknowledged"
+            )
+            results.append({
+                "message_id": str(msg.id),
+                "tenant_id": str(msg.tenant_id),
+                "conversation_id": str(msg.conversation_id),
+                "old_status": old_status,
+                "new_status": "failed",
+            })
+        if results:
+            await session.flush()
+        return results

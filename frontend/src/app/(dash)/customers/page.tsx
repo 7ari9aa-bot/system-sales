@@ -2,13 +2,16 @@
 
 import * as React from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Users } from "lucide-react";
+import { Users, ChevronLeft } from "lucide-react";
 import { useCustomers, type Customer } from "@/lib/queries";
 import { t } from "@/lib/t";
 import { DataTable } from "@/components/data-table";
 import { EmptyState, PageHeader } from "@/components/ui/states";
+import { CustomerDrawer } from "@/components/customer-drawer";
+import { Badge } from "@/components/ui/badge";
 
 export default function CustomersPage() {
+  const [selectedCustomerId, setSelectedCustomerId] = React.useState<string | null>(null);
   const customersQuery = useCustomers();
   const customers = customersQuery.data ?? [];
 
@@ -17,7 +20,18 @@ export default function CustomersPage() {
       {
         accessorKey: "name",
         header: t.name,
-        cell: ({ row }) => <span className="font-semibold">{row.original.name}</span>,
+        cell: ({ row }) => (
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-foreground hover:text-primary transition-colors">
+              {row.original.name}
+            </span>
+            {row.original.is_blocked && (
+              <Badge variant="danger" className="text-[10px] px-1.5 py-0">
+                محظور
+              </Badge>
+            )}
+          </div>
+        ),
       },
       {
         accessorFn: (row) => row.phone ?? "",
@@ -44,8 +58,17 @@ export default function CustomersPage() {
         header: t.totalSpent,
         cell: ({ row }) => (
           <span dir="ltr" className="font-semibold">
-            {Number(row.original.lifetime_value).toFixed(2)}
+            {Number(row.original.lifetime_value).toFixed(2)} ج.م
           </span>
+        ),
+      },
+      {
+        id: "actions",
+        header: "",
+        cell: () => (
+          <div className="flex justify-end">
+            <ChevronLeft className="size-4 text-muted-foreground" />
+          </div>
         ),
       },
     ],
@@ -76,13 +99,14 @@ export default function CustomersPage() {
 
   return (
     <div>
-      <PageHeader title={t.customers} description="قاعدة عملائك وسجل الشراء" />
+      <PageHeader title={t.customers} description="قاعدة عملائك، سجل الشراء، ومعلومات العميل الكاملة (360°)" />
       <DataTable
         columns={columns}
         data={customers}
         testid="customers-table"
         searchPlaceholder={t.searchCustomers}
         searchTestid="customer-search"
+        onRowClick={(c) => setSelectedCustomerId(c.id)}
         empty={
           <EmptyState
             icon={<Users aria-hidden="true" />}
@@ -90,6 +114,14 @@ export default function CustomersPage() {
             description={t.noCustomersHint}
           />
         }
+      />
+
+      <CustomerDrawer
+        customerId={selectedCustomerId}
+        open={Boolean(selectedCustomerId)}
+        onOpenChange={(open) => {
+          if (!open) setSelectedCustomerId(null);
+        }}
       />
     </div>
   );

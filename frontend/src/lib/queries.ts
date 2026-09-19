@@ -32,6 +32,8 @@ export type DashboardData = {
 export type Conversation = {
   id: string;
   customer_id: string;
+  customer_name?: string | null;
+  customer_phone?: string | null;
   channel: string;
   status: string;
   unread_count: number;
@@ -199,6 +201,14 @@ export function useCustomers() {
   return useQuery({
     queryKey: qk.customers,
     queryFn: () => api<{ items: Customer[] }>("/customers").then((r) => r.items),
+  });
+}
+
+export function useCustomer(id: string | null | undefined) {
+  return useQuery<Customer>({
+    queryKey: ["customer", id],
+    queryFn: () => api<Customer>(`/customers/${id}`),
+    enabled: Boolean(id),
   });
 }
 
@@ -414,6 +424,19 @@ export function useCreateInvitation() {
   });
 }
 
+export function useRevokeInvitation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (invitationId: string) =>
+      api<void>(`/invitations/${invitationId}`, { method: "DELETE" }),
+    onSuccess: () => {
+      toast({ title: "تم إلغاء الدعوة", variant: "default" });
+      qc.invalidateQueries({ queryKey: qk.invitations });
+    },
+    onError: (err) => toast({ title: t.somethingWentWrong, description: errMessage(err), variant: "danger" }),
+  });
+}
+
 export function useCreateTask() {
   const qc = useQueryClient();
   return useMutation({
@@ -434,6 +457,61 @@ export function useUpdateTaskStatus() {
       api(`/tasks/${taskId}/status`, { method: "POST", body: { status } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: qk.tasks }),
     onError: (err) => toast({ title: t.somethingWentWrong, description: errMessage(err), variant: "danger" }),
+  });
+}
+
+/* ---------------------------------------------------------------- notifications */
+
+export type Notification = {
+  id: string;
+  kind: string;
+  title: string | null;
+  body: string;
+  action_url: string | null;
+  payload: Record<string, unknown>;
+  read_at: string | null;
+  created_at: string;
+};
+
+export function useNotifications(opts: { unread_only?: boolean; limit?: number } = {}) {
+  const params = new URLSearchParams();
+  if (opts.unread_only) params.set("unread_only", "true");
+  if (opts.limit) params.set("limit", String(opts.limit));
+  const qs = params.toString() ? `?${params}` : "";
+  return useQuery<Notification[]>({
+    queryKey: ["notifications", opts],
+    queryFn: () => api<Notification[]>(`/notifications${qs}`),
+    staleTime: 30_000,
+  });
+}
+
+export function useUnreadCount() {
+  return useQuery<{ count: number }>({
+    queryKey: ["notifications", "unread-count"],
+    queryFn: () => api<{ count: number }>("/notifications/unread-count"),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+}
+
+export function useMarkRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api(`/notifications/${id}/read`, { method: "PATCH" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["notifications"] });
+    },
+  });
+}
+
+export function useMarkAllRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api("/notifications/mark-all-read", { method: "POST" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["notifications"] });
+    },
   });
 }
 

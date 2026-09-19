@@ -58,6 +58,8 @@ async def list_conversations(
             {
                 "id": str(c.id),
                 "customer_id": str(c.customer_id),
+                "customer_name": getattr(c, "customer_name", None),
+                "customer_phone": getattr(c, "customer_phone", None),
                 "channel": c.channel,
                 "status": c.status,
                 "unread_count": c.unread_count,
@@ -268,6 +270,18 @@ async def _apply_status_updates(session, tenant_id, updates) -> None:
             )
             .values(**values)
         )
+
+
+@router.post("/conversations/messages/reconcile")
+async def reconcile_messages(
+    ctx: TenantCtxDep,
+    minutes: int = Query(default=15, ge=1, le=1440),
+):
+    """Reconcile messages stuck in 'unknown' or 'sending' for longer than threshold."""
+    reconciled = await ConversationService.reconcile_unknown_messages(
+        ctx.session, ctx.tenant_id, stuck_threshold_minutes=minutes
+    )
+    return {"reconciled_count": len(reconciled), "items": reconciled}
 
 
 # ---------- realtime (SSE) ----------

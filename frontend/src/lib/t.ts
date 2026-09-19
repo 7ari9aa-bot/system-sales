@@ -178,6 +178,8 @@ const ar = {
   invitationCreatedHint: "أرسل رابط القبول لعضو الفريق",
   acceptLink: "رابط القبول",
   pendingStatus: "قيد الانتظار",
+  revoke: "إلغاء",
+  invitationRevoked: "تم إلغاء الدعوة",
   noInvitations: "لا توجد دعوات",
   noInvitationsHint: "ادعُ عضو فريق ليساعدك في إدارة المتجر.",
   noIntegrations: "لا توجد تكاملات بعد",

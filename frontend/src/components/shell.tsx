@@ -41,6 +41,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { CommandPalette } from "@/components/command-palette";
+import { NotificationsBell } from "@/components/notifications-bell";
 import { useMe } from "@/lib/queries";
 
 /* ------------------------------------------------------------- nav model */
@@ -307,6 +308,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
+
+          {/* notifications bell */}
+          <NotificationsBell />
 
           {/* theme toggle */}
           <Button

@@ -8,7 +8,7 @@ from sqlalchemy.dialects import postgresql
 
 
 revision: str = "a7c8d9e0f1a2"
-down_revision: str | None = "c5c6fc1ae836"
+down_revision: str | None = "7f83fc4604fa"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

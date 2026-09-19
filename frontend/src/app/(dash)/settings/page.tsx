@@ -6,6 +6,7 @@ import {
   useCreateInvitation,
   useIntegrations,
   useInvitations,
+  useRevokeInvitation,
   type Integration,
   type Invitation,
 } from "@/lib/queries";
@@ -37,6 +38,7 @@ export default function SettingsPage() {
 
   const invitations = invitationsQuery.data ?? [];
   const integrations = integrationsQuery.data ?? [];
+  const revoke = useRevokeInvitation();
 
   React.useEffect(() => {
     if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("new") === "1") {
@@ -138,6 +140,7 @@ export default function SettingsPage() {
                           <TableHead>{t.email}</TableHead>
                           <TableHead>{t.role}</TableHead>
                           <TableHead>{t.status}</TableHead>
+                          <TableHead className="w-24 text-end"></TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -149,6 +152,19 @@ export default function SettingsPage() {
                               <Badge variant={inv.status === "pending" ? "warning" : "success"}>
                                 {inv.status === "pending" ? t.pendingStatus : inv.status}
                               </Badge>
+                            </TableCell>
+                            <TableCell className="text-end">
+                              {inv.status === "pending" && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-xs text-danger hover:text-danger hover:bg-danger/10 h-7 px-2"
+                                  disabled={revoke.isPending}
+                                  onClick={() => revoke.mutate(inv.id)}
+                                >
+                                  {t.revoke}
+                                </Button>
+                              )}
                             </TableCell>
                           </TableRow>
                         ))}

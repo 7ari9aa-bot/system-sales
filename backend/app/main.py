@@ -26,9 +26,6 @@ from app.modules.billing.router import (
     billing_router,
     webhooks_router,
 )
-from app.modules.billing.router import (
-    platform_router as billing_platform_router,
-)
 from app.modules.catalog.router import router as catalog_router
 from app.modules.conversations.router import (
     public_router as conversations_public_router,
@@ -55,7 +52,9 @@ from app.modules.operations.router import (
 from app.modules.operations.router import (
     search_router as operations_search_router,
 )
+from app.modules.notifications.router import router as notifications_router
 from app.modules.orders.router import router as orders_router
+from app.modules.realtime.router import router as realtime_router
 
 
 @asynccontextmanager
@@ -134,7 +133,6 @@ def create_app() -> FastAPI:
         orders_router,
         customers_router,
         platform_router,
-        billing_platform_router,
         billing_router,
         webhooks_router,
         marketing_router,
@@ -142,6 +140,8 @@ def create_app() -> FastAPI:
         ai_router,
         operations_router,
         operations_search_router,
+        realtime_router,
+        notifications_router,
     ):
         api_v1.include_router(router)
     app.include_router(api_v1)

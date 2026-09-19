@@ -29,6 +29,32 @@ def register_job_handler(job_type: str, fn: Callable) -> None:
     _HANDLERS[job_type] = fn
 
 
+async def _handle_reconcile_messages(session, tenant_id, payload: dict) -> dict:
+    from app.modules.conversations.service import ConversationService
+
+    minutes = int(payload.get("threshold_minutes", 15))
+    reconciled = await ConversationService.reconcile_unknown_messages(
+        session, tenant_id, stuck_threshold_minutes=minutes
+    )
+    return {"count": len(reconciled), "items": reconciled}
+
+
+register_job_handler("reconcile_unknown_messages", _handle_reconcile_messages)
+
+
+async def _handle_reconcile_payments(session, tenant_id, payload: dict) -> dict:
+    from app.modules.orders.service import OrderService
+
+    minutes = int(payload.get("threshold_minutes", 15))
+    reconciled = await OrderService.reconcile_stuck_payments(
+        session, tenant_id, stuck_threshold_minutes=minutes
+    )
+    return {"count": len(reconciled), "items": reconciled}
+
+
+register_job_handler("reconcile_payments", _handle_reconcile_payments)
+
+
 class SchedulerWorker(StreamWorker):
     """Runs alongside stream consumers: polls scheduled_jobs for due work."""
 

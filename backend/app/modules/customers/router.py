@@ -3,10 +3,13 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
+from app.core.errors import NotFoundError
 from app.core.pagination import decode_cursor, page_slice
 from app.modules.customers.service import CustomerService
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
@@ -50,6 +53,21 @@ async def list_customers(
     }
 
 
+@router.get("/customers/{customer_id}")
+async def get_customer(ctx: TenantCtxDep, customer_id: UUID):
+    customer = await CustomerService.get(ctx.session, ctx.tenant_id, customer_id)
+    return {
+        "id": str(customer.id),
+        "name": customer.name,
+        "phone": customer.phone,
+        "email": customer.email,
+        "lifetime_value": str(customer.lifetime_value),
+        "is_blocked": customer.is_blocked,
+        "created_at": customer.created_at.isoformat() if customer.created_at else None,
+        "updated_at": customer.updated_at.isoformat() if customer.updated_at else None,
+    }
+
+
 class IntegrationBody(BaseModel):
     provider: str = Field(max_length=63)
     kind: str = "channel"
@@ -80,6 +98,25 @@ async def list_invitations(
         }
         for invitation, role_code in rows
     ]
+
+
+@platform_router.delete("/invitations/{invitation_id}", status_code=204)
+async def revoke_invitation(
+    invitation_id: UUID,
+    ctx: TenantContext = Depends(require_permission("settings:write")),
+):
+    invitation = (
+        await ctx.session.execute(
+            select(Invitation).where(
+                Invitation.id == invitation_id,
+                Invitation.tenant_id == ctx.tenant_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if invitation is None:
+        raise NotFoundError(f"invitation {invitation_id} not found")
+    invitation.status = "revoked"
+    return Response(status_code=204)
 
 
 @platform_router.get("/integrations")

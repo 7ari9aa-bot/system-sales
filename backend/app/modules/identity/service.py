@@ -147,8 +147,18 @@ class AuthService:
                     ip=ip,
                 )
             )
-            raise PermissionDeniedError("invalid credentials")
         if not user.is_active:
+            from app.modules.platform.models import SecurityEvent
+
+            session.add(
+                SecurityEvent(
+                    event_type="account_disabled_login",
+                    tenant_id=None,
+                    actor_user_id=user.id,
+                    details={"email": user.email},
+                    ip=ip,
+                )
+            )
             raise PermissionDeniedError("account disabled")
 
         # Membership discovery at login: bind the user GUC so the
@@ -180,6 +190,17 @@ class AuthService:
             raise PermissionDeniedError("invalid refresh token")
         if row.revoked_at is not None:
             # Reuse of a revoked token → revoke the whole family (all user tokens).
+            from app.modules.platform.models import SecurityEvent
+
+            session.add(
+                SecurityEvent(
+                    event_type="token_reuse_detected",
+                    tenant_id=row.tenant_id,
+                    actor_user_id=row.user_id,
+                    details={"token_id": str(row.id)},
+                    ip=ip,
+                )
+            )
             await session.execute(
                 sa.update(RefreshToken)
                 .where(RefreshToken.user_id == row.user_id, RefreshToken.revoked_at.is_(None))
@@ -316,6 +337,25 @@ class TenantService:
         return invitation
 
     @staticmethod
+    async def revoke_invitation(
+        session, *, tenant_id: uuid.UUID, invitation_id: uuid.UUID
+    ) -> Invitation:
+        invitation = (
+            await session.execute(
+                select(Invitation).where(
+                    Invitation.id == invitation_id,
+                    Invitation.tenant_id == tenant_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if invitation is None:
+            raise NotFoundError("invitation not found")
+        if invitation.status != "pending":
+            raise ConflictError("invitation is not pending")
+        invitation.status = "revoked"
+        return invitation
+
+    @staticmethod
     async def accept_invitation(
         session, *, token: str, password: str, full_name: str
     ) -> tuple[User, Invitation]:
@@ -328,6 +368,17 @@ class TenantService:
             raise ConflictError("invitation already used or revoked")
         if invitation.expires_at < _now():
             invitation.status = "expired"
+            from app.modules.platform.models import SecurityEvent
+
+            session.add(
+                SecurityEvent(
+                    event_type="invitation_expired",
+                    tenant_id=invitation.tenant_id,
+                    actor_user_id=None,
+                    details={"email": invitation.email, "invitation_id": str(invitation.id)},
+                    ip=None,
+                )
+            )
             raise ValidationError("invitation expired")
         existing = (
             await session.execute(select(User).where(User.email == invitation.email))

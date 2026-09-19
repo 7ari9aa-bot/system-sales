@@ -183,18 +183,24 @@ class Notification(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     user_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True
     )
     customer_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("customers.id", ondelete="SET NULL")
+        UUID(as_uuid=True), ForeignKey("customers.id", ondelete="SET NULL"), nullable=True
     )
-    channel: Mapped[str] = mapped_column(String(15))  # email | sms | push | inapp
-    subject: Mapped[str | None] = mapped_column(String(512))
+    channel: Mapped[str] = mapped_column(String(15), server_default="inapp")  # email | sms | push | inapp
+    kind: Mapped[str] = mapped_column(String(31), server_default="system")
+    title: Mapped[str | None] = mapped_column(String(127), nullable=True)
+    subject: Mapped[str | None] = mapped_column(String(512), nullable=True)
     body: Mapped[str] = mapped_column(Text)
+    action_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    payload: Mapped[dict] = mapped_column(JSONB, server_default="{}")
     # allowed: queued | sent | failed
     status: Mapped[str] = mapped_column(String(15), server_default="queued")
-    error: Mapped[str | None] = mapped_column(Text)
-    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    dedup_key: Mapped[str | None] = mapped_column(String(127), nullable=True)
 
 
 class Automation(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
