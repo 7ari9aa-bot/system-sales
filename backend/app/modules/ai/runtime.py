@@ -253,6 +253,7 @@ class AgentRunner:
         max_tool_calls = limits["max_tool_calls"]
         hit_limit: str | None = None
 
+        awaiting_approval = False
         for _iteration in range(limits["max_steps"]):
             if datetime.now(UTC) - started_at > max_wall_time:
                 hit_limit = "max_wall_time"
@@ -285,6 +286,7 @@ class AgentRunner:
                 ],
             }
             messages.append(assistant_msg)
+            answered_ids: set[str] = set()
             for tc in chat_result.tool_calls:
                 if len(tool_calls_made) >= max_tool_calls:
                     hit_limit = "max_tool_calls"
@@ -294,6 +296,7 @@ class AgentRunner:
                     customer_id=customer_id, conversation_id=conversation_id,
                 )
                 tool_calls_made.append(outcome)
+                answered_ids.add(tc.id)
                 messages.append(
                     {
                         "role": "tool",
@@ -301,9 +304,39 @@ class AgentRunner:
                         "content": json.dumps(outcome.get("result") or {}),
                     }
                 )
+                if outcome.get("status") == "awaiting_approval":
+                    # §135: SUSPEND the loop. The previous behavior kept
+                    # calling the model — it re-issued the same tool call
+                    # (duplicate approvals, extra spend) and answered the
+                    # customer as if the blocked action had happened.
+                    awaiting_approval = True
+                    break
+            if awaiting_approval:
+                break
+            if hit_limit == "max_tool_calls":
+                # OpenAI-compatible providers reject an assistant message
+                # with tool_calls that lack tool responses — synthesize a
+                # skip result for every unanswered id before the loop ends.
+                for tc in chat_result.tool_calls:
+                    if tc.id not in answered_ids:
+                        messages.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": tc.id,
+                                "content": json.dumps(
+                                    {"skipped": "tool call limit reached"}
+                                ),
+                            }
+                        )
+                break
             content = chat_result.content or content
 
-        if hit_limit:
+        if awaiting_approval:
+            # run.status was set to WAITING_APPROVAL by _execute_tool; leave
+            # content empty — hooks sends nothing while approval is pending.
+            await session.flush()
+            logger.warning("ai.run_awaiting_approval run=%s", run.id)
+        elif hit_limit:
             run.status = "timeout"
             run.error = f"run limit hit: {hit_limit}"
             await session.flush()
@@ -403,13 +436,10 @@ class AgentRunner:
                             payload={"arguments": kwargs},
                         )
                         run.status = "WAITING_APPROVAL"
-                        await session.flush()
-                        return {
-                            "name": request.name,
-                            "status": "awaiting_approval",
-                            "error": None,
-                            "result": {"awaiting_approval": True},
-                        }
+                        status = "awaiting_approval"
+                        result = {"awaiting_approval": True}
+                        # fall through: the ToolCall audit row must be written
+                        # for gated calls too (the early return skipped it).
                     result = await spec.handler(session, tenant_id, **kwargs)
                 except PydanticValidationError as exc:
                     status = "error"

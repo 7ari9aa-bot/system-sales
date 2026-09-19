@@ -88,8 +88,17 @@ async def main() -> int:
                 print("  (no ai message produced)")
 
     ok = True
+    if len(hits) < 1:
+        print("\nCHECK FAILED: knowledge search returned no hits")
+        ok = False
+    if not result.content.strip():
+        print("\nCHECK FAILED: agent run produced empty content")
+        ok = False
+    if not ai_messages:
+        print("\nCHECK FAILED: no AI outbound message row for the conversation")
+        ok = False
     print("\nVERDICT:", "PASS" if ok else "FAIL")
-    return 0
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":

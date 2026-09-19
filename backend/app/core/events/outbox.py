@@ -43,6 +43,19 @@ _RECLAIM_SQL = sa.text(
     """
 )
 
+# A `failed` row means the BUS was unreachable at publish time (an
+# environmental failure — poison events dead-letter at the worker, not here).
+# Re-queue them after a cool-down instead of stranding them forever, and
+# reset attempts: the retry budget applies to processing, not to Redis outages.
+_RECLAIM_FAILED_SQL = sa.text(
+    """
+    UPDATE outbox_events
+       SET status = 'pending', attempts = 0
+     WHERE status = 'failed'
+       AND COALESCE(published_at, created_at) < now() - interval '5 minutes'
+    """
+)
+
 _CLAIM_SQL = sa.text(
     """
     UPDATE outbox_events
@@ -51,6 +64,7 @@ _CLAIM_SQL = sa.text(
         SELECT id FROM outbox_events
          WHERE status = 'pending'
            AND attempts < :max_attempts
+           AND (not_before IS NULL OR not_before <= now())
          ORDER BY created_at
          FOR UPDATE SKIP LOCKED
          LIMIT :batch
@@ -118,6 +132,9 @@ class OutboxRelay:
             # The claim transaction (and its SKIP LOCKED lock) died with that
             # connection; anything stuck past 5 minutes is safe to re-queue.
             await session.execute(_RECLAIM_SQL)
+            # Re-queue rows whose bus publish failed (Redis outage) — without
+            # this they were stranded in 'failed' forever.
+            await session.execute(_RECLAIM_FAILED_SQL)
             rows = (
                 (
                     await session.execute(
@@ -127,28 +144,34 @@ class OutboxRelay:
                 .mappings()
                 .all()
             )
+            if not rows:
+                await session.commit()
+                return 0
             for row in rows:
                 payload = _loads(row["payload"])
                 meta = _loads(row["meta"])
                 try:
                     await self._bus.publish(row["stream"], payload, meta)
-                    await session.execute(_MARK_PUBLISHED_SQL, {"id": row["id"]})
-                    published += 1
                 except Exception as exc:  # noqa: BLE001 — one bad event must not stop the relay
                     logger.exception("outbox.relay.publish_failed id=%s", row["id"])
                     await session.execute(
                         _MARK_FAILED_SQL, {"id": row["id"], "err": str(exc)[:500]}
                     )
+                    await session.commit()
                     continue
-                # §152 history is written after the publish is marked; a
-                # history failure must not flip a published row to failed.
+                await session.execute(_MARK_PUBLISHED_SQL, {"id": row["id"]})
+                # §152 history is written with the publish mark; a history
+                # failure must not flip a published row back to pending.
                 try:
                     await self._write_event_log(session, row, payload, meta)
                 except Exception:  # noqa: BLE001 — relay survives, ops replays
                     logger.exception(
                         "outbox.relay.event_log_failed id=%s", row["id"]
                     )
-            await session.commit()
+                # Commit PER ROW: a crash after N publishes no longer discards
+                # every mark in the batch (which re-published all of them).
+                await session.commit()
+                published += 1
         return published
 
     async def _write_event_log(

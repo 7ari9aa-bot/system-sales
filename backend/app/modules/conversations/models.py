@@ -55,6 +55,16 @@ class Conversation(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
             "last_message_at",
         ),
         Index("ix_conversations_tenant_customer", "tenant_id", "customer_id"),
+        # At most one open conversation per (tenant, customer, channel) —
+        # prevents the select-then-insert duplicate-conversation race.
+        Index(
+            "uq_conversations_open_tenant_customer_channel",
+            "tenant_id",
+            "customer_id",
+            "channel",
+            unique=True,
+            postgresql_where=text("status <> 'closed'"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

@@ -38,11 +38,12 @@ import uuid
 from dataclasses import dataclass
 
 from sqlalchemy import select
+from sqlalchemy import update as sa_update
 from sqlalchemy.exc import IntegrityError
 
 from app.core.db import SessionLocal, bind_tenant
 from app.core.events.bus import Event
-from app.core.lease import conversation_lease
+from app.core.lease import ConversationBusy, conversation_lease
 from app.modules.conversations.gateway.base import (
     ChannelAdapter,
     OutboundMessage,
@@ -90,6 +91,11 @@ class MessageWorker(StreamWorker):
         else:
             logger.debug("message.event_ignored type=%s", event_type)
 
+    def _dedupe_id(self, event: Event) -> str:
+        """Stable consumer-inbox key: the outbox row id survives crash-reclaim
+        re-publishes; the per-XADD bus uuid would make replays look new."""
+        return str(event.meta.get("outbox_id") or event.id)
+
     async def _on_received(self, event: Event, tenant_id: uuid.UUID) -> None:
         conversation_id = event.payload.get("conversation_id")
         logger.info("message.received conversation=%s", conversation_id)
@@ -106,13 +112,15 @@ class MessageWorker(StreamWorker):
                             session.add(
                                 ProcessedEvent(
                                     consumer_name=self.name,
-                                    event_id=uuid.UUID(str(event.id)),
+                                    event_id=uuid.UUID(self._dedupe_id(event)),
                                     status="done",
                                 )
                             )
                             await session.flush()
                     except IntegrityError:
-                        logger.info("received.event_already_processed id=%s", event.id)
+                        logger.info(
+                            "received.event_already_processed id=%s", event.id
+                        )
                         return
                     # §126: one state-mutating processor per conversation.
                     async with conversation_lease(session, uuid.UUID(conversation_id)):
@@ -121,8 +129,14 @@ class MessageWorker(StreamWorker):
                         )
         except ImportError:
             logger.debug("ai.hooks not installed — skipping auto-reply")
-        except Exception:  # noqa: BLE001 — AI failures must not kill the hot path
-            logger.exception("ai.auto_reply_failed conversation=%s", conversation_id)
+        # NOTE: no broad swallow here. An AI/provider failure must roll the
+        # ProcessedEvent marker back and propagate so the worker runtime
+        # retries with backoff (and finally dead-letters). Swallowing acked
+        # the event while losing the reply forever.
+        except ConversationBusy:
+            # Retryable by contract (lease.py): re-raise so the event is
+            # requeued instead of being marked processed with no reply.
+            raise
 
     # ------------------------------------------------------- outbound ----
 
@@ -137,10 +151,21 @@ class MessageWorker(StreamWorker):
         # provider call, so a crash mid-request leaves an observable
         # in-flight state and a retry dead-letters instead of resending.
         plan = None
+        permanent_reason: str | None = None
         async with SessionLocal() as session:
             async with session.begin():
                 await bind_tenant(session, tenant_id)
-                plan = await self._deliver_one(session, tenant_id, message_id)
+                try:
+                    plan = await self._deliver_one(session, tenant_id, message_id)
+                except PermanentError as exc:
+                    # The failed/sending status write must SURVIVE: flush it
+                    # as part of this commit, dead-letter after the commit.
+                    # (Raising inside the tx used to roll the write back,
+                    # leaving the message queued forever.)
+                    await session.flush()
+                    permanent_reason = str(exc)
+        if permanent_reason is not None:
+            raise PermanentError(permanent_reason)
         if plan is None:
             return
 
@@ -160,7 +185,7 @@ class MessageWorker(StreamWorker):
                         session.add(
                             ProcessedEvent(
                                 consumer_name=self.name,
-                                event_id=uuid.UUID(event.id),
+                                event_id=uuid.UUID(self._dedupe_id(event)),
                                 status="done",
                             )
                         )
@@ -262,9 +287,23 @@ class MessageWorker(StreamWorker):
             message.error = f"channel not configured: {conversation.channel}"
             raise PermanentError(f"channel not configured: {conversation.channel}")
 
-        # Claim: SENDING persists (committed by the caller's transaction)
-        # before the provider call.
-        message.status = "sending"
+        # Claim: ATOMIC conditional update — two concurrent deliveries of the
+        # same event (at-least-once redelivery / duplicate republish) can no
+        # longer both pass a read-then-write guard and double-send.
+        claim = await session.execute(
+            sa_update(Message)
+            .where(
+                Message.tenant_id == tenant_id,
+                Message.id == message.id,
+                Message.status == "queued",
+            )
+            .values(status="sending")
+        )
+        if claim.rowcount == 0:
+            logger.info(
+                "outbound.claim_lost id=%s — another worker claimed it", message.id
+            )
+            return None
         await session.flush()
         return _SendPlan(
             adapter=adapter,
@@ -327,10 +366,17 @@ class MessageWorker(StreamWorker):
 def _classify_send_failure(exc: Exception) -> str:
     """Map a provider call failure to UNKNOWN (result unknown) or FAILED
     (definitive rejection). Timeouts/connection errors mid-request are
-    UNKNOWN — the request may have reached the provider."""
-    from httpx import HTTPError, TimeoutException
+    UNKNOWN — the request may have reached the provider. A definitive HTTP
+    status rejection is FAILED — the provider answered and refused."""
+    from httpx import HTTPError, HTTPStatusError, TimeoutException
 
-    if isinstance(exc, TimeoutException | HTTPError):
+    if isinstance(exc, TimeoutException):
+        return "unknown"
+    if isinstance(exc, HTTPStatusError):
+        # HTTPStatusError subclasses HTTPError — check it FIRST, else a
+        # definitive 4xx/5xx dead-letters as "unknown" needing reconciliation.
+        return "failed"
+    if isinstance(exc, HTTPError):
         return "unknown"
     text = str(exc).lower()
     if any(

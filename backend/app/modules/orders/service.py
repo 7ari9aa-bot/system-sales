@@ -13,14 +13,14 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import func, select, tuple_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events.writer import add_outbox_event
 from app.modules.catalog.models import Product, ProductVariant
 from app.modules.catalog.service import CatalogService
 from app.modules.customers.service import CustomerService
-from app.modules.errors import ConflictError, NotFoundError
+from app.modules.errors import ConflictError, NotFoundError, ValidationError
 from app.modules.inventory.models import InventoryReservation, Warehouse
 from app.modules.inventory.service import InventoryReservationService, InventoryService
 from app.modules.orders.models import (
@@ -98,17 +98,27 @@ class OrderService:
 
     @staticmethod
     async def get(
-        session: AsyncSession, tenant_id: UUID, order_id: UUID, *, with_items: bool = True
+        session: AsyncSession,
+        tenant_id: UUID,
+        order_id: UUID,
+        *,
+        with_items: bool = True,
+        for_update: bool = False,
     ) -> Order:
-        """Fetch a tenant-scoped order; items attached when requested."""
-        order = (
-            await session.execute(
-                select(Order).where(
-                    Order.id == order_id,
-                    Order.tenant_id == tenant_id,
-                )
-            )
-        ).scalar_one_or_none()
+        """Fetch a tenant-scoped order; items attached when requested.
+
+        for_update locks the row for the rest of the transaction — every
+        MUTATING path must pass it so two concurrent transitions (e.g. cancel
+        vs pay) serialize instead of both passing the status guard and
+        double-releasing stock.
+        """
+        stmt = select(Order).where(
+            Order.id == order_id,
+            Order.tenant_id == tenant_id,
+        )
+        if for_update:
+            stmt = stmt.with_for_update()
+        order = (await session.execute(stmt)).scalar_one_or_none()
         if order is None:
             raise NotFoundError(f"order {order_id} not found")
         if with_items:
@@ -174,9 +184,20 @@ class OrderService:
         order.created is written in the SAME transaction.
         """
         if not items:
-            raise ValueError("order must contain at least one item")
+            raise ValidationError("order must contain at least one item")
 
-        await CustomerService.get(session, tenant_id, customer_id)
+        customer = await CustomerService.get(session, tenant_id, customer_id)
+        # Blocked (fraud/abuse), tombstoned (privacy deletion) or merged-away
+        # customers must never place orders — the last two would attach live
+        # orders to a ghost record.
+        if getattr(customer, "is_blocked", False):
+            raise ConflictError("customer is blocked and cannot place orders")
+        if getattr(customer, "deleted_at", None) is not None:
+            raise ConflictError("customer is deleted")
+        if getattr(customer, "merged_into_customer_id", None) is not None:
+            raise ConflictError(
+                "customer has been merged — resolve the canonical customer first"
+            )
 
         warehouse = (
             await OrderService._get_warehouse(session, tenant_id, warehouse_id)
@@ -329,7 +350,9 @@ class OrderService:
         by_user_id: UUID | None = None,
     ) -> Order:
         """Cancel an open order and give its reserved stock back."""
-        order = await OrderService.get(session, tenant_id, order_id, with_items=True)
+        order = await OrderService.get(
+            session, tenant_id, order_id, with_items=True, for_update=True
+        )
         if order.status not in _CANCELLABLE_STATUSES:
             raise ConflictError(
                 f"order {order_id} cannot be cancelled from status '{order.status}'"
@@ -358,7 +381,9 @@ class OrderService:
         note: str | None = None,
     ) -> Order:
         """Move an order along TRANSITIONS; cancellation frees the stock."""
-        order = await OrderService.get(session, tenant_id, order_id, with_items=False)
+        order = await OrderService.get(
+            session, tenant_id, order_id, with_items=False, for_update=True
+        )
         allowed = TRANSITIONS.get(order.status, set())
         if to_status not in allowed:
             raise ConflictError(
@@ -464,11 +489,35 @@ class OrderService:
         blindly (§141).
         """
         if method not in _PAYMENT_METHODS:
-            raise ValueError(
+            raise ValidationError(
                 f"method must be one of {sorted(_PAYMENT_METHODS)}, got {method!r}"
             )
-        order = await OrderService.get(session, tenant_id, order_id, with_items=False)
+        order = await OrderService.get(
+            session, tenant_id, order_id, with_items=False, for_update=True
+        )
+        if order.status in ("cancelled", "refunded"):
+            raise ConflictError(f"cannot pay a {order.status} order")
         captured = _positive_amount(amount)
+
+        # Overpayment guard: sum(captured-ish payments) + new amount must not
+        # exceed the order total.
+        already_paid = (
+            await session.execute(
+                select(func.coalesce(func.sum(OrderPayment.amount), 0)).where(
+                    OrderPayment.tenant_id == tenant_id,
+                    OrderPayment.order_id == order.id,
+                    OrderPayment.status.in_(
+                        ["captured", "partially_refunded", "authorized"]
+                    ),
+                )
+            )
+        ).scalar_one()
+        remaining = Decimal(str(order.grand_total)) - Decimal(str(already_paid))
+        if captured > remaining:
+            raise ConflictError(
+                f"payment exceeds order balance: remaining={remaining}, "
+                f"requested={captured}"
+            )
 
         payment = OrderPayment(
             tenant_id=tenant_id,
@@ -510,7 +559,9 @@ class OrderService:
         """
         status = _PAYMENT_PROVIDER_STATUSES.get(provider_status.lower())
         if status is None:
-            raise ValueError(f"unsupported provider payment status: {provider_status}")
+            raise ValidationError(
+                f"unsupported provider payment status: {provider_status}"
+            )
         order = await OrderService.get(session, tenant_id, order_id, with_items=False)
         payment = (
             await session.execute(
@@ -525,7 +576,13 @@ class OrderService:
             raise NotFoundError(f"payment {payment_id} not found for order {order_id}")
 
         if payment.status in {"refunded", "partially_refunded"} and status == "captured":
-            raise ValueError("cannot reconcile a refunded payment back to captured")
+            raise ConflictError("cannot reconcile a refunded payment back to captured")
+        if payment.status in {"failed", "refunded"} and status == "captured":
+            # A captured result after a definitive local failure is a provider
+            # state change that needs human eyes — not a silent flip.
+            raise ConflictError(
+                f"cannot reconcile a {payment.status} payment to captured"
+            )
         if payment.status == "captured" and status == "captured":
             return payment
 
@@ -549,17 +606,19 @@ class OrderService:
         *,
         stuck_threshold_minutes: int = 15,
     ) -> list[dict]:
-        """Find pending/unknown payments older than stuck_threshold_minutes and reconcile.
+        """Reconcile stuck payment intents.
 
-        Spec §141 & ADR-008: Provider timeouts result in 'unknown' payment status.
-        Reconciliation inspects stuck intents and marks definitively failed or expired.
+        Only 'unknown' rows are swept (§141): a result that was never observed
+        AND that no provider webhook has since resolved. 'pending' rows are
+        NOT touched — bank transfers and COD may legitimately sit for hours,
+        and blindly failing them marked captured money as failed.
         """
         cutoff = _now() - timedelta(minutes=stuck_threshold_minutes)
         rows = (
             await session.execute(
                 select(OrderPayment).where(
                     OrderPayment.tenant_id == tenant_id,
-                    OrderPayment.status.in_(["unknown", "pending"]),
+                    OrderPayment.status == "unknown",
                     OrderPayment.created_at <= cutoff,
                 ).limit(50)
             )
@@ -598,11 +657,17 @@ class OrderService:
                     OrderPayment.id == payment_id,
                     OrderPayment.tenant_id == tenant_id,
                     OrderPayment.order_id == order.id,
-                )
+                ).with_for_update()
             )
         ).scalar_one_or_none()
         if payment is None:
             raise NotFoundError(f"payment {payment_id} not found for order {order_id}")
+        # Only captured money can be refunded — refunding a pending/failed
+        # intent invented money that was never taken.
+        if payment.status not in ("captured", "partially_refunded"):
+            raise ConflictError(
+                f"cannot refund a {payment.status} payment — only captured"
+            )
 
         refund_amount = _positive_amount(amount)
         refunded_total = Decimal(
@@ -620,7 +685,7 @@ class OrderService:
         )
         payment_total = Decimal(str(payment.amount))
         if refunded_total + refund_amount > payment_total:
-            raise ValueError(
+            raise ConflictError(
                 f"refund exceeds captured amount: refunded={refunded_total}, "
                 f"requested={refund_amount}, captured={payment_total}"
             )
@@ -641,6 +706,13 @@ class OrderService:
             else "partially_refunded"
         )
         await session.flush()
+
+        # A fully refunded order must not stay "completed" — dashboards and
+        # analytics counted refunded money as revenue.
+        if payment.status == "refunded" and order.status == "completed":
+            await OrderService._transition(
+                session, tenant_id, order, "refunded", note="fully refunded"
+            )
 
         await add_outbox_event(
             session,
@@ -701,11 +773,19 @@ class OrderService:
             .values(tenant_id=tenant_id, name="Main", code="MAIN")
             .on_conflict_do_nothing(index_elements=["tenant_id", "code"])
         )
-        return (
-            await session.execute(
-                select(Warehouse).where(
-                    Warehouse.tenant_id == tenant_id,
-                    Warehouse.code == "MAIN",
-                )
-            )
-        ).scalar_one()
+        # Retry the read: a competing bootstrap may still be uncommitted, so
+        # a single scalar_one() could raise NoResultFound and 500 the checkout.
+        last_error: Exception | None = None
+        for _attempt in range(3):
+            try:
+                return (
+                    await session.execute(
+                        select(Warehouse).where(
+                            Warehouse.tenant_id == tenant_id,
+                            Warehouse.code == "MAIN",
+                        )
+                    )
+                ).scalar_one()
+            except NoResultFound as exc:
+                last_error = exc
+        raise ConflictError("warehouse bootstrap raced — retry the checkout") from last_error

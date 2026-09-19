@@ -10,14 +10,46 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    env:
+      # Local CI database — migrations + provision run against it, pytest
+      # connects through DATABASE_URL_APP_ADMIN (tests skip without it).
+      DATABASE_URL_ADMIN: postgresql+asyncpg://postgres:postgres@localhost:5432/sales
+      DATABASE_URL_APP_ADMIN: postgresql+asyncpg://postgres:postgres@localhost:5432/sales
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: sales
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.13"
           cache: pip
       - run: pip install -e ".[dev]"
-      - run: ruff check app tests
+      - run: ruff check app tests scripts
+      - run: alembic upgrade head
+      # Seeds roles/permissions/plans + applies RLS — tests rely on the seeded
+      # roles and are skipped silently without a configured database otherwise.
+      - run: python scripts/provision.py
       - run: pytest -q
 
   frontend:
@@ -32,5 +64,5 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - run: npm install
+      - run: npm ci
       - run: npm run build

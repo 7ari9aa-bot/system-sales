@@ -61,4 +61,9 @@ async def add_outbox_event(
     )
     session.add(event)
     await session.flush()
+    # Consumer-inbox dedupe key: the OUTBOX row id is stable across relay
+    # crash-reclaim re-publishes. (The bus previously generated a fresh uuid
+    # per XADD, so a reclaimed event got a new id and dedupe never hit —
+    # producing duplicate AI replies / double sends.)
+    event.meta = {**event.meta, "outbox_id": str(event.id)}
     return event

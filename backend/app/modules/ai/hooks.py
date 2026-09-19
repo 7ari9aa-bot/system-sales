@@ -28,106 +28,127 @@ HISTORY_MESSAGES = 10
 async def maybe_auto_reply(
     session: AsyncSession, tenant_id: uuid.UUID, conversation_id: uuid.UUID
 ) -> None:
-    """Best-effort AI reply to the last inbound message of a conversation.
+    """AI reply to the last inbound message of a conversation.
 
-    No active agent, no inbound message, or any error -> silently return
-    (logged); ingest must never fail because of the AI layer.
+    Runs under the caller's conversation lease (the message worker already
+    holds it — advisory xact locks are reentrant within one transaction).
+
+    Failure policy: exceptions propagate to the worker runtime, which rolls
+    the ProcessedEvent marker back and retries with backoff. Swallowing here
+    used to ack the event with NO reply and NO retry — a silent customer-
+    facing loss. ConversationBusy propagates as retryable by contract.
     """
+    from app.core.lease import conversation_lease
+
+    async with conversation_lease(session, conversation_id):
+        await _do_auto_reply(session, tenant_id, conversation_id)
+
+
+async def _do_auto_reply(
+    session: AsyncSession, tenant_id: uuid.UUID, conversation_id: uuid.UUID
+) -> None:
+    """Inner auto-reply logic (called under the conversation lease)."""
+    # Lazy imports: conversations owns messages; AI is an optional layer.
+    from app.core.events.writer import add_outbox_event
+    from app.modules.conversations.service import ConversationService
+
+    agent = (
+        await session.execute(
+            select(Agent)
+            .where(Agent.tenant_id == tenant_id, Agent.is_active.is_(True))
+            .order_by(Agent.created_at.asc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if agent is None:
+        return
+
+    history = await ConversationService.list_messages(
+        session, tenant_id, conversation_id, limit=HISTORY_MESSAGES
+    )
+    last_inbound = next(
+        (m for m in reversed(history) if m.direction == "inbound" and m.body), None
+    )
+    if last_inbound is None or not last_inbound.body:
+        return
+    user_body = last_inbound.body
+
+    conversation = await ConversationService.get(session, tenant_id, conversation_id)
+    # A6: never talk over a human. When the conversation is closed, paused or
+    # waiting for the team, the next inbound must not re-trigger the agent.
+    if conversation.status in ("closed", "paused", "waiting_human"):
+        logger.info(
+            "auto-reply skipped conversation=%s status=%s",
+            conversation_id,
+            conversation.status,
+        )
+        return
+    customer_id: uuid.UUID | None = conversation.customer_id
+
+    # Knowledge context is a bonus, never a hard dependency.
+    system_prompt = agent.system_prompt or ""
     try:
-        # Lazy imports: conversations owns messages; AI is an optional layer.
-        from app.core.events.writer import add_outbox_event
-        from app.modules.conversations.service import ConversationService
+        hits = await search_knowledge(session, tenant_id, user_body, limit=KNOWLEDGE_SNIPPETS)
+        snippets = "\n".join(f"- {item.title}: {item.content}" for item, _distance in hits)
+        if snippets:
+            system_prompt = f"{system_prompt}\n\nKnowledge base context:\n{snippets}".strip()
+    except Exception:  # noqa: BLE001 — context is optional
+        logger.info("auto-reply knowledge search failed", exc_info=True)
 
-        agent = (
-            await session.execute(
-                select(Agent)
-                .where(Agent.tenant_id == tenant_id, Agent.is_active.is_(True))
-                .order_by(Agent.created_at.asc())
-                .limit(1)
+    result = await AgentRunner().run(
+        session,
+        tenant_id,
+        agent_id=agent.id,
+        conversation_id=conversation_id,
+        user_message=user_body,
+        customer_id=customer_id,
+        system_prompt=system_prompt or None,
+    )
+    if not result.content:
+        return
+
+    # §173 output guardrail: block/handover BEFORE anything is queued.
+    from app.modules.ai.guardrails import default_guardrail
+
+    verdict = default_guardrail().evaluate(
+        result.content, {"tool_results": result.tool_calls_made}
+    )
+    if verdict.decision != "allow":
+        from app.modules.ai.models import AIHandover
+
+        session.add(
+            AIHandover(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                run_id=None,
+                reason="guardrail",
+                status="pending",
+                note=f"guardrail:{verdict.reason}",
             )
-        ).scalar_one_or_none()
-        if agent is None:
-            return
-
-        history = await ConversationService.list_messages(
-            session, tenant_id, conversation_id, limit=HISTORY_MESSAGES
         )
-        last_inbound = next(
-            (m for m in reversed(history) if m.direction == "inbound" and m.body), None
+        logger.warning(
+            "ai.guardrail_blocked conversation=%s reason=%s",
+            conversation_id,
+            verdict.reason,
         )
-        if last_inbound is None or not last_inbound.body:
-            return
-        user_body = last_inbound.body
+        return
 
-        conversation = await ConversationService.get(session, tenant_id, conversation_id)
-        customer_id: uuid.UUID | None = conversation.customer_id
-
-        # Knowledge context is a bonus, never a hard dependency.
-        system_prompt = agent.system_prompt or ""
-        try:
-            hits = await search_knowledge(session, tenant_id, user_body, limit=KNOWLEDGE_SNIPPETS)
-            snippets = "\n".join(f"- {item.title}: {item.content}" for item, _distance in hits)
-            if snippets:
-                system_prompt = f"{system_prompt}\n\nKnowledge base context:\n{snippets}".strip()
-        except Exception:  # noqa: BLE001 — context is optional
-            logger.info("auto-reply knowledge search failed", exc_info=True)
-
-        result = await AgentRunner().run(
-            session,
-            tenant_id,
-            agent_id=agent.id,
-            conversation_id=conversation_id,
-            user_message=user_body,
-            customer_id=customer_id,
-            system_prompt=system_prompt or None,
-        )
-        if not result.content:
-            return
-
-        # §173 output guardrail: block/handover BEFORE anything is queued.
-        from app.modules.ai.guardrails import default_guardrail
-
-        verdict = default_guardrail().evaluate(
-            result.content, {"tool_results": result.tool_calls_made}
-        )
-        if verdict.decision != "allow":
-            from app.modules.ai.models import AIHandover
-
-            session.add(
-                AIHandover(
-                    tenant_id=tenant_id,
-                    conversation_id=conversation_id,
-                    run_id=None,
-                    reason="guardrail",
-                    status="pending",
-                    note=f"guardrail:{verdict.reason}",
-                )
-            )
-            logger.warning(
-                "ai.guardrail_blocked conversation=%s reason=%s",
-                conversation_id,
-                verdict.reason,
-            )
-            return
-
-        message = await ConversationService.add_message(
-            session,
-            tenant_id,
-            conversation_id=conversation_id,
-            direction="outbound",
-            sender_type="ai",
-            body=result.content,
-        )
-        await add_outbox_event(
-            session,
-            aggregate_type="message",
-            aggregate_id=message.id,
-            event_type="message.outbound",
-            tenant_id=tenant_id,
-            payload={
-                "message_id": str(message.id),
-                "conversation_id": str(conversation_id),
-            },
-        )
-    except Exception:  # noqa: BLE001 — auto-reply must never break ingest
-        logger.exception("auto-reply failed for conversation %s", conversation_id)
+    message = await ConversationService.add_message(
+        session,
+        tenant_id,
+        conversation_id=conversation_id,
+        direction="outbound",
+        sender_type="ai",
+        body=result.content,
+    )
+    await add_outbox_event(
+        session,
+        aggregate_type="message",
+        aggregate_id=message.id,
+        event_type="message.outbound",
+        tenant_id=tenant_id,
+        payload={
+            "message_id": str(message.id),
+            "conversation_id": str(conversation_id),
+        },
+    )

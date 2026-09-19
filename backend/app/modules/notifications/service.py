@@ -5,7 +5,6 @@ import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import select, update
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.notifications.models import Notification
@@ -128,7 +127,8 @@ class NotificationService:
         tenant_id: uuid.UUID,
         user_id: uuid.UUID,
     ) -> int:
-        from sqlalchemy import func, select as sa_select
+        from sqlalchemy import func
+        from sqlalchemy import select as sa_select
 
         result = (
             await session.execute(

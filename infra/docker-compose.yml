@@ -1,6 +1,7 @@
 services:
   postgres:
-    image: postgres:17-alpine
+    # pgvector variant — migrations create VECTOR columns (extension pgvector).
+    image: pgvector/pgvector:pg17
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres

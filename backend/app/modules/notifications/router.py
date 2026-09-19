@@ -24,7 +24,7 @@ class NotificationOut(BaseModel):
     model_config = {"from_attributes": True}
 
     @classmethod
-    def from_orm_iso(cls, obj) -> "NotificationOut":
+    def from_orm_iso(cls, obj) -> NotificationOut:
         return cls(
             id=obj.id,
             kind=obj.kind,

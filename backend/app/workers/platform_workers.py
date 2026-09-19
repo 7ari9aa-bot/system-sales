@@ -1,6 +1,9 @@
 """PLATFORM workers — notification delivery + webhook delivery.
 
-Both consume the platform.events stream. Retries/DLQ come from StreamWorker.
+Streams follow the outbox writer naming ({aggregate_type}.events):
+notification.queued -> notification.events, webhook.deliver -> webhook.events.
+(The previous "platform.events" subscription matched a stream nothing
+publishes, so notifications and webhook deliveries never fired.)
 """
 
 from __future__ import annotations
@@ -21,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 class NotificationWorker(StreamWorker):
-    stream = "platform.events"
+    stream = "notification.events"
     group = "notification-workers"
     name = "notification-worker"
 
@@ -52,7 +55,7 @@ class NotificationWorker(StreamWorker):
 
 
 class WebhookWorker(StreamWorker):
-    stream = "platform.events"
+    stream = "webhook.events"
     group = "webhook-workers"
     name = "webhook-worker"
 

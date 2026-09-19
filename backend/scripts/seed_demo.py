@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import sqlalchemy as sa
 
+from app.core.config import get_settings
 from app.core.db import SessionLocal, bind_tenant
 from app.modules.catalog.service import CatalogService
 from app.modules.conversations.service import ConversationService
@@ -34,6 +35,10 @@ from app.modules.orders.service import OrderService
 
 
 async def main() -> int:
+    if get_settings().environment == "production":
+        print("refusing to seed demo data into a production environment")
+        return 1
+
     async with SessionLocal() as session:
         async with session.begin():
             demo = (

@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
 from app.core.pagination import decode_cursor, page_slice
-from app.modules.identity.deps import TenantCtxDep
+from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
 from app.modules.orders.service import OrderService
 
 router = APIRouter(tags=["orders"])
@@ -84,7 +84,11 @@ async def get_order(ctx: TenantCtxDep, order_id: uuid.UUID):
 
 
 @router.post("/orders/{order_id}/status")
-async def change_status(ctx: TenantCtxDep, order_id: uuid.UUID, body: StatusChangeRequest):
+async def change_status(
+    order_id: uuid.UUID,
+    body: StatusChangeRequest,
+    ctx: TenantContext = Depends(require_permission("orders:write")),
+):
     await OrderService.change_status(
         ctx.session,
         ctx.tenant_id,
@@ -98,10 +102,10 @@ async def change_status(ctx: TenantCtxDep, order_id: uuid.UUID, body: StatusChan
 
 @router.post("/orders/{order_id}/payments/{payment_id}/reconcile")
 async def reconcile_payment(
-    ctx: TenantCtxDep,
     order_id: uuid.UUID,
     payment_id: uuid.UUID,
     body: PaymentReconciliationRequest,
+    ctx: TenantContext = Depends(require_permission("orders:write")),
 ):
     payment = await OrderService.reconcile_payment(
         ctx.session,
@@ -118,6 +122,78 @@ async def reconcile_payment(
     }
 
 
+class PaymentCreateRequest(BaseModel):
+    method: str = Field(min_length=1, max_length=31)
+    amount: float = Field(gt=0)
+    provider: str | None = Field(default=None, max_length=63)
+
+
+class RefundCreateRequest(BaseModel):
+    amount: float = Field(gt=0)
+    reason: str | None = Field(default=None, max_length=512)
+
+
+@router.post("/orders/{order_id}/payments", status_code=201)
+async def create_payment(
+    order_id: uuid.UUID,
+    body: PaymentCreateRequest,
+    ctx: TenantContext = Depends(require_permission("orders:write")),
+):
+    """Record a captured payment (cash/POS/manual). A paid pending order is
+    confirmed and its stock reservations convert into a sale."""
+    payment = await OrderService.add_payment(
+        ctx.session,
+        ctx.tenant_id,
+        order_id,
+        method=body.method,
+        amount=body.amount,
+        provider=body.provider,
+    )
+    return {
+        "id": str(payment.id),
+        "status": payment.status,
+        "amount": str(payment.amount),
+        "currency": payment.currency,
+    }
+
+
+@router.post("/orders/{order_id}/payments/{payment_id}/refunds", status_code=201)
+async def create_refund(
+    order_id: uuid.UUID,
+    payment_id: uuid.UUID,
+    body: RefundCreateRequest,
+    ctx: TenantContext = Depends(require_permission("orders:write")),
+):
+    """Refund a captured payment (validated against the captured amount)."""
+    refund = await OrderService.register_refund(
+        ctx.session,
+        ctx.tenant_id,
+        order_id,
+        payment_id,
+        amount=body.amount,
+        reason=body.reason,
+        by_user_id=ctx.user.id,
+    )
+    return {
+        "id": str(refund.id),
+        "status": refund.status,
+        "amount": str(refund.amount),
+    }
+
+
+@router.post("/orders/{order_id}/cancel")
+async def cancel_order(
+    order_id: uuid.UUID,
+    ctx: TenantContext = Depends(require_permission("orders:write")),
+):
+    """Cancel an open order and release its reserved stock (idempotent via
+    the row lock: two concurrent cancels cannot double-release)."""
+    await OrderService.cancel_order(
+        ctx.session, ctx.tenant_id, order_id, by_user_id=ctx.user.id
+    )
+    return {"ok": True}
+
+
 class OrderItemRequest(BaseModel):
     variant_id: uuid.UUID
     quantity: int = Field(gt=0)
@@ -131,7 +207,10 @@ class CreateOrderRequest(BaseModel):
 
 
 @router.post("/orders", status_code=201)
-async def create_order(ctx: TenantCtxDep, body: CreateOrderRequest):
+async def create_order(
+    body: CreateOrderRequest,
+    ctx: TenantContext = Depends(require_permission("orders:write")),
+):
     """Transactional order creation: stock reservation + snapshot + outbox."""
     order = await OrderService.create_order(
         ctx.session,

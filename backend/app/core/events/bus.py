@@ -114,6 +114,45 @@ class RedisStreamsBus:
         if event.entry_id is not None:
             await self._client.xack(stream, group, event.entry_id)
 
+    async def reclaim_stale(
+        self,
+        stream: str,
+        group: str,
+        consumer: str,
+        *,
+        min_idle_ms: int = 60_000,
+        count: int = 20,
+    ) -> list[Event]:
+        """XAUTOCLAIM: take over entries a crashed worker left in the PEL.
+
+        XREADGROUP ">" only ever returns NEW entries, so an entry read by a
+        worker that died before acking was stranded forever. Claiming moves
+        idle entries to OUR PEL and returns them for processing; idempotent
+        consumers make the possible double-processing safe.
+        """
+        await self._ensure_group(stream, group)
+        try:
+            _cursor, entries, _deleted = await self._client.xautoclaim(
+                stream, group, consumer, min_idle_time=min_idle_ms, count=count
+            )
+        except ResponseError as exc:
+            # XAUTOCLAIM needs Redis >= 6.2; degrade to "nothing to reclaim".
+            if "unknown command" in str(exc).lower():
+                return []
+            raise
+        events: list[Event] = []
+        for entry_id, fields in entries or []:
+            events.append(
+                Event(
+                    id=fields.get("id", entry_id),
+                    stream=stream,
+                    payload=json.loads(fields.get("payload", "{}")),
+                    meta=json.loads(fields.get("meta", "{}")),
+                    entry_id=entry_id,
+                )
+            )
+        return events
+
     async def send_to_dlq(self, stream: str, event: Event, reason: str) -> None:
         """Dead-letter the event with its failure history attached."""
         meta = dict(event.meta)

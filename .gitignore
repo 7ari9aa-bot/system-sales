@@ -33,3 +33,6 @@ next-env.d.ts
 .vscode/
 .vercel
 .env*
+
+# --- assistant workspace (local agent memory / notes, not project source) ---
+.workbuddy-ai/

@@ -178,8 +178,9 @@ class AgentRun(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base)
     conversation_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True
     )
-    # status: running | succeeded | failed | timeout
-    status: Mapped[str] = mapped_column(String(15), server_default="running")
+    # status: running | succeeded | failed | timeout | WAITING_APPROVAL
+    # (31 chars — "WAITING_APPROVAL" is 16 and must fit §135's durable state)
+    status: Mapped[str] = mapped_column(String(31), server_default="running")
     input: Mapped[dict] = mapped_column(JSONB, server_default="{}")
     output: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     error: Mapped[str | None] = mapped_column(Text)

@@ -417,19 +417,43 @@ class InventoryReservationService:
     ) -> int:
         """Mark the order's ACTIVE reservations CONVERTED (payment captured).
 
-        Returns the number of rows flipped; already EXPIRED/CANCELLED rows
-        are left alone (they no longer hold stock).
+        Conversion also settles the stock: the balance hold is released
+        (reserved -= qty) and an `out`/`sale` movement is written. The
+        previous version only flipped the rows — reserved stock leaked
+        forever and the ledger never recorded a sale.
         """
-        result = await session.execute(
-            update(InventoryReservation)
-            .where(
-                InventoryReservation.tenant_id == tenant_id,
-                InventoryReservation.order_id == order_id,
-                InventoryReservation.status == "ACTIVE",
+        reservations = (
+            await session.execute(
+                select(InventoryReservation)
+                .where(
+                    InventoryReservation.tenant_id == tenant_id,
+                    InventoryReservation.order_id == order_id,
+                    InventoryReservation.status == "ACTIVE",
+                )
+                .with_for_update()
             )
-            .values(status="CONVERTED", converted_at=_now())
-        )
-        return result.rowcount or 0
+        ).scalars().all()
+
+        for reservation in reservations:
+            balance = await InventoryService._locked_balance(
+                session, tenant_id, reservation.variant_id, reservation.warehouse_id
+            )
+            balance.reserved = max(0, balance.reserved - reservation.quantity)
+            movement = InventoryMovement(
+                tenant_id=tenant_id,
+                variant_id=reservation.variant_id,
+                warehouse_id=reservation.warehouse_id,
+                direction="out",
+                quantity=reservation.quantity,
+                reason="sale",
+                reference_type="order",
+                reference_id=order_id,
+                balance_after=balance.on_hand,
+            )
+            session.add(movement)
+            reservation.status = "CONVERTED"
+            reservation.converted_at = _now()
+        return len(reservations)
 
     @staticmethod
     async def cancel_for_order(
@@ -450,3 +474,32 @@ class InventoryReservationService:
             .values(status="CANCELLED", cancelled_at=_now())
         )
         return result.rowcount or 0
+
+    @staticmethod
+    async def expire_stale(session: AsyncSession, tenant_id: UUID) -> int:
+        """Expire past-TTL ACTIVE reservations and release their holds.
+
+        The maintenance sweep (scheduler job `expire_reservations`). Without
+        it every abandoned checkout permanently shrank availability.
+        """
+        reservations = (
+            await session.execute(
+                select(InventoryReservation)
+                .where(
+                    InventoryReservation.tenant_id == tenant_id,
+                    InventoryReservation.status == "ACTIVE",
+                    InventoryReservation.expires_at.is_not(None),
+                    InventoryReservation.expires_at < _now(),
+                )
+                .with_for_update()
+            )
+        ).scalars().all()
+
+        for reservation in reservations:
+            balance = await InventoryService._locked_balance(
+                session, tenant_id, reservation.variant_id, reservation.warehouse_id
+            )
+            balance.reserved = max(0, balance.reserved - reservation.quantity)
+            reservation.status = "EXPIRED"
+            reservation.cancelled_at = _now()
+        return len(reservations)

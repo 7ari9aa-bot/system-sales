@@ -224,8 +224,8 @@ class ConversationService:
         rows = (await session.execute(stmt)).all()
         results: list[Conversation] = []
         for conv, cust_name, cust_phone in rows:
-            setattr(conv, "customer_name", cust_name)
-            setattr(conv, "customer_phone", cust_phone)
+            conv.customer_name = cust_name
+            conv.customer_phone = cust_phone
             results.append(conv)
         return results
 
@@ -303,7 +303,8 @@ class ConversationService:
 
         - If message was sending or unknown for longer than stuck_threshold_minutes,
           and no provider receipt arrived, transition to 'failed' with definitive error.
-        - Emits in-app notification / audit trail so agents know an outbound message failed delivery.
+        - Emits an in-app notification / audit trail so agents know an
+          outbound message failed delivery.
         """
         from datetime import timedelta
 
@@ -321,7 +322,8 @@ class ConversationService:
             old_status = msg.status
             msg.status = "failed"
             msg.error = (
-                f"Reconciled from '{old_status}' after {stuck_threshold_minutes}m: provider unacknowledged"
+                f"Reconciled from '{old_status}' after "
+                f"{stuck_threshold_minutes}m: provider unacknowledged"
             )
             results.append({
                 "message_id": str(msg.id),

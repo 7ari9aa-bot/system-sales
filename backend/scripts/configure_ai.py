@@ -3,7 +3,8 @@
     .venv/bin/python scripts/configure_ai.py
 
 Sets (via env or prompts): GEMINI_API_KEY. Upserts model_configs
-(fast/strong/cheap → gemini-3.6-flash; embedding → gemini-embedding-001 @1536),
+(fast/strong → gemini-3.5-flash, cheap → gemini-3.5-flash-lite;
+embedding → gemini-embedding-001 @1536),
 creates the sales agent with active tools, and ingests starter knowledge.
 Idempotent.
 """

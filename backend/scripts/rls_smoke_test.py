@@ -32,15 +32,17 @@ async def main() -> int:
     settings = get_settings()
     # The isolation test MUST run as the app runtime role (no bypassrls) —
     # running it as postgres would bypass RLS entirely and prove nothing.
-    # Session-pooler URL (:5432) for a real session (SET/RESET semantics).
-    dsn = settings.database_url_app_admin.replace("postgresql+asyncpg://", "postgresql://")
-    if not dsn:
+    raw_dsn = settings.database_url_app_admin or ""
+    if not raw_dsn:
         raise SystemExit("DATABASE_URL_APP_ADMIN missing — run scripts/provision.py first")
+    # Session-pooler URL (:5432) for a real session (SET/RESET semantics).
+    dsn = raw_dsn.replace("postgresql+asyncpg://", "postgresql://")
     conn = await asyncpg.connect(dsn, timeout=20)
     results: list[tuple[str, str]] = []
 
     tenant_a = str(uuid.uuid4())
     tenant_b = str(uuid.uuid4())
+    uid: uuid.UUID | None = None
 
     async def set_guc(tenant_id: str | None) -> None:
         if tenant_id is None:
@@ -127,14 +129,18 @@ async def main() -> int:
             "VALUES (gen_random_uuid(), $1, 'x', 'RLS Sanity') RETURNING id",
             f"rls-sanity-{uuid.uuid4().hex[:8]}@test.local",
         )
+        denied = False
         try:
             await conn.execute(
                 "INSERT INTO tenant_users (tenant_id, user_id, is_default) "
                 "VALUES ($1, $2, false)",
                 uuid.UUID(tenant_a), uid,
             )
-            results.append(("tenant_users insert with no context denied", PASS))
         except asyncpg.InsufficientPrivilegeError:
+            denied = True
+        if not denied:
+            results.append(("tenant_users insert with no context denied", FAIL))
+        else:
             results.append(("tenant_users insert with no context denied", PASS))
             await conn.execute(f"SET app.user_id = '{uid}'")
             await conn.execute(
@@ -143,10 +149,11 @@ async def main() -> int:
                 uuid.UUID(tenant_a), uid,
             )
             results.append(("tenant_users self-access via app.user_id works", PASS))
-        else:
-            results.append(("tenant_users insert with no context denied", FAIL))
     finally:
+        # Tenants first (cascades tenant_users), then the sanity user row.
         await conn.execute("DELETE FROM tenants WHERE id = ANY($1::uuid[])", [tenant_a, tenant_b])
+        if uid is not None:
+            await conn.execute("DELETE FROM users WHERE id = ANY($1::uuid[])", [uid])
         await conn.close()
 
     print("\nRLS SMOKE TEST RESULTS")
