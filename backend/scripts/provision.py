@@ -167,9 +167,13 @@ AS $fn$
      ORDER BY i.created_at
      LIMIT 1
 $fn$;
-
-REVOKE ALL ON FUNCTION public.resolve_channel_tenant(text, text) FROM PUBLIC;
 """
+
+# asyncpg's extended-query protocol accepts ONE statement per execute, so the
+# REVOKE is issued separately (same reason as the migration).
+CHANNEL_TENANT_FN_REVOKE = (
+    "REVOKE ALL ON FUNCTION public.resolve_channel_tenant(text, text) FROM PUBLIC;"
+)
 
 
 ROLES = [
@@ -343,6 +347,7 @@ async def main() -> None:
         # CHANNEL_TENANT_FN_SQL) — created here too so a database provisioned
         # without the migration still gets it.
         await conn.execute(CHANNEL_TENANT_FN_SQL)
+        await conn.execute(CHANNEL_TENANT_FN_REVOKE)
         await conn.execute(
             "GRANT EXECUTE ON FUNCTION public.resolve_channel_tenant(text, text) "
             "TO sales_app"

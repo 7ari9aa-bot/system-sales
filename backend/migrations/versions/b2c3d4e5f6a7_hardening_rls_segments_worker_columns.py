@@ -80,9 +80,15 @@ AS $fn$
      ORDER BY i.created_at
      LIMIT 1
 $fn$;
-
-REVOKE ALL ON FUNCTION public.resolve_channel_tenant(text, text) FROM PUBLIC;
 """
+
+# NOTE: one statement per op.execute(). Migrations run through asyncpg, whose
+# extended-query protocol rejects multiple commands in a single execute
+# ("cannot insert multiple commands into a prepared statement"), so the
+# function body and its REVOKE must be issued separately.
+_CHANNEL_TENANT_FN_REVOKE = (
+    "REVOKE ALL ON FUNCTION public.resolve_channel_tenant(text, text) FROM PUBLIC;"
+)
 
 # tenant_users carries a tenant_id but is ALSO how a user's memberships are
 # discovered at login — before any tenant context exists. The generic policy
@@ -271,6 +277,7 @@ def upgrade() -> None:
     _rls_do_block()
 
     op.execute(_CHANNEL_TENANT_FN)
+    op.execute(_CHANNEL_TENANT_FN_REVOKE)
     # sales_app is created by scripts/provision.py, which may run either before
     # or after migrations — grant only when the role is already present.
     op.execute(

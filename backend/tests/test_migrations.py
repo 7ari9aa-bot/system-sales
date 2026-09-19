@@ -28,7 +28,11 @@ HARDENING_MIGRATION = (
 
 
 def _load_migration(path: Path):
-    """Import a migration module and capture everything it sends to op.execute."""
+    """Import a migration module and capture everything it sends to op.execute.
+
+    Only `execute` is recorded — the schema ops are no-ops so the captured list
+    contains exactly the raw SQL statements that reach the driver.
+    """
     captured: list[str] = []
     spec = importlib.util.spec_from_file_location("migration_under_test", path)
     module = importlib.util.module_from_spec(spec)
@@ -36,14 +40,67 @@ def _load_migration(path: Path):
     spec.loader.exec_module(module)
     module.op = types.SimpleNamespace(
         execute=lambda sql: captured.append(sql),
-        create_index=lambda *a, **k: captured.append(f"CREATE INDEX {a}"),
-        drop_index=lambda *a, **k: captured.append(f"DROP INDEX {a}"),
+        create_index=lambda *a, **k: None,
+        drop_index=lambda *a, **k: None,
         add_column=lambda *a, **k: None,
         alter_column=lambda *a, **k: None,
         create_table=lambda *a, **k: None,
         drop_table=lambda *a, **k: None,
+        f=lambda name: name,  # naming-convention helper used by create_table
     )
     return module, captured
+
+
+_DOLLAR_TAG = re.compile(r"\$([A-Za-z_]*)\$")
+
+
+def _strip_dollar_quoted(sql: str) -> str:
+    """Remove dollar-quoted regions, honouring the tag.
+
+    A naive non-greedy regex pairs the opening `$$` of a DO block with the next
+    `$g$` inside it, which exposes the body and makes the statement count wrong.
+    """
+    out: list[str] = []
+    i = 0
+    while i < len(sql):
+        match = _DOLLAR_TAG.match(sql, i)
+        if match:
+            tag = match.group(0)
+            end = sql.find(tag, match.end())
+            if end == -1:
+                out.append(sql[i:])
+                break
+            i = end + len(tag)
+            continue
+        out.append(sql[i])
+        i += 1
+    return "".join(out)
+
+
+def _statement_count(sql: str) -> int:
+    """Count statements in `sql`, ignoring dollar-quoted function bodies."""
+    stripped = _strip_dollar_quoted(sql)
+    return len([part for part in stripped.split(";") if part.strip()])
+
+
+def test_migrations_issue_one_statement_per_execute() -> None:
+    """asyncpg rejects multiple commands in a single execute().
+
+    Migrations run through asyncpg, whose extended-query protocol accepts one
+    statement per call: passing "CREATE ...; REVOKE ...;" fails with
+    `cannot insert multiple commands into a prepared statement`, which aborts
+    `alembic upgrade head` — the first step of every deploy.
+    """
+    module, captured = _load_migration(HARDENING_MIGRATION)
+    module._rls_do_block()
+    module.upgrade()
+
+    assert captured, "no SQL captured from the migration"
+    offenders = [sql for sql in captured if _statement_count(sql) > 1]
+    assert not offenders, (
+        "op.execute() called with multiple statements (asyncpg rejects this): "
+        + " | ".join(sql.strip()[:70] for sql in offenders)
+    )
 
 
 def test_migration_files_are_importable() -> None:
