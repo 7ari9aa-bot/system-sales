@@ -38,6 +38,9 @@ from app.modules.conversations.router import (
     router as conversations_router,
 )
 from app.modules.conversations.router import (
+    templates_router as conversations_templates_router,
+)
+from app.modules.conversations.router import (
     webhook_router as conversations_webhook_router,
 )
 from app.modules.customers.router import platform_router as platform_router
@@ -148,6 +151,7 @@ def create_app() -> FastAPI:
         identity_users_router,
         identity_tenants_router,
         conversations_router,
+        conversations_templates_router,
         conversations_public_router,
         conversations_webhook_router,
         catalog_router,
