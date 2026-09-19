@@ -12,7 +12,7 @@ import {
 import { DemoChat } from "@/components/public/demo-chat";
 
 /** Homepage — تدرج منطقي: عام → إزاي بيشتغل → السياق → تجربة حقيقية
- *  → الأتمتة → التكاملات → الأمان → الأسعار → CTA.
+ *  → العرض (الأسعار) → الأتمتة → التكاملات → الأمان → CTA.
  *  مفيش معاينات داخلية للداشبورد — المهتم يشوف كل حاجة بنفسه جوه النظام. */
 
 export default function HomePage() {
@@ -24,10 +24,10 @@ export default function HomePage() {
       <TrySection>
         <DemoChat />
       </TrySection>
+      <PricingPreview />
       <AutomationSection />
       <Integrations />
       <SecurityTeaser />
-      <PricingPreview />
       <FinalCTA />
     </main>
   );

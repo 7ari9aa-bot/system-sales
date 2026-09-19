@@ -83,7 +83,6 @@ export function PublicNavbar() {
             onClick={() => setLocale(locale === "ar" ? "en" : "ar")}
             aria-label={t.nav.lang}
             title={t.nav.lang}
-            style={{ width: "auto", padding: "0 .7rem", fontSize: 13, fontWeight: 700 }}
           >
             {t.nav.lang}
           </button>
@@ -111,7 +110,15 @@ export function PublicNavbar() {
       {open && (
         <div className="fh-mobile-menu">
           {LINKS.map((l) => (
-            <Link key={l.href} href={l.href} onClick={() => setOpen(false)}>{t.nav[l.key]}</Link>
+            <Link
+              key={l.href}
+              href={l.href}
+              onClick={() => setOpen(false)}
+              aria-current={pathname === l.href ? "page" : undefined}
+              className={pathname === l.href ? "is-active" : ""}
+            >
+              {t.nav[l.key]}
+            </Link>
           ))}
           <div className="fh-mobile-actions">
             {authed ? (

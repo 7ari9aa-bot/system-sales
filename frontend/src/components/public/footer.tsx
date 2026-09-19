@@ -15,6 +15,10 @@ export function PublicFooter() {
           </span>
           <p className="fh-footer-tag">{t.footer.tag}</p>
           <span className="fh-badge" style={{ marginTop: ".8rem" }}>{t.footer.earlyAccess}</span>
+          <p className="fh-footer-contact">
+            {t.footer.contact}{" "}
+            <a href="mailto:7ari9aa@gmail.com" dir="ltr">7ari9aa@gmail.com</a>
+          </p>
         </div>
 
         <nav aria-label={t.footer.product}>

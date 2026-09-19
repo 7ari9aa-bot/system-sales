@@ -120,6 +120,10 @@ export default function AuthSignupPage() {
       </form>
 
       <p className="fh-auth-alt">
+        لسه بتفكر؟{" "}
+        <Link href="/#try">جرّب المساعد التجريبي الأول</Link>
+      </p>
+      <p className="fh-auth-alt">
         {t.auth.haveAccount}{" "}
         <Link href="/auth/login">{t.auth.signin}</Link>
       </p>

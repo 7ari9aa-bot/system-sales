@@ -31,6 +31,7 @@ export default function AuthLayout({
               <span className="fh-brand-mark" aria-hidden="true"><span>F</span></span>
               <span className="fh-brand-name">FIHRIST</span>
             </Link>
+            <span className="fh-auth-tagline">نظام تشغيل الأعمال بالمحادثة</span>
           </header>
 
           <main className="fh-auth-main">{children}</main>

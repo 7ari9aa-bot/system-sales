@@ -22,10 +22,15 @@ export function Reveal({
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    // الافتراضي ظاهر — الإخفاء فقط للعناصر تحت الفولد ومع توفر JS
+    if (
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches ||
+      el.getBoundingClientRect().top <= window.innerHeight
+    ) {
       el.classList.add("fh-in");
       return;
     }
+    el.classList.add("fh-pre");
     const io = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
@@ -33,7 +38,7 @@ export function Reveal({
           io.disconnect();
         }
       },
-      { threshold: 0.15 },
+      { threshold: 0.1 },
     );
     io.observe(el);
     return () => io.disconnect();

@@ -34,6 +34,13 @@ export function ProductBody() {
       <PageHero title={p.title} sub={p.sub} />
       <section className="fh-section">
         <div className="fh-container">
+          <Reveal>
+            <ContextGraph />
+          </Reveal>
+        </div>
+      </section>
+      <section className="fh-section">
+        <div className="fh-container">
           <Reveal stagger>
             <FeatureList items={p.features as [string, string][]} />
           </Reveal>
@@ -130,7 +137,7 @@ export function ConversationsBody() {
               <span key={title} style={{ display: "contents" }}>
                 {i > 0 && <span className="fh-handoff-arrow" aria-hidden="true">←</span>}
                 <div className="fh-handoff-step">
-                  <span className={`fh-badge ${["fh-badge-primary", "fh-badge-warning", "fh-badge-danger", "fh-badge-success"][i]}`}>{badge}</span>
+                  <span className={`fh-badge ${["fh-badge-primary", "fh-badge-warning", "fh-badge-primary", "fh-badge-success"][i]}`}>{badge}</span>
                   <b>{title}</b>
                   <small>{detail}</small>
                 </div>
@@ -183,6 +190,13 @@ export function AiBody() {
           </Reveal>
           <Reveal stagger>
             <FeatureList items={p.guard.items as [string, string][]} cols={3} />
+          </Reveal>
+        </div>
+      </section>
+      <section className="fh-section">
+        <div className="fh-container">
+          <Reveal>
+            <DemoChat />
           </Reveal>
         </div>
       </section>
@@ -271,6 +285,11 @@ export function PricingBody() {
                 <Link href="/auth/signup" className={`fh-btn ${i === 1 ? "" : "fh-btn-secondary"}`}>
                   {t.pricing.cta}
                 </Link>
+                {i === 1 && (
+                  <small className="fh-tier-lock">
+                    المسجلين في الوصول المبكر بيحتفظوا بأفضل الشروط لما يبدأ التسعير.
+                  </small>
+                )}
               </div>
             ))}
           </Reveal>
