@@ -73,6 +73,9 @@ async def logout(body: schemas.RefreshRequest, session: DbSession, response: Res
 
 @router.get("/auth/me", response_model=schemas.CurrentUser)
 async def me(user: CurrentUserDep, session: DbSession):
+    # RLS: tenant_users uses the `app.user_id` OR-clause for self-discovery —
+    # bind it before the membership query or the list comes back empty.
+    await bind_tenant_user(session, user.id)
     full = await service.UserService.get(session, user.id)
     tenants = await service.TenantService.list_for_user(session, user.id)
     return schemas.CurrentUser(
@@ -93,6 +96,35 @@ async def switch_tenant(
 ):
     return await service.AuthService.switch_tenant(
         session, user=user, tenant_id=tenant_id, refresh_token=body.refresh_token
+    )
+
+
+async def bind_tenant_user(session, user_id) -> None:
+    """Bind the `app.user_id` GUC (transaction-scoped, pooler-safe)."""
+    from sqlalchemy import text
+
+    await session.execute(
+        text("SELECT set_config(:guc, :user_id, true)"),
+        {"guc": "app.user_id", "user_id": str(user_id)},
+    )
+
+
+@router.post("/invitations/accept", response_model=schemas.CurrentUser, status_code=201)
+async def accept_invitation(body: schemas.AcceptInvitationRequest, session: DbSession):
+    """Public endpoint: redeem an invitation token (no auth — the token is the credential)."""
+    user, _invitation = await service.TenantService.accept_invitation(
+        session, token=body.token, password=body.password, full_name=body.full_name
+    )
+    tenants = await service.TenantService.list_for_user(session, user.id)
+    return schemas.CurrentUser(
+        id=user.id,
+        email=user.email,
+        full_name=user.full_name,
+        is_platform_admin=user.is_platform_admin,
+        tenants=[
+            schemas.CurrentTenant(id=t.id, name=t.name, slug=t.slug, role_code=role)
+            for t, role in tenants
+        ],
     )
 
 
