@@ -37,7 +37,25 @@ export default function AuthSignupPage() {
     setBusy(true);
     setErr(null);
 
-    const reg = await authPost("/auth/register", { email, password }).catch(() => ({
+    // جسر توافقي: نشقق اسم المساحة والـslug من البريد محليًا — يشتغل مع
+    // عقد الباك القديم (الحقول مطلوبة) والجديد (بيحترم القيم المرسلة) سوا.
+    const localPart = email.split("@", 1)[0];
+    const segments = localPart.split(/[._-]+/).filter(Boolean);
+    if (segments.length > 1 && /^(?:\d+|[0-9a-f]{6,})$/.test(segments[segments.length - 1])) {
+      segments.pop();
+    }
+    const displayName = segments.join(" ").trim().toUpperCase() || localPart;
+    const tenantSlug =
+      localPart.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) ||
+      `workspace-${Date.now()}`;
+
+    const reg = await authPost("/auth/register", {
+      email,
+      password,
+      tenant_name: displayName,
+      tenant_slug: tenantSlug,
+      full_name: displayName,
+    }).catch(() => ({
       ok: false as const,
       status: 0,
       message: undefined,
