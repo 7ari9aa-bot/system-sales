@@ -385,7 +385,9 @@ async def test_register_refund_tracks_payment_state(db: AsyncSession, tenant_ctx
     assert partial.status == "processed"
     assert payment.status == "partially_refunded"
 
-    with pytest.raises(ValueError):
+    # Over-refunding (10 already refunded + 20 > 25.50 captured) is a domain
+    # ConflictError (error contract v2), not a bare ValueError.
+    with pytest.raises(ConflictError):
         await OrderService.register_refund(db, tenant_id, order.id, payment.id, amount=20)
 
     final = await OrderService.register_refund(
