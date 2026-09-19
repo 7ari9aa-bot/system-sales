@@ -118,6 +118,7 @@ class AgentRunner:
                 run=run,
                 conversation_id=conversation_id,
                 user_message=user_message,
+                customer_id=customer_id,
                 system_prompt=system_prompt,
             )
         except Exception as exc:
@@ -196,6 +197,7 @@ class AgentRunner:
         run: AgentRun,
         conversation_id: uuid.UUID | None,
         user_message: str,
+        customer_id: uuid.UUID | None,
         system_prompt: str | None,
     ) -> AgentRunResult:
         messages: list[dict] = [
@@ -263,7 +265,8 @@ class AgentRunner:
                     hit_limit = "max_tool_calls"
                     break
                 outcome = await self._execute_tool(
-                    session, tenant_id, run=run, agent_tools=agent_tools, request=tc
+                    session, tenant_id, run=run, agent_tools=agent_tools, request=tc,
+                    customer_id=customer_id, conversation_id=conversation_id,
                 )
                 tool_calls_made.append(outcome)
                 messages.append(
@@ -313,8 +316,15 @@ class AgentRunner:
         run: AgentRun,
         agent_tools: list[AgentTool],
         request: ToolCallRequest,
+        customer_id: uuid.UUID | None = None,
+        conversation_id: uuid.UUID | None = None,
     ) -> dict[str, Any]:
-        """Run one requested tool call under the agent's policy; record the row."""
+        """Run one requested tool call under the agent's policy; record the row.
+
+        §132: HIGH-risk tools (§15) require a durable human approval BEFORE
+        execution — the run suspends as WAITING_APPROVAL. The tool's context
+        pins the conversation's customer server-side (§132 scope binding).
+        """
         from app.modules.ai.tools import get_tool
 
         agent_tool = next((t for t in agent_tools if t.name == request.name), None)
@@ -338,6 +348,42 @@ class AgentRunner:
                 started = datetime.now(UTC)
                 try:
                     kwargs = spec.args_schema(**(request.arguments or {})).model_dump()
+                    # §132 scope binding: only handlers that declare `context`
+                    # receive the server-side customer/conversation binding.
+                    import inspect
+
+                    if "context" in inspect.signature(spec.handler).parameters:
+                        kwargs["context"] = {
+                            "customer_id": str(customer_id) if customer_id else None,
+                            "conversation_id": str(conversation_id) if conversation_id else None,
+                        }
+                    # §135: HIGH-risk tools suspend the run until a human
+                    # approves. The approval row is durable — the run resumes
+                    # (or dies) on the decision.
+                    from app.modules.ai.tools import requires_approval
+
+                    if await requires_approval(spec):
+                        from app.modules.ai.approvals import ApprovalService
+
+                        await ApprovalService.request(
+                            session,
+                            tenant_id,
+                            run_id=run.id,
+                            conversation_id=conversation_id,
+                            entity_type="tool",
+                            entity_id=request.name,
+                            action=request.name,
+                            risk_level="HIGH",
+                            payload={"arguments": kwargs},
+                        )
+                        run.status = "WAITING_APPROVAL"
+                        await session.flush()
+                        return {
+                            "name": request.name,
+                            "status": "awaiting_approval",
+                            "error": None,
+                            "result": {"awaiting_approval": True},
+                        }
                     result = await spec.handler(session, tenant_id, **kwargs)
                 except PydanticValidationError as exc:
                     status = "error"

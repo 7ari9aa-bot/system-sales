@@ -28,12 +28,15 @@ class TelegramAdapter:
         return None  # no handshake
 
     def check_signature(self, headers: dict[str, str], raw_body: bytes) -> bool:
-        # Telegram supports a static secret token per webhook URL.
+        # §176 fail-closed: an unconfigured secret rejects ALL traffic rather
+        # than leaving a pre-auth injection path into any tenant.
+        import hmac as _hmac
+
         secret = get_settings().telegram_webhook_secret
         if not secret:
-            return True  # dev only; production sets the secret
+            return False
         provided = headers.get("x-telegram-bot-api-secret-token", "")
-        return provided == secret
+        return _hmac.compare_digest(provided, secret)
 
     def resolve_tenant_key(self, payload: dict) -> str | None:
         query = payload.get("_query") or {}

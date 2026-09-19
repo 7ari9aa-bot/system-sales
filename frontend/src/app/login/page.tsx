@@ -1,17 +1,6 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
-
-/** تسجيل الدخول انتقل إلى /auth/login — التوجيه هنا يحمي الروابط القديمة. */
+/** تسجيل الدخول انتقل إلى /auth/login — توجيه من السيرفر بدون وميض. */
 export default function LoginRedirect() {
-  const router = useRouter();
-  useEffect(() => {
-    router.replace("/auth/login");
-  }, [router]);
-  return (
-    <main className="auth-wrap">
-      <p className="muted">جارٍ التحويل…</p>
-    </main>
-  );
+  redirect("/auth/login");
 }

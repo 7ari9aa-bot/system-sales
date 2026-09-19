@@ -123,7 +123,7 @@ export function PageCTA({ title }: { title: string }) {
           <h2>{title}</h2>
           <div className="fh-hero-cta">
             <Link href="/auth/signup" className="fh-btn fh-btn-lg">{t.final.start}</Link>
-            <Link href="/auth/login" className="fh-btn fh-btn-secondary fh-btn-lg">{t.nav.login}</Link>
+            <Link href="/pricing" className="fh-btn fh-btn-secondary fh-btn-lg">{t.nav.pricing}</Link>
           </div>
         </Reveal>
       </div>

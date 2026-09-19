@@ -7,19 +7,19 @@ import { PublicFooter } from "@/components/public/footer";
 import { AmbientGlow } from "@/components/public/ambient-glow";
 
 const plexAr = IBM_Plex_Sans_Arabic({
-  weight: ["300", "400", "500", "600", "700"],
+  weight: ["300", "400", "600"],
   subsets: ["arabic", "latin"],
   variable: "--font-plex-ar",
   display: "swap",
 });
 const grotesk = Space_Grotesk({
-  weight: ["500", "600", "700"],
+  weight: ["600", "700"],
   subsets: ["latin"],
   variable: "--font-grotesk",
   display: "swap",
 });
 const archivo = Archivo({
-  weight: ["500", "600"],
+  weight: ["500"],
   subsets: ["latin"],
   variable: "--font-archivo",
   display: "swap",
@@ -50,6 +50,9 @@ export default function PublicLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <FihristProvider>
+      <script
+        dangerouslySetInnerHTML={{ __html: "document.documentElement.classList.add('js')" }}
+      />
       <FihristRoot className={`${plexAr.variable} ${grotesk.variable} ${archivo.variable}`}>
         <AmbientGlow />
         <div className="fh-page">

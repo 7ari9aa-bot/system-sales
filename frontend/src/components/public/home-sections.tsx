@@ -60,6 +60,12 @@ export function TrySection({ children }: { children: React.ReactNode }) {
           <p>{t.chat.sub}</p>
         </Reveal>
         <Reveal>{children}</Reveal>
+        <Reveal className="fh-more-link" >
+          <p style={{ marginBottom: ".6rem", color: "var(--muted)", fontSize: 14.5 }}>
+            {t.final.title}
+          </p>
+          <Link href="/auth/signup" className="fh-btn">{t.final.start}</Link>
+        </Reveal>
       </div>
     </section>
   );

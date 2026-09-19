@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -63,6 +64,18 @@ class Settings(BaseSettings):
 
     # internal service auth (n8n -> core)
     service_token_internal: str = "change-me-too"
+
+    @model_validator(mode="after")
+    def _refuse_insecure_production(self) -> "Settings":
+        """Fail fast (H2): an insecure default must never reach production."""
+        if self.environment == "production":
+            if not self.jwt_secret or self.jwt_secret == "change-me":
+                raise ValueError("JWT_SECRET must be set in production")
+            if self.service_token_internal in ("", "change-me-too"):
+                raise ValueError("SERVICE_TOKEN_INTERNAL must be set in production")
+            if self.cors_origins == "*":
+                raise ValueError("CORS_ORIGINS must not be * in production")
+        return self
 
 
 @lru_cache

@@ -39,8 +39,12 @@ export function DemoChat() {
   function replyFor(text: string): string {
     const q = text.toLowerCase();
     const has = (...words: string[]) => words.some((w) => q.includes(w));
-    if (has("سعر", "أسعار", "اسعار", "خطط", "plan", "price", "cost", "تكلفة", "مجاني", "free"))
+    if (has("سعر", "أسعار", "اسعار", "تسعير", "خطط", "plan", "price", "pricing", "cost", "تكلفة", "مجاني", "free"))
       return t.chat.r_pricing;
+    if (has("طلبي", "الطلب", "وصل", "أمر تتبع", "order", "shipment", "شحنة", "tracking"))
+      return t.chat.r_order;
+    if (has("مفيش حد رد", "10 دقايق", "تصعيد", "escalat", "no reply", "escalation"))
+      return t.chat.r_escalate;
     if (has("أتمتة", "اتمتة", "أتمته", "automation", "workflow", "مسار", "سير عمل"))
       return t.chat.r_automation;
     if (has("أمان", "امان", "security", "حماية", "خصوصية", "privacy", "تدقيق", "audit"))
@@ -79,7 +83,7 @@ export function DemoChat() {
           <span className="fh-chat-badge">{t.chat.simulated}</span>
         </div>
 
-        <div className="fh-chat-msgs" ref={listRef} aria-live="polite">
+        <div className="fh-chat-msgs" ref={listRef} role="log" aria-live="polite" aria-busy={thinking} tabIndex={0}>
           {msgs.map((m) => (
             <div key={m.id} className={`fh-bubble fh-msg-in${m.from === "user" ? " fh-bubble-user" : ""}`}>
               {m.text}

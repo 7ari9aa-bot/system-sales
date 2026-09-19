@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useI18n, useTheme, type Theme } from "@/components/public/i18n";
 
@@ -33,6 +34,7 @@ function ThemeIcon({ theme }: { theme: Theme }) {
 export function PublicNavbar() {
   const { t, locale, setLocale } = useI18n();
   const { theme, toggle } = useTheme();
+  const pathname = usePathname();
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
   const [authed, setAuthed] = useState(false);
@@ -56,7 +58,14 @@ export function PublicNavbar() {
 
         <nav className="fh-nav-links" aria-label={t.nav.menu}>
           {LINKS.map((l) => (
-            <a key={l.href} href={l.href}>{t.nav[l.key]}</a>
+            <Link
+              key={l.href}
+              href={l.href}
+              aria-current={pathname === l.href ? "page" : undefined}
+              className={pathname === l.href ? "is-active" : ""}
+            >
+              {t.nav[l.key]}
+            </Link>
           ))}
         </nav>
 
@@ -102,7 +111,7 @@ export function PublicNavbar() {
       {open && (
         <div className="fh-mobile-menu">
           {LINKS.map((l) => (
-            <a key={l.href} href={l.href} onClick={() => setOpen(false)}>{t.nav[l.key]}</a>
+            <Link key={l.href} href={l.href} onClick={() => setOpen(false)}>{t.nav[l.key]}</Link>
           ))}
           <div className="fh-mobile-actions">
             {authed ? (

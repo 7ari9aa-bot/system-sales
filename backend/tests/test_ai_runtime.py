@@ -269,7 +269,9 @@ def test_create_order_tool_registered_without_orders_dependency():
     schema = tool_to_openai_schema(spec)
     assert schema["type"] == "function"
     properties = schema["function"]["parameters"]["properties"]
-    assert "customer_id" in properties
+    # §132: the model must NEVER choose the customer — the server pins it
+    # to the conversation scope; only items are model-chosen.
+    assert "customer_id" not in properties
     assert "items" in properties
 
 

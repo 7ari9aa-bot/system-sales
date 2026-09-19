@@ -91,26 +91,6 @@ export default function AuthSignupPage() {
 
       <form className="fh-auth-form" onSubmit={submit} noValidate>
         <div>
-          <label htmlFor="storeName">{t.auth.storeName}</label>
-          <input
-            id="storeName"
-            autoComplete="organization"
-            value={storeName}
-            onChange={(e) => setStoreName(e.target.value)}
-            required
-          />
-        </div>
-        <div>
-          <label htmlFor="fullName">{t.auth.fullName}</label>
-          <input
-            id="fullName"
-            autoComplete="name"
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            required
-          />
-        </div>
-        <div>
           <label htmlFor="email">{t.auth.email}</label>
           <input
             id="email"
@@ -138,6 +118,26 @@ export default function AuthSignupPage() {
             {pwValid ? "✓" : "•"} {t.auth.pwHint}
           </small>
         </div>
+        <div>
+          <label htmlFor="storeName">{t.auth.storeName}</label>
+          <input
+            id="storeName"
+            autoComplete="organization"
+            value={storeName}
+            onChange={(e) => setStoreName(e.target.value)}
+            required
+          />
+        </div>
+        <div>
+          <label htmlFor="fullName">{t.auth.fullName}</label>
+          <input
+            id="fullName"
+            autoComplete="name"
+            value={fullName}
+            onChange={(e) => setFullName(e.target.value)}
+            required
+          />
+        </div>
 
         {err && (
           <div className="fh-auth-error" role="alert">
@@ -149,6 +149,7 @@ export default function AuthSignupPage() {
         <button className="fh-btn fh-auth-submit" disabled={busy} data-testid="submit-signup">
           {busy ? t.auth.submittingSignup : t.auth.submitSignup}
         </button>
+        <p className="fh-auth-trust">مجاني خلال الوصول المبكر · بدون بطاقة · بياناتك معزولة من أول يوم</p>
       </form>
 
       <p className="fh-auth-alt">

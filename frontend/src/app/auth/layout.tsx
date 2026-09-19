@@ -1,16 +1,16 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Sans_Arabic, Space_Grotesk, Archivo } from "next/font/google";
 import Link from "next/link";
+import { IBM_Plex_Sans_Arabic, Space_Grotesk, Archivo } from "next/font/google";
 import "@/styles/fihrist.css";
 
 const plexAr = IBM_Plex_Sans_Arabic({
-  weight: ["300", "400", "500", "600", "700"],
+  weight: ["300", "400", "600"],
   subsets: ["arabic", "latin"],
   variable: "--font-plex-ar",
   display: "swap",
 });
-const grotesk = Space_Grotesk({ weight: ["500", "600", "700"], subsets: ["latin"], variable: "--font-grotesk", display: "swap" });
-const archivo = Archivo({ weight: ["500", "600"], subsets: ["latin"], variable: "--font-archivo", display: "swap" });
+const grotesk = Space_Grotesk({ weight: ["600", "700"], subsets: ["latin"], variable: "--font-grotesk", display: "swap" });
+const archivo = Archivo({ weight: ["500"], subsets: ["latin"], variable: "--font-archivo", display: "swap" });
 import { FihristProvider, FihristRoot } from "@/components/public/i18n";
 
 export const metadata: Metadata = {
@@ -36,9 +36,11 @@ export default function AuthLayout({
           <main className="fh-auth-main">{children}</main>
 
           <footer className="fh-auth-foot">
-            <span>FIHRIST</span>
+            <Link href="/">العودة للصفحة الرئيسية</Link>
             <span aria-hidden="true">·</span>
-            <span>فهرست</span>
+            <Link href="/privacy">سياسة الخصوصية</Link>
+            <span aria-hidden="true">·</span>
+            <Link href="/terms">شروط الاستخدام</Link>
           </footer>
         </div>
       </FihristRoot>

@@ -326,7 +326,7 @@ export function PrivacyBody() {
       <section className="fh-section">
         <div className="fh-container">
           <PolicyBody updated={p.updated} intro={p.intro} sections={p.sections as [string, string][]} />
-          <CtaLink href="/#try" label={p.cta} />
+          <CtaLink href="/security" label={t.securityTeaser.more} />
         </div>
       </section>
     </main>

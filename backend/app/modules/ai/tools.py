@@ -187,19 +187,24 @@ class CreateOrderItemArgs(BaseModel):
 
 
 class CreateOrderArgs(BaseModel):
-    customer_id: uuid.UUID
     items: list[CreateOrderItemArgs] = Field(min_length=1)
-    channel: str = "ai"
+    # §132: customer_id is DELIBERATELY absent — it is injected server-side
+    # from the conversation scope, never taken from model arguments.
 
 
 async def _create_order(
     session: AsyncSession,
     tenant_id: uuid.UUID,
     *,
-    customer_id: uuid.UUID,
     items: list[dict],
     channel: str = "ai",
+    context: dict | None = None,
 ) -> dict:
+    # Server-side scope binding (§132): the customer is pinned from the
+    # conversation context by the runtime — the model cannot choose it.
+    customer_id = (context or {}).get("customer_id")
+    if not customer_id:
+        raise DomainError("no customer bound to this conversation")
     # Lazy import on purpose: the tool stays registered even if the orders
     # module has not landed yet (and tests can monkeypatch this import site).
     try:
@@ -210,7 +215,7 @@ async def _create_order(
     order = await OrderService.create_order(
         session,
         tenant_id,
-        customer_id,
+        __import__("uuid").UUID(customer_id),
         [{"variant_id": item["variant_id"], "quantity": item["quantity"]} for item in items],
         channel=channel,
     )

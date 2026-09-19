@@ -27,7 +27,7 @@ export function Hero() {
     <section className="fh-hero" id="product">
       <HeroShape />
       <div className="fh-container fh-hero-inner">
-        <Reveal className="fh-hero-copy">
+        <div className="fh-hero-copy">
           <span className="fh-eyebrow">{t.hero.eyebrow}</span>
           <h1>{t.hero.h1}</h1>
           <p className="fh-hero-sub">{t.hero.sub}</p>
@@ -36,7 +36,7 @@ export function Hero() {
             <Link href="/product" className="fh-btn fh-btn-secondary fh-btn-lg">{t.hero.explore}</Link>
           </div>
           <p className="fh-hero-trust">{t.hero.trust}</p>
-        </Reveal>
+        </div>
       </div>
     </section>
   );
