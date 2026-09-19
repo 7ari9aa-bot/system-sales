@@ -254,6 +254,9 @@ class AgentRunner:
         hit_limit: str | None = None
 
         awaiting_approval = False
+        # A natural completion sets this False; if the loop ends any other way
+        # the step budget ran out mid-tool-loop (the max_steps timeout, §134).
+        exhausted = True
         for _iteration in range(limits["max_steps"]):
             if datetime.now(UTC) - started_at > max_wall_time:
                 hit_limit = "max_wall_time"
@@ -274,6 +277,7 @@ class AgentRunner:
 
             if not chat_result.tool_calls:
                 content = chat_result.content
+                exhausted = False
                 break
 
             # Gemini 3.x requires each tool_call entry to carry its
@@ -341,6 +345,15 @@ class AgentRunner:
             run.error = f"run limit hit: {hit_limit}"
             await session.flush()
             logger.warning("ai.run_limit_hit run=%s limit=%s", run.id, hit_limit)
+        elif exhausted:
+            # The step budget ran out mid-tool-loop: the model never produced a
+            # final answer. This must not fall through to the caller's
+            # `running -> succeeded`, which reported a failed run as a success
+            # with no content (test_agent_run_uses_configured_step_limit).
+            run.status = "timeout"
+            run.error = "run limit hit: max_steps"
+            await session.flush()
+            logger.warning("ai.run_limit_hit run=%s limit=max_steps", run.id)
 
         return AgentRunResult(
             content=content,

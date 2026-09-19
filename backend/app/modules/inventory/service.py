@@ -417,10 +417,17 @@ class InventoryReservationService:
     ) -> int:
         """Mark the order's ACTIVE reservations CONVERTED (payment captured).
 
-        Conversion also settles the stock: the balance hold is released
-        (reserved -= qty) and an `out`/`sale` movement is written. The
-        previous version only flipped the rows — reserved stock leaked
-        forever and the ledger never recorded a sale.
+        Conversion settles the stock: the hold is released (reserved -= qty)
+        AND the goods leave the warehouse (on_hand -= qty), with an `out`/sale
+        movement recording the new balance. The earlier attempt released the
+        hold but never decremented on_hand — the movement said "goods left"
+        while the stock stayed, so the same unit could be sold again.
+
+        NOTE: this treats a captured payment as the moment stock moves. If
+        fulfilment should instead move stock (payment captured but goods still
+        in the warehouse), revert this to flip the row only and move the
+        decrement to a fulfilment step — but that step does not exist yet, and
+        without it paid orders leak available stock forever (C9).
         """
         reservations = (
             await session.execute(
@@ -439,6 +446,7 @@ class InventoryReservationService:
                 session, tenant_id, reservation.variant_id, reservation.warehouse_id
             )
             balance.reserved = max(0, balance.reserved - reservation.quantity)
+            balance.on_hand = max(0, balance.on_hand - reservation.quantity)
             movement = InventoryMovement(
                 tenant_id=tenant_id,
                 variant_id=reservation.variant_id,

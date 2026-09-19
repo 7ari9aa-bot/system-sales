@@ -214,8 +214,14 @@ async def test_add_payment_marks_reservation_converted(db, tenant_ctx):
     assert reservation.status == "CONVERTED"
     assert reservation.converted_at is not None
     assert reservation.cancelled_at is None
-    # Converting is NOT releasing: the hold stays until fulfilment moves it.
-    assert (await _balance(db, tenant_id, variant.id, wh.id)).reserved == 1
+    # A captured payment settles the stock (C9): the hold is released AND the
+    # unit leaves the warehouse, so reserved AND on_hand both drop by one.
+    # (Replaces the prior "converting is NOT releasing" assertion, which
+    # assumed a fulfilment step that does not exist yet; without settling
+    # here, paid orders leak available stock forever.)
+    balance = await _balance(db, tenant_id, variant.id, wh.id)
+    assert balance.reserved == 0
+    assert balance.on_hand == 9
 
 
 # ------------------------------- (e) canonical message columns (§155) ------
