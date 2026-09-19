@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import importlib.util
 import re
-import types
 from pathlib import Path
 
 import pytest
@@ -27,27 +26,36 @@ HARDENING_MIGRATION = (
 )
 
 
-def _load_migration(path: Path):
-    """Import a migration module and capture everything it sends to op.execute.
+class _RecordingOp:
+    """Permissive Alembic `op` stand-in: records execute(), no-ops everything else.
 
-    Only `execute` is recorded — the schema ops are no-ops so the captured list
-    contains exactly the raw SQL statements that reach the driver.
+    `upgrade()` of every migration is invoked, so any op method a migration
+    happens to use must resolve — otherwise the test fails for an unrelated
+    reason and stops being a reliable guard.
     """
+
+    def __init__(self, captured: list[str]) -> None:
+        self._captured = captured
+
+    def execute(self, sql, *args, **kwargs) -> None:
+        if isinstance(sql, str):
+            self._captured.append(sql)
+
+    def f(self, name: str) -> str:
+        return name
+
+    def __getattr__(self, name: str):
+        return lambda *a, **k: None
+
+
+def _load_migration(path: Path):
+    """Import a migration module and capture everything it sends to op.execute."""
     captured: list[str] = []
     spec = importlib.util.spec_from_file_location("migration_under_test", path)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(module)
-    module.op = types.SimpleNamespace(
-        execute=lambda sql: captured.append(sql),
-        create_index=lambda *a, **k: None,
-        drop_index=lambda *a, **k: None,
-        add_column=lambda *a, **k: None,
-        alter_column=lambda *a, **k: None,
-        create_table=lambda *a, **k: None,
-        drop_table=lambda *a, **k: None,
-        f=lambda name: name,  # naming-convention helper used by create_table
-    )
+    module.op = _RecordingOp(captured)
     return module, captured
 
 
@@ -83,23 +91,31 @@ def _statement_count(sql: str) -> int:
     return len([part for part in stripped.split(";") if part.strip()])
 
 
-def test_migrations_issue_one_statement_per_execute() -> None:
+def _all_migrations() -> list[Path]:
+    return sorted(p for p in VERSIONS_DIR.glob("*.py") if not p.name.startswith("__"))
+
+
+def test_no_migration_issues_multiple_statements_per_execute() -> None:
     """asyncpg rejects multiple commands in a single execute().
 
     Migrations run through asyncpg, whose extended-query protocol accepts one
-    statement per call: passing "CREATE ...; REVOKE ...;" fails with
-    `cannot insert multiple commands into a prepared statement`, which aborts
-    `alembic upgrade head` — the first step of every deploy.
+    statement per call: passing "CREATE INDEX ...; ALTER TABLE ...;" fails with
+    `cannot insert multiple commands into a prepared statement`, aborting
+    `alembic upgrade head` — the first step of every deploy. This must be
+    checked across EVERY migration, not just the newest one: a revision that
+    already exists in history still runs on every fresh database and in CI.
     """
-    module, captured = _load_migration(HARDENING_MIGRATION)
-    module._rls_do_block()
-    module.upgrade()
-
-    assert captured, "no SQL captured from the migration"
-    offenders = [sql for sql in captured if _statement_count(sql) > 1]
-    assert not offenders, (
-        "op.execute() called with multiple statements (asyncpg rejects this): "
-        + " | ".join(sql.strip()[:70] for sql in offenders)
+    offenders: list[str] = []
+    for path in _all_migrations():
+        module, captured = _load_migration(path)
+        if hasattr(module, "upgrade"):
+            module.upgrade()
+        for sql in captured:
+            count = _statement_count(sql)
+            if count > 1:
+                offenders.append(f"{path.name} ({count} statements): {sql.strip()[:60]}")
+    assert not offenders, "op.execute() called with multiple statements:\n" + "\n".join(
+        offenders
     )
 
 

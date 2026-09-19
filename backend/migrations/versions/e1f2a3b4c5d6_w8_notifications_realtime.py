@@ -44,17 +44,30 @@ def upgrade() -> None:
         END $$;
     """)
 
-    op.execute("""
+    # NOTE: one statement per op.execute(). Migrations run through asyncpg,
+    # whose extended-query protocol rejects multiple commands in a single
+    # execute ("cannot insert multiple commands into a prepared statement").
+    # These five statements were previously a single string, which aborted
+    # `alembic upgrade head` and blocked every deploy at this revision.
+    op.execute(
+        """
         CREATE INDEX IF NOT EXISTS ix_notifications_tenant_user_read
-        ON notifications (tenant_id, user_id, read_at);
-
+        ON notifications (tenant_id, user_id, read_at)
+        """
+    )
+    op.execute(
+        """
         CREATE INDEX IF NOT EXISTS ix_notifications_dedup
         ON notifications (tenant_id, dedup_key)
-        WHERE dedup_key IS NOT NULL;
-
-        ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
-        ALTER TABLE notifications FORCE ROW LEVEL SECURITY;
-
+        WHERE dedup_key IS NOT NULL
+        """
+    )
+    op.execute("ALTER TABLE notifications ENABLE ROW LEVEL SECURITY")
+    op.execute("ALTER TABLE notifications FORCE ROW LEVEL SECURITY")
+    # Policy name + guard are reconciled to the canonical form by migration
+    # b2c3d4e5f6a7 (this one is only reached on the way up).
+    op.execute(
+        """
         DO $$
         BEGIN
             IF NOT EXISTS (
@@ -66,7 +79,8 @@ def upgrade() -> None:
                 WITH CHECK (tenant_id = current_setting('app.tenant_id', true)::uuid);
             END IF;
         END $$;
-    """)
+        """
+    )
 
 
 def downgrade() -> None:
