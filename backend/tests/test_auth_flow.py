@@ -168,3 +168,32 @@ async def test_rbac_permission_matrix(db, tenant_ctx):
     staff_perms = await _role_permissions(db, staff_role.id)
     assert "conversations:write" in staff_perms
     assert "settings:write" not in staff_perms
+
+
+async def test_register_minimal_email_password_only(db):
+    """Minimal signup: only email+password — tenant name/slug and display
+    name derive from the email local part, slug dedupes automatically."""
+    email = f"hamed.adel-{uuid.uuid4().hex[:6]}@gmail.com"
+    user, tenant = await AuthService.register(
+        db, tenant_name=None, tenant_slug=None, email=email,
+        password="Probe-1234", full_name=None,
+    )
+    assert user.email == email
+    assert user.full_name == "Hamed Adel"
+    assert tenant.name == "Hamed Adel"
+    assert tenant.slug.startswith("hamed-adel-")
+
+
+async def test_register_minimal_slug_collision_dedupes(db):
+    """Two minimal signups with the same email local part get distinct slugs."""
+    email = f"collision-{uuid.uuid4().hex[:4]}@test.local"
+    _u1, t1 = await AuthService.register(
+        db, tenant_name=None, tenant_slug=None, email=email,
+        password="Probe-1234", full_name=None,
+    )
+    u2, t2 = await AuthService.register(
+        db, tenant_name=None, tenant_slug=None, email=email,
+        password="Probe-1234", full_name=None,
+    )
+    assert u2.email == email
+    assert t1.slug != t2.slug

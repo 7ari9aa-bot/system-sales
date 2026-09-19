@@ -48,16 +48,17 @@ async def get_current_user(
     token = authorization.split(" ", 1)[1].strip()
     try:
         payload = decode_token(token)
-    except Exception as exc:  # jwt.PyJWTError and anything odd
+        if payload.get("type") != "access":
+            raise PermissionDeniedError("wrong token type")
+        return AuthedUser(
+            id=uuid.UUID(str(payload["sub"])),
+            tenant_id=uuid.UUID(payload["tenant_id"]) if payload.get("tenant_id") else None,
+            role_code=payload.get("role"),
+        )
+    except PermissionDeniedError:
+        raise
+    except Exception as exc:  # malformed/expired tokens → 401, never a 500
         raise PermissionDeniedError("invalid token") from exc
-    if payload.get("type") != "access":
-        raise PermissionDeniedError("wrong token type")
-    tenant_raw = payload.get("tenant_id")
-    return AuthedUser(
-        id=uuid.UUID(payload["sub"]),
-        tenant_id=uuid.UUID(tenant_raw) if tenant_raw else None,
-        role_code=payload.get("role"),
-    )
 
 
 CurrentUserDep = Annotated[AuthedUser, Depends(get_current_user)]

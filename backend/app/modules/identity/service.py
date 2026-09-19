@@ -10,6 +10,7 @@ Rules:
 from __future__ import annotations
 
 import hashlib
+import re
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -51,18 +52,45 @@ def _hash_token(token: str) -> str:
 class AuthService:
     @staticmethod
     async def register(
-        session, *, tenant_name: str, tenant_slug: str, email: str, password: str, full_name: str
+        session,
+        *,
+        tenant_name: str | None,
+        tenant_slug: str | None,
+        email: str,
+        password: str,
+        full_name: str | None,
     ) -> tuple[User, Tenant]:
-        existing_slug = (
-            await session.execute(select(Tenant).where(Tenant.slug == tenant_slug))
-        ).scalar_one_or_none()
-        if existing_slug is not None:
-            raise ConflictError("tenant slug already taken")
+        local_part = email.split("@", 1)[0]
+        display_name = " ".join(re.split(r"[._-]+", local_part)) .strip().title() or local_part
+        tenant_name = tenant_name or display_name
+        full_name = full_name or display_name
+
         existing_email = (
             await session.execute(select(User).where(User.email == email))
         ).scalar_one_or_none()
         if existing_email is not None:
             raise ConflictError("email already registered")
+
+        if tenant_slug is None:
+            # Auto-derived slug from the email local part; dedupe with a short
+            # random suffix on collision so minimal signup can never fail here.
+            base = re.sub(r"[^a-z0-9]+", "-", local_part.lower()).strip("-")[:40] or "workspace"
+            tenant_slug = base
+            for _attempt in range(6):
+                taken = (
+                    await session.execute(select(Tenant).where(Tenant.slug == tenant_slug))
+                ).scalar_one_or_none()
+                if taken is None:
+                    break
+                tenant_slug = f"{base}-{uuid.uuid4().hex[:6]}"
+            else:
+                raise ConflictError("tenant slug already taken")
+        else:
+            existing_slug = (
+                await session.execute(select(Tenant).where(Tenant.slug == tenant_slug))
+            ).scalar_one_or_none()
+            if existing_slug is not None:
+                raise ConflictError("tenant slug already taken")
 
         owner_role = (
             await session.execute(select(Role).where(Role.code == "owner"))

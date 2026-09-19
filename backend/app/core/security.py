@@ -24,15 +24,19 @@ def verify_password(password: str, password_hash: str) -> bool:
 def _create_token(subject: str, ttl_seconds: int, token_type: str, claims: dict[str, Any]) -> str:
     settings = get_settings()
     now = datetime.now(UTC)
+    # Security-critical claims are set AFTER caller claims so they can never
+    # be overridden (H4): sub/type/jti/iat/exp win, always.
     payload = {
+        **(claims or {}),
         "sub": subject,
         "type": token_type,
         # jti guarantees uniqueness even for two tokens issued in the same
         # second — deterministic payloads would collide on token_hash.
         "jti": str(uuid.uuid4()),
+        "iss": "sales-os",
+        "aud": "sales-os",
         "iat": int(now.timestamp()),
         "exp": int((now + timedelta(seconds=ttl_seconds)).timestamp()),
-        **claims,
     }
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
@@ -52,6 +56,15 @@ def create_refresh_token(user_id: str, claims: dict[str, Any] | None = None) -> 
 
 
 def decode_token(token: str) -> dict[str, Any]:
-    """Raise jwt.PyJWTError subclasses on invalid/expired tokens."""
+    """Raise jwt.PyJWTError subclasses on invalid/expired tokens.
+
+    Pins iss/aud and an explicit algorithm allowlist (no alg confusion).
+    """
     settings = get_settings()
-    return jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+    return jwt.decode(
+        token,
+        settings.jwt_secret,
+        algorithms=["HS256"],  # allowlist — never follow token headers
+        issuer="sales-os",
+        audience="sales-os",
+    )

@@ -9,11 +9,14 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class RegisterRequest(BaseModel):
-    tenant_name: str = Field(min_length=1, max_length=255)
-    tenant_slug: str = Field(min_length=3, max_length=63, pattern=r"^[a-z0-9-]+$")
+    """email + password only is the minimal signup contract; the tenant
+    name/slug and display name are derived server-side when omitted."""
+
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
-    full_name: str = Field(min_length=1, max_length=255)
+    tenant_name: str | None = Field(default=None, max_length=255)
+    tenant_slug: str | None = Field(default=None, max_length=63, pattern=r"^[a-z0-9-]+$")
+    full_name: str | None = Field(default=None, max_length=255)
 
 
 class LoginRequest(BaseModel):

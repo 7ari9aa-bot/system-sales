@@ -1,6 +1,8 @@
 "use client";
 
-/** /auth/signup — إنشاء حساب ضد الـAPI الحقيقي (register ثم login)، ثنائي اللغة. */
+/** /auth/signup — حقلان فقط (بريد + كلمة مرور) ضد الـAPI الحقيقي.
+ *  الـbackend بيشقق اسم المساحة والـslug من البريد تلقائيًا — باقي التفاصيل
+ *  بتظبط جوه النظام بعد أول دخول (progressive onboarding). */
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -14,8 +16,6 @@ const PASSWORD_MIN = 8;
 export default function AuthSignupPage() {
   const { t } = useI18n();
   const router = useRouter();
-  const [fullName, setFullName] = useState("");
-  const [storeName, setStoreName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -30,31 +30,18 @@ export default function AuthSignupPage() {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (busy) return;
-    if (!storeName.trim() || !fullName.trim() || !email.trim()) {
-      setErr({ message: t.auth.errGeneric, retryable: false });
-      return;
-    }
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-      setErr({ message: t.auth.errEmail, retryable: false });
-      return;
-    }
     if (!pwValid) {
       setErr({ message: t.auth.errPw, retryable: false });
       return;
     }
     setBusy(true);
     setErr(null);
-    const tenantSlug =
-      storeName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40) ||
-      `store-${Date.now()}`;
 
-    const reg = await authPost("/auth/register", {
-      email,
-      password,
-      full_name: fullName,
-      tenant_name: storeName,
-      tenant_slug: tenantSlug,
-    }).catch(() => ({ ok: false as const, status: 0, message: undefined }));
+    const reg = await authPost("/auth/register", { email, password }).catch(() => ({
+      ok: false as const,
+      status: 0,
+      message: undefined,
+    }));
     if (!reg.ok) {
       if (reg.status === 0) {
         setErr({ message: t.auth.errNetwork, retryable: true });
@@ -117,26 +104,6 @@ export default function AuthSignupPage() {
           <small id="pw-hint" className={`fh-pw-hint${pwValid ? " is-ok" : ""}`}>
             {pwValid ? "✓" : "•"} {t.auth.pwHint}
           </small>
-        </div>
-        <div>
-          <label htmlFor="storeName">{t.auth.storeName}</label>
-          <input
-            id="storeName"
-            autoComplete="organization"
-            value={storeName}
-            onChange={(e) => setStoreName(e.target.value)}
-            required
-          />
-        </div>
-        <div>
-          <label htmlFor="fullName">{t.auth.fullName}</label>
-          <input
-            id="fullName"
-            autoComplete="name"
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            required
-          />
         </div>
 
         {err && (
