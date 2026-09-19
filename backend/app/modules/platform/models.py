@@ -54,6 +54,10 @@ class OutboxEvent(Base):
     status: Mapped[str] = mapped_column(String(15), server_default="pending")
     attempts: Mapped[int] = mapped_column(Integer, server_default="0")
     last_error: Mapped[str | None] = mapped_column(Text)
+    # Durable retry scheduling: the relay skips rows until this instant, so
+    # workers can stage a backoff retry as an outbox row instead of sleeping
+    # in-process (a process death then loses nothing).
+    not_before: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -123,10 +127,12 @@ class Integration(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     # allowed (§145 lifecycle): pending | connecting | active
     #        | reauth_required | restricted | disconnected | disabled
     # legacy: pre-§145 rows carry 'connected' (and 'error'); the migration
-    # maps 'connected' -> 'active' and 'error' -> 'reauth_required'. The
-    # server_default keeps 'connected' until the ingest gateway (which still
-    # filters on it) is updated alongside that migration.
-    status: Mapped[str] = mapped_column(String(15), server_default="connected")
+    # maps 'connected' -> 'active' and 'error' -> 'reauth_required'.
+    # The default is 'pending' now that the ingest gateway resolves tenants
+    # through public.resolve_channel_tenant (which accepts both 'active' and
+    # the legacy 'connected'): 'connected' is no longer a valid lifecycle
+    # value, so new rows must not be born with it.
+    status: Mapped[str] = mapped_column(String(15), server_default="pending")
     config: Mapped[dict] = mapped_column(JSONB, server_default="{}")
     # NOTE: secrets land here only encrypted at rest (Stage 9 hardening).
     credentials: Mapped[dict] = mapped_column(JSONB, server_default="{}")
@@ -188,7 +194,8 @@ class Notification(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     customer_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("customers.id", ondelete="SET NULL"), nullable=True
     )
-    channel: Mapped[str] = mapped_column(String(15), server_default="inapp")  # email | sms | push | inapp
+    # channel: email | sms | push | inapp
+    channel: Mapped[str] = mapped_column(String(15), server_default="inapp")
     kind: Mapped[str] = mapped_column(String(31), server_default="system")
     title: Mapped[str | None] = mapped_column(String(127), nullable=True)
     subject: Mapped[str | None] = mapped_column(String(512), nullable=True)

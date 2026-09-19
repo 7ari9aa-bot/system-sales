@@ -4,13 +4,20 @@ Claims due ScheduledJob rows (FOR UPDATE SKIP LOCKED), executes the
 registered handler, records attempts/error/result. Handlers register by
 job_type; re-check conditions at execution time (spec: customer may have
 replied / order changed / consent revoked since scheduling).
+
+Recurring jobs (reconcile sweeps) are self-rescheduling: on completion the
+handler path inserts the NEXT occurrence via a stable idempotency key, so a
+crash between completion and re-schedule re-runs the sweep idempotently.
+The table is RLS-exempt (system plumbing): the claim query runs before any
+tenant context exists.
 """
 
 from __future__ import annotations
 
 import logging
+import random
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select, text
 
@@ -22,6 +29,13 @@ from app.workers.base import StreamWorker
 logger = logging.getLogger(__name__)
 
 _HANDLERS: dict[str, Callable] = {}
+
+# Recurring sweeps: job_type -> (interval, default payload)
+RECURRING_JOBS: dict[str, tuple[timedelta, dict]] = {
+    "reconcile_unknown_messages": (timedelta(minutes=5), {"threshold_minutes": 15}),
+    "reconcile_payments": (timedelta(minutes=15), {"threshold_minutes": 15}),
+    "expire_reservations": (timedelta(minutes=5), {}),
+}
 
 
 def register_job_handler(job_type: str, fn: Callable) -> None:
@@ -55,6 +69,56 @@ async def _handle_reconcile_payments(session, tenant_id, payload: dict) -> dict:
 register_job_handler("reconcile_payments", _handle_reconcile_payments)
 
 
+async def _handle_expire_reservations(session, tenant_id, payload: dict) -> dict:
+    from app.modules.inventory.service import InventoryReservationService
+
+    expired = await InventoryReservationService.expire_stale(session, tenant_id)
+    return {"count": expired}
+
+
+register_job_handler("expire_reservations", _handle_expire_reservations)
+
+
+async def ensure_recurring_jobs() -> None:
+    """Insert the recurring sweep jobs (per active tenant) if absent.
+
+    Runs at scheduler start; ON CONFLICT DO NOTHING on the idempotency key
+    makes it safe to call on every boot and from multiple replicas.
+    """
+    from sqlalchemy import select as sa_select
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+    from app.modules.identity.models import Tenant
+
+    async with SessionLocal() as session:
+        async with session.begin():
+            tenant_ids = (
+                (await session.execute(sa_select(Tenant.id).where(Tenant.is_active)))
+                .scalars()
+                .all()
+            )
+            now = datetime.now(UTC)
+            for tenant_id in tenant_ids:
+                for job_type, (_interval, payload) in RECURRING_JOBS.items():
+                    stmt = (
+                        pg_insert(ScheduledJob)
+                        .values(
+                            tenant_id=tenant_id,
+                            job_type=job_type,
+                            status="queued",
+                            run_at=now,
+                            payload=payload,
+                            attempts=0,
+                            max_attempts=5,
+                            idempotency_key=f"recurring:{job_type}:{tenant_id}",
+                        )
+                        .on_conflict_do_nothing(index_elements=["idempotency_key"])
+                    )
+                    await session.execute(stmt)
+    if tenant_ids:
+        logger.info("scheduler.recurring_jobs_ensured tenants=%d", len(tenant_ids))
+
+
 class SchedulerWorker(StreamWorker):
     """Runs alongside stream consumers: polls scheduled_jobs for due work."""
 
@@ -68,10 +132,12 @@ class SchedulerWorker(StreamWorker):
         return
 
     async def run(self) -> None:  # noqa: D102 — override: poll loop, no streams
-        from app.workers.base import MAX_BACKOFF_SECONDS  # noqa: F401
-
         logger.info("scheduler.started consumer=%s", self.name)
         self._running = True
+        try:
+            await ensure_recurring_jobs()
+        except Exception:  # noqa: BLE001 — never block the poll loop on bootstrap
+            logger.exception("scheduler.bootstrap_failed")
         while self._running:
             try:
                 processed = await self._poll_once()
@@ -79,11 +145,11 @@ class SchedulerWorker(StreamWorker):
                 logger.exception("scheduler.poll_failed")
                 processed = 0
             if not processed:
-                await asyncio_sleep(self.poll_interval)
+                import asyncio
+
+                await asyncio.sleep(self.poll_interval)
 
     async def _poll_once(self) -> int:
-
-        from app.core.errors import DomainError
 
         processed = 0
         async with SessionLocal() as session:
@@ -124,25 +190,51 @@ class SchedulerWorker(StreamWorker):
                         processed += 1
                         continue
                     try:
-                        tenant_raw = (
-                            job.tenant_id  # tenant-scoped job
-                        )
+                        tenant_raw = job.tenant_id  # tenant-scoped job
                         if tenant_raw:
                             await bind_tenant(session, tenant_raw)
                         result = await handler(session, tenant_raw, job.payload or {})
-                        job.status = "completed"
                         job.result = result or {}
-                    except DomainError as exc:
-                        job.status = "failed" if job.attempts >= job.max_attempts else "retrying"
-                        job.last_error = str(exc)[:500]
+                        # Recurring sweeps re-arm this row; one-shot jobs finish.
+                        if not await self._reschedule_recurring(session, job, now):
+                            job.status = "completed"
                     except Exception as exc:  # noqa: BLE001
-                        job.status = "failed" if job.attempts >= job.max_attempts else "retrying"
+                        # Backoff with jitter — the previous code left
+                        # next_attempt_at NULL, burning all 5 attempts in ~25s.
                         job.last_error = str(exc)[:500]
+                        if job.attempts >= job.max_attempts:
+                            job.status = "failed"
+                        else:
+                            job.status = "retrying"
+                            base = min(2.0 * (2 ** (job.attempts - 1)), 300.0)
+                            job.next_attempt_at = now + timedelta(
+                                seconds=random.uniform(0, base)
+                            )
                     processed += 1
         return processed
 
+    async def _reschedule_recurring(
+        self, session, job: ScheduledJob, now: datetime
+    ) -> bool:
+        """Recurring sweeps re-arm the SAME row for their next occurrence.
 
-async def asyncio_sleep(seconds: float) -> None:
-    import asyncio
+        Returns True when the job was re-armed (caller must not mark it
+        completed), False for one-shot jobs.
 
-    await asyncio.sleep(seconds)
+        Re-arming in place — instead of inserting a second row carrying the
+        same stable key — is required for correctness: `idempotency_key` is
+        UNIQUE (uq_scheduled_jobs_idem), the flush lands at commit time
+        (OUTSIDE the per-job try/except), so the duplicate insert rolled back
+        the entire claim batch. Every poll re-claimed the same job and failed
+        the same way: reconcile/expire sweeps never ran at all.
+        """
+        if job.job_type not in RECURRING_JOBS or not job.tenant_id:
+            return False
+        interval, payload = RECURRING_JOBS[job.job_type]
+        job.status = "queued"
+        job.run_at = now + interval
+        job.attempts = 0
+        job.next_attempt_at = None
+        job.last_error = None
+        job.payload = payload
+        return True

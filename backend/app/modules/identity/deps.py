@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import SessionLocal, bind_tenant
 from app.core.errors import NotFoundError, PermissionDeniedError
 from app.core.security import decode_token
-from app.modules.identity.models import Permission, Role, TenantUser, role_permissions
+from app.modules.identity.models import Permission, Role, TenantUser, User, role_permissions
 
 
 async def get_db() -> AsyncSession:
@@ -41,6 +41,7 @@ class AuthedUser:
 
 async def get_current_user(
     request: Request,
+    session: DbSession,
     authorization: Annotated[str | None, Header()] = None,
 ) -> AuthedUser:
     if not authorization or not authorization.lower().startswith("bearer "):
@@ -50,8 +51,19 @@ async def get_current_user(
         payload = decode_token(token)
         if payload.get("type") != "access":
             raise PermissionDeniedError("wrong token type")
+        user_id = uuid.UUID(str(payload["sub"]))
+        # S9: an access token used to be trusted for its full 30-minute life
+        # without ever consulting the database, so deactivating (or deleting) a
+        # user left them fully operational until expiry. One primary-key lookup
+        # per request; `users` is a global table with no RLS, so this runs
+        # before any tenant GUC is bound.
+        is_active = (
+            await session.execute(select(User.is_active).where(User.id == user_id))
+        ).scalar_one_or_none()
+        if not is_active:
+            raise PermissionDeniedError("account is inactive")
         return AuthedUser(
-            id=uuid.UUID(str(payload["sub"])),
+            id=user_id,
             tenant_id=uuid.UUID(payload["tenant_id"]) if payload.get("tenant_id") else None,
             role_code=payload.get("role"),
         )
@@ -157,13 +169,14 @@ class require_permission:
 
 async def get_optional_user(
     request: Request,
+    session: DbSession,
     authorization: Annotated[str | None, Header()] = None,
 ) -> AuthedUser | None:
     """Auth that tolerates anonymous callers (webchat, public webhooks)."""
     if not authorization or not authorization.lower().startswith("bearer "):
         return None
     try:
-        return await get_current_user(request, authorization)
+        return await get_current_user(request, session, authorization)
     except PermissionDeniedError:
         return None
 

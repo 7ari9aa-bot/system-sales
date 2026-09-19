@@ -28,26 +28,47 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Annotated, AsyncIterator
+import time
+import uuid
+from collections.abc import AsyncIterator
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select as sa_select
+from sqlalchemy import text as sa_text
 
+from app.core.errors import PermissionDeniedError
 from app.core.redis import get_redis
 from app.core.security import decode_token
-from app.core.errors import PermissionDeniedError
-from app.modules.identity.deps import AuthedUser, CurrentUserDep
-import uuid
+from app.modules.identity.deps import AuthedUser
+from app.modules.identity.models import TenantUser, User
 
 
 async def _sse_auth(
     request: Request,
-    token: Annotated[str | None, Query(description="Access token (SSE fallback — browsers can't send headers)")] = None,
+    token: Annotated[
+        str | None,
+        Query(description="Access token (SSE fallback — browsers can't send headers)"),
+    ] = None,
 ) -> AuthedUser:
     """SSE-compatible auth: accepts ?token= query param OR Authorization: Bearer.
 
     EventSource (browser) cannot send custom headers, so the frontend passes
     the access token as ?token=.  Regular Bearer header still works (e.g. tests).
+
+    S9: this endpoint used to validate the JWT signature and nothing else — it
+    never checked that the user still exists, is still active, or is still a
+    member of the tenant whose events it is about to stream. A removed or
+    deactivated user kept a live firehose of that tenant's message bodies for
+    the whole token lifetime.
+
+    This deliberately opens its OWN short-lived session rather than taking the
+    request-scoped `DbSession`: FastAPI tears dependency generators down only
+    AFTER the response completes, so a request-scoped session would pin a
+    pooled connection for the entire lifetime of the stream (hours) — a handful
+    of open inboxes would exhaust the pool for the whole platform (the same
+    failure class as R4).
     """
     # Try Authorization header first (standard Bearer)
     auth_header = request.headers.get("authorization", "")
@@ -62,15 +83,48 @@ async def _sse_auth(
         payload = decode_token(raw_token)
         if payload.get("type") != "access":
             raise PermissionDeniedError("wrong token type")
-        return AuthedUser(
-            id=uuid.UUID(str(payload["sub"])),
-            tenant_id=uuid.UUID(payload["tenant_id"]) if payload.get("tenant_id") else None,
-            role_code=payload.get("role"),
-        )
+        if not payload.get("tenant_id"):
+            # Fail closed: a tenant-less token must never open a stream —
+            # every frame in this generator is tenant-filtered.
+            raise PermissionDeniedError("token has no tenant")
+        user_id = uuid.UUID(str(payload["sub"]))
+        tenant_id = uuid.UUID(payload["tenant_id"])
     except PermissionDeniedError:
         raise
     except Exception as exc:
         raise PermissionDeniedError("invalid token") from exc
+
+    from app.core.db import SessionLocal
+
+    async with SessionLocal() as session:
+        async with session.begin():
+            # `users` is global (no RLS) so this runs before any tenant GUC.
+            is_active = (
+                await session.execute(
+                    sa_select(User.is_active).where(User.id == user_id)
+                )
+            ).scalar_one_or_none()
+            if not is_active:
+                raise PermissionDeniedError("account is inactive")
+
+            # Bind the user GUC so the tenant_users self-access policy exposes
+            # the membership row for the check below.
+            await session.execute(
+                sa_text("SELECT set_config('app.user_id', :uid, true)"),
+                {"uid": str(user_id)},
+            )
+            member = (
+                await session.execute(
+                    sa_select(TenantUser.user_id).where(
+                        TenantUser.tenant_id == tenant_id,
+                        TenantUser.user_id == user_id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if member is None:
+                raise PermissionDeniedError("not a member of this tenant")
+
+    return AuthedUser(id=user_id, tenant_id=tenant_id, role_code=payload.get("role"))
 
 
 _SSEAuthDep = Annotated[AuthedUser, Depends(_sse_auth)]
@@ -90,6 +144,9 @@ _ALL_STREAMS = [
 _HEARTBEAT_INTERVAL_S = 25   # seconds
 _BLOCK_MS = 5_000             # Redis XREAD block timeout per poll
 _MAX_PER_POLL = 50
+# A client cursor older than this is clamped: `?cursor=0-0` must never replay
+# the whole retained stream (cross-tenant history exfiltration risk).
+_CURSOR_CLAMP_MS = 60_000
 
 
 def _sse_frame(data: dict, *, event_id: str) -> bytes:
@@ -103,11 +160,21 @@ def _heartbeat() -> bytes:
 
 
 async def _build_cursor(cursor: str | None, streams: list[str]) -> dict[str, str]:
-    """Translate a client cursor into per-stream XREAD start IDs."""
+    """Translate a client cursor into per-stream XREAD start IDs (clamped).
+
+    Redis stream IDs carry epoch milliseconds, so the clamp floor is computed
+    from the wall clock: a cursor older than _CURSOR_CLAMP_MS is pulled up to
+    the floor instead of replaying the entire retained stream.
+    """
+    floor_ms = int(time.time() * 1000) - _CURSOR_CLAMP_MS
+    floor_id = f"{floor_ms}-0"
     if cursor:
         try:
             ms, seq = cursor.rsplit("-", 1)
             next_id = f"{ms}-{int(seq) + 1}"
+            # Compare numerically on the ms component — "9" < "10" lexically.
+            if int(ms) < floor_ms:
+                next_id = floor_id
             return {s: next_id for s in streams}
         except (ValueError, AttributeError):
             pass
@@ -147,7 +214,7 @@ async def _event_stream(
                     ),
                     timeout=(block_ms / 1000) + 3,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 results = None
             except Exception as exc:  # noqa: BLE001
                 logger.warning("sse.redis_error %s", exc)
@@ -176,7 +243,9 @@ async def _event_stream(
                     )
                     last_ids[stream_key] = raw_id
 
-                    # Decode payload.
+                    # Decode payload AND meta — the outbox relay publishes
+                    # them as two SEPARATE Redis fields (bus.py xadd), so the
+                    # tenant claim lives in the meta field, not in the payload.
                     raw_payload = (
                         fields.get(b"payload")
                         or fields.get("payload")
@@ -189,11 +258,18 @@ async def _event_stream(
                     except json.JSONDecodeError:
                         continue
 
-                    # §149 Tenant isolation: every event envelope carries
-                    # meta.tenant_id.  Drop cross-tenant events structurally.
-                    meta = payload.get("meta", {})
+                    raw_meta = fields.get(b"meta") or fields.get("meta") or b"{}"
+                    if isinstance(raw_meta, bytes):
+                        raw_meta = raw_meta.decode()
+                    try:
+                        meta: dict = json.loads(raw_meta)
+                    except json.JSONDecodeError:
+                        meta = {}
+
+                    # §149 Tenant isolation: fail CLOSED. An event without a
+                    # tenant_id in its meta envelope must never reach a client.
                     event_tenant = str(meta.get("tenant_id", ""))
-                    if event_tenant and tenant_id and event_tenant != tenant_id:
+                    if not event_tenant or event_tenant != tenant_id:
                         continue
 
                     yield _sse_frame(

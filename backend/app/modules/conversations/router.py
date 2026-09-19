@@ -2,19 +2,26 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import logging
 import time
 import uuid
 
-from fastapi import APIRouter, Query, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, Field
+from sqlalchemy import update as sa_update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from app.core.errors import NotFoundError, PermissionDeniedError
+from app.core.errors import ConflictError, NotFoundError, PermissionDeniedError, ValidationError
 from app.core.pagination import decode_cursor, encode_cursor
 from app.modules.conversations.gateway.ingest import IngestService
 from app.modules.conversations.gateway.registry import get_adapter
 from app.modules.conversations.service import ConversationService
-from app.modules.identity.deps import DbSession, TenantCtxDep
+from app.modules.identity.deps import DbSession, TenantContext, TenantCtxDep, require_permission
+from app.modules.platform.models import WebhookEvent
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["inbox"])
 public_router = APIRouter(tags=["channels"])
@@ -117,6 +124,10 @@ async def list_messages(
 async def send_message(ctx: TenantCtxDep, conversation_id: uuid.UUID, body: SendMessageRequest):
     from app.core.events.writer import add_outbox_event
 
+    conversation = await ConversationService.get(ctx.session, ctx.tenant_id, conversation_id)
+    if conversation.status == "closed":
+        raise ConflictError("conversation is closed")
+
     message = await ConversationService.add_message(
         ctx.session,
         ctx.tenant_id,
@@ -138,7 +149,32 @@ async def send_message(ctx: TenantCtxDep, conversation_id: uuid.UUID, body: Send
 
 
 @router.post("/conversations/{conversation_id}/assign")
-async def assign(ctx: TenantCtxDep, conversation_id: uuid.UUID, body: AssignRequest):
+async def assign(
+    conversation_id: uuid.UUID,
+    body: AssignRequest,
+    ctx: TenantContext = Depends(require_permission("conversations:write")),
+):
+    # S11 (IDOR): any user id used to be accepted — including one belonging to
+    # another tenant — and the resulting FK error told the caller whether that
+    # user exists (a cross-tenant existence oracle). Resolve the assignee
+    # through tenant_users instead, which is exactly "is this person on my
+    # team"; tenant_users RLS makes other tenants' rows invisible here.
+    if body.user_id is not None and body.user_id != ctx.user.id:
+        from sqlalchemy import select as sa_select
+
+        from app.modules.identity.models import TenantUser
+
+        member = (
+            await ctx.session.execute(
+                sa_select(TenantUser.user_id).where(
+                    TenantUser.tenant_id == ctx.tenant_id,
+                    TenantUser.user_id == body.user_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if member is None:
+            raise NotFoundError("assignee is not a member of this tenant")
+
     assignment = await ConversationService.assign(
         ctx.session,
         ctx.tenant_id,
@@ -150,7 +186,10 @@ async def assign(ctx: TenantCtxDep, conversation_id: uuid.UUID, body: AssignRequ
 
 
 @router.post("/conversations/{conversation_id}/close")
-async def close(ctx: TenantCtxDep, conversation_id: uuid.UUID):
+async def close(
+    conversation_id: uuid.UUID,
+    ctx: TenantContext = Depends(require_permission("conversations:write")),
+):
     await ConversationService.close(ctx.session, ctx.tenant_id, conversation_id)
     await ConversationService.audit(
         ctx.session, ctx.tenant_id, ctx.user.id, "conversation.closed", str(conversation_id)
@@ -168,23 +207,48 @@ async def mark_read(ctx: TenantCtxDep, conversation_id: uuid.UUID):
 
 
 class WebchatInbound(BaseModel):
-    session_key: str = Field(min_length=8, max_length=64)
     body: str = Field(min_length=1, max_length=4096)
     client_message_id: str | None = Field(default=None, max_length=64)
     visitor_name: str | None = Field(default=None, max_length=255)
+    # S2: the visitor identity is SERVER-ISSUED. The first message returns a
+    # `session_token`; every later message must present it. The client never
+    # chooses its own session key.
+    session_token: str | None = Field(default=None, max_length=4096)
 
 
 @public_router.post("/webchat/{public_key}/messages", status_code=201)
 async def webchat_inbound(public_key: str, body: WebchatInbound, session: DbSession):
+    from app.core.db import bind_tenant
+    from app.core.security import create_visitor_token, decode_visitor_token
+
     adapter = get_adapter("webchat")
     if adapter is None:  # pragma: no cover — registry always has webchat
         raise NotFoundError("webchat disabled")
     tenant_id = await IngestService.resolve_tenant(session, "webchat", public_key)
     if tenant_id is None:
         raise NotFoundError("unknown widget key")
+
+    # S2: a client-chosen session_key was the ONLY visitor identity, so anyone
+    # who guessed (or observed) one could read and post into that visitor's
+    # conversation. Identity now comes from a token we signed for THIS tenant
+    # and THIS widget; a first-time visitor is issued a fresh random key.
+    session_key: str | None = None
+    if body.session_token:
+        claims = decode_visitor_token(body.session_token)
+        if claims.get("tenant_id") != str(tenant_id):
+            raise PermissionDeniedError("visitor session belongs to another tenant")
+        if claims.get("widget") != public_key:
+            raise PermissionDeniedError("visitor session belongs to another widget")
+        session_key = str(claims["sub"])
+    if not session_key:
+        session_key = uuid.uuid4().hex
+
+    # RLS: ingest writes tenant-scoped rows — bind the GUC before any insert.
+    await bind_tenant(session, tenant_id)
     accepted = 0
-    conversation_id = None
-    for message in adapter.parse_inbound(body.model_dump()):
+    for message in adapter.parse_inbound(
+        {**body.model_dump(), "session_key": session_key}
+    ):
         conversation_id = await IngestService.ingest(
             session,
             tenant_id=tenant_id,
@@ -193,18 +257,30 @@ async def webchat_inbound(public_key: str, body: WebchatInbound, session: DbSess
         )
         if conversation_id is not None:
             accepted += 1
+    # NOTE: conversation_id is deliberately NOT returned — it leaked the
+    # staff-side record id to an anonymous caller for no functional reason.
     return {
         "ok": True,
         "accepted": accepted,
-        "conversation_id": str(conversation_id) if conversation_id else None,
+        "session_token": create_visitor_token(
+            session_key, str(tenant_id), widget=public_key
+        ),
     }
 
 
 # ---------- channel webhooks (generic dispatch through the registry) ----------
 
+# Channels accepted on the generic webhook endpoint. Webchat is deliberately
+# EXCLUDED: it has no provider signature to verify, so accepting it here would
+# let anyone inject messages with a forged "public_key" body field. Webchat
+# traffic goes through public_router only (validated + rate-limited there).
+_WEBHOOK_CHANNELS = {"whatsapp", "telegram"}
+
 
 @webhook_router.get("/webhooks/{channel}")
 async def verify_webhook(channel: str, request: Request):
+    if channel not in _WEBHOOK_CHANNELS:
+        raise NotFoundError(f"unknown channel: {channel}")
     adapter = get_adapter(channel)
     if adapter is None:
         raise NotFoundError(f"unknown channel: {channel}")
@@ -216,7 +292,9 @@ async def verify_webhook(channel: str, request: Request):
 
 @webhook_router.post("/webhooks/{channel}")
 async def channel_webhook(channel: str, request: Request, session: DbSession):
-    """Signature check → normalize → durable ingest (per-channel adapter)."""
+    """Signature check → replay guard → durable ingest (per-channel adapter)."""
+    if channel not in _WEBHOOK_CHANNELS:
+        raise NotFoundError(f"unknown channel: {channel}")
     adapter = get_adapter(channel)
     if adapter is None:
         raise NotFoundError(f"unknown channel: {channel}")
@@ -227,15 +305,50 @@ async def channel_webhook(channel: str, request: Request, session: DbSession):
     try:
         payload = json.loads(raw or b"{}")
     except json.JSONDecodeError as exc:
-        raise NotFoundError("unparsable payload") from exc
-    if isinstance(payload, dict):
-        payload["_query"] = dict(request.query_params)
+        raise ValidationError("unparsable payload") from exc
+    if not isinstance(payload, dict):
+        raise ValidationError("payload must be a JSON object")
+    payload["_query"] = dict(request.query_params)
 
     tenant_key = adapter.resolve_tenant_key(payload)
     tenant_id = await IngestService.resolve_tenant(session, channel, tenant_key)
+
+    # S10: durable ingress record + replay rejection. Both providers sign a
+    # STATIC HMAC over the raw body — neither contract carries a timestamp or
+    # nonce — so a captured delivery can be replayed byte-for-byte. The digest
+    # of the raw body is stored as the ingress event id and a unique index
+    # (uq_webhook_events_provider_external) makes the second insert a no-op.
+    # This is also the audit trail the WebhookEvent table was built for and
+    # never had written to it.
+    digest = hashlib.sha256(raw).hexdigest()
+    inserted = (
+        await session.execute(
+            pg_insert(WebhookEvent)
+            .values(
+                provider=channel,
+                external_event_id=digest,
+                tenant_id=tenant_id,
+                signature_valid=True,
+                payload=payload,
+                processing_status="processing",
+            )
+            .on_conflict_do_nothing(index_elements=["provider", "external_event_id"])
+            .returning(WebhookEvent.id)
+        )
+    ).scalar_one_or_none()
+    if inserted is None:
+        logger.info("webhook.replay_ignored channel=%s digest=%s", channel, digest[:12])
+        # Acknowledge: providers retry on non-2xx, and a retry is exactly what
+        # a replay is. Reprocessing would double-write.
+        return {"ok": True, "duplicate": True}
+
     if tenant_id is None:
         # Unknown tenant: acknowledge without detail (do not leak existence).
         return {"ok": True}
+    # RLS: ingest writes tenant-scoped rows — bind the GUC before any insert.
+    from app.core.db import bind_tenant
+
+    await bind_tenant(session, tenant_id)
     accepted = 0
     for message in adapter.parse_inbound(payload):
         conversation_id = await IngestService.ingest(
@@ -247,18 +360,39 @@ async def channel_webhook(channel: str, request: Request, session: DbSession):
         if conversation_id is not None:
             accepted += 1
     await _apply_status_updates(session, tenant_id, adapter.parse_status_updates(payload))
+    await session.execute(
+        sa_update(WebhookEvent)
+        .where(WebhookEvent.id == inserted)
+        .values(processing_status="processed", attempts=1)
+    )
     return {"ok": True, "accepted": accepted}
 
 
 async def _apply_status_updates(session, tenant_id, updates) -> None:
-    """Delivery receipts: update our outbound message rows by provider id."""
+    """Delivery receipts: update our outbound message rows by provider id.
+
+    Monotonic state machine (§130): a receipt may only move a message
+    forward. Out-of-order or replayed provider events (e.g. a late `sent`
+    after `read`) are dropped instead of regressing the row.
+    """
     from sqlalchemy import update as sa_update
 
     from app.modules.conversations.models import Message
 
+    # target status → statuses it may legally be advanced from
+    _FORWARD_FROM: dict[str, tuple[str, ...]] = {
+        "sent": ("queued", "sending", "unknown"),
+        "delivered": ("queued", "sending", "unknown", "sent"),
+        "read": ("queued", "sending", "unknown", "sent", "delivered"),
+        "failed": ("queued", "sending", "unknown"),
+    }
+
     for receipt in updates:
         if not receipt.channel_message_id or not receipt.status:
             continue
+        allowed_from = _FORWARD_FROM.get(receipt.status)
+        if allowed_from is None:
+            continue  # unknown/arbitrary provider status — never written raw
         values: dict = {"status": receipt.status}
         if receipt.error:
             values["error"] = receipt.error
@@ -267,6 +401,8 @@ async def _apply_status_updates(session, tenant_id, updates) -> None:
             .where(
                 Message.tenant_id == tenant_id,
                 Message.channel_message_id == receipt.channel_message_id,
+                Message.direction == "outbound",
+                Message.status.in_(allowed_from),
             )
             .values(**values)
         )
@@ -274,8 +410,8 @@ async def _apply_status_updates(session, tenant_id, updates) -> None:
 
 @router.post("/conversations/messages/reconcile")
 async def reconcile_messages(
-    ctx: TenantCtxDep,
     minutes: int = Query(default=15, ge=1, le=1440),
+    ctx: TenantContext = Depends(require_permission("conversations:write")),
 ):
     """Reconcile messages stuck in 'unknown' or 'sending' for longer than threshold."""
     reconciled = await ConversationService.reconcile_unknown_messages(

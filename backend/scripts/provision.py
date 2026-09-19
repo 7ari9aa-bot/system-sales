@@ -44,7 +44,10 @@ NO_TENANT_TABLES = {
     "plans",
     "refresh_tokens",  # user-scoped, not tenant-scoped
     "webhook_events",  # pre-auth ingress: rows land BEFORE tenant resolution (§125)
+    "scheduled_jobs",  # scheduler claims due jobs across tenants before any GUC
 }  # system/global
+# Tables that carry a nullable tenant_id but allow platform-level NULL rows.
+NULLABLE_TENANT_TABLES = {"security_events"}  # audit_logs handled separately below
 ASSOCIATION_VIA = {"customer_tags": ("customers", "customer_id")}
 
 
@@ -119,7 +122,54 @@ def _rls_statements() -> list[str]:
         f'USING (tenant_id IS NULL OR tenant_id = {guard}) '
         f'WITH CHECK (tenant_id IS NULL OR tenant_id = {guard});'
     )
+    # security_events: pre-auth paths (login failure) write NULL-tenant rows;
+    # a strict tenant_id = guard policy would silently reject them (S8).
+    se = "security_events"
+    if se in Base.metadata.tables:
+        stmts.append(f'ALTER TABLE public.{se} ENABLE ROW LEVEL SECURITY;')
+        stmts.append(f'ALTER TABLE public.{se} FORCE ROW LEVEL SECURITY;')
+        stmts.append(f'DROP POLICY IF EXISTS tenant_isolation ON public.{se};')
+        stmts.append(
+            f'CREATE POLICY tenant_isolation ON public.{se} '
+            f'USING (tenant_id IS NULL OR tenant_id = {guard}) '
+            f'WITH CHECK (tenant_id IS NULL OR tenant_id = {guard});'
+        )
     return stmts
+
+
+# Channel webhooks arrive BEFORE any tenant is known, so tenant resolution
+# cannot read `integrations` directly — that table is FORCE-RLS and the GUC is
+# not bound yet, so a plain SELECT returns zero rows and every inbound webhook
+# is acknowledged while ingesting nothing. SECURITY DEFINER runs the lookup as
+# the table owner and returns ONLY the tenant id, so provider credentials in
+# integrations.config never leave the table. search_path is pinned — mandatory
+# for SECURITY DEFINER. Kept identical to migration b2c3d4e5f6a7 so an
+# already-provisioned database converges.
+CHANNEL_TENANT_FN_SQL = """
+CREATE OR REPLACE FUNCTION public.resolve_channel_tenant(p_provider text, p_key text)
+RETURNS uuid
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+    SELECT i.tenant_id
+      FROM public.integrations i
+     WHERE i.provider = p_provider
+       AND i.kind = 'channel'
+       AND i.status IN ('active', 'connected')
+       AND p_key IN (
+             i.config->>'phone_number_id',
+             i.config->>'bot_id',
+             i.config->>'public_key',
+             i.config->>'account_id'
+           )
+     ORDER BY i.created_at
+     LIMIT 1
+$fn$;
+
+REVOKE ALL ON FUNCTION public.resolve_channel_tenant(text, text) FROM PUBLIC;
+"""
 
 
 ROLES = [
@@ -289,6 +339,14 @@ async def main() -> None:
         for stmt in statements:
             await conn.execute(stmt)
         print(f"RLS applied: {len(statements)} statements")
+        # Pre-tenant tenant resolution must not depend on the RLS GUC (see
+        # CHANNEL_TENANT_FN_SQL) — created here too so a database provisioned
+        # without the migration still gets it.
+        await conn.execute(CHANNEL_TENANT_FN_SQL)
+        await conn.execute(
+            "GRANT EXECUTE ON FUNCTION public.resolve_channel_tenant(text, text) "
+            "TO sales_app"
+        )
         await seed(conn)
     finally:
         await conn.close()

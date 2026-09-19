@@ -10,10 +10,12 @@ Rules:
 from __future__ import annotations
 
 import hashlib
+import logging
 import re
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
+from functools import lru_cache
 
 import sqlalchemy as sa
 from sqlalchemy import select
@@ -40,6 +42,44 @@ from app.modules.identity.models import (
 from app.modules.identity.schemas import TokenPair
 from app.modules.platform.models import AuditLog
 
+logger = logging.getLogger(__name__)
+
+
+async def _record_security_event(
+    event_type: str,
+    *,
+    details: dict | None = None,
+    ip: str | None = None,
+    tenant_id: uuid.UUID | None = None,
+    actor_user_id: uuid.UUID | None = None,
+) -> None:
+    """Persist a security event on its OWN transaction.
+
+    The auth failure paths raise immediately after recording, which rolls the
+    REQUEST transaction back — so `session.add(SecurityEvent(...))` on that
+    transaction meant the audit row never survived and the §67 trail was
+    silently empty. A separate short-lived session commits independently of
+    the caller's rollback. Failures here are logged, never raised: losing an
+    audit row must not turn a clean 401 into a 500.
+    """
+    from app.core.db import SessionLocal
+    from app.modules.platform.models import SecurityEvent
+
+    try:
+        async with SessionLocal() as session:
+            async with session.begin():
+                session.add(
+                    SecurityEvent(
+                        event_type=event_type,
+                        tenant_id=tenant_id,
+                        actor_user_id=actor_user_id,
+                        details=details or {},
+                        ip=ip,
+                    )
+                )
+    except Exception:  # noqa: BLE001 — auditing must not break authentication
+        logger.warning("security_event.write_failed type=%s", event_type, exc_info=True)
+
 
 def _now() -> datetime:
     return datetime.now(UTC)
@@ -47,6 +87,18 @@ def _now() -> datetime:
 
 def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+@lru_cache(maxsize=1)
+def _dummy_password_hash() -> str:
+    """A real bcrypt hash used when the account does not exist.
+
+    Login used to short-circuit on `user is None` BEFORE hashing, so a missing
+    account answered measurably faster than a wrong password — a timing oracle
+    that enumerates registered emails (S12). Comparing against this hash makes
+    both paths cost the same bcrypt work.
+    """
+    return hash_password("not-a-real-password")
 
 
 class AuthService:
@@ -135,29 +187,30 @@ class AuthService:
         user = (
             await session.execute(select(User).where(User.email == email))
         ).scalar_one_or_none()
-        if user is None or not verify_password(password, user.password_hash):
-            # §67: security event — login failure (no PII, ip/ua handled by caller)
-            from app.modules.platform.models import SecurityEvent
-
-            domain_part = email.split("@")[-1] if "@" in email else ""
-            session.add(
-                SecurityEvent(
-                    event_type="login_failure",
-                    details={"email_domain": domain_part},
-                    ip=ip,
-                )
+        # S12: hash even when the account is missing, so the response time does
+        # not reveal whether the email is registered (timing oracle).
+        password_ok = verify_password(
+            password, user.password_hash if user is not None else _dummy_password_hash()
+        )
+        if user is None or not password_ok:
+            # §67: security event — login failure (no PII; domain + ip only).
+            # Written on its OWN transaction: the raise below rolls the request
+            # transaction back, which used to discard this row entirely.
+            await _record_security_event(
+                "login_failure",
+                details={"email_domain": email.split("@")[-1] if "@" in email else ""},
+                ip=ip,
             )
-        if not user.is_active:
-            from app.modules.platform.models import SecurityEvent
+            # Unified message: "no such account" and "wrong password" are
+            # indistinguishable to the caller.
+            raise PermissionDeniedError("invalid credentials")
 
-            session.add(
-                SecurityEvent(
-                    event_type="account_disabled_login",
-                    tenant_id=None,
-                    actor_user_id=user.id,
-                    details={"email": user.email},
-                    ip=ip,
-                )
+        if not user.is_active:
+            await _record_security_event(
+                "account_disabled_login",
+                details={"email": user.email},
+                ip=ip,
+                actor_user_id=user.id,
             )
             raise PermissionDeniedError("account disabled")
 
@@ -230,6 +283,15 @@ class AuthService:
     async def switch_tenant(
         session, *, user: User, tenant_id: uuid.UUID, refresh_token: str
     ) -> TokenPair:
+        # Security: a disabled user must never mint a fresh token family via
+        # tenant switching (login/refresh both check is_active — so must this).
+        if not user.is_active:
+            raise PermissionDeniedError("account disabled")
+        # RLS: the membership query is self-discovery via the app.user_id GUC.
+        await session.execute(
+            sa.text("SELECT set_config(:guc, :user_id, true)"),
+            {"guc": "app.user_id", "user_id": str(user.id)},
+        )
         membership = (
             await session.execute(
                 select(TenantUser).where(
@@ -239,9 +301,14 @@ class AuthService:
         ).scalar_one_or_none()
         if membership is None:
             raise PermissionDeniedError("not a member of this tenant")
+        # Ownership: only revoke a refresh token that belongs to the caller.
         old_hash = _hash_token(refresh_token)
         row = (
-            await session.execute(select(RefreshToken).where(RefreshToken.token_hash == old_hash))
+            await session.execute(
+                select(RefreshToken).where(
+                    RefreshToken.token_hash == old_hash, RefreshToken.user_id == user.id
+                )
+            )
         ).scalar_one_or_none()
         if row is not None:
             row.revoked_at = _now()
@@ -383,8 +450,18 @@ class TenantService:
         existing = (
             await session.execute(select(User).where(User.email == invitation.email))
         ).scalar_one_or_none()
+
+        async def _bind_self_guc(uid: uuid.UUID) -> None:
+            # RLS: tenant_users allows the app.user_id self-discovery path —
+            # bind it before reading/writing membership rows for this user.
+            await session.execute(
+                sa.text("SELECT set_config(:guc, :user_id, true)"),
+                {"guc": "app.user_id", "user_id": str(uid)},
+            )
+
         if existing is not None:
             user = existing
+            await _bind_self_guc(user.id)
             membership_exists = (
                 await session.execute(
                     select(TenantUser).where(
@@ -403,6 +480,7 @@ class TenantService:
             )
             session.add(user)
             await session.flush()
+            await _bind_self_guc(user.id)
         session.add(
             TenantUser(
                 tenant_id=invitation.tenant_id,

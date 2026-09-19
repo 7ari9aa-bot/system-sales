@@ -14,14 +14,14 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events.writer import add_outbox_event
 from app.modules.conversations.gateway.base import InboundMessage
 from app.modules.conversations.service import ConversationService
 from app.modules.customers.service import CustomerService
-from app.modules.platform.models import IdempotencyKey, Integration
+from app.modules.platform.models import IdempotencyKey
 
 
 class IngestError(Exception):
@@ -33,32 +33,27 @@ class IngestService:
     async def resolve_tenant(
         session: AsyncSession, adapter_name: str, tenant_key: str | None
     ) -> uuid.UUID | None:
-        """Find the tenant whose integration matches this webhook."""
+        """Find the tenant whose integration matches this webhook.
+
+        This runs BEFORE any tenant context exists, so it cannot read
+        `integrations` directly: that table is FORCE-RLS and the tenant GUC is
+        not bound yet, so a plain SELECT silently returned zero rows and every
+        inbound webhook was acknowledged with nothing ingested.
+
+        `public.resolve_channel_tenant` is SECURITY DEFINER (created in
+        migration b2c3d4e5f6a7 and by scripts/provision.py): it performs the
+        lookup with owner rights and returns ONLY the tenant id, so the
+        provider credentials in `integrations.config` never leave the table.
+        """
         if tenant_key is None:
             return None
-        integration = (
-            (
-                await session.execute(
-                    select(Integration).where(
-                        Integration.provider == adapter_name,
-                        Integration.kind == "channel",
-                        Integration.status == "connected",
-                    )
-                )
+        row = (
+            await session.execute(
+                text("SELECT public.resolve_channel_tenant(:provider, :key)"),
+                {"provider": adapter_name, "key": tenant_key},
             )
-            .scalars()
-            .all()
-        )
-        for row in integration:
-            config = row.config or {}
-            if tenant_key in (
-                config.get("phone_number_id"),
-                config.get("bot_id"),
-                config.get("public_key"),
-                config.get("account_id"),
-            ):
-                return row.tenant_id
-        return None
+        ).scalar_one_or_none()
+        return uuid.UUID(str(row)) if row else None
 
     @staticmethod
     async def already_processed(session: AsyncSession, scope: str, key: str | None) -> bool:
@@ -100,7 +95,12 @@ class IngestService:
         idempotency_scope: str,
     ) -> uuid.UUID | None:
         """Persist one inbound message; returns conversation_id or None on dup."""
-        if await cls.already_processed(session, idempotency_scope, message.channel_message_id):
+        # S3: the dedupe scope MUST carry the tenant. A channel-wide scope let
+        # an attacker pre-register another tenant's client_message_id; the
+        # first writer wins, so the victim's real message was then silently
+        # dropped as a duplicate.
+        scope = f"{idempotency_scope}:{tenant_id}"
+        if await cls.already_processed(session, scope, message.channel_message_id):
             return None
 
         customer = await CustomerService.get_or_create_by_identity(
@@ -127,7 +127,7 @@ class IngestService:
         )
         await cls.mark_processed(
             session,
-            idempotency_scope,
+            scope,
             message.channel_message_id,
             {"conversation_id": str(conversation.id)},
         )

@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_ttl_seconds: int = 60 * 30
     refresh_token_ttl_seconds: int = 60 * 60 * 24 * 14
+    # Webchat visitor sessions are long-lived by nature (a returning visitor
+    # keeps the same conversation) but are still server-signed (S2).
+    webchat_session_ttl_seconds: int = 60 * 60 * 24 * 30
 
     # event bus / workers
     stream_maxlen: int = 100_000
@@ -71,6 +74,10 @@ class Settings(BaseSettings):
         if self.environment == "production":
             if not self.jwt_secret or self.jwt_secret == "change-me":
                 raise ValueError("JWT_SECRET must be set in production")
+            # PyJWT warns below 32 bytes for HS256; a short key is brute-forceable
+            # offline from a single captured token, so refuse rather than warn.
+            if len(self.jwt_secret.encode()) < 32:
+                raise ValueError("JWT_SECRET must be at least 32 bytes in production")
             if self.service_token_internal in ("", "change-me-too"):
                 raise ValueError("SERVICE_TOKEN_INTERNAL must be set in production")
             if self.cors_origins == "*":

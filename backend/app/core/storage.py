@@ -10,10 +10,13 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
+from urllib.parse import urljoin
 
 import httpx
 
 from app.core.config import get_settings
+from app.core.errors import ValidationError
+from app.core.net_guard import assert_public_url
 
 logger = logging.getLogger(__name__)
 
@@ -58,10 +61,38 @@ class ObjectStorage:
             return f"{self._endpoint.rstrip('/')}/{self._bucket}/{key}"
         return f"https://{self._bucket}.s3.{self._region or 'us-east-1'}.amazonaws.com/{key}"
 
+    MAX_REDIRECTS = 3
+
+    async def _fetch_validated(self, client: httpx.AsyncClient, url: str) -> httpx.Response:
+        """Follow redirects MANUALLY so every hop is SSRF-checked.
+
+        `follow_redirects=True` validated only the first URL: a public host
+        that answers `302 Location: http://169.254.169.254/...` was followed
+        straight to the cloud metadata service, which is a complete SSRF
+        bypass of the guard.
+        """
+        current = url
+        for _hop in range(self.MAX_REDIRECTS + 1):
+            assert_public_url(current)
+            response = await client.get(current)
+            location = response.headers.get("location")
+            if response.is_redirect and location:
+                current = urljoin(current, location)
+                continue
+            return response
+        raise ValidationError("too many redirects while fetching media")
+
     async def persist_from_url(self, url: str, *, prefix: str = "media") -> StoredMedia:
-        """Download a provider media URL and store it durably."""
-        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
-            response = await client.get(url)
+        """Download a provider media URL and store it durably.
+
+        S6: the URL comes from a channel payload, i.e. from the internet, so
+        it is validated before we fetch it — otherwise a crafted media URL
+        would make the worker fetch internal endpoints on the attacker's
+        behalf (SSRF).
+        """
+        assert_public_url(url)
+        async with httpx.AsyncClient(timeout=30, follow_redirects=False) as client:
+            response = await self._fetch_validated(client, url)
             response.raise_for_status()
             content = response.content
             content_type = response.headers.get("content-type")

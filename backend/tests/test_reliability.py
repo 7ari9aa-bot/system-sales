@@ -8,8 +8,8 @@ retries with backoff).
 
 from __future__ import annotations
 
-import asyncio
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -113,10 +113,14 @@ async def test_add_outbox_event_backward_compatible_defaults() -> None:
     )
 
     added = session.add.call_args[0][0]
+    # outbox_id: the stable consumer-dedupe key that survives relay
+    # crash-reclaim re-publishes (a per-publish bus uuid made replays new).
+    assert added.meta["outbox_id"] == str(added.id)
     assert added.meta == {
         "tenant_id": str(tenant_id),
         "producer": "core",
         "schema_version": 1,
+        "outbox_id": str(added.id),
     }
 
 
@@ -261,35 +265,139 @@ async def test_validation_error_is_treated_as_permanent() -> None:
     assert bus.published == []
 
 
-async def test_generic_failure_retries_with_attempts_metadata(monkeypatch) -> None:
+class _FakeSessionCM:
+    def __init__(self, session: MagicMock) -> None:
+        self._session = session
+
+    async def __aenter__(self) -> MagicMock:
+        return self._session
+
+    async def __aexit__(self, *exc: object) -> bool:
+        return False
+
+
+def _fake_session_factory() -> tuple[Any, MagicMock]:
+    session = MagicMock()
+    session.begin = lambda: _FakeSessionCM(session)
+    session.execute = AsyncMock()
+    return (lambda: _FakeSessionCM(session)), session
+
+
+async def test_generic_failure_stages_durable_retry(monkeypatch) -> None:
+    """Retryable failures stage an outbox row with not_before (durable retry).
+
+    The previous fire-and-forget asyncio task lost the retry on shutdown
+    while the original entry was already acked — the event vanished.
+    """
     monkeypatch.setattr("app.workers.base.random.uniform", lambda low, high: 0)
+    factory, session = _fake_session_factory()
+    monkeypatch.setattr("app.workers.base.SessionLocal", factory)
     bus = FakeBus()
     worker = StubWorker(bus, RuntimeError("transient outage"))
 
     await worker._process(_bus_event("evt-retry"))
-    # delay patched to 0: let the scheduled republish task run its course
-    for _ in range(5):
-        await asyncio.sleep(0)
 
     assert worker.calls == 1
     assert bus.dlq == []
     assert bus.acked == [("test.stream", "evt-retry")]
-    assert len(bus.published) == 1
-    stream, payload, meta = bus.published[0]
-    assert stream == "test.stream"
-    assert payload == {"k": "v"}
-    assert meta["attempts"] == 1
+    assert session.execute.await_count == 1
+    stmt = session.execute.await_args[0][0]
+    compiled = stmt.compile()
+    params = compiled.params
+    assert params["stream"] == "test.stream"
+    assert params["status"] == "pending"
+    assert params["payload"] == {"k": "v"}
+    assert params["meta"]["attempts"] == 1
+    assert params["not_before"] is not None
 
 
-async def test_retryable_error_marker_retries_like_generic_failures(monkeypatch) -> None:
+async def test_retryable_error_marker_stages_durable_retry(monkeypatch) -> None:
     monkeypatch.setattr("app.workers.base.random.uniform", lambda low, high: 0)
+    factory, session = _fake_session_factory()
+    monkeypatch.setattr("app.workers.base.SessionLocal", factory)
     bus = FakeBus()
     worker = StubWorker(bus, RetryableError("provider 503"))
 
     await worker._process(_bus_event("evt-retryable"))
-    for _ in range(5):
-        await asyncio.sleep(0)
 
     assert bus.dlq == []
-    assert len(bus.published) == 1
-    assert bus.published[0][2]["attempts"] == 1
+    stmt = session.execute.await_args[0][0]
+    params = stmt.compile().params
+    assert params["meta"]["attempts"] == 1
+
+
+# --- scheduler recurring sweeps ----------------------------------------------
+
+
+class _FakeJob:
+    """Minimal ScheduledJob stand-in (only the fields the re-arm path touches)."""
+
+    def __init__(self, job_type: str, tenant_id: uuid.UUID | None) -> None:
+        self.job_type = job_type
+        self.tenant_id = tenant_id
+        self.status = "processing"
+        self.run_at: datetime | None = None
+        self.attempts = 3
+        self.max_attempts = 5
+        self.next_attempt_at: datetime | None = datetime.now(UTC)
+        self.last_error: str | None = "previous failure"
+        self.payload: dict = {"stale": True}
+        self.result: dict | None = None
+
+
+def _scheduler():
+    """SchedulerWorker without a bus (the re-arm path never uses one)."""
+    from app.workers.scheduler_worker import SchedulerWorker
+
+    return SchedulerWorker.__new__(SchedulerWorker)
+
+
+async def test_recurring_sweep_rearms_its_own_row() -> None:
+    """A recurring sweep must re-arm its existing row, never insert a second.
+
+    Inserting a new row with the same stable idempotency_key violated
+    uq_scheduled_jobs_idem. The flush lands at commit time — OUTSIDE the
+    per-job try/except — so the failure rolled back the entire claim batch:
+    every poll re-claimed the same job and failed identically, and the
+    reconcile/expire sweeps never ran at all.
+    """
+    from app.workers.scheduler_worker import RECURRING_JOBS
+
+    job = _FakeJob("expire_reservations", uuid.uuid4())
+    session = MagicMock()
+    now = datetime.now(UTC)
+    interval, payload = RECURRING_JOBS["expire_reservations"]
+
+    rescheduled = await _scheduler()._reschedule_recurring(session, job, now)
+
+    assert rescheduled is True
+    assert session.add.call_count == 0, "duplicate idempotency_key row inserted"
+    assert job.status == "queued"
+    assert job.run_at == now + interval
+    assert job.attempts == 0
+    assert job.next_attempt_at is None
+    assert job.last_error is None
+    assert job.payload == payload
+
+
+async def test_one_shot_job_is_not_rescheduled() -> None:
+    job = _FakeJob("send_invoice", uuid.uuid4())
+    session = MagicMock()
+
+    rescheduled = await _scheduler()._reschedule_recurring(session, job, datetime.now(UTC))
+
+    assert rescheduled is False
+    assert session.add.call_count == 0
+    assert job.status == "processing"
+
+
+async def test_tenantless_job_is_not_rescheduled() -> None:
+    """No tenant context → the sweep cannot bind RLS; leave it to the caller."""
+    job = _FakeJob("reconcile_payments", None)
+    session = MagicMock()
+
+    rescheduled = await _scheduler()._reschedule_recurring(session, job, datetime.now(UTC))
+
+    assert rescheduled is False
+    assert session.add.call_count == 0
+    assert job.status == "processing"

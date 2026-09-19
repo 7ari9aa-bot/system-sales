@@ -18,7 +18,11 @@ from sqlalchemy import text
 from app.core.config import get_settings
 from app.core.db import engine
 from app.core.errors import DomainError, build_error_body, request_id_contextvar
-from app.core.middleware import RateLimitMiddleware
+from app.core.middleware import (
+    BodySizeLimitMiddleware,
+    RateLimitMiddleware,
+    SecurityHeadersMiddleware,
+)
 from app.core.observability import RequestLoggingMiddleware, configure_logging
 from app.core.redis import close_redis, get_redis
 from app.modules.ai.router import router as ai_router
@@ -39,6 +43,8 @@ from app.modules.conversations.router import (
 from app.modules.customers.router import platform_router as platform_router
 from app.modules.customers.router import router as customers_router
 from app.modules.identity.router import router as identity_router
+from app.modules.identity.router import tenants_router as identity_tenants_router
+from app.modules.identity.router import users_router as identity_users_router
 from app.modules.inventory.router import router as inventory_router
 from app.modules.marketing.router import (
     analytics_router,
@@ -46,13 +52,13 @@ from app.modules.marketing.router import (
 from app.modules.marketing.router import (
     router as marketing_router,
 )
+from app.modules.notifications.router import router as notifications_router
 from app.modules.operations.router import (
     router as operations_router,
 )
 from app.modules.operations.router import (
     search_router as operations_search_router,
 )
-from app.modules.notifications.router import router as notifications_router
 from app.modules.orders.router import router as orders_router
 from app.modules.realtime.router import router as realtime_router
 
@@ -112,19 +118,30 @@ def create_app() -> FastAPI:
 
     configure_logging()
     _exception_handlers(app)
+    # Starlette builds the stack so the LAST added middleware is the OUTERMOST.
+    # Order below therefore reads inner -> outer:
+    #   RequestLogging -> RateLimit -> RequestID -> BodySize -> CORS -> SecurityHeaders
+    # CORS must sit OUTSIDE both the rate limiter and the body cap, or their
+    # 429/413 responses reach the browser without Access-Control-Allow-Origin
+    # (an opaque CORS failure instead of a readable error) — and preflight
+    # OPTIONS must short-circuit before they consume the rate budget (P6).
+    app.add_middleware(RequestLoggingMiddleware)
+    app.add_middleware(RateLimitMiddleware)
+    app.add_middleware(_RequestIDMiddleware)
+    app.add_middleware(BodySizeLimitMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[o.strip() for o in settings.cors_origins.split(",")],
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    app.add_middleware(RequestLoggingMiddleware)
-    app.add_middleware(RateLimitMiddleware)
-    app.add_middleware(_RequestIDMiddleware)
+    app.add_middleware(SecurityHeadersMiddleware)
 
     api_v1 = APIRouter(prefix="/api/v1")
     for router in (
         identity_router,
+        identity_users_router,
+        identity_tenants_router,
         conversations_router,
         conversations_public_router,
         conversations_webhook_router,

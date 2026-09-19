@@ -68,3 +68,34 @@ def decode_token(token: str) -> dict[str, Any]:
         issuer="sales-os",
         audience="sales-os",
     )
+
+
+def create_visitor_token(session_key: str, tenant_id: str, *, widget: str) -> str:
+    """Mint a webchat visitor session (S2).
+
+    The visitor's identity is the ``session_key`` — and it must be OURS, not
+    something the caller typed. A client-chosen key meant anyone could
+    impersonate a visitor and read their conversation by guessing it.
+    """
+    settings = get_settings()
+    return _create_token(
+        session_key,
+        settings.webchat_session_ttl_seconds,
+        "webchat_visitor",
+        {"tenant_id": str(tenant_id), "widget": widget},
+    )
+
+
+def decode_visitor_token(token: str) -> dict[str, Any]:
+    """Decode a visitor session token; raises ValidationError, never a 500."""
+    from app.core.errors import ValidationError
+
+    try:
+        payload = decode_token(token)
+    except Exception as exc:  # noqa: BLE001 — expired/forged/wrong-signature
+        raise ValidationError("invalid visitor session") from exc
+    if payload.get("type") != "webchat_visitor":
+        raise ValidationError("wrong token type")
+    if not payload.get("sub") or not payload.get("tenant_id"):
+        raise ValidationError("incomplete visitor session")
+    return payload

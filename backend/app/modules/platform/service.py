@@ -16,7 +16,9 @@ import httpx
 from sqlalchemy import select
 
 from app.core.config import get_settings
+from app.core.errors import ValidationError
 from app.core.events.writer import add_outbox_event
+from app.core.net_guard import assert_public_url
 from app.modules.platform.models import Notification, WebhookDelivery, WebhookEndpoint
 
 NOTIFICATION_STREAM = "platform.events"
@@ -93,6 +95,10 @@ class WebhookService:
         url: str,
         events: list[str],
     ) -> WebhookEndpoint:
+        # S6: reject internal/metadata targets at registration time so a tenant
+        # cannot turn our delivery worker into an SSRF proxy. Re-validated at
+        # send time in WebhookDispatcher.deliver (DNS rebinding).
+        assert_public_url(url)
         endpoint = WebhookEndpoint(
             tenant_id=tenant_id,
             url=url,
@@ -183,6 +189,17 @@ class WebhookDispatcher:
         if endpoint is None or not endpoint.is_active:
             delivery.status = "failed"
             delivery.last_error = "endpoint missing or inactive"
+            return delivery
+
+        # S6: re-validate at SEND time. A hostname that resolved to a public
+        # address at registration can be re-pointed at an internal one later
+        # (DNS rebinding) — the check has to happen on the request that
+        # actually goes out, not only on the one that stored the URL.
+        try:
+            assert_public_url(endpoint.url)
+        except ValidationError as exc:
+            delivery.status = "dead"
+            delivery.last_error = f"endpoint url rejected: {exc.message}"
             return delivery
 
         import json
