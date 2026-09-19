@@ -14,6 +14,7 @@ from app.modules.customers import models as customers  # noqa: F401
 from app.modules.identity import models as identity  # noqa: F401
 from app.modules.inventory import models as inventory  # noqa: F401
 from app.modules.marketing import models as marketing  # noqa: F401
+from app.modules.operations import models as operations  # noqa: F401
 from app.modules.orders import models as orders  # noqa: F401
 from app.modules.platform import models as platform  # noqa: F401
 from app.modules.privacy import models as privacy  # noqa: F401

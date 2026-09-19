@@ -103,6 +103,16 @@ class AuthService:
             await session.execute(select(User).where(User.email == email))
         ).scalar_one_or_none()
         if user is None or not verify_password(password, user.password_hash):
+            # §67: security event — login failure (no PII, ip/ua handled by caller)
+            from app.modules.platform.models import SecurityEvent
+
+            domain_part = email.split("@")[-1] if "@" in email else ""
+            session.add(
+                SecurityEvent(
+                    event_type="login_failure",
+                    details={"email_domain": domain_part},
+                )
+            )
             raise PermissionDeniedError("invalid credentials")
         if not user.is_active:
             raise PermissionDeniedError("account disabled")

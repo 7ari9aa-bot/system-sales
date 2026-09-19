@@ -49,6 +49,12 @@ from app.modules.marketing.router import (
 from app.modules.marketing.router import (
     router as marketing_router,
 )
+from app.modules.operations.router import (
+    router as operations_router,
+)
+from app.modules.operations.router import (
+    search_router as operations_search_router,
+)
 from app.modules.orders.router import router as orders_router
 
 
@@ -134,6 +140,8 @@ def create_app() -> FastAPI:
         marketing_router,
         analytics_router,
         ai_router,
+        operations_router,
+        operations_search_router,
     ):
         api_v1.include_router(router)
     app.include_router(api_v1)
