@@ -17,7 +17,7 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { useCustomer, useOrders, type Customer } from "@/lib/queries";
+import { useCustomer, useOrdersPage, type Customer } from "@/lib/queries";
 import { formatTime } from "@/lib/utils";
 import { toast } from "@/components/ui/toast";
 
@@ -27,14 +27,21 @@ type CustomerDrawerProps = {
   onOpenChange: (open: boolean) => void;
 };
 
+/** Bounded page size for the drawer's recent-orders fetch. */
+const CUSTOMER_ORDERS_LIMIT = 50;
+
 export function CustomerDrawer({ customerId, open, onOpenChange }: CustomerDrawerProps) {
   const customerQuery = useCustomer(customerId);
-  const ordersQuery = useOrders();
+  // Bounded, on-demand fetch: nothing is requested until the drawer is open.
+  const ordersQuery = useOrdersPage({
+    limit: CUSTOMER_ORDERS_LIMIT,
+    enabled: open && Boolean(customerId),
+  });
   const customer = customerQuery.data;
 
   const customerOrders = React.useMemo(() => {
-    if (!customerId || !ordersQuery.data) return [];
-    return ordersQuery.data.filter((o) => o.customer_id === customerId);
+    if (!customerId) return [];
+    return (ordersQuery.data?.items ?? []).filter((o) => o.customer_id === customerId);
   }, [customerId, ordersQuery.data]);
 
   function copy(text: string, label: string) {

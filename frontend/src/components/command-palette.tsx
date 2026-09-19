@@ -33,26 +33,32 @@ type CommandItem = {
   href: string;
 };
 
-const NAV_ITEMS: CommandItem[] = [
-  { id: "nav-dashboard", label: t.goDashboard, group: "nav", href: "/dashboard", icon: <LayoutDashboard aria-hidden="true" /> },
-  { id: "nav-inbox", label: t.goInbox, group: "nav", href: "/inbox", icon: <MessagesSquare aria-hidden="true" />, keywords: "whatsapp telegram محادثة" },
-  { id: "nav-tasks", label: t.myTasks, group: "nav", href: "/tasks", icon: <ListChecks aria-hidden="true" />, keywords: "مهام" },
-  { id: "nav-customers", label: t.goCustomers, group: "nav", href: "/customers", icon: <Users aria-hidden="true" />, keywords: "عميل" },
-  { id: "nav-orders", label: t.goOrders, group: "nav", href: "/orders", icon: <ShoppingCart aria-hidden="true" />, keywords: "طلب" },
-  { id: "nav-products", label: t.goProducts, group: "nav", href: "/products", icon: <Package aria-hidden="true" />, keywords: "منتج" },
-  { id: "nav-inventory", label: t.goInventory, group: "nav", href: "/inventory", icon: <Warehouse aria-hidden="true" />, keywords: "مخزون رصيد" },
-  { id: "nav-marketing", label: t.goMarketing, group: "nav", href: "/marketing", icon: <Megaphone aria-hidden="true" />, keywords: "حملة اعلان" },
-  { id: "nav-ai", label: t.goAi, group: "nav", href: "/ai", icon: <Sparkles aria-hidden="true" />, keywords: "معرفة وكيل" },
-  { id: "nav-settings", label: t.goSettings, group: "nav", href: "/settings", icon: <Settings aria-hidden="true" />, keywords: "اعدادات دعوة تكامل" },
-];
+/* Built at render time (not module scope) so the labels follow the active
+   language without a page reload. */
+function buildNavItems(): CommandItem[] {
+  return [
+    { id: "nav-dashboard", label: t.goDashboard, group: "nav", href: "/dashboard", icon: <LayoutDashboard aria-hidden="true" /> },
+    { id: "nav-inbox", label: t.goInbox, group: "nav", href: "/inbox", icon: <MessagesSquare aria-hidden="true" />, keywords: "whatsapp telegram محادثة" },
+    { id: "nav-tasks", label: t.myTasks, group: "nav", href: "/tasks", icon: <ListChecks aria-hidden="true" />, keywords: "مهام" },
+    { id: "nav-customers", label: t.goCustomers, group: "nav", href: "/customers", icon: <Users aria-hidden="true" />, keywords: "عميل" },
+    { id: "nav-orders", label: t.goOrders, group: "nav", href: "/orders", icon: <ShoppingCart aria-hidden="true" />, keywords: "طلب" },
+    { id: "nav-products", label: t.goProducts, group: "nav", href: "/products", icon: <Package aria-hidden="true" />, keywords: "منتج" },
+    { id: "nav-inventory", label: t.goInventory, group: "nav", href: "/inventory", icon: <Warehouse aria-hidden="true" />, keywords: "مخزون رصيد" },
+    { id: "nav-marketing", label: t.goMarketing, group: "nav", href: "/marketing", icon: <Megaphone aria-hidden="true" />, keywords: "حملة اعلان" },
+    { id: "nav-ai", label: t.goAi, group: "nav", href: "/ai", icon: <Sparkles aria-hidden="true" />, keywords: "معرفة وكيل" },
+    { id: "nav-settings", label: t.goSettings, group: "nav", href: "/settings", icon: <Settings aria-hidden="true" />, keywords: "اعدادات دعوة تكامل" },
+  ];
+}
 
-const ACTION_ITEMS: CommandItem[] = [
-  { id: "act-order", label: t.newOrder, group: "actions", href: "/orders?new=1", icon: <Plus aria-hidden="true" />, keywords: "طلب جديد create" },
-  { id: "act-product", label: t.newProduct, group: "actions", href: "/products?new=1", icon: <Plus aria-hidden="true" />, keywords: "منتج جديد create" },
-  { id: "act-campaign", label: t.newCampaign, group: "actions", href: "/marketing?new=1", icon: <Plus aria-hidden="true" />, keywords: "حملة اعلان create" },
-  { id: "act-knowledge", label: t.newKnowledge, group: "actions", href: "/ai?new=1", icon: <Plus aria-hidden="true" />, keywords: "معرفة سؤال create" },
-  { id: "act-invite", label: t.newInvitation, group: "actions", href: "/settings?new=1", icon: <Plus aria-hidden="true" />, keywords: "دعوة فريق create" },
-];
+function buildActionItems(): CommandItem[] {
+  return [
+    { id: "act-order", label: t.newOrder, group: "actions", href: "/orders?new=1", icon: <Plus aria-hidden="true" />, keywords: "طلب جديد create" },
+    { id: "act-product", label: t.newProduct, group: "actions", href: "/products?new=1", icon: <Plus aria-hidden="true" />, keywords: "منتج جديد create" },
+    { id: "act-campaign", label: t.newCampaign, group: "actions", href: "/marketing?new=1", icon: <Plus aria-hidden="true" />, keywords: "حملة اعلان create" },
+    { id: "act-knowledge", label: t.newKnowledge, group: "actions", href: "/ai?new=1", icon: <Plus aria-hidden="true" />, keywords: "معرفة سؤال create" },
+    { id: "act-invite", label: t.newInvitation, group: "actions", href: "/settings?new=1", icon: <Plus aria-hidden="true" />, keywords: "دعوة فريق create" },
+  ];
+}
 
 /** تطبيع عربي بسيط للبحث (همزات، تاء مربوطة، ألف مقصورة، تشكيل). */
 function normalizeArabic(s: string) {
@@ -96,30 +102,35 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
   const [query, setQuery] = React.useState("");
   const [active, setActive] = React.useState(0);
   const globalSearch = useGlobalSearch();
+  // مراجع ثابتة — الكائن نفسه يتغير كل render وهذا كان يسبب حلقة طلبات
+  const { mutate: runGlobalSearch, reset: resetGlobalSearch } = globalSearch;
 
-  const results = React.useMemo(() => {
-    const nav = NAV_ITEMS.filter((i) => matches(query, i));
-    const actions = ACTION_ITEMS.filter((i) => matches(query, i));
-    const search = (globalSearch.data ?? []).map((hit) => ({
+  // Built each render so a language switch is reflected immediately.
+  const navItems = buildNavItems();
+  const actionItems = buildActionItems();
+
+  const results: CommandItem[] = [
+    ...navItems.filter((i) => matches(query, i)),
+    ...actionItems.filter((i) => matches(query, i)),
+    ...(globalSearch.data ?? []).map((hit) => ({
       id: `search-${hit.entity_type}-${hit.entity_id}`,
       label: hit.title,
       group: "search" as const,
       href: searchHref(hit.entity_type, hit.entity_id),
       icon: <Search aria-hidden="true" />,
       keywords: hit.snippet ?? hit.entity_type,
-    }));
-    return [...nav, ...actions, ...search];
-  }, [globalSearch.data, query]);
+    })),
+  ];
 
   React.useEffect(() => {
     const normalized = query.trim();
     if (normalized.length < 2) {
-      globalSearch.reset();
+      resetGlobalSearch();
       return;
     }
-    const timer = window.setTimeout(() => globalSearch.mutate(normalized), 250);
+    const timer = window.setTimeout(() => runGlobalSearch(normalized), 250);
     return () => window.clearTimeout(timer);
-  }, [globalSearch, query]);
+  }, [runGlobalSearch, resetGlobalSearch, query]);
 
   React.useEffect(() => {
     if (open) {
@@ -149,6 +160,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
   const navResults = results.filter((i) => i.group === "nav");
   const actionResults = results.filter((i) => i.group === "actions");
   const searchResults = results.filter((i) => i.group === "search");
+  const activeId = results[active] ? `command-option-${active}` : undefined;
   let flatIndex = -1;
 
   return (
@@ -169,6 +181,12 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
             <Search aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
             <input
               autoFocus
+              role="combobox"
+              aria-expanded
+              aria-controls="command-list"
+              aria-activedescendant={activeId}
+              aria-autocomplete="list"
+              aria-label={t.search}
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value);
@@ -183,7 +201,13 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
             </kbd>
           </div>
 
-          <div className="max-h-80 overflow-y-auto p-2" data-testid="command-list">
+          <div
+            id="command-list"
+            role="listbox"
+            aria-label={t.search}
+            className="max-h-80 overflow-y-auto p-2"
+            data-testid="command-list"
+          >
             {results.length === 0 && !globalSearch.isPending && (
               <p className="px-3 py-8 text-center text-[13px] text-muted-foreground">{t.noResultsFound}</p>
             )}
@@ -191,36 +215,36 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
             {globalSearch.isPending && <p className="px-3 py-3 text-xs text-muted-foreground">{t.searching}</p>}
 
             {navResults.length > 0 && (
-              <>
-                <p className="px-3 pb-1 pt-2 text-xs font-bold text-muted-foreground">{t.navigation}</p>
+              <div role="group" aria-label={t.navigation}>
+                <p aria-hidden="true" className="px-3 pb-1 pt-2 text-xs font-bold text-muted-foreground">{t.navigation}</p>
                 {navResults.map((item) => {
                   flatIndex++;
                   const idx = flatIndex;
-                  return <CommandRow key={item.id} item={item} active={idx === active} onRun={() => run(item)} onHover={() => setActive(idx)} />;
+                  return <CommandRow key={item.id} id={`command-option-${idx}`} item={item} active={idx === active} onRun={() => run(item)} onHover={() => setActive(idx)} />;
                 })}
-              </>
+              </div>
             )}
 
             {actionResults.length > 0 && (
-              <>
-                <p className="px-3 pb-1 pt-2 text-xs font-bold text-muted-foreground">{t.quickActions}</p>
+              <div role="group" aria-label={t.quickActions}>
+                <p aria-hidden="true" className="px-3 pb-1 pt-2 text-xs font-bold text-muted-foreground">{t.quickActions}</p>
                 {actionResults.map((item) => {
                   flatIndex++;
                   const idx = flatIndex;
-                  return <CommandRow key={item.id} item={item} active={idx === active} onRun={() => run(item)} onHover={() => setActive(idx)} />;
+                  return <CommandRow key={item.id} id={`command-option-${idx}`} item={item} active={idx === active} onRun={() => run(item)} onHover={() => setActive(idx)} />;
                 })}
-              </>
+              </div>
             )}
 
             {searchResults.length > 0 && (
-              <>
-                <p className="px-3 pb-1 pt-2 text-xs font-bold text-muted-foreground">{t.searchResults}</p>
+              <div role="group" aria-label={t.searchResults}>
+                <p aria-hidden="true" className="px-3 pb-1 pt-2 text-xs font-bold text-muted-foreground">{t.searchResults}</p>
                 {searchResults.map((item) => {
                   flatIndex++;
                   const idx = flatIndex;
-                  return <CommandRow key={item.id} item={item} active={idx === active} onRun={() => run(item)} onHover={() => setActive(idx)} />;
+                  return <CommandRow key={item.id} id={`command-option-${idx}`} item={item} active={idx === active} onRun={() => run(item)} onHover={() => setActive(idx)} />;
                 })}
-              </>
+              </div>
             )}
           </div>
 
@@ -243,11 +267,13 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
 }
 
 function CommandRow({
+  id,
   item,
   active,
   onRun,
   onHover,
 }: {
+  id: string;
   item: CommandItem;
   active: boolean;
   onRun: () => void;
@@ -256,6 +282,10 @@ function CommandRow({
   return (
     <button
       type="button"
+      id={id}
+      role="option"
+      aria-selected={active}
+      tabIndex={-1}
       onClick={onRun}
       onMouseMove={onHover}
       className={cn(

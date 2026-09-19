@@ -778,7 +778,10 @@ export function FihristProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const savedLocale = window.localStorage.getItem(LOCALE_KEY) as Locale | null;
-    if (savedLocale === "en" || savedLocale === "ar") setLocaleState(savedLocale);
+    if (savedLocale === "en" || savedLocale === "ar") {
+      setLocaleState(savedLocale);
+      document.documentElement.lang = savedLocale;
+    }
     const savedTheme = window.localStorage.getItem(THEME_KEY) as Theme | null;
     if (savedTheme === "dark" || savedTheme === "light") setThemeState(savedTheme);
     else if (window.matchMedia("(prefers-color-scheme: dark)").matches) setThemeState("dark");
@@ -787,6 +790,8 @@ export function FihristProvider({ children }: { children: React.ReactNode }) {
   const setLocale = useCallback((l: Locale) => {
     setLocaleState(l);
     store(LOCALE_KEY, l);
+    // keep <html lang> in sync for screen readers and font selection
+    document.documentElement.lang = l;
   }, []);
 
   const setTheme = useCallback((t: Theme) => {

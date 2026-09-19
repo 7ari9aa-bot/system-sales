@@ -1,29 +1,9 @@
 import type { Metadata, Viewport } from "next";
-import { IBM_Plex_Sans_Arabic, Space_Grotesk, Archivo } from "next/font/google";
 import "@/styles/fihrist.css";
 import { FihristProvider, FihristRoot } from "@/components/public/i18n";
 import { PublicNavbar } from "@/components/public/navbar";
 import { PublicFooter } from "@/components/public/footer";
 import { AmbientGlow } from "@/components/public/ambient-glow";
-
-const plexAr = IBM_Plex_Sans_Arabic({
-  weight: ["300", "400", "600"],
-  subsets: ["arabic", "latin"],
-  variable: "--font-plex-ar",
-  display: "swap",
-});
-const grotesk = Space_Grotesk({
-  weight: ["600", "700"],
-  subsets: ["latin"],
-  variable: "--font-grotesk",
-  display: "swap",
-});
-const archivo = Archivo({
-  weight: ["500"],
-  subsets: ["latin"],
-  variable: "--font-archivo",
-  display: "swap",
-});
 
 export const metadata: Metadata = {
   title: "FIHRIST — One connected system for your business | فهرست",
@@ -53,7 +33,7 @@ export default function PublicLayout({
       <script
         dangerouslySetInnerHTML={{ __html: "document.documentElement.classList.add('js')" }}
       />
-      <FihristRoot className={`${plexAr.variable} ${grotesk.variable} ${archivo.variable}`}>
+      <FihristRoot>
         <AmbientGlow />
         <div className="fh-page">
           <PublicNavbar />

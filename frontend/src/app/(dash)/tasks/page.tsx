@@ -10,12 +10,15 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input, Label, Select, Textarea } from "@/components/ui/input";
 import { EmptyState, ErrorState, PageHeader } from "@/components/ui/states";
 
-const STATUS_LABELS: Record<Task["status"], string> = {
-  todo: t.taskTodo,
-  in_progress: t.taskInProgress,
-  done: t.taskDone,
-  cancelled: t.taskCancelled,
-};
+/* Built at render time so the labels follow the active language. */
+function buildStatusLabels(): Record<Task["status"], string> {
+  return {
+    todo: t.taskTodo,
+    in_progress: t.taskInProgress,
+    done: t.taskDone,
+    cancelled: t.taskCancelled,
+  };
+}
 
 const STATUS_STYLES: Record<Task["status"], string> = {
   todo: "bg-muted text-muted-foreground",
@@ -33,6 +36,7 @@ export default function TasksPage() {
   const tasksQuery = useTasks();
   const createTask = useCreateTask();
   const updateStatus = useUpdateTaskStatus();
+  const statusLabels = buildStatusLabels();
   const tasks = (tasksQuery.data ?? []).filter((task) => filter === "all" || task.status === filter);
 
   function submit() {
@@ -65,7 +69,7 @@ export default function TasksPage() {
       <div className="mb-4 flex flex-wrap gap-2" role="group" aria-label={t.actions}>
         {(["all", "todo", "in_progress", "done"] as const).map((value) => (
           <Button key={value} size="sm" variant={filter === value ? "default" : "outline"} onClick={() => setFilter(value)}>
-            {value === "all" ? t.taskAll : STATUS_LABELS[value]}
+            {value === "all" ? t.taskAll : statusLabels[value]}
           </Button>
         ))}
       </div>
@@ -83,7 +87,7 @@ export default function TasksPage() {
                   <div className="font-semibold">{task.title}</div>
                   <div className="mt-1 text-xs text-muted-foreground">{task.source} · {t.taskPriority}: {task.priority}</div>
                 </div>
-                <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_STYLES[task.status]}`}>{STATUS_LABELS[task.status]}</span>
+                <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_STYLES[task.status]}`}>{statusLabels[task.status]}</span>
                 {task.status !== "done" && task.status !== "cancelled" ? (
                   <Button size="sm" variant="outline" onClick={() => updateStatus.mutate({ taskId: task.id, status: "done" })} disabled={updateStatus.isPending}>
                     <Check aria-hidden="true" />{t.taskMarkDone}

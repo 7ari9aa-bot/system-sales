@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { PublicShell } from "@/components/public/shell";
 import { PrivacyBody } from "@/components/public/page-bodies";
 
 export const metadata: Metadata = {
@@ -9,8 +8,6 @@ export const metadata: Metadata = {
 
 export default function PrivacyPage() {
   return (
-    <PublicShell>
       <PrivacyBody />
-    </PublicShell>
   );
 }

@@ -16,7 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { EmptyState, PageHeader } from "@/components/ui/states";
+import { EmptyState, ErrorState, PageHeader } from "@/components/ui/states";
 import { DataTable } from "@/components/data-table";
 
 const STATUS_VARIANT: Record<string, "success" | "default" | "danger"> = {
@@ -110,7 +110,10 @@ export default function ProductsPage() {
       />
 
       {productsQuery.isError ? (
-        <EmptyState title={(productsQuery.error as Error).message} />
+        <ErrorState
+          message={(productsQuery.error as Error).message}
+          onRetry={() => productsQuery.refetch()}
+        />
       ) : productsQuery.isLoading ? (
         <div className="space-y-3 rounded-xl border border-border bg-card p-4" aria-busy="true" aria-label={t.loading}>
           {Array.from({ length: 6 }).map((_, i) => (

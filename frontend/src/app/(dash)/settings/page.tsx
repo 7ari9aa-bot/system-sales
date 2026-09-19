@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Plug, UserPlus, Users } from "lucide-react";
+import { Plug, UserPlus, Users, Copy, Check } from "lucide-react";
 import {
   useCreateInvitation,
   useIntegrations,
@@ -31,6 +31,24 @@ export default function SettingsPage() {
   const [email, setEmail] = React.useState("");
   const [roleCode, setRoleCode] = React.useState("staff");
   const [created, setCreated] = React.useState<Invitation | null>(null);
+  const [copied, setCopied] = React.useState(false);
+
+  function inviteLink(token: string) {
+    return `${window.location.origin}/accept?token=${token}`;
+  }
+
+  function copyInviteLink() {
+    if (!created?.token) return;
+    navigator.clipboard
+      .writeText(inviteLink(created.token))
+      .then(() => {
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 2000);
+      })
+      .catch(() => {
+        /* الكليبورد مش متاح — المستخدم ينسخ الرابط يدويًا */
+      });
+  }
 
   const invitationsQuery = useInvitations();
   const integrationsQuery = useIntegrations();
@@ -116,13 +134,27 @@ export default function SettingsPage() {
                   </Button>
                 </div>
 
-                {created && (
-                  <p className="mt-3 rounded-lg bg-muted px-3 py-2 text-[13px] text-muted-foreground">
-                    {t.acceptLink}:{" "}
-                    <code dir="ltr" className="font-bold">
+                {created?.token && (
+                  <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-muted px-3 py-2 text-[13px] text-muted-foreground">
+                    <span>{t.acceptLink}:</span>
+                    <a
+                      href={inviteLink(created.token)}
+                      dir="ltr"
+                      className="min-w-0 truncate font-bold underline underline-offset-2"
+                    >
                       /accept?token={created.token}
-                    </code>
-                  </p>
+                    </a>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="ms-auto h-7 gap-1.5 px-2 text-xs"
+                      onClick={copyInviteLink}
+                      data-testid="copy-invite-link"
+                    >
+                      {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+                      {copied ? "تم النسخ" : "نسخ"}
+                    </Button>
+                  </div>
                 )}
 
                 {invitations.length === 0 ? (

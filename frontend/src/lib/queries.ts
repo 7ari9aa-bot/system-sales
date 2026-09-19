@@ -4,17 +4,23 @@
  *  Query keys موحدة + إعادة جلب في الخلفية + optimistic فقط للقراءة/التعليم كمقروء. */
 
 import {
+  useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
   keepPreviousData,
+  type InfiniteData,
   type QueryKey,
 } from "@tanstack/react-query";
 import { api, getTokens } from "@/lib/api";
+import { authPost, type AuthResult } from "@/lib/auth-api";
 import { t } from "@/lib/t";
 import { toast } from "@/components/ui/toast";
 
 /* ------------------------------------------------------------------ types */
+
+/** Server list envelope used by conversations / messages / customers / orders. */
+export type Page<T> = { items: T[]; next_cursor: string | null };
 
 export type Me = { id: string; email: string; tenants?: { id: string }[] };
 
@@ -165,10 +171,23 @@ export function useDashboard() {
   });
 }
 
+/** Page size for the inbox list — the API caps `limit` at 200. */
+export const CONVERSATIONS_PAGE_SIZE = 50;
+
+function withCursor(path: string, limit: number, cursor: string | null) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (cursor) params.set("cursor", cursor);
+  return `${path}?${params.toString()}`;
+}
+
+/** Server-paginated inbox list — pages accumulate via `fetchNextPage`. */
 export function useConversations() {
-  return useQuery({
+  return useInfiniteQuery<Page<Conversation>, Error, InfiniteData<Page<Conversation>>, QueryKey, string | null>({
     queryKey: qk.conversations,
-    queryFn: () => api<{ items: Conversation[] }>("/conversations").then((r) => r.items),
+    queryFn: ({ pageParam }) =>
+      api<Page<Conversation>>(withCursor("/conversations", CONVERSATIONS_PAGE_SIZE, pageParam)),
+    initialPageParam: null,
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
     refetchInterval: 15_000,
   });
 }
@@ -187,6 +206,19 @@ export function useOrders() {
   return useQuery({
     queryKey: qk.orders,
     queryFn: () => api<{ items: Order[] }>("/orders").then((r) => r.items),
+  });
+}
+
+/** Cursor-paginated orders page — fetches a single bounded page (no full list). */
+export function useOrdersPage(
+  opts: { limit?: number; cursor?: string | null; enabled?: boolean } = {},
+) {
+  const limit = opts.limit ?? 50;
+  const cursor = opts.cursor ?? null;
+  return useQuery({
+    queryKey: [...qk.orders, "page", { limit, cursor }] as QueryKey,
+    queryFn: () => api<Page<Order>>(withCursor("/orders", limit, cursor)),
+    enabled: opts.enabled ?? true,
   });
 }
 
@@ -292,19 +324,26 @@ export function useMarkConversationRead() {
     // Optimistic UI — مسموح فقط للتعليم كمقروء
     onMutate: async (conversationId: string) => {
       await qc.cancelQueries({ queryKey: qk.conversations });
-      const previous = qc.getQueryData<Conversation[]>(qk.conversations);
+      const previous = qc.getQueryData<InfiniteData<Page<Conversation>>>(qk.conversations);
       if (previous) {
-        qc.setQueryData<Conversation[]>(
-          qk.conversations,
-          previous.map((c) => (c.id === conversationId ? { ...c, unread_count: 0 } : c)),
-        );
+        qc.setQueryData<InfiniteData<Page<Conversation>>>(qk.conversations, {
+          ...previous,
+          pages: previous.pages.map((page) => ({
+            ...page,
+            items: page.items.map((c) => (c.id === conversationId ? { ...c, unread_count: 0 } : c)),
+          })),
+        });
       }
       return { previous };
     },
     onError: (_err, _id, ctx) => {
       if (ctx?.previous) qc.setQueryData(qk.conversations, ctx.previous);
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: qk.conversations }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: qk.conversations });
+      // جرس الإشعارات كمان لازم يتحدث لما المحادثة تتقري
+      qc.invalidateQueries({ queryKey: ["notifications", "unread-count"] });
+    },
   });
 }
 
@@ -409,8 +448,12 @@ export function useCreateInvitation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: { email: string; role_code: string }) => {
-      const me = await api<Me>("/auth/me");
-      const tenant_id = me.tenants?.[0]?.id ?? me.id;
+      // نقرأ الـme من الكاش بدل نداء إضافي لكل دعوة
+      const me = qc.getQueryData<Me>(qk.me);
+      const tenant_id = me?.tenants?.[0]?.id ?? me?.id;
+      if (!tenant_id) {
+        throw new Error("مساحة العمل مش معروفة — حدّث الصفحة وحاول تاني.");
+      }
       return api<Invitation>(`/tenants/${tenant_id}/invitations`, {
         method: "POST",
         body: { email: input.email, role_code: input.role_code },
@@ -421,6 +464,31 @@ export function useCreateInvitation() {
       qc.invalidateQueries({ queryKey: qk.invitations });
     },
     onError: (err) => toast({ title: t.somethingWentWrong, description: errMessage(err), variant: "danger" }),
+  });
+}
+
+/** قبول دعوة — صفحة عامة (بدون توكن)، لذلك authPost وليس api() */
+export function useAcceptInvitation() {
+  return useMutation({
+    mutationFn: async (input: { token: string; password: string; full_name: string }) => {
+      const res = await authPost<{ email?: string }>("/invitations/accept", input).catch(
+        (): AuthResult<{ email?: string }> => ({ ok: false, status: 0 }),
+      );
+      if (res.ok) return res.data;
+      if (res.status === 0) {
+        throw new Error("مش قادرين نوصل للسيرفر. اتأكد من اتصالك وحاول تاني.");
+      }
+      if (res.status === 404) {
+        throw new Error("رابط الدعوة غير صحيح أو انتهت صلاحيته.");
+      }
+      if (res.status === 409) {
+        throw new Error("البريد ده متسجل بالفعل — سجّل الدخول بدل ما تقبل الدعوة تاني.");
+      }
+      if (res.status === 400) {
+        throw new Error(res.message ?? "بيانات غير صحيحة — راجع الحقول وحاول تاني.");
+      }
+      throw new Error(res.message ?? "حصلت مشكلة غير متوقعة. حاول مرة تانية.");
+    },
   });
 }
 

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   MessagesSquare,
   MessageCircleOff,
@@ -46,6 +47,11 @@ const CHANNEL_VARIANT: Record<string, "success" | "primary" | "default"> = {
   telegram: "primary",
   webchat: "default",
 };
+
+/** روابط الوسائط الواردة: نسمح فقط بـ http/https — أي قيمة أخرى (مثل javascript:) تُعرض كنص */
+function safeUrl(url: string): string | null {
+  return /^https?:\/\//i.test(url) ? url : null;
+}
 
 function StatusIcon({ status }: { status: string }) {
   if (status === "read") return <CheckCheck className="size-3 text-primary inline" />;
@@ -199,6 +205,18 @@ function CustomerSidebar({
 }
 
 export default function InboxPage() {
+  // useSearchParams يحتاج حدود Suspense أثناء التصيير المسبق
+  return (
+    <React.Suspense fallback={null}>
+      <InboxContent />
+    </React.Suspense>
+  );
+}
+
+function InboxContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const conversationParam = searchParams.get("conversation");
   const [selected, setSelected] = React.useState<string | null>(null);
   const [channelFilter, setChannelFilter] = React.useState<string>("all");
   const [searchQuery, setSearchQuery] = React.useState("");
@@ -222,7 +240,10 @@ export default function InboxPage() {
     }, [conversationsQuery, messagesQuery, selected]),
   });
 
-  const allConversations = conversationsQuery.data ?? [];
+  const allConversations = React.useMemo(
+    () => (conversationsQuery.data?.pages ?? []).flatMap((page) => page.items),
+    [conversationsQuery.data],
+  );
   const activeConversation = allConversations.find((c) => c.id === selected);
 
   const filteredConversations = React.useMemo(() => {
@@ -244,9 +265,23 @@ export default function InboxPage() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
 
+  // فتح المحادثة القادمة من البحث العام (?conversation=<id>) ثم تنظيف الرابط
+  React.useEffect(() => {
+    if (!conversationParam) return;
+    setSelected(conversationParam);
+    router.replace("/inbox", { scroll: false });
+  }, [conversationParam, router]);
+
+  // تصفير المسودة عند أي تبديل للمحادثة المختارة — يمنع إرسال ردّ لعميل خطأ
+  React.useEffect(() => {
+    setDraft("");
+  }, [selected]);
+
   function selectConversation(id: string) {
     setSelected(id);
-    markRead.mutate(id);
+    setDraft(""); // ردّ نظيف عند تبديل المحادثة
+    const target = allConversations.find((c) => c.id === id);
+    if (target && target.unread_count > 0) markRead.mutate(id);
   }
 
   function send() {
@@ -323,14 +358,30 @@ export default function InboxPage() {
                 description={t.noConversationsHint}
               />
             ) : (
-              filteredConversations.map((c) => (
-                <ConversationRow
-                  key={c.id}
-                  convo={c}
-                  active={selected === c.id}
-                  onSelect={() => selectConversation(c.id)}
-                />
-              ))
+              <>
+                {filteredConversations.map((c) => (
+                  <ConversationRow
+                    key={c.id}
+                    convo={c}
+                    active={selected === c.id}
+                    onSelect={() => selectConversation(c.id)}
+                  />
+                ))}
+                {conversationsQuery.hasNextPage && (
+                  <div className="p-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full text-xs"
+                      onClick={() => conversationsQuery.fetchNextPage()}
+                      disabled={conversationsQuery.isFetchingNextPage}
+                      data-testid="load-more-conversations"
+                    >
+                      {conversationsQuery.isFetchingNextPage ? t.loading : t.loadMore}
+                    </Button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </Card>
@@ -355,8 +406,8 @@ export default function InboxPage() {
                       {activeConversation.channel.slice(0, 1).toUpperCase()}
                     </div>
                     <div>
-                      <div className="text-sm font-bold leading-none" dir="ltr">
-                        {activeConversation.customer_id}
+                      <div className="text-sm font-bold leading-none" dir="auto">
+                        {activeConversation.customer_name || `${activeConversation.customer_id.slice(0, 8)}…`}
                       </div>
                       <div className="flex items-center gap-2 mt-1">
                         <Badge
@@ -413,9 +464,9 @@ export default function InboxPage() {
                         )}
                       >
                         <p className="whitespace-pre-wrap leading-relaxed">{m.body}</p>
-                        {m.media_url && (
+                        {m.media_url && safeUrl(m.media_url) ? (
                           <a
-                            href={m.media_url}
+                            href={safeUrl(m.media_url) as string}
                             target="_blank"
                             rel="noreferrer"
                             dir="ltr"
@@ -426,7 +477,17 @@ export default function InboxPage() {
                           >
                             {m.media_type ?? "ملف مرفق"}
                           </a>
-                        )}
+                        ) : m.media_url ? (
+                          <span
+                            dir="ltr"
+                            className={cn(
+                              "mt-1.5 block text-xs font-medium",
+                              m.direction === "outbound" ? "text-white/90" : "text-muted-foreground",
+                            )}
+                          >
+                            {m.media_type ?? "ملف مرفق"}
+                          </span>
+                        ) : null}
                         <div
                           className={cn(
                             "mt-1 flex items-center justify-end gap-1 text-[10px]",

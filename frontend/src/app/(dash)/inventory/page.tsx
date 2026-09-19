@@ -17,7 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { EmptyState, PageHeader } from "@/components/ui/states";
+import { EmptyState, ErrorState, PageHeader } from "@/components/ui/states";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function InventoryPage() {
@@ -107,6 +107,11 @@ export default function InventoryPage() {
                 <Skeleton key={i} className="h-9" />
               ))}
             </div>
+          ) : balancesQuery.isError ? (
+            <ErrorState
+              message={(balancesQuery.error as Error).message}
+              onRetry={() => balancesQuery.refetch()}
+            />
           ) : balances.length === 0 ? (
             <EmptyState
               icon={<Warehouse aria-hidden="true" />}
@@ -156,6 +161,11 @@ export default function InventoryPage() {
                 <Skeleton key={i} className="h-9" />
               ))}
             </div>
+          ) : movementsQuery.isError ? (
+            <ErrorState
+              message={(movementsQuery.error as Error).message}
+              onRetry={() => movementsQuery.refetch()}
+            />
           ) : movements.length === 0 ? (
             <EmptyState
               icon={<Scale aria-hidden="true" />}

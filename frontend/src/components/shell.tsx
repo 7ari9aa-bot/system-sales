@@ -25,7 +25,8 @@ import { LayoutDashboard,
   Moon,
   Languages,
 } from "lucide-react";
-import { api, getTokens, setTokens } from "@/lib/api";
+import { API_BASE_URL, API_PREFIX, getTokens, setTokens } from "@/lib/api";
+import { useQueryClient } from "@tanstack/react-query";
 import { t } from "@/lib/t";
 import { getLang, getTheme, applyTheme, toggleTheme, setLang, type Lang } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -49,64 +50,71 @@ import { useMe } from "@/lib/queries";
 type NavItem = { href: string; label: string; icon: React.ReactNode; testid: string };
 type NavGroup = { id: string; label: string; items: NavItem[] };
 
-const NAV_GROUPS: NavGroup[] = [
-  {
-    id: "home",
-    label: t.groupHome,
-    items: [{ href: "/dashboard", label: t.dashboard, icon: <LayoutDashboard aria-hidden="true" />, testid: "nav-dashboard" }],
-  },
-  {
-    id: "work",
-    label: t.groupWork,
-    items: [
-      { href: "/inbox", label: t.inbox, icon: <MessagesSquare aria-hidden="true" />, testid: "nav-inbox" },
-      { href: "/tasks", label: t.myTasks, icon: <ListChecks aria-hidden="true" />, testid: "nav-tasks" },
-    ],
-  },
-  {
-    id: "business",
-    label: t.groupBusiness,
-    items: [
-      { href: "/customers", label: t.customers, icon: <Users aria-hidden="true" />, testid: "nav-customers" },
-      { href: "/orders", label: t.orders, icon: <ShoppingCart aria-hidden="true" />, testid: "nav-orders" },
-      { href: "/products", label: t.products, icon: <Package aria-hidden="true" />, testid: "nav-products" },
-      { href: "/inventory", label: t.inventory, icon: <Warehouse aria-hidden="true" />, testid: "nav-inventory" },
-    ],
-  },
-  {
-    id: "growth",
-    label: t.groupGrowth,
-    items: [{ href: "/marketing", label: t.marketing, icon: <Megaphone aria-hidden="true" />, testid: "nav-marketing" }],
-  },
-  {
-    id: "ai",
-    label: t.groupAi,
-    items: [{ href: "/ai", label: t.ai, icon: <Sparkles aria-hidden="true" />, testid: "nav-ai" }],
-  },
-  {
-    id: "admin",
-    label: t.groupAdmin,
-    items: [{ href: "/settings", label: t.settings, icon: <Settings aria-hidden="true" />, testid: "nav-settings" }],
-  },
-];
+/* Built at render time (not module scope) so the labels follow the active
+   language without a page reload. */
+function buildNavGroups(): NavGroup[] {
+  return [
+    {
+      id: "home",
+      label: t.groupHome,
+      items: [{ href: "/dashboard", label: t.dashboard, icon: <LayoutDashboard aria-hidden="true" />, testid: "nav-dashboard" }],
+    },
+    {
+      id: "work",
+      label: t.groupWork,
+      items: [
+        { href: "/inbox", label: t.inbox, icon: <MessagesSquare aria-hidden="true" />, testid: "nav-inbox" },
+        { href: "/tasks", label: t.myTasks, icon: <ListChecks aria-hidden="true" />, testid: "nav-tasks" },
+      ],
+    },
+    {
+      id: "business",
+      label: t.groupBusiness,
+      items: [
+        { href: "/customers", label: t.customers, icon: <Users aria-hidden="true" />, testid: "nav-customers" },
+        { href: "/orders", label: t.orders, icon: <ShoppingCart aria-hidden="true" />, testid: "nav-orders" },
+        { href: "/products", label: t.products, icon: <Package aria-hidden="true" />, testid: "nav-products" },
+        { href: "/inventory", label: t.inventory, icon: <Warehouse aria-hidden="true" />, testid: "nav-inventory" },
+      ],
+    },
+    {
+      id: "growth",
+      label: t.groupGrowth,
+      items: [{ href: "/marketing", label: t.marketing, icon: <Megaphone aria-hidden="true" />, testid: "nav-marketing" }],
+    },
+    {
+      id: "ai",
+      label: t.groupAi,
+      items: [{ href: "/ai", label: t.ai, icon: <Sparkles aria-hidden="true" />, testid: "nav-ai" }],
+    },
+    {
+      id: "admin",
+      label: t.groupAdmin,
+      items: [{ href: "/settings", label: t.settings, icon: <Settings aria-hidden="true" />, testid: "nav-settings" }],
+    },
+  ];
+}
 
-const CREATE_ITEMS: NavItem[] = [
-  { href: "/orders?new=1", label: t.newOrder, icon: <ShoppingCart aria-hidden="true" />, testid: "create-order" },
-  { href: "/products?new=1", label: t.newProduct, icon: <Package aria-hidden="true" />, testid: "create-product" },
-  { href: "/marketing?new=1", label: t.newCampaign, icon: <Megaphone aria-hidden="true" />, testid: "create-campaign" },
-  { href: "/ai?new=1", label: t.newKnowledge, icon: <Sparkles aria-hidden="true" />, testid: "create-knowledge" },
-  { href: "/settings?new=1", label: t.newInvitation, icon: <Users aria-hidden="true" />, testid: "create-invitation" },
-];
+function buildCreateItems(): NavItem[] {
+  return [
+    { href: "/orders?new=1", label: t.newOrder, icon: <ShoppingCart aria-hidden="true" />, testid: "create-order" },
+    { href: "/products?new=1", label: t.newProduct, icon: <Package aria-hidden="true" />, testid: "create-product" },
+    { href: "/marketing?new=1", label: t.newCampaign, icon: <Megaphone aria-hidden="true" />, testid: "create-campaign" },
+    { href: "/ai?new=1", label: t.newKnowledge, icon: <Sparkles aria-hidden="true" />, testid: "create-knowledge" },
+    { href: "/settings?new=1", label: t.newInvitation, icon: <Users aria-hidden="true" />, testid: "create-invitation" },
+  ];
+}
 
 /* ------------------------------------------------------------- sidebar nav */
 
 function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = React.useState<Record<string, boolean>>({});
+  const groups = buildNavGroups();
 
   return (
     <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 pb-4" aria-label="التنقل الرئيسي">
-      {NAV_GROUPS.map((group) => {
+      {groups.map((group) => {
         const isCollapsed = collapsed[group.id] ?? false;
         return (
           <div key={group.id}>
@@ -164,6 +172,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [paletteOpen, setPaletteOpen] = React.useState(false);
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const me = useMe();
+  const queryClient = useQueryClient();
   const email = me.data?.email ?? "";
 
   // حماية: بدون توكنات → صفحة الدخول
@@ -188,20 +197,37 @@ export function Shell({ children }: { children: React.ReactNode }) {
   }, []);
 
   const [lang, setLangState] = useState<Lang>("ar");
+  const createItems = buildCreateItems();
 
   useEffect(() => {
     applyTheme(getTheme());
-    setLangState(getLang());
+    const saved = getLang();
+    setLangState(saved);
+    document.documentElement.lang = saved;
   }, []);
 
   function toggleLang() {
     const next: Lang = lang === "ar" ? "en" : "ar";
     setLang(next);
-    window.location.reload(); // strings re-render; layout never flips
+    // strings re-render in place; direction never flips
+    setLangState(next);
+    document.documentElement.lang = next;
   }
 
   function logout() {
+    // أبلغ السيرفر أولًا (fire-and-forget) قبل مسح التوكنات محليًا
+    const tokens = getTokens();
+    if (tokens?.refresh_token) {
+      void fetch(`${API_BASE_URL}${API_PREFIX}/auth/logout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: tokens.refresh_token }),
+      }).catch(() => {
+        /* الشبكة غير متاحة — نتجاهل ونكمل الخروج */
+      });
+    }
     setTokens(null);
+    queryClient.clear(); // منع وميض بيانات الحساب السابق عند الدخول التالي
     router.replace("/login");
   }
 
@@ -300,7 +326,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>{t.quickActions}</DropdownMenuLabel>
-              {CREATE_ITEMS.map((item) => (
+              {createItems.map((item) => (
                 <DropdownMenuItem key={item.href} onSelect={() => goCreate(item.href)} data-testid={item.testid}>
                   {item.icon}
                   {item.label}
@@ -365,8 +391,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
           </DropdownMenu>
         </header>
 
-        {/* main content */}
-        <main className="min-w-0 flex-1 p-4 sm:p-6">{children}</main>
+        {/* main content — keyed by language so the page subtree re-renders in place */}
+        <main key={lang} className="min-w-0 flex-1 p-4 sm:p-6">{children}</main>
       </div>
 
       {/* mobile sidebar */}

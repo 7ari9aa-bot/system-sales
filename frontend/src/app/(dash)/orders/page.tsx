@@ -20,7 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { EmptyState, PageHeader } from "@/components/ui/states";
+import { EmptyState, ErrorState, PageHeader } from "@/components/ui/states";
 import { DataTable } from "@/components/data-table";
 
 const STATUS_VARIANT: Record<string, "warning" | "primary" | "success" | "danger" | "default"> = {
@@ -158,7 +158,10 @@ export default function OrdersPage() {
       />
 
       {ordersQuery.isError ? (
-        <EmptyState title={(ordersQuery.error as Error).message} />
+        <ErrorState
+          message={(ordersQuery.error as Error).message}
+          onRetry={() => ordersQuery.refetch()}
+        />
       ) : ordersQuery.isLoading ? (
         <TableLoading />
       ) : (

@@ -6,7 +6,7 @@ import { Users, ChevronLeft } from "lucide-react";
 import { useCustomers, type Customer } from "@/lib/queries";
 import { t } from "@/lib/t";
 import { DataTable } from "@/components/data-table";
-import { EmptyState, PageHeader } from "@/components/ui/states";
+import { EmptyState, ErrorState, PageHeader } from "@/components/ui/states";
 import { CustomerDrawer } from "@/components/customer-drawer";
 import { Badge } from "@/components/ui/badge";
 
@@ -79,7 +79,10 @@ export default function CustomersPage() {
     return (
       <div>
         <PageHeader title={t.customers} />
-        <EmptyState title={(customersQuery.error as Error).message} />
+        <ErrorState
+          message={(customersQuery.error as Error).message}
+          onRetry={() => customersQuery.refetch()}
+        />
       </div>
     );
   }

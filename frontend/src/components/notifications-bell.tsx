@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -44,6 +45,9 @@ const KIND_ICON: Record<string, React.ReactNode> = {
   task_due: <AlertCircle className="h-4 w-4 text-danger" aria-hidden />,
   system: <Info className="h-4 w-4 text-muted-foreground" aria-hidden />,
 };
+
+/** ثابت على مستوى الوحدة — مصفوفة جديدة كل render كانت تعيد توصيل SSE كل مرة */
+const BELL_STREAMS: string[] = ["notification.events"];
 
 /* -------------------------------------------------------------- component */
 
@@ -67,7 +71,7 @@ export function NotificationsBell() {
     },
     [qc]
   );
-  useRealtimeEvents({ streams: ["notification.events"], onEvent });
+  useRealtimeEvents({ streams: BELL_STREAMS, onEvent });
 
   function handleClick(notif: Notification) {
     if (!notif.read_at) markRead.mutate(notif.id);
@@ -101,20 +105,21 @@ export function NotificationsBell() {
         align="end"
         className="w-80 max-h-[480px] overflow-y-auto"
         id="notifications-dropdown"
+        aria-label="الإشعارات"
       >
         <div className="flex items-center justify-between px-3 py-2">
           <DropdownMenuLabel className="p-0 text-sm font-semibold">
             الإشعارات
           </DropdownMenuLabel>
           {unread > 0 && (
-            <button
-              onClick={() => markAll.mutate()}
-              className="flex items-center gap-1 text-xs text-primary hover:underline"
+            <DropdownMenuItem
+              onSelect={() => markAll.mutate()}
+              className="text-xs text-primary hover:underline px-1 py-0"
               aria-label="قراءة الكل"
             >
               <CheckCheck className="h-3.5 w-3.5" />
               قراءة الكل
-            </button>
+            </DropdownMenuItem>
           )}
         </div>
         <DropdownMenuSeparator />
@@ -126,13 +131,14 @@ export function NotificationsBell() {
         )}
 
         {notifications.map((n) => (
-          <button
+          <DropdownMenuItem
             key={n.id}
+            aria-label={[n.title, n.body].filter(Boolean).join(" — ")}
             className={cn(
-              "w-full flex items-start gap-3 px-3 py-2.5 text-start transition-colors hover:bg-accent",
+              "w-full flex items-start gap-3 px-3 py-2.5 text-start",
               !n.read_at && "bg-primary-soft/40"
             )}
-            onClick={() => handleClick(n)}
+            onSelect={() => handleClick(n)}
           >
             <span className="mt-0.5 shrink-0">
               {KIND_ICON[n.kind] ?? KIND_ICON.system}
@@ -155,7 +161,7 @@ export function NotificationsBell() {
                 aria-hidden
               />
             )}
-          </button>
+          </DropdownMenuItem>
         ))}
       </DropdownMenuContent>
     </DropdownMenu>

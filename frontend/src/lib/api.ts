@@ -13,7 +13,15 @@ type Tokens = { access_token: string; refresh_token: string };
 export function getTokens(): Tokens | null {
   if (typeof window === "undefined") return null;
   const raw = window.localStorage.getItem("sales_os_tokens");
-  return raw ? (JSON.parse(raw) as Tokens) : null;
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Tokens;
+    return parsed?.access_token ? parsed : null;
+  } catch {
+    // Malformed stored value: treat as logged out instead of bricking the app.
+    window.localStorage.removeItem("sales_os_tokens");
+    return null;
+  }
 }
 
 export function setTokens(t: Tokens | null) {
