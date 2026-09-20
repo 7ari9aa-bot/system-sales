@@ -171,6 +171,13 @@ class AuthService:
             )
         )
         await session.flush()
+        # A tenant is not operational just because it exists: without a
+        # business calendar, an SLA policy and a subscription the new surfaces
+        # have nothing to read (review N-05). Seeded here so it cannot be
+        # forgotten.
+        from app.modules.identity.bootstrap import seed_tenant_defaults
+
+        await seed_tenant_defaults(session, tenant.id)
         AuthService._audit(
             session, None, "auth.registered", "user", str(user.id), tenant_id=tenant.id
         )
