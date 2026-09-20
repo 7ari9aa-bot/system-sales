@@ -401,3 +401,85 @@ async def test_not_null_server_defaults_exist_in_the_database(db) -> None:
         "has no default for; SQLAlchemy omits them on INSERT: "
         + ", ".join(sorted(problems))
     )
+
+
+# ------------------------------------------------------ Supabase anon leak --
+#
+# Supabase grants `anon` and `authenticated` full DML on every table in
+# `public`, and `pg_default_acl` grants the same on every FUTURE table. `anon`
+# is the key that ships in public client bundles, so it is not a secret.
+#
+# RLS absorbed most of it — 93 tables are FORCE RLS with a tenant policy that
+# yields no rows without the GUC — but the tables WITHOUT RLS had no backstop.
+# Verified against production before f1a2b3c4d5e6: the public anon key could
+# read `users` (password hashes), `refresh_tokens` (live session tokens) and
+# `tenants`. These two tests keep that closed.
+
+_ANON_ROLES = ("anon", "authenticated")
+
+
+async def test_anon_and_authenticated_hold_no_public_privileges(db) -> None:
+    """No privilege of any kind for the public anon roles on `public`."""
+    from sqlalchemy import text
+
+    present = {
+        name
+        for (name,) in (
+            await db.execute(
+                text("SELECT rolname FROM pg_roles WHERE rolname = ANY(:roles)"),
+                {"roles": list(_ANON_ROLES)},
+            )
+        ).all()
+    }
+    if not present:
+        pytest.skip("anon/authenticated do not exist here (plain Postgres, not Supabase)")
+
+    rows = (
+        await db.execute(
+            text(
+                "SELECT grantee, privilege_type, count(DISTINCT table_name) AS tables "
+                "FROM information_schema.role_table_grants "
+                "WHERE table_schema = 'public' AND grantee = ANY(:roles) "
+                "GROUP BY 1, 2 ORDER BY 1, 2"
+            ),
+            {"roles": list(present)},
+        )
+    ).all()
+
+    assert not rows, (
+        "anon/authenticated still hold privileges on public tables "
+        f"(the anon key is public, so this is a data leak): {rows}"
+    )
+
+
+async def test_new_public_tables_are_not_granted_to_anon(db) -> None:
+    """Default privileges must not hand future tables to the public anon roles.
+
+    This is the mechanism that made all 105 tables world-readable: every table
+    created by the migration role inherited `anon=arwdDxtm`. Fixing only the
+    existing grants would let the very next migration reopen the hole.
+    """
+    from sqlalchemy import text
+
+    rows = (
+        await db.execute(
+            text(
+                "SELECT defaclobjtype, defaclacl::text AS acl "
+                "FROM pg_default_acl "
+                "WHERE pg_get_userbyid(defaclrole) = current_user "
+                "AND defaclnamespace = 'public'::regnamespace"
+            )
+        )
+    ).all()
+    if not rows:
+        pytest.skip("no default ACLs for the current role in public")
+
+    leaked = [
+        f"{objtype}: {acl}"
+        for objtype, acl in rows
+        if "anon=" in acl or "authenticated=" in acl
+    ]
+    assert not leaked, (
+        "default privileges still grant the public anon roles on new public "
+        f"objects: {leaked}"
+    )
