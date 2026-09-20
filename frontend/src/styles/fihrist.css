@@ -634,3 +634,74 @@ html { scroll-behavior: smooth; }
 .fh-404 h1 { font-size: clamp(1.6rem, 4vw, 2.4rem); margin: 0 0 .7rem; }
 .fh-404-sub { color: var(--muted); font-size: 15.5px; margin: 0 0 1.8rem; }
 .fh-404-actions { display: flex; gap: .8rem; justify-content: center; flex-wrap: wrap; }
+
+
+/* ---------- شريط الإحصائيات ---------- */
+.fh-stats { padding-block: clamp(32px, 4vw, 48px); border-block: 1px solid var(--rule); }
+.fh-stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: clamp(16px, 3vw, 32px); }
+.fh-stat { text-align: center; }
+.fh-stat b { display: block; font-family: var(--font-grotesk), sans-serif; font-size: clamp(28px, 4vw, 40px); font-weight: 700; color: var(--forest); line-height: 1.1; margin-bottom: .35rem; }
+.fh-stat small { font-size: 13.5px; color: var(--muted); }
+@media (max-width: 720px) { .fh-stats-grid { grid-template-columns: repeat(2, 1fr); gap: 24px 16px; } }
+
+/* ---------- هيرو: معاينة المنتج ---------- */
+.fh-hero-grid { display: grid; grid-template-columns: 1.1fr .9fr; gap: clamp(32px, 5vw, 64px); align-items: center; }
+.fh-hero-visual { position: relative; z-index: 2; }
+.fh-hero-mock { background: var(--card); border: 1px solid var(--rule); border-radius: 10px; box-shadow: var(--shadow-md); overflow: hidden; }
+.fh-hero-mock-head { display: flex; align-items: center; gap: .6rem; padding: .8rem 1rem; border-bottom: 1px solid var(--rule); background: var(--card-soft); }
+.fh-hero-mock-head .fh-chat-avatar { width: 28px; height: 28px; }
+.fh-hero-mock-head .fh-chat-avatar span { font-size: 12px; }
+.fh-hero-mock-head strong { font-size: 13px; }
+.fh-hero-mock-head small { font-size: 11px; color: var(--muted); display: inline-flex; align-items: center; gap: .35rem; }
+.fh-hero-mock-body { padding: 1rem; display: flex; flex-direction: column; gap: 10px; }
+.fh-hero-mock-row { display: flex; align-items: center; gap: .7rem; padding: .6rem .75rem; border: 1px solid var(--rule); border-radius: 6px; background: var(--card); }
+.fh-hero-mock-row .fh-status-dot { flex: none; }
+.fh-hero-mock-row b { font-size: 13px; flex: 1; }
+.fh-hero-mock-row small { font-size: 11px; color: var(--muted); }
+.fh-hero-mock-row .fh-badge { font-size: 10.5px; padding: .15rem .5rem; }
+.fh-hero-mock-ai { margin-top: .3rem; padding: .75rem .9rem; border-radius: 8px; background: color-mix(in srgb, var(--forest) 10%, var(--card)); border: 1px solid color-mix(in srgb, var(--forest) 25%, var(--rule)); font-size: 12.5px; color: var(--ink); line-height: 1.65; }
+.fh-hero-mock-ai b { color: var(--forest-strong); font-weight: 600; }
+@media (max-width: 920px) { .fh-hero-grid { grid-template-columns: 1fr; } .fh-hero-visual { display: none; } }
+
+/* ---------- قسم الأمان: نقاط ---------- */
+.fh-sec-points { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px 28px; margin-bottom: 32px; }
+.fh-sec-point { display: flex; gap: .75rem; align-items: flex-start; }
+.fh-sec-point .fh-sec-ico { flex: none; width: 30px; height: 30px; border-radius: 7px; background: var(--tint); color: var(--forest-strong); display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; }
+.fh-sec-point b { font-size: 14.5px; display: block; margin-bottom: .15rem; }
+.fh-sec-point small { font-size: 13px; color: var(--muted); line-height: 1.6; }
+@media (max-width: 720px) { .fh-sec-points { grid-template-columns: 1fr; } }
+
+/* ---------- مصادقة: split-screen ---------- */
+.fh-auth { padding: 0; }
+.fh-auth-shell { min-height: 100vh; display: grid; grid-template-columns: 1fr 1fr; }
+.fh-auth-aside { position: relative; padding: clamp(36px, 5vw, 64px); display: flex; flex-direction: column; justify-content: center; background: var(--forest); color: var(--on-forest); overflow: hidden; }
+.fh-auth-aside::before { content: ""; position: absolute; inset: -30%; background: radial-gradient(circle at 70% 20%, color-mix(in srgb, var(--on-forest) 14%, transparent), transparent 60%); pointer-events: none; }
+.fh-auth-aside > * { position: relative; }
+.fh-auth-aside .fh-brand { margin-bottom: 2.5rem; }
+.fh-auth-aside .fh-brand-mark { background: var(--on-forest); }
+.fh-auth-aside .fh-brand-mark::before { background: var(--forest); }
+.fh-auth-aside .fh-brand-mark span { color: var(--forest); }
+.fh-auth-aside .fh-brand-name { color: var(--on-forest); }
+.fh-auth-aside h2 { font-size: clamp(22px, 2.6vw, 30px); line-height: 1.3; margin-bottom: 1rem; color: var(--on-forest); }
+.fh-auth-aside p { color: color-mix(in srgb, var(--on-forest) 82%, transparent); font-size: 15px; max-width: 38ch; margin-bottom: 2rem; }
+.fh-auth-aside ul { list-style: none; padding: 0; margin: 0 0 2rem; display: flex; flex-direction: column; gap: .9rem; }
+.fh-auth-aside li { display: flex; gap: .65rem; align-items: flex-start; font-size: 14.5px; color: color-mix(in srgb, var(--on-forest) 90%, transparent); line-height: 1.6; }
+.fh-auth-aside li::before { content: "✓"; flex: none; width: 22px; height: 22px; border-radius: 50%; background: color-mix(in srgb, var(--on-forest) 18%, transparent); color: var(--on-forest); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; margin-top: 1px; }
+.fh-auth-aside .fh-auth-badge { display: inline-flex; align-items: center; gap: .4rem; width: fit-content; font-size: 12.5px; font-weight: 500; background: color-mix(in srgb, var(--on-forest) 14%, transparent); border: 1px solid color-mix(in srgb, var(--on-forest) 24%, transparent); border-radius: 3px; padding: .35rem .8rem; color: var(--on-forest); }
+.fh-auth-main { display: flex; flex-direction: column; }
+.fh-auth-top { justify-content: flex-start; padding: clamp(28px, 4vw, 40px) clamp(28px, 4vw, 40px) 0; }
+.fh-auth-card-wrap { flex: 1; display: flex; align-items: center; justify-content: center; padding: clamp(24px, 4vw, 48px); }
+.fh-auth-card { max-width: 400px; padding: 0; background: transparent; border: none; box-shadow: none; }
+.fh-auth-card h1 { font-size: 26px; margin-bottom: .4rem; }
+.fh-auth-foot { justify-content: center; padding: clamp(24px, 4vw, 40px); }
+@media (max-width: 920px) {
+  .fh-auth-shell { grid-template-columns: 1fr; }
+  .fh-auth-aside { display: none; }
+  .fh-auth-top { justify-content: center; padding-block: 2rem 1rem; }
+}
+
+/* ---------- حقل كلمة المرور: زر الإظهار ---------- */
+.fh-pw-field { position: relative; }
+.fh-pw-field input { padding-inline-end: 2.8rem; }
+.fh-pw-toggle { position: absolute; inset-inline-end: .55rem; top: calc(50% - 14px); background: none; border: none; padding: .25rem .35rem; color: var(--muted); font-size: 12px; font-weight: 500; border-radius: 3px; }
+.fh-pw-toggle:hover { color: var(--forest); }
