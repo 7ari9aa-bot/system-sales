@@ -21,6 +21,36 @@ from app.modules.billing.models import (
     UsageRecord,
 )
 
+# Capability (what a caller asks for) -> plan feature (what the plan stores).
+#
+# These are DIFFERENT namespaces and must be mapped explicitly. `can()` used to
+# pass the capability straight through as the feature name, so a lookup for
+# `Entitlement.feature == "CanAddUser"` never matched a plan row that stores
+# `max_users` — every capability check silently returned True. Adding a seat
+# limit to a plan had no effect at all.
+#
+# Only the features the seeded plans actually define are mapped. A capability
+# with no mapping is intentionally unrestricted (the documented
+# "unknown capabilities are allowed by default" rule).
+_CAPABILITY_FEATURE: dict[str, str] = {
+    "CanAddUser": "max_users",
+    "CanUseAI": "ai_agents",
+    # `channels` is an ALLOWLIST of channel names, not a numeric limit, so it
+    # cannot go through check_entitlement (which compares a limit against a
+    # usage counter). Use EntitlementService.ensure_channel_allowed instead.
+    "CanCreateChannel": "channels",
+}
+
+# Features whose "usage" is a live row count, not a period accumulator.
+#
+# Nothing writes a UsageRecord for seats: seats are a state, not something you
+# consume per period. Reading the counter reported 0 forever, so a plan limit of
+# 3 users could never be reached. Count the memberships instead.
+_DERIVED_USAGE: dict[str, str] = {
+    "max_users": "tenant_users",
+    "seats": "tenant_users",
+}
+
 
 class BillingService:
     @staticmethod
@@ -112,6 +142,25 @@ class BillingService:
 
     @staticmethod
     async def used_this_period(session: AsyncSession, tenant_id: uuid.UUID, feature: str) -> int:
+        derived = _DERIVED_USAGE.get(feature)
+        if derived == "tenant_users":
+            # Lazy import: identity.models is imported by the same routers that
+            # import this module.
+            from sqlalchemy import func
+
+            from app.modules.identity.models import TenantUser
+
+            return int(
+                (
+                    await session.execute(
+                        select(func.count())
+                        .select_from(TenantUser)
+                        .where(TenantUser.tenant_id == tenant_id)
+                    )
+                ).scalar_one()
+                or 0
+            )
+
         subscription = await BillingService.get_subscription(session, tenant_id)
         start = subscription.current_period_start if subscription else None
         stmt = select(UsageRecord.quantity).where(
@@ -144,6 +193,55 @@ class EntitlementService:
     """
 
     @staticmethod
+    async def plan_channels(session: AsyncSession, tenant_id: uuid.UUID):
+        """The plan's `channels` value: a list of allowed names, or "*".
+
+        Returns None when there is no active subscription or the plan does not
+        mention channels — meaning "unrestricted".
+        """
+        subscription = await BillingService.get_subscription(session, tenant_id)
+        if subscription is None:
+            return None
+        plan = (
+            await session.execute(select(Plan).where(Plan.id == subscription.plan_id))
+        ).scalar_one_or_none()
+        if plan is None:
+            return None
+        return (plan.features or {}).get("channels")
+
+    @staticmethod
+    async def channel_allowed(
+        session: AsyncSession, tenant_id: uuid.UUID, channel: str | None
+    ) -> bool:
+        """Whether the plan includes `channel` (None = "any channel at all").
+
+        `channels` is stored as an allowlist of names (starter: whatsapp +
+        webchat, pro: five channels, enterprise: "*"), so it cannot be expressed
+        as the numeric limit `check_entitlement` compares against a usage
+        counter — which is why it was skipped entirely and the channel gate was
+        decorative.
+        """
+        allowed = await EntitlementService.plan_channels(session, tenant_id)
+        if allowed is None or allowed == "*":
+            return True
+        if not isinstance(allowed, list):
+            # Unrecognised shape: do not block on a value we cannot read.
+            return True
+        if channel is None:
+            return len(allowed) > 0
+        return channel in allowed
+
+    @staticmethod
+    async def ensure_channel_allowed(
+        session: AsyncSession, tenant_id: uuid.UUID, channel: str | None
+    ) -> None:
+        if not await EntitlementService.channel_allowed(session, tenant_id, channel):
+            raise RateLimitExceededError(
+                "plan does not include this channel",
+                details={"channel": channel},
+            )
+
+    @staticmethod
     async def can(session: AsyncSession, tenant_id: uuid.UUID, capability: str) -> bool:
         """Canonical capability checks. Unknown capabilities are allowed by
         default; known ones consult plan entitlements + tenant status.
@@ -171,9 +269,20 @@ class EntitlementService:
             "CanCreateChannel",
             "CanAddUser",
         ):
+            feature = _CAPABILITY_FEATURE.get(capability)
+            if feature is None:
+                # Unmapped capability -> unrestricted. Documented default, but
+                # note this is also how the seat limit silently passed for so
+                # long: the capability was never in the map at all, so
+                # `Entitlement.feature == "CanAddUser"` matched nothing.
+                return True
+            if feature == "channels":
+                # An allowlist, not a numeric limit. "Can this tenant add a
+                # channel" = does the plan list any channel.
+                return await EntitlementService.channel_allowed(session, tenant_id, None)
             try:
                 return await BillingService.check_entitlement(
-                    session, tenant_id, capability, requested=1
+                    session, tenant_id, feature, requested=1
                 )
             except RateLimitExceededError:
                 return False

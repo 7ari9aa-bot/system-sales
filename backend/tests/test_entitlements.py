@@ -1,10 +1,19 @@
-"""Spec §165 - entitlements are enforced centrally, and fail OPEN by default.
+"""Spec §165 — entitlements are enforced centrally, and fail OPEN by default.
 
-The enforcement was wired into four real flows (AI auto-reply, channel
-creation, invitations, campaigns). These tests pin the property that makes that
-safe to ship: a tenant with no plan limits is unrestricted, so switching
-enforcement on cannot break an existing tenant. Only an explicit limit is
-enforced.
+The enforcement is wired into four real flows (AI auto-reply, channel creation,
+invitations, campaigns). These tests pin the property that makes that safe to
+ship: a tenant with no plan limits is unrestricted, so switching enforcement on
+cannot break an existing tenant. Only an explicit limit is enforced.
+
+They also pin the two defects that made the seat and channel limits decorative
+(review N-01):
+
+* `can()` passed the CAPABILITY name straight through as the entitlement
+  FEATURE name. Capabilities are `CanAddUser`; plan features are `max_users`.
+  No row ever matched, so every check returned True and a seat limit on a plan
+  had no effect at all.
+* seat usage was read from `UsageRecord`, and nothing ever writes a usage row
+  for seats. Even with a matching name the counter read 0 forever.
 
 Database-backed (a subscription + entitlement row are needed), so they skip
 locally and run in CI.
@@ -16,18 +25,25 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from sqlalchemy import select
 
 from app.core.errors import RateLimitExceededError
 from app.modules.billing.models import Entitlement, Plan, Subscription
-from app.modules.billing.service import EntitlementService
+from app.modules.billing.service import (
+    _CAPABILITY_FEATURE,
+    _DERIVED_USAGE,
+    EntitlementService,
+)
+from app.modules.identity.models import TenantUser
 
 
-async def _subscription(db, tenant_id) -> Subscription:
+async def _subscription(db, tenant_id, *, features: dict | None = None) -> Subscription:
     plan = Plan(
         code=f"plan-{uuid.uuid4().hex[:8]}",
         name="Test Plan",
         price="0",
         interval="month",
+        features=features or {},
     )
     db.add(plan)
     await db.flush()
@@ -41,6 +57,18 @@ async def _subscription(db, tenant_id) -> Subscription:
     db.add(subscription)
     await db.flush()
     return subscription
+
+
+async def _entitle(db, tenant_id, subscription, feature: str, **kw) -> Entitlement:
+    row = Entitlement(
+        tenant_id=tenant_id, subscription_id=subscription.id, feature=feature, **kw
+    )
+    db.add(row)
+    await db.flush()
+    return row
+
+
+# ------------------------------------------------------- fail-open default --
 
 
 async def test_no_subscription_is_unrestricted(db, tenant_ctx):
@@ -59,38 +87,53 @@ async def test_unknown_capability_is_allowed(db, tenant_ctx):
     assert await EntitlementService.can(db, tenant_ctx.tenant_id, "CanDoSomethingNew")
 
 
-async def test_an_explicit_limit_is_enforced(db, tenant_ctx):
-    subscription = await _subscription(db, tenant_ctx.tenant_id)
-    db.add(
-        Entitlement(
-            tenant_id=tenant_ctx.tenant_id,
-            subscription_id=subscription.id,
-            feature="CanSendCampaign",
-            limit_value=0,
-        )
-    )
-    await db.flush()
+async def test_unmapped_capability_stays_unrestricted(db, tenant_ctx):
+    """`CanSendCampaign` has no plan feature behind it, so it stays open.
 
-    assert (
-        await EntitlementService.can(db, tenant_ctx.tenant_id, "CanSendCampaign") is False
-    )
+    Documented behaviour, and the reason the map has to be explicit rather than
+    derived: an unmapped capability is indistinguishable from a mis-typed one.
+    """
+    assert "CanSendCampaign" not in _CAPABILITY_FEATURE
+    await _subscription(db, tenant_ctx.tenant_id)
+    assert await EntitlementService.can(db, tenant_ctx.tenant_id, "CanSendCampaign") is True
+
+
+def test_the_capability_map_points_at_real_plan_features() -> None:
+    """A typo here would silently disable the gate again."""
+    assert _CAPABILITY_FEATURE["CanAddUser"] == "max_users"
+    assert _CAPABILITY_FEATURE["CanUseAI"] == "ai_agents"
+    assert _CAPABILITY_FEATURE["CanCreateChannel"] == "channels"
+    # The seeded plans use exactly these feature names.
+    assert set(_CAPABILITY_FEATURE.values()) <= {
+        "max_users",
+        "ai_agents",
+        "channels",
+        "custom",
+    }
+
+
+def test_derived_usage_covers_the_counted_features() -> None:
+    assert _DERIVED_USAGE["max_users"] == "tenant_users"
+    assert _DERIVED_USAGE["seats"] == "tenant_users"
+
+
+# ------------------------------------------------ explicit limits enforced --
+
+
+async def test_an_explicit_limit_is_enforced(db, tenant_ctx):
+    """Uses a MAPPED capability: `CanUseAI` -> the `ai_agents` plan feature."""
+    subscription = await _subscription(db, tenant_ctx.tenant_id)
+    await _entitle(db, tenant_ctx.tenant_id, subscription, "ai_agents", limit_value=0)
+
+    assert await EntitlementService.can(db, tenant_ctx.tenant_id, "CanUseAI") is False
     with pytest.raises(RateLimitExceededError):
-        await EntitlementService.ensure(
-            db, tenant_ctx.tenant_id, "CanSendCampaign"
-        )
+        await EntitlementService.ensure(db, tenant_ctx.tenant_id, "CanUseAI")
 
 
 async def test_an_unlimited_entitlement_is_not_limited(db, tenant_ctx):
     subscription = await _subscription(db, tenant_ctx.tenant_id)
-    db.add(
-        Entitlement(
-            tenant_id=tenant_ctx.tenant_id,
-            subscription_id=subscription.id,
-            feature="CanUseAI",
-            is_unlimited=True,
-        )
-    )
-    await db.flush()
+    await _entitle(db, tenant_ctx.tenant_id, subscription, "ai_agents", is_unlimited=True)
+
     assert await EntitlementService.can(db, tenant_ctx.tenant_id, "CanUseAI") is True
 
 
@@ -99,11 +142,109 @@ async def test_a_deactivated_tenant_loses_every_capability(db, tenant_ctx):
     from app.modules.identity.models import Tenant
 
     tenant = (
-        await db.execute(
-            __import__("sqlalchemy").select(Tenant).where(Tenant.id == tenant_ctx.tenant_id)
-        )
+        await db.execute(select(Tenant).where(Tenant.id == tenant_ctx.tenant_id))
     ).scalar_one()
     tenant.is_active = False
     await db.flush()
 
     assert await EntitlementService.can(db, tenant_ctx.tenant_id, "CanUseAI") is False
+
+
+# ------------------------------------------------------------- seat limits --
+
+
+async def test_seat_usage_counts_memberships_not_usage_records(db, tenant_ctx):
+    """The counter is the number of rows in tenant_users.
+
+    Reading `UsageRecord` reported 0 forever because nothing writes a usage row
+    for seats — a state, not a per-period quantity.
+    """
+    expected = len(
+        (
+            await db.execute(
+                select(TenantUser).where(TenantUser.tenant_id == tenant_ctx.tenant_id)
+            )
+        ).scalars().all()
+    )
+    assert expected >= 1  # the owner from the fixture
+    assert await EntitlementService.used_this_period(
+        db, tenant_ctx.tenant_id, "max_users"
+    ) == expected
+
+
+async def test_the_seat_limit_actually_blocks(db, tenant_ctx):
+    """One member exists; a plan limit of 1 means the next seat is refused."""
+    subscription = await _subscription(db, tenant_ctx.tenant_id)
+    await _entitle(db, tenant_ctx.tenant_id, subscription, "max_users", limit_value=1)
+
+    assert await EntitlementService.can(db, tenant_ctx.tenant_id, "CanAddUser") is False
+    with pytest.raises(RateLimitExceededError):
+        await EntitlementService.ensure(db, tenant_ctx.tenant_id, "CanAddUser")
+
+
+async def test_a_seat_limit_above_current_usage_allows_the_next_seat(
+    db, tenant_ctx
+):
+    subscription = await _subscription(db, tenant_ctx.tenant_id)
+    await _entitle(db, tenant_ctx.tenant_id, subscription, "max_users", limit_value=5)
+
+    assert await EntitlementService.can(db, tenant_ctx.tenant_id, "CanAddUser") is True
+    await EntitlementService.ensure(db, tenant_ctx.tenant_id, "CanAddUser")
+
+
+# --------------------------------------------------------- channel allowlist --
+
+
+async def test_channel_allowlist_permits_listed_channels(db, tenant_ctx):
+    await _subscription(
+        db, tenant_ctx.tenant_id, features={"channels": ["whatsapp", "webchat"]}
+    )
+
+    assert await EntitlementService.channel_allowed(
+        db, tenant_ctx.tenant_id, "whatsapp"
+    )
+    assert await EntitlementService.channel_allowed(db, tenant_ctx.tenant_id, "webchat")
+
+
+async def test_channel_allowlist_refuses_unlisted_channels(db, tenant_ctx):
+    await _subscription(
+        db, tenant_ctx.tenant_id, features={"channels": ["whatsapp", "webchat"]}
+    )
+
+    assert not await EntitlementService.channel_allowed(
+        db, tenant_ctx.tenant_id, "telegram"
+    )
+    with pytest.raises(RateLimitExceededError):
+        await EntitlementService.ensure_channel_allowed(
+            db, tenant_ctx.tenant_id, "telegram"
+        )
+
+
+async def test_wildcard_channels_allows_everything(db, tenant_ctx):
+    await _subscription(db, tenant_ctx.tenant_id, features={"channels": "*"})
+
+    for channel in ("whatsapp", "telegram", "anything-at-all"):
+        assert await EntitlementService.channel_allowed(
+            db, tenant_ctx.tenant_id, channel
+        ), channel
+
+
+async def test_no_subscription_leaves_channels_unrestricted(db, tenant_ctx):
+    assert await EntitlementService.channel_allowed(db, tenant_ctx.tenant_id, "telegram")
+
+
+async def test_an_empty_channel_list_blocks_every_channel(db, tenant_ctx):
+    """`CanCreateChannel` with no channel named = "may they add any channel"."""
+    await _subscription(db, tenant_ctx.tenant_id, features={"channels": []})
+
+    assert not await EntitlementService.can(
+        db, tenant_ctx.tenant_id, "CanCreateChannel"
+    )
+    assert not await EntitlementService.channel_allowed(
+        db, tenant_ctx.tenant_id, "whatsapp"
+    )
+
+
+async def test_can_create_channel_is_true_when_the_plan_lists_one(db, tenant_ctx):
+    await _subscription(db, tenant_ctx.tenant_id, features={"channels": ["whatsapp"]})
+    assert await EntitlementService.can(db, tenant_ctx.tenant_id, "CanCreateChannel")

@@ -332,10 +332,17 @@ async def upsert_integration(
         existing.credentials = body.credentials
         existing.status = body.status
         return {"id": str(existing.id), "status": existing.status}
-    # §165: how many channels a plan includes is an entitlement. Only the
-    # CREATE branch is gated — refreshing an existing integration is not a new
-    # channel and must keep working after a downgrade.
-    await EntitlementService.ensure(ctx.session, ctx.tenant_id, "CanCreateChannel")
+    # §165: which channels a plan includes is an entitlement. Only the CREATE
+    # branch is gated — refreshing an existing integration is not a new channel
+    # and must keep working after a downgrade.
+    #
+    # The plan stores `channels` as an ALLOWLIST of names, so the provider is
+    # what must be checked: `ensure(..., "CanCreateChannel")` could only ever ask
+    # "may this tenant add any channel at all", and the capability name never
+    # matched a plan row anyway.
+    await EntitlementService.ensure_channel_allowed(
+        ctx.session, ctx.tenant_id, body.provider
+    )
     integration = Integration(
         tenant_id=ctx.tenant_id,
         provider=body.provider,
