@@ -41,6 +41,47 @@ class PermanentError(Exception):
     """Marker for non-retryable failures — the event goes straight to the DLQ."""
 
 
+class DeferredError(Exception):
+    """The event cannot run YET, but is not a failure (§48).
+
+    Raised when the owning tenant is not operational: a suspended tenant's
+    outbound messages must not be delivered, but must not be dead-lettered
+    either — they have to resume if the tenant is reactivated.
+
+    The runtime defers via the outbox with an explicit delay and, crucially,
+    does NOT increment the attempts counter, so a long suspension cannot burn
+    the retry budget and dead-letter a tenant's queued messages.
+    """
+
+    def __init__(self, reason: str, *, delay_seconds: float = 900.0) -> None:
+        super().__init__(reason)
+        self.delay_seconds = delay_seconds
+
+
+async def defer_unless_tenant_allows(session, tenant_id, capability: str) -> None:
+    """Raise DeferredError when the tenant's lifecycle state forbids `capability`.
+
+    `capability` is a field on TenantCapabilityPolicy: allows_api, allows_ai,
+    allows_channels, allows_automation, allows_data_access, allows_login.
+    Fails CLOSED on an unknown state, matching the API gate in identity.deps.
+    """
+    from sqlalchemy import select
+
+    from app.modules.identity.models import Tenant
+    from app.modules.identity.service import STATE_POLICIES
+
+    state = (
+        await session.execute(
+            select(Tenant.lifecycle_state).where(Tenant.id == tenant_id)
+        )
+    ).scalar_one_or_none()
+    policy = STATE_POLICIES.get(state) if state else None
+    if policy is None or not getattr(policy, capability, False):
+        raise DeferredError(
+            f"tenant is {state or 'unknown'} — {capability} is not available"
+        )
+
+
 def _is_permanent_failure(exc: BaseException) -> bool:
     """True when exc (or anything it wraps) must not be retried.
 
@@ -147,6 +188,20 @@ class StreamWorker:
         attempts = int(event.meta.get(ATTEMPTS_META_KEY, 0)) + 1
         try:
             await self.handle(event)
+        except DeferredError as exc:
+            # Not a failure: defer with an explicit delay and leave the attempts
+            # counter untouched, so a long suspension cannot exhaust the retry
+            # budget and dead-letter a tenant's queued work.
+            logger.info(
+                "worker.deferred stream=%s id=%s reason=%s delay=%ss",
+                self.stream,
+                dedupe_id,
+                exc,
+                exc.delay_seconds,
+            )
+            await self._republish_after(event, event.meta, exc.delay_seconds)
+            await self._bus.ack(self.stream, self.group, event)
+            return
         except Exception as exc:
             logger.exception(
                 "worker.handle_failed stream=%s id=%s attempt=%s",

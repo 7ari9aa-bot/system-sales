@@ -54,7 +54,12 @@ from app.modules.conversations.models import Conversation, Message
 from app.modules.conversations.policy import MessagingPolicyService
 from app.modules.customers.models import CustomerIdentity
 from app.modules.platform.models import Integration, ProcessedEvent
-from app.workers.base import PermanentError, RetryableError, StreamWorker
+from app.workers.base import (
+    PermanentError,
+    RetryableError,
+    StreamWorker,
+    defer_unless_tenant_allows,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -156,6 +161,10 @@ class MessageWorker(StreamWorker):
         async with SessionLocal() as session:
             async with session.begin():
                 await bind_tenant(session, tenant_id)
+                # §48 — checked BEFORE claiming, so a suspended tenant's message
+                # stays QUEUED rather than being sent, and is deferred rather
+                # than dead-lettered: it resumes if the tenant is reactivated.
+                await defer_unless_tenant_allows(session, tenant_id, "allows_channels")
                 try:
                     plan = await self._deliver_one(session, tenant_id, message_id)
                 except PermanentError as exc:

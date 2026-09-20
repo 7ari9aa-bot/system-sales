@@ -18,7 +18,7 @@ from app.core.db import SessionLocal, bind_tenant
 from app.core.events.bus import Event
 from app.modules.platform.models import Notification
 from app.modules.platform.service import NotificationDispatcher, WebhookDispatcher
-from app.workers.base import StreamWorker
+from app.workers.base import StreamWorker, defer_unless_tenant_allows
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +70,18 @@ class WebhookWorker(StreamWorker):
         async with SessionLocal() as session:
             async with session.begin():
                 await bind_tenant(session, tenant_id)
+                # §48 — outbound integrations stop for a non-operational tenant.
+                # Deferred, not dead-lettered: the delivery row keeps its retry
+                # schedule and resumes if the tenant is reactivated.
+                #
+                # NotificationWorker deliberately does NOT get this gate:
+                # in-app/email notifications are the channel through which a
+                # suspended tenant learns why it was suspended, and the API
+                # allowlist in identity.deps keeps /notifications reachable for
+                # exactly that reason.
+                await defer_unless_tenant_allows(
+                    session, tenant_id, "allows_automation"
+                )
                 delivery = await WebhookDispatcher.deliver(
                     session, tenant_id, uuid.UUID(delivery_id)
                 )
