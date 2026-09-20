@@ -8,8 +8,16 @@ replied / order changed / consent revoked since scheduling).
 Recurring jobs (reconcile sweeps) are self-rescheduling: on completion the
 handler path inserts the NEXT occurrence via a stable idempotency key, so a
 crash between completion and re-schedule re-runs the sweep idempotently.
-The table is RLS-exempt (system plumbing): the claim query runs before any
-tenant context exists.
+
+RLS: `scheduled_jobs` is **FORCE ROW LEVEL SECURITY** with a `tenant_isolation`
+policy on BOTH `USING` and `WITH CHECK`. This docstring used to claim the table
+was "RLS-exempt (system plumbing)" and that the claim query ran "before any
+tenant context exists" — the schema says otherwise, and that false assumption
+was the bug: an INSERT without `app.tenant_id` bound is rejected by WITH CHECK,
+and a SELECT without it matches ZERO rows. So this worker enumerates active
+tenants and runs ONE TRANSACTION PER TENANT with the GUC bound, the same
+cross-tenant pattern as `retention_worker`. Before that fix the table was empty
+in production and no recurring sweep had ever run.
 """
 
 from __future__ import annotations
@@ -133,21 +141,32 @@ async def ensure_recurring_jobs() -> None:
 
     Runs at scheduler start; ON CONFLICT DO NOTHING on the idempotency key
     makes it safe to call on every boot and from multiple replicas.
+
+    ONE TRANSACTION PER TENANT with the GUC bound first. `scheduled_jobs` is
+    FORCE RLS with `tenant_isolation` on both USING and WITH CHECK, so an INSERT
+    with no `app.tenant_id` is rejected outright. The previous version read the
+    tenant list and inserted every row inside one UNBOUND transaction, so every
+    insert was rejected — which is exactly why the table was empty in production
+    and no recurring sweep had ever run.
     """
     from sqlalchemy import select as sa_select
     from sqlalchemy.dialects.postgresql import insert as pg_insert
 
     from app.modules.identity.models import Tenant
 
+    # `tenants` itself carries no RLS, so the enumeration needs no context.
     async with SessionLocal() as session:
-        async with session.begin():
-            tenant_ids = (
-                (await session.execute(sa_select(Tenant.id).where(Tenant.is_active)))
-                .scalars()
-                .all()
-            )
-            now = datetime.now(UTC)
-            for tenant_id in tenant_ids:
+        tenant_ids = (
+            (await session.execute(sa_select(Tenant.id).where(Tenant.is_active)))
+            .scalars()
+            .all()
+        )
+
+    now = datetime.now(UTC)
+    for tenant_id in tenant_ids:
+        async with SessionLocal() as session:
+            async with session.begin():
+                await bind_tenant(session, tenant_id)
                 for job_type, (_interval, payload) in RECURRING_JOBS.items():
                     stmt = (
                         pg_insert(ScheduledJob)
@@ -199,67 +218,92 @@ class SchedulerWorker(StreamWorker):
                 await asyncio.sleep(self.poll_interval)
 
     async def _poll_once(self) -> int:
+        """Claim and run due jobs for every active tenant.
+
+        ONE TRANSACTION PER TENANT with the GUC bound, because `scheduled_jobs`
+        is FORCE RLS: the claim query used to run unbound and therefore matched
+        ZERO rows on every poll, forever — the scheduler was polling an empty
+        view while logging a healthy loop. `tenants` has no RLS, so the
+        enumeration itself needs no context. Same shape as retention_worker.
+        """
+        from app.modules.identity.models import Tenant
+
+        async with SessionLocal() as session:
+            tenant_ids = (
+                (await session.execute(select(Tenant.id).where(Tenant.is_active)))
+                .scalars()
+                .all()
+            )
 
         processed = 0
-        async with SessionLocal() as session:
-            async with session.begin():
-                now = datetime.now(UTC)
-                rows = (
+        for tenant_id in tenant_ids:
+            async with SessionLocal() as session:
+                async with session.begin():
+                    await bind_tenant(session, tenant_id)
+                    processed += await self._drain_tenant(session, tenant_id)
+        return processed
+
+    async def _drain_tenant(self, session, tenant_id) -> int:
+        """Claim and execute this tenant's due jobs inside the caller's tx."""
+        processed = 0
+        now = datetime.now(UTC)
+        rows = (
+            await session.execute(
+                select(ScheduledJob)
+                .where(
+                    ScheduledJob.tenant_id == tenant_id,
+                    ScheduledJob.status.in_(["queued", "retrying"]),
+                    ScheduledJob.run_at <= now,
+                    (ScheduledJob.next_attempt_at.is_(None))
+                    | (ScheduledJob.next_attempt_at <= now),
+                )
+                .with_for_update(skip_locked=True)
+                .limit(10)
+            )
+        ).scalars().all()
+        for job in rows:
+            if job.idempotency_key:
+                claimed = (
                     await session.execute(
-                        select(ScheduledJob)
-                        .where(
-                            ScheduledJob.status.in_(["queued", "retrying"]),
-                            ScheduledJob.run_at <= now,
-                            (ScheduledJob.next_attempt_at.is_(None))
-                            | (ScheduledJob.next_attempt_at <= now),
-                        )
-                        .with_for_update(skip_locked=True)
-                        .limit(10)
+                        text(
+                            "SELECT pg_try_advisory_xact_lock("
+                            "hashtext(:key))"
+                        ),
+                        {"key": job.idempotency_key},
                     )
-                ).scalars().all()
-                for job in rows:
-                    if job.idempotency_key:
-                        claimed = (
-                            await session.execute(
-                                text(
-                                    "SELECT pg_try_advisory_xact_lock("
-                                    "hashtext(:key))"
-                                ),
-                                {"key": job.idempotency_key},
-                            )
-                        ).scalar()
-                        if not claimed:
-                            continue
-                    handler = _HANDLERS.get(job.job_type)
-                    job.attempts += 1
-                    job.status = "processing"
-                    if handler is None:
-                        job.status = "failed"
-                        job.last_error = f"no handler for {job.job_type}"
-                        processed += 1
-                        continue
-                    try:
-                        tenant_raw = job.tenant_id  # tenant-scoped job
-                        if tenant_raw:
-                            await bind_tenant(session, tenant_raw)
-                        result = await handler(session, tenant_raw, job.payload or {})
-                        job.result = result or {}
-                        # Recurring sweeps re-arm this row; one-shot jobs finish.
-                        if not await self._reschedule_recurring(session, job, now):
-                            job.status = "completed"
-                    except Exception as exc:  # noqa: BLE001
-                        # Backoff with jitter — the previous code left
-                        # next_attempt_at NULL, burning all 5 attempts in ~25s.
-                        job.last_error = str(exc)[:500]
-                        if job.attempts >= job.max_attempts:
-                            job.status = "failed"
-                        else:
-                            job.status = "retrying"
-                            base = min(2.0 * (2 ** (job.attempts - 1)), 300.0)
-                            job.next_attempt_at = now + timedelta(
-                                seconds=random.uniform(0, base)
-                            )
-                    processed += 1
+                ).scalar()
+                if not claimed:
+                    continue
+            handler = _HANDLERS.get(job.job_type)
+            job.attempts += 1
+            job.status = "processing"
+            if handler is None:
+                job.status = "failed"
+                job.last_error = f"no handler for {job.job_type}"
+                processed += 1
+                continue
+            try:
+                # Already bound by _poll_once; re-binding is harmless and keeps
+                # _drain_tenant safe to call from anywhere.
+                await bind_tenant(session, job.tenant_id)
+                result = await handler(session, job.tenant_id, job.payload or {})
+                job.result = result or {}
+                # Recurring sweeps re-arm this row; one-shot jobs finish.
+                if not await self._reschedule_recurring(session, job, now):
+                    job.status = "completed"
+            except Exception as exc:  # noqa: BLE001
+                # Backoff with jitter — the previous code left
+                # next_attempt_at NULL, burning all 5 attempts in ~25s.
+                job.last_error = str(exc)[:500]
+                if job.attempts >= job.max_attempts:
+                    job.status = "failed"
+                else:
+                    job.status = "retrying"
+                    base = min(2.0 * (2 ** (job.attempts - 1)), 300.0)
+                    job.next_attempt_at = now + timedelta(
+                        seconds=random.uniform(0, base)
+                    )
+            processed += 1
         return processed
 
     async def _reschedule_recurring(
