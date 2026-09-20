@@ -3,13 +3,14 @@
 
 from __future__ import annotations
 
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from app.core.errors import NotFoundError
+from app.core.errors import NotFoundError, ValidationError
 from app.core.pagination import decode_cursor, page_slice
 from app.modules.billing.service import EntitlementService
 from app.modules.customers.service import CustomerService
@@ -20,11 +21,25 @@ from app.modules.platform.models import Integration
 router = APIRouter(tags=["customers"])
 platform_router = APIRouter(tags=["platform"])
 
+WriteCtx = Annotated[TenantContext, Depends(require_permission("customers:write"))]
+
+
+def _customer_summary(customer) -> dict:
+    return {
+        "id": str(customer.id),
+        "name": customer.name,
+        "phone": customer.phone,
+        "email": customer.email,
+        "lifetime_value": str(customer.lifetime_value),
+        "is_blocked": customer.is_blocked,
+    }
+
 
 @router.get("/customers")
 async def list_customers(
     ctx: TenantCtxDep,
     search: str | None = None,
+    tag: str | None = None,
     cursor: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
 ):
@@ -33,23 +48,14 @@ async def list_customers(
         ctx.session,
         ctx.tenant_id,
         search=search,
+        tag=tag,
         limit=limit + 1,
         before_created_at=before_created_at,
         before_id=before_id,
     )
     page, next_cursor = page_slice(rows, limit)
     return {
-        "items": [
-            {
-                "id": str(c.id),
-                "name": c.name,
-                "phone": c.phone,
-                "email": c.email,
-                "lifetime_value": str(c.lifetime_value),
-                "is_blocked": c.is_blocked,
-            }
-            for c in page
-        ],
+        "items": [_customer_summary(c) for c in page],
         "next_cursor": next_cursor,
     }
 
@@ -57,16 +63,167 @@ async def list_customers(
 @router.get("/customers/{customer_id}")
 async def get_customer(ctx: TenantCtxDep, customer_id: UUID):
     customer = await CustomerService.get(ctx.session, ctx.tenant_id, customer_id)
+    tags = await CustomerService.list_tags(ctx.session, ctx.tenant_id, customer_id)
+    identities = await CustomerService.list_identities(
+        ctx.session, ctx.tenant_id, customer_id
+    )
+    addresses = await CustomerService.list_addresses(ctx.session, ctx.tenant_id, customer_id)
+    notes = await CustomerService.list_notes(ctx.session, ctx.tenant_id, customer_id)
     return {
         "id": str(customer.id),
         "name": customer.name,
         "phone": customer.phone,
         "email": customer.email,
+        "locale": customer.locale,
         "lifetime_value": str(customer.lifetime_value),
         "is_blocked": customer.is_blocked,
+        "extra": customer.extra or {},
+        "deleted_at": customer.deleted_at.isoformat() if customer.deleted_at else None,
         "created_at": customer.created_at.isoformat() if customer.created_at else None,
         "updated_at": customer.updated_at.isoformat() if customer.updated_at else None,
+        "tags": [{"id": str(t.id), "name": t.name, "color": t.color} for t in tags],
+        "identities": [
+            {"id": str(i.id), "channel": i.channel, "external_id": i.external_id}
+            for i in identities
+        ],
+        "addresses": [
+            {
+                "id": str(a.id),
+                "label": a.label,
+                "line1": a.line1,
+                "line2": a.line2,
+                "city": a.city,
+                "region": a.region,
+                "postal_code": a.postal_code,
+                "country": a.country,
+                "is_default": a.is_default,
+            }
+            for a in addresses
+        ],
+        "notes": [
+            {
+                "id": str(n.id),
+                "body": n.body,
+                "author_user_id": str(n.author_user_id) if n.author_user_id else None,
+                "created_at": n.created_at.isoformat() if n.created_at else None,
+            }
+            for n in notes
+        ],
     }
+
+
+class CustomerUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    phone: str | None = Field(default=None, max_length=31)
+    email: str | None = Field(default=None, max_length=320)
+    locale: str | None = Field(default=None, max_length=15)
+    extra: dict | None = None
+
+
+@router.patch("/customers/{customer_id}")
+async def update_customer(
+    customer_id: UUID,
+    body: CustomerUpdate,
+    ctx: WriteCtx,
+):
+    fields = body.model_dump(exclude_unset=True)
+    customer = await CustomerService.update_customer(
+        ctx.session, ctx.tenant_id, customer_id, **fields
+    )
+    return _customer_summary(customer)
+
+
+@router.post("/customers/{customer_id}/block")
+async def block_customer(customer_id: UUID, ctx: WriteCtx):
+    customer = await CustomerService.set_blocked(
+        ctx.session, ctx.tenant_id, customer_id, blocked=True
+    )
+    return {"id": str(customer.id), "is_blocked": customer.is_blocked}
+
+
+@router.post("/customers/{customer_id}/unblock")
+async def unblock_customer(customer_id: UUID, ctx: WriteCtx):
+    customer = await CustomerService.set_blocked(
+        ctx.session, ctx.tenant_id, customer_id, blocked=False
+    )
+    return {"id": str(customer.id), "is_blocked": customer.is_blocked}
+
+
+class ArchiveBody(BaseModel):
+    reason: str | None = Field(default=None, max_length=255)
+
+
+@router.post("/customers/{customer_id}/archive")
+async def archive_customer(
+    customer_id: UUID,
+    ctx: WriteCtx,
+    body: ArchiveBody | None = None,
+):
+    customer = await CustomerService.archive(
+        ctx.session,
+        ctx.tenant_id,
+        customer_id,
+        deleted_by=ctx.user.id,
+        reason=body.reason if body else None,
+    )
+    return {"id": str(customer.id), "deleted_at": customer.deleted_at.isoformat()}
+
+
+class TagBody(BaseModel):
+    name: str = Field(min_length=1, max_length=63)
+
+
+@router.get("/customers/{customer_id}/tags")
+async def list_customer_tags(ctx: TenantCtxDep, customer_id: UUID):
+    tags = await CustomerService.list_tags(ctx.session, ctx.tenant_id, customer_id)
+    return [{"id": str(t.id), "name": t.name, "color": t.color} for t in tags]
+
+
+@router.post("/customers/{customer_id}/tags", status_code=201)
+async def add_customer_tag(
+    customer_id: UUID, body: TagBody, ctx: WriteCtx
+):
+    name = body.name.strip()
+    if not name:
+        raise ValidationError("tag name must not be empty")
+    tag = await CustomerService.add_tag(ctx.session, ctx.tenant_id, customer_id, name)
+    return {"id": str(tag.id), "name": tag.name, "color": tag.color}
+
+
+@router.delete("/customers/{customer_id}/tags/{tag_name}", status_code=204)
+async def remove_customer_tag(
+    customer_id: UUID, tag_name: str, ctx: WriteCtx
+):
+    await CustomerService.remove_tag(ctx.session, ctx.tenant_id, customer_id, tag_name)
+    return Response(status_code=204)
+
+
+class NoteBody(BaseModel):
+    body: str = Field(min_length=1)
+
+
+@router.get("/customers/{customer_id}/notes")
+async def list_customer_notes(ctx: TenantCtxDep, customer_id: UUID):
+    notes = await CustomerService.list_notes(ctx.session, ctx.tenant_id, customer_id)
+    return [
+        {
+            "id": str(n.id),
+            "body": n.body,
+            "author_user_id": str(n.author_user_id) if n.author_user_id else None,
+            "created_at": n.created_at.isoformat() if n.created_at else None,
+        }
+        for n in notes
+    ]
+
+
+@router.post("/customers/{customer_id}/notes", status_code=201)
+async def add_customer_note(
+    customer_id: UUID, body: NoteBody, ctx: WriteCtx
+):
+    note = await CustomerService.add_note(
+        ctx.session, ctx.tenant_id, customer_id, ctx.user.id, body.body
+    )
+    return {"id": str(note.id), "body": note.body}
 
 
 class IntegrationBody(BaseModel):

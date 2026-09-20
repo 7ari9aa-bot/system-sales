@@ -15,6 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.customers.models import (
+    Address,
     Customer,
     CustomerEvent,
     CustomerIdentity,
@@ -22,7 +23,7 @@ from app.modules.customers.models import (
     Tag,
     customer_tags,
 )
-from app.modules.errors import ConflictError, NotFoundError
+from app.modules.errors import ConflictError, NotFoundError, ValidationError
 
 _RESOLVE_ATTEMPTS = 2
 
@@ -57,6 +58,7 @@ class CustomerService:
         tenant_id: UUID,
         *,
         search: str | None = None,
+        tag: str | None = None,
         limit: int = 50,
         offset: int = 0,
         before_created_at: datetime | None = None,
@@ -64,10 +66,15 @@ class CustomerService:
     ) -> list[Customer]:
         """Tenant-scoped listing with optional name/phone/email search.
 
-        Pass before_created_at + before_id for stable keyset pages; the keyset
-        path orders by (created_at, id) so cursors stay consistent.
+        Tombstoned (soft-deleted) customers are always excluded. ``tag``
+        narrows to customers carrying that tag. Pass before_created_at +
+        before_id for stable keyset pages; the keyset path orders by
+        (created_at, id) so cursors stay consistent.
         """
-        stmt = select(Customer).where(Customer.tenant_id == tenant_id)
+        stmt = select(Customer).where(
+            Customer.tenant_id == tenant_id,
+            Customer.deleted_at.is_(None),
+        )
         if search:
             pattern = f"%{search.strip()}%"
             stmt = stmt.where(
@@ -76,6 +83,17 @@ class CustomerService:
                     Customer.phone.ilike(pattern),
                     Customer.email.ilike(pattern),
                 )
+            )
+        if tag:
+            stmt = stmt.where(
+                select(customer_tags.c.customer_id)
+                .join(Tag, Tag.id == customer_tags.c.tag_id)
+                .where(
+                    customer_tags.c.customer_id == Customer.id,
+                    Tag.tenant_id == tenant_id,
+                    Tag.name == tag,
+                )
+                .exists()
             )
         if before_created_at is not None and before_id is not None:
             stmt = stmt.where(
@@ -87,6 +105,75 @@ class CustomerService:
             stmt = stmt.order_by(Customer.created_at.desc(), Customer.name.asc())
         stmt = stmt.limit(limit).offset(offset)
         return list((await session.execute(stmt)).scalars().all())
+
+    # ------------------------------------------------------------- crud ----
+
+    @staticmethod
+    async def update_customer(
+        session: AsyncSession, tenant_id: UUID, customer_id: UUID, **fields: object
+    ) -> Customer:
+        """Partial update; unknown fields and a taken phone are rejected."""
+        allowed = {"name", "phone", "email", "locale", "extra"}
+        unknown = set(fields) - allowed
+        if unknown:
+            raise ValidationError(f"unknown customer fields: {sorted(unknown)}")
+        if "name" in fields and fields["name"] is None:
+            raise ValidationError("name must not be null")
+
+        customer = await CustomerService.get(session, tenant_id, customer_id)
+        if customer.deleted_at is not None:
+            raise ConflictError("customer is archived")
+
+        new_phone = fields.get("phone")
+        if new_phone is not None and new_phone != customer.phone:
+            duplicate = (
+                await session.execute(
+                    select(Customer.id).where(
+                        Customer.tenant_id == tenant_id,
+                        Customer.phone == new_phone,
+                        Customer.id != customer_id,
+                        Customer.deleted_at.is_(None),
+                    )
+                )
+            ).scalar_one_or_none()
+            if duplicate is not None:
+                raise ConflictError(f"customer phone '{new_phone}' already exists")
+
+        for key, value in fields.items():
+            setattr(customer, key, value)
+        await session.flush()
+        return customer
+
+    @staticmethod
+    async def set_blocked(
+        session: AsyncSession, tenant_id: UUID, customer_id: UUID, *, blocked: bool
+    ) -> Customer:
+        """Toggle the ``is_blocked`` flag (blocked customers cannot transact)."""
+        customer = await CustomerService.get(session, tenant_id, customer_id)
+        if customer.deleted_at is not None:
+            raise ConflictError("customer is archived")
+        customer.is_blocked = blocked
+        await session.flush()
+        return customer
+
+    @staticmethod
+    async def archive(
+        session: AsyncSession,
+        tenant_id: UUID,
+        customer_id: UUID,
+        *,
+        deleted_by: UUID | None = None,
+        reason: str | None = None,
+    ) -> Customer:
+        """Soft-delete via the §143 tombstone columns (never a hard delete)."""
+        customer = await CustomerService.get(session, tenant_id, customer_id)
+        if customer.deleted_at is not None:
+            raise ConflictError("customer already archived")
+        customer.deleted_at = _now()
+        customer.deleted_by = deleted_by
+        customer.deletion_reason = reason
+        await session.flush()
+        return customer
 
     # ---------------------------------------------------------- identity ----
 
@@ -207,6 +294,25 @@ class CustomerService:
     # -------------------------------------------------------- tags/notes ----
 
     @staticmethod
+    async def list_tags(
+        session: AsyncSession, tenant_id: UUID, customer_id: UUID
+    ) -> list[Tag]:
+        """Tags currently linked to a customer (empty when none)."""
+        await CustomerService.get(session, tenant_id, customer_id)
+        rows = (
+            await session.execute(
+                select(Tag)
+                .join(customer_tags, customer_tags.c.tag_id == Tag.id)
+                .where(
+                    customer_tags.c.customer_id == customer_id,
+                    Tag.tenant_id == tenant_id,
+                )
+                .order_by(Tag.name.asc())
+            )
+        ).scalars().all()
+        return list(rows)
+
+    @staticmethod
     async def add_tag(
         session: AsyncSession, tenant_id: UUID, customer_id: UUID, tag_name: str
     ) -> Tag:
@@ -283,6 +389,60 @@ class CustomerService:
         session.add(note)
         await session.flush()
         return note
+
+    @staticmethod
+    async def list_notes(
+        session: AsyncSession, tenant_id: UUID, customer_id: UUID
+    ) -> list[Note]:
+        """Notes for a customer, newest first."""
+        await CustomerService.get(session, tenant_id, customer_id)
+        rows = (
+            await session.execute(
+                select(Note)
+                .where(
+                    Note.tenant_id == tenant_id,
+                    Note.customer_id == customer_id,
+                )
+                .order_by(Note.created_at.desc())
+            )
+        ).scalars().all()
+        return list(rows)
+
+    @staticmethod
+    async def list_identities(
+        session: AsyncSession, tenant_id: UUID, customer_id: UUID
+    ) -> list[CustomerIdentity]:
+        """Channel handles mapped to a customer."""
+        await CustomerService.get(session, tenant_id, customer_id)
+        rows = (
+            await session.execute(
+                select(CustomerIdentity)
+                .where(
+                    CustomerIdentity.tenant_id == tenant_id,
+                    CustomerIdentity.customer_id == customer_id,
+                )
+                .order_by(CustomerIdentity.created_at.asc())
+            )
+        ).scalars().all()
+        return list(rows)
+
+    @staticmethod
+    async def list_addresses(
+        session: AsyncSession, tenant_id: UUID, customer_id: UUID
+    ) -> list[Address]:
+        """Delivery addresses on file for a customer."""
+        await CustomerService.get(session, tenant_id, customer_id)
+        rows = (
+            await session.execute(
+                select(Address)
+                .where(
+                    Address.tenant_id == tenant_id,
+                    Address.customer_id == customer_id,
+                )
+                .order_by(Address.created_at.asc())
+            )
+        ).scalars().all()
+        return list(rows)
 
     @staticmethod
     async def record_event(

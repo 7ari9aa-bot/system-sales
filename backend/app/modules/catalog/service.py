@@ -20,7 +20,7 @@ from app.modules.catalog.models import (
     ProductPrice,
     ProductVariant,
 )
-from app.modules.errors import ConflictError, NotFoundError
+from app.modules.errors import ConflictError, NotFoundError, ValidationError
 
 _PRODUCT_STATUSES = {"draft", "active", "archived"}
 
@@ -119,6 +119,9 @@ class CatalogService:
         unknown = set(fields) - allowed
         if unknown:
             raise ValueError(f"unknown product fields: {sorted(unknown)}")
+        for required in ("title", "slug"):
+            if required in fields and fields[required] is None:
+                raise ValueError(f"{required} must not be null")
         if "status" in fields and fields["status"] not in _PRODUCT_STATUSES:
             raise ValueError(
                 f"status must be one of {sorted(_PRODUCT_STATUSES)}, "
@@ -219,6 +222,57 @@ class CatalogService:
             raise ConflictError(f"variant SKU '{sku}' already exists") from None
         return variant
 
+    @staticmethod
+    async def update_variant(
+        session: AsyncSession, tenant_id: UUID, variant_id: UUID, **fields: object
+    ) -> ProductVariant:
+        """Partial update of a variant; unknown fields / bad prices rejected."""
+        allowed = {"sku", "title", "option_values", "price", "compare_at_price", "is_active"}
+        unknown = set(fields) - allowed
+        if unknown:
+            raise ValidationError(f"unknown variant fields: {sorted(unknown)}")
+        if fields.get("option_values") is None and "option_values" in fields:
+            raise ValidationError("option_values must not be null")
+        if fields.get("is_active") is None and "is_active" in fields:
+            raise ValidationError("is_active must not be null")
+
+        variant = await CatalogService.get_variant(
+            session, tenant_id, variant_id, include_inactive=True
+        )
+        if "price" in fields:
+            if fields["price"] is None:
+                raise ValidationError("price must be a positive number")
+            try:
+                fields["price"] = _positive_decimal(fields["price"], "price")
+            except ValueError as exc:
+                raise ValidationError(str(exc)) from exc
+        if fields.get("compare_at_price") is not None:
+            try:
+                fields["compare_at_price"] = _positive_decimal(
+                    fields["compare_at_price"], "compare_at_price"
+                )
+            except ValueError as exc:
+                raise ValidationError(str(exc)) from exc
+
+        new_sku = fields.get("sku")
+        if new_sku is not None and new_sku != variant.sku:
+            duplicate = (
+                await session.execute(
+                    select(ProductVariant.id).where(
+                        ProductVariant.tenant_id == tenant_id,
+                        ProductVariant.sku == new_sku,
+                        ProductVariant.id != variant_id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if duplicate is not None:
+                raise ConflictError(f"variant SKU '{new_sku}' already exists")
+
+        for key, value in fields.items():
+            setattr(variant, key, value)
+        await session.flush()
+        return variant
+
     # ------------------------------------------------------------ prices ----
 
     @staticmethod
@@ -303,6 +357,36 @@ class CatalogService:
         session.add(category)
         await session.flush()
         return category
+
+    @staticmethod
+    async def list_brands(
+        session: AsyncSession, tenant_id: UUID, *, limit: int = 200, offset: int = 0
+    ) -> list[Brand]:
+        rows = (
+            await session.execute(
+                select(Brand)
+                .where(Brand.tenant_id == tenant_id)
+                .order_by(Brand.name.asc())
+                .limit(limit)
+                .offset(offset)
+            )
+        ).scalars().all()
+        return list(rows)
+
+    @staticmethod
+    async def list_categories(
+        session: AsyncSession, tenant_id: UUID, *, limit: int = 200, offset: int = 0
+    ) -> list[Category]:
+        rows = (
+            await session.execute(
+                select(Category)
+                .where(Category.tenant_id == tenant_id)
+                .order_by(Category.name.asc())
+                .limit(limit)
+                .offset(offset)
+            )
+        ).scalars().all()
+        return list(rows)
 
     @staticmethod
     async def list_products(

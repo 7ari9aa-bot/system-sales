@@ -36,3 +36,10 @@ next-env.d.ts
 
 # --- assistant workspace (local agent memory / notes, not project source) ---
 .workbuddy-ai/
+
+# --- parallel agent workspace (an INDEPENDENT git repo) ---
+# Without this, `git add -A` in the main repo stages the nested repo as a
+# gitlink (mode 160000) instead of ignoring it — a confusing half-commit that
+# records a SHA pointing at nothing. The feature is merged later by copying it
+# into backend/app/modules/website/, not by committing the folder.
+website-builder/
