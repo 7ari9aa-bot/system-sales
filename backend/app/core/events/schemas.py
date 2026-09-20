@@ -13,6 +13,7 @@ import json
 import uuid
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -155,14 +156,81 @@ def build_envelope(
     )
 
 
+# ---------------------------------------------------------------------------
+# Type-preserving value codec
+# ---------------------------------------------------------------------------
+# The envelope crosses a JSON boundary twice — the JSONB ``outbox_events``
+# column and the Redis Streams field — and ``json`` cannot represent a
+# ``Decimal`` / ``datetime`` / ``UUID``: it degrades each to a string, so
+# ``deserialize(serialize(x)) != x``. That mattered because money is a
+# ``Decimal``: ``orders/service.py`` publishes ``grand_total`` as one on
+# ``order.created``, so a consumer saw ``"76.50"`` where the producer built
+# ``Decimal("76.50")``.
+#
+# A value the JSON codec cannot carry is therefore wrapped in a self-describing
+# tag ``{"__event_value__": "<type>", "value": "<text>"}``. The wire stays pure
+# JSON (JSONB and Redis are happy) and the type travels WITH the value, so
+# ``deserialize()`` restores it exactly. Envelope ROUTING keys in ``meta`` are
+# deliberately left untagged: the SSE gateway and the relay read them as plain
+# strings and they are JSON-native by construction. Rows written before this
+# change hold the untagged string form and still deserialize (as strings) — the
+# encoding is additive, so no migration is required.
+_VALUE_TAG = "__event_value__"
+
+_DECODERS: dict[str, Callable[[Any], Any]] = {
+    "decimal": Decimal,
+    "datetime": datetime.fromisoformat,
+    "uuid": UUID,
+}
+
+
+def _encode_value(value: Any) -> Any:
+    """Recursively tag values the JSON codec would otherwise stringify."""
+    if isinstance(value, Decimal):
+        return {_VALUE_TAG: "decimal", "value": str(value)}
+    if isinstance(value, datetime):
+        return {_VALUE_TAG: "datetime", "value": value.isoformat()}
+    if isinstance(value, UUID):
+        return {_VALUE_TAG: "uuid", "value": str(value)}
+    if isinstance(value, dict):
+        return {key: _encode_value(item) for key, item in value.items()}
+    if isinstance(value, list | tuple):
+        return [_encode_value(item) for item in value]
+    return value
+
+
+def _decode_value(value: Any) -> Any:
+    """Inverse of :func:`_encode_value` — restore tagged values to Python types."""
+    if isinstance(value, dict):
+        tag = value.get(_VALUE_TAG)
+        decoder = _DECODERS.get(tag) if isinstance(tag, str) else None
+        if decoder is not None and set(value) <= {_VALUE_TAG, "value"}:
+            return decoder(value["value"])
+        return {key: _decode_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_decode_value(item) for item in value]
+    return value
+
+
 def serialize(envelope: EventEnvelope) -> dict[str, str]:
     """Map an envelope onto bus fields: ``payload`` + ``meta`` as JSON strings.
 
     ``meta`` carries routing (type / tenant / version / aggregate identity)
-    merged over the envelope's user meta; routing keys always win.
+    merged over the envelope's user meta; routing keys always win. Payload and
+    user-meta values are tagged by :func:`_encode_value`, so the pair is
+    type-preserving (see the codec note above).
+
+    ``mode="python"`` keeps the payload's Python types (a narrowed subclass
+    dumps to a plain dict but a ``Decimal`` stays a ``Decimal``); routing keys
+    come from ``mode="json"`` so they remain plain JSON scalars.
     """
     data = envelope.model_dump(mode="json")
-    meta: dict[str, Any] = {k: v for k, v in data["meta"].items() if k not in ROUTING_KEYS}
+    python_data = envelope.model_dump(mode="python")
+    meta: dict[str, Any] = {
+        key: _encode_value(value)
+        for key, value in python_data["meta"].items()
+        if key not in ROUTING_KEYS
+    }
     meta.update(
         {
             "id": data["id"],
@@ -180,7 +248,7 @@ def serialize(envelope: EventEnvelope) -> dict[str, str]:
         }
     )
     return {
-        "payload": json.dumps(data["payload"], default=str),
+        "payload": json.dumps(_encode_value(python_data["payload"]), default=str),
         "meta": json.dumps(meta, default=str),
     }
 
@@ -190,9 +258,11 @@ def deserialize(fields: Mapping[str, Any]) -> EventEnvelope:
 
     Accepts ``payload`` / ``meta`` either as JSON strings (as stored by the
     bus) or as already-parsed dicts (as yielded by RedisStreamsBus.consume).
+    Tagged values (see :func:`_encode_value`) are restored to their Python
+    types, so ``deserialize(serialize(x))`` is type-preserving.
     """
-    payload = _ensure_dict(fields.get("payload", "{}"))
-    meta = _ensure_dict(fields.get("meta", "{}"))
+    payload = _decode_value(_ensure_dict(fields.get("payload", "{}")))
+    meta = _decode_value(_ensure_dict(fields.get("meta", "{}")))
     event_type = meta.get("type")
     cls = EVENT_TYPES.get(event_type) if isinstance(event_type, str) else None
     if cls is None:
@@ -215,6 +285,21 @@ def deserialize(fields: Mapping[str, Any]) -> EventEnvelope:
         aggregate_version=meta.get("aggregate_version"),
         payload=payload,
         meta={k: v for k, v in meta.items() if k not in ROUTING_KEYS},
+    )
+
+
+def deserialize_event(event: Any) -> EventEnvelope:
+    """Rebuild the §19 envelope a bus event carries.
+
+    Consumers (the workers, the SSE gateway, the relay) receive an ``Event``
+    whose ``payload`` / ``meta`` are already parsed; this is the read half of
+    the writer's contract, so they never hand-derive envelope field names.
+    """
+    return deserialize(
+        {
+            "payload": getattr(event, "payload", None) or {},
+            "meta": getattr(event, "meta", None) or {},
+        }
     )
 
 

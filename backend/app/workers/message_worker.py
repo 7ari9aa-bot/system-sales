@@ -42,7 +42,9 @@ from sqlalchemy import update as sa_update
 from sqlalchemy.exc import IntegrityError
 
 from app.core.db import SessionLocal, bind_tenant
+from app.core.errors import ValidationError
 from app.core.events.bus import Event
+from app.core.events.schemas import EventEnvelope, deserialize_event
 from app.core.lease import ConversationBusy, conversation_lease
 from app.modules.conversations.gateway.base import (
     ChannelAdapter,
@@ -83,30 +85,34 @@ class MessageWorker(StreamWorker):
     name = "message-worker"
 
     async def handle(self, event: Event) -> None:
-        event_type = event.payload.get("event_type")
-        tenant_raw = event.meta.get("tenant_id")
-        if not tenant_raw:
-            logger.warning("message.event_without_tenant id=%s", event.id)
+        # Read the event through the §19 envelope's read half (finding 2): the
+        # type and tenant claim come from the envelope, never hand-parsed from
+        # payload/meta. A non-envelope entry fails CLOSED — dropped rather than
+        # processed without a tenant.
+        try:
+            envelope = deserialize_event(event)
+        except (ValidationError, KeyError, TypeError, ValueError):
+            logger.warning("message.event_without_envelope id=%s", event.id)
             return
-        tenant_id = uuid.UUID(tenant_raw)
 
-        if event_type == "message.received":
-            await self._on_received(event, tenant_id)
-        elif event_type == "message.outbound":
-            await self._deliver(event, tenant_id)
+        if envelope.type == "message.received":
+            await self._on_received(envelope)
+        elif envelope.type == "message.outbound":
+            await self._deliver(envelope)
         else:
-            logger.debug("message.event_ignored type=%s", event_type)
+            logger.debug("message.event_ignored type=%s", envelope.type)
 
-    def _dedupe_id(self, event: Event) -> str:
+    def _dedupe_id(self, envelope: EventEnvelope) -> str:
         """Stable consumer-inbox key: the outbox row id survives crash-reclaim
         re-publishes; the per-XADD bus uuid would make replays look new."""
-        return str(event.meta.get("outbox_id") or event.id)
+        return str(envelope.meta.get("outbox_id") or envelope.id)
 
-    async def _on_received(self, event: Event, tenant_id: uuid.UUID) -> None:
-        conversation_id = event.payload.get("conversation_id")
+    async def _on_received(self, envelope: EventEnvelope) -> None:
+        conversation_id = envelope.payload.get("conversation_id")
         logger.info("message.received conversation=%s", conversation_id)
         if not conversation_id:
             return
+        tenant_id = envelope.tenant_id
         try:
             from app.modules.ai.hooks import maybe_auto_reply
 
@@ -118,14 +124,14 @@ class MessageWorker(StreamWorker):
                             session.add(
                                 ProcessedEvent(
                                     consumer_name=self.name,
-                                    event_id=uuid.UUID(self._dedupe_id(event)),
+                                    event_id=uuid.UUID(self._dedupe_id(envelope)),
                                     status="done",
                                 )
                             )
                             await session.flush()
                     except IntegrityError:
                         logger.info(
-                            "received.event_already_processed id=%s", event.id
+                            "received.event_already_processed id=%s", envelope.id
                         )
                         return
                     # §126: one state-mutating processor per conversation.
@@ -146,12 +152,13 @@ class MessageWorker(StreamWorker):
 
     # ------------------------------------------------------- outbound ----
 
-    async def _deliver(self, event: Event, tenant_id: uuid.UUID) -> None:
-        message_id_raw = event.payload.get("message_id")
+    async def _deliver(self, envelope: EventEnvelope) -> None:
+        message_id_raw = envelope.payload.get("message_id")
         if not message_id_raw:
-            logger.warning("outbound.event_missing_message_id id=%s", event.id)
+            logger.warning("outbound.event_missing_message_id id=%s", envelope.id)
             return
         message_id = uuid.UUID(str(message_id_raw))
+        tenant_id = envelope.tenant_id
 
         # Phase 1 — claim (§129): QUEUED -> SENDING committed before the
         # provider call, so a crash mid-request leaves an observable
@@ -195,14 +202,14 @@ class MessageWorker(StreamWorker):
                         session.add(
                             ProcessedEvent(
                                 consumer_name=self.name,
-                                event_id=uuid.UUID(self._dedupe_id(event)),
+                                event_id=uuid.UUID(self._dedupe_id(envelope)),
                                 status="done",
                             )
                         )
                         await session.flush()
                 except IntegrityError:
                     logger.info(
-                        "outbound.event_already_processed id=%s", event.id
+                        "outbound.event_already_processed id=%s", envelope.id
                     )
                     return
                 await self._apply_outcome(

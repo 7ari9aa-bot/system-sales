@@ -61,8 +61,15 @@ def test_envelope_v2_fields_accept_explicit_values() -> None:
 # --- outbox writer v2 kwargs -------------------------------------------------
 
 
+def _assign_id(instance: Any) -> None:
+    """Emulate the DB PK default so ``meta['outbox_id'] == str(row.id)`` is real."""
+    if getattr(instance, "id", None) is None:
+        instance.id = uuid.uuid4()
+
+
 def _magic_session() -> MagicMock:
     session = MagicMock()
+    session.add = MagicMock(side_effect=_assign_id)
     session.flush = AsyncMock()
     return session
 
@@ -286,36 +293,63 @@ class _FakeSessionCM:
 def _fake_session_factory() -> tuple[Any, MagicMock]:
     session = MagicMock()
     session.begin = lambda: _FakeSessionCM(session)
+    session.add = MagicMock(side_effect=_assign_id)
+    session.flush = AsyncMock()
     session.execute = AsyncMock()
     return (lambda: _FakeSessionCM(session)), session
+
+
+async def _envelope_event(event_id: str, **kwargs: Any) -> Event:
+    """A bus Event carrying a REAL §19 envelope, exactly as the relay publishes.
+
+    Built through the canonical writer, so the retry path is exercised against
+    the routing keys + payload + ``outbox_id`` a published row really carries.
+    """
+    row = await add_outbox_event(
+        _magic_session(),
+        aggregate_type=kwargs.pop("aggregate_type", "order"),
+        aggregate_id=kwargs.pop("aggregate_id", uuid.uuid4()),
+        event_type=kwargs.pop("event_type", "order.created"),
+        tenant_id=kwargs.pop("tenant_id", uuid.uuid4()),
+        payload=kwargs.pop("payload", {"order_id": "o-1"}),
+        **kwargs,
+    )
+    return Event(id=event_id, stream=row.stream, payload=row.payload, meta=row.meta)
 
 
 async def test_generic_failure_stages_durable_retry(monkeypatch) -> None:
     """Retryable failures stage an outbox row with not_before (durable retry).
 
-    The previous fire-and-forget asyncio task lost the retry on shutdown
-    while the original entry was already acked — the event vanished.
+    The previous fire-and-forget asyncio task lost the retry on shutdown while
+    the original entry was already acked — the event vanished. The row is now
+    staged through the canonical writer (``add_outbox_event``), so the retry
+    carries a real §19 envelope instead of a hand-copied meta blob (finding 3).
     """
     monkeypatch.setattr("app.workers.base.random.uniform", lambda low, high: 0)
     factory, session = _fake_session_factory()
     monkeypatch.setattr("app.workers.base.SessionLocal", factory)
     bus = FakeBus()
     worker = StubWorker(bus, RuntimeError("transient outage"))
+    original = await _envelope_event("evt-retry")
 
-    await worker._process(_bus_event("evt-retry"))
+    await worker._process(original)
 
     assert worker.calls == 1
     assert bus.dlq == []
     assert bus.acked == [("test.stream", "evt-retry")]
-    assert session.execute.await_count == 1
-    stmt = session.execute.await_args[0][0]
-    compiled = stmt.compile()
-    params = compiled.params
-    assert params["stream"] == "test.stream"
-    assert params["status"] == "pending"
-    assert params["payload"] == {"k": "v"}
-    assert params["meta"]["attempts"] == 1
-    assert params["not_before"] is not None
+    assert session.add.call_count == 1
+    retry = session.add.call_args[0][0]
+    assert retry.stream == "order.events"
+    assert retry.status == "pending"
+    assert retry.payload["event_type"] == "order.created"
+    assert retry.not_before is not None
+    # a real envelope, not a hand-copied meta blob
+    assert retry.meta["type"] == "order.created"
+    assert retry.meta["tenant_id"] == original.meta["tenant_id"]
+    assert "occurred_at" in retry.meta
+    assert retry.meta["attempts"] == 1
+    # the consumer-inbox dedupe key survives the retry (else it double-sends)
+    assert retry.meta["outbox_id"] == original.meta["outbox_id"]
 
 
 async def test_retryable_error_marker_stages_durable_retry(monkeypatch) -> None:
@@ -325,12 +359,13 @@ async def test_retryable_error_marker_stages_durable_retry(monkeypatch) -> None:
     bus = FakeBus()
     worker = StubWorker(bus, RetryableError("provider 503"))
 
-    await worker._process(_bus_event("evt-retryable"))
+    await worker._process(await _envelope_event("evt-retryable"))
 
     assert bus.dlq == []
-    stmt = session.execute.await_args[0][0]
-    params = stmt.compile().params
-    assert params["meta"]["attempts"] == 1
+    assert session.add.call_count == 1
+    retry = session.add.call_args[0][0]
+    assert retry.meta["attempts"] == 1
+    assert retry.not_before is not None
 
 
 # --- scheduler recurring sweeps ----------------------------------------------

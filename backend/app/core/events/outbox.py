@@ -30,7 +30,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.db import SessionLocal, bind_tenant
+from app.core.errors import ValidationError
 from app.core.events.bus import EventBus
+from app.core.events.schemas import EventEnvelope, deserialize
 
 logger = logging.getLogger(__name__)
 
@@ -174,51 +176,76 @@ class OutboxRelay:
                 published += 1
         return published
 
+    def _envelope_for_log(
+        self, row: Any, payload: dict, meta: dict
+    ) -> EventEnvelope | None:
+        """Rebuild the row's §19 envelope, completing a legacy row from columns.
+
+        The writer stamps every routing key, so a normal row deserializes
+        directly. A legacy / hand-injected row (which the writer cannot produce)
+        is completed from the outbox row's own columns and re-read through the
+        SAME mapping, so there is exactly one field mapping and a malformed row
+        never silently loses its replay history. A tenant is still REQUIRED —
+        event_log is RLS-guarded.
+        """
+        try:
+            return deserialize({"payload": payload, "meta": meta})
+        except (ValidationError, KeyError, TypeError, ValueError):
+            pass
+        if not meta.get("tenant_id"):
+            return None
+        created_at = row.get("created_at")
+        completed = {
+            **meta,
+            "type": meta.get("type")
+            or payload.get("event_type")
+            or f"{row['aggregate_type']}.changed",
+            "aggregate_type": meta.get("aggregate_type") or row["aggregate_type"],
+            "aggregate_id": meta.get("aggregate_id") or str(row["aggregate_id"]),
+            "occurred_at": meta.get("occurred_at")
+            or (created_at.isoformat() if created_at else None),
+        }
+        try:
+            return deserialize({"payload": payload, "meta": completed})
+        except (ValidationError, KeyError, TypeError, ValueError):
+            return None
+
     async def _write_event_log(
         self, session: AsyncSession, row: Any, payload: dict, meta: dict
     ) -> None:
         """§152: append the published event to event_log (durable replay).
 
-        v2 envelope lineage (tenant_id / correlation_id / causation_id /
-        producer / schema_version / aggregate_version) rides inside the
-        outbox row's meta — mapped defensively with .get(). event_log is
-        RLS-guarded, so the tenant GUC is bound for each row before insert.
+        The outbox row's payload/meta ARE the §19 envelope, so the read half
+        rebuilds them through ``deserialize()`` instead of re-deriving the field
+        names by hand: the contract is exercised here, and ``occurred_at`` is the
+        event's OWN instant (``meta["occurred_at"]``) rather than the outbox
+        row's DB ``created_at``. event_log is RLS-guarded, so the tenant GUC is
+        bound from the envelope's tenant before the insert.
         """
-        tenant_raw = meta.get("tenant_id")
-        if not tenant_raw:
+        envelope = self._envelope_for_log(row, payload, meta)
+        if envelope is None:
             logger.warning(
-                "outbox.relay.event_log_skipped_no_tenant id=%s", row["id"]
+                "outbox.relay.event_log_skipped_invalid_envelope id=%s", row["id"]
             )
             return
-        try:
-            schema_version = int(meta.get("schema_version") or 1)
-        except (TypeError, ValueError):
-            schema_version = 1
-        aggregate_version = meta.get("aggregate_version")
-        if aggregate_version is not None:
-            try:
-                aggregate_version = int(aggregate_version)
-            except (TypeError, ValueError):
-                aggregate_version = None
 
-        await bind_tenant(session, str(tenant_raw))
+        await bind_tenant(session, str(envelope.tenant_id))
         await session.execute(
             _EVENT_LOG_SQL,
             {
                 "id": uuid.uuid4(),
                 "event_id": row["id"],
-                "event_type": payload.get("event_type")
-                or f"{row['aggregate_type']}.changed",
-                "aggregate_type": row["aggregate_type"],
-                "aggregate_id": row["aggregate_id"],
-                "aggregate_version": aggregate_version,
-                "schema_version": schema_version,
-                "occurred_at": row["created_at"],
-                "producer": meta.get("producer") or "core",
-                "correlation_id": meta.get("correlation_id"),
-                "causation_id": meta.get("causation_id"),
+                "event_type": envelope.type,
+                "aggregate_type": envelope.aggregate_type,
+                "aggregate_id": envelope.aggregate_id,
+                "aggregate_version": envelope.aggregate_version,
+                "schema_version": envelope.schema_version,
+                "occurred_at": envelope.occurred_at,
+                "producer": envelope.producer,
+                "correlation_id": envelope.correlation_id,
+                "causation_id": envelope.causation_id,
                 "payload": json.dumps(payload, default=str),
-                "tenant_id": str(tenant_raw),
+                "tenant_id": str(envelope.tenant_id),
             },
         )
 

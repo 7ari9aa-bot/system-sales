@@ -15,7 +15,9 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 
 from app.core.db import SessionLocal, bind_tenant
+from app.core.errors import ValidationError
 from app.core.events.bus import Event
+from app.core.events.schemas import deserialize_event
 from app.modules.platform.models import Notification
 from app.modules.platform.service import NotificationDispatcher, WebhookDispatcher
 from app.workers.base import StreamWorker, defer_unless_tenant_allows
@@ -29,13 +31,19 @@ class NotificationWorker(StreamWorker):
     name = "notification-worker"
 
     async def handle(self, event: Event) -> None:
-        if event.payload.get("event_type") != "notification.queued":
+        # Read through the §19 envelope's read half (finding 2); a non-envelope
+        # entry fails CLOSED rather than being processed without a tenant.
+        try:
+            envelope = deserialize_event(event)
+        except (ValidationError, KeyError, TypeError, ValueError):
+            logger.warning("notification.event_without_envelope id=%s", event.id)
             return
-        tenant_raw = event.meta.get("tenant_id")
-        notification_id = event.payload.get("notification_id")
-        if not tenant_raw or not notification_id:
+        if envelope.type != "notification.queued":
             return
-        tenant_id = uuid.UUID(tenant_raw)
+        notification_id = envelope.payload.get("notification_id")
+        if not notification_id:
+            return
+        tenant_id = envelope.tenant_id
         async with SessionLocal() as session:
             async with session.begin():
                 await bind_tenant(session, tenant_id)
@@ -60,13 +68,19 @@ class WebhookWorker(StreamWorker):
     name = "webhook-worker"
 
     async def handle(self, event: Event) -> None:
-        if event.payload.get("event_type") != "webhook.deliver":
+        # Read through the §19 envelope's read half (finding 2); a non-envelope
+        # entry fails CLOSED rather than being processed without a tenant.
+        try:
+            envelope = deserialize_event(event)
+        except (ValidationError, KeyError, TypeError, ValueError):
+            logger.warning("webhook.event_without_envelope id=%s", event.id)
             return
-        tenant_raw = event.meta.get("tenant_id")
-        delivery_id = event.payload.get("delivery_id")
-        if not tenant_raw or not delivery_id:
+        if envelope.type != "webhook.deliver":
             return
-        tenant_id = uuid.UUID(tenant_raw)
+        delivery_id = envelope.payload.get("delivery_id")
+        if not delivery_id:
+            return
+        tenant_id = envelope.tenant_id
         async with SessionLocal() as session:
             async with session.begin():
                 await bind_tenant(session, tenant_id)

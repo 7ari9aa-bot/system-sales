@@ -21,12 +21,12 @@ import logging
 import os
 import random
 import socket
-import uuid
 
 from app.core.config import get_settings
 from app.core.db import SessionLocal
+from app.core.errors import ValidationError
 from app.core.events.bus import ATTEMPTS_META_KEY, Event, EventBus
-from app.modules.platform.models import OutboxEvent
+from app.core.events.schemas import deserialize, deserialize_event
 
 logger = logging.getLogger(__name__)
 
@@ -179,13 +179,27 @@ class StreamWorker:
     def stop(self) -> None:
         self._running = False
 
+    def _envelope_meta(self, event: Event) -> dict:
+        """User meta of the event's §19 envelope (dedupe key + retry counter).
+
+        Read through the envelope's read half (finding 2) instead of
+        hand-parsing the transport meta. The worker runtime must not crash on a
+        malformed bus entry, so a non-envelope event falls back to the raw
+        transport meta; the retry staging path rejects such an event explicitly.
+        """
+        try:
+            return deserialize_event(event).meta
+        except (ValidationError, KeyError, TypeError, ValueError):
+            return dict(event.meta)
+
     async def _process(self, event: Event) -> None:
         settings = get_settings()
+        envelope_meta = self._envelope_meta(event)
         # Dedupe id: prefer the stable outbox row id (survives relay
         # crash-reclaim re-publishes); the bus-generated per-XADD uuid would
         # make every redelivery look new.
-        dedupe_id = str(event.meta.get("outbox_id") or event.id)
-        attempts = int(event.meta.get(ATTEMPTS_META_KEY, 0)) + 1
+        dedupe_id = str(envelope_meta.get("outbox_id") or event.id)
+        attempts = int(envelope_meta.get(ATTEMPTS_META_KEY, 0)) + 1
         try:
             await self.handle(event)
         except DeferredError as exc:
@@ -241,29 +255,45 @@ class StreamWorker:
         a SIGTERM during the backoff window lost the retry forever while the
         original entry was already acked. Staging through the outbox means
         only a Redis outage can delay a retry, never lose it.
+
+        The row is staged through ``add_outbox_event`` — the ONLY way domain
+        code stages events — so the retry carries a real §19 envelope instead
+        of a hand-inserted row that merely copied one (finding 3). The
+        consumer-inbox dedupe key (``meta["outbox_id"]``) is preserved from the
+        original event ON PURPOSE: a retry must dedupe against the attempt it
+        is retrying, not look like a brand-new event (that would double-send).
         """
         from datetime import UTC, datetime, timedelta
 
-        from sqlalchemy.dialects.postgresql import insert as pg_insert
+        from app.core.events.writer import add_outbox_event
 
-        aggregate_type = (
-            event.stream.removesuffix(".events") if event.stream else "unknown"
-        )
+        try:
+            envelope = deserialize({"payload": event.payload, "meta": meta})
+        except (ValidationError, KeyError, TypeError, ValueError):
+            # Not a §19 envelope, so the canonical writer cannot stage it.
+            # Unreachable for relay-published rows — log loudly, never guess.
+            logger.error(
+                "worker.retry_not_an_envelope stream=%s id=%s", self.stream, event.id
+            )
+            return
+
+        original_outbox_id = envelope.meta.get("outbox_id")
         async with SessionLocal() as session:
             async with session.begin():
-                stmt = (
-                    pg_insert(OutboxEvent)
-                    .values(
-                        aggregate_type=aggregate_type,
-                        aggregate_id=uuid.UUID(str(event.meta.get("aggregate_id")))
-                        if event.meta.get("aggregate_id")
-                        else uuid.uuid4(),
-                        stream=event.stream,
-                        payload=event.payload,
-                        meta=meta,
-                        status="pending",
-                        not_before=datetime.now(UTC) + timedelta(seconds=delay),
-                    )
-                    .on_conflict_do_nothing()
+                retry = await add_outbox_event(
+                    session,
+                    aggregate_type=envelope.aggregate_type,
+                    aggregate_id=envelope.aggregate_id,
+                    event_type=envelope.type,
+                    tenant_id=envelope.tenant_id,
+                    payload=envelope.payload,
+                    meta=envelope.meta,
+                    correlation_id=envelope.correlation_id,
+                    causation_id=envelope.causation_id,
+                    producer=envelope.producer,
+                    schema_version=envelope.schema_version,
+                    aggregate_version=envelope.aggregate_version,
                 )
-                await session.execute(stmt)
+                retry.not_before = datetime.now(UTC) + timedelta(seconds=delay)
+                if original_outbox_id:
+                    retry.meta = {**retry.meta, "outbox_id": original_outbox_id}

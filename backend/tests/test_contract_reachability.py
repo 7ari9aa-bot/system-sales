@@ -35,13 +35,14 @@ Pairs covered, and why each is worth a permanent test:
    the other opaque-string contracts a consumer (the frontend / an SSE client)
    depends on, so they are pinned here too.
 
-KNOWN VIOLATION (marked ``xfail(strict=True)``): the envelope pair is NOT
-type-preserving for a ``Decimal``/``datetime`` payload value, and
-``app/modules/orders/service.py`` really publishes ``grand_total`` as a
-``Decimal`` on ``order.created``. ``deserialize(serialize(x)) != x`` there.
-``strict=True`` makes this a TRIPWIRE: the moment another agent makes the pair
-type-preserving the test XPASSes and goes RED until the marker is removed, so
-the decision cannot be forgotten either way. See ``docs/CONTRACT_AUDIT.md``.
+Type-preservation: the envelope pair preserves the Python types a real
+producer sends. ``app/modules/orders/service.py`` publishes ``grand_total`` as a
+``Decimal`` on ``order.created``, and ``serialize``/``deserialize`` tag
+JSON-unrepresentable values so ``deserialize(serialize(x)) == x`` holds for a
+``Decimal`` / ``datetime`` / ``UUID`` — money never arrives at a consumer as a
+string. (This was the audit's finding 1; the ``xfail(strict=True)`` tripwire
+that pinned the violation is removed now that the pair is fixed. See
+``docs/CONTRACT_AUDIT.md``.)
 
 DB-free: every test here runs locally (the fake session pattern is the same one
 ``tests/test_event_envelope.py`` uses).
@@ -253,23 +254,14 @@ async def test_published_row_meta_is_a_complete_envelope() -> None:
     assert envelope.meta["outbox_id"] == fields["__row_id"]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "KNOWN CONTRACT VIOLATION: serialize()/deserialize() are not "
-        "type-preserving, and app/modules/orders/service.py:318 publishes "
-        "order.grand_total as a Decimal on order.created. The consumer sees the "
-        "string '76.50' while the producer built Decimal('76.50'), so "
-        "deserialize(serialize(x)) != x and the envelope contract that "
-        "consumers read from the outbox row is not the object the writer "
-        "built. Fix = make the pair type-preserving (or change the producer to "
-        "send a JSON-native value, as order.refunded already does with "
-        "float(refund_amount)); then remove this marker. See "
-        "docs/CONTRACT_AUDIT.md finding 1."
-    ),
-)
 def test_envelope_round_trip_preserves_payload_value_types() -> None:
-    """The REAL order.created payload shape, with grand_total as a Decimal."""
+    """The REAL order.created payload shape, with grand_total as a Decimal.
+
+    Money is a ``Decimal`` end to end: the producer builds ``Decimal("76.50")``
+    and the consumer rebuilds a ``Decimal``, not the string the JSONB/Redis hop
+    used to degrade it to. The JSON hop is emulated with ``json.dumps`` /
+    ``json.loads`` — the exact encode/decode the column and the stream perform.
+    """
     envelope = build_envelope(
         "order.created",
         tenant_id=uuid.uuid4(),
@@ -278,9 +270,13 @@ def test_envelope_round_trip_preserves_payload_value_types() -> None:
         payload={"order_id": "o-1", "grand_total": Decimal("76.50"), "item_count": 2},
     )
 
-    rebuilt = deserialize(serialize(envelope))
+    fields = serialize(envelope)
+    wire = {key: json.loads(value) for key, value in fields.items()}
+    rebuilt = deserialize(wire)
 
     assert rebuilt.payload == envelope.payload
+    assert isinstance(rebuilt.payload["grand_total"], Decimal)
+    assert rebuilt.payload["grand_total"] == Decimal("76.50")
 
 
 # ---------------------------------------------------------------------------

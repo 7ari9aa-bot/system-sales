@@ -38,7 +38,8 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select as sa_select
 from sqlalchemy import text as sa_text
 
-from app.core.errors import PermissionDeniedError
+from app.core.errors import PermissionDeniedError, ValidationError
+from app.core.events.schemas import deserialize
 from app.core.redis import get_redis
 from app.core.security import decode_token
 from app.modules.identity.deps import AuthedUser, tenant_may_use_api
@@ -307,27 +308,33 @@ async def _event_stream(
                     )
                     if isinstance(raw_payload, bytes):
                         raw_payload = raw_payload.decode()
-                    try:
-                        payload: dict = json.loads(raw_payload)
-                    except json.JSONDecodeError:
-                        continue
-
                     raw_meta = fields.get(b"meta") or fields.get("meta") or b"{}"
                     if isinstance(raw_meta, bytes):
                         raw_meta = raw_meta.decode()
-                    try:
-                        meta: dict = json.loads(raw_meta)
-                    except json.JSONDecodeError:
-                        meta = {}
 
-                    # §149 Tenant isolation: fail CLOSED. An event without a
-                    # tenant_id in its meta envelope must never reach a client.
-                    event_tenant = str(meta.get("tenant_id", ""))
-                    if not event_tenant or event_tenant != tenant_id:
+                    # Read the frame through the §19 envelope's read half so the
+                    # gateway and the relay agree on field names and value types
+                    # by construction (finding 2). A frame that is not a valid
+                    # envelope is dropped — fail CLOSED.
+                    try:
+                        envelope = deserialize(
+                            {"payload": raw_payload, "meta": raw_meta}
+                        )
+                    except (ValidationError, KeyError, TypeError, ValueError):
+                        continue
+
+                    # §149 Tenant isolation: fail CLOSED. The envelope carries
+                    # the tenant claim; a missing or mismatched one never
+                    # reaches a client.
+                    if str(envelope.tenant_id) != tenant_id:
                         continue
 
                     yield _sse_frame(
-                        {"stream": stream_key, "id": raw_id, "payload": payload},
+                        {
+                            "stream": stream_key,
+                            "id": raw_id,
+                            "payload": envelope.payload,
+                        },
                         event_id=raw_id,
                     )
 
