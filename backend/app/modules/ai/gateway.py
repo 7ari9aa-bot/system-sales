@@ -306,11 +306,11 @@ class AIGateway:
         run_id: UUID | None = None,
         _client: Any | None = None,
     ) -> ChatCompletionResult:
-        config = await resolve_model_config(session, tenant_id, alias)
-        # §42 reserve: hold budget BEFORE the provider call so concurrent runs
-        # cannot all pass the same read-only preflight and overshoot the cap.
-        # A rough upper bound (max_tokens output + a prompt allowance) is
-        # reserved and the real cost is recorded when the call returns.
+        # §42 reserve: hold budget BEFORE anything else, so a run that cannot
+        # afford to proceed fails fast (and before config resolution, which is
+        # the order callers already rely on). Reserving up front is also what
+        # stops N concurrent runs from all passing the same read-only preflight
+        # and overshooting the cap.
         estimated = estimate_cost(
             tokens_in=len(str(messages)) // 4,  # ~4 chars per token
             tokens_out=max_tokens or 1024,
@@ -318,6 +318,7 @@ class AIGateway:
         reservation_id = await reserve_budget(
             session, tenant_id, agent_id=agent_id, estimated_cost=estimated
         )
+        config = await resolve_model_config(session, tenant_id, alias)
 
         started = time.perf_counter()
         status = "ok"

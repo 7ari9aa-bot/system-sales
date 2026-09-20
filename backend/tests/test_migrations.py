@@ -273,3 +273,86 @@ def test_resolver_sql_matches_between_migration_and_provision() -> None:
                     provision_sql = ast.literal_eval(node.value)
     assert provision_sql is not None, "CHANNEL_TENANT_FN_SQL not found in provision.py"
     assert _effective_sql(provision_sql) == _effective_sql(module._CHANNEL_TENANT_FN)
+
+
+def _declared_columns() -> dict[str, set[str]]:
+    """Columns every migration creates, via create_table or add_column."""
+    import ast as _ast
+
+    declared: dict[str, set[str]] = {}
+
+    def _add(table: str, col: str) -> None:
+        declared.setdefault(table, set()).add(col)
+
+    def _column_name(arg) -> str | None:
+        if (
+            isinstance(arg, _ast.Call)
+            and isinstance(arg.func, _ast.Attribute)
+            and arg.func.attr == "Column"
+            and arg.args
+            and isinstance(arg.args[0], _ast.Constant)
+        ):
+            return str(arg.args[0].value)
+        return None
+
+    for path in _all_migrations():
+        tree = _ast.parse(path.read_text(encoding="utf-8"))
+        for node in _ast.walk(tree):
+            if not isinstance(node, _ast.Call) or not node.args:
+                continue
+            func = node.func
+            if not isinstance(func, _ast.Attribute):
+                continue
+            if not isinstance(node.args[0], _ast.Constant):
+                continue
+            table = str(node.args[0].value)
+            if func.attr == "create_table":
+                for arg in node.args[1:]:
+                    col = _column_name(arg)
+                    if col:
+                        _add(table, col)
+            elif func.attr == "add_column" and len(node.args) > 1:
+                col = _column_name(node.args[1])
+                if col:
+                    _add(table, col)
+    return declared
+
+
+# Tables whose DDL lives inside a plpgsql DO block, so the AST cannot see the
+# columns: e1f2a3b4c5d6 creates/alters `notifications` conditionally
+# (CREATE TABLE ... ELSE ALTER TABLE ... ADD COLUMN IF NOT EXISTS). Listed
+# explicitly rather than weakening the check for every table.
+_DYNAMIC_DDL_TABLES = frozenset({"notifications"})
+
+
+# Tables whose DDL lives inside a plpgsql DO block, so the AST cannot see their
+# columns: e1f2a3b4c5d6 creates/alters `notifications` conditionally
+# (CREATE TABLE ... ELSE ALTER TABLE ... ADD COLUMN IF NOT EXISTS). Listed
+# explicitly rather than weakening the check for every table.
+_DYNAMIC_DDL_TABLES = frozenset({"notifications"})
+
+
+def test_every_model_column_is_created_by_a_migration() -> None:
+    """Model/migration drift fails at RUNTIME, not at import.
+
+    A column on the model that no migration creates surfaces as
+    `UndefinedColumnError` on the first INSERT — which is exactly how the
+    ai_budget_reservations model came to declare workspace_id/location_id
+    (from a mixin) that its migration never created. This catches that class of
+    drift statically, before a deploy.
+    """
+    from app.core.model_registry import Base
+
+    declared = _declared_columns()
+    assert declared, "no create_table/add_column found — the parser is broken"
+
+    problems: list[str] = []
+    for table, columns in declared.items():
+        model = Base.metadata.tables.get(table)
+        if model is None or table in _DYNAMIC_DDL_TABLES:
+            continue
+        missing = sorted(set(model.c.keys()) - columns)
+        if missing:
+            problems.append(f"{table}: model declares {missing} that no migration creates")
+
+    assert not problems, "model/migration column drift: " + "; ".join(problems)

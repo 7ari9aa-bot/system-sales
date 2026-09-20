@@ -417,7 +417,7 @@ class AIEvaluation(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     )
 
 
-class AIBudgetReservation(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
+class AIBudgetReservation(TenantMixin, AppendOnlyCreatedAtMixin, Base):
     """Spec §42: budget taken BEFORE a provider call, settled after.
 
     A preflight that only reads the spend so far lets N concurrent runs all
@@ -426,6 +426,10 @@ class AIBudgetReservation(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeM
 
     `expires_at` is the safety valve: a run that crashes between reserve and
     settle must not hold budget forever, so a sweep expires stale rows.
+
+    Deliberately NOT workspace-scoped: a budget is per tenant/agent, so the
+    extra scope columns would be dead weight (and the migration does not create
+    them — the model and the table must agree).
     """
 
     __tablename__ = "ai_budget_reservations"
