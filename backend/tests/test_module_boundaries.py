@@ -46,7 +46,14 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 #
 # Measured 2026-09-20 after the review. Every one of these is a known debt, not
 # an approval: the point is that the number cannot go up.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 79
+#
+# 79 -> 80 on 2026-09-20 for one deliberate edge: `ai -> notifications`. §42
+# requires a budget-threshold alert, and a notification is what an alert IS, so
+# the alternative is new event plumbing with a consumer that does not exist yet.
+# The edge adds no cycle (verified: still 8). The `ai -> identity` edge this
+# change briefly introduced WAS a new cycle and was removed instead of
+# baselined — see `_raise_budget_alerts`, which uses SQL for the owner lookup.
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 80
 BASELINE_MODULE_SCOPE_SERVICE_IMPORTS = 8
 
 # Cycles are identified by the SET of modules involved, so the same loop

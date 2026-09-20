@@ -18,7 +18,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -26,8 +26,16 @@ from app.core.errors import RateLimitExceededError, ValidationError
 from app.modules.ai.models import AIUsage, ModelCall, ModelConfig
 from app.modules.ai.providers import AIProvider, ChatCompletionResult, EmbeddingProvider
 
-# Monthly AI spend cap per tenant (USD, estimated) — deliberately a constant.
+# Monthly AI spend cap per tenant (USD, estimated) — the fallback when a tenant
+# has no BudgetPolicy row. Read from settings so a deployment can raise or lower
+# it without a code change; the default keeps the previous behaviour exactly.
 MONTHLY_BUDGET_CAP = 50.0
+
+# §42: the thresholds an operator must hear about BEFORE the cap bites.
+# `BudgetPolicy.warning_threshold` existed on the model and was never read, so
+# no alert was raised at any percentage — a tenant could hit the hard cap with
+# no warning at all.
+BUDGET_ALERT_THRESHOLDS: tuple[int, ...] = (50, 80, 90, 100)
 
 # Flat per-token estimates, used when a tenant has no per-model pricing row.
 # Both DIRECTIONS are priced: charging only output under-counts real spend,
@@ -174,13 +182,101 @@ async def settle_reservation(
     )
 
 
+def _default_cap() -> Decimal:
+    """The deployment's default monthly cap when a tenant has no policy row.
+
+    Read from settings so the ceiling can be changed without a deploy; the
+    setting's default preserves the previous constant exactly.
+    """
+    configured = getattr(
+        get_settings(), "ai_monthly_budget_cap_default", MONTHLY_BUDGET_CAP
+    )
+    try:
+        return Decimal(str(configured))
+    except (ArithmeticError, ValueError):
+        return Decimal(str(MONTHLY_BUDGET_CAP))
+
+
 def _resolve_cap(policies: list, agent_id: UUID | None) -> tuple[Decimal, str]:
-    """Agent-scoped policy wins over tenant-scoped; falls back to the constant."""
+    """Agent-scoped policy wins over tenant-scoped; falls back to the default.
+
+    "No policy" must never mean "no limit": a tenant without a BudgetPolicy row
+    still gets the deployment default, so a misconfigured (or never-configured)
+    tenant cannot spend without bound.
+    """
     for scope_policy in policies:
         if scope_policy.agent_id is not None and scope_policy.agent_id != agent_id:
             continue
         return Decimal(scope_policy.hard_cap), scope_policy.on_exceed
-    return Decimal(MONTHLY_BUDGET_CAP), "block"
+    return _default_cap(), "block"
+
+
+async def _raise_budget_alerts(
+    session: AsyncSession,
+    tenant_id: UUID,
+    *,
+    cap: Decimal,
+    committed: Decimal,
+) -> None:
+    """Notify the tenant's owners when spend crosses a §42 threshold.
+
+    `BudgetPolicy.warning_threshold` was on the model and never read, so a
+    tenant could reach the hard cap with no warning at all. Each threshold
+    notifies once per calendar month: the notification carries a per-period
+    dedup key, so a reserve that happens 500 times above 80% still produces one
+    alert.
+    """
+    if cap <= 0:
+        return
+    ratio = (committed / cap) * Decimal(100)
+    crossed = [threshold for threshold in BUDGET_ALERT_THRESHOLDS if ratio >= threshold]
+    if not crossed:
+        return
+    threshold = max(crossed)
+
+    from app.modules.notifications.service import NotificationService
+
+    # Owner lookup via SQL rather than `identity.models`.
+    #
+    # `identity` already imports `ai` (ai/hooks uses the entitlement service),
+    # so importing its models here would close a NEW ai <-> identity import
+    # cycle — which tests/test_module_boundaries.py fails on. The query is two
+    # joins over tenant-scoped tables and runs under the tenant GUC, so it is
+    # exactly as safe as the ORM version, without the coupling.
+    owner_ids = (
+        await session.execute(
+            text(
+                "SELECT tu.user_id FROM tenant_users tu "
+                "JOIN roles r ON r.id = tu.role_id "
+                "WHERE tu.tenant_id = :tenant_id AND r.code = 'owner'"
+            ),
+            {"tenant_id": str(tenant_id)},
+        )
+    ).scalars().all()
+    if not owner_ids:
+        return
+
+    period_key = datetime.now(UTC).strftime("%Y-%m")
+    for owner_id in owner_ids:
+        await NotificationService.create(
+            session,
+            tenant_id,
+            owner_id,
+            kind="ai_budget_threshold",
+            title="AI budget threshold reached",
+            body=(
+                f"AI spend has reached {ratio:.0f}% of the monthly cap "
+                f"({committed} of {cap})."
+            ),
+            payload={
+                "threshold": threshold,
+                "ratio": str(ratio.quantize(Decimal("0.01"))),
+                "cap": str(cap),
+                "committed": str(committed),
+                "period": period_key,
+            },
+            dedup_key=f"ai_budget:{tenant_id}:{period_key}:{threshold}",
+        )
 
 
 async def reserve_budget(
@@ -223,6 +319,11 @@ async def reserve_budget(
     reserved = await _reserved_spend(session, tenant_id)
     estimate = Decimal(str(estimated_cost or 0))
     committed = spend + reserved
+
+    # §42: warn before the cap blocks a customer-facing reply. Checked on the
+    # COMMITTED spend (already spent + held), so the alert reflects what the
+    # tenant is actually on the hook for.
+    await _raise_budget_alerts(session, tenant_id, cap=cap, committed=committed)
 
     if committed + estimate >= cap:
         raise RateLimitExceededError(

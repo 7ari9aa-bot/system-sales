@@ -54,6 +54,11 @@ class Settings(BaseSettings):
     ai_api_key_primary: str = ""
     ai_base_url_primary: str = ""
 
+    # §42: the monthly AI spend cap (USD) applied when a tenant has no
+    # BudgetPolicy row. Configurable so an operator can change the ceiling
+    # without a deploy; the default preserves the previous hard-coded constant.
+    ai_monthly_budget_cap_default: float = 50.0
+
     # channels
     whatsapp_app_secret: str = ""
     whatsapp_verify_token: str = ""

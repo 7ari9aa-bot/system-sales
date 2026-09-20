@@ -21,6 +21,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.ai.models import BudgetPolicy
 from app.modules.billing.models import Entitlement, Subscription
 from app.modules.identity.bootstrap import (
     DEFAULT_HOURS,
@@ -112,6 +113,16 @@ async def test_register_seeds_calendar_policy_and_subscription(
     assert len(subscription) == 1, "a new tenant must have a subscription"
     assert user.id is not None
 
+    # §42: without an explicit policy the gateway falls back to a deployment
+    # default, so the tenant is never uncapped — but the cap would then be
+    # invisible and uneditable per tenant.
+    budget = (
+        await db.execute(select(BudgetPolicy).where(BudgetPolicy.tenant_id == tenant.id))
+    ).scalars().all()
+    assert len(budget) == 1, "a new tenant must have an AI budget policy"
+    assert budget[0].scope == "tenant"
+    assert budget[0].hard_cap > 0, "the seeded cap must not be zero (zero means uncapped)"
+
 
 async def test_the_seeded_subscription_materialises_entitlements(
     db: AsyncSession, tenant_ctx
@@ -153,7 +164,12 @@ async def test_registering_a_tenant_that_already_has_defaults_is_safe(
     )
 
     created = await seed_tenant_defaults(db, tenant.id)
-    assert created == {"calendar": False, "sla_policy": False, "subscription": False}
+    assert created == {
+        "calendar": False,
+        "sla_policy": False,
+        "subscription": False,
+        "budget_policy": False,
+    }
 
     calendars = (
         await db.execute(

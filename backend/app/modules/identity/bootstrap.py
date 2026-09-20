@@ -17,8 +17,10 @@ from __future__ import annotations
 
 import logging
 import uuid
+from decimal import Decimal
 
 from sqlalchemy import select
+from sqlalchemy import text as sa_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
@@ -46,6 +48,10 @@ DEFAULT_RESOLUTION_MINUTES = 1440
 DEFAULT_PLAN_CODE = "starter"
 DEFAULT_TRIAL_DAYS = 14
 
+# §42: the percentage at which the gateway starts warning about AI spend. The
+# alert thresholds themselves (50/80/90/100) live in the gateway.
+DEFAULT_BUDGET_WARNING_THRESHOLD = 80
+
 
 async def seed_tenant_defaults(session: AsyncSession, tenant_id: uuid.UUID) -> dict:
     """Create the default rows a tenant needs to be operational.
@@ -60,7 +66,12 @@ async def seed_tenant_defaults(session: AsyncSession, tenant_id: uuid.UUID) -> d
     """
     from app.modules.operations.models import BusinessCalendar, SLAPolicy
 
-    created = {"calendar": False, "sla_policy": False, "subscription": False}
+    created = {
+        "calendar": False,
+        "sla_policy": False,
+        "subscription": False,
+        "budget_policy": False,
+    }
 
     # --- business calendar -------------------------------------------------
     existing_calendar = (
@@ -139,11 +150,44 @@ async def seed_tenant_defaults(session: AsyncSession, tenant_id: uuid.UUID) -> d
             )
             created["subscription"] = True
 
+    # --- AI budget policy (§42) --------------------------------------------
+    #
+    # Without an explicit policy the gateway falls back to a deployment default,
+    # so a tenant is never uncapped — but the cap is then invisible and cannot
+    # be edited per tenant. Seeding it makes the ceiling a real, queryable row.
+    #
+    # Inserted with SQL rather than `ai.models`: `ai` already imports
+    # `identity.deps`, so importing its models here would close a NEW
+    # identity <-> ai cycle, which tests/test_module_boundaries.py fails on.
+    # One row, four columns — not worth a cycle.
+    from app.core.config import get_settings
+
+    cap = get_settings().ai_monthly_budget_cap_default
+    inserted = await session.execute(
+        sa_text(
+            "INSERT INTO ai_budget_policies "
+            "(id, tenant_id, scope, agent_id, period, hard_cap, warning_threshold, on_exceed) "
+            "SELECT :id, :tenant_id, 'tenant', NULL, 'monthly', :cap, :threshold, 'block' "
+            "WHERE NOT EXISTS ("
+            "  SELECT 1 FROM ai_budget_policies "
+            "  WHERE tenant_id = :tenant_id AND scope = 'tenant' AND period = 'monthly'"
+            ")"
+        ),
+        {
+            "id": str(uuid.uuid4()),
+            "tenant_id": str(tenant_id),
+            "cap": Decimal(str(cap)),
+            "threshold": DEFAULT_BUDGET_WARNING_THRESHOLD,
+        },
+    )
+    created["budget_policy"] = bool(inserted.rowcount)
+
     logger.info("tenant.seeded tenant=%s created=%s", tenant_id, created)
     return created
 
 
 __all__ = [
+    "DEFAULT_BUDGET_WARNING_THRESHOLD",
     "DEFAULT_FIRST_RESPONSE_MINUTES",
     "DEFAULT_HOURS",
     "DEFAULT_PLAN_CODE",
