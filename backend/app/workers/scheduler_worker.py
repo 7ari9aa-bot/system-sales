@@ -35,6 +35,9 @@ RECURRING_JOBS: dict[str, tuple[timedelta, dict]] = {
     "reconcile_unknown_messages": (timedelta(minutes=5), {"threshold_minutes": 15}),
     "reconcile_payments": (timedelta(minutes=15), {"threshold_minutes": 15}),
     "expire_reservations": (timedelta(minutes=5), {}),
+    # §135: a PENDING approval past its TTL must not stay decidable forever —
+    # the parked run would hang indefinitely otherwise.
+    "expire_approvals": (timedelta(minutes=10), {}),
 }
 
 
@@ -77,6 +80,21 @@ async def _handle_expire_reservations(session, tenant_id, payload: dict) -> dict
 
 
 register_job_handler("expire_reservations", _handle_expire_reservations)
+
+
+async def _handle_expire_approvals(session, tenant_id, payload: dict) -> dict:
+    """§135: expire PENDING approvals past their TTL.
+
+    Nothing called expire_stale() before, so an undecided approval stayed
+    PENDING forever and its parked run never resolved either way.
+    """
+    from app.modules.ai.approvals import ApprovalService
+
+    expired = await ApprovalService.expire_stale(session, tenant_id)
+    return {"count": expired}
+
+
+register_job_handler("expire_approvals", _handle_expire_approvals)
 
 
 async def ensure_recurring_jobs() -> None:

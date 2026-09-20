@@ -91,6 +91,65 @@ class ApprovalService:
         return request
 
     @staticmethod
+    async def find_granted(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        *,
+        conversation_id: uuid.UUID | None,
+        action: str,
+    ) -> ApprovalRequest | None:
+        """The unconsumed APPROVED approval that authorizes `action`, if any.
+
+        This is what makes a RESUME work: the run re-runs the gate, finds the
+        approval a human already granted, executes once, and consumes it. An
+        approval that was already consumed is invisible here — that is what
+        stops one approval from authorizing a loop of actions.
+        """
+        if conversation_id is None:
+            return None
+        return (
+            await session.execute(
+                select(ApprovalRequest)
+                .where(
+                    ApprovalRequest.tenant_id == tenant_id,
+                    ApprovalRequest.conversation_id == conversation_id,
+                    ApprovalRequest.action == action,
+                    ApprovalRequest.status == "APPROVED",
+                    ApprovalRequest.consumed_at.is_(None),
+                )
+                .order_by(ApprovalRequest.decided_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
+    async def consume(
+        session: AsyncSession, request: ApprovalRequest
+    ) -> ApprovalRequest:
+        """Mark the approval as used — the action it authorized has run."""
+        request.consumed_at = datetime.now(UTC)
+        await session.flush()
+        return request
+
+    @staticmethod
+    async def list_for_tenant(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        *,
+        status: str | None = None,
+        limit: int = 100,
+    ) -> list[ApprovalRequest]:
+        stmt = select(ApprovalRequest).where(ApprovalRequest.tenant_id == tenant_id)
+        if status:
+            stmt = stmt.where(ApprovalRequest.status == status)
+        rows = (
+            await session.execute(
+                stmt.order_by(ApprovalRequest.created_at.desc()).limit(limit)
+            )
+        ).scalars().all()
+        return list(rows)
+
+    @staticmethod
     async def expire_stale(session: AsyncSession, tenant_id: uuid.UUID) -> int:
         """Maintenance worker: expire PENDING approvals past their TTL."""
         from sqlalchemy import update

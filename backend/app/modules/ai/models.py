@@ -302,6 +302,9 @@ class ApprovalRequest(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     # allowed: PENDING | APPROVED | REJECTED | EXPIRED | CANCELLED
     status: Mapped[str] = mapped_column(String(15), server_default="PENDING")
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # §135: an approval authorizes exactly ONE execution of the action. Set when
+    # the gated tool actually runs, so a resumed run cannot reuse it.
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     approved_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )

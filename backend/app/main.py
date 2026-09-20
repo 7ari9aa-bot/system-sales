@@ -26,6 +26,7 @@ from app.core.middleware import (
 from app.core.observability import RequestLoggingMiddleware, configure_logging
 from app.core.redis import close_redis, get_redis
 from app.modules.ai.router import router as ai_router
+from app.modules.automation.router import router as automation_router
 from app.modules.billing.router import (
     billing_router,
     webhooks_router,
@@ -63,7 +64,9 @@ from app.modules.operations.router import (
     search_router as operations_search_router,
 )
 from app.modules.orders.router import router as orders_router
+from app.modules.privacy.router import router as privacy_router
 from app.modules.realtime.router import router as realtime_router
+from app.modules.segments.router import router as segments_router
 
 
 @asynccontextmanager
@@ -168,6 +171,9 @@ def create_app() -> FastAPI:
         operations_search_router,
         realtime_router,
         notifications_router,
+        privacy_router,
+        segments_router,
+        automation_router,
     ):
         api_v1.include_router(router)
     app.include_router(api_v1)

@@ -6,14 +6,17 @@ platform settings use); reads only need an authenticated tenant context.
 
 from __future__ import annotations
 
+import uuid
 from datetime import date, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
 from app.core.pagination import paginate
 from app.modules.ai import knowledge
+from app.modules.ai.approvals import ApprovalService
 from app.modules.ai.models import Agent, AIUsage, KnowledgeItem
 from app.modules.ai.schemas import AgentCreateRequest, AgentOut, KnowledgeIngestRequest
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
@@ -129,3 +132,85 @@ async def list_knowledge(
         ],
         "next_cursor": next_cursor,
     }
+
+
+# ---------- approvals (§135) ----------
+#
+# A HIGH-risk tool call parks the run in WAITING_APPROVAL and the action has
+# NOT happened. These routes are how a human releases (or kills) it — without
+# them the run would wait forever with no way to decide.
+
+class ApprovalDecisionRequest(BaseModel):
+    decision: str = Field(description="APPROVED | REJECTED | CANCELLED")
+    reason: str | None = Field(default=None, max_length=512)
+
+
+def _approval_out(a) -> dict:
+    return {
+        "id": str(a.id),
+        "status": a.status,
+        "action": a.action,
+        "risk_level": a.risk_level,
+        "entity_type": a.entity_type,
+        "entity_id": a.entity_id,
+        "conversation_id": str(a.conversation_id) if a.conversation_id else None,
+        "run_id": str(a.run_id) if a.run_id else None,
+        "payload": a.payload or {},
+        "requested_by": a.requested_by,
+        "expires_at": a.expires_at.isoformat() if a.expires_at else None,
+        "decided_at": a.decided_at.isoformat() if a.decided_at else None,
+        "consumed_at": a.consumed_at.isoformat() if a.consumed_at else None,
+        "rejection_reason": a.rejection_reason,
+        "created_at": a.created_at.isoformat() if a.created_at else None,
+    }
+
+
+@router.get("/approvals")
+async def list_approvals(
+    ctx: TenantCtxDep,
+    status: str | None = Query(default=None, description="PENDING | APPROVED | ..."),
+):
+    rows = await ApprovalService.list_for_tenant(ctx.session, ctx.tenant_id, status=status)
+    return {"items": [_approval_out(a) for a in rows]}
+
+
+@router.post("/approvals/{approval_id}/decide")
+async def decide_approval(
+    approval_id: uuid.UUID,
+    body: ApprovalDecisionRequest,
+    ctx: SettingsCtx,
+) -> dict:
+    """Approve, reject or cancel a parked HIGH-risk action.
+
+    Approving RE-ENQUEUES the conversation so the agent re-evaluates context and
+    retries: the gate then finds the granted approval and executes the action
+    exactly once. A customer who replied while the approval was pending makes it
+    stale, which is why the run is re-planned rather than blindly continued.
+    """
+    from app.core.events.writer import add_outbox_event
+
+    approval = await ApprovalService.decide(
+        ctx.session,
+        ctx.tenant_id,
+        approval_id,
+        decision=body.decision,
+        decided_by_user_id=ctx.user.id,
+        rejection_reason=body.reason,
+    )
+
+    resumed = False
+    if approval.status == "APPROVED" and approval.conversation_id is not None:
+        await add_outbox_event(
+            ctx.session,
+            aggregate_type="message",
+            aggregate_id=approval.id,
+            event_type="message.received",
+            tenant_id=ctx.tenant_id,
+            payload={
+                "conversation_id": str(approval.conversation_id),
+                "resumed_approval_id": str(approval.id),
+            },
+        )
+        resumed = True
+
+    return {**_approval_out(approval), "resumed": resumed}

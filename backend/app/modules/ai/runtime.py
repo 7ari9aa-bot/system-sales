@@ -432,28 +432,45 @@ class AgentRunner:
                     # §135: HIGH-risk tools suspend the run until a human
                     # approves. The approval row is durable — the run resumes
                     # (or dies) on the decision.
+                    from app.modules.ai.approvals import ApprovalService
                     from app.modules.ai.tools import requires_approval
 
                     if await requires_approval(spec):
-                        from app.modules.ai.approvals import ApprovalService
-
-                        await ApprovalService.request(
+                        # An approval a human already granted for this exact
+                        # conversation+action is the resume path: execute ONCE
+                        # and consume it, so one approval can never authorize
+                        # repeated executions.
+                        granted = await ApprovalService.find_granted(
                             session,
                             tenant_id,
-                            run_id=run.id,
                             conversation_id=conversation_id,
-                            entity_type="tool",
-                            entity_id=request.name,
                             action=request.name,
-                            risk_level="HIGH",
-                            payload={"arguments": kwargs},
                         )
-                        run.status = "WAITING_APPROVAL"
-                        status = "awaiting_approval"
-                        result = {"awaiting_approval": True}
-                        # fall through: the ToolCall audit row must be written
-                        # for gated calls too (the early return skipped it).
-                    result = await spec.handler(session, tenant_id, **kwargs)
+                        if granted is not None:
+                            await ApprovalService.consume(session, granted)
+                            result = await spec.handler(session, tenant_id, **kwargs)
+                        else:
+                            # The action has NOT happened. Park the run and
+                            # return WITHOUT calling the handler — executing
+                            # here would run a HIGH-risk tool (create order,
+                            # refund, delete) with no human in the loop while
+                            # the UI showed "waiting for approval".
+                            await ApprovalService.request(
+                                session,
+                                tenant_id,
+                                run_id=run.id,
+                                conversation_id=conversation_id,
+                                entity_type="tool",
+                                entity_id=request.name,
+                                action=request.name,
+                                risk_level="HIGH",
+                                payload={"arguments": kwargs},
+                            )
+                            run.status = "WAITING_APPROVAL"
+                            status = "awaiting_approval"
+                            result = {"awaiting_approval": True}
+                    else:
+                        result = await spec.handler(session, tenant_id, **kwargs)
                 except PydanticValidationError as exc:
                     status = "error"
                     error = f"invalid tool arguments: {exc.errors()[0].get('msg', str(exc))}"
