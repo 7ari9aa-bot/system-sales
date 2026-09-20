@@ -85,6 +85,10 @@ So, for any DB-backed test you write:
   static guard so it is checked everywhere.**
 - Prefer assertions that do not need a refreshed ORM object at all — a `SELECT` through
   `db.execute(...)` returns plain values and cannot lazy-load.
+- **Do NOT point `DATABASE_URL_APP_ADMIN` at production to verify your own test.** It is
+  possible, and it works, but 15 agents each running DB-backed tests against the live database
+  is one careless `commit()` away from corrupting it. Report the test as UNVERIFIED and say what
+  would settle it; the orchestrator runs DB-backed verification in a controlled pass instead.
 
 
 ---
