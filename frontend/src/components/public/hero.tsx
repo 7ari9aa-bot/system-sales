@@ -21,21 +21,57 @@ function HeroShape() {
   );
 }
 
+/** معاينة المنتج — محاكاة صندوق الوحدة بتبيّن سياق العمل جنب كل محادثة */
+function HeroMock() {
+  const { t } = useI18n();
+  const rows = t.hero.mockRows as [string, string, string][];
+  const variants = ["fh-badge-warning", "fh-badge", "fh-badge-success"];
+  return (
+    <div className="fh-hero-mock" role="img" aria-label="FIHRIST inbox">
+      <div className="fh-hero-mock-head">
+        <span className="fh-chat-avatar" aria-hidden="true"><span>F</span></span>
+        <span className="fh-chat-title">
+          <strong>FIHRIST · Inbox</strong>
+          <small><span className="fh-status-dot" /> {t.hero.mockBadge}</small>
+        </span>
+      </div>
+      <div className="fh-hero-mock-body">
+        {rows.map(([name, badge, meta], i) => (
+          <div key={name} className="fh-hero-mock-row">
+            <span className="fh-status-dot" />
+            <b>{name}</b>
+            <span className={`fh-badge ${variants[i] || ""}`}>{badge}</span>
+            <small>{meta}</small>
+          </div>
+        ))}
+        <div className="fh-hero-mock-ai">
+          <b>AI:</b> {t.hero.mockAi}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function Hero() {
   const { t } = useI18n();
   return (
     <section className="fh-hero" id="product">
       <HeroShape />
       <div className="fh-container fh-hero-inner">
-        <div className="fh-hero-copy">
-          <span className="fh-eyebrow">{t.hero.eyebrow}</span>
-          <h1>{t.hero.h1}</h1>
-          <p className="fh-hero-sub">{t.hero.sub}</p>
-          <div className="fh-hero-cta">
-            <Link href="/auth/signup" className="fh-btn fh-btn-lg">{t.hero.start}</Link>
-            <Link href="/product" className="fh-btn fh-btn-secondary fh-btn-lg">{t.hero.explore}</Link>
+        <div className="fh-hero-grid">
+          <div className="fh-hero-copy">
+            <span className="fh-eyebrow">{t.hero.eyebrow}</span>
+            <h1>{t.hero.h1}</h1>
+            <p className="fh-hero-sub">{t.hero.sub}</p>
+            <div className="fh-hero-cta">
+              <Link href="/auth/signup" className="fh-btn fh-btn-lg">{t.hero.start}</Link>
+              <Link href="/product" className="fh-btn fh-btn-secondary fh-btn-lg">{t.hero.explore}</Link>
+            </div>
+            <p className="fh-hero-trust">{t.hero.trust}</p>
           </div>
-          <p className="fh-hero-trust">{t.hero.trust}</p>
+          <div className="fh-hero-visual">
+            <HeroMock />
+          </div>
         </div>
       </div>
     </section>
