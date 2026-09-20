@@ -43,8 +43,12 @@ NO_TENANT_TABLES = {
     "idempotency_keys",
     "plans",
     "refresh_tokens",  # user-scoped, not tenant-scoped
-    "webhook_events",  # pre-auth ingress: rows land BEFORE tenant resolution (§125)
-    "scheduled_jobs",  # scheduler claims due jobs across tenants before any GUC
+    # NOTE: `scheduled_jobs` and `webhook_events` used to be listed here as
+    # "system plumbing". Production disagreed — both are FORCE RLS with a
+    # tenant_isolation policy — and that divergence hid a live bug: the
+    # scheduler's unbound INSERT was rejected in production while succeeding in
+    # CI, so no test could see it. Migration d5e6f7a8b9c0 aligns the schemas;
+    # removing them here keeps fresh provisions consistent with both.
 }  # system/global
 # Tables that carry a nullable tenant_id but allow platform-level NULL rows.
 NULLABLE_TENANT_TABLES = {"security_events"}  # audit_logs handled separately below
