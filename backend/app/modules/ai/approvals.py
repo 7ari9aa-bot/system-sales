@@ -8,6 +8,8 @@ auto-continue).
 
 from __future__ import annotations
 
+import hashlib
+import json
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -18,6 +20,21 @@ from app.core.errors import NotFoundError, ValidationError
 from app.modules.ai.models import ApprovalRequest
 
 APPROVAL_TTL_MINUTES = 60
+
+
+def payload_fingerprint(payload: dict | None) -> str:
+    """Stable SHA-256 over a payload, for binding an approval to its arguments.
+
+    Canonicalised (sorted keys, no whitespace, `default=str` for the UUIDs and
+    datetimes a tool argument can contain) so the same logical arguments always
+    produce the same digest. Review G-02: without this, a resume matched an
+    approval on the action NAME alone and would execute whatever arguments the
+    run computed the second time around.
+    """
+    canonical = json.dumps(
+        payload or {}, sort_keys=True, separators=(",", ":"), default=str
+    )
+    return hashlib.sha256(canonical.encode()).hexdigest()
 
 
 class ApprovalService:
@@ -35,6 +52,29 @@ class ApprovalService:
         payload: dict | None = None,
         ttl_minutes: int = APPROVAL_TTL_MINUTES,
     ) -> ApprovalRequest:
+        payload = payload or {}
+        fingerprint = payload_fingerprint(payload)
+
+        # Idempotent: re-running the gate must not pile up duplicate PENDING
+        # requests for the same conversation + action + arguments. This matters
+        # because a STALE approval is discarded and re-requested, and a resumed
+        # run re-enters the gate.
+        existing = (
+            await session.execute(
+                select(ApprovalRequest)
+                .where(
+                    ApprovalRequest.tenant_id == tenant_id,
+                    ApprovalRequest.conversation_id == conversation_id,
+                    ApprovalRequest.action == action,
+                    ApprovalRequest.status == "PENDING",
+                    ApprovalRequest.payload_hash == fingerprint,
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            return existing
+
         request = ApprovalRequest(
             tenant_id=tenant_id,
             run_id=run_id,
@@ -44,7 +84,8 @@ class ApprovalService:
             entity_id=entity_id,
             action=action,
             risk_level=risk_level,
-            payload=payload or {},
+            payload=payload,
+            payload_hash=fingerprint,
             status="PENDING",
             expires_at=datetime.now(UTC) + timedelta(minutes=ttl_minutes),
         )
@@ -97,15 +138,29 @@ class ApprovalService:
         *,
         conversation_id: uuid.UUID | None,
         action: str,
+        payload: dict | None = None,
     ) -> ApprovalRequest | None:
-        """The unconsumed APPROVED approval that authorizes `action`, if any.
+        """The unconsumed APPROVED approval that authorizes `action` with THESE
+        arguments, if any.
 
         This is what makes a RESUME work: the run re-runs the gate, finds the
         approval a human already granted, executes once, and consumes it. An
         approval that was already consumed is invisible here — that is what
         stops one approval from authorizing a loop of actions.
+
+        `payload` is REQUIRED to match the stored `payload_hash` (review G-02).
+        Matching on the action name alone meant a human could approve
+        `create_order(quantity=1)` and the resumed run would execute whatever
+        arguments it computed this time — a different action than the one
+        approved. Rows with a NULL hash never match, because SQL `= NULL` is
+        never true: approvals created before the hash existed fail closed and
+        need a fresh decision.
         """
         if conversation_id is None:
+            return None
+        if payload is None:
+            # Callers must state what they are about to execute. Without it
+            # there is nothing to bind the approval to, so refuse to match.
             return None
         return (
             await session.execute(
@@ -116,6 +171,7 @@ class ApprovalService:
                     ApprovalRequest.action == action,
                     ApprovalRequest.status == "APPROVED",
                     ApprovalRequest.consumed_at.is_(None),
+                    ApprovalRequest.payload_hash == payload_fingerprint(payload),
                 )
                 .order_by(ApprovalRequest.decided_at.desc())
                 .limit(1)

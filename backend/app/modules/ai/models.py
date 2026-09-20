@@ -302,6 +302,13 @@ class ApprovalRequest(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     # allowed: LOW | MEDIUM | HIGH
     risk_level: Mapped[str] = mapped_column(String(15), server_default="HIGH")
     payload: Mapped[dict] = mapped_column(JSONB, server_default="{}")
+    # §135 (review G-02): SHA-256 of the canonicalised arguments this approval
+    # authorizes. `payload` alone records what was approved but nothing ever
+    # compared it, so a resume matched on the ACTION NAME ONLY — a human could
+    # approve `create_order(quantity=1)` and the resumed run would execute
+    # whatever arguments it computed this time. NULL means "not bound" and is
+    # deliberately never matched, so rows predating this column fail closed.
+    payload_hash: Mapped[str | None] = mapped_column(String(64))
     # allowed: PENDING | APPROVED | REJECTED | EXPIRED | CANCELLED
     status: Mapped[str] = mapped_column(String(15), server_default="PENDING")
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

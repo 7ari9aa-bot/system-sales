@@ -462,16 +462,34 @@ class AgentRunner:
                     from app.modules.ai.tools import requires_approval
 
                     if await requires_approval(spec):
-                        # An approval a human already granted for this exact
-                        # conversation+action is the resume path: execute ONCE
-                        # and consume it, so one approval can never authorize
-                        # repeated executions.
+                        # §135 + G-02: the approval is bound to THESE arguments.
+                        # The payload recorded on the request is what a human
+                        # approved, and the resume must present the identical
+                        # payload — otherwise it is not the action that was
+                        # approved, whatever the action name says.
+                        approval_payload = {"arguments": kwargs}
                         granted = await ApprovalService.find_granted(
                             session,
                             tenant_id,
                             conversation_id=conversation_id,
                             action=request.name,
+                            payload=approval_payload,
                         )
+                        # An approval a human already granted for this exact
+                        # conversation+action+arguments is the resume path:
+                        # execute ONCE and consume it, so one approval can never
+                        # authorize repeated executions. A new customer message
+                        # since it was granted makes it stale — the context it
+                        # was decided on no longer holds, so re-evaluate rather
+                        # than auto-continue.
+                        if (
+                            granted is not None
+                            and conversation_id is not None
+                            and await ApprovalService.is_stale_for_conversation(
+                                session, conversation_id, since=granted.created_at
+                            )
+                        ):
+                            granted = None
                         if granted is not None:
                             await ApprovalService.consume(session, granted)
                             result = await spec.handler(session, tenant_id, **kwargs)
@@ -490,7 +508,7 @@ class AgentRunner:
                                 entity_id=request.name,
                                 action=request.name,
                                 risk_level="HIGH",
-                                payload={"arguments": kwargs},
+                                payload=approval_payload,
                             )
                             run.status = "WAITING_APPROVAL"
                             status = "awaiting_approval"
