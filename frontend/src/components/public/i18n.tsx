@@ -79,6 +79,11 @@ const ar = {
       ["النظام ينفّذ عنك", "أتمتة ومساعد ذكي بينفذوا جوه صلاحياتك وقواعدك: ردود جاهزة، تأكيدات طلبات، تذكيرات، تصعيد. وكل خطوة مسجلة وقابلة للمراجعة."],
     ],
     more: "شوف الصورة الكاملة للنظام",
+    tags: [
+      ["واتساب", "تليجرام", "إنستجرام", "شات"],
+      ["طلبات", "مخزون", "دفعات", "تاريخ"],
+      ["أتمتة", "AI", "تذكيرات", "تصعيد"],
+    ],
   },
   graph: {
     title: "كل حاجة متصلة بكل حاجة — ده اللي بيوفرلك وقت.",
@@ -133,6 +138,7 @@ const ar = {
     ],
   },
   securityTeaser: {
+    colTitle: "الأمان",
     title: "الأمان مكتوب في أول سطر كود.",
     sub: "عزل بيانات لكل مستأجر على مستوى قاعدة البيانات، صلاحيات وأدوار، تدقيق كامل — والذكاء الاصطناعي بينفذ عبر أدوات مصرح ليها فقط.",
     points: [
@@ -192,6 +198,11 @@ const ar = {
       ["وكالات التسويق", "أدِر محادثات عملاء متعددين من فريق واحد، مع صلاحيات لكل عضو وتقارير أداء لكل عميل ولوحة تحكم موحدة."],
       ["خدمة العملاء", "كل محادثة بتوصل بتاريخ العميل الكامل — مش لازم تدوّر، والـAI بيقترح الرد والتشغيلة بتبقى مسجلة."],
       ["العمليات الكبيرة", "مواقع وفروع متعددة، صلاحيات متقدمة، تدقيق كامل — بنية جاهزة تكبر مع شركتك من غير ما تعيد بناء نظامك."],
+    ],
+    results: [
+      "استجابة أسرع للعملاء المميزتين",
+      "ترد في دقيقة مع كل الإجراءات مسجلة",
+      "أتمتة تشغيلية بدون تدخل بشري",
     ],
   },
   faq: {
@@ -511,6 +522,11 @@ const en: typeof ar = {
       ["Let the system execute", "Automation and a smart assistant act within your permissions and rules: ready replies, order confirmations, reminders, escalations. Every step logged and reviewable."],
     ],
     more: "See the full system",
+    tags: [
+      ["WhatsApp", "Telegram", "Instagram", "Chat"],
+      ["Orders", "Inventory", "Payments", "History"],
+      ["Automation", "AI", "Reminders", "Escalation"],
+    ],
   },
   graph: {
     title: "Everything connects to everything — that's what saves you time.",
@@ -565,6 +581,7 @@ const en: typeof ar = {
     ],
   },
   securityTeaser: {
+    colTitle: "Security",
     title: "Secure from the first line of code.",
     sub: "Per-tenant data isolation at the database level, role-based permissions, full audit — and AI that acts only through pre-authorized tools.",
     points: [
@@ -624,6 +641,11 @@ const en: typeof ar = {
       ["Marketing agencies", "Manage multiple clients' conversations from one team, with per-member permissions, per-client performance reports, and a unified dashboard."],
       ["Customer service", "Every conversation arrives with the customer's full history — no digging required, and AI suggests the reply while every run is logged."],
       ["Large operations", "Multiple sites and branches, advanced permissions, full audit — an architecture that grows with your company without rebuilding your system."],
+    ],
+    results: [
+      "Faster response for VIP customers",
+      "Reply in a minute with every step logged",
+      "Commerce automation without human intervention",
     ],
   },
   faq: {
