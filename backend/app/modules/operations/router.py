@@ -11,10 +11,11 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from app.core.errors import ValidationError
+from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.core.search import get_search
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
 from app.modules.operations.models import Task
+from app.modules.platform.models import Job
 
 router = APIRouter(tags=["operations"])
 search_router = APIRouter(prefix="/search", tags=["search"])
@@ -338,3 +339,125 @@ async def sla_risk(ctx: TenantCtxDep, limit: int = Query(default=50, ge=1, le=20
             }
         )
     return {"items": items, "timezone": clock.timezone_name}
+
+
+# ---------- Jobs (§84) ----------
+#
+# The durable record and control surface for long operations: what was started,
+# how far it got, what it produced, and whether it can be retried or cancelled.
+# There is deliberately NO runner here — a worker executes a job and writes its
+# status back. Running work inside the request would tie a long operation to
+# the request lifetime, which is the failure this table exists to expose.
+
+JOB_TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled"})
+# Retry is meaningful only once a run has stopped without succeeding:
+#   completed -> the work already happened; re-running could repeat a side
+#                effect (a double import, a second charge), so refuse it.
+#   queued / processing / retrying -> already in flight; a second retry would
+#                race the run that is happening.
+JOB_RETRYABLE_STATUSES = frozenset({"failed", "cancelled"})
+
+
+def job_can_retry(status: str) -> bool:
+    """Whether ``POST /jobs/{id}/retry`` is allowed for this status."""
+    return status in JOB_RETRYABLE_STATUSES
+
+
+def job_can_cancel(status: str) -> bool:
+    """Whether ``POST /jobs/{id}/cancel`` is allowed — never on a terminal job."""
+    return status not in JOB_TERMINAL_STATUSES
+
+
+def _job_out(job: Job) -> dict:
+    return {
+        "id": str(job.id),
+        "kind": job.kind,
+        "status": job.status,
+        "progress": job.progress,
+        "attempts": job.attempts,
+        "max_attempts": job.max_attempts,
+        "last_error": job.last_error,
+        "result": job.result,
+        "correlation_id": job.correlation_id,
+        "actor_user_id": str(job.actor_user_id) if job.actor_user_id else None,
+        "created_at": job.created_at.isoformat() if job.created_at else None,
+        "updated_at": job.updated_at.isoformat() if job.updated_at else None,
+    }
+
+
+async def _load_job(ctx: TenantContext, job_id: uuid.UUID) -> Job:
+    """Fetch one job scoped to the caller's tenant; 404 rather than leak."""
+    job = (
+        await ctx.session.execute(
+            select(Job).where(Job.tenant_id == ctx.tenant_id, Job.id == job_id)
+        )
+    ).scalar_one_or_none()
+    if job is None:
+        raise NotFoundError("job not found")
+    return job
+
+
+@router.get("/jobs")
+async def list_jobs(
+    ctx: TenantCtxDep,
+    status: str | None = None,
+    kind: str | None = None,
+    limit: int = Query(default=100, ge=1, le=200),
+):
+    """Newest-first jobs for the tenant, optionally filtered by status/kind."""
+    stmt = select(Job).where(Job.tenant_id == ctx.tenant_id)
+    if status:
+        stmt = stmt.where(Job.status == status)
+    if kind:
+        stmt = stmt.where(Job.kind == kind)
+    rows = (
+        await ctx.session.execute(stmt.order_by(Job.created_at.desc()).limit(limit))
+    ).scalars().all()
+    return {"items": [_job_out(job) for job in rows]}
+
+
+@router.get("/jobs/{job_id}")
+async def get_job(ctx: TenantCtxDep, job_id: uuid.UUID):
+    """One job's full record — status, progress, attempts, error and result."""
+    return _job_out(await _load_job(ctx, job_id))
+
+
+@router.post("/jobs/{job_id}/retry")
+async def retry_job(
+    job_id: uuid.UUID,
+    ctx: TenantContext = Depends(require_permission("settings:write")),
+):
+    """Re-queue a job that stopped without succeeding."""
+    job = await _load_job(ctx, job_id)
+    if not job_can_retry(job.status):
+        raise ConflictError(
+            f"job is {job.status} and cannot be retried",
+            details={"job_id": str(job.id), "status": job.status},
+        )
+    job.status = "queued"
+    # A retry is a fresh run, so the attempt counter restarts. Leaving the old
+    # count would make the job look already-exhausted to the runner that
+    # compares attempts against max_attempts — it would fail instantly instead
+    # of running, so the "retry" would silently do nothing.
+    job.attempts = 0
+    job.progress = 0
+    job.last_error = None
+    await ctx.session.flush()
+    return _job_out(job)
+
+
+@router.post("/jobs/{job_id}/cancel")
+async def cancel_job(
+    job_id: uuid.UUID,
+    ctx: TenantContext = Depends(require_permission("settings:write")),
+):
+    """Cancel a job that has not reached a terminal state."""
+    job = await _load_job(ctx, job_id)
+    if not job_can_cancel(job.status):
+        raise ConflictError(
+            f"job is {job.status} and cannot be cancelled",
+            details={"job_id": str(job.id), "status": job.status},
+        )
+    job.status = "cancelled"
+    await ctx.session.flush()
+    return _job_out(job)

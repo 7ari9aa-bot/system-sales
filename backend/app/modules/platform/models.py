@@ -471,3 +471,73 @@ class MetricDefinition(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __table_args__ = (
         UniqueConstraint("tenant_id", "name", "version", name="uq_metric_defs"),
     )
+
+
+class Job(TenantMixin, TimestampMixin, Base):
+    """Spec §84: the user-facing record of a long-running operation.
+
+    This is deliberately NOT ``ScheduledJob`` (above). ``scheduled_jobs`` is
+    the scheduler's internal wake-up list: ``run_at``, ``next_attempt_at`` and
+    ``idempotency_key`` exist so the scheduler loop can decide *when* to run
+    something. A Job answers a different question — "what did the user start,
+    how far did it get, what did it produce, and can I retry or cancel it?" —
+    so it carries ``progress``, ``result``, ``correlation_id`` and
+    ``actor_user_id`` instead of scheduling columns. Publishing
+    ``scheduled_jobs`` as the public Job API would leak the scheduler's retry
+    machinery (and its nullable tenant story) into the UI.
+
+    This table is the durable record and the control surface only. There is no
+    runner here: a worker executes a job and writes status back. Building a
+    runner into the request path would tie a long operation to the request
+    lifetime — the exact failure this table exists to make visible.
+    """
+
+    __tablename__ = "jobs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    kind: Mapped[str] = mapped_column(String(63))  # e.g. "import.customers"
+    # allowed: queued | processing | completed | failed | retrying | cancelled
+    status: Mapped[str] = mapped_column(String(15), server_default="queued")
+    progress: Mapped[int] = mapped_column(Integer, server_default="0")  # 0-100
+    attempts: Mapped[int] = mapped_column(Integer, server_default="0")
+    max_attempts: Mapped[int] = mapped_column(Integer, server_default="3")
+    last_error: Mapped[str | None] = mapped_column(Text)
+    result: Mapped[dict | None] = mapped_column(JSONB)
+    correlation_id: Mapped[str | None] = mapped_column(String(64))
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+
+    __table_args__ = (
+        Index("ix_jobs_tenant_status_created", "tenant_id", "status", "created_at"),
+        Index("ix_jobs_tenant_kind", "tenant_id", "kind"),
+    )
+
+
+class SavedView(TenantMixin, TimestampMixin, Base):
+    """Spec §95: a named list layout — filters/sort/columns/grouping/density.
+
+    Lives in platform because it is a cross-cutting UI concern: every entity
+    list (customers, orders, inbox) saves into the same shape, and the
+    visibility rules are the same for all of them.
+    """
+
+    __tablename__ = "saved_views"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    name: Mapped[str] = mapped_column(String(255))
+    entity: Mapped[str] = mapped_column(String(63))  # customers | orders | inbox
+    # filters / sort / columns / grouping / density — opaque to the server,
+    # which stores and returns it but never interprets it.
+    definition: Mapped[dict] = mapped_column(JSONB, server_default="{}")
+    # allowed: private | team | workspace
+    visibility: Mapped[str] = mapped_column(String(15), server_default="private")
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+
+    __table_args__ = (Index("ix_saved_views_tenant_entity", "tenant_id", "entity"),)
