@@ -1,8 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useI18n } from "@/components/public/i18n";
-import { Reveal } from "@/components/public/reveal";
 
 /** الشكل الهندسي الدوّار — ديكور بطيء جدًا (دورة كل 100 ثانية) */
 function HeroShape() {
@@ -21,11 +21,19 @@ function HeroShape() {
   );
 }
 
-/** معاينة المنتج — محاكاة صندوق الوحدة بتبيّن سياق العمل جنب كل محادثة */
+/** معاينة المنتج التفاعلية — دوس على أي محادثة وشوف اقتراح الـ AI المتعلق بيها */
 function HeroMock() {
   const { t } = useI18n();
   const rows = t.hero.mockRows as [string, string, string][];
+  const aiRows = t.hero.mockAiRows as string[];
   const variants = ["fh-badge-warning", "fh-badge", "fh-badge-success"];
+  const [active, setActive] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => setActive((a) => (a + 1) % rows.length), 4500);
+    return () => clearInterval(id);
+  }, [rows.length]);
+
   return (
     <div className="fh-hero-mock" role="img" aria-label="FIHRIST inbox">
       <div className="fh-hero-mock-head">
@@ -37,15 +45,21 @@ function HeroMock() {
       </div>
       <div className="fh-hero-mock-body">
         {rows.map(([name, badge, meta], i) => (
-          <div key={name} className="fh-hero-mock-row">
+          <button
+            key={name}
+            type="button"
+            className={`fh-hero-mock-row${i === active ? " is-active" : ""}`}
+            onClick={() => setActive(i)}
+            aria-pressed={i === active}
+          >
             <span className="fh-status-dot" />
             <b>{name}</b>
             <span className={`fh-badge ${variants[i] || ""}`}>{badge}</span>
             <small>{meta}</small>
-          </div>
+          </button>
         ))}
-        <div className="fh-hero-mock-ai">
-          <b>AI:</b> {t.hero.mockAi}
+        <div className="fh-hero-mock-ai" key={active}>
+          <b>AI:</b> {aiRows[active] || t.hero.mockAi}
         </div>
       </div>
     </div>
