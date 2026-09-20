@@ -10,7 +10,6 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
-from typing import Any
 
 import httpx
 
@@ -22,6 +21,7 @@ from app.modules.conversations.gateway.base import (
     OutboundMessage,
     ProviderCredentials,
     StatusUpdate,
+    parse_provider_body,
 )
 
 GRAPH_BASE = "https://graph.facebook.com/v21.0"
@@ -157,7 +157,8 @@ class WhatsAppAdapter:
 
         body_payload = self._build_send_payload(message)
 
-        async def _post() -> httpx.Response:
+        async def _post() -> str:
+            """Post and return the provider message id — entirely inside the breaker."""
             url = f"{GRAPH_BASE}/{phone_number_id}/messages"
             headers = {"Authorization": f"Bearer {token}"}
             if _client is not None:
@@ -174,18 +175,25 @@ class WhatsAppAdapter:
                 raise ExternalProviderError(
                     f"whatsapp send failed: {response.status_code} {response.text[:200]}"
                 )
-            return response
+            # A 2xx is not proof of acceptance either: Graph answers 200 with an
+            # `error` object, and an intermediary can answer 200 with HTML. Both
+            # must be raised here too, or they count as breaker SUCCESSES.
+            data = parse_provider_body(response, "whatsapp send")
+            try:
+                message_id = data["messages"][0]["id"]
+            except (KeyError, IndexError, TypeError) as exc:
+                raise ExternalProviderError(
+                    f"whatsapp send: no message id in response: {str(data)[:200]}"
+                ) from exc
+            if not message_id:
+                raise ExternalProviderError("whatsapp send: empty message id in response")
+            return str(message_id)
 
         # §47: the outbound call goes through the process-wide `provider.whatsapp`
         # breaker, so a dead provider is backed off instead of hammered. An OPEN
         # breaker raises CircuitOpenError; deciding whether that retries, defers or
         # fails is the caller's job, not the adapter's.
-        response = await get_breaker(PROVIDER_WHATSAPP).call(_post)
-        data: dict[str, Any] = response.json()
-        try:
-            return data["messages"][0]["id"]
-        except (KeyError, IndexError, TypeError) as exc:
-            raise ExternalProviderError("whatsapp send: no message id in response") from exc
+        return await get_breaker(PROVIDER_WHATSAPP).call(_post)
 
     async def _send_via_n8n(
         self,
@@ -205,7 +213,7 @@ class WhatsAppAdapter:
         }
         headers = {"Authorization": f"Bearer {credentials.get('n8n_service_token', '')}"}
 
-        async def _post() -> httpx.Response:
+        async def _post() -> str:
             if _client is not None:
                 response = await _client.post(n8n_url, json=body, headers=headers)
             else:
@@ -216,18 +224,23 @@ class WhatsAppAdapter:
                 raise ExternalProviderError(
                     f"whatsapp n8n send failed: {response.status_code} {response.text[:200]}"
                 )
-            return response
+            data = parse_provider_body(response, "whatsapp n8n send")
+            # n8n lastNode returns the Graph response shape; unwrap either form.
+            try:
+                if "messages" in data:
+                    message_id = data["messages"][0]["id"]
+                else:
+                    message_id = data["message_id"]
+            except (KeyError, IndexError, TypeError) as exc:
+                raise ExternalProviderError(
+                    f"whatsapp n8n send: no message id: {str(data)[:200]}"
+                ) from exc
+            if not message_id:
+                raise ExternalProviderError("whatsapp n8n send: empty message id")
+            return str(message_id)
 
         # Same provider as the direct Graph path, so it spends the SAME breaker.
-        response = await get_breaker(PROVIDER_WHATSAPP).call(_post)
-        data = response.json()
-        # n8n lastNode returns the Graph response shape; unwrap either form.
-        try:
-            if "messages" in data:
-                return data["messages"][0]["id"]
-            return data["message_id"]
-        except (KeyError, IndexError, TypeError) as exc:
-            raise ExternalProviderError("whatsapp n8n send: no message id") from exc
+        return await get_breaker(PROVIDER_WHATSAPP).call(_post)
 
     def _build_send_payload(self, message: OutboundMessage) -> dict:
         base = {

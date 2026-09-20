@@ -19,7 +19,13 @@ from app.modules.conversations.gateway.ingest import IngestService
 from app.modules.conversations.gateway.registry import get_adapter
 from app.modules.conversations.service import ConversationService
 from app.modules.conversations.templates import TemplateInput, TemplateService
-from app.modules.identity.deps import DbSession, TenantContext, TenantCtxDep, require_permission
+from app.modules.identity.deps import (
+    AuthedUser,
+    DbSession,
+    TenantContext,
+    TenantCtxDep,
+    require_permission,
+)
 from app.modules.platform.models import WebhookEvent
 
 logger = logging.getLogger(__name__)
@@ -130,7 +136,11 @@ async def list_messages(
 
 
 @router.post("/conversations/{conversation_id}/messages", status_code=201)
-async def send_message(ctx: TenantCtxDep, conversation_id: uuid.UUID, body: SendMessageRequest):
+async def send_message(
+    conversation_id: uuid.UUID,
+    body: SendMessageRequest,
+    ctx: TenantContext = Depends(require_permission("conversations:write")),
+):
     from app.core.events.writer import add_outbox_event
 
     conversation = await ConversationService.get(ctx.session, ctx.tenant_id, conversation_id)
@@ -437,14 +447,113 @@ async def reconcile_messages(
 
 # ---------- realtime (SSE) ----------
 
+
+async def _stream_auth(request: Request, token: str | None) -> AuthedUser:
+    """Authenticate the staff inbox SSE stream.
+
+    EventSource cannot set headers, so the access token arrives as ?token=; a
+    standard `Authorization: Bearer` header is accepted too.
+
+    S9: this endpoint used to decode the JWT and stream the tenant's inbox on the
+    strength of the signature alone — it never checked that the user still
+    exists, is still active, is still a member of the tenant, or that the
+    workspace may still use the API. A deactivated user or a removed member kept
+    a live feed of message bodies for the whole token lifetime.
+
+    Mirrors `app.modules.realtime.router._sse_auth`. It deliberately opens its
+    OWN short-lived session rather than taking the request-scoped `DbSession`:
+    FastAPI tears dependency generators down only AFTER the response completes,
+    so a request-scoped session would pin a pooled connection for the entire
+    lifetime of the stream (hours) — a handful of open inboxes would exhaust the
+    pool for the whole platform (the same failure class as R4).
+    """
+    from sqlalchemy import select as sa_select
+    from sqlalchemy import text as sa_text
+
+    from app.core.db import SessionLocal
+    from app.core.errors import PermissionDeniedError
+    from app.core.security import decode_token
+    from app.modules.identity.deps import tenant_may_use_api
+    from app.modules.identity.models import Tenant, TenantUser, User
+
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.lower().startswith("bearer "):
+        raw_token = auth_header.split(" ", 1)[1].strip()
+    elif token:
+        raw_token = token
+    else:
+        raise PermissionDeniedError("missing bearer token")
+
+    try:
+        payload = decode_token(raw_token)
+        if payload.get("type") != "access":
+            raise PermissionDeniedError("wrong token type")
+        if not payload.get("tenant_id"):
+            # Fail closed: a tenant-less token must never open a stream —
+            # every frame in this generator is tenant-filtered.
+            raise PermissionDeniedError("token has no tenant")
+        user_id = uuid.UUID(str(payload["sub"]))
+        tenant_id = uuid.UUID(payload["tenant_id"])
+    except PermissionDeniedError:
+        raise
+    except Exception as exc:
+        raise PermissionDeniedError("invalid token") from exc
+
+    async with SessionLocal() as session:
+        async with session.begin():
+            # `users` is global (no RLS) so this runs before any tenant GUC.
+            is_active = (
+                await session.execute(
+                    sa_select(User.is_active).where(User.id == user_id)
+                )
+            ).scalar_one_or_none()
+            if not is_active:
+                raise PermissionDeniedError("account is inactive")
+
+            # Bind the user GUC so the tenant_users self-access policy exposes
+            # the membership row for the check below.
+            await session.execute(
+                sa_text("SELECT set_config('app.user_id', :uid, true)"),
+                {"uid": str(user_id)},
+            )
+            member = (
+                await session.execute(
+                    sa_select(TenantUser.user_id).where(
+                        TenantUser.tenant_id == tenant_id,
+                        TenantUser.user_id == user_id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if member is None:
+                raise PermissionDeniedError("not a member of this tenant")
+
+            # §48: checked AFTER membership so the state is never disclosed to a
+            # non-member. A suspended workspace must not keep a live inbox.
+            lifecycle_state = (
+                await session.execute(
+                    sa_select(Tenant.lifecycle_state).where(Tenant.id == tenant_id)
+                )
+            ).scalar_one_or_none()
+            if lifecycle_state is None:
+                raise PermissionDeniedError("tenant not found")
+            if not tenant_may_use_api(lifecycle_state):
+                raise PermissionDeniedError(
+                    f"workspace is {lifecycle_state} — inbox stream is unavailable"
+                )
+
+    return AuthedUser(id=user_id, tenant_id=tenant_id, role_code=payload.get("role"))
+
+
 @router.get("/conversations/stream")
-async def stream_conversations(request: Request, token: str):
+async def stream_conversations(request: Request, token: str | None = None):
     """Server-Sent Events feed of inbox state changes.
 
     EventSource cannot set headers, so the access token arrives as ?token=.
-    Each tick opens a short session bound to the tenant GUC; the loop yields
-    only when the inbox state digest changes. Connections recycle after
-    MAX_STREAM_SECONDS so deploys roll cleanly.
+    The caller must be an active member of an operational workspace — see
+    `_stream_auth`, which mirrors the realtime gateway's gate. Each tick opens a
+    short session bound to the tenant GUC; the loop yields only when the inbox
+    state digest changes. Connections recycle after MAX_STREAM_SECONDS so
+    deploys roll cleanly.
     """
     import asyncio
     import hashlib
@@ -453,25 +562,8 @@ async def stream_conversations(request: Request, token: str):
     from fastapi.responses import StreamingResponse
 
     from app.core.db import SessionLocal, bind_tenant
-    from app.core.errors import PermissionDeniedError
-    from app.core.security import decode_token
-    from app.modules.identity.deps import AuthedUser
 
-    try:
-        payload = decode_token(token)
-        if payload.get("type") != "access":
-            raise PermissionDeniedError("wrong token type")
-        user = AuthedUser(
-            id=uuid.UUID(payload["sub"]),
-            tenant_id=uuid.UUID(payload["tenant_id"]) if payload.get("tenant_id") else None,
-            role_code=payload.get("role"),
-        )
-        if user.tenant_id is None:
-            raise PermissionDeniedError("no tenant")
-    except PermissionDeniedError:
-        raise
-    except Exception as exc:
-        raise PermissionDeniedError("invalid token") from exc
+    user = await _stream_auth(request, token)
 
     async def event_stream():
         last_digest = None

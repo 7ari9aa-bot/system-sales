@@ -17,6 +17,7 @@ from app.modules.conversations.gateway.base import (
     OutboundMessage,
     ProviderCredentials,
     StatusUpdate,
+    parse_provider_body,
 )
 
 API_BASE = "https://api.telegram.org"
@@ -92,7 +93,8 @@ class TelegramAdapter:
             payload["reply_markup"] = message.meta["reply_markup"]
         url = f"{API_BASE}/bot{token}/sendMessage"
 
-        async def _post() -> httpx.Response:
+        async def _post() -> str:
+            """Post and return the provider message id — entirely inside the breaker."""
             if _client is not None:
                 response = await _client.post(url, json=payload)
             else:
@@ -107,17 +109,27 @@ class TelegramAdapter:
                 raise ExternalProviderError(
                     f"telegram send failed: {response.status_code} {response.text[:200]}"
                 )
-            return response
+            # Bot API answers 200 with {"ok": false, "description": ...} for a
+            # rejected send, and an intermediary can answer 200 with HTML. Both
+            # must be raised here too, or they count as breaker SUCCESSES.
+            data = parse_provider_body(response, "telegram send")
+            if not data.get("ok"):
+                raise ExternalProviderError(f"telegram send failed: {str(data)[:200]}")
+            try:
+                message_id = data["result"]["message_id"]
+            except (KeyError, TypeError) as exc:
+                raise ExternalProviderError(
+                    f"telegram send: ok but no result.message_id: {str(data)[:200]}"
+                ) from exc
+            if not message_id:
+                raise ExternalProviderError("telegram send: empty message id in response")
+            return str(message_id)
 
         # §47: the outbound call goes through the process-wide `provider.telegram`
         # breaker, so a dead provider is backed off instead of hammered. An OPEN
         # breaker raises CircuitOpenError; deciding whether that retries, defers or
         # fails is the caller's job, not the adapter's.
-        response = await get_breaker(PROVIDER_TELEGRAM).call(_post)
-        data = response.json()
-        if not data.get("ok"):
-            raise ExternalProviderError(f"telegram send failed: {data}")
-        return str(data["result"]["message_id"])
+        return await get_breaker(PROVIDER_TELEGRAM).call(_post)
 
 
 telegram_adapter = TelegramAdapter()

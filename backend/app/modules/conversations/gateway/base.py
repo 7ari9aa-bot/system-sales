@@ -11,6 +11,35 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+import httpx
+
+from app.core.errors import ExternalProviderError
+
+
+def parse_provider_body(response: httpx.Response, context: str) -> dict[str, Any]:
+    """Decode a provider 2xx body into a JSON object, or raise a provider error.
+
+    A 2xx is not a success: a proxy, CDN or captive portal can answer 200 with an
+    HTML error page, and the Graph/Bot APIs answer 200 with an `error` object. A
+    bare `response.json()` turned the first case into an unhandled
+    `json.JSONDecodeError` — the wrong exception for the caller, and, when the
+    decode sits outside `breaker.call()`, a recorded SUCCESS, so a provider
+    broken this way never opened the breaker.
+
+    Callers must invoke this INSIDE the breaker, like the status-code check.
+    """
+    try:
+        data = response.json()
+    except ValueError as exc:  # json.JSONDecodeError subclasses ValueError
+        raise ExternalProviderError(
+            f"{context}: provider returned a non-JSON body (HTTP {response.status_code})"
+        ) from exc
+    if not isinstance(data, dict):
+        raise ExternalProviderError(
+            f"{context}: provider returned a non-object JSON body (HTTP {response.status_code})"
+        )
+    return data
+
 
 @dataclass
 class InboundMessage:

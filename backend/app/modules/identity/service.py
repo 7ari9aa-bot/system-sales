@@ -75,6 +75,38 @@ async def _record_security_event(
     )
 
 
+async def _revoke_family_on_reuse(user_id: uuid.UUID) -> None:
+    """Revoke every live refresh token for `user_id`, on its OWN transaction.
+
+    Reuse detection is only real if the revocation outlives the request that
+    detected it: `refresh` raises straight after, which rolls the REQUEST
+    transaction back, so a family-revoking UPDATE issued on that transaction was
+    discarded and replaying a stolen token kept working for the full token
+    lifetime — the legitimate session was never killed. A short-lived session
+    (the same mechanism `record_security_event` uses) makes the revocation
+    durable. `refresh_tokens` is a global, RLS-exempt table (migration
+    b2c3d4e5f6a7), so no tenant GUC is required.
+
+    Never raises: a failed revocation must not turn the 401 it accompanies into
+    a 500, so the failure is logged loudly instead.
+    """
+    from app.core.db import get_sessionmaker
+
+    try:
+        async with get_sessionmaker()() as session:
+            async with session.begin():
+                await session.execute(
+                    sa.update(RefreshToken)
+                    .where(
+                        RefreshToken.user_id == user_id,
+                        RefreshToken.revoked_at.is_(None),
+                    )
+                    .values(revoked_at=_now())
+                )
+    except Exception:  # noqa: BLE001 — revocation must not mask the 401 it accompanies
+        logger.error("auth.reuse_revocation_failed user=%s", user_id, exc_info=True)
+
+
 def _now() -> datetime:
     return datetime.now(UTC)
 
@@ -283,21 +315,21 @@ class AuthService:
             raise PermissionDeniedError("invalid refresh token")
         if row.revoked_at is not None:
             # Reuse of a revoked token → revoke the whole family (all user tokens).
-            from app.modules.platform.models import SecurityEvent
-
-            session.add(
-                SecurityEvent(
-                    event_type="token_reuse_detected",
-                    tenant_id=row.tenant_id,
-                    actor_user_id=row.user_id,
-                    details={"token_id": str(row.id)},
-                    ip=ip,
-                )
-            )
-            await session.execute(
-                sa.update(RefreshToken)
-                .where(RefreshToken.user_id == row.user_id, RefreshToken.revoked_at.is_(None))
-                .values(revoked_at=_now())
+            #
+            # BOTH writes must outlive this request: the raise below rolls the
+            # REQUEST transaction back, so a revocation or audit row issued on
+            # that transaction never reached the database. Reuse detection used
+            # to be a silent no-op in production for exactly this reason — the
+            # old test passed only because it called the service directly,
+            # outside any request transaction. `_revoke_family_on_reuse` and
+            # `_record_security_event` each own a short-lived transaction.
+            await _revoke_family_on_reuse(row.user_id)
+            await _record_security_event(
+                "token_reuse_detected",
+                details={"token_id": str(row.id)},
+                ip=ip,
+                tenant_id=row.tenant_id,
+                actor_user_id=row.user_id,
             )
             raise PermissionDeniedError("refresh token revoked")
         if row.expires_at < _now():
