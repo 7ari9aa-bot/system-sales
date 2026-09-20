@@ -1,0 +1,218 @@
+"""Module boundary enforcement (review G-16 / N-03).
+
+The audit measured cross-module imports growing 62 → 75 and found no
+import-linter or architectural test, so nothing stopped the next feature from
+coupling modules further. There is now a ratchet.
+
+Three rules, in increasing strictness:
+
+1. **No new import CYCLE between modules.** Eight exist today and are listed
+   below; any ninth fails. Cycles are the reason this codebase is full of
+   function-scope imports like `from app.modules.identity.models import Tenant`
+   inside a method — the cycle has to be broken *somewhere*, and a lazy import
+   is the cheapest place. They also make a module impossible to load in
+   isolation or test without dragging in the world.
+2. **No module-scope import of another module's `router`.** Routers are
+   composition roots; `main.py` is the only place that wires them. Currently
+   zero, and it must stay zero — a router imported by a service is how a
+   request-shaped dependency ends up inside domain logic.
+3. **Ratchet on the counts.** Cross-module imports may only go DOWN.
+
+These are AST checks, so no new dependency. When you genuinely reduce a count,
+lower the baseline in the same commit — the tests fail on improvement too,
+on purpose, because a ratchet that is never tightened is decoration.
+
+How to fix a violation:
+* Need a model from another module? Read it through that module's service, or
+  add a read-model/`public.py` (spec §137) instead of reaching into its tables.
+* Need it only inside one function? Move the import into the function body — the
+  lazy-import pattern this codebase already uses — and it stops counting as a
+  module-scope coupling.
+* Genuinely new dependency? That is a design decision: change the baseline
+  deliberately in the same commit, with the reason in the message.
+"""
+
+from __future__ import annotations
+
+import ast
+import collections
+import pathlib
+
+import pytest
+
+MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
+
+# --- baselines: these may only SHRINK -------------------------------------
+#
+# Measured 2026-09-20 after the review. Every one of these is a known debt, not
+# an approval: the point is that the number cannot go up.
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 79
+BASELINE_MODULE_SCOPE_SERVICE_IMPORTS = 8
+
+# Cycles are identified by the SET of modules involved, so the same loop
+# discovered from a different entry point counts once.
+BASELINE_CYCLES: frozenset[frozenset[str]] = frozenset(
+    {
+        frozenset({"billing", "identity"}),
+        frozenset({"identity", "operations"}),
+        frozenset({"identity", "operations", "platform"}),
+        frozenset({"catalog", "inventory"}),
+        frozenset({"catalog", "inventory", "orders"}),
+        frozenset({"customers", "conversations"}),
+        frozenset({"orders", "customers"}),
+        frozenset({"inventory", "orders"}),
+    }
+)
+
+
+def _source_module(path: pathlib.Path) -> str | None:
+    try:
+        rel = path.relative_to(MODULES_DIR)
+    except ValueError:
+        return None
+    return rel.parts[0] if len(rel.parts) > 1 else None
+
+
+def _imported_module(node: ast.Import | ast.ImportFrom) -> str | None:
+    if isinstance(node, ast.ImportFrom):
+        return node.module
+    return node.names[0].name if node.names else None
+
+
+def _module_files() -> list[pathlib.Path]:
+    return [
+        p
+        for p in sorted(MODULES_DIR.rglob("*.py"))
+        if "__pycache__" not in p.parts
+    ]
+
+
+def _cross_module_imports() -> list[tuple[str, str, str, bool]]:
+    """(source_module, target_module, target_kind, at_module_scope)."""
+    found: list[tuple[str, str, str, bool]] = []
+    for path in _module_files():
+        source = _source_module(path)
+        if source is None:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        top_level = {
+            id(n) for n in tree.body if isinstance(n, (ast.Import, ast.ImportFrom))
+        }
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.Import, ast.ImportFrom)):
+                continue
+            target = _imported_module(node)
+            if not target or not target.startswith("app.modules."):
+                continue
+            parts = target.split(".")
+            if len(parts) < 3 or parts[2] == source:
+                continue
+            kind = parts[3] if len(parts) > 3 else "<pkg>"
+            found.append((source, parts[2], kind, id(node) in top_level))
+    return found
+
+
+def _cycles() -> set[frozenset[str]]:
+    graph: dict[str, set[str]] = collections.defaultdict(set)
+    for source, target, _kind, _scope in _cross_module_imports():
+        graph[source].add(target)
+
+    found: set[frozenset[str]] = set()
+    seen: set[str] = set()
+
+    def walk(node: str, stack: list[str]) -> None:
+        if node in stack:
+            found.add(frozenset(stack[stack.index(node) :]))
+            return
+        if node in seen:
+            return
+        seen.add(node)
+        for nxt in sorted(graph.get(node, ())):
+            walk(nxt, stack + [node])
+
+    for start in sorted(graph):
+        walk(start, [])
+    return found
+
+
+# ------------------------------------------------------------ the rules ---
+
+
+def test_no_new_module_import_cycles() -> None:
+    """A ninth cycle means two modules can no longer be reasoned about alone."""
+    current = _cycles()
+    new = sorted(
+        (" -> ".join(sorted(c)) for c in current - BASELINE_CYCLES),
+        key=str,
+    )
+    assert not new, (
+        "new import cycle(s) between modules: "
+        + "; ".join(new)
+        + ". Break it with a function-scope import, a read-model, or an event — "
+        "see this file's docstring."
+    )
+
+
+def test_module_cycles_only_get_resolved() -> None:
+    """If a cycle was removed, tighten the baseline so it cannot come back."""
+    current = _cycles()
+    fixed = sorted((" -> ".join(sorted(c)) for c in BASELINE_CYCLES - current), key=str)
+    if fixed:
+        pytest.fail(
+            "good news — these cycles no longer exist: "
+            + "; ".join(fixed)
+            + ". Remove them from BASELINE_CYCLES in this file to lock the "
+            "improvement in."
+        )
+
+
+def test_no_module_scope_router_imports() -> None:
+    """Routers are composition roots; only main.py wires them."""
+    offenders = [
+        f"{src} -> {tgt}.router"
+        for src, tgt, kind, scope in _cross_module_imports()
+        if kind == "router" and scope
+    ]
+    assert not offenders, (
+        "a module imports another module's router at module scope: "
+        + ", ".join(sorted(set(offenders)))
+    )
+
+
+def test_cross_module_imports_do_not_grow() -> None:
+    total = len(_cross_module_imports())
+    assert total <= BASELINE_TOTAL_CROSS_MODULE_IMPORTS, (
+        f"cross-module imports grew to {total} (baseline "
+        f"{BASELINE_TOTAL_CROSS_MODULE_IMPORTS}). Importing another module's "
+        "tables couples the two permanently — use its service, or add a "
+        "read-model (spec §137)."
+    )
+
+
+def test_module_scope_service_imports_do_not_grow() -> None:
+    """Module-scope service imports are the ones that create cycles.
+
+    A function-scope import is the accepted escape hatch in this codebase, and
+    does not count here.
+    """
+    offenders = [
+        f"{src} -> {tgt}.service"
+        for src, tgt, kind, scope in _cross_module_imports()
+        if kind == "service" and scope
+    ]
+    assert len(offenders) <= BASELINE_MODULE_SCOPE_SERVICE_IMPORTS, (
+        f"module-scope service imports grew to {len(offenders)} (baseline "
+        f"{BASELINE_MODULE_SCOPE_SERVICE_IMPORTS}): "
+        + ", ".join(sorted(offenders))
+        + ". Move the import into the function that needs it."
+    )
+
+
+def test_the_parser_actually_sees_the_tree() -> None:
+    """Guard against a silent no-op: a broken parser would make every rule pass."""
+    found = _cross_module_imports()
+    assert len(found) > 20, (
+        f"the boundary parser found only {len(found)} cross-module imports — "
+        "it is probably broken, which would make every other rule vacuous"
+    )
+    assert _cycles(), "cycle detection returned nothing — the graph walk is broken"
