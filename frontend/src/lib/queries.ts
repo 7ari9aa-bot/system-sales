@@ -43,6 +43,8 @@ export type Conversation = {
   channel: string;
   status: string;
   unread_count: number;
+  /** من يسأل عن هذه المحادثة — يُستخدم في "شغلي". */
+  assignee_user_id: string | null;
   last_message_at: string | null;
 };
 
@@ -125,6 +127,54 @@ export type Task = {
   source: string;
 };
 
+/** §46 — one conversation's first-response SLA clock (`GET /sla/risk`). */
+export type SlaRiskItem = {
+  id: string;
+  conversation_id: string;
+  kind: string;
+  status: string;
+  deadline_at: string | null;
+  /** Minutes until the deadline; negative once breached, null if no deadline. */
+  minutes_remaining: number | null;
+  at_risk: boolean;
+};
+
+/** §135 — a parked HIGH-risk tool call awaiting a human decision. */
+export type Approval = {
+  id: string;
+  status: string;
+  action: string;
+  risk_level: string;
+  entity_type: string | null;
+  entity_id: string | null;
+  conversation_id: string | null;
+  run_id: string | null;
+  payload: Record<string, unknown>;
+  requested_by: string | null;
+  expires_at: string | null;
+  decided_at: string | null;
+  consumed_at: string | null;
+  rejection_reason: string | null;
+  created_at: string | null;
+};
+
+/** §103 — per-subsystem status. Worst status wins at the envelope level. */
+export type HealthStatus = "healthy" | "degraded" | "down";
+
+export type HealthSubsystem = {
+  name: string;
+  status: HealthStatus;
+  /** Short, non-sensitive description (fixed strings plus counts and ages). */
+  detail?: string;
+  /** Present on the `integrations` row only: provider + rolled-up status. */
+  integrations?: { provider: string; status: HealthStatus }[];
+};
+
+export type PlatformHealth = {
+  status: HealthStatus;
+  subsystems: HealthSubsystem[];
+};
+
 /* ------------------------------------------------------------------ keys */
 
 export const qk = {
@@ -145,6 +195,9 @@ export const qk = {
   invitations: ["invitations"] as QueryKey,
   integrations: ["integrations"] as QueryKey,
   tasks: ["operations", "tasks"] as QueryKey,
+  slaRisk: ["operations", "sla", "risk"] as QueryKey,
+  approvals: (status: string) => ["ai", "approvals", status] as QueryKey,
+  health: ["platform", "health"] as QueryKey,
 };
 
 function errMessage(err: unknown) {
@@ -311,6 +364,40 @@ export function useTasks() {
   return useQuery({
     queryKey: qk.tasks,
     queryFn: () => api<Task[]>("/tasks"),
+  });
+}
+
+/** §46 — conversations whose first-response SLA is running or breached. */
+export function useSlaRisk() {
+  return useQuery({
+    queryKey: qk.slaRisk,
+    queryFn: () => api<{ items: SlaRiskItem[]; timezone: string }>("/sla/risk"),
+    refetchInterval: 30_000,
+  });
+}
+
+/** §135 — approvals parked awaiting a decision (defaults to the pending queue). */
+export function useApprovals(status = "PENDING") {
+  return useQuery({
+    queryKey: qk.approvals(status),
+    queryFn: () =>
+      api<{ items: Approval[] }>(`/ai/approvals?status=${encodeURIComponent(status)}`).then(
+        (r) => r.items,
+      ),
+    refetchInterval: 30_000,
+  });
+}
+
+/** §103 — subsystem health for the top-bar indicator.
+ *  A failing check must read as "unknown", never crash the shell, so we do not
+ *  retry and let the caller fall back on missing data. */
+export function usePlatformHealth() {
+  return useQuery({
+    queryKey: qk.health,
+    queryFn: () => api<PlatformHealth>("/platform/health"),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+    retry: false,
   });
 }
 

@@ -7,6 +7,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { LayoutDashboard,
   MessagesSquare,
   ListChecks,
+  ClipboardList,
   Users,
   ShoppingCart,
   Package,
@@ -43,6 +44,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { CommandPalette } from "@/components/command-palette";
 import { NotificationsBell } from "@/components/notifications-bell";
+import { HealthIndicator } from "@/components/health-indicator";
 import { useMe } from "@/lib/queries";
 
 /* ------------------------------------------------------------- nav model */
@@ -63,6 +65,7 @@ function buildNavGroups(): NavGroup[] {
       id: "work",
       label: t.groupWork,
       items: [
+        { href: "/my-work", label: t.myWork, icon: <ClipboardList aria-hidden="true" />, testid: "nav-my-work" },
         { href: "/inbox", label: t.inbox, icon: <MessagesSquare aria-hidden="true" />, testid: "nav-inbox" },
         { href: "/tasks", label: t.myTasks, icon: <ListChecks aria-hidden="true" />, testid: "nav-tasks" },
       ],
@@ -337,6 +340,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
           {/* notifications bell */}
           <NotificationsBell />
+
+          {/* system health indicator (§103) */}
+          <HealthIndicator />
 
           {/* theme toggle */}
           <Button
