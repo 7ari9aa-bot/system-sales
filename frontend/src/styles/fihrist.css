@@ -705,3 +705,16 @@ html { scroll-behavior: smooth; }
 .fh-pw-field input { padding-inline-end: 2.8rem; }
 .fh-pw-toggle { position: absolute; inset-inline-end: .55rem; top: calc(50% - 14px); background: none; border: none; padding: .25rem .35rem; color: var(--muted); font-size: 12px; font-weight: 500; border-radius: 3px; }
 .fh-pw-toggle:hover { color: var(--forest); }
+
+
+/* ---------- الهيدر: شعار يسار، تسجيل يمين (RTL fix) ---------- */
+.fh-nav-inner { direction: ltr; }
+.fh-nav-links { direction: rtl; }
+html[lang="en"] .fh-nav-links { direction: ltr; }
+
+/* ---------- هيرو: معاينة تفاعلية ---------- */
+.fh-hero-mock-row { cursor: pointer; font: inherit; color: inherit; text-align: start; width: 100%; transition: border-color .2s ease, background-color .2s ease; }
+.fh-hero-mock-row:hover { border-color: var(--forest); }
+.fh-hero-mock-row.is-active { border-color: var(--forest); background: var(--tint); }
+.fh-hero-mock-ai { animation: fh-fade-in .4s ease; }
+@keyframes fh-fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
