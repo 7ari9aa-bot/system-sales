@@ -32,6 +32,7 @@ from app.modules.billing.models import Entitlement, Plan, Subscription
 from app.modules.billing.service import (
     _CAPABILITY_FEATURE,
     _DERIVED_USAGE,
+    BillingService,
     EntitlementService,
 )
 from app.modules.identity.models import TenantUser
@@ -167,7 +168,7 @@ async def test_seat_usage_counts_memberships_not_usage_records(db, tenant_ctx):
         ).scalars().all()
     )
     assert expected >= 1  # the owner from the fixture
-    assert await EntitlementService.used_this_period(
+    assert await BillingService.used_this_period(
         db, tenant_ctx.tenant_id, "max_users"
     ) == expected
 
