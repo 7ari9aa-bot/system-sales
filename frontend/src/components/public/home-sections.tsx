@@ -39,6 +39,9 @@ export function HowItWorks() {
         <Reveal stagger>
           <StepsRow steps={t.how.steps as [string, string][]} />
         </Reveal>
+        <Reveal>
+          <img className="fh-section-img" src="https://media.base44.com/images/public/6ab00dcc41a53757c2f8a0b1/fe56c85ba_generated_image.png" alt={t.how.title} loading="lazy" />
+        </Reveal>
         <Reveal className="fh-more-link">
           <Link href="/product">{t.how.more} ←</Link>
         </Reveal>
@@ -101,6 +104,10 @@ export function AutomationSection() {
         <Reveal className="fh-section-head">
           <h2>{t.automation.title}</h2>
           <p>{t.automation.sub}</p>
+        </Reveal>
+
+        <Reveal>
+          <img className="fh-section-img" src="https://media.base44.com/images/public/6ab00dcc41a53757c2f8a0b1/73aa727d1_generated_image.png" alt={t.automation.title} loading="lazy" />
         </Reveal>
 
         <Reveal className="fh-pipeline fh-pipeline-compact" stagger aria-label={t.automation.title}>
@@ -247,6 +254,9 @@ export function FeaturesSection() {
         <Reveal className="fh-section-head">
           <h2>{t.features.title}</h2>
           <p>{t.features.sub}</p>
+        </Reveal>
+        <Reveal>
+          <img className="fh-section-img fh-section-img-wide" src="https://media.base44.com/images/public/6ab00dcc41a53757c2f8a0b1/0bc824d23_generated_image.png" alt={t.features.title} loading="lazy" />
         </Reveal>
         <Reveal stagger>
           <FeatureList items={t.features.items as [string, string][]} cols={3} />
