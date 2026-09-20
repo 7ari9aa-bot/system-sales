@@ -45,6 +45,7 @@ class MarkReadRequest(BaseModel):
 async def list_notifications(
     ctx: TenantCtxDep,
     unread_only: bool = False,
+    kind: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> list[NotificationOut]:
@@ -55,6 +56,7 @@ async def list_notifications(
         ctx.tenant_id,
         ctx.user.id,
         unread_only=unread_only,
+        kind=kind,
         limit=limit,
         offset=offset,
     )
@@ -71,19 +73,34 @@ async def unread_count(ctx: TenantCtxDep) -> dict[str, int]:
     return {"count": count}
 
 
+@router.get("/summary", summary="Totals the notifications centre labels its filters with")
+async def summary(ctx: TenantCtxDep) -> dict:
+    from app.modules.notifications.service import NotificationService
+
+    return await NotificationService.summary(ctx.session, ctx.tenant_id, ctx.user.id)
+
+
 @router.patch("/{notification_id}/read", summary="Mark one notification as read")
 async def mark_read(
     notification_id: uuid.UUID,
     ctx: TenantCtxDep,
-) -> NotificationOut | dict:
+) -> NotificationOut:
     from app.modules.notifications.service import NotificationService
 
     notif = await NotificationService.mark_read(
         ctx.session, ctx.tenant_id, ctx.user.id, notification_id
     )
-    if notif is None:
-        return {"detail": "not found"}
     return NotificationOut.from_orm_iso(notif)
+
+
+@router.post("/mark-read", summary="Mark a set of notifications as read")
+async def mark_many_read(body: MarkReadRequest, ctx: TenantCtxDep) -> dict[str, int]:
+    from app.modules.notifications.service import NotificationService
+
+    count = await NotificationService.mark_many_read(
+        ctx.session, ctx.tenant_id, ctx.user.id, body.ids
+    )
+    return {"marked": count}
 
 
 @router.post("/mark-all-read", summary="Mark all notifications as read")

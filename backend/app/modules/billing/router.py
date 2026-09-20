@@ -1,4 +1,13 @@
-"""PLATFORM + BILLING routes — notifications, webhooks, subscription, usage."""
+"""PLATFORM + BILLING routes — webhooks, subscription, usage.
+
+Outbound-notification delivery used to live here as a second `platform_router`
+with a `/notifications` prefix that duplicated the live user-facing routes in
+`modules/notifications/router.py`. It was never mounted (main.py imports only
+`billing_router` and `webhooks_router` from this module), so it was unreachable
+dead code that would have shadowed the notifications centre the moment anyone
+did mount it. `platform.service.NotificationService.queue` still exists for a
+future outbound-delivery surface.
+"""
 
 from __future__ import annotations
 
@@ -7,46 +16,10 @@ from pydantic import BaseModel, Field
 
 from app.modules.billing.service import BillingService
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
-from app.modules.platform.service import NotificationService, WebhookService
+from app.modules.platform.service import WebhookService
 
-platform_router = APIRouter(prefix="/notifications", tags=["notifications"])
 webhooks_router = APIRouter(prefix="/webhook-endpoints", tags=["webhooks"])
 billing_router = APIRouter(prefix="/billing", tags=["billing"])
-
-
-class NotifyRequest(BaseModel):
-    channel: str = Field(pattern="^(email|sms|push|inapp)$")
-    body: str = Field(min_length=1, max_length=4096)
-    subject: str | None = Field(default=None, max_length=512)
-
-
-@platform_router.post("", status_code=201)
-async def queue_notification(ctx: TenantCtxDep, body: NotifyRequest):
-    notification = await NotificationService.queue(
-        ctx.session,
-        ctx.tenant_id,
-        channel=body.channel,
-        body=body.body,
-        subject=body.subject,
-        user_id=ctx.user.id,
-    )
-    return {"id": str(notification.id), "status": notification.status}
-
-
-@platform_router.get("")
-async def list_notifications(ctx: TenantCtxDep, limit: int = 50):
-    rows = await NotificationService.list(ctx.session, ctx.tenant_id, limit=limit)
-    return [
-        {
-            "id": str(n.id),
-            "channel": n.channel,
-            "subject": n.subject,
-            "body": n.body,
-            "status": n.status,
-            "sent_at": n.sent_at.isoformat() if n.sent_at else None,
-        }
-        for n in rows
-    ]
 
 
 class WebhookEndpointRequest(BaseModel):

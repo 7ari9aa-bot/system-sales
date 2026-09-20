@@ -330,6 +330,21 @@ const ar = {
   c360Blocked: "محظور",
   c360Active: "نشط",
   viewAll: "عرض الكل",
+
+  // Notifications centre (spec W5)
+  notifications: "الإشعارات",
+  notificationsHint: "كل التنبيهات اللي وصلتك، مقسّمة حسب النوع",
+  markAllRead: "تحديد الكل كمقروء",
+  markAsRead: "تحديد كمقروء",
+  markSelectedRead: "تحديد المحدد كمقروء",
+  noNotifications: "مفيش إشعارات",
+  noNotificationsHint: "لما يحصل حاجة محتاجة انتباهك هتلاقيها هنا.",
+  filterAll: "الكل",
+  filterUnread: "غير المقروء",
+  filterByKind: "حسب النوع",
+  selectedCount: (n: number) => `${n} محدد`,
+  allCaughtUp: "مفيش جديد",
+  notificationsAllRead: "كل الإشعارات اتقرت",
 } as const;
 
 
@@ -659,6 +674,22 @@ const en = {
   c360Default: "Default",
   c360Blocked: "Blocked",
   c360Active: "Active",
+  viewAll: "View all",
+
+  // Notifications centre (spec W5)
+  notifications: "Notifications",
+  notificationsHint: "Everything that reached you, grouped by kind",
+  markAllRead: "Mark all as read",
+  markAsRead: "Mark as read",
+  markSelectedRead: "Mark selected as read",
+  noNotifications: "No notifications",
+  noNotificationsHint: "Anything that needs your attention will show up here.",
+  filterAll: "All",
+  filterUnread: "Unread",
+  filterByKind: "By kind",
+  selectedCount: (n: number) => `${n} selected`,
+  allCaughtUp: "Nothing new",
+  notificationsAllRead: "All notifications are read",
 } as const;
 
 

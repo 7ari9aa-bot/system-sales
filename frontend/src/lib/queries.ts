@@ -765,14 +765,32 @@ export type Notification = {
   created_at: string;
 };
 
-export function useNotifications(opts: { unread_only?: boolean; limit?: number } = {}) {
+export function useNotifications(
+  opts: { unread_only?: boolean; kind?: string | null; limit?: number } = {},
+) {
   const params = new URLSearchParams();
   if (opts.unread_only) params.set("unread_only", "true");
+  if (opts.kind) params.set("kind", opts.kind);
   if (opts.limit) params.set("limit", String(opts.limit));
   const qs = params.toString() ? `?${params}` : "";
   return useQuery<Notification[]>({
-    queryKey: ["notifications", opts],
+    queryKey: ["notifications", "list", opts],
     queryFn: () => api<Notification[]>(`/notifications${qs}`),
+    staleTime: 30_000,
+  });
+}
+
+/** Counts the centre labels its filter chips with (total / unread / by kind). */
+export type NotificationSummary = {
+  total: number;
+  unread: number;
+  by_kind: { kind: string; total: number; unread: number }[];
+};
+
+export function useNotificationSummary() {
+  return useQuery<NotificationSummary>({
+    queryKey: ["notifications", "summary"],
+    queryFn: () => api<NotificationSummary>("/notifications/summary"),
     staleTime: 30_000,
   });
 }
@@ -801,6 +819,21 @@ export function useMarkAllRead() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => api("/notifications/mark-all-read", { method: "POST" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["notifications"] });
+    },
+  });
+}
+
+/** Mark a selected set as read — one request, not N. */
+export function useMarkManyRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: string[]) =>
+      api<{ marked: number }>("/notifications/mark-read", {
+        method: "POST",
+        body: { ids },
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["notifications"] });
     },
