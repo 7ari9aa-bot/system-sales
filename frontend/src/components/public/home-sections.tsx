@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useI18n } from "@/components/public/i18n";
 import { Reveal } from "@/components/public/reveal";
 import { StepsRow, ContextGraph, FeatureList, FaqList } from "@/components/public/blocks";
+import { BentoFeatures } from "@/components/public/bento-features";
 
 /* ---------- شريط الإحصائيات ---------- */
 export function StatsBar() {
@@ -259,7 +260,7 @@ export function FeaturesSection() {
           <img className="fh-section-img fh-section-img-wide" src="https://media.base44.com/images/public/6ab00dcc41a53757c2f8a0b1/0bc824d23_generated_image.png" alt={t.features.title} loading="lazy" />
         </Reveal>
         <Reveal stagger>
-          <FeatureList items={t.features.items as [string, string][]} cols={3} />
+          <BentoFeatures items={t.features.items as [string, string][]} />
         </Reveal>
       </div>
     </section>
