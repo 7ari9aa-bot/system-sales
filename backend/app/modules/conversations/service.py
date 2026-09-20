@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.consent import MARKETING_PURPOSE, evaluate_outbound_consent
 from app.core.errors import NotFoundError, ValidationError
 from app.core.guardrails import AI_SENDER_TYPES, default_guardrail
 from app.modules.conversations.models import (
@@ -144,6 +145,14 @@ class ConversationService:
                     },
                 )
 
+        # §32: consent is per (customer, channel, purpose) and append-only, but
+        # this generic path is TRANSACTIONAL by construction — it has no purpose
+        # argument, so it cannot express marketing and there is nothing for a
+        # caller to forget. Promotional sends go through
+        # `add_promotional_message`, the single door that always runs the gate.
+        # (A model that cannot tell a promotion from a shipping notice cannot be
+        # made safe by a *default*; it is made safe by having one door.)
+
         if channel_message_id is not None:
             existing = (
                 await session.execute(
@@ -197,6 +206,69 @@ class ConversationService:
             await SlaService.mark_met(session, tenant_id, conversation_id=conversation_id)
         await session.flush()
         return message
+
+    @staticmethod
+    async def add_promotional_message(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        *,
+        conversation_id: uuid.UUID,
+        sender_type: str = "system",
+        body: str | None = None,
+        media_url: str | None = None,
+        media_type: str | None = None,
+        sender_user_id: uuid.UUID | None = None,
+        payload: dict | None = None,
+        content_type: str = "text",
+        template_name: str | None = None,
+        template_vars: dict | None = None,
+    ) -> Message:
+        """Send a PROMOTIONAL message — the one §32 consent-checked door.
+
+        `purpose` is deliberately NOT a parameter: the purpose of this method is
+        marketing, so there is no flag for a caller to omit and no way to reach
+        the send without the consent gate. A campaign, journey or broadcast that
+        wants to reach customers uses this method; a transactional reply uses
+        `add_message`.
+
+        The gate runs BEFORE anything is written, so an opted-out customer is
+        never left with a queued or half-sent message.
+        """
+        conversation = await ConversationService.get(session, tenant_id, conversation_id)
+        consent = await evaluate_outbound_consent(
+            session,
+            tenant_id,
+            customer_id=conversation.customer_id,
+            channel=conversation.channel,
+            purpose=MARKETING_PURPOSE,
+        )
+        if not consent.allowed:
+            raise OutboundBlockedError(
+                consent.reason,
+                details={
+                    "conversation_id": str(conversation_id),
+                    "customer_id": str(conversation.customer_id),
+                    "channel": consent.channel,
+                    "purpose": consent.purpose,
+                },
+            )
+        # §30-31 channel policy, §173 guardrail and the durable insert all still
+        # apply — this door only adds the §32 check in front of them.
+        return await ConversationService.add_message(
+            session,
+            tenant_id,
+            conversation_id=conversation_id,
+            direction="outbound",
+            sender_type=sender_type,
+            body=body,
+            media_url=media_url,
+            media_type=media_type,
+            sender_user_id=sender_user_id,
+            payload=payload,
+            content_type=content_type,
+            template_name=template_name,
+            template_vars=template_vars,
+        )
 
     @staticmethod
     async def set_status(
