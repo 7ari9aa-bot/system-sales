@@ -1,5 +1,6 @@
 import { Hero } from "@/components/public/hero";
 import {
+  StatsBar,
   HowItWorks,
   ContextSection,
   FeaturesSection,
@@ -67,6 +68,7 @@ export default function HomePage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
       <Hero />
+      <StatsBar />
       <HowItWorks />
       <ContextSection />
       <FeaturesSection />
