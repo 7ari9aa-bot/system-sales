@@ -42,7 +42,8 @@ const ar = {
   },
   hero: {
     eyebrow: "نظام تشغيل الأعمال بالمحادثة — مصري 100%",
-    h1: "شغلك كله في نظام واحد. تبيع أسرع، وتسيب الإدارة علينا.",
+    h1: "شغلك كله في نظام واحد.",
+    kinetic: ["تبيع أسرع", "تخدم أحسن", "تؤتمتت بدريك", "تكبر بثبات"],
     sub: "FIHRIST بيجمع محادثات عملائك من كل القنوات، طلباتك ومخزونك، أتمتتك، ومساعد ذكي بيفهم وينفذ — كله في مكان واحد متصل. مصمم للمتاجر والأنشطة اللي بتبيع أونلاين في مصر والخليج، مش لعقة برمجية بتكلفك فلوس من غير نتيجة.",
     start: "ابدأ مجانًا",
     explore: "شوف إزاي بيشتغل",
@@ -60,6 +61,7 @@ const ar = {
       "الطلب اتردّ عليه بنجاح — أقترح متابعة بعد الشحن لقياس الرضا.",
     ],
   },
+  trustSignals: ["عزل بيانات لكل مستأجر", "تدقيق كامل لكل خطوة", "بدون بطاقة ولا التزام", "AI بصلاحيات محدودة"],
   stats: {
     items: [
       ["١", "نظام واحد لكل شغلك"],
@@ -152,18 +154,18 @@ const ar = {
     more: "كل تفاصيل الأسعار والأسئلة الشائعة",
     tiers: [
       {
-        name: "البداية",
-        desc: "لنشأة صغيرة بتبدأ بالبيع بالمحادثة.",
+        name: "للمتجر الفردي",
+        desc: "للمتجر الفردي اللي بيبدأ بالبيع بالمحادثة.",
         features: ["1 مستخدم", "شات الموقع", "محادثات وطلبات غير محدودة", "مساعد AI أساسي", "تقارير أساسية"],
       },
       {
-        name: "النمو",
-        desc: "لفرق بتكبر وعايزة أتمتة أعمق وذكاء اصطناعي أوسع.",
+        name: "للفريق المتنامي",
+        desc: "للفريق المتنامي اللي عايز أتمتة أعمق وذكاء أوسع.",
         features: ["حتى 10 مستخدمين", "كل قنوات التواصل عند توفرها", "أتمتة متقدمة + موافقات", "حدود AI موسعة", "تحليلات وربط حملات"],
       },
       {
-        name: "التوسع",
-        desc: "لعمليات متعددة الفروع والفرق الكبيرة.",
+        name: "للعمليات الكبيرة",
+        desc: "للعمليات الكبيرة متعددة الفروع والفرق.",
         features: ["عدد مستخدمين غير محدود", "مساحات ومواقع متعددة", "صلاحيات متقدمة وتدقيق", "حدود AI مخصصة", "دعم بأولوية"],
       },
     ],
@@ -472,7 +474,8 @@ const en: typeof ar = {
   },
   hero: {
     eyebrow: "A conversation-driven business OS — built for MENA",
-    h1: "Your whole business in one system. Sell faster, let us handle the rest.",
+    h1: "Your whole business in one system.",
+    kinetic: ["sell faster", "serve better", "automate more", "scale steadily"],
     sub: "FIHRIST unifies every customer conversation, your orders and inventory, your automation, and a smart assistant that understands and acts — all in one connected place. Built for merchants and businesses selling online in Egypt and the Gulf, not a bloated tool that costs you money without results.",
     start: "Start free",
     explore: "How it works",
@@ -490,6 +493,7 @@ const en: typeof ar = {
       "This conversation was resolved — I suggest a follow-up after delivery to measure satisfaction.",
     ],
   },
+  trustSignals: ["Per-tenant data isolation", "Full audit on every step", "No card, no commitment", "Permissioned AI only"],
   stats: {
     items: [
       ["1", "One system for everything"],
@@ -582,18 +586,18 @@ const en: typeof ar = {
     more: "Full pricing details & FAQ",
     tiers: [
       {
-        name: "Starter",
-        desc: "For small teams getting started with conversational commerce.",
+        name: "Solo Merchant",
+        desc: "For the solo merchant starting with conversational commerce.",
         features: ["1 user", "Website chat", "Unlimited conversations & orders", "Core AI assistant", "Basic reports"],
       },
       {
-        name: "Growth",
-        desc: "For growing teams that want deeper automation and AI.",
+        name: "Growing Team",
+        desc: "For the growing team that wants deeper automation and AI.",
         features: ["Up to 10 users", "All channels, as they launch", "Advanced automation + approvals", "Expanded AI limits", "Analytics & campaign attribution"],
       },
       {
-        name: "Scale",
-        desc: "For multi-location operations and large teams.",
+        name: "Large Operations",
+        desc: "For large operations with multiple locations and teams.",
         features: ["Unlimited users", "Multiple workspaces & locations", "Advanced permissions & audit", "Custom AI limits", "Priority support"],
       },
     ],
