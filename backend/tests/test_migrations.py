@@ -318,13 +318,6 @@ def _declared_columns() -> dict[str, set[str]]:
     return declared
 
 
-# Tables whose DDL lives inside a plpgsql DO block, so the AST cannot see the
-# columns: e1f2a3b4c5d6 creates/alters `notifications` conditionally
-# (CREATE TABLE ... ELSE ALTER TABLE ... ADD COLUMN IF NOT EXISTS). Listed
-# explicitly rather than weakening the check for every table.
-_DYNAMIC_DDL_TABLES = frozenset({"notifications"})
-
-
 # Tables whose DDL lives inside a plpgsql DO block, so the AST cannot see their
 # columns: e1f2a3b4c5d6 creates/alters `notifications` conditionally
 # (CREATE TABLE ... ELSE ALTER TABLE ... ADD COLUMN IF NOT EXISTS). Listed
@@ -356,3 +349,55 @@ def test_every_model_column_is_created_by_a_migration() -> None:
             problems.append(f"{table}: model declares {missing} that no migration creates")
 
     assert not problems, "model/migration column drift: " + "; ".join(problems)
+
+
+async def test_not_null_server_defaults_exist_in_the_database(db) -> None:
+    """A model that declares a server_default for a NOT NULL column the database
+    created without one makes SQLAlchemy omit that column from the INSERT, so
+    every insert fails with NotNullViolationError.
+
+    This is exactly how `notifications.channel` was broken: the model declared
+    `server_default="inapp"`, the table was created `NOT NULL` with no default,
+    and `NotificationService.create()` could never insert a row. The AST guard
+    above cannot see it because `notifications`' DDL lives in a plpgsql DO
+    block, so this one checks the live schema instead.
+
+    Only NOT NULL columns are checked. A missing default on a nullable column is
+    harmless (the INSERT just writes NULL), so flagging those would be noise.
+    """
+    from sqlalchemy import text
+
+    from app.core.model_registry import Base
+
+    rows = (
+        await db.execute(
+            text(
+                "SELECT table_name, column_name, column_default "
+                "FROM information_schema.columns WHERE table_schema = 'public'"
+            )
+        )
+    ).all()
+    db_columns = {(table, column): default for table, column, default in rows}
+    db_tables = {table for table, _ in db_columns}
+    assert db_columns, "information_schema returned no columns — migrations not applied?"
+
+    problems: list[str] = []
+    for table_name, table in Base.metadata.tables.items():
+        if table_name not in db_tables:
+            continue
+        for column in table.c:
+            # A Python-side default supplies the value client-side, so a missing
+            # database default cannot break the INSERT.
+            if column.server_default is None or column.default is not None:
+                continue
+            if column.nullable:
+                continue
+            key = (table_name, column.name)
+            if key in db_columns and db_columns[key] is None:
+                problems.append(f"{table_name}.{column.name}")
+
+    assert not problems, (
+        "model declares server_default for NOT NULL column(s) that the database "
+        "has no default for; SQLAlchemy omits them on INSERT: "
+        + ", ".join(sorted(problems))
+    )
