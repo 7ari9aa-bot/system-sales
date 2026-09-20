@@ -177,6 +177,42 @@ class AuthService:
         return user, tenant
 
     @staticmethod
+    async def _assert_tenant_allows_login(
+        session,
+        tenant_id: uuid.UUID | None,
+        *,
+        user_id: uuid.UUID | None = None,
+        ip: str | None = None,
+    ) -> None:
+        """§48: a suspended or deleted tenant cannot sign in.
+
+        Offboarding deliberately KEEPS sign-in — the admin has to be able to
+        export their data before offboarding deletes it. Enforced here rather
+        than in `identity.deps` because login and refresh run before any tenant
+        context exists; the `allows_api` gate in deps covers everything after.
+
+        An unknown state fails CLOSED, consistent with the deps gate.
+        """
+        if tenant_id is None:
+            return
+        state = (
+            await session.execute(
+                sa.select(Tenant.lifecycle_state).where(Tenant.id == tenant_id)
+            )
+        ).scalar_one_or_none()
+        policy = STATE_POLICIES.get(state) if state else None
+        if policy is None or not policy.allows_login:
+            await _record_security_event(
+                "tenant_login_blocked",
+                details={"lifecycle_state": state or "unknown"},
+                ip=ip,
+                actor_user_id=user_id,
+            )
+            raise PermissionDeniedError(
+                f"workspace is {state or 'unavailable'} — sign-in is disabled"
+            )
+
+    @staticmethod
     async def login(
         session,
         *,
@@ -229,6 +265,9 @@ class AuthService:
             )
         ).scalar_one_or_none()
         tenant_id = membership.tenant_id if membership else None
+        await AuthService._assert_tenant_allows_login(
+            session, tenant_id, user_id=user.id, ip=ip
+        )
         pair = AuthService._issue_pair(session, user, tenant_id, user_agent=user_agent, ip=ip)
         return pair, user, tenant_id
 
@@ -267,6 +306,9 @@ class AuthService:
         user = (await session.execute(select(User).where(User.id == row.user_id))).scalar_one()
         if not user.is_active:
             raise PermissionDeniedError("account disabled")
+        await AuthService._assert_tenant_allows_login(
+            session, row.tenant_id, user_id=user.id, ip=ip
+        )
         row.revoked_at = _now()  # rotation
         pair = AuthService._issue_pair(session, user, row.tenant_id, user_agent=user_agent, ip=ip)
         return pair, user, row.tenant_id
@@ -302,6 +344,9 @@ class AuthService:
         ).scalar_one_or_none()
         if membership is None:
             raise PermissionDeniedError("not a member of this tenant")
+        # §48: switching INTO a suspended/deleted tenant must not mint a token
+        # family any more than logging into one would.
+        await AuthService._assert_tenant_allows_login(session, tenant_id, user_id=user.id)
         # Ownership: only revoke a refresh token that belongs to the caller.
         old_hash = _hash_token(refresh_token)
         row = (

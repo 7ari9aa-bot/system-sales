@@ -19,7 +19,47 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import SessionLocal, bind_tenant
 from app.core.errors import NotFoundError, PermissionDeniedError
 from app.core.security import decode_token
-from app.modules.identity.models import Permission, Role, TenantUser, User, role_permissions
+from app.modules.identity.models import (
+    Permission,
+    Role,
+    Tenant,
+    TenantUser,
+    User,
+    role_permissions,
+)
+
+# §48 — routes a NON-operational tenant (suspended / offboarding / deleted) must
+# still reach. Suspension is deliberately not "disable everything": the class
+# docstring on TenantCapabilityPolicy is explicit that a suspended admin keeps
+# data access so they can export before offboarding deletes it. These are the
+# escape hatches that make that possible, not exceptions to the rule.
+_TENANT_RECOVERY_PREFIXES: tuple[str, ...] = (
+    "/api/v1/auth",  # sign in, refresh, sign out, me
+    "/api/v1/billing",  # pay, and get reactivated
+    "/api/v1/privacy",  # data-subject export
+    "/api/v1/notifications",  # see why the workspace stopped
+    "/api/v1/invitations",  # accept an invite into a different tenant
+    "/healthz",
+)
+
+
+def _tenant_recovery_path(path: str) -> bool:
+    return path.startswith(_TENANT_RECOVERY_PREFIXES)
+
+
+def _policy_for(state: str):
+    """The §48 capability policy for a lifecycle state, or None if unknown.
+
+    Imported lazily: identity.service imports identity.models and is imported by
+    the same routers that import this module, so a module-scope import risks a
+    cycle. An unknown state returns None so the caller can fail CLOSED — a
+    tenant whose state cannot be interpreted must not get more access than an
+    active one, and `policy_for` would otherwise raise ValidationError (a 400)
+    on every request.
+    """
+    from app.modules.identity.service import STATE_POLICIES
+
+    return STATE_POLICIES.get(state)
 
 
 async def get_db() -> AsyncSession:
@@ -97,11 +137,12 @@ async def _role_permissions(session: AsyncSession, role_id: uuid.UUID) -> set[st
 
 
 async def get_tenant_ctx(
+    request: Request,
     session: DbSession,
     user: CurrentUserDep,
     x_tenant_id: Annotated[str | None, Header()] = None,
 ) -> TenantContext:
-    """Resolve the active tenant, verify membership, bind RLS GUCs."""
+    """Resolve the active tenant, verify membership, enforce §48, bind RLS GUCs."""
     tenant_id = user.tenant_id
     if x_tenant_id:
         try:
@@ -126,6 +167,27 @@ async def get_tenant_ctx(
     if membership is None:
         raise PermissionDeniedError("not a member of this tenant")
     _, role_code = membership
+
+    # §48 — the lifecycle state gates the API. Checked AFTER membership so the
+    # state is never disclosed to a non-member, and BEFORE binding the tenant
+    # GUC so a blocked tenant never gets a queryable context. Before this,
+    # nothing on the request path read the state at all: a suspended tenant
+    # kept full API access indefinitely.
+    lifecycle_state = (
+        await session.execute(
+            sa.select(Tenant.lifecycle_state).where(Tenant.id == tenant_id)
+        )
+    ).scalar_one_or_none()
+    if lifecycle_state is None:
+        raise PermissionDeniedError("tenant not found")
+    policy = _policy_for(lifecycle_state)
+    if (policy is None or not policy.allows_api) and not _tenant_recovery_path(
+        request.url.path
+    ):
+        raise PermissionDeniedError(
+            f"workspace is {lifecycle_state} — only sign-in, billing, export "
+            "and notifications are available"
+        )
 
     perms: set[str] = set()
     if role_code:
