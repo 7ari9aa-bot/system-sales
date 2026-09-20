@@ -1,15 +1,12 @@
 import { Hero } from "@/components/public/hero";
 import {
-  StatsBar,
-  HowItWorks,
-  ContextSection,
   FeaturesSection,
   UseCasesSection,
   FaqSection,
   TrySection,
   AutomationSection,
-  Integrations,
-  SecurityTeaser,
+  HowContextSection,
+  SecurityIntegrationsSection,
   PricingPreview,
   FinalCTA,
 } from "@/components/public/home-sections";
@@ -68,9 +65,7 @@ export default function HomePage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
       <Hero />
-      <StatsBar />
-      <HowItWorks />
-      <ContextSection />
+      <HowContextSection />
       <FeaturesSection />
       <TrySection>
         <DemoChat />
@@ -78,8 +73,7 @@ export default function HomePage() {
       <PricingPreview />
       <UseCasesSection />
       <AutomationSection />
-      <Integrations />
-      <SecurityTeaser />
+      <SecurityIntegrationsSection />
       <FaqSection />
       <FinalCTA />
     </main>
