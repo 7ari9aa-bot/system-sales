@@ -61,7 +61,10 @@ jobs:
       # Seeds roles/permissions/plans + applies RLS — tests rely on the seeded
       # roles and are skipped silently without a configured database otherwise.
       - run: python scripts/provision.py
-      - run: pytest -q
+      # -rs prints the reason for every skip. Without it a skip is invisible, and
+      # a silently-skipped RLS test is indistinguishable from a passing one —
+      # which is exactly how a FORCE-RLS production bug went unnoticed.
+      - run: pytest -q -rs
 
   frontend:
     runs-on: ubuntu-latest
