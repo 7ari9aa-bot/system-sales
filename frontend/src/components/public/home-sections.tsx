@@ -7,6 +7,25 @@ import { useI18n } from "@/components/public/i18n";
 import { Reveal } from "@/components/public/reveal";
 import { StepsRow, ContextGraph, FeatureList, FaqList } from "@/components/public/blocks";
 
+/* ---------- شريط الإحصائيات ---------- */
+export function StatsBar() {
+  const { t } = useI18n();
+  return (
+    <section className="fh-stats" id="stats">
+      <div className="fh-container">
+        <div className="fh-stats-grid">
+          {(t.stats.items as [string, string][]).map(([num, label]) => (
+            <div key={label} className="fh-stat">
+              <b>{num}</b>
+              <small>{label}</small>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 /* ---------- إزاي بيشتغل (3 خطوات) ---------- */
 export function HowItWorks() {
   const { t } = useI18n();
@@ -158,6 +177,17 @@ export function SecurityTeaser() {
         <Reveal className="fh-section-head">
           <h2>{t.securityTeaser.title}</h2>
           <p>{t.securityTeaser.sub}</p>
+        </Reveal>
+        <Reveal className="fh-sec-points" stagger>
+          {(t.securityTeaser.points as [string, string][]).map(([title, desc]) => (
+            <div key={title} className="fh-sec-point">
+              <span className="fh-sec-ico" aria-hidden="true">✓</span>
+              <div>
+                <b>{title}</b>
+                <small>{desc}</small>
+              </div>
+            </div>
+          ))}
         </Reveal>
         <Reveal className="fh-more-link">
           <Link href="/security">{t.securityTeaser.more} ←</Link>
