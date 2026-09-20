@@ -32,24 +32,28 @@ export function ProductBody() {
   return (
     <main>
       <PageHero title={p.title} sub={p.sub} />
+      {/* قسم موحّد: صورة + جراف السياق + المميزات في عمق */}
       <section className="fh-section">
         <div className="fh-container">
           <Reveal>
             <img className="fh-section-img" src="https://media.base44.com/images/public/6ab00dcc41a53757c2f8a0b1/fe56c85ba_generated_image.png" alt={p.title} loading="lazy" />
           </Reveal>
-          <Reveal>
-            <ContextGraph />
-          </Reveal>
+          <div className="fh-product-deep">
+            <Reveal className="fh-product-graph">
+              <div className="fh-card" style={{ padding: 24 }}>
+                <h4 style={{ fontSize: 14.5, fontWeight: 650, marginBottom: 14 }}>{t.graph.title}</h4>
+                <ContextGraph />
+                <p style={{ fontSize: 13.5, color: "var(--muted)", marginTop: 14, lineHeight: 1.65 }}>{t.graph.sub}</p>
+              </div>
+            </Reveal>
+            <Reveal className="fh-product-features" stagger>
+              <FeatureList items={p.features as [string, string][]} />
+            </Reveal>
+          </div>
         </div>
       </section>
-      <section className="fh-section">
-        <div className="fh-container">
-          <Reveal stagger>
-            <FeatureList items={p.features as [string, string][]} />
-          </Reveal>
-        </div>
-      </section>
-      <section className="fh-section">
+      {/* قسم عميق: لمين */}
+      <section className="fh-section fh-section-alt">
         <div className="fh-container">
           <Reveal>
             <img className="fh-section-img fh-section-img-wide" src="https://media.base44.com/images/public/6ab00dcc41a53757c2f8a0b1/0bc824d23_generated_image.png" alt={p.forWho.title} loading="lazy" />

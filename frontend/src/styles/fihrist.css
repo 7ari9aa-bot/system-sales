@@ -775,6 +775,11 @@ html[lang="en"] .fh-nav-links { direction: ltr; }
 .fh-sec-point-deep b { font-size: 14px; display: block; margin-bottom: 3px; }
 .fh-sec-point-deep small { font-size: 13px; color: var(--muted); line-height: 1.6; }
 
+/* قسم المنتج العميق */
+.fh-product-deep { display: grid; grid-template-columns: .85fr 1.15fr; gap: 32px; align-items: start; margin-top: 28px; }
+@media (max-width: 860px) { .fh-product-deep { grid-template-columns: 1fr; gap: 24px; } }
+.fh-product-features { min-width: 0; }
+
 /* use-case cards أعمق */
 .fh-usecase { padding: 22px; border: 1px solid var(--rule); border-radius: 10px; background: var(--card); display: flex; flex-direction: column; gap: 8px; }
 .fh-usecase b { font-size: 15.5px; }
