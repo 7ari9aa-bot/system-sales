@@ -1,7 +1,18 @@
+import logging
 from functools import lru_cache
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
+
+# Environments allowed to run with development defaults. Anything else —
+# including a misspelled or never-set ENVIRONMENT — must satisfy the
+# production-grade checks, so they fail CLOSED instead of being skipped.
+_DEV_ENVIRONMENTS = frozenset({"local", "test"})
+
+_INSECURE_JWT_SECRETS = frozenset({"", "change-me", "changeme", "secret", "test"})
+_INSECURE_SERVICE_TOKENS = frozenset({"", "change-me", "change-me-too"})
 
 
 class Settings(BaseSettings):
@@ -68,20 +79,56 @@ class Settings(BaseSettings):
     # internal service auth (n8n -> core)
     service_token_internal: str = "change-me-too"
 
+    @property
+    def is_secure_environment(self) -> bool:
+        """True when this deployment must satisfy the production-grade checks.
+
+        Several security behaviours key off `environment` — the OpenAPI schema
+        is exposed when it is not "production" (main.py), HSTS is only sent for
+        "production" (middleware.py), and the rate limiter is disabled for
+        "test". So an unrecognised value must be treated as secure-required.
+        """
+        return self.environment not in _DEV_ENVIRONMENTS
+
     @model_validator(mode="after")
-    def _refuse_insecure_production(self) -> "Settings":
-        """Fail fast (H2): an insecure default must never reach production."""
-        if self.environment == "production":
-            if not self.jwt_secret or self.jwt_secret == "change-me":
-                raise ValueError("JWT_SECRET must be set in production")
-            # PyJWT warns below 32 bytes for HS256; a short key is brute-forceable
-            # offline from a single captured token, so refuse rather than warn.
-            if len(self.jwt_secret.encode()) < 32:
-                raise ValueError("JWT_SECRET must be at least 32 bytes in production")
-            if self.service_token_internal in ("", "change-me-too"):
-                raise ValueError("SERVICE_TOKEN_INTERNAL must be set in production")
-            if self.cors_origins == "*":
-                raise ValueError("CORS_ORIGINS must not be * in production")
+    def _refuse_insecure_configuration(self) -> "Settings":
+        """Fail fast (H2, review G-05): refuse insecure settings outside local/test.
+
+        This used to run only when `environment == "production"`, but
+        `environment` DEFAULTS to "local". A deploy that forgot to set
+        ENVIRONMENT — or misspelled it "prod" — therefore validated nothing and
+        would run with the publicly-known default JWT secret while serving the
+        OpenAPI schema. Staging was unvalidated too, which defeats the point of
+        having a staging environment.
+
+        Inverted so an unrecognised environment fails CLOSED. Production already
+        satisfies every one of these checks (it boots today with the stricter
+        production branch), so this only adds enforcement where it was missing.
+        """
+        if not self.is_secure_environment:
+            return self
+
+        where = f"in environment {self.environment!r}"
+        if self.jwt_secret in _INSECURE_JWT_SECRETS:
+            raise ValueError(f"JWT_SECRET must be set {where}")
+        # PyJWT warns below 32 bytes for HS256; a short key is brute-forceable
+        # offline from a single captured token, so refuse rather than warn.
+        if len(self.jwt_secret.encode()) < 32:
+            raise ValueError(f"JWT_SECRET must be at least 32 bytes {where}")
+        if self.service_token_internal in _INSECURE_SERVICE_TOKENS:
+            raise ValueError(f"SERVICE_TOKEN_INTERNAL must be set {where}")
+        if self.cors_origins.strip() == "*":
+            raise ValueError(f"CORS_ORIGINS must not be * {where}")
+
+        # DEBUG is NOT a hard failure: it only controls the log level, and
+        # refusing to boot over log verbosity would take a running deployment
+        # down for a cosmetic problem. It is logged loudly instead.
+        if self.debug:
+            logger.warning(
+                "config.debug_enabled_in_secure_environment environment=%s — "
+                "set DEBUG=false",
+                self.environment,
+            )
         return self
 
 

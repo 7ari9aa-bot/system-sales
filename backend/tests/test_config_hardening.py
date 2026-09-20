@@ -1,0 +1,150 @@
+"""Configuration must fail CLOSED outside local/test (review G-05).
+
+`_refuse_insecure_production` ran only when `environment == "production"`, but
+`environment` DEFAULTS to "local" — so a deploy that forgot to set ENVIRONMENT,
+or misspelled it "prod", validated nothing. That is not hypothetical harm:
+
+* `main.py` exposes the OpenAPI schema whenever environment != "production".
+* `middleware.py` only sends HSTS for "production".
+* `middleware.py` disables the rate limiter for "test".
+
+So an unrecognised value silently weakened several security behaviours at once,
+while the app ran on the publicly-known default JWT secret.
+
+These tests pin the inversion: everything that is not an explicitly recognised
+development environment must satisfy the production-grade checks.
+"""
+
+from __future__ import annotations
+
+import logging
+
+import pytest
+from pydantic import ValidationError
+
+from app.core.config import Settings
+
+SECURE = {
+    "jwt_secret": "k" * 40,
+    "service_token_internal": "internal-token-" + "v" * 24,
+    "cors_origins": "https://app.example.com",
+}
+INSECURE = {
+    "jwt_secret": "change-me",
+    "service_token_internal": "change-me-too",
+    "cors_origins": "*",
+}
+
+
+def _build(environment: str, **overrides) -> Settings:
+    """Always pass the security fields explicitly so an ambient env var in the
+    test process cannot make these assertions lie."""
+    return Settings(environment=environment, **{**SECURE, **overrides})
+
+
+# ------------------------------------------------- development is exempt --
+
+
+@pytest.mark.parametrize("env", ["local", "test"])
+def test_development_environments_accept_insecure_defaults(env: str) -> None:
+    """A developer must be able to run the stack with no configuration."""
+    settings = Settings(environment=env, **INSECURE)
+    assert settings.is_secure_environment is False
+
+
+@pytest.mark.parametrize("env", ["local", "test"])
+def test_development_environments_do_not_require_a_long_jwt_secret(env: str) -> None:
+    Settings(environment=env, **{**INSECURE, "jwt_secret": "short"})
+
+
+# --------------------------------------- everything else fails closed ------
+
+
+@pytest.mark.parametrize("env", ["production", "staging", "prod", "", "Production"])
+def test_insecure_defaults_are_refused_outside_development(env: str) -> None:
+    """`staging` and a misspelled `prod` are the point of this test."""
+    with pytest.raises(ValidationError):
+        Settings(environment=env, **INSECURE)
+
+
+@pytest.mark.parametrize("env", ["production", "staging", "prod", ""])
+def test_a_short_jwt_secret_is_refused_outside_development(env: str) -> None:
+    with pytest.raises(ValidationError):
+        _build(env, jwt_secret="short")
+
+
+@pytest.mark.parametrize("env", ["production", "staging", "prod", ""])
+def test_a_wildcard_cors_origin_is_refused_outside_development(env: str) -> None:
+    with pytest.raises(ValidationError):
+        _build(env, cors_origins="*")
+
+
+@pytest.mark.parametrize("env", ["production", "staging", "prod", ""])
+def test_an_unset_service_token_is_refused_outside_development(env: str) -> None:
+    with pytest.raises(ValidationError):
+        _build(env, service_token_internal="change-me-too")
+
+
+@pytest.mark.parametrize("env", ["production", "staging", "prod", ""])
+def test_secure_values_are_accepted_outside_development(env: str) -> None:
+    settings = _build(env)
+    assert settings.is_secure_environment is True
+
+
+def test_whitespace_padded_wildcard_is_still_a_wildcard() -> None:
+    with pytest.raises(ValidationError):
+        _build("staging", cors_origins=" * ")
+
+
+def test_an_explicit_origin_list_is_accepted() -> None:
+    settings = _build(
+        "staging", cors_origins="https://a.example.com,https://b.example.com"
+    )
+    assert settings.is_secure_environment is True
+
+
+# ------------------------------------------------ is_secure_environment ----
+
+
+@pytest.mark.parametrize(
+    ("env", "expected"),
+    [
+        ("local", False),
+        ("test", False),
+        ("staging", True),
+        ("production", True),
+        ("prod", True),  # a typo must not buy an exemption
+        ("", True),
+    ],
+)
+def test_is_secure_environment(env: str, expected: bool) -> None:
+    assert _build(env).is_secure_environment is expected
+
+
+# ------------------------------------------------------------- DEBUG -------
+
+
+def test_debug_outside_development_warns_but_does_not_block_startup(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Refusing to boot over log verbosity would take a deployment down for a
+    cosmetic problem; it is logged loudly instead."""
+    with caplog.at_level(logging.WARNING, logger="app.core.config"):
+        settings = _build("staging", debug=True)
+
+    assert settings.debug is True
+    assert any(
+        "debug_enabled_in_secure_environment" in record.message
+        for record in caplog.records
+    ), "debug outside development must be reported"
+
+
+def test_debug_off_outside_development_is_silent(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level(logging.WARNING, logger="app.core.config"):
+        _build("staging", debug=False)
+
+    assert not [
+        r for r in caplog.records if "debug_enabled_in_secure_environment" in r.message
+    ]
