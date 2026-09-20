@@ -264,27 +264,27 @@ const ar = {
   },
 
   pages: {
-    product: {
-      title: "نظام تشغيل كامل لشغلك.",
-      sub: "FIHRIST مش CRM لوحده ولا chatbot لوحده — بيئة واحدة بتشغّل البيع والخدمة والعمليات، بسياق واحد بيغطي كل حاجة.",
-      features: [
-        ["محادثات موحدة", "كل قنوات تواصل عملائك في صندوق واحد: توزيع تلقائي، مسودات ذكاء اصطناعي، وتحويل للفريق بالسياق الكامل — بدون ما حد يخرج من المحادثة يدور على معلومة."],
-        ["عملاء وطلبات ومخزون", "ملف موحد لكل عميل: طلباته، مدفوعاته، تاريخه، وقناته المفضلة. والطلبات مربوطة بالمخزون — من الرسالة للشحنة."],
-        ["ذكاء اصطناعي خاضع لقواعدك", "مساعد بيفهم محادثاتك، بيجاوب من معرفة شركتك، وبينفذ إجراءات حقيقية — عبر أدوات مصرح ليها فقط وكل خطوة مسجلة."],
-        ["أتمتة تشغيلية", "مسارات بحدث وشرط ومنطق: تذكير، تصنيف، إشعار، تصعيد — بموافقات بشرية للخطوات الحساسة."],
-        ["تحليلات مربوطة بالواقع", "كل رقم وراه سجلات حقيقية: من المقياس، للاستنتاج، للسجلات اللي وراه، للإجراء."],
-        ["جاهز للتوسع", "متعدد المستأجرين بعزل بيانات على مستوى قاعدة البيانات — بنية جاهزة تنمو مع شركتك."],
-      ],
-      forWho: {
-        title: "مين اللي محتاجها؟",
-        items: [
-          ["نشأة بتبيع أونلاين", "عايزة تدير البيع والخدمة من مكان واحد بدل جروبات ومنشورات وتسابي متفرقة."],
-          ["فريق خدمة عملاء", "محتاج كل محادثة توصل ومعاها تاريخ العميل وطلباته — ورد سريع بمساعدة AI."],
-          ["عملية بتكبر", "محتاجة أتمتة حقيقية وصلاحيات وتدقيق — قبل ما التوسع يبوظ التجربة."],
+      product: {
+        title: "نظام تشغيل كامل لشغلك — مش أداة منفصلة.",
+        sub: "FIHRIST مش CRM لوحده ولا chatbot لوحده — بيئة واحدة بتشغّل البيع والخدمة والعمليات، بسياق واحد بيطي كل حاجة. كل قدرة بتتكلم مع التانية، فالقرار أسرع والجهد أقل.",
+        features: [
+          ["محادثات موحّدة", "كل قنوات تواصل عملائك في صندوق واحد: توزيع تلقائي، مسودات ذكاء اصطناعي، وتحويل للفريق بالسياق الكامل — من غير ما حد يخرج من المحادثة يدوّر على معلومة."],
+          ["عملاء وطلبات ومخزون", "ملف واحد لكل عميل: طلباته، مدفوعاته، تاريخه، وقناته المفضلة. والطلبات مربوطة بالمخزون — من الرسالة للشحنة."],
+          ["ذكاء اصطناعي خاضع لقواعدك", "مساعد بيفهم محادثاتك، بيجاوب من معرفة شركتك، وبي نفذ إجراءات حقيقية — عبر أدوات مصرح ليها فقط، وكل خطوة مسجلة."],
+          ["أتمتة تشغيلية", "مسارات بحدث وشرط ومنطق: تذكير، تصنيف، إشعار، تصعيد — بموافقات بشرية للخطوات الحساسة."],
+          ["تحليلات مربوطة بالواقع", "كل رقم وراه سجلات حقيقية: من المؤشر، للاستنتاج، للسجلات اللي وراه، للإجراء اللي اتعمل."],
+          ["جاهز للتوسع", "متعدد المستأجرين بعزل بيانات على مستوى قاعدة البيانات — بنية جاهزة تنمو مع شركتك."],
         ],
+        forWho: {
+          title: "لمين ده النظام؟",
+          items: [
+            ["نشأة بتبيع أونلاين", "عاوزة تدير البيع والخدمة من مكان واحد بدل جروبات ومنشورات وتسابي متفرقة."],
+            ["فريق خدمة عملاء", "محتاج كل محادثة توصل ومعاها تاريخ العميل وطلباته — ورد سريع بمساعدة AI."],
+            ["عملية بتكبر", "محتاجة أتمتة حقيقية وصلاحيات وتدقيق — قبل ما التوسع يبوظ التجربة."],
+          ],
+        },
+        cta: "جاهز تشوفها بنفسك؟",
       },
-      cta: "جاهز تشوفها بنفسك؟",
-    },
     context: {
       title: "سياق واحد. من غير تكرار.",
       sub: "أكبر مشكلة في أدوات الأعمال المتفرقة إن معلومة واحدة بتتكتب في خمس أماكن — ولا واحدة منهم عارفة الصورة كاملة. FIHRIST بيحل دي من الجذر.",
@@ -694,27 +694,27 @@ const en: typeof ar = {
   },
 
   pages: {
-    product: {
-      title: "A complete operating system for your business.",
-      sub: "FIHRIST isn't a CRM alone or a chatbot alone — one environment that runs sales, service and operations, with a single context covering everything.",
-      features: [
-        ["Unified conversations", "Every customer channel in one inbox: automatic assignment, AI drafts, and team handoff with full context — nobody leaves the conversation to hunt for information."],
-        ["Customers, orders & inventory", "One record per customer: their orders, payments, history and preferred channel. Orders tie into inventory — from message to shipment."],
-        ["AI that follows your rules", "An assistant that understands your conversations, answers from your company knowledge, and performs real actions — through pre-authorized tools only, with every step logged."],
-        ["Operational automation", "Runs with events, conditions and logic: reminders, classification, notifications, escalation — with human approvals for sensitive steps."],
-        ["Analytics tied to reality", "Every number has real records behind it — trace any metric to the insight, the source records, and the action taken."],
-        ["Built to scale", "Multi-tenant with database-level data isolation — architecture ready to grow with your company."],
-      ],
-      forWho: {
-        title: "Who is it for?",
-        items: [
-          ["A new online business", "That wants to run sales and service from one place instead of scattered groups, posts and chats."],
-          ["A customer-service team", "That needs every conversation to arrive with the customer's history and orders — plus fast AI-assisted replies."],
-          ["A growing operation", "That needs real automation, permissions and audit — before scale breaks the experience."],
+      product: {
+        title: "A complete operating system for your business — not a standalone tool.",
+        sub: "FIHRIST isn't a CRM alone or a chatbot alone — one environment that runs sales, service and operations, with a single context covering everything. Every capability talks to the next, so decisions are faster and effort is lower.",
+        features: [
+          ["Unified conversations", "Every customer channel in one inbox: automatic assignment, AI drafts, and team handoff with full context — nobody leaves the conversation to hunt for information."],
+          ["Customers, orders & inventory", "One record per customer: their orders, payments, history and preferred channel. Orders tie into inventory — from message to shipment."],
+          ["AI that follows your rules", "An assistant that understands your conversations, answers from your company knowledge, and performs real actions — through pre-authorized tools only, with every step logged."],
+          ["Operational automation", "Runs with events, conditions and logic: reminders, classification, notifications, escalation — with human approvals for sensitive steps."],
+          ["Analytics tied to reality", "Every number has real records behind it — trace any metric to the insight, the source records, and the action taken."],
+          ["Built to scale", "Multi-tenant with database-level data isolation — architecture ready to grow with your company."],
         ],
+        forWho: {
+          title: "Who is this system for?",
+          items: [
+            ["A new online business", "That wants to run sales and service from one place instead of scattered groups, posts and chats."],
+            ["A customer-service team", "That needs every conversation to arrive with the customer's history and orders — plus fast AI-assisted replies."],
+            ["A growing operation", "That needs real automation, permissions and audit — before scale breaks the experience."],
+          ],
+        },
+        cta: "Ready to see it for yourself?",
       },
-      cta: "Ready to see it for yourself?",
-    },
     context: {
       title: "One context. Zero repetition.",
       sub: "Disconnected tools write the same information in five places — and none of them sees the full picture. FIHRIST fixes this at the root.",
