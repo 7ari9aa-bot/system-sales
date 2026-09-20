@@ -177,3 +177,23 @@ treated as a weak review, not a clean one.
 | 2026-09-20 | `ddd8d5d` | N-05 live smoke, 27/27 on production |
 | 2026-09-20 | `38c40a9` | N-06 budget thresholds + configurable cap |
 | 2026-09-20 | `c3a7b52` | N-08 guardrail at the send boundary |
+| 2026-09-20 | `581232c` | this plan |
+| 2026-09-20 | `38c22a3` | N-07 AI tool surface (+5 tools); RAG confirmed wired |
+| 2026-09-20 | `37ad507` | **Job RUNNER** — the executor the control surface never had |
+| 2026-09-20 | `383c989` | G-09 consent-checked door for promotional sends |
+| 2026-09-20 | `24d60f9` | latent naive-timestamp drift on `segments.last_evaluated_at` |
+
+### Wave B outcome
+
+Three builders and one adversarial reviewer ran in parallel on disjoint modules. **The reviewer
+rejected one change outright and found four real defects plus five tests that could not fail** — all
+fixed before commit. Two fixes were mutation-verified (the guard was disabled and the test confirmed
+to fail).
+
+The single most important thing this produced was not the features but the discovery that **the job
+runner's first real execution exposed a latent pre-existing bug** (`segments.last_evaluated_at` was
+declared naive while the migration created `timestamptz`) that had been sitting in the table for its
+whole life because nothing had ever written it. That is the DoD rule earning its keep.
+
+CI after the wave: **627 passed, 1 skipped** (was 564).
+
