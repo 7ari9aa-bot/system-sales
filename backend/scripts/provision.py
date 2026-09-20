@@ -27,11 +27,12 @@ import json
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import asyncpg  # noqa: E402
+from _bootstrap import load_settings  # noqa: E402
 
-from app.core.config import get_settings  # noqa: E402
 from app.core.model_registry import Base  # noqa: E402
 
 GUC = "app.tenant_id"
@@ -322,7 +323,7 @@ async def seed(conn: asyncpg.Connection) -> None:
 
 
 async def main() -> None:
-    settings = get_settings()
+    settings = load_settings(script="scripts/provision.py")
     url = settings.database_url_admin or settings.database_url
     # asyncpg wants the plain postgres:// form without the +asyncpg suffix.
     dsn = url.replace("postgresql+asyncpg://", "postgresql://").replace(

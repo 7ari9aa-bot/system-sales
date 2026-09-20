@@ -18,6 +18,10 @@ development environment must satisfy the production-grade checks.
 from __future__ import annotations
 
 import logging
+import os
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
@@ -178,3 +182,91 @@ def test_an_unset_environment_with_insecure_defaults_refuses_to_start(
 
     with pytest.raises(ValidationError):
         Settings(_env_file=None)
+
+
+# --------------------------- importing a module must not need secrets ------
+#
+# `app/core/db.py` built its engine at MODULE SCOPE (`engine = _create_engine()`),
+# so merely importing it required a fully valid production configuration.
+# `from app.core.db import bind_tenant` therefore raised "JWT_SECRET must be set
+# in environment 'production'" inside ops scripts that never touch a JWT — which
+# is how four scripts under `scripts/` became un-runnable outside CI. These tests
+# pin the boundary: importing the module is free, USING a session still fails
+# closed.
+#
+# They run in a SUBPROCESS because `app.core.db` is already imported in this
+# process, so an in-process assertion could not observe import-time behaviour.
+
+BACKEND_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _run(
+    args: list[str], *, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
+    """Run in a fresh interpreter with ENVIRONMENT and JWT_SECRET removed.
+
+    Removed rather than set: the behaviour under test is what happens when an
+    operator has NOT stated the environment.
+    """
+    child = {
+        k: v for k, v in os.environ.items() if k not in {"ENVIRONMENT", "JWT_SECRET"}
+    }
+    child["PYTHONPATH"] = str(BACKEND_ROOT)
+    if env:
+        child.update(env)
+    return subprocess.run(
+        [sys.executable, *args],
+        capture_output=True,
+        text=True,
+        env=child,
+        cwd=BACKEND_ROOT,
+        timeout=180,
+    )
+
+
+def test_importing_the_database_module_does_not_require_production_secrets() -> None:
+    """An ops script must be able to import the db helpers it actually uses."""
+    result = _run(
+        [
+            "-c",
+            "import app.core.db; from app.core.db import bind_tenant, get_sessionmaker; "
+            "print('imported')",
+        ]
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "imported" in result.stdout
+
+
+def test_using_the_engine_without_secrets_still_fails_closed() -> None:
+    """Laziness must not become "no validation at all".
+
+    The engine is built on first use, so the checks that used to run at import
+    now run at first database access — they must still run.
+    """
+    result = _run(
+        ["-c", "import app.core.db; app.core.db.get_engine()"],
+        env={"ENVIRONMENT": "production", "JWT_SECRET": "change-me"},
+    )
+
+    assert result.returncode != 0, "a misconfigured deploy must not build an engine"
+    assert "JWT_SECRET" in result.stderr
+
+
+def test_an_ops_script_without_an_environment_says_what_to_set() -> None:
+    """The failure an operator actually sees must be actionable.
+
+    It used to be a bare pydantic traceback about a JWT secret, which reads like
+    a bug in the script rather than a missing variable.
+    """
+    result = _run(["scripts/backfill_tenant_defaults.py"])
+
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "cannot load application settings" in result.stdout
+    assert "ENVIRONMENT=production" in result.stdout, (
+        "the message must say which variable to set"
+    )
+    assert "Traceback (most recent call last)" not in result.stdout + result.stderr, (
+        "an operator must get instructions, not a stack trace"
+    )
+

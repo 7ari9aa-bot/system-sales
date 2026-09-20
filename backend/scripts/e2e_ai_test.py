@@ -13,11 +13,13 @@ import os
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import sqlalchemy as sa
+from _bootstrap import load_settings, session_factory
 
-from app.core.db import SessionLocal, bind_tenant
+from app.core.db import bind_tenant
 from app.core.model_registry import Base  # noqa: F401 — register FK targets
 from app.modules.ai.hooks import maybe_auto_reply
 from app.modules.ai.knowledge import search_knowledge
@@ -28,10 +30,11 @@ from app.modules.identity.models import Tenant
 
 
 async def main() -> int:
+    load_settings(script="scripts/e2e_ai_test.py")
     if not os.environ.get("GEMINI_API_KEY"):
         raise SystemExit("set GEMINI_API_KEY")
 
-    async with SessionLocal() as session:
+    async with session_factory()() as session:
         async with session.begin():
             tenant = (
                 await session.execute(sa.select(Tenant).where(Tenant.slug == "demo-store"))

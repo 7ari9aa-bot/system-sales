@@ -18,12 +18,13 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import sqlalchemy as sa
+from _bootstrap import load_settings, session_factory
 
-from app.core.config import get_settings
-from app.core.db import SessionLocal, bind_tenant
+from app.core.db import bind_tenant
 from app.modules.catalog.service import CatalogService
 from app.modules.conversations.service import ConversationService
 from app.modules.customers.service import CustomerService
@@ -35,11 +36,12 @@ from app.modules.orders.service import OrderService
 
 
 async def main() -> int:
-    if get_settings().environment == "production":
+    settings = load_settings(script="scripts/seed_demo.py")
+    if settings.environment == "production":
         print("refusing to seed demo data into a production environment")
         return 1
 
-    async with SessionLocal() as session:
+    async with session_factory()() as session:
         async with session.begin():
             demo = (
                 await session.execute(

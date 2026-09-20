@@ -18,18 +18,18 @@ import sys
 import uuid
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import asyncpg  # noqa: E402
-
-from app.core.config import get_settings  # noqa: E402
+from _bootstrap import load_settings  # noqa: E402
 
 PASS = "PASS"
 FAIL = "FAIL"
 
 
 async def main() -> int:
-    settings = get_settings()
+    settings = load_settings(script="scripts/rls_smoke_test.py")
     # The isolation test MUST run as the app runtime role (no bypassrls) —
     # running it as postgres would bypass RLS entirely and prove nothing.
     raw_dsn = settings.database_url_app_admin or ""

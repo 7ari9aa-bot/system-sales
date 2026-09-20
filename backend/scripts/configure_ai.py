@@ -16,11 +16,13 @@ import os
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import sqlalchemy as sa
+from _bootstrap import load_settings, session_factory
 
-from app.core.db import SessionLocal, bind_tenant
+from app.core.db import bind_tenant
 from app.core.model_registry import Base  # noqa: F401 — full metadata for FKs
 from app.modules.ai.knowledge import ingest_knowledge
 from app.modules.ai.models import Agent, AgentTool, ModelConfig
@@ -54,11 +56,12 @@ KNOWLEDGE = [
 
 
 async def main() -> int:
+    load_settings(script="scripts/configure_ai.py")
     api_key = os.environ.get("GEMINI_API_KEY", "")
     if not api_key:
         raise SystemExit("set GEMINI_API_KEY env var")
 
-    async with SessionLocal() as session:
+    async with session_factory()() as session:
         async with session.begin():
             tenant = (
                 await session.execute(sa.select(Tenant).where(Tenant.slug == "demo-store"))

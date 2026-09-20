@@ -53,7 +53,12 @@ DEFAULT_TRIAL_DAYS = 14
 DEFAULT_BUDGET_WARNING_THRESHOLD = 80
 
 
-async def seed_tenant_defaults(session: AsyncSession, tenant_id: uuid.UUID) -> dict:
+async def seed_tenant_defaults(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    include_subscription: bool = True,
+) -> dict:
     """Create the default rows a tenant needs to be operational.
 
     Idempotent: safe to call on an existing tenant, and safe to call twice in
@@ -63,6 +68,13 @@ async def seed_tenant_defaults(session: AsyncSession, tenant_id: uuid.UUID) -> d
 
     Must be called with the tenant GUC bound (the rows are tenant-scoped and
     RLS applies).
+
+    `include_subscription=False` skips ONLY the plan binding. That matters for
+    a BACKFILL: binding an existing tenant to a plan activates its entitlement
+    allow-list, and `starter` permits only whatsapp + webchat, so a tenant
+    already using another channel would silently lose it. A calendar and an SLA
+    policy are pure additions with no such side effect, so a backfill can safely
+    do those and leave the commercial decision to a human.
     """
     from app.modules.operations.models import BusinessCalendar, SLAPolicy
 
@@ -134,7 +146,7 @@ async def seed_tenant_defaults(session: AsyncSession, tenant_id: uuid.UUID) -> d
             select(Subscription).where(Subscription.tenant_id == tenant_id)
         )
     ).scalars().first()
-    if existing_subscription is None:
+    if include_subscription and existing_subscription is None:
         plan = (
             await session.execute(select(Plan).where(Plan.code == DEFAULT_PLAN_CODE))
         ).scalar_one_or_none()
