@@ -143,6 +143,7 @@ class OrderService:
         tenant_id: UUID,
         *,
         status: str | None = None,
+        customer_id: UUID | None = None,
         limit: int = 50,
         offset: int = 0,
         before_created_at: datetime | None = None,
@@ -152,6 +153,11 @@ class OrderService:
         stmt = select(Order).where(Order.tenant_id == tenant_id)
         if status is not None:
             stmt = stmt.where(Order.status == status)
+        if customer_id is not None:
+            # Customer 360: without this filter the record page would have to
+            # pull a tenant-wide page and filter client-side, which silently
+            # reports "no orders" for anyone outside that page.
+            stmt = stmt.where(Order.customer_id == customer_id)
         if before_created_at is not None and before_id is not None:
             stmt = stmt.where(
                 tuple_(Order.created_at, Order.id)

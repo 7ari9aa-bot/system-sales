@@ -50,6 +50,7 @@ class AssignRequest(BaseModel):
 async def list_conversations(
     ctx: TenantCtxDep,
     status: str | None = None,
+    customer_id: uuid.UUID | None = None,
     cursor: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
 ):
@@ -58,6 +59,7 @@ async def list_conversations(
         ctx.session,
         ctx.tenant_id,
         status=status,
+        customer_id=customer_id,
         limit=limit + 1,
         before_created_at=before_created_at,
         before_id=before_id,

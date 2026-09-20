@@ -39,7 +39,12 @@ class TaskUpdate(BaseModel):
 
 
 @router.get("/tasks")
-async def list_tasks(ctx: TenantCtxDep, status: str | None = None, mine: bool = False):
+async def list_tasks(
+    ctx: TenantCtxDep,
+    status: str | None = None,
+    mine: bool = False,
+    customer_id: uuid.UUID | None = None,
+):
     from sqlalchemy import select
 
     stmt = select(Task).where(Task.tenant_id == ctx.tenant_id)
@@ -47,6 +52,13 @@ async def list_tasks(ctx: TenantCtxDep, status: str | None = None, mine: bool = 
         stmt = stmt.where(Task.status == status)
     if mine:
         stmt = stmt.where(Task.assignee_user_id == ctx.user.id)
+    if customer_id is not None:
+        # Customer 360: tasks attach polymorphically, so a customer's tasks
+        # are the ones whose related entity points at that customer.
+        stmt = stmt.where(
+            Task.related_entity_type == "customer",
+            Task.related_entity_id == customer_id,
+        )
     rows = (
         await ctx.session.execute(stmt.order_by(Task.created_at.desc()).limit(100))
     ).scalars().all()

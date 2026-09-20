@@ -445,6 +445,37 @@ class CustomerService:
         return list(rows)
 
     @staticmethod
+    async def list_events(
+        session: AsyncSession,
+        tenant_id: UUID,
+        customer_id: UUID,
+        *,
+        limit: int = 100,
+        event_types: list[str] | None = None,
+    ) -> list[CustomerEvent]:
+        """Read the per-customer event log, newest first (Customer 360 timeline).
+
+        `record_event` has always written here but nothing ever read it back —
+        the timeline was write-only. Raises NotFoundError for an unknown
+        customer so a 360 request cannot silently return an empty history.
+        """
+        await CustomerService.get(session, tenant_id, customer_id)
+        stmt = select(CustomerEvent).where(
+            CustomerEvent.tenant_id == tenant_id,
+            CustomerEvent.customer_id == customer_id,
+        )
+        if event_types:
+            stmt = stmt.where(CustomerEvent.event_type.in_(event_types))
+        rows = (
+            await session.execute(
+                stmt.order_by(
+                    CustomerEvent.created_at.desc(), CustomerEvent.id.desc()
+                ).limit(limit)
+            )
+        ).scalars().all()
+        return list(rows)
+
+    @staticmethod
     async def record_event(
         session: AsyncSession,
         tenant_id: UUID,

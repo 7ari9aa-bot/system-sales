@@ -235,6 +235,7 @@ class ConversationService:
         *,
         status: str | None = None,
         assignee_user_id: uuid.UUID | None = None,
+        customer_id: uuid.UUID | None = None,
         limit: int = 50,
         offset: int = 0,
         before_created_at: datetime | None = None,
@@ -259,6 +260,10 @@ class ConversationService:
             stmt = stmt.where(Conversation.status == status)
         if assignee_user_id:
             stmt = stmt.where(Conversation.assignee_user_id == assignee_user_id)
+        if customer_id is not None:
+            # Customer 360: scope to one customer server-side rather than
+            # filtering a tenant-wide page in the browser.
+            stmt = stmt.where(Conversation.customer_id == customer_id)
         if before_created_at is not None and before_id is not None:
             stmt = stmt.where(
                 tuple_(Conversation.created_at, Conversation.id)

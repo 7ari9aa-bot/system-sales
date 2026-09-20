@@ -14,6 +14,7 @@ from app.core.errors import NotFoundError, ValidationError
 from app.core.pagination import decode_cursor, page_slice
 from app.modules.billing.service import EntitlementService
 from app.modules.customers.service import CustomerService
+from app.modules.customers.timeline import Customer360Service
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
 from app.modules.identity.models import Invitation, Role
 from app.modules.platform.models import Integration
@@ -110,6 +111,24 @@ async def get_customer(ctx: TenantCtxDep, customer_id: UUID):
             for n in notes
         ],
     }
+
+
+@router.get("/customers/{customer_id}/360")
+async def get_customer_360(
+    ctx: TenantCtxDep,
+    customer_id: UUID,
+    limit: int = Query(default=20, ge=1, le=100),
+    timeline_limit: int = Query(default=60, ge=1, le=200),
+):
+    """Spec W5: one composed record — profile, orders, payments, conversations,
+    tasks and a merged timeline, so the record page needs a single round trip."""
+    return await Customer360Service.build(
+        ctx.session,
+        ctx.tenant_id,
+        customer_id,
+        limit=limit,
+        timeline_limit=timeline_limit,
+    )
 
 
 class CustomerUpdate(BaseModel):

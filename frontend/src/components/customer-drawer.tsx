@@ -1,25 +1,44 @@
 "use client";
 
+/** Quick-preview drawer for a customer (spec W5: "Customer 360 record +
+ *  quick preview drawer").
+ *
+ *  Reads the same composed `GET /customers/{id}/360` payload as the full
+ *  record page. It previously pulled a tenant-wide page of orders and
+ *  filtered them in the browser, which silently reported "no orders" for any
+ *  customer whose orders fell outside that page — the server does the
+ *  filtering now.
+ */
+
 import * as React from "react";
 import Link from "next/link";
 import {
-  MessageSquare,
-  ShoppingBag,
-  Phone,
-  Mail,
-  Calendar,
-  DollarSign,
-  UserCheck,
   Ban,
-  Copy,
+  Clock,
+  CreditCard,
   ExternalLink,
+  Mail,
+  MessageSquare,
+  NotebookPen,
+  Phone,
+  Tags,
+  UserCheck,
+  Wallet,
 } from "lucide-react";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { useCustomer, useOrdersPage, type Customer } from "@/lib/queries";
-import { formatTime } from "@/lib/utils";
-import { toast } from "@/components/ui/toast";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useCustomer360, type Customer360Order } from "@/lib/queries";
+import { getLang } from "@/lib/i18n";
+import { formatMoney } from "@/lib/utils";
+import { t } from "@/lib/t";
 
 type CustomerDrawerProps = {
   customerId: string | null;
@@ -27,50 +46,49 @@ type CustomerDrawerProps = {
   onOpenChange: (open: boolean) => void;
 };
 
-/** Bounded page size for the drawer's recent-orders fetch. */
-const CUSTOMER_ORDERS_LIMIT = 50;
+function formatDateTime(value: string | null | undefined): string {
+  if (!value) return "—";
+  const locale = getLang() === "en" ? "en-GB" : "ar-EG";
+  return new Date(value).toLocaleString(locale, { dateStyle: "short", timeStyle: "short" });
+}
+
+function orderVariant(status: string): "default" | "primary" | "success" | "danger" {
+  if (status === "delivered" || status === "completed" || status === "confirmed") return "success";
+  if (status === "cancelled" || status === "refunded") return "danger";
+  if (status === "shipped" || status === "processing") return "primary";
+  return "default";
+}
 
 export function CustomerDrawer({ customerId, open, onOpenChange }: CustomerDrawerProps) {
-  const customerQuery = useCustomer(customerId);
-  // Bounded, on-demand fetch: nothing is requested until the drawer is open.
-  const ordersQuery = useOrdersPage({
-    limit: CUSTOMER_ORDERS_LIMIT,
-    enabled: open && Boolean(customerId),
-  });
-  const customer = customerQuery.data;
+  // Nothing is requested until the drawer is open.
+  const query = useCustomer360(open ? customerId : null);
+  const record = query.data;
+  const customer = record?.customer;
 
-  const customerOrders = React.useMemo(() => {
-    if (!customerId) return [];
-    return (ordersQuery.data?.items ?? []).filter((o) => o.customer_id === customerId);
-  }, [customerId, ordersQuery.data]);
-
-  function copy(text: string, label: string) {
-    navigator.clipboard.writeText(text);
-    toast({ title: "تم النسخ", description: `تم نسخ ${label} إلى الحافظة.` });
-  }
+  const customerOrders: Customer360Order[] = record?.orders ?? [];
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="end" className="w-full max-w-md p-6 overflow-y-auto">
-        <SheetHeader className="text-start pb-4 border-b border-border">
+      <SheetContent side="end" className="w-full max-w-md overflow-y-auto p-6">
+        <SheetHeader className="border-b border-border pb-4 text-start">
           <div className="flex items-center gap-3">
-            <div className="flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary font-bold text-lg">
-              {customer?.name?.slice(0, 2) || "عم"}
+            <div className="flex size-12 items-center justify-center rounded-full bg-primary/10 text-lg font-bold text-primary">
+              {customer?.name?.slice(0, 2) || "؟"}
             </div>
-            <div className="flex-1 min-w-0">
-              <SheetTitle className="text-lg font-bold truncate">
-                {customer?.name || "تفاصيل العميل"}
+            <div className="min-w-0 flex-1">
+              <SheetTitle className="truncate text-lg font-bold">
+                {customer?.name || t.customer360}
               </SheetTitle>
-              <SheetDescription className="flex items-center gap-2 mt-1">
+              <SheetDescription className="mt-1 flex flex-wrap items-center gap-2">
                 {customer?.is_blocked ? (
-                  <Badge variant="danger" className="flex items-center gap-1">
-                    <Ban className="size-3" />
-                    محظور
+                  <Badge variant="danger" className="gap-1">
+                    <Ban aria-hidden="true" className="size-3" />
+                    {t.c360Blocked}
                   </Badge>
                 ) : (
-                  <Badge variant="success" className="flex items-center gap-1">
-                    <UserCheck className="size-3" />
-                    نشط
+                  <Badge variant="success" className="gap-1">
+                    <UserCheck aria-hidden="true" className="size-3" />
+                    {t.c360Active}
                   </Badge>
                 )}
                 <span className="text-xs text-muted-foreground" dir="ltr">
@@ -81,160 +99,149 @@ export function CustomerDrawer({ customerId, open, onOpenChange }: CustomerDrawe
           </div>
         </SheetHeader>
 
-        {customerQuery.isLoading ? (
-          <div className="py-8 space-y-4 animate-pulse">
-            <div className="h-4 bg-muted rounded w-3/4" />
-            <div className="h-4 bg-muted rounded w-1/2" />
-            <div className="h-20 bg-muted rounded w-full" />
+        {query.isLoading ? (
+          <div className="space-y-4 py-8" aria-busy="true" aria-label={t.loading}>
+            <Skeleton className="h-16" />
+            <Skeleton className="h-4 w-3/4" />
+            <Skeleton className="h-20" />
           </div>
-        ) : !customer ? (
-          <div className="py-8 text-center text-muted-foreground text-sm">
-            لم يتم العثور على بيانات العميل
+        ) : !record ? (
+          <div className="py-8 text-center text-sm text-muted-foreground">
+            {t.customerNotFound}
           </div>
         ) : (
           <div className="space-y-6 pt-4">
-            {/* Quick Financial Stats */}
+            {/* Money at a glance — from the server, not a client-side sum. */}
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-xl border border-border bg-muted/40 p-3 text-start">
                 <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                  <DollarSign className="size-3.5" />
-                  إجمالي المشتريات
+                  <Wallet aria-hidden="true" className="size-3.5" />
+                  {t.c360LifetimeValue}
                 </div>
                 <div className="mt-1 text-lg font-bold" dir="ltr">
-                  {Number(customer.lifetime_value || 0).toLocaleString("en-US", {
-                    minimumFractionDigits: 2,
-                  })}{" "}
-                  <span className="text-xs font-normal">ج.م</span>
+                  {formatMoney(customer?.lifetime_value ?? 0, record.payments.currency)}
                 </div>
               </div>
               <div className="rounded-xl border border-border bg-muted/40 p-3 text-start">
                 <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                  <ShoppingBag className="size-3.5" />
-                  عدد الطلبات
+                  <CreditCard aria-hidden="true" className="size-3.5" />
+                  {t.c360Outstanding}
                 </div>
                 <div className="mt-1 text-lg font-bold" dir="ltr">
-                  {customerOrders.length}
+                  {formatMoney(record.payments.outstanding, record.payments.currency)}
                 </div>
               </div>
             </div>
 
-            {/* Contact Information */}
+            {/* Contact */}
             <div className="space-y-3">
               <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                بيانات الاتصال
+                {t.c360Contact}
               </h3>
               <div className="space-y-2 text-sm">
-                <div className="flex items-center justify-between rounded-lg border border-border p-2.5">
-                  <span className="flex items-center gap-2 text-muted-foreground text-xs">
-                    <Phone className="size-4" />
-                    الهاتف
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-2.5">
+                  <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Phone aria-hidden="true" className="size-4" />
+                    {t.phone}
                   </span>
-                  <div className="flex items-center gap-2">
-                    <span dir="ltr" className="font-medium text-xs">
-                      {customer.phone || "—"}
-                    </span>
-                    {customer.phone && (
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="size-7"
-                        onClick={() => copy(customer.phone!, "رقم الهاتف")}
-                      >
-                        <Copy className="size-3.5" />
-                      </Button>
-                    )}
-                  </div>
+                  <span className="truncate font-medium text-xs" dir="ltr">
+                    {customer?.phone || "—"}
+                  </span>
                 </div>
-
-                <div className="flex items-center justify-between rounded-lg border border-border p-2.5">
-                  <span className="flex items-center gap-2 text-muted-foreground text-xs">
-                    <Mail className="size-4" />
-                    البريد
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-2.5">
+                  <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Mail aria-hidden="true" className="size-4" />
+                    {t.email}
                   </span>
-                  <div className="flex items-center gap-2">
-                    <span dir="ltr" className="font-medium text-xs truncate max-w-[180px]">
-                      {customer.email || "—"}
-                    </span>
-                    {customer.email && (
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="size-7"
-                        onClick={() => copy(customer.email!, "البريد الإلكتروني")}
-                      >
-                        <Copy className="size-3.5" />
-                      </Button>
-                    )}
-                  </div>
+                  <span className="truncate font-medium text-xs" dir="ltr">
+                    {customer?.email || "—"}
+                  </span>
                 </div>
               </div>
             </div>
 
-            {/* Quick Actions */}
+            {/* Tags — the API always returned these; the drawer ignored them. */}
+            {record.tags.length > 0 && (
+              <div className="space-y-3">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  {t.c360Tags}
+                </h3>
+                <div className="flex flex-wrap gap-2">
+                  {record.tags.map((tag) => (
+                    <Badge
+                      key={tag.id}
+                      variant="outline"
+                      className="gap-1"
+                      style={tag.color ? { borderColor: tag.color, color: tag.color } : undefined}
+                    >
+                      <Tags aria-hidden="true" className="size-3" />
+                      {tag.name}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Quick actions */}
             <div className="space-y-3">
               <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                إجراءات سريعة
+                {t.c360Overview}
               </h3>
               <div className="grid grid-cols-2 gap-2">
-                <Button variant="outline" asChild className="w-full justify-start text-xs">
-                  <Link href={`/inbox`}>
-                    <MessageSquare className="size-3.5 me-2" />
-                    محادثة العميل
+                <Button variant="outline" size="sm" asChild className="justify-start text-xs">
+                  <Link href={`/inbox?customer=${customerId}`}>
+                    <MessageSquare aria-hidden="true" className="size-3.5 me-2" />
+                    {t.c360OpenConversation}
                   </Link>
                 </Button>
-                <Button variant="outline" asChild className="w-full justify-start text-xs">
-                  <Link href={`/orders`}>
-                    <ShoppingBag className="size-3.5 me-2" />
-                    إنشاء طلب جديد
+                <Button variant="outline" size="sm" asChild className="justify-start text-xs">
+                  <Link href={`/customers/${customerId}`}>
+                    <ExternalLink aria-hidden="true" className="size-3.5 me-2" />
+                    {t.customer360}
                   </Link>
                 </Button>
               </div>
             </div>
 
-            {/* Recent Orders List */}
+            {/* Recent orders — already scoped to this customer by the server. */}
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-3">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  أحدث الطلبات
+                  {t.c360Orders}
                 </h3>
-                <Link href="/orders" className="text-xs text-primary hover:underline flex items-center gap-1">
-                  عرض الكل <ExternalLink className="size-3" />
+                <Link
+                  href={`/customers/${customerId}`}
+                  className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                >
+                  {t.viewAll}
+                  <ExternalLink aria-hidden="true" className="size-3" />
                 </Link>
               </div>
 
               {customerOrders.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-muted-foreground">
-                  لا توجد طلبات سابقة لهذا العميل بعد
+                  {t.c360OrdersEmpty}
                 </div>
               ) : (
                 <div className="space-y-2">
                   {customerOrders.slice(0, 4).map((order) => (
                     <div
                       key={order.id}
-                      className="flex items-center justify-between rounded-lg border border-border p-2.5 text-xs hover:bg-muted/50 transition-colors"
+                      className="flex items-center justify-between gap-3 rounded-lg border border-border p-2.5 text-xs"
                     >
-                      <div>
+                      <div className="min-w-0">
                         <div className="font-bold" dir="ltr">
                           {order.number}
                         </div>
                         <div className="text-[11px] text-muted-foreground">
-                          {formatTime(order.created_at)}
+                          {formatDateTime(order.placed_at || order.created_at)}
                         </div>
                       </div>
-                      <div className="text-end">
+                      <div className="shrink-0 text-end">
                         <div className="font-bold" dir="ltr">
-                          {Number(order.grand_total).toFixed(2)} {order.currency}
+                          {formatMoney(order.grand_total, order.currency)}
                         </div>
-                        <Badge
-                          variant={
-                            order.status === "confirmed" || order.status === "delivered"
-                              ? "success"
-                              : order.status === "cancelled"
-                              ? "danger"
-                              : "default"
-                          }
-                          className="mt-0.5 text-[10px] px-1.5 py-0"
-                        >
+                        <Badge variant={orderVariant(order.status)} className="mt-0.5 px-1.5 py-0 text-[10px]">
                           {order.status}
                         </Badge>
                       </div>
@@ -243,6 +250,27 @@ export function CustomerDrawer({ customerId, open, onOpenChange }: CustomerDrawe
                 </div>
               )}
             </div>
+
+            {/* Latest notes — also previously dropped on the floor. */}
+            {record.notes.length > 0 && (
+              <div className="space-y-3">
+                <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  <NotebookPen aria-hidden="true" className="size-3.5" />
+                  {t.c360Notes}
+                </h3>
+                <div className="space-y-2">
+                  {record.notes.slice(0, 3).map((note) => (
+                    <div key={note.id} className="rounded-lg border border-border p-2.5">
+                      <div className="text-xs">{note.body}</div>
+                      <div className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">
+                        <Clock aria-hidden="true" className="size-3" />
+                        {formatDateTime(note.created_at)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </SheetContent>

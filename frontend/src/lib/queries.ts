@@ -78,6 +78,115 @@ export type Customer = {
   is_blocked: boolean;
 };
 
+/* ---------------------------------------------------- Customer 360 (W5) -- */
+
+export type CustomerTag = { id: string; name: string; color: string | null };
+export type CustomerIdentity = { id: string; channel: string; external_id: string };
+
+export type CustomerAddress = {
+  id: string;
+  label: string | null;
+  line1: string | null;
+  line2: string | null;
+  city: string | null;
+  region: string | null;
+  postal_code: string | null;
+  country: string | null;
+  is_default: boolean;
+};
+
+export type CustomerNote = {
+  id: string;
+  body: string;
+  author_user_id: string | null;
+  created_at: string | null;
+};
+
+export type Customer360Order = {
+  id: string;
+  number: string;
+  status: string;
+  currency: string;
+  grand_total: string;
+  channel: string | null;
+  placed_at: string | null;
+  created_at: string | null;
+};
+
+export type Customer360Conversation = {
+  id: string;
+  channel: string;
+  status: string;
+  unread_count: number;
+  assignee_user_id: string | null;
+  last_message_at: string | null;
+  created_at: string | null;
+};
+
+export type Customer360Task = {
+  id: string;
+  title: string;
+  status: string;
+  priority: number;
+  source: string;
+  assignee_user_id: string | null;
+  due_date: string | null;
+  created_at: string | null;
+};
+
+/** One merged, newest-first stream across every source. */
+export type CustomerTimelineEntry = {
+  kind: "event" | "order" | "conversation" | "note" | "task";
+  at: string;
+  title: string | null;
+  subtitle: string | null;
+  ref_id: string | null;
+  meta: Record<string, unknown>;
+};
+
+export type CustomerPayments = {
+  currency: string;
+  orders_total: string;
+  paid_total: string;
+  refunded_total: string;
+  net_collected: string;
+  outstanding: string;
+  payment_count: number;
+};
+
+export type Customer360Stats = {
+  orders_shown: number;
+  conversations_shown: number;
+  tasks_shown: number;
+  open_tasks: number;
+  unread_messages: number;
+  event_count: number;
+  net_collected: string | null;
+  outstanding: string | null;
+  last_order_at: string | null;
+  last_message_at: string | null;
+};
+
+export type Customer360 = {
+  customer: Customer & {
+    locale: string | null;
+    extra: Record<string, unknown>;
+    deleted_at: string | null;
+    created_at: string | null;
+    updated_at: string | null;
+  };
+  tags: CustomerTag[];
+  identities: CustomerIdentity[];
+  addresses: CustomerAddress[];
+  notes: CustomerNote[];
+  orders: Customer360Order[];
+  conversations: Customer360Conversation[];
+  tasks: Customer360Task[];
+  payments: CustomerPayments;
+  stats: Customer360Stats;
+  timeline: CustomerTimelineEntry[];
+};
+
 export type Order = {
   id: string;
   number: string;
@@ -185,6 +294,7 @@ export const qk = {
   orders: ["orders"] as QueryKey,
   products: ["products"] as QueryKey,
   customers: ["customers"] as QueryKey,
+  customer360: (id: string) => ["customer", id, "360"] as QueryKey,
   balances: ["inventory", "balances"] as QueryKey,
   movements: ["inventory", "movements"] as QueryKey,
   campaigns: ["marketing", "campaigns"] as QueryKey,
@@ -262,15 +372,29 @@ export function useOrders() {
   });
 }
 
-/** Cursor-paginated orders page — fetches a single bounded page (no full list). */
+/** Cursor-paginated orders page — fetches a single bounded page (no full list).
+ *
+ *  Pass `customerId` to scope the query server-side. Filtering a global page
+ *  in the browser silently hides a customer's older orders. */
 export function useOrdersPage(
-  opts: { limit?: number; cursor?: string | null; enabled?: boolean } = {},
+  opts: {
+    limit?: number;
+    cursor?: string | null;
+    customerId?: string | null;
+    enabled?: boolean;
+  } = {},
 ) {
   const limit = opts.limit ?? 50;
   const cursor = opts.cursor ?? null;
+  const customerId = opts.customerId ?? null;
   return useQuery({
-    queryKey: [...qk.orders, "page", { limit, cursor }] as QueryKey,
-    queryFn: () => api<Page<Order>>(withCursor("/orders", limit, cursor)),
+    queryKey: [...qk.orders, "page", { limit, cursor, customerId }] as QueryKey,
+    queryFn: () => {
+      const params = new URLSearchParams({ limit: String(limit) });
+      if (cursor) params.set("cursor", cursor);
+      if (customerId) params.set("customer_id", customerId);
+      return api<Page<Order>>(`/orders?${params.toString()}`);
+    },
     enabled: opts.enabled ?? true,
   });
 }
@@ -293,6 +417,19 @@ export function useCustomer(id: string | null | undefined) {
   return useQuery<Customer>({
     queryKey: ["customer", id],
     queryFn: () => api<Customer>(`/customers/${id}`),
+    enabled: Boolean(id),
+  });
+}
+
+/** Spec W5 — the composed Customer 360 record in a single round trip.
+ *
+ *  The drawer and the record page both read this. Fetching the sections
+ *  separately would mean the timeline could not be merged or ordered
+ *  correctly client-side, and the orders list could not page. */
+export function useCustomer360(id: string | null | undefined) {
+  return useQuery<Customer360>({
+    queryKey: qk.customer360(String(id)),
+    queryFn: () => api<Customer360>(`/customers/${id}/360`),
     enabled: Boolean(id),
   });
 }
