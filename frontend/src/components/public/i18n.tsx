@@ -47,6 +47,21 @@ const ar = {
     start: "ابدأ مجانًا",
     explore: "شوف إزاي بيشتغل",
     trust: "مجاني خلال الوصول المبكر · بدون بطاقة",
+    mockBadge: "٣ محادثات نشطة",
+    mockRows: [
+      ["سارة محمد", "VIP", "طلب #1024"],
+      ["أحمد علي", "جديد", "ردّ منتظر"],
+      ["نورة", "تم الرد", "طلب #1023"],
+    ],
+    mockAi: "العميل ده من العملاء المميزين وطلبهم شُحن بالفعل — أقترح ردّ جاهز للتأكيد.",
+  },
+  stats: {
+    items: [
+      ["١", "نظام لكل أعمالك"],
+      ["٦", "قدرات متصلة"],
+      ["٤+", "قنوات موحدة"],
+      ["٢٤/٧", "أتمتة شغّالة"],
+    ],
   },
   how: {
     title: "إزاي بيشتغل؟ ثلاث خطوات.",
@@ -113,6 +128,12 @@ const ar = {
   securityTeaser: {
     title: "الأمان مكتوب في أول سطر كود.",
     sub: "عزل بيانات لكل مستأجر على مستوى قاعدة البيانات، صلاحيات وأدوار، تدقيق كامل — والذكاء الاصطناعي بينفذ عبر أدوات مصرح ليها فقط.",
+    points: [
+      ["عزل بيانات لكل مستأجر (RLS)", "كل بياناتك معزولة على مستوى قاعدة البيانات عن أي عميل تاني."],
+      ["صلاحيات وأدوار", "كل مستخدم بيشتغل بصلاحياته — ومفيش حد بيعدّي حدوده."],
+      ["ذكاء اصطناعي بصلاحيات", "الـ AI بينفذ إجراءات مسموحة فقط — من غير وصول مباشر لقاعدة البيانات."],
+      ["تدقيق كامل", "كل تغيير مهم مسجّل: مين، إمتى، وإيه اتغيّر."],
+    ],
     more: "كل تفاصيل الأمان",
   },
   pricing: {
@@ -194,6 +215,14 @@ const ar = {
     contact: "أسئلة؟ راسل حمد عادل:",
   },
   auth: {
+    valueTitle: "نظام تشغيل أعمالك بالمحادثة",
+    valueSub: "المحادثات والعملاء والطلبات والأتمتة والذكاء الاصطناعي — في سياق عمل واحد.",
+    valuePoints: [
+      "صندوق موحّد لكل محادثاتك من كل القنوات",
+      "سياق عمل متصل — قرارات أسرع بجهد أقل",
+      "أتمتة وذكاء اصطناعي بصلاحيات وتدقيق كامل",
+    ],
+    valueBadge: "وصول مبكر مجاني · بدون بطاقة",
     loginTitle: "أهلًا بعودتك",
     loginSub: "سجّل الدخول للمتابعة لمساحة عملك.",
     email: "البريد الإلكتروني",
@@ -211,6 +240,8 @@ const ar = {
     haveAccount: "عندك حساب بالفعل؟",
     signin: "سجّل الدخول",
     pwHint: "8 حروف على الأقل",
+    showPw: "إظهار",
+    hidePw: "إخفاء",
     errInvalid: "البريد الإلكتروني أو كلمة المرور مش صحيحة.",
     errRate: "محاولات كتير أوي. استنى شوية وحاول تاني.",
     errNetwork: "مش قادرين نوصل للسيرفر. اتأكد من اتصالك وحاول تاني.",
@@ -439,6 +470,21 @@ const en: typeof ar = {
     start: "Start free",
     explore: "How it works",
     trust: "Free during early access · No card required",
+    mockBadge: "3 active conversations",
+    mockRows: [
+      ["Sara M.", "VIP", "Order #1024"],
+      ["Ahmed A.", "New", "Awaiting reply"],
+      ["Noura", "Replied", "Order #1023"],
+    ],
+    mockAi: "This is a VIP customer and their order has shipped — here's a suggested reply to confirm.",
+  },
+  stats: {
+    items: [
+      ["1", "One system for your business"],
+      ["6", "Connected capabilities"],
+      ["4+", "Unified channels"],
+      ["24/7", "Automation running"],
+    ],
   },
   how: {
     title: "How it works — three steps.",
@@ -505,6 +551,12 @@ const en: typeof ar = {
   securityTeaser: {
     title: "Secure from the first line of code.",
     sub: "Per-tenant data isolation at the database level, role-based permissions, full audit — and AI that acts only through pre-authorized tools.",
+    points: [
+      ["Per-tenant data isolation (RLS)", "Your data is isolated at the database level from every other customer."],
+      ["Roles & permissions", "Every user works within their permissions — no one crosses their limits."],
+      ["AI with permissions", "AI runs only permitted actions — with no direct database access."],
+      ["Full audit", "Every important change is logged: who, when, and what changed."],
+    ],
     more: "All security details",
   },
   pricing: {
@@ -586,6 +638,14 @@ const en: typeof ar = {
     contact: "Questions? Email Hamed Adel:",
   },
   auth: {
+    valueTitle: "The conversational operating system for your business",
+    valueSub: "Conversations, customers, orders, automation and AI — in one connected context.",
+    valuePoints: [
+      "One inbox for every conversation across all channels",
+      "Connected business context — faster decisions, less effort",
+      "Automation and AI with permissions and full audit",
+    ],
+    valueBadge: "Early access free · No card required",
     loginTitle: "Welcome back",
     loginSub: "Sign in to continue to your workspace.",
     email: "Email",
@@ -603,6 +663,8 @@ const en: typeof ar = {
     haveAccount: "Already have an account?",
     signin: "Sign in",
     pwHint: "At least 8 characters",
+    showPw: "Show",
+    hidePw: "Hide",
     errInvalid: "The email or password is incorrect.",
     errRate: "Too many attempts. Please try again later.",
     errNetwork: "Can't reach the server. Check your connection and try again.",
