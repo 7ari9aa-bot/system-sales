@@ -146,7 +146,15 @@ class EntitlementService:
     @staticmethod
     async def can(session: AsyncSession, tenant_id: uuid.UUID, capability: str) -> bool:
         """Canonical capability checks. Unknown capabilities are allowed by
-        default; known ones consult plan entitlements + tenant status."""
+        default; known ones consult plan entitlements + tenant status.
+
+        This is a PREDICATE and must never raise. BillingService.check_entitlement
+        raises RateLimitExceededError when a limit is exceeded, so it is caught
+        here: a caller writing `if not await can(...)` would otherwise crash
+        instead of taking the "not allowed" branch. Use ensure() when the error
+        is what you want.
+        """
+        from app.core.errors import RateLimitExceededError
         from app.modules.identity.models import Tenant
 
         tenant = (
@@ -155,15 +163,20 @@ class EntitlementService:
         if tenant is None or not tenant.is_active:
             return False
 
-        if capability in ("CanUseAI", "CanSendCampaign", "CanUseVoice", "CanUseAPI"):
-            allowed = await BillingService.check_entitlement(
-                session, tenant_id, capability, requested=1
-            )
-            return allowed
-        if capability in ("CanCreateChannel", "CanAddUser"):
-            return await BillingService.check_entitlement(
-                session, tenant_id, capability, requested=1
-            )
+        if capability in (
+            "CanUseAI",
+            "CanSendCampaign",
+            "CanUseVoice",
+            "CanUseAPI",
+            "CanCreateChannel",
+            "CanAddUser",
+        ):
+            try:
+                return await BillingService.check_entitlement(
+                    session, tenant_id, capability, requested=1
+                )
+            except RateLimitExceededError:
+                return False
         return True
 
     @staticmethod
