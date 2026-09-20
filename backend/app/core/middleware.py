@@ -1,4 +1,4 @@
-"""Rate limiting middleware — fixed window in Redis, keyed per client IP.
+"""Rate limiting middleware — layered per-IP / tenant / user / endpoint.
 
 - Route buckets are matched against the path AFTER the /api/v1 prefix
   (all routes are mounted under it — matching the raw path silently put
@@ -7,10 +7,23 @@
   carries at least two hops (a proxy appended the peer); a single-hop chain
   is client-controlled, so the socket peer is used instead. This blocks
   per-request key rotation via a spoofed header on direct exposure.
-- Atomic INCR+PEXPIRE via Lua — the previous INCR/EXPIRE pair could leave an
-  immortal counter behind if the process died between the two calls.
+- §25 layered limits: the IP tier (above) is joined by a TENANT tier, a USER
+  tier, and an ENDPOINT tier. Each tier has its own Redis key, so one tenant
+  can never exhaust another's budget. All tiers are checked in a single
+  atomic Lua call (ratelimit.LayeredRateLimiter), so a request denied at one
+  tier does not consume capacity at the others.
+- Atomic multi-key Lua replaces the previous single-key INCR+PEXPIRE: the
+  previous INCR/EXPIRE pair could leave an immortal counter behind if the
+  process died between the two calls, and a fixed window allowed up to 2x the
+  limit across a boundary. The sliding window has neither problem.
 - Auth endpoints get a much tighter bucket (brute-force protection) and fail
   CLOSED when Redis is unavailable; everything else fails open.
+- The tenant/user tiers are derived from the SIGNATURE-VERIFIED bearer token
+  here, at the edge, rather than waiting for the auth dependency — the
+  dependency runs inside the route, after this middleware, so it is too late
+  to key a bucket. Decoding is used ONLY for keying; authorization still
+  happens in the route's dependency, and an invalid token simply falls back
+  to the IP-only tiers. A forged token cannot help an attacker.
 
 This module also carries the two edge-hardening middlewares that must run
 before the app sees a request: BodySizeLimitMiddleware (S5) and
@@ -20,13 +33,17 @@ SecurityHeadersMiddleware (S13).
 from __future__ import annotations
 
 import json
+import re
+from dataclasses import dataclass
 
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from app.core.config import get_settings
+from app.core.ratelimit import LayeredRateLimiter, TierLimit
 from app.core.redis import get_redis
+from app.core.security import decode_token
 
 EXEMPT_PATHS = {"/healthz", "/readyz", "/docs", "/openapi.json"}
 AUTH_LIMIT = 10          # per window, per IP — login/register/refresh
@@ -34,16 +51,21 @@ DEFAULT_LIMIT = 300      # per window, per IP — everything else
 PUBLIC_LIMIT = 120       # per window, per IP — webchat/webhook ingress
 API_PREFIX = "/api/v1"
 
+# §25 — layered ceilings on top of the per-IP buckets. These are deliberately
+# generous: they are blast-radius caps for a noisy or compromised caller, not
+# fairness quotas. Kept as constants because config.py is owned by another
+# workstream; they should move to Settings.
+TENANT_LIMIT = 3000      # per window, across a whole tenant
+USER_LIMIT = 600         # per window, per authenticated user
+ENDPOINT_LIMIT = 120     # per window, per caller per route shape
+
 # Generous for JSON APIs (the largest legitimate body is a webhook batch) but
 # far below what it takes to exhaust a worker's memory.
 MAX_BODY_BYTES = 1_048_576  # 1 MiB
 
-# INCR + PEXPIRE atomically; returns the new counter.
-_COUNT_SCRIPT = """
-local c = redis.call('INCR', KEYS[1])
-if c == 1 then redis.call('PEXPIRE', KEYS[1], ARGV[1]) end
-return c
-"""
+# A path segment that looks like an id (uuid or integer) is collapsed so the
+# endpoint tier keys a route shape, not one key per row.
+_ID_SEGMENT = re.compile(r"^[0-9a-fA-F-]{16,}$|^\d+$")
 
 
 def _client_ip(request: Request) -> str:
@@ -72,48 +94,128 @@ def _bucket_for(path: str) -> tuple[str, int]:
     return "api", DEFAULT_LIMIT
 
 
+@dataclass(frozen=True, slots=True)
+class _Principal:
+    user_id: str | None = None
+    tenant_id: str | None = None
+
+
+def _principal_from_request(request: Request) -> _Principal:
+    """Signature-verified identity claims for bucket keying only.
+
+    Never an authorization decision (see the module docstring): a missing or
+    invalid token yields an empty principal and the IP-only tiers.
+    """
+    authorization = request.headers.get("authorization")
+    if not authorization or not authorization.lower().startswith("bearer "):
+        return _Principal()
+    try:
+        payload = decode_token(authorization.split(" ", 1)[1].strip())
+    except Exception:  # noqa: BLE001 — expired/forged token is expected here
+        return _Principal()
+    return _Principal(
+        user_id=payload.get("sub"), tenant_id=payload.get("tenant_id")
+    )
+
+
+def _endpoint_key(path: str) -> str:
+    if path.startswith(API_PREFIX):
+        path = path[len(API_PREFIX):]
+    parts = [
+        ":id" if _ID_SEGMENT.match(segment) else segment
+        for segment in path.split("/")
+        if segment
+    ]
+    return "/" + "/".join(parts[:4])
+
+
+def _tiers_for(
+    request: Request, bucket: str, ip_limit: int, principal: _Principal
+) -> list[TierLimit]:
+    """Build the layered buckets for one request.
+
+    Order determines which tier is reported when several are over budget.
+    """
+    ip = _client_ip(request)
+    tiers = [
+        TierLimit(
+            "ip",
+            f"{bucket}:{ip}",
+            ip_limit,
+            # Brute-force protection must survive a Redis outage.
+            fail_closed=bucket == "auth",
+        )
+    ]
+    owner = principal.tenant_id or ip
+    tiers.append(
+        TierLimit("endpoint", f"{_endpoint_key(request.url.path)}:{owner}", ENDPOINT_LIMIT)
+    )
+    if principal.tenant_id:
+        tiers.append(TierLimit("tenant", principal.tenant_id, TENANT_LIMIT))
+    if principal.user_id:
+        tiers.append(TierLimit("user", principal.user_id, USER_LIMIT))
+    return tiers
+
+
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app, *, limit: int | None = None, window_seconds: int = 60) -> None:
+    def __init__(
+        self,
+        app,
+        *,
+        limit: int | None = None,
+        window_seconds: int = 60,
+        client=None,
+        enabled: bool | None = None,
+    ) -> None:
         super().__init__(app)
         self.limit = limit or DEFAULT_LIMIT
         self.window = window_seconds
-        self.enabled = get_settings().environment != "test"
-        self._count_script = None  # registered lazily on first redis use
-
-    async def _count(self, key: str) -> int:
-        redis = get_redis()
-        if self._count_script is None:
-            self._count_script = redis.register_script(_COUNT_SCRIPT)
-        return int(
-            await self._count_script(keys=[key], args=[self.window * 1000])
+        # Disabled only when ENVIRONMENT is exactly "test". NOTE: the default
+        # is "local" and CI does not set ENVIRONMENT either, so in practice
+        # this limiter is ENABLED during local and CI test runs. That is fine
+        # where Redis is available (CI runs a Redis service) and harmless where
+        # it is not (throughput tiers fail open) — but an auth-bucket request
+        # with Redis down WILL get a 429, by design.
+        self.enabled = (
+            get_settings().environment != "test" if enabled is None else enabled
         )
+        self._client = client  # injectable for tests; lazily defaults to Redis
+        self._limiter: LayeredRateLimiter | None = None
+
+    def _limiter_for(self) -> LayeredRateLimiter:
+        if self._limiter is None:
+            self._limiter = LayeredRateLimiter(
+                self._client or get_redis(), window_seconds=self.window
+            )
+        return self._limiter
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         if request.url.path in EXEMPT_PATHS or not self.enabled:
             return await call_next(request)
 
         bucket, limit = _bucket_for(request.url.path)
-        client_ip = _client_ip(request)
-        key = f"rl:http:{bucket}:{client_ip}"
+        principal = _principal_from_request(request)
+        tiers = _tiers_for(request, bucket, limit, principal)
         try:
-            count = await self._count(key)
-            allowed = count <= limit
+            result = await self._limiter_for().check(tiers)
         except Exception:
-            # Auth stays fail-closed even when Redis is down (brute-force
-            # protection must not vanish with the cache tier).
+            # LayeredRateLimiter.check already applies the per-tier policy on a
+            # Redis outage; this is a last-resort guard so an unexpected bug
+            # cannot become a 500. Auth stays fail-closed, the rest fails open.
             if bucket == "auth":
                 return JSONResponse(status_code=429, content={"detail": "try again later"})
             return await call_next(request)
 
-        if not allowed:
-            try:
-                ttl = await get_redis().ttl(key)
-            except Exception:
-                ttl = self.window
+        if not result.allowed:
+            retry = max(int(result.retry_after_seconds), 1)
             return JSONResponse(
                 status_code=429,
-                content={"detail": "rate limit exceeded", "retry_after": max(ttl, 1)},
-                headers={"Retry-After": str(max(ttl, 1))},
+                content={
+                    "detail": "rate limit exceeded",
+                    "tier": result.denied_tier,
+                    "retry_after": retry,
+                },
+                headers={"Retry-After": str(retry)},
             )
         return await call_next(request)
 

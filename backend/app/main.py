@@ -18,6 +18,7 @@ from sqlalchemy import text
 from app.core.config import get_settings
 from app.core.db import engine
 from app.core.errors import DomainError, build_error_body, request_id_contextvar
+from app.core.idempotency import IdempotencyMiddleware
 from app.core.middleware import (
     BodySizeLimitMiddleware,
     RateLimitMiddleware,
@@ -135,11 +136,16 @@ def create_app() -> FastAPI:
     _exception_handlers(app)
     # Starlette builds the stack so the LAST added middleware is the OUTERMOST.
     # Order below therefore reads inner -> outer:
-    #   RequestLogging -> RateLimit -> RequestID -> BodySize -> CORS -> SecurityHeaders
-    # CORS must sit OUTSIDE both the rate limiter and the body cap, or their
-    # 429/413 responses reach the browser without Access-Control-Allow-Origin
-    # (an opaque CORS failure instead of a readable error) — and preflight
-    # OPTIONS must short-circuit before they consume the rate budget (P6).
+    #   Idempotency -> RequestLogging -> RateLimit -> RequestID -> BodySize
+    #   -> CORS -> SecurityHeaders
+    # Idempotency is INNERMOST on purpose: the body cap must reject an oversized
+    # body before the idempotency layer buffers it to hash it, and a replayed
+    # response still passes back out through CORS and SecurityHeaders. CORS must
+    # sit OUTSIDE both the rate limiter and the body cap, or their 429/413
+    # responses reach the browser without Access-Control-Allow-Origin (an
+    # opaque CORS failure instead of a readable error) — and preflight OPTIONS
+    # must short-circuit before they consume the rate budget (P6).
+    app.add_middleware(IdempotencyMiddleware)
     app.add_middleware(RequestLoggingMiddleware)
     app.add_middleware(RateLimitMiddleware)
     app.add_middleware(_RequestIDMiddleware)
