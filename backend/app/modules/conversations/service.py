@@ -14,6 +14,7 @@ from sqlalchemy import select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import NotFoundError, ValidationError
+from app.core.guardrails import AI_SENDER_TYPES, default_guardrail
 from app.modules.conversations.models import (
     CONVERSATION_STATUSES,
     Assignment,
@@ -94,6 +95,28 @@ class ConversationService:
         conversation = await ConversationService.get(session, tenant_id, conversation_id)
         if not body and not media_url and not template_name:
             raise ValidationError("message needs body, media or a template")
+
+        # §173: AI-authored content is checked HERE, at the boundary that
+        # actually inserts an outbound message — not only inside AgentRunner.
+        #
+        # The runner evaluates the FULL chain (it has the run's tool results for
+        # the factual constraint). This boundary applies the content-only checks
+        # (validity, PII leakage, injection echo), which is what can be judged
+        # without a run. Without this, any future producer that is not the runner
+        # — a send tool, an AI campaign, a journey step — would bypass the
+        # guardrail entirely simply by inserting a message directly.
+        if direction == "outbound" and sender_type in AI_SENDER_TYPES and body:
+            verdict = default_guardrail().evaluate(body, {})
+            if verdict.decision != "allow":
+                raise OutboundBlockedError(
+                    f"AI output blocked by guardrail: {verdict.reason}",
+                    details={
+                        "conversation_id": str(conversation_id),
+                        "guardrail_decision": verdict.decision,
+                        "guardrail_reason": verdict.reason,
+                        "guardrail_checks": verdict.checks,
+                    },
+                )
 
         # §30-31: EVERY outbound producer (human composer, AI auto-reply,
         # automation, journeys, campaigns) funnels through here, so this is the

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 
 import httpx
 import pytest
@@ -145,7 +146,10 @@ async def test_unknown_alias_raises_validation_error(db, tenant_ctx):
 
 async def test_monthly_budget_cap_blocks_chat(db, tenant_ctx, monkeypatch):
     tenant_id = tenant_ctx.tenant_id
-    monkeypatch.setattr(ai_gateway, "MONTHLY_BUDGET_CAP", 1.0)
+    # Patch the CAP SOURCE, not the old MONTHLY_BUDGET_CAP constant: the default
+    # cap is now the `ai_monthly_budget_cap_default` setting (review N-06), so
+    # patching the constant no longer changes what `_resolve_cap` returns.
+    monkeypatch.setattr(ai_gateway, "_default_cap", lambda: Decimal("1.0"))
     db.add(
         AIUsage(
             tenant_id=tenant_id,
