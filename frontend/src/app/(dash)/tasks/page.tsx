@@ -39,6 +39,13 @@ export default function TasksPage() {
   const statusLabels = buildStatusLabels();
   const tasks = (tasksQuery.data ?? []).filter((task) => filter === "all" || task.status === filter);
 
+  // Open the form from the top-bar "create" menu (?new=1) or the command palette.
+  React.useEffect(() => {
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("new") === "1") {
+      setOpen(true);
+    }
+  }, []);
+
   function submit() {
     if (!title.trim()) return;
     createTask.mutate(

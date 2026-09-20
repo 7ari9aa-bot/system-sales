@@ -26,6 +26,12 @@ out/
 *.tsbuildinfo
 next-env.d.ts
 
+# --- playwright (test artefacts, never source) ---
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+
 # --- misc ---
 .DS_Store
 *.log

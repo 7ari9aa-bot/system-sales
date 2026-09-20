@@ -7,6 +7,8 @@ import {
   LayoutDashboard,
   MessagesSquare,
   ListChecks,
+  ClipboardList,
+  Bell,
   Users,
   ShoppingCart,
   Package,
@@ -38,6 +40,8 @@ type CommandItem = {
 function buildNavItems(): CommandItem[] {
   return [
     { id: "nav-dashboard", label: t.goDashboard, group: "nav", href: "/dashboard", icon: <LayoutDashboard aria-hidden="true" /> },
+    { id: "nav-my-work", label: t.myWork, group: "nav", href: "/my-work", icon: <ClipboardList aria-hidden="true" />, keywords: "شغلي مهامي my work" },
+    { id: "nav-notifications", label: t.notifications, group: "nav", href: "/notifications", icon: <Bell aria-hidden="true" />, keywords: "اشعارات تنبيهات" },
     { id: "nav-inbox", label: t.goInbox, group: "nav", href: "/inbox", icon: <MessagesSquare aria-hidden="true" />, keywords: "whatsapp telegram محادثة" },
     { id: "nav-tasks", label: t.myTasks, group: "nav", href: "/tasks", icon: <ListChecks aria-hidden="true" />, keywords: "مهام" },
     { id: "nav-customers", label: t.goCustomers, group: "nav", href: "/customers", icon: <Users aria-hidden="true" />, keywords: "عميل" },
@@ -54,6 +58,7 @@ function buildActionItems(): CommandItem[] {
   return [
     { id: "act-order", label: t.newOrder, group: "actions", href: "/orders?new=1", icon: <Plus aria-hidden="true" />, keywords: "طلب جديد create" },
     { id: "act-product", label: t.newProduct, group: "actions", href: "/products?new=1", icon: <Plus aria-hidden="true" />, keywords: "منتج جديد create" },
+    { id: "act-task", label: t.newTask, group: "actions", href: "/tasks?new=1", icon: <Plus aria-hidden="true" />, keywords: "مهمة جديدة create" },
     { id: "act-campaign", label: t.newCampaign, group: "actions", href: "/marketing?new=1", icon: <Plus aria-hidden="true" />, keywords: "حملة اعلان create" },
     { id: "act-knowledge", label: t.newKnowledge, group: "actions", href: "/ai?new=1", icon: <Plus aria-hidden="true" />, keywords: "معرفة سؤال create" },
     { id: "act-invite", label: t.newInvitation, group: "actions", href: "/settings?new=1", icon: <Plus aria-hidden="true" />, keywords: "دعوة فريق create" },
@@ -86,15 +91,29 @@ function matches(query: string, item: CommandItem) {
   return false;
 }
 
+/** Where a search hit opens.
+ *
+ *  The SearchPort only ever returns `customer` and `product` today (see
+ *  core/search.py). A customer opens its 360 record — before that page existed
+ *  this pointed at the list and silently dropped the hit. The other branches
+ *  stay as list fallbacks because no detail route exists for them.
+ */
 function searchHref(entityType: string, entityId: string) {
-  const routes: Record<string, string> = {
-    customer: "/customers",
-    conversation: `/inbox?conversation=${encodeURIComponent(entityId)}`,
-    order: "/orders",
-    product: "/products",
-    task: "/tasks",
-  };
-  return routes[entityType] ?? "/dashboard";
+  const id = encodeURIComponent(entityId);
+  switch (entityType) {
+    case "customer":
+      return `/customers/${id}`;
+    case "conversation":
+      return `/inbox?conversation=${id}`;
+    case "product":
+      return "/products";
+    case "order":
+      return "/orders";
+    case "task":
+      return "/tasks";
+    default:
+      return "/dashboard";
+  }
 }
 
 export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
@@ -251,7 +270,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
           <div className="flex items-center gap-4 border-t border-border px-4 py-2 text-[11.5px] text-muted-foreground">
             <span className="flex items-center gap-1.5">
               <CornerDownLeft className="size-3.5" aria-hidden="true" />
-              للفتح
+              {t.toOpen}
             </span>
             <span className="flex items-center gap-1.5" dir="ltr">
               ↑ ↓

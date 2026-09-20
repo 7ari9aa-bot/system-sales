@@ -345,6 +345,7 @@ const ar = {
   selectedCount: (n: number) => `${n} محدد`,
   allCaughtUp: "مفيش جديد",
   notificationsAllRead: "كل الإشعارات اتقرت",
+  toOpen: "للفتح",
 } as const;
 
 
@@ -690,6 +691,7 @@ const en = {
   selectedCount: (n: number) => `${n} selected`,
   allCaughtUp: "Nothing new",
   notificationsAllRead: "All notifications are read",
+  toOpen: "to open",
 } as const;
 
 
