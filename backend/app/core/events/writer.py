@@ -5,14 +5,23 @@ the business change, so "state changed" and "event staged" commit atomically
 (no dual-write hole). The relay (app.core.events.outbox) drains it later.
 
 The SERVICE NEVER COMMITS — this module only ever flushes.
+
+The staged message is a real §19 envelope: the row's ``meta`` carries the
+envelope routing keys (type / tenant_id / occurred_at / aggregate_type /
+aggregate_id / version / lineage), so what the relay publishes is exactly what
+``schemas.deserialize()`` rebuilds. Building the envelope here — rather than
+hand-merging meta — is what keeps the contract honest: an unregistered event
+type fails the mutation instead of silently publishing a non-envelope.
 """
 
 from __future__ import annotations
 
+import json
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.events.schemas import build_envelope, serialize
 from app.modules.platform.models import OutboxEvent
 
 
@@ -34,29 +43,37 @@ async def add_outbox_event(
     """Insert a pending OutboxEvent within the caller's transaction.
 
     - stream: "{aggregate_type}.events" (the bus topic consumers subscribe to)
-    - payload: flat dict, the event_type is always the first key
-    - meta: always carries tenant_id (the relay is cross-tenant). Envelope v2
-      lineage (correlation_id / causation_id / producer / schema_version /
-      aggregate_version) rides inside meta too — the outbox_events table
-      columns are frozen, so no migration is needed for v2.
+    - payload: flat dict, the event_type is always the first key (workers route
+      on it: message_worker / platform_workers / event_log)
+    - meta: the §19 envelope routing keys PLUS user meta. Always carries
+      tenant_id (the relay is cross-tenant, and the SSE gateway fails CLOSED
+      without it). Envelope v2 lineage (correlation_id / causation_id /
+      producer / schema_version / aggregate_version) rides inside meta too —
+      the outbox_events table columns are frozen, so no migration is needed.
     """
-    merged_meta = dict(meta or {})
-    merged_meta["tenant_id"] = str(tenant_id)
-    if correlation_id is not None:
-        merged_meta["correlation_id"] = correlation_id
-    if causation_id is not None:
-        merged_meta["causation_id"] = causation_id
-    merged_meta["producer"] = producer
-    merged_meta["schema_version"] = schema_version
-    if aggregate_version is not None:
-        merged_meta["aggregate_version"] = aggregate_version
-
+    envelope = build_envelope(
+        event_type,
+        tenant_id=tenant_id,
+        aggregate_type=aggregate_type,
+        aggregate_id=aggregate_id,
+        payload=payload or {},
+        meta=meta or {},
+        correlation_id=correlation_id,
+        causation_id=causation_id,
+        producer=producer,
+        schema_version=schema_version,
+        aggregate_version=aggregate_version,
+    )
+    # Serialize to the bus wire layout, then parse back: JSONB columns need
+    # JSON-native values (serialize maps UUID/datetime via default=str), and
+    # storing the serialized form means the row IS what deserialize() reads.
+    fields = serialize(envelope)
     event = OutboxEvent(
         aggregate_type=aggregate_type,
         aggregate_id=aggregate_id,
         stream=f"{aggregate_type}.events",
-        payload={"event_type": event_type, **(payload or {})},
-        meta=merged_meta,
+        payload={"event_type": event_type, **json.loads(fields["payload"])},
+        meta=json.loads(fields["meta"]),
         status="pending",
     )
     session.add(event)

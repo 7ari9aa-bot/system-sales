@@ -83,6 +83,33 @@ class EventEnvelope(BaseModel):
     aggregate_version: int | None = None
 
 
+# The closed set of event types the outbox actually publishes. Every entry is a
+# real add_outbox_event(..., event_type=...) call site in app/ — none invented.
+# They all use the free-form base envelope because no domain module narrows
+# payload/meta yet; a module that adds a typed subclass must register it BEFORE
+# this import runs (or replace the base registration) — see register_event.
+DOMAIN_EVENT_TYPES: tuple[str, ...] = (
+    "customer.merged",
+    "message.outbound",
+    "message.received",
+    "notification.queued",
+    "order.cancelled",
+    "order.created",
+    "order.refunded",
+    "order.status_changed",
+    "privacy.customer_deleted",
+    "webhook.deliver",
+)
+
+
+def _register_domain_event_types() -> None:
+    for name in DOMAIN_EVENT_TYPES:
+        register_event(name)(EventEnvelope)
+
+
+_register_domain_event_types()
+
+
 def build_envelope(
     event_type: str,
     *,
@@ -93,8 +120,18 @@ def build_envelope(
     meta: dict[str, Any] | None = None,
     occurred_at: datetime | None = None,
     envelope_id: str | None = None,
+    correlation_id: str | None = None,
+    causation_id: str | None = None,
+    producer: str = "core",
+    schema_version: int = 1,
+    aggregate_version: int | None = None,
 ) -> EventEnvelope:
-    """Build a registered envelope; unknown event types are rejected."""
+    """Build a registered envelope; unknown event types are rejected.
+
+    The v2 lineage kwargs (correlation_id / causation_id / producer /
+    schema_version / aggregate_version) are optional and default to the base
+    envelope's defaults, so v1 callers keep working unchanged.
+    """
     cls = EVENT_TYPES.get(event_type)
     if cls is None:
         raise ValidationError(
@@ -110,6 +147,11 @@ def build_envelope(
         aggregate_id=aggregate_id,
         payload=payload or {},
         meta=meta or {},
+        correlation_id=correlation_id,
+        causation_id=causation_id,
+        producer=producer,
+        schema_version=schema_version,
+        aggregate_version=aggregate_version,
     )
 
 

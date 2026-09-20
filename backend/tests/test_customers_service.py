@@ -206,7 +206,7 @@ async def test_identity_merge_full_flow(db, tenant_ctx):
     )
     await add_outbox_event(
         db, aggregate_type="customer", aggregate_id=cust_b.id,
-        event_type="customer.created", tenant_id=tenant_ctx.tenant_id,
+        event_type="customer.merged", tenant_id=tenant_ctx.tenant_id,
     )
 
     canonical_id = await IdentityMergeService.merge(

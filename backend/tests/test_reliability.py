@@ -103,12 +103,13 @@ async def test_add_outbox_event_v2_kwargs_stored_in_meta() -> None:
 async def test_add_outbox_event_backward_compatible_defaults() -> None:
     session = _magic_session()
     tenant_id = uuid.uuid4()
+    aggregate_id = uuid.uuid4()
 
     await add_outbox_event(
         session,
         aggregate_type="customer",
-        aggregate_id=uuid.uuid4(),
-        event_type="customer.created",
+        aggregate_id=aggregate_id,
+        event_type="customer.merged",
         tenant_id=tenant_id,
     )
 
@@ -116,12 +117,18 @@ async def test_add_outbox_event_backward_compatible_defaults() -> None:
     # outbox_id: the stable consumer-dedupe key that survives relay
     # crash-reclaim re-publishes (a per-publish bus uuid made replays new).
     assert added.meta["outbox_id"] == str(added.id)
-    assert added.meta == {
-        "tenant_id": str(tenant_id),
-        "producer": "core",
-        "schema_version": 1,
-        "outbox_id": str(added.id),
-    }
+    # Tenant isolation contract: the relay is cross-tenant and the SSE gateway
+    # fails CLOSED without this claim, so it must always be present and exact.
+    assert added.meta["tenant_id"] == str(tenant_id)
+    # v2 lineage defaults ride in meta (the outbox columns are frozen).
+    assert added.meta["producer"] == "core"
+    assert added.meta["schema_version"] == 1
+    # §19 envelope routing keys — what deserialize() needs to rebuild the event.
+    assert added.meta["type"] == "customer.merged"
+    assert added.meta["aggregate_type"] == "customer"
+    assert added.meta["aggregate_id"] == str(aggregate_id)
+    assert added.meta["version"] == 1
+    assert "occurred_at" in added.meta
 
 
 # --- WebhookEvent model ------------------------------------------------------
