@@ -62,6 +62,24 @@ def _policy_for(state: str):
     return STATE_POLICIES.get(state)
 
 
+def tenant_may_use_api(state: str | None) -> bool:
+    """§48: may a workspace in this lifecycle state use the API surface?
+
+    Public so callers OUTSIDE the request path — the SSE gateway, which opens
+    its own short-lived session, and anything else that gates on tenancy — apply
+    the SAME policy as `get_tenant_ctx` rather than re-deriving it. That matters
+    because the two must not drift: the SSE stream was the one surface that
+    never read the state, so a suspended workspace kept its live event firehose
+    while every ordinary request was refused.
+
+    Fails CLOSED: an unknown or missing state is not "active".
+    """
+    if state is None:
+        return False
+    policy = _policy_for(state)
+    return policy is not None and policy.allows_api
+
+
 async def get_db() -> AsyncSession:
     """One session per request, one transaction: commit on success."""
     async with SessionLocal() as session:
@@ -180,8 +198,7 @@ async def get_tenant_ctx(
     ).scalar_one_or_none()
     if lifecycle_state is None:
         raise PermissionDeniedError("tenant not found")
-    policy = _policy_for(lifecycle_state)
-    if (policy is None or not policy.allows_api) and not _tenant_recovery_path(
+    if not tenant_may_use_api(lifecycle_state) and not _tenant_recovery_path(
         request.url.path
     ):
         raise PermissionDeniedError(

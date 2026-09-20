@@ -20,22 +20,26 @@ import uuid
 import pytest
 import sqlalchemy as sa
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from starlette.requests import Request
 
 from app.core.errors import PermissionDeniedError
+from app.core.security import create_access_token
 from app.modules.identity.deps import (
     AuthedUser,
     _policy_for,
     _tenant_recovery_path,
     get_tenant_ctx,
+    tenant_may_use_api,
 )
 from app.modules.identity.models import Tenant, TenantUser
 from app.modules.identity.service import STATE_POLICIES, AuthService
+from app.modules.realtime.router import _sse_auth, _tenant_may_stream
 
 
-def _request(path: str) -> Request:
-    """A minimal ASGI scope — enough for `request.url.path`."""
+def _request(path: str, *, authorization: str | None = None) -> Request:
+    """A minimal ASGI scope — enough for `request.url.path` and the auth header."""
+    headers = [(b"authorization", authorization.encode())] if authorization else []
     return Request(
         {
             "type": "http",
@@ -43,7 +47,7 @@ def _request(path: str) -> Request:
             "path": path,
             "raw_path": path.encode(),
             "query_string": b"",
-            "headers": [],
+            "headers": headers,
             "scheme": "http",
             "server": ("testserver", 80),
             "client": ("127.0.0.1", 12345),
@@ -143,6 +147,155 @@ async def test_non_operational_tenant_still_reaches_recovery_routes(
         _request("/api/v1/billing/subscription"), db, _authed(tenant_ctx)
     )
     assert ctx.tenant_id == tenant_ctx.tenant_id
+
+
+# ------------------------------------------------- the SSE gateway (N-09) --
+#
+# The realtime gateway was the ONE surface that never read `lifecycle_state`: the
+# request path, the auth path and the workers all did, but `/realtime/events`
+# only checked that the user was active and a member. A suspended workspace
+# therefore kept a live firehose of its own events while every ordinary request
+# was refused. A stream also outlives the request that opened it, so a
+# connect-time check alone is not enough — the generator has to re-check.
+
+
+def test_tenant_may_use_api_agrees_with_the_policy_table() -> None:
+    """Pinned against the table itself, so adding a lifecycle state cannot leave
+    the gate with an implicit answer."""
+    for state, policy in STATE_POLICIES.items():
+        assert tenant_may_use_api(state) is policy.allows_api, state
+
+
+def test_tenant_may_use_api_fails_closed_on_unknown_or_missing() -> None:
+    assert tenant_may_use_api("active") is True
+    assert tenant_may_use_api("suspended") is False
+    assert tenant_may_use_api("not-a-real-state") is False
+    assert tenant_may_use_api(None) is False
+
+
+class _NoEventsRedis:
+    """`xread` finds nothing, so the loop falls through to the heartbeat branch."""
+
+    async def xread(self, **_kwargs):
+        return None
+
+
+class _OpenRequest:
+    async def is_disconnected(self) -> bool:
+        return False
+
+
+def _stream(rt):
+    return rt._event_stream(
+        tenant_id=str(uuid.uuid4()),
+        user_id=str(uuid.uuid4()),
+        streams=["message.events"],
+        cursor=None,
+        request=_OpenRequest(),
+    )
+
+
+async def test_the_stream_closes_once_the_workspace_may_no_longer_stream(
+    monkeypatch,
+) -> None:
+    """The connect-time gate alone leaves an already-open inbox streaming.
+
+    Before N-09 the generator never consulted the state at all, so this loop
+    emitted a heartbeat forever — hence the cap rather than a bare iteration.
+    """
+    from app.modules.realtime import router as rt
+
+    monkeypatch.setattr(rt, "get_redis", lambda: _NoEventsRedis())
+    monkeypatch.setattr(rt, "_HEARTBEAT_INTERVAL_S", 0)  # heartbeat due at once
+
+    async def _deny(_tenant_id: str) -> bool:
+        return False
+
+    monkeypatch.setattr(rt, "_tenant_may_stream", _deny)
+
+    frames: list[bytes] = []
+    async for frame in _stream(rt):
+        frames.append(frame)
+        if len(frames) > 3:
+            pytest.fail("the stream kept emitting after the workspace was blocked")
+
+    assert frames == [], "a blocked workspace must not even get a heartbeat"
+
+
+async def test_the_stream_keeps_heartbeating_while_the_workspace_is_allowed(
+    monkeypatch,
+) -> None:
+    """The gate must be consulted, not simply kill every stream."""
+    from app.modules.realtime import router as rt
+
+    monkeypatch.setattr(rt, "get_redis", lambda: _NoEventsRedis())
+    monkeypatch.setattr(rt, "_HEARTBEAT_INTERVAL_S", 0)
+
+    async def _allow(_tenant_id: str) -> bool:
+        return True
+
+    monkeypatch.setattr(rt, "_tenant_may_stream", _allow)
+
+    frames: list[bytes] = []
+    async for frame in _stream(rt):
+        frames.append(frame)
+        if len(frames) >= 2:
+            break
+
+    assert frames == [b": heartbeat\n\n", b": heartbeat\n\n"]
+
+
+@pytest.fixture
+async def sse_sessions(monkeypatch, db):
+    """Point the SSE module's own session factory at the test connection.
+
+    Both SSE paths deliberately open their OWN short-lived session — a
+    request-scoped one would pin a pooled connection for the entire stream, which
+    can be hours. That is right in production, but it means they cannot see the
+    `db` fixture's uncommitted rows, so bind them to the same connection rather
+    than committing test data into the database.
+
+    Patched through `get_sessionmaker` rather than `SessionLocal`: the latter is
+    produced by the module's `__getattr__`, and restoring it by assignment would
+    leave a real attribute permanently shadowing the lazy one.
+    """
+    conn = await db.connection()
+    factory = async_sessionmaker(
+        bind=conn, expire_on_commit=False, join_transaction_mode="create_savepoint"
+    )
+    monkeypatch.setattr("app.core.db.get_sessionmaker", lambda: factory)
+    return factory
+
+
+async def test_the_sse_gate_refuses_a_suspended_workspace(
+    db: AsyncSession, tenant_ctx, sse_sessions
+) -> None:
+    tenant_id = str(tenant_ctx.tenant_id)
+    assert await _tenant_may_stream(tenant_id) is True
+
+    await _set_state(db, tenant_ctx.tenant_id, "suspended")
+
+    assert await _tenant_may_stream(tenant_id) is False
+
+
+async def test_sse_auth_refuses_to_open_a_stream_for_a_suspended_workspace(
+    db: AsyncSession, tenant_ctx, sse_sessions
+) -> None:
+    """The endpoint's own gate, not just the helper it delegates to."""
+    token = create_access_token(
+        str(tenant_ctx.user.id), {"tenant_id": str(tenant_ctx.tenant_id)}
+    )
+    request = _request("/api/v1/realtime/events", authorization=f"Bearer {token}")
+
+    # Active: the stream opens.
+    authed = await _sse_auth(request)
+    assert authed.tenant_id == tenant_ctx.tenant_id
+
+    await _set_state(db, tenant_ctx.tenant_id, "suspended")
+
+    with pytest.raises(PermissionDeniedError) as exc:
+        await _sse_auth(request)
+    assert "suspended" in str(exc.value)
 
 
 async def test_unknown_lifecycle_state_denies_business_routes(

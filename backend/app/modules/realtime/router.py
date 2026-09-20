@@ -41,8 +41,8 @@ from sqlalchemy import text as sa_text
 from app.core.errors import PermissionDeniedError
 from app.core.redis import get_redis
 from app.core.security import decode_token
-from app.modules.identity.deps import AuthedUser
-from app.modules.identity.models import TenantUser, User
+from app.modules.identity.deps import AuthedUser, tenant_may_use_api
+from app.modules.identity.models import Tenant, TenantUser, User
 
 
 async def _sse_auth(
@@ -124,12 +124,61 @@ async def _sse_auth(
             if member is None:
                 raise PermissionDeniedError("not a member of this tenant")
 
+            # §48 (review N-09): the request path, the auth path and the workers
+            # all read `lifecycle_state`; this endpoint did not — so a suspended
+            # workspace kept a live firehose of its own events while every
+            # ordinary request was refused. Checked AFTER membership so the state
+            # is never disclosed to a non-member.
+            lifecycle_state = (
+                await session.execute(
+                    sa_select(Tenant.lifecycle_state).where(Tenant.id == tenant_id)
+                )
+            ).scalar_one_or_none()
+            if lifecycle_state is None:
+                raise PermissionDeniedError("tenant not found")
+            if not tenant_may_use_api(lifecycle_state):
+                raise PermissionDeniedError(
+                    f"workspace is {lifecycle_state} — realtime is unavailable"
+                )
+
     return AuthedUser(id=user_id, tenant_id=tenant_id, role_code=payload.get("role"))
 
 
 _SSEAuthDep = Annotated[AuthedUser, Depends(_sse_auth)]
 
 logger = logging.getLogger(__name__)
+
+
+async def _tenant_may_stream(tenant_id: str) -> bool:
+    """Re-read the workspace state mid-stream (review N-09).
+
+    A stream outlives the request that opened it, so a connect-time check alone
+    leaves open exactly the window that matters: a workspace suspended WHILE its
+    inbox is open. The re-check rides the existing heartbeat cadence, so it costs
+    one indexed lookup per stream per `_HEARTBEAT_INTERVAL_S`.
+
+    A transient failure keeps the stream alive and is logged loudly. This is a
+    LIFECYCLE gate, not the isolation gate — isolation is enforced per frame from
+    each event's own meta envelope — so the worst case of staying open is a
+    suspended workspace receiving a few more of its OWN events, whereas failing
+    closed would drop every stream on the platform over a blip.
+    """
+    from app.core.db import SessionLocal
+
+    try:
+        async with SessionLocal() as session:
+            async with session.begin():
+                state = (
+                    await session.execute(
+                        sa_select(Tenant.lifecycle_state).where(
+                            Tenant.id == uuid.UUID(tenant_id)
+                        )
+                    )
+                ).scalar_one_or_none()
+    except Exception:  # noqa: BLE001
+        logger.warning("sse.lifecycle_check_failed tenant=%s", tenant_id, exc_info=True)
+        return True
+    return tenant_may_use_api(state)
 
 router = APIRouter(prefix="/realtime", tags=["realtime"])
 
@@ -221,8 +270,13 @@ async def _event_stream(
                 await asyncio.sleep(1)
                 continue
 
-            # Heartbeat if overdue.
+            # Heartbeat if overdue. Also the point at which the workspace is
+            # re-checked: a stream opened while the tenant was active must not
+            # survive the tenant being suspended mid-session (review N-09).
             if asyncio.get_event_loop().time() >= heartbeat_due:
+                if not await _tenant_may_stream(tenant_id):
+                    logger.info("sse.tenant_blocked tenant=%s", tenant_id)
+                    break
                 yield _heartbeat()
                 heartbeat_due = asyncio.get_event_loop().time() + _HEARTBEAT_INTERVAL_S
 
