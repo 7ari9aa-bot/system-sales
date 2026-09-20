@@ -63,6 +63,9 @@ from app.modules.operations.router import (
 from app.modules.operations.router import (
     search_router as operations_search_router,
 )
+from app.modules.operations.router import (
+    sla_router as operations_sla_router,
+)
 from app.modules.orders.router import router as orders_router
 from app.modules.platform.router import router as platform_module_router
 from app.modules.privacy.router import router as privacy_router
@@ -170,6 +173,7 @@ def create_app() -> FastAPI:
         ai_router,
         operations_router,
         operations_search_router,
+        operations_sla_router,
         realtime_router,
         notifications_router,
         privacy_router,

@@ -27,6 +27,21 @@ from app.core.model_kit import AppendOnlyCreatedAtMixin, IdMixin, TimestampMixin
 
 
 class Tenant(TimestampMixin, Base):
+    """A tenant (customer account).
+
+    Lifecycle (§48): ``lifecycle_state`` is the detailed state machine
+    (provisioning | trial | active | past_due | grace | suspended |
+    offboarding | deleted) and ``is_active`` is the coarse operational flag the
+    existing queries already rely on. The two MUST never disagree:
+    ``is_active`` is True only for the operational states (provisioning, trial,
+    active, past_due, grace) and False for suspended / offboarding / deleted.
+    TenantLifecycleService.transition is the single writer of both, so a state
+    change can never leave the flag stale. Callers that need to ask "is this
+    tenant allowed to X" use policy_for(state), not is_active — suspension is
+    deliberately NOT "disable everything" (a suspended admin must still export
+    their data, which is what makes offboarding possible).
+    """
+
     __tablename__ = "tenants"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -35,6 +50,15 @@ class Tenant(TimestampMixin, Base):
     slug: Mapped[str] = mapped_column(String(63), unique=True)
     name: Mapped[str] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(Boolean, server_default="true")
+    # Detailed §48 lifecycle state — see the class docstring for the invariant
+    # that ties it to is_active.
+    lifecycle_state: Mapped[str] = mapped_column(String(31), server_default="active")
+    suspended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    grace_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deletion_scheduled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Why the tenant is in its current (usually restrictive) state — without it
+    # a suspended tenant is indistinguishable from a billing mistake.
+    status_reason: Mapped[str | None] = mapped_column(String(255))
 
 
 class User(TimestampMixin, Base):

@@ -14,6 +14,7 @@ import logging
 import re
 import secrets
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 
@@ -522,3 +523,234 @@ class UserService:
         if payload.get("type") != "access":
             raise PermissionDeniedError("wrong token type")
         return payload
+
+
+# --- tenant lifecycle (spec §48) -------------------------------------------
+#
+# State machine — every transition is validated, never assigned directly:
+#
+#   provisioning ──> trial ──> active <──> past_due ──> grace
+#         │            │         │  ▲          │           │
+#         └──> active ─┘         │  └──────────┘           │
+#                               │  (payment received)     │
+#                               ▼                         ▼
+#                           suspended ──> offboarding ──> deleted [terminal]
+#
+# `is_active` (the coarse flag) is derived from the state via
+# TenantLifecycleService.is_coarse_active. The two can never disagree because
+# transition() is the only writer of both.
+TENANT_LIFECYCLE_STATES: tuple[str, ...] = (
+    "provisioning",
+    "trial",
+    "active",
+    "past_due",
+    "grace",
+    "suspended",
+    "offboarding",
+    "deleted",
+)
+
+TENANT_INITIAL_STATE = "provisioning"
+
+# current state -> states it may move to. `deleted` is terminal.
+ALLOWED_TRANSITIONS: dict[str, frozenset[str]] = {
+    "provisioning": frozenset({"trial", "active", "deleted"}),
+    "trial": frozenset({"active", "past_due", "suspended", "offboarding", "deleted"}),
+    "active": frozenset({"past_due", "suspended", "offboarding", "deleted"}),
+    "past_due": frozenset({"active", "grace", "suspended", "offboarding", "deleted"}),
+    "grace": frozenset({"active", "suspended", "offboarding", "deleted"}),
+    "suspended": frozenset({"active", "offboarding", "deleted"}),
+    "offboarding": frozenset({"active", "deleted"}),
+    "deleted": frozenset(),
+}
+
+# States in which the tenant still operates normally — the ones where the
+# coarse `is_active` flag is True.
+TENANT_OPERATIONAL_STATES: frozenset[str] = frozenset(
+    {"provisioning", "trial", "active", "past_due", "grace"}
+)
+
+# Entering one of these states takes capability away from the tenant, so the
+# operator must say why (that reason is what the audit row preserves).
+_REASON_REQUIRED: frozenset[str] = frozenset({"suspended", "offboarding", "deleted"})
+
+# How long a tenant keeps working after payment fails, and how long after
+# offboarding starts the data is retained before deletion.
+GRACE_PERIOD_DAYS = 14
+OFFBOARDING_RETENTION_DAYS = 30
+
+
+@dataclass(frozen=True, slots=True)
+class TenantCapabilityPolicy:
+    """What a tenant is allowed to do in a given lifecycle state (§48).
+
+    This is the whole point of the state machine: suspension is NOT "disable
+    everything". A suspended tenant loses login / API / AI / channels /
+    automation but KEEPS data access, so its admin can export everything before
+    offboarding deletes it.
+    """
+
+    allows_login: bool
+    allows_api: bool
+    allows_ai: bool
+    allows_channels: bool
+    allows_automation: bool
+    allows_data_access: bool
+
+
+_FULL = TenantCapabilityPolicy(
+    allows_login=True,
+    allows_api=True,
+    allows_ai=True,
+    allows_channels=True,
+    allows_automation=True,
+    allows_data_access=True,
+)
+# Setup is not yet operational: the admin can sign in and use the API to
+# configure the tenant, but nothing customer-facing is live.
+_SETUP = TenantCapabilityPolicy(
+    allows_login=True,
+    allows_api=True,
+    allows_ai=False,
+    allows_channels=False,
+    allows_automation=False,
+    allows_data_access=True,
+)
+# Suspension: the business stops, the data stays reachable for export.
+_SUSPENDED = TenantCapabilityPolicy(
+    allows_login=False,
+    allows_api=False,
+    allows_ai=False,
+    allows_channels=False,
+    allows_automation=False,
+    allows_data_access=True,
+)
+# Offboarding: read/export only — the admin signs in to take their data out.
+_OFFBOARDING = TenantCapabilityPolicy(
+    allows_login=True,
+    allows_api=False,
+    allows_ai=False,
+    allows_channels=False,
+    allows_automation=False,
+    allows_data_access=True,
+)
+# Deleted: nothing at all.
+_DELETED = TenantCapabilityPolicy(
+    allows_login=False,
+    allows_api=False,
+    allows_ai=False,
+    allows_channels=False,
+    allows_automation=False,
+    allows_data_access=False,
+)
+
+STATE_POLICIES: dict[str, TenantCapabilityPolicy] = {
+    "provisioning": _SETUP,
+    "trial": _FULL,
+    "active": _FULL,
+    "past_due": _FULL,
+    "grace": _FULL,
+    "suspended": _SUSPENDED,
+    "offboarding": _OFFBOARDING,
+    "deleted": _DELETED,
+}
+
+
+class TenantLifecycleService:
+    """Owns the §48 tenant lifecycle: transitions, timestamps and audit."""
+
+    @staticmethod
+    async def get(session, tenant_id: uuid.UUID) -> Tenant:
+        tenant = (
+            await session.execute(select(Tenant).where(Tenant.id == tenant_id))
+        ).scalar_one_or_none()
+        if tenant is None:
+            raise NotFoundError("tenant not found")
+        return tenant
+
+    @staticmethod
+    def policy_for(state: str) -> TenantCapabilityPolicy:
+        """The capability policy for a state (unknown state is a bug, not a 404)."""
+        try:
+            return STATE_POLICIES[state]
+        except KeyError:
+            raise ValidationError(f"unknown tenant lifecycle state: {state}") from None
+
+    @staticmethod
+    def is_state(tenant: Tenant, state: str) -> bool:
+        """Callers ask this instead of poking `is_active`."""
+        return tenant.lifecycle_state == state
+
+    @staticmethod
+    def is_coarse_active(state: str) -> bool:
+        """The `is_active` value a state maps to (single source of the rule)."""
+        return state in TENANT_OPERATIONAL_STATES
+
+    @staticmethod
+    async def transition(
+        session,
+        tenant_id: uuid.UUID,
+        target: str,
+        *,
+        reason: str | None = None,
+        actor_user_id: uuid.UUID | None = None,
+    ) -> Tenant:
+        """Move a tenant to `target`, or refuse with a clear conflict.
+
+        Validation happens BEFORE any database read, so an invalid target or a
+        missing reason fails fast and is unit-testable without a session.
+        """
+        if target not in STATE_POLICIES:
+            raise ValidationError(f"unknown tenant lifecycle state: {target}")
+        if target in _REASON_REQUIRED and not (reason or "").strip():
+            raise ValidationError(f"a reason is required to move a tenant to {target}")
+
+        tenant = await TenantLifecycleService.get(session, tenant_id)
+        current = tenant.lifecycle_state
+        allowed = ALLOWED_TRANSITIONS.get(current, frozenset())
+        if target not in allowed:
+            if allowed:
+                hint = f" (allowed: {', '.join(sorted(allowed))})"
+            else:
+                hint = " — deleted is terminal"
+            raise ConflictError(
+                f"cannot move a {current} tenant to {target}{hint}"
+            )
+
+        was_active = tenant.is_active
+        now = _now()
+        tenant.lifecycle_state = target
+        tenant.is_active = TenantLifecycleService.is_coarse_active(target)
+        tenant.status_reason = reason
+        # Each restrictive state owns one timestamp; leaving it clears that
+        # timestamp so a reactivated tenant does not look still-suspended.
+        tenant.suspended_at = now if target == "suspended" else None
+        tenant.grace_ends_at = (
+            now + timedelta(days=GRACE_PERIOD_DAYS) if target == "grace" else None
+        )
+        tenant.deletion_scheduled_at = (
+            now + timedelta(days=OFFBOARDING_RETENTION_DAYS)
+            if target == "offboarding"
+            else None
+        )
+
+        # Every transition leaves an audit row naming actor, from, to and why —
+        # a lifecycle change with no trail is the failure this feature exists
+        # to prevent.
+        session.add(
+            AuditLog(
+                tenant_id=tenant.id,
+                actor_user_id=actor_user_id,
+                action="tenant.lifecycle_changed",
+                resource_type="tenant",
+                resource_id=str(tenant.id),
+                before={"lifecycle_state": current, "is_active": was_active},
+                after={
+                    "lifecycle_state": target,
+                    "is_active": tenant.is_active,
+                    "reason": reason,
+                },
+            )
+        )
+        await session.flush()
+        return tenant

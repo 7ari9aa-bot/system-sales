@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import asdict
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, Request, Response
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.errors import PermissionDeniedError
 from app.modules.billing.service import EntitlementService
@@ -22,6 +25,37 @@ users_router = APIRouter(prefix="/users", tags=["users"])
 tenants_router = APIRouter(prefix="/tenants", tags=["tenants"])
 
 _CLIENT_TTL = 60 * 60 * 24 * 30  # refresh cookie life if cookie mode used
+
+
+class LifecycleTransitionRequest(BaseModel):
+    """Platform-admin request to move a tenant to another §48 state."""
+
+    state: str = Field(min_length=1, max_length=31)
+    reason: str | None = Field(default=None, max_length=255)
+
+
+class TenantCapabilityPolicyOut(BaseModel):
+    """What a tenant may do in its current state — shown to the operator."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    allows_login: bool
+    allows_api: bool
+    allows_ai: bool
+    allows_channels: bool
+    allows_automation: bool
+    allows_data_access: bool
+
+
+class TenantLifecycleOut(BaseModel):
+    tenant_id: uuid.UUID
+    lifecycle_state: str
+    is_active: bool
+    status_reason: str | None = None
+    suspended_at: datetime | None = None
+    grace_ends_at: datetime | None = None
+    deletion_scheduled_at: datetime | None = None
+    policy: TenantCapabilityPolicyOut
 
 
 def _client_meta(request: Request) -> tuple[str | None, str | None]:
@@ -183,4 +217,49 @@ async def revoke_tenant_invitation(
         ctx.session, tenant_id=tenant_id, invitation_id=invitation_id
     )
     return Response(status_code=204)
+
+
+def _lifecycle_out(tenant) -> TenantLifecycleOut:
+    policy = service.TenantLifecycleService.policy_for(tenant.lifecycle_state)
+    return TenantLifecycleOut(
+        tenant_id=tenant.id,
+        lifecycle_state=tenant.lifecycle_state,
+        is_active=tenant.is_active,
+        status_reason=tenant.status_reason,
+        suspended_at=tenant.suspended_at,
+        grace_ends_at=tenant.grace_ends_at,
+        deletion_scheduled_at=tenant.deletion_scheduled_at,
+        policy=TenantCapabilityPolicyOut(**asdict(policy)),
+    )
+
+
+@tenants_router.post("/{tenant_id}/lifecycle", response_model=TenantLifecycleOut)
+async def transition_tenant_lifecycle(
+    tenant_id: uuid.UUID,
+    body: LifecycleTransitionRequest,
+    ctx: TenantContext = Depends(require_permission("settings:write")),
+):
+    """Move a tenant between §48 lifecycle states (suspend, reactivate, offboard)."""
+    if ctx.tenant_id != tenant_id:
+        raise PermissionDeniedError("tenant mismatch")
+    tenant = await service.TenantLifecycleService.transition(
+        ctx.session,
+        tenant_id,
+        body.state,
+        reason=body.reason,
+        actor_user_id=ctx.user.id,
+    )
+    return _lifecycle_out(tenant)
+
+
+@tenants_router.get("/{tenant_id}/lifecycle", response_model=TenantLifecycleOut)
+async def get_tenant_lifecycle(
+    tenant_id: uuid.UUID,
+    ctx: TenantContext = Depends(require_permission("settings:write")),
+):
+    """Current lifecycle state + what that state actually permits."""
+    if ctx.tenant_id != tenant_id:
+        raise PermissionDeniedError("tenant mismatch")
+    tenant = await service.TenantLifecycleService.get(ctx.session, tenant_id)
+    return _lifecycle_out(tenant)
 

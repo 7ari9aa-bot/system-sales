@@ -17,6 +17,7 @@ from app.core.redis import close_redis, get_redis
 from app.workers.base import StreamWorker
 from app.workers.message_worker import MessageWorker
 from app.workers.platform_workers import NotificationWorker, WebhookWorker
+from app.workers.retention_worker import RetentionWorker
 from app.workers.scheduler_worker import SchedulerWorker
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -27,6 +28,7 @@ POOLS: dict[str, type[StreamWorker]] = {
     "notifications": NotificationWorker,
     "webhooks": WebhookWorker,
     "scheduler": SchedulerWorker,
+    "retention": RetentionWorker,
 }
 
 

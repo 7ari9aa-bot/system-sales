@@ -131,6 +131,18 @@ class IngestService:
             message.channel_message_id,
             {"conversation_id": str(conversation.id)},
         )
+        # §46: the customer's message starts the first-response clock. A no-op
+        # when the tenant has no SLA policy, so this costs nothing for tenants
+        # that do not use SLAs. Idempotent by conversation, so a replayed
+        # inbound event cannot restart (and thereby extend) the clock.
+        from app.modules.operations.sla import SlaService
+
+        await SlaService.start(
+            session,
+            tenant_id,
+            conversation_id=conversation.id,
+            channel=message.channel,
+        )
         await add_outbox_event(
             session,
             aggregate_type="message",

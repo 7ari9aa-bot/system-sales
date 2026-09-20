@@ -165,6 +165,13 @@ class ConversationService:
             conversation.messaging_policy_state = (
                 "template_only" if decision.requires_template else "open"
             )
+        # §46: an agent or AI reply satisfies the first-response SLA. A no-op
+        # when no SLA is running, and only for real replies — a system message
+        # must not stop the clock.
+        if direction == "outbound" and sender_type in ("agent", "ai"):
+            from app.modules.operations.sla import SlaService
+
+            await SlaService.mark_met(session, tenant_id, conversation_id=conversation_id)
         await session.flush()
         return message
 

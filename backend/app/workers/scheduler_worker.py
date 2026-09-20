@@ -38,6 +38,13 @@ RECURRING_JOBS: dict[str, tuple[timedelta, dict]] = {
     # §135: a PENDING approval past its TTL must not stay decidable forever —
     # the parked run would hang indefinitely otherwise.
     "expire_approvals": (timedelta(minutes=10), {}),
+    # §46: without a sweep a deadline is decorative — nothing ever notices it
+    # passing, so "SLA risk" would never turn into "breached".
+    "sla.sweep": (timedelta(minutes=5), {}),
+    # §52: retention only happens if something runs it. The worker existed but
+    # was not in POOLS and nothing ever scheduled it, so no tenant's
+    # RetentionPolicy was ever enforced.
+    "retention.run": (timedelta(hours=24), {}),
 }
 
 
@@ -95,6 +102,30 @@ async def _handle_expire_approvals(session, tenant_id, payload: dict) -> dict:
 
 
 register_job_handler("expire_approvals", _handle_expire_approvals)
+
+
+async def _handle_sla_sweep(session, tenant_id, payload: dict) -> dict:
+    """§46: mark first-response SLAs whose deadline has passed as breached."""
+    from app.modules.operations.sla import SlaService
+
+    return await SlaService.sweep(session, tenant_id)
+
+
+register_job_handler("sla.sweep", _handle_sla_sweep)
+
+
+async def _handle_retention(session, tenant_id, payload: dict) -> dict:
+    """§52: enforce the tenant's RetentionPolicy rows.
+
+    The caller (this scheduler) already bound the tenant GUC, which is what
+    RetentionWorker.run_once expects.
+    """
+    from app.workers.retention_worker import RetentionWorker
+
+    return await RetentionWorker.run_once(session, tenant_id)
+
+
+register_job_handler("retention.run", _handle_retention)
 
 
 async def ensure_recurring_jobs() -> None:
