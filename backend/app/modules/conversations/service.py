@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.consent import MARKETING_PURPOSE, evaluate_outbound_consent
 from app.core.errors import NotFoundError, ValidationError
 from app.core.guardrails import AI_SENDER_TYPES, default_guardrail
+from app.modules.conversations.media import MediaService, MediaStorage
 from app.modules.conversations.models import (
     CONVERSATION_STATUSES,
     Assignment,
@@ -92,6 +93,7 @@ class ConversationService:
         provider_metadata: dict | None = None,
         template_name: str | None = None,
         template_vars: dict | None = None,
+        media_storage: MediaStorage | None = None,
     ) -> Message:
         conversation = await ConversationService.get(session, tenant_id, conversation_id)
         if not body and not media_url and not template_name:
@@ -205,6 +207,23 @@ class ConversationService:
 
             await SlaService.mark_met(session, tenant_id, conversation_id=conversation_id)
         await session.flush()
+        # §33-34: capture inbound media to durable storage NOW, while the
+        # provider URL is still valid (they expire within hours). Placed after
+        # the flush so message.id exists, and after the channel_message_id
+        # dedupe above so a re-delivered webhook never re-fetches.
+        #
+        # Synchronous on purpose: this is the single choke point every inbound
+        # message passes through, so a producer cannot forget to capture media.
+        # Outbound media is ours already and is skipped.
+        if direction == "inbound" and media_url:
+            await MediaService.ingest_inbound_media(
+                session,
+                tenant_id,
+                message=message,
+                media_url=media_url,
+                declared_media_type=media_type,
+                storage=media_storage,
+            )
         return message
 
     @staticmethod

@@ -3,11 +3,25 @@
 Channel media URLs (WhatsApp especially) EXPIRE within hours, so media must be
 fetched to our own storage during ingest. When S3 is not configured this
 degrades to pass-through with a loud warning (dev only).
+
+This module is a dumb port: it moves bytes, it does NOT screen them. Inbound
+media is untrusted, so callers MUST use the two steps deliberately —
+
+    fetched = await storage.fetch(url, max_bytes=MAX_MEDIA_BYTES)
+    <screen fetched.content_type / size>   # e.g. MediaService's policy
+    stored = await storage.store(fetched, original_url=url)
+
+`fetch` + `store` are separate for exactly that reason: screening has to happen
+BEFORE anything is written to the bucket. There is deliberately no one-call
+`fetch-and-store` helper, because such a helper looks safe and is not — the
+screened path lives in `app.modules.conversations.media.MediaService`.
 """
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import re
 import uuid
 from dataclasses import dataclass
 from urllib.parse import urljoin
@@ -20,6 +34,26 @@ from app.core.net_guard import assert_public_url
 
 logger = logging.getLogger(__name__)
 
+# Ceiling on a single inbound media object. Applied WHILE streaming, so a
+# provider (or a malicious media URL) cannot make us buffer an unbounded body
+# in memory and OOM the ingest worker. 25 MiB covers WhatsApp (16 MB) and
+# Telegram (20 MB) with headroom.
+MAX_MEDIA_BYTES = 25 * 1024 * 1024
+
+# Storage keys are ours, never derived from a provider-supplied filename. The
+# extension comes from the (untrusted) Content-Type, so it is constrained to a
+# safe alphabet; anything else falls back to "bin".
+_EXTENSION_RE = re.compile(r"^[a-z0-9]{1,10}$")
+
+
+@dataclass
+class FetchedMedia:
+    """Bytes pulled from a provider URL, before any policy decision."""
+
+    data: bytes
+    content_type: str | None
+    checksum: str  # sha256 hex of data
+
 
 @dataclass
 class StoredMedia:
@@ -27,6 +61,8 @@ class StoredMedia:
     content_type: str | None
     bytes_written: int
     durable: bool  # False when we could only keep the expiring original
+    storage_key: str | None = None  # our object key, None when pass-through
+    checksum: str | None = None  # sha256 hex of the stored bytes
 
 
 class ObjectStorage:
@@ -63,62 +99,127 @@ class ObjectStorage:
 
     MAX_REDIRECTS = 3
 
-    async def _fetch_validated(self, client: httpx.AsyncClient, url: str) -> httpx.Response:
-        """Follow redirects MANUALLY so every hop is SSRF-checked.
-
-        `follow_redirects=True` validated only the first URL: a public host
-        that answers `302 Location: http://169.254.169.254/...` was followed
-        straight to the cloud metadata service, which is a complete SSRF
-        bypass of the guard.
-        """
-        current = url
-        for _hop in range(self.MAX_REDIRECTS + 1):
-            assert_public_url(current)
-            response = await client.get(current)
-            location = response.headers.get("location")
-            if response.is_redirect and location:
-                current = urljoin(current, location)
-                continue
-            return response
-        raise ValidationError("too many redirects while fetching media")
-
-    async def persist_from_url(self, url: str, *, prefix: str = "media") -> StoredMedia:
-        """Download a provider media URL and store it durably.
+    async def fetch(
+        self, url: str, *, max_bytes: int | None = MAX_MEDIA_BYTES
+    ) -> FetchedMedia:
+        """Download a provider media URL as a bounded, SSRF-checked stream.
 
         S6: the URL comes from a channel payload, i.e. from the internet, so
-        it is validated before we fetch it — otherwise a crafted media URL
-        would make the worker fetch internal endpoints on the attacker's
+        every hop is validated before we fetch it — otherwise a crafted media
+        URL would make the worker fetch internal endpoints on the attacker's
         behalf (SSRF).
-        """
-        assert_public_url(url)
-        async with httpx.AsyncClient(timeout=30, follow_redirects=False) as client:
-            response = await self._fetch_validated(client, url)
-            response.raise_for_status()
-            content = response.content
-            content_type = response.headers.get("content-type")
 
+        Redirects are followed MANUALLY so every hop is checked:
+        `follow_redirects=True` validated only the first URL, and a public host
+        answering `302 Location: http://169.254.169.254/...` was followed
+        straight to the cloud metadata service.
+
+        `max_bytes` is enforced on the stream itself, not just on
+        Content-Length (which a hostile server can understate or omit), so an
+        oversized body is aborted mid-download instead of being buffered.
+        """
+        current = url
+        async with httpx.AsyncClient(timeout=30, follow_redirects=False) as client:
+            for _hop in range(self.MAX_REDIRECTS + 1):
+                assert_public_url(current)
+                async with client.stream("GET", current) as response:
+                    if response.is_redirect and response.headers.get("location"):
+                        current = urljoin(current, response.headers["location"])
+                        continue
+                    response.raise_for_status()
+                    content_type = response.headers.get("content-type")
+
+                    if max_bytes is not None:
+                        declared = response.headers.get("content-length")
+                        if declared:
+                            try:
+                                declared_bytes = int(declared)
+                            except ValueError:
+                                # Unparseable header is not fatal: the streaming
+                                # cap below still applies.
+                                declared_bytes = None
+                            if declared_bytes is not None and declared_bytes > max_bytes:
+                                raise ValidationError(
+                                    "media exceeds the size limit",
+                                    details={"max_bytes": max_bytes},
+                                )
+
+                    digest = hashlib.sha256()
+                    chunks: list[bytes] = []
+                    total = 0
+                    async for chunk in response.aiter_bytes():
+                        total += len(chunk)
+                        if max_bytes is not None and total > max_bytes:
+                            raise ValidationError(
+                                "media exceeds the size limit",
+                                details={"max_bytes": max_bytes},
+                            )
+                        digest.update(chunk)
+                        chunks.append(chunk)
+                    return FetchedMedia(
+                        data=b"".join(chunks),
+                        content_type=content_type,
+                        checksum=digest.hexdigest(),
+                    )
+        raise ValidationError("too many redirects while fetching media")
+
+    def _extension(self, content_type: str | None) -> str:
+        """Derive a safe file extension from a (provider-supplied) media type.
+
+        Only the subtype of a well-formed `type/subtype` is considered, and it
+        must be a short alphanumeric token. Anything else — `image/svg+xml`,
+        a path fragment, a header-injection attempt — becomes "bin". The key
+        itself is always `{prefix}/{uuid4().hex}.{ext}`, so a provider can
+        never influence the path.
+        """
+        mime = (content_type or "").split(";")[0].strip().lower()
+        if "/" not in mime:
+            return "bin"
+        subtype = mime.split("/", 1)[1]
+        return subtype if _EXTENSION_RE.match(subtype) else "bin"
+
+    async def store(
+        self,
+        media: FetchedMedia,
+        *,
+        prefix: str = "media",
+        original_url: str | None = None,
+    ) -> StoredMedia:
+        """Persist already-fetched bytes durably.
+
+        Split from `fetch` so a caller can screen the bytes (content type,
+        size) BEFORE anything is written to the bucket — policy must not run
+        after the object is already stored.
+        """
         if not self.configured:
             logger.warning("storage.s3_not_configured — keeping expiring URL only")
-            return StoredMedia(url=url, content_type=content_type, bytes_written=0, durable=False)
+            return StoredMedia(
+                url=original_url or "",
+                content_type=media.content_type,
+                bytes_written=0,
+                durable=False,
+                storage_key=None,
+                checksum=media.checksum,
+            )
 
-        ext = (content_type or "").split("/")[-1].split(";")[0] or "bin"
-        key = f"{prefix}/{uuid.uuid4().hex}.{ext}"
+        key = f"{prefix}/{uuid.uuid4().hex}.{self._extension(media.content_type)}"
         import asyncio
 
         await asyncio.to_thread(
             self._s3().put_object,
             Bucket=self._bucket,
             Key=key,
-            Body=content,
-            ContentType=content_type or "application/octet-stream",
+            Body=media.data,
+            ContentType=media.content_type or "application/octet-stream",
         )
         return StoredMedia(
             url=self.public_url(key),
-            content_type=content_type,
-            bytes_written=len(content),
+            content_type=media.content_type,
+            bytes_written=len(media.data),
             durable=True,
+            storage_key=key,
+            checksum=media.checksum,
         )
-
 
 _storage: ObjectStorage | None = None
 
