@@ -19,7 +19,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import Index, String, text
+from sqlalchemy import DateTime, Index, String, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
@@ -48,7 +48,16 @@ class Segment(TenantMixin, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(255))
     definition: Mapped[dict] = mapped_column(JSONB)  # the DSL AST
     is_active: Mapped[bool] = mapped_column(default=True)
-    last_evaluated_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    # MUST be timezone-aware: the migration created this as timestamptz
+    # (b2c3d4e5f6a7). A bare mapped_column() infers a NAIVE DateTime, so
+    # assigning datetime.now(UTC) here made asyncpg fail at flush with
+    # "can't subtract offset-naive and offset-aware datetimes" — and because
+    # nothing called evaluate() until the job runner existed, the defect sat
+    # latent. See tests/test_migrations.py for the guard that now catches the
+    # whole class.
+    last_evaluated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     last_count: Mapped[int | None] = mapped_column(nullable=True)
 
     __table_args__ = (Index("ix_segments_tenant_name", "tenant_id", "name"),)

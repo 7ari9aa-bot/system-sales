@@ -483,3 +483,134 @@ async def test_new_public_tables_are_not_granted_to_anon(db) -> None:
         "default privileges still grant the public anon roles on new public "
         f"objects: {leaked}"
     )
+
+
+# ------------------------------------------- timestamp timezone drift ------
+#
+# A model that declares a bare `mapped_column()` for a datetime infers a NAIVE
+# DateTime, while the migration may have created `timestamptz`. SQLAlchemy then
+# sends a naive bind for a column asyncpg expects to be aware (or the reverse),
+# and the failure surfaces only when something finally WRITES the column:
+#
+#   asyncpg.exceptions.DataError: invalid input for query argument $1:
+#   datetime.datetime(2026, 9, 20, 13, 7, 23...)
+#   (can't subtract offset-naive and offset-aware datetimes)
+#
+# That is how `segments.last_evaluated_at` was broken: the migration created
+# `sa.DateTime(timezone=True)`, the model declared `mapped_column(nullable=True)`,
+# and nothing called `SegmentService.evaluate` until the job runner existed — so
+# the defect sat latent for the whole life of the table.
+#
+# The column-parity guard above compares NAMES only, which is why it missed it.
+
+_TS_MIGRATION_CACHE: dict[tuple[str, str], bool] | None = None
+
+
+def _migration_datetime_timezone() -> dict[tuple[str, str], bool]:
+    """(table, column) -> is timezone-aware, from every migration's DDL."""
+    global _TS_MIGRATION_CACHE
+    if _TS_MIGRATION_CACHE is not None:
+        return _TS_MIGRATION_CACHE
+
+    import ast as _ast
+
+    found: dict[tuple[str, str], bool] = {}
+
+    def _is_datetime_call(node) -> bool | None:
+        """True/False for a sa.DateTime(...) call, None when it is not one."""
+        if not isinstance(node, _ast.Call):
+            return None
+        fn = node.func
+        name = getattr(fn, "attr", None) or getattr(fn, "id", None)
+        if name != "DateTime":
+            return None
+        for kw in node.keywords:
+            if kw.arg == "timezone":
+                return bool(getattr(kw.value, "value", True))
+        return False  # sa.DateTime() with no timezone= is naive
+
+    def _column(node) -> tuple[str, bool] | None:
+        if not (
+            isinstance(node, _ast.Call)
+            and getattr(node.func, "attr", None) == "Column"
+            and node.args
+            and isinstance(node.args[0], _ast.Constant)
+        ):
+            return None
+        for arg in node.args[1:]:
+            tz = _is_datetime_call(arg)
+            if tz is not None:
+                return str(node.args[0].value), tz
+        return None
+
+    for path in _all_migrations():
+        tree = _ast.parse(path.read_text(encoding="utf-8"))
+        for node in _ast.walk(tree):
+            if not isinstance(node, _ast.Call):
+                continue
+            attr = getattr(node.func, "attr", None)
+            if attr == "create_table" and node.args:
+                table = getattr(node.args[0], "value", None)
+                if not isinstance(table, str):
+                    continue
+                for arg in node.args[1:]:
+                    parsed = _column(arg)
+                    if parsed:
+                        found[(table, parsed[0])] = parsed[1]
+            elif attr == "add_column" and len(node.args) > 1:
+                table = getattr(node.args[0], "value", None)
+                parsed = _column(node.args[1])
+                if isinstance(table, str) and parsed:
+                    found[(table, parsed[0])] = parsed[1]
+
+    _TS_MIGRATION_CACHE = found
+    return found
+
+
+def test_model_and_migration_agree_on_timestamp_timezone() -> None:
+    """A naive/aware mismatch here fails only when the column is first written."""
+    from sqlalchemy import DateTime
+
+    from app.core.model_registry import Base
+
+    declared = _migration_datetime_timezone()
+    assert declared, "no DateTime columns found in the migrations — parser broken"
+
+    problems: list[str] = []
+    for table_name, table in Base.metadata.tables.items():
+        for column in table.c:
+            if not isinstance(column.type, DateTime):
+                continue
+            key = (table_name, column.name)
+            if key not in declared:
+                continue  # created inside a DO block; the name guard covers it
+            model_tz = bool(column.type.timezone)
+            if model_tz != declared[key]:
+                problems.append(
+                    f"{table_name}.{column.name}: model says "
+                    f"timezone={model_tz}, migration created timezone={declared[key]}"
+                )
+
+    assert not problems, (
+        "model/migration timestamp timezone drift — the write will fail at "
+        "runtime with 'can't subtract offset-naive and offset-aware datetimes': "
+        + "; ".join(problems)
+    )
+
+
+def test_the_timezone_guard_can_actually_fail() -> None:
+    """Guard against a vacuous pass.
+
+    The migrations happen to use `timezone=True` for every datetime column, so
+    there is no naive one to point at — that is the desired state, not a broken
+    parser. What must hold is that the parser sees a meaningful number of them,
+    otherwise the guard above would pass by finding nothing.
+    """
+    declared = _migration_datetime_timezone()
+    assert len(declared) >= 10, (
+        f"the parser found only {len(declared)} DateTime columns in the "
+        "migrations — it is probably broken, which would make the guard vacuous"
+    )
+    assert any(tz for tz in declared.values()), (
+        "the parser found no timezone-aware DateTime columns at all"
+    )
