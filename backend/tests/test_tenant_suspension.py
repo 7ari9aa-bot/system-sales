@@ -30,7 +30,7 @@ from app.modules.identity.deps import (
     _tenant_recovery_path,
     get_tenant_ctx,
 )
-from app.modules.identity.models import Tenant
+from app.modules.identity.models import Tenant, TenantUser
 from app.modules.identity.service import STATE_POLICIES, AuthService
 
 
@@ -155,19 +155,39 @@ async def test_unknown_lifecycle_state_denies_business_routes(
         await get_tenant_ctx(_request("/api/v1/orders"), db, _authed(tenant_ctx))
 
 
-async def test_blocked_tenant_is_checked_before_the_tenant_guc_is_bound(
+async def test_blocked_tenant_is_denied_before_the_tenant_guc_is_switched(
     db: AsyncSession, tenant_ctx
 ):
-    """A blocked tenant must not end up with a queryable RLS context."""
-    await _set_state(db, tenant_ctx.tenant_id, "suspended")
+    """Prove the gate runs BEFORE bind_tenant.
+
+    The `tenant_ctx` fixture already bound the caller's own tenant, so asking
+    "is app.tenant_id set" proves nothing. Instead use a SECOND tenant the
+    caller is a member of: if the gate ran after bind_tenant, the GUC would have
+    moved to that suspended tenant before the request was rejected.
+    """
+    other = Tenant(slug=f"t-{uuid.uuid4().hex[:10]}", name="Suspended Co")
+    db.add(other)
+    await db.flush()
+    db.add(
+        TenantUser(
+            tenant_id=other.id, user_id=tenant_ctx.user.id, role_id=tenant_ctx.role.id
+        )
+    )
+    await db.flush()
+    await _set_state(db, other.id, "suspended")
 
     with pytest.raises(PermissionDeniedError):
-        await get_tenant_ctx(_request("/api/v1/customers"), db, _authed(tenant_ctx))
+        await get_tenant_ctx(
+            _request("/api/v1/customers"), db, _authed(tenant_ctx), str(other.id)
+        )
 
     bound = (
         await db.execute(sa.text("SELECT current_setting('app.tenant_id', true)"))
     ).scalar_one()
-    assert bound in (None, ""), f"tenant GUC was bound for a blocked tenant: {bound!r}"
+    assert bound == str(tenant_ctx.tenant_id), (
+        "the suspended tenant was bound before the gate rejected it: "
+        f"app.tenant_id={bound!r}"
+    )
 
 
 # ------------------------------------------ login gate (allows_login) -------
