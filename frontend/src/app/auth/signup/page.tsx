@@ -20,6 +20,7 @@ export default function AuthSignupPage() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<{ message: string; retryable: boolean } | null>(null);
+  const [showPw, setShowPw] = useState(false);
 
   useEffect(() => {
     if (getTokens()) router.replace("/inbox");
@@ -109,16 +110,21 @@ export default function AuthSignupPage() {
         </div>
         <div>
           <label htmlFor="password">{t.auth.password}</label>
-          <input
-            id="password"
-            type="password"
-            dir="ltr"
-            autoComplete="new-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            aria-describedby="pw-hint"
-          />
+          <div className="fh-pw-field">
+            <input
+              id="password"
+              type={showPw ? "text" : "password"}
+              dir="ltr"
+              autoComplete="new-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              aria-describedby="pw-hint"
+            />
+            <button type="button" className="fh-pw-toggle" onClick={() => setShowPw((s) => !s)} aria-label={showPw ? t.auth.hidePw : t.auth.showPw}>
+              {showPw ? t.auth.hidePw : t.auth.showPw}
+            </button>
+          </div>
           <small id="pw-hint" className={`fh-pw-hint${pwValid ? " is-ok" : ""}`}>
             {pwValid ? "✓" : "•"} {t.auth.pwHint}
           </small>
