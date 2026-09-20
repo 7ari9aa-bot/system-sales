@@ -83,19 +83,21 @@ export function ContextBody() {
           <Reveal className="fh-section-head">
             <h2>{p.problem.title}</h2>
           </Reveal>
-          <Reveal stagger>
-            <FeatureList items={p.problem.items as [string, string][]} cols={3} />
-          </Reveal>
+          <div className="fh-product-deep">
+            <Reveal className="fh-product-features" stagger>
+              <FeatureList items={p.problem.items as [string, string][]} cols={1} />
+            </Reveal>
+            <Reveal className="fh-product-graph">
+              <div className="fh-card" style={{ padding: 24 }}>
+                <h4 style={{ fontSize: 14.5, fontWeight: 650, marginBottom: 14 }}>{t.graph.title}</h4>
+                <ContextGraph />
+                <p style={{ fontSize: 13.5, color: "var(--muted)", marginTop: 14, lineHeight: 1.65 }}>{t.graph.sub}</p>
+              </div>
+            </Reveal>
+          </div>
         </div>
       </section>
-      <section className="fh-section">
-        <div className="fh-container">
-          <Reveal>
-            <ContextGraph />
-          </Reveal>
-        </div>
-      </section>
-      <section className="fh-section">
+      <section className="fh-section fh-section-alt">
         <div className="fh-container">
           <Reveal className="fh-section-head">
             <h2>{p.solution.title}</h2>
@@ -119,25 +121,27 @@ export function ConversationsBody() {
       <PageHero title={p.title} sub={p.sub} />
       <section className="fh-section">
         <div className="fh-container">
-          <Reveal className="fh-section-head">
-            <h2>{p.channels.title}</h2>
-          </Reveal>
-          <Reveal stagger>
-            <FeatureList items={p.channels.items as [string, string][]} cols={2} />
-          </Reveal>
+          <div className="fh-product-deep">
+            <Reveal className="fh-product-features">
+              <Reveal className="fh-section-head">
+                <h2>{p.channels.title}</h2>
+              </Reveal>
+              <Reveal stagger>
+                <FeatureList items={p.channels.items as [string, string][]} cols={1} />
+              </Reveal>
+            </Reveal>
+            <Reveal className="fh-product-graph">
+              <Reveal className="fh-section-head">
+                <h2>{p.inbox.title}</h2>
+              </Reveal>
+              <Reveal stagger>
+                <FeatureList items={p.inbox.items as [string, string][]} cols={1} />
+              </Reveal>
+            </Reveal>
+          </div>
         </div>
       </section>
-      <section className="fh-section">
-        <div className="fh-container">
-          <Reveal className="fh-section-head">
-            <h2>{p.inbox.title}</h2>
-          </Reveal>
-          <Reveal stagger>
-            <FeatureList items={p.inbox.items as [string, string][]} />
-          </Reveal>
-        </div>
-      </section>
-      <section className="fh-section">
+      <section className="fh-section fh-section-alt">
         <div className="fh-container">
           <Reveal className="fh-section-head">
             <h2>{p.handoff.title}</h2>
@@ -147,7 +151,7 @@ export function ConversationsBody() {
               <span key={title} style={{ display: "contents" }}>
                 {i > 0 && <span className="fh-handoff-arrow" aria-hidden="true">←</span>}
                 <div className="fh-handoff-step">
-                  <span className={`fh-badge ${["fh-badge-primary", "fh-badge-warning", "fh-badge-primary", "fh-badge-success"][i]}`}>{badge}</span>
+                  <span className={`fh-badge \${["fh-badge-primary", "fh-badge-warning", "fh-badge-primary", "fh-badge-success"][i]}`}>{badge}</span>
                   <b>{title}</b>
                   <small>{detail}</small>
                 </div>
@@ -170,30 +174,32 @@ export function AiBody() {
       <PageHero title={p.title} sub={p.sub} />
       <section className="fh-section">
         <div className="fh-container">
-          <Reveal className="fh-section-head">
-            <h2>{p.loop.title}</h2>
-          </Reveal>
-          <Reveal className="fh-pipeline" stagger>
-            {(p.loop.steps as string[]).map((label, i) => (
-              <li key={label}>
-                <span className="fh-pipeline-num" aria-hidden="true">{i + 1}</span>
-                {label}
-              </li>
-            ))}
-          </Reveal>
+          <div className="fh-product-deep">
+            <Reveal className="fh-product-graph">
+              <Reveal className="fh-section-head">
+                <h2>{p.loop.title}</h2>
+              </Reveal>
+              <Reveal className="fh-pipeline fh-pipeline-compact" stagger>
+                {(p.loop.steps as string[]).map((label, i) => (
+                  <li key={label}>
+                    <span className="fh-pipeline-num" aria-hidden="true">{i + 1}</span>
+                    {label}
+                  </li>
+                ))}
+              </Reveal>
+            </Reveal>
+            <Reveal className="fh-product-features">
+              <Reveal className="fh-section-head">
+                <h2>{p.can.title}</h2>
+              </Reveal>
+              <Reveal stagger>
+                <FeatureList items={p.can.items as [string, string][]} cols={1} />
+              </Reveal>
+            </Reveal>
+          </div>
         </div>
       </section>
-      <section className="fh-section">
-        <div className="fh-container">
-          <Reveal className="fh-section-head">
-            <h2>{p.can.title}</h2>
-          </Reveal>
-          <Reveal stagger>
-            <FeatureList items={p.can.items as [string, string][]} cols={2} />
-          </Reveal>
-        </div>
-      </section>
-      <section className="fh-section">
+      <section className="fh-section fh-section-alt">
         <div className="fh-container">
           <Reveal className="fh-section-head">
             <h2>{p.guard.title}</h2>
@@ -245,24 +251,26 @@ export function AutomationBody() {
           </Reveal>
         </div>
       </section>
-      <section className="fh-section">
+      <section className="fh-section fh-section-alt">
         <div className="fh-container">
-          <Reveal className="fh-section-head">
-            <h2>{p.capsTitle}</h2>
-          </Reveal>
-          <Reveal stagger>
-            <FeatureList items={p.caps as [string, string][]} cols={3} />
-          </Reveal>
-        </div>
-      </section>
-      <section className="fh-section">
-        <div className="fh-container">
-          <Reveal className="fh-section-head">
-            <h2>{p.guardTitle}</h2>
-          </Reveal>
-          <Reveal stagger>
-            <FeatureList items={p.guardItems as [string, string][]} cols={3} />
-          </Reveal>
+          <div className="fh-product-deep">
+            <Reveal className="fh-product-features">
+              <Reveal className="fh-section-head">
+                <h2>{p.capsTitle}</h2>
+              </Reveal>
+              <Reveal stagger>
+                <FeatureList items={p.caps as [string, string][]} cols={1} />
+              </Reveal>
+            </Reveal>
+            <Reveal className="fh-product-graph">
+              <Reveal className="fh-section-head">
+                <h2>{p.guardTitle}</h2>
+              </Reveal>
+              <Reveal stagger>
+                <FeatureList items={p.guardItems as [string, string][]} cols={1} />
+              </Reveal>
+            </Reveal>
+          </div>
         </div>
       </section>
       <PageCTA title={p.cta} />
@@ -335,9 +343,25 @@ export function SecurityBody() {
           <Reveal stagger>
             <FeatureList items={p.areas as [string, string][]} />
           </Reveal>
-          <Reveal>
-            <p className="fh-note" style={{ maxWidth: 720, marginTop: "2rem" }}>{p.honest}</p>
+        </div>
+      </section>
+      <section className="fh-section fh-section-alt">
+        <div className="fh-container">
+          <Reveal className="fh-section-head">
+            <h2>{t.securityTeaser.colTitle}</h2>
           </Reveal>
+          <div className="fh-product-deep">
+            <Reveal className="fh-product-features">
+              <Reveal stagger>
+                <FeatureList items={t.securityTeaser.points as [string, string][]} cols={1} />
+              </Reveal>
+            </Reveal>
+            <Reveal className="fh-product-graph">
+              <div className="fh-card" style={{ padding: 24 }}>
+                <p style={{ fontSize: 14.5, lineHeight: 1.75, color: "var(--muted)" }}>{p.honest}</p>
+              </div>
+            </Reveal>
+          </div>
         </div>
       </section>
       <PageCTA title={p.cta} />
