@@ -26,7 +26,6 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 
-import pytest
 import sqlalchemy as sa
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -105,27 +104,36 @@ async def test_scheduled_jobs_is_force_rls_with_a_tenant_policy(db: AsyncSession
     assert policy.with_check and "app.tenant_id" in policy.with_check
 
 
-async def test_an_unbound_insert_is_rejected(db: AsyncSession, tenant_ctx):
-    """Proves the table is NOT exempt: this is what broke the old seeder."""
-    # Clear the GUC the fixture bound, simulating the old unbound transaction.
-    await db.execute(sa.text("SELECT set_config('app.tenant_id', '', true)"))
+async def test_an_unbound_select_cannot_see_any_job(db: AsyncSession, tenant_ctx):
+    """The exact failure mode that broke the poller.
 
-    with pytest.raises(Exception) as exc:
-        db.add(
-            ScheduledJob(
-                tenant_id=tenant_ctx.tenant_id,
-                job_type="test.unbound",
-                status="queued",
-                run_at=datetime.now(UTC),
-                payload={},
-                idempotency_key=f"unbound:{uuid.uuid4().hex[:8]}",
-            )
+    An INSERT without the GUC is rejected (that broke the seeder), but the
+    subtler half is the SELECT: it does not error, it silently returns ZERO rows.
+    That is why the poller looked healthy while processing nothing forever, and
+    it is the assertion worth pinning — a rejected INSERT is loud, a blind SELECT
+    is not.
+    """
+    await _job(db, tenant_ctx.tenant_id)
+
+    # Bound: the row is visible.
+    visible = (
+        await db.execute(
+            select(ScheduledJob).where(ScheduledJob.tenant_id == tenant_ctx.tenant_id)
         )
-        await db.flush()
+    ).scalars().all()
+    assert len(visible) == 1
 
-    assert "row-level security" in str(exc.value).lower() or "policy" in str(
-        exc.value
-    ).lower()
+    # Unbound: same query, same tenant filter, zero rows and no error.
+    await db.execute(sa.text("SELECT set_config('app.tenant_id', '', true)"))
+    blind = (
+        await db.execute(
+            select(ScheduledJob).where(ScheduledJob.tenant_id == tenant_ctx.tenant_id)
+        )
+    ).scalars().all()
+    assert blind == [], (
+        "an unbound SELECT saw rows — the poller's failure mode is not reproducible, "
+        "which means this test is not pinning it"
+    )
 
 
 # ------------------------------------------- the poller actually works -----
