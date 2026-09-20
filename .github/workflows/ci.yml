@@ -26,6 +26,23 @@ jobs:
       SALES_APP_DB_PASSWORD: ci-app-password
       DATABASE_URL_APP: postgresql+asyncpg://sales_app:ci-app-password@localhost:5432/sales
       DATABASE_URL_APP_ADMIN: postgresql+asyncpg://sales_app:ci-app-password@localhost:5432/sales
+      # `DATABASE_URL` MUST be set here, and this is not belt-and-braces.
+      #
+      # `scripts/provision.py` writes a `.env` containing DATABASE_URL, and CI
+      # runs provision.py. That file hardcodes the PRODUCTION Supabase pooler
+      # host, so `settings.database_url` resolved to PRODUCTION for anything that
+      # opens its own session rather than using the test connection — which is
+      # exactly what `_revoke_family_on_reuse` and `record_security_event` do, by
+      # design, so their writes survive a request rollback.
+      #
+      # The visible symptom was one red test:
+      #   tests/test_auth_flow.py::test_refresh_token_reuse_revokes_family
+      #   asyncpg.exceptions.InvalidPasswordError: password authentication failed
+      #   for user "sales_app"
+      # The password failing is the only reason nothing was written to
+      # production. Environment variables outrank `.env` in pydantic-settings,
+      # so setting it here pins every session to the CI database.
+      DATABASE_URL: postgresql+asyncpg://sales_app:ci-app-password@localhost:5432/sales
     services:
       postgres:
         image: pgvector/pgvector:pg17
