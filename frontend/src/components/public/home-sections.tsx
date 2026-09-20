@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useI18n } from "@/components/public/i18n";
 import { Reveal } from "@/components/public/reveal";
 import { StepsRow, ContextGraph, FeatureList, FaqList } from "@/components/public/blocks";
+import { BentoFeatures } from "@/components/public/bento-features";
 
 /* ---------- شريط الإحصائيات ---------- */
 export function StatsBar() {
@@ -26,8 +27,8 @@ export function StatsBar() {
   );
 }
 
-/* ---------- إزاي بيشتغل (3 خطوات) ---------- */
-export function HowItWorks() {
+/* ---------- قسم موحّد: إزاي بيشتغل + سياق العمل ---------- */
+export function HowContextSection() {
   const { t } = useI18n();
   return (
     <section className="fh-section" id="how">
@@ -36,35 +37,30 @@ export function HowItWorks() {
           <h2>{t.how.title}</h2>
           <p>{t.how.sub}</p>
         </Reveal>
-        <Reveal stagger>
-          <StepsRow steps={t.how.steps as [string, string][]} />
-        </Reveal>
-        <Reveal>
-          <img className="fh-section-img" src="https://media.base44.com/images/public/6ab00dcc41a53757c2f8a0b1/fe56c85ba_generated_image.png" alt={t.how.title} loading="lazy" />
-        </Reveal>
+        <div className="fh-how-context">
+          <Reveal className="fh-how-detail" stagger>
+            {(t.how.steps as [string, string][]).map(([title, desc], i) => (
+              <div key={title} className="fh-how-step">
+                <h4><span className="fh-step-num" aria-hidden="true">{i + 1}</span>{title}</h4>
+                <p>{desc}</p>
+                <div className="fh-step-tags">
+                  {(t.how.tags as string[][])[i].map((tag) => (
+                    <span key={tag} className="fh-step-tag">{tag}</span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </Reveal>
+          <Reveal>
+            <div className="fh-card" style={{ padding: 24 }}>
+              <h4 style={{ fontSize: 14.5, fontWeight: 650, marginBottom: 14 }}>{t.graph.title}</h4>
+              <ContextGraph />
+              <p style={{ fontSize: 13.5, color: "var(--muted)", marginTop: 14, lineHeight: 1.65 }}>{t.graph.sub}</p>
+            </div>
+          </Reveal>
+        </div>
         <Reveal className="fh-more-link">
           <Link href="/product">{t.how.more} ←</Link>
-        </Reveal>
-      </div>
-    </section>
-  );
-}
-
-/* ---------- سياق العمل ---------- */
-export function ContextSection() {
-  const { t } = useI18n();
-  return (
-    <section className="fh-section" id="context">
-      <div className="fh-container">
-        <Reveal className="fh-section-head">
-          <h2>{t.graph.title}</h2>
-          <p>{t.graph.sub}</p>
-        </Reveal>
-        <Reveal>
-          <ContextGraph />
-        </Reveal>
-        <Reveal className="fh-more-link">
-          <Link href="/context">{t.nav.context} ←</Link>
         </Reveal>
       </div>
     </section>
@@ -141,42 +137,8 @@ export function AutomationSection() {
   );
 }
 
-/* ---------- التكاملات ---------- */
-export function Integrations() {
-  const { t } = useI18n();
-  return (
-    <section className="fh-section" id="integrations">
-      <div className="fh-container">
-        <Reveal className="fh-section-head">
-          <h2>{t.integrations.title}</h2>
-          <p>{t.integrations.sub}</p>
-        </Reveal>
-
-        <Reveal className="fh-flow" aria-hidden="true">
-          {(t.integrations.flow as string[]).map((node, i) => (
-            <span key={node} style={{ display: "inline-flex", alignItems: "center", gap: ".6rem" }}>
-              {i > 0 && <span className="fh-flow-arrow" aria-hidden="true">←</span>}
-              <span className="fh-flow-node">{node}</span>
-            </span>
-          ))}
-        </Reveal>
-
-        <Reveal className="fh-integrations" stagger>
-          {(t.integrations.items as [string, string, string, boolean][]).map(([name, desc, status, live]) => (
-            <div key={name} className="fh-integration">
-              <b>{name}</b>
-              <small>{desc}</small>
-              <span className={`fh-badge ${live ? "fh-badge-primary" : ""}`}>{status}</span>
-            </div>
-          ))}
-        </Reveal>
-      </div>
-    </section>
-  );
-}
-
-/* ---------- شريط الأمان ---------- */
-export function SecurityTeaser() {
+/* ---------- قسم موحّد: أمان + تكاملات ---------- */
+export function SecurityIntegrationsSection() {
   const { t } = useI18n();
   return (
     <section className="fh-section fh-section-alt" id="security">
@@ -185,17 +147,40 @@ export function SecurityTeaser() {
           <h2>{t.securityTeaser.title}</h2>
           <p>{t.securityTeaser.sub}</p>
         </Reveal>
-        <Reveal className="fh-sec-points" stagger>
-          {(t.securityTeaser.points as [string, string][]).map(([title, desc]) => (
-            <div key={title} className="fh-sec-point">
-              <span className="fh-sec-ico" aria-hidden="true">✓</span>
-              <div>
-                <b>{title}</b>
-                <small>{desc}</small>
+        <div className="fh-sec-int">
+          <Reveal className="fh-sec-int-col">
+            <h3>{t.securityTeaser.colTitle}</h3>
+            {(t.securityTeaser.points as [string, string][]).map(([title, desc]) => (
+              <div key={title} className="fh-sec-point-deep">
+                <span className="fh-sec-ico" aria-hidden="true">✓</span>
+                <div>
+                  <b>{title}</b>
+                  <small>{desc}</small>
+                </div>
               </div>
+            ))}
+          </Reveal>
+          <Reveal className="fh-sec-int-col">
+            <h3>{t.integrations.title}</h3>
+            <div className="fh-flow" aria-hidden="true" style={{ marginBottom: 16 }}>
+              {(t.integrations.flow as string[]).map((node, i) => (
+                <span key={node} style={{ display: "inline-flex", alignItems: "center", gap: ".6rem" }}>
+                  {i > 0 && <span className="fh-flow-arrow" aria-hidden="true">←</span>}
+                  <span className="fh-flow-node">{node}</span>
+                </span>
+              ))}
             </div>
-          ))}
-        </Reveal>
+            <div className="fh-integrations" style={{ gridTemplateColumns: "1fr 1fr" }}>
+              {(t.integrations.items as [string, string, string, boolean][]).map(([name, desc, status, live]) => (
+                <div key={name} className="fh-integration" style={{ padding: 14 }}>
+                  <b style={{ fontSize: 14 }}>{name}</b>
+                  <small style={{ fontSize: 12.5 }}>{desc}</small>
+                  <span className={"fh-badge " + (live ? "fh-badge-primary" : "")} style={{ fontSize: 11 }}>{status}</span>
+                </div>
+              ))}
+            </div>
+          </Reveal>
+        </div>
         <Reveal className="fh-more-link">
           <Link href="/security">{t.securityTeaser.more} ←</Link>
         </Reveal>
@@ -259,7 +244,7 @@ export function FeaturesSection() {
           <img className="fh-section-img fh-section-img-wide" src="https://media.base44.com/images/public/6ab00dcc41a53757c2f8a0b1/0bc824d23_generated_image.png" alt={t.features.title} loading="lazy" />
         </Reveal>
         <Reveal stagger>
-          <FeatureList items={t.features.items as [string, string][]} cols={3} />
+          <BentoFeatures items={t.features.items as [string, string][]} />
         </Reveal>
       </div>
     </section>
@@ -277,7 +262,18 @@ export function UseCasesSection() {
           <p>{t.useCases.sub}</p>
         </Reveal>
         <Reveal stagger>
-          <FeatureList items={t.useCases.items as [string, string][]} cols={3} />
+          <div className="fh-bento" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+            {(t.useCases.items as [string, string][]).map(([title, desc], i) => {
+              const results = t.useCases.results as string[];
+              return (
+                <div key={title} className="fh-usecase">
+                  <b>{title}</b>
+                  <p>{desc}</p>
+                  {results[i] && <span className="fh-usecase-result">{results[i]}</span>}
+                </div>
+              );
+            })}
+          </div>
         </Reveal>
       </div>
     </section>

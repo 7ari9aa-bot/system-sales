@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useI18n } from "@/components/public/i18n";
+import { KineticHeadline } from "@/components/public/kinetic-headline";
+import { TrustStrip } from "@/components/public/trust-strip";
 
 /** الشكل الهندسي الدوّار — ديكور بطيء جدًا (دورة كل 100 ثانية) */
 function HeroShape() {
@@ -69,13 +71,14 @@ function HeroMock() {
 export function Hero() {
   const { t } = useI18n();
   return (
+    <>
     <section className="fh-hero" id="product">
       <HeroShape />
       <div className="fh-container fh-hero-inner">
         <div className="fh-hero-grid">
           <div className="fh-hero-copy">
             <span className="fh-eyebrow">{t.hero.eyebrow}</span>
-            <h1>{t.hero.h1}</h1>
+            <KineticHeadline base={t.hero.h1} words={t.hero.kinetic as string[]} />
             <p className="fh-hero-sub">{t.hero.sub}</p>
             <div className="fh-hero-cta">
               <Link href="/auth/signup" className="fh-btn fh-btn-lg">{t.hero.start}</Link>
@@ -89,5 +92,7 @@ export function Hero() {
         </div>
       </div>
     </section>
+    <TrustStrip />
+    </>
   );
 }

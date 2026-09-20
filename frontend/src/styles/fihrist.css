@@ -107,13 +107,13 @@
   background: var(--forest); color: var(--on-forest);
   transition: background-color .2s ease, border-color .2s ease, color .2s ease, transform .15s ease;
 }
-.fh-btn:hover { background: var(--forest-strong); }
+.fh-btn:hover { background: var(--forest-strong); transform: translateY(-1px); box-shadow: 0 8px 20px -10px rgba(0,0,0,.35); }
 .fh-btn:active { transform: scale(.985); }
 .fh-btn:disabled { opacity: .5; cursor: not-allowed; }
 .fh-btn-secondary {
   background: transparent; color: var(--ink); border-color: var(--rule);
 }
-.fh-btn-secondary:hover { background: transparent; border-color: var(--forest); color: var(--forest); }
+.fh-btn-secondary:hover { background: transparent; border-color: var(--forest); color: var(--forest); transform: translateY(-1px); }
 .fh-btn-lg { padding: 14px 30px; font-size: 15.5px; }
 
 /* ---------- شيب الإفصاح عن البيانات التجريبية ---------- */
@@ -139,9 +139,9 @@
 .fh-demo-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--forest); flex-shrink: 0; }
 
 /* ---------- سيكشنز ---------- */
-.fh-section { padding-block: clamp(56px, 8vw, 92px); position: relative; }
+.fh-section { padding-block: clamp(28px, 3.5vw, 44px); position: relative; }
 .fh-section-alt { background: transparent; }
-.fh-section-head { max-width: 660px; margin-bottom: clamp(36px, 5vw, 52px); }
+.fh-section-head { max-width: 680px; margin-bottom: clamp(16px, 2.2vw, 26px); }
 .fh-section-head h2 { font-size: clamp(24px, 3.4vw, 32px); margin-bottom: 12px; }
 .fh-section-head p { color: var(--muted); font-size: 15.5px; }
 .fh-eyebrow {
@@ -233,7 +233,7 @@ html.js .fh-reveal-stagger.fh-pre > * { opacity: 0; transform: translateY(12px);
 .fh-nav.is-scrolled { box-shadow: var(--shadow-sm); }
 
 /* ---------- هيرو: شكل هندسي دوّار ---------- */
-.fh-hero { position: relative; padding-block: clamp(64px, 10vw, 120px) clamp(56px, 8vw, 96px); overflow: hidden; }
+.fh-hero { position: relative; padding-block: clamp(44px, 6.5vw, 76px) clamp(36px, 5vw, 56px); overflow: hidden; background: linear-gradient(180deg, #e7ece7 0%, #eef2ee 55%, #f3f5f2 100%); border-bottom: 1px solid var(--rule); }
 .fh-hero-shape {
   position: absolute; inset: 0; z-index: 0;
   display: flex; align-items: center; justify-content: flex-end;
@@ -248,9 +248,9 @@ html.js .fh-reveal-stagger.fh-pre > * { opacity: 0; transform: translateY(12px);
 .fh-hero-inner { position: relative; z-index: 2; }
 .fh-hero-copy { max-width: 760px; }
 .fh-hero-copy .fh-eyebrow { margin-bottom: 18px; }
-.fh-hero h1 { font-size: clamp(30px, 5.2vw, 52px); line-height: 1.28; margin-bottom: 20px; }
-.fh-hero-sub { font-size: clamp(16px, 2vw, 18px); color: var(--muted); max-width: 56ch; margin-bottom: 32px; }
-.fh-hero-cta { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 32px; }
+.fh-hero h1 { font-size: clamp(32px, 5.6vw, 58px); line-height: 1.22; margin-bottom: 16px; letter-spacing: -.02em; }
+.fh-hero-sub { font-size: clamp(16px, 2vw, 18.5px); color: var(--muted); max-width: 56ch; margin-bottom: 24px; }
+.fh-hero-cta { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 22px; }
 .fh-hero-cta-center { justify-content: center; }
 
 /* ---------- الشات التفاعلي ---------- */
@@ -449,7 +449,7 @@ html.js .fh-reveal-stagger.fh-pre > * { opacity: 0; transform: translateY(12px);
 .fh-security-item p { color: var(--muted); font-size: 13.5px; }
 
 /* ---------- الدعوة الختامية ---------- */
-.fh-final { text-align: center; padding-block: clamp(64px, 9vw, 110px); }
+.fh-final { text-align: center; padding-block: clamp(44px, 6vw, 72px); }
 .fh-final h2 { font-size: clamp(24px, 3.4vw, 32px); margin-bottom: 12px; max-width: 560px; margin-inline: auto; }
 .fh-final p { color: var(--muted); font-size: 15.5px; max-width: 52ch; margin: 0 auto 32px; }
 
@@ -554,7 +554,7 @@ html { scroll-behavior: smooth; }
 .fh-hero-page h1 { font-size: clamp(26px, 3.4vw, 36px); line-height: 1.35; }
 .fh-hero-page .fh-hero-sub { font-size: clamp(15.5px, 2vw, 17px); }
 .fh-hero-page .fh-hero-copy { max-width: 760px; }
-.fh-more-link { margin-top: 1.75rem; }
+.fh-more-link { margin-top: 1.1rem; }
 .fh-more-link a { color: var(--forest); font-weight: 600; font-size: 15px; }
 .fh-more-link a:hover { color: var(--forest-strong); }
 .fh-inline-link { color: var(--forest); font-weight: 600; }
@@ -721,6 +721,62 @@ html[lang="en"] .fh-nav-links { direction: ltr; }
 
 
 /* ---------- صور الأقسام التوضيحية ---------- */
-.fh-section-img { width: 100%; max-width: 720px; margin: 0 auto 2.5rem; display: block; border-radius: 14px; border: 1px solid var(--rule); box-shadow: 0 18px 40px -24px rgba(0,0,0,.28); background: var(--paper); }
+.fh-section-img { width: 100%; max-width: 720px; margin: 0 auto 1.75rem; display: block; border-radius: 14px; border: 1px solid var(--rule); box-shadow: 0 18px 40px -24px rgba(0,0,0,.28); background: var(--paper); }
 .fh-section-img-wide { max-width: 880px; }
 @media (max-width: 720px) { .fh-section-img { margin-bottom: 1.75rem; } }
+
+
+/* ---------- شبكة Bento للمميزات ---------- */
+.fh-bento { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.fh-bento-card { background: var(--card); border: 1px solid var(--rule); border-radius: 14px; padding: 26px 24px; display: flex; flex-direction: column; gap: 10px; transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease; }
+.fh-bento-card.is-wide { grid-column: span 2; }
+.fh-bento-card:hover { transform: translateY(-3px); border-color: var(--forest); box-shadow: 0 16px 36px -22px rgba(0,0,0,.28); }
+.fh-bento-ico { width: 34px; height: 34px; border-radius: 9px; background: color-mix(in srgb, var(--forest) 12%, transparent); color: var(--forest); display: inline-flex; align-items: center; justify-content: center; font-size: 15px; margin-bottom: 4px; }
+.fh-bento-card b { font-size: 17px; font-weight: 650; }
+.fh-bento-card p { font-size: 14.5px; color: var(--muted); line-height: 1.6; }
+@media (max-width: 900px) { .fh-bento { grid-template-columns: repeat(2, 1fr); } .fh-bento-card.is-wide { grid-column: span 2; } }
+@media (max-width: 560px) { .fh-bento { grid-template-columns: 1fr; } .fh-bento-card.is-wide { grid-column: span 1; } }
+
+/* ---------- شريط إشارات الثقة ---------- */
+.fh-trust-strip { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 30px; padding-block: 16px; border-bottom: 1px solid var(--rule); background: var(--paper); }
+.fh-trust-item { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 500; color: var(--muted); }
+.fh-trust-check { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: color-mix(in srgb, var(--forest) 14%, transparent); color: var(--forest); font-size: 11px; font-weight: 700; }
+
+/* ---------- العنوان المتحرك ---------- */
+.fh-kinetic { display: inline-block; color: var(--forest); animation: fh-kinetic-in .5s ease both; }
+@keyframes fh-kinetic-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .fh-kinetic { animation: none; } }
+
+
+/* ---------- تحسينات المرحلة 1: دمج + تعميق ---------- */
+.fh-hero-stats { display: flex; flex-wrap: wrap; gap: 10px 28px; margin-top: 28px; padding-top: 22px; border-top: 1px solid color-mix(in srgb, var(--rule) 70%, transparent); }
+.fh-hero-stat { display: flex; flex-direction: column; gap: 2px; }
+.fh-hero-stat b { font-size: clamp(20px, 2.4vw, 26px); font-weight: 700; color: var(--forest); line-height: 1.1; }
+.fh-hero-stat small { font-size: 12.5px; color: var(--muted); font-weight: 500; }
+
+/* قسم موحّد: كيف يعمل + سياق */
+.fh-how-context { display: grid; grid-template-columns: 1.1fr .9fr; gap: 32px; align-items: start; }
+@media (max-width: 860px) { .fh-how-context { grid-template-columns: 1fr; gap: 24px; } }
+.fh-how-detail { display: flex; flex-direction: column; gap: 18px; }
+.fh-how-step { padding: 18px 20px; border: 1px solid var(--rule); border-radius: 10px; background: var(--card); }
+.fh-how-step h4 { font-size: 15.5px; font-weight: 650; margin-bottom: 6px; display: flex; align-items: center; gap: 10px; }
+.fh-how-step h4 .fh-step-num { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--forest); color: var(--card); font-size: 12px; font-weight: 700; }
+.fh-how-step p { font-size: 14px; color: var(--muted); line-height: 1.65; }
+.fh-how-step .fh-step-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.fh-how-step .fh-step-tag { font-size: 11.5px; padding: 3px 9px; border-radius: 3px; background: color-mix(in srgb, var(--forest) 10%, transparent); color: var(--forest); font-weight: 600; }
+
+/* قسم موحّد: أمان + تكاملات */
+.fh-sec-int { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; align-items: start; }
+@media (max-width: 860px) { .fh-sec-int { grid-template-columns: 1fr; gap: 20px; } }
+.fh-sec-int-col h3 { font-size: 16px; font-weight: 650; margin-bottom: 14px; }
+.fh-sec-point-deep { display: flex; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--rule); }
+.fh-sec-point-deep:last-child { border-bottom: none; }
+.fh-sec-point-deep .fh-sec-ico { flex-shrink: 0; }
+.fh-sec-point-deep b { font-size: 14px; display: block; margin-bottom: 3px; }
+.fh-sec-point-deep small { font-size: 13px; color: var(--muted); line-height: 1.6; }
+
+/* use-case cards أعمق */
+.fh-usecase { padding: 22px; border: 1px solid var(--rule); border-radius: 10px; background: var(--card); display: flex; flex-direction: column; gap: 8px; }
+.fh-usecase b { font-size: 15.5px; }
+.fh-usecase p { font-size: 13.5px; color: var(--muted); line-height: 1.6; }
+.fh-usecase .fh-usecase-result { font-size: 12.5px; color: var(--forest); font-weight: 600; margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--rule); }
