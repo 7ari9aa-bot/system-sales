@@ -241,17 +241,26 @@ async def test_close_period_still_writes_a_snapshot(
     assert invoice.period_end == PERIOD_END
     assert invoice.status == "open"
 
+    # Read the scalars BEFORE expiring. `expire_all()` detaches every attribute,
+    # and touching one afterwards in an async session raises MissingGreenlet —
+    # the lazy refresh has no greenlet to run on. `tenant_ctx.tenant_id` is a
+    # property over `self.tenant.id`, so it expires too. This is why the test
+    # stayed red on CI for hours while SKIPPING locally (no Postgres): the DoD
+    # rule "run it in both states" was unenforceable for DB-backed tests.
+    invoice_id = invoice.id
+    tenant_id = tenant_ctx.tenant_id
+
     # Re-reading proves the row is really there, not just an in-memory object.
     db.expire_all()
     reread = await BillingSnapshotService.get_snapshot(
-        db, tenant_ctx.tenant_id, period_start=PERIOD_START, period_end=PERIOD_END
+        db, tenant_id, period_start=PERIOD_START, period_end=PERIOD_END
     )
-    assert reread.id == invoice.id
+    assert reread.id == invoice_id
 
     # The service's own rule is unchanged: a second close is still refused.
     with pytest.raises(ConflictError):
         await BillingSnapshotService.close_period(
-            db, tenant_ctx.tenant_id, period_start=PERIOD_START, period_end=PERIOD_END
+            db, tenant_id, period_start=PERIOD_START, period_end=PERIOD_END
         )
 
 
@@ -278,14 +287,17 @@ async def test_an_invoice_without_a_period_still_moves_through_its_lifecycle(
     await db.flush()
     assert draft.period_start is None
 
+    # Same trap as above: capture the id before `expire_all()` detaches it.
+    draft_id = draft.id
+
     await db.execute(
         text("UPDATE invoices SET status = 'issued', issued_at = now() WHERE id = :id"),
-        {"id": draft.id},
+        {"id": draft_id},
     )
 
     db.expire_all()
     reread = (
-        await db.execute(select(Invoice).where(Invoice.id == draft.id))
+        await db.execute(select(Invoice).where(Invoice.id == draft_id))
     ).scalar_one()
     assert reread.status == "issued"
     assert reread.issued_at is not None

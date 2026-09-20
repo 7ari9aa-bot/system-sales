@@ -3,12 +3,16 @@
 The order flow is ONE logical unit inside the caller's transaction: validate
 customer -> load variants -> reserve stock -> write order/items/history ->
 stage the outbox event. The SERVICE NEVER COMMITS.
+
+Money rules (quantization, the net collected/refunded arithmetic, and the
+monotone payment-status rule) live in ``orders.money`` so they can be exercised
+without a database; this module only supplies the aggregates they run on.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from uuid import UUID, uuid4
 
 from sqlalchemy import func, select, tuple_
@@ -29,6 +33,14 @@ from app.modules.orders.models import (
     OrderPayment,
     OrderStatusHistory,
     Refund,
+)
+from app.modules.orders.money import (
+    SETTLED_PAYMENT_STATUSES,
+    net_collected,
+    order_balance,
+    positive_money,
+    reconciliation_refusal,
+    to_money,
 )
 
 # pending -> confirmed -> processing -> shipped -> delivered -> completed -> refunded
@@ -71,16 +83,6 @@ def _new_order_number() -> str:
     return f"ORD-{datetime.now(UTC):%Y%m%d}-{uuid4().hex[:6].upper()}"
 
 
-def _positive_amount(value: object, field: str = "amount") -> Decimal:
-    try:
-        amount = Decimal(str(value))
-    except (InvalidOperation, ValueError, TypeError) as exc:
-        raise ValueError(f"{field} must be a valid number") from exc
-    if amount <= 0:
-        raise ValueError(f"{field} must be greater than zero")
-    return amount
-
-
 def _positive_int(value: object, field: str = "quantity") -> int:
     try:
         number = int(value)  # type: ignore[arg-type]
@@ -111,6 +113,9 @@ class OrderService:
         MUTATING path must pass it so two concurrent transitions (e.g. cancel
         vs pay) serialize instead of both passing the status guard and
         double-releasing stock.
+
+        Every mutating path also takes the ORDER lock before it takes a payment
+        lock, so the two never deadlock against each other.
         """
         stmt = select(Order).where(
             Order.id == order_id,
@@ -211,6 +216,9 @@ class OrderService:
             else await OrderService._default_warehouse(session, tenant_id)
         )
 
+        # The price is CAPTURED here, once, and everything downstream — the
+        # line totals, the order total, the outbox payload — reads that
+        # snapshot. Nothing recomputes a total from the (mutable) variant price.
         prepared: list[tuple[ProductVariant, int, Decimal]] = []
         for item in items:
             try:
@@ -219,7 +227,7 @@ class OrderService:
                 raise ValueError("each item needs a valid variant_id") from exc
             variant = await CatalogService.get_variant(session, tenant_id, variant_id)
             quantity = _positive_int(item.get("quantity"))
-            prepared.append((variant, quantity, Decimal(str(variant.price))))
+            prepared.append((variant, quantity, to_money(variant.price, "unit_price")))
 
         # Reserve first — insufficient stock aborts the whole order.
         for variant, quantity, _price in prepared:
@@ -227,8 +235,10 @@ class OrderService:
                 session, tenant_id, variant.id, warehouse.id, quantity
             )
 
-        subtotal = sum((price * quantity for _v, quantity, price in prepared), Decimal("0"))
-        subtotal_f = float(round(subtotal, 2))
+        subtotal = to_money(
+            sum((price * quantity for _v, quantity, price in prepared), Decimal("0")),
+            "subtotal",
+        )
 
         order = await OrderService._insert_order(
             session,
@@ -236,11 +246,11 @@ class OrderService:
             customer_id=customer_id,
             status="pending",
             currency="EGP",
-            subtotal=subtotal_f,
-            discount_total=0.0,
-            shipping_total=0.0,
-            tax_total=0.0,
-            grand_total=subtotal_f,
+            subtotal=subtotal,
+            discount_total=Decimal("0"),
+            shipping_total=Decimal("0"),
+            tax_total=Decimal("0"),
+            grand_total=subtotal,
             channel=channel,
             shipping_address=shipping_address,
             placed_at=_now(),
@@ -286,8 +296,8 @@ class OrderService:
                     title=variant.title or (product.title if product else ""),
                     sku=variant.sku,
                     quantity=quantity,
-                    unit_price=float(price),
-                    total=float(price * quantity),
+                    unit_price=price,
+                    total=to_money(price * quantity, "line total"),
                 )
             )
 
@@ -315,6 +325,9 @@ class OrderService:
                 "warehouse_id": str(warehouse.id),
                 "status": order.status,
                 "currency": order.currency,
+                # Decimal, like every other money value on the wire — the
+                # envelope's value codec tags it so the consumer gets a Decimal
+                # back, not a string or a float.
                 "grand_total": order.grand_total,
                 "item_count": sum(q for _v, q, _p in prepared),
             },
@@ -397,6 +410,22 @@ class OrderService:
             )
         if to_status == "cancelled":
             await OrderService._release_order_stock(session, tenant_id, order)
+        if to_status == "refunded":
+            # "refunded" is a MONEY claim, not a label. It may only be reached
+            # once the merchant holds nothing for this order; otherwise the
+            # order reads as refunded while the captured money stays put and no
+            # `refunds` row exists to reconcile it against the capture.
+            # Refunds are recorded through register_refund, which then performs
+            # this transition itself.
+            settled, refunded = await OrderService._settled_and_refunded(
+                session, tenant_id, order
+            )
+            held = net_collected(settled, refunded)
+            if held > 0:
+                raise ConflictError(
+                    f"order {order_id} still holds {held} captured — refund the "
+                    "payment(s) before marking the order refunded"
+                )
         await OrderService._transition(
             session, tenant_id, order, to_status, by_user_id=by_user_id, note=note
         )
@@ -503,22 +532,16 @@ class OrderService:
         )
         if order.status in ("cancelled", "refunded"):
             raise ConflictError(f"cannot pay a {order.status} order")
-        captured = _positive_amount(amount)
+        captured = positive_money(amount)
 
-        # Overpayment guard: sum(captured-ish payments) + new amount must not
-        # exceed the order total.
-        already_paid = (
-            await session.execute(
-                select(func.coalesce(func.sum(OrderPayment.amount), 0)).where(
-                    OrderPayment.tenant_id == tenant_id,
-                    OrderPayment.order_id == order.id,
-                    OrderPayment.status.in_(
-                        ["captured", "partially_refunded", "authorized"]
-                    ),
-                )
-            )
-        ).scalar_one()
-        remaining = Decimal(str(order.grand_total)) - Decimal(str(already_paid))
+        # Over-payment guard: the order's NET position (settled money minus
+        # refunds) plus this capture must not exceed the order total. Summing
+        # the payments GROSS counted a refunded amount as still collected, so
+        # the refunded part could never be charged again.
+        settled, refunded = await OrderService._settled_and_refunded(
+            session, tenant_id, order
+        )
+        remaining = order_balance(order.grand_total, settled, refunded)
         if captured > remaining:
             raise ConflictError(
                 f"payment exceeds order balance: remaining={remaining}, "
@@ -530,7 +553,7 @@ class OrderService:
             order_id=order.id,
             method=method,
             status="captured",
-            amount=float(captured),
+            amount=captured,
             currency=order.currency,
             provider=provider,
             paid_at=_now(),
@@ -561,35 +584,45 @@ class OrderService:
         """Resolve an external payment result without retrying the charge.
 
         Provider adapters perform the lookup and pass only the observed status
-        here. A captured result applies reservation/order effects exactly once.
+        here. A captured result applies reservation/order effects exactly once,
+        and a captured payment is never downgraded by a later report — see
+        ``money.resolve_payment_status``.
         """
         status = _PAYMENT_PROVIDER_STATUSES.get(provider_status.lower())
         if status is None:
             raise ValidationError(
                 f"unsupported provider payment status: {provider_status}"
             )
-        order = await OrderService.get(session, tenant_id, order_id, with_items=False)
+        # The order lock first (global lock order: order -> payment), so two
+        # reconciles on the same order cannot both observe "pending" and both
+        # write a pending -> confirmed history row and event.
+        order = await OrderService.get(
+            session, tenant_id, order_id, with_items=False, for_update=True
+        )
         payment = (
             await session.execute(
-                select(OrderPayment).where(
+                select(OrderPayment)
+                .where(
                     OrderPayment.id == payment_id,
                     OrderPayment.tenant_id == tenant_id,
                     OrderPayment.order_id == order.id,
                 )
+                .with_for_update()
             )
         ).scalar_one_or_none()
         if payment is None:
             raise NotFoundError(f"payment {payment_id} not found for order {order_id}")
 
-        if payment.status in {"refunded", "partially_refunded"} and status == "captured":
-            raise ConflictError("cannot reconcile a refunded payment back to captured")
-        if payment.status in {"failed", "refunded"} and status == "captured":
-            # A captured result after a definitive local failure is a provider
-            # state change that needs human eyes — not a silent flip.
-            raise ConflictError(
-                f"cannot reconcile a {payment.status} payment to captured"
-            )
-        if payment.status == "captured" and status == "captured":
+        refusal = reconciliation_refusal(payment.status, status)
+        if refusal is not None:
+            # A money state may only move forward: a human resolves the
+            # disagreement, the service does not guess.
+            raise ConflictError(refusal)
+        if status == payment.status:
+            # Already there: no effect may be applied a second time.
+            if provider_ref:
+                payment.provider_ref = provider_ref
+                await session.flush()
             return payment
 
         payment.status = status
@@ -656,10 +689,13 @@ class OrderService:
         by_user_id: UUID | None = None,
     ) -> Refund:
         """Register a refund against a captured payment and track its state."""
-        order = await OrderService.get(session, tenant_id, order_id, with_items=False)
+        order = await OrderService.get(
+            session, tenant_id, order_id, with_items=False, for_update=True
+        )
         payment = (
             await session.execute(
-                select(OrderPayment).where(
+                select(OrderPayment)
+                .where(
                     OrderPayment.id == payment_id,
                     OrderPayment.tenant_id == tenant_id,
                     OrderPayment.order_id == order.id,
@@ -675,12 +711,16 @@ class OrderService:
                 f"cannot refund a {payment.status} payment — only captured"
             )
 
-        refund_amount = _positive_amount(amount)
+        # Quantized BEFORE the cap is checked, so the arithmetic matches the
+        # NUMERIC(14,2) rows that will actually be stored.
+        refund_amount = positive_money(amount)
         refunded_total = Decimal(
             str(
                 (
                     await session.execute(
-                        select(func.coalesce(func.sum(Refund.amount), 0)).where(
+                        select(func.coalesce(func.sum(Refund.amount), 0))
+                        .select_from(Refund)
+                        .where(
                             Refund.tenant_id == tenant_id,
                             Refund.payment_id == payment.id,
                             Refund.status != "rejected",
@@ -689,7 +729,7 @@ class OrderService:
                 ).scalar_one()
             )
         )
-        payment_total = Decimal(str(payment.amount))
+        payment_total = to_money(payment.amount, "captured amount")
         if refunded_total + refund_amount > payment_total:
             raise ConflictError(
                 f"refund exceeds captured amount: refunded={refunded_total}, "
@@ -699,7 +739,7 @@ class OrderService:
         refund = Refund(
             tenant_id=tenant_id,
             payment_id=payment.id,
-            amount=float(refund_amount),
+            amount=refund_amount,
             reason=reason,
             status="processed",
             processed_at=_now(),
@@ -730,13 +770,54 @@ class OrderService:
                 "order_id": str(order.id),
                 "number": order.number,
                 "payment_id": str(payment.id),
-                "amount": float(refund_amount),
+                # Decimal, exactly as `grand_total` is published on
+                # order.created: the same field must not arrive as a float on
+                # one event and a Decimal on another.
+                "amount": refund_amount,
                 "payment_status": payment.status,
             },
         )
         return refund
 
     # -------------------------------------------------------- helpers ----
+
+    @staticmethod
+    async def _settled_and_refunded(
+        session: AsyncSession, tenant_id: UUID, order: Order
+    ) -> tuple[Decimal, Decimal]:
+        """(gross settled, non-rejected refunded) over the order's payments.
+
+        Gross is summed over ``SETTLED_PAYMENT_STATUSES`` — which INCLUDES
+        ``refunded`` — and the refunds are then subtracted by the caller. The
+        two sides have to be consistent: dropping refunded payments from the
+        gross side while still subtracting their refunds counts the refund
+        twice.
+        """
+        settled = (
+            await session.execute(
+                select(func.coalesce(func.sum(OrderPayment.amount), 0))
+                .select_from(OrderPayment)
+                .where(
+                    OrderPayment.tenant_id == tenant_id,
+                    OrderPayment.order_id == order.id,
+                    OrderPayment.status.in_(SETTLED_PAYMENT_STATUSES),
+                )
+            )
+        ).scalar_one()
+        refunded = (
+            await session.execute(
+                select(func.coalesce(func.sum(Refund.amount), 0))
+                .select_from(Refund)
+                .join(OrderPayment, OrderPayment.id == Refund.payment_id)
+                .where(
+                    Refund.tenant_id == tenant_id,
+                    OrderPayment.tenant_id == tenant_id,
+                    OrderPayment.order_id == order.id,
+                    Refund.status != "rejected",
+                )
+            )
+        ).scalar_one()
+        return to_money(settled, "settled"), to_money(refunded, "refunded")
 
     @staticmethod
     async def _get_warehouse(
