@@ -2,6 +2,9 @@ import { Hero } from "@/components/public/hero";
 import {
   HowItWorks,
   ContextSection,
+  FeaturesSection,
+  UseCasesSection,
+  FaqSection,
   TrySection,
   AutomationSection,
   Integrations,
@@ -66,13 +69,16 @@ export default function HomePage() {
       <Hero />
       <HowItWorks />
       <ContextSection />
+      <FeaturesSection />
       <TrySection>
         <DemoChat />
       </TrySection>
       <PricingPreview />
+      <UseCasesSection />
       <AutomationSection />
       <Integrations />
       <SecurityTeaser />
+      <FaqSection />
       <FinalCTA />
     </main>
   );
