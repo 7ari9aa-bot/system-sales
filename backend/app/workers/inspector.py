@@ -23,7 +23,9 @@ from typing import Any
 
 import redis.asyncio as aioredis
 
+from app.core.errors import ValidationError
 from app.core.events.bus import DLQ_SUFFIX
+from app.core.events.schemas import deserialize
 from app.core.redis import get_redis
 
 
@@ -45,24 +47,59 @@ def _loads(value: Any) -> dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {"_raw": raw}
 
 
+def _describe_entry(entry_id: str, fields: dict[str, Any]) -> dict[str, Any]:
+    """One DLQ entry, read through the §19 envelope's read half.
+
+    A real entry is rebuilt with ``deserialize()``, so the inspector never
+    re-derives the envelope's field names by hand — and ``id`` is the ENVELOPE
+    id, not the per-XADD bus uuid ``fields["id"]`` happens to hold. A row
+    written before the envelope existed (there are such rows in production
+    ``outbox_events``) cannot be deserialized; it is reported from its raw
+    fields rather than raising, so the inspector still shows what is stuck.
+    ``envelope`` tells the operator which shape they are looking at.
+    """
+    payload = _loads(fields.get("payload"))
+    meta = _loads(fields.get("meta"))
+    item: dict[str, Any] = {
+        "entry_id": entry_id,
+        "id": _text(fields.get("id"), entry_id),
+        "payload": payload,
+        "meta": meta,
+        "envelope": False,
+    }
+    try:
+        envelope = deserialize({"payload": payload, "meta": meta})
+    except (ValidationError, KeyError, TypeError, ValueError):
+        return item
+    item.update(
+        {
+            "id": envelope.id,
+            "type": envelope.type,
+            "tenant_id": str(envelope.tenant_id),
+            "occurred_at": envelope.occurred_at.isoformat(),
+            "aggregate_type": envelope.aggregate_type,
+            "aggregate_id": str(envelope.aggregate_id),
+            "payload": envelope.payload,
+            "meta": envelope.meta,
+            "envelope": True,
+        }
+    )
+    return item
+
+
 async def list_dlq(
     client: aioredis.Redis, stream: str, count: int = 20
 ) -> list[dict[str, Any]]:
-    """List the oldest DLQ entries with payload and meta parsed.
+    """List the oldest DLQ entries with the §19 envelope parsed.
 
-    Each item: entry_id (Redis Streams id), id (envelope id), payload, meta
-    (including dlq_reason and source_stream when present).
+    Each item: entry_id (Redis Streams id), id (envelope id), type, tenant_id,
+    occurred_at, aggregate_type, aggregate_id, payload, meta (including
+    dlq_reason and source_stream when present), and ``envelope``. A legacy row
+    the envelope cannot describe is listed from its raw fields with
+    ``envelope=False`` rather than crashing the inspector.
     """
     entries = await client.xrange(stream, min="-", max="+", count=count)
-    return [
-        {
-            "entry_id": entry_id,
-            "id": _text(fields.get("id"), entry_id),
-            "payload": _loads(fields.get("payload")),
-            "meta": _loads(fields.get("meta")),
-        }
-        for entry_id, fields in entries
-    ]
+    return [_describe_entry(entry_id, fields) for entry_id, fields in entries]
 
 
 def _source_stream(stream: str, meta: dict[str, Any]) -> str:

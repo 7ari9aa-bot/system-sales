@@ -41,6 +41,13 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from app.core.config import get_settings
+from app.core.errors import (
+    DomainError,
+    PayloadTooLargeError,
+    RateLimitExceededError,
+    build_error_body,
+    request_id_contextvar,
+)
 from app.core.ratelimit import LayeredRateLimiter, TierLimit
 from app.core.redis import get_redis
 from app.core.security import decode_token
@@ -203,18 +210,28 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             # Redis outage; this is a last-resort guard so an unexpected bug
             # cannot become a 500. Auth stays fail-closed, the rest fails open.
             if bucket == "auth":
-                return JSONResponse(status_code=429, content={"detail": "try again later"})
+                exc = RateLimitExceededError("try again later")
+                return JSONResponse(
+                    status_code=exc.http_status,
+                    content=build_error_body(
+                        exc, request_id=request_id_contextvar.get()
+                    ),
+                )
             return await call_next(request)
 
         if not result.allowed:
             retry = max(int(result.retry_after_seconds), 1)
+            exc = RateLimitExceededError("rate limit exceeded")
+            body = build_error_body(exc, request_id=request_id_contextvar.get())
+            # ``tier`` / ``retry_after`` stay alongside the contract envelope:
+            # they are the only way to tell WHICH bucket denied, and the
+            # limiter's own tests read them. The standard ``Retry-After`` header
+            # carries the retry hint to ordinary clients.
+            body["tier"] = result.denied_tier
+            body["retry_after"] = retry
             return JSONResponse(
-                status_code=429,
-                content={
-                    "detail": "rate limit exceeded",
-                    "tier": result.denied_tier,
-                    "retry_after": retry,
-                },
+                status_code=exc.http_status,
+                content=body,
                 headers={"Retry-After": str(retry)},
             )
         return await call_next(request)
@@ -232,22 +249,19 @@ def _header(scope, name: bytes) -> str | None:
     return None
 
 
-async def _emit_error(send, status: int, code: str, message: str) -> None:
-    """Write an error using the unified contract v2 envelope (app/core/errors)."""
+async def _emit_error(send, exc: DomainError) -> None:
+    """Write an error using the unified contract v2 envelope (app/core/errors).
+
+    Takes a ``DomainError`` so the body is built by ``build_error_body`` — the
+    single place that defines the shape — instead of being hand-assembled here.
+    """
     body = json.dumps(
-        {
-            "error": {
-                "code": code,
-                "message": message,
-                "retryable": False,
-                "request_id": None,
-            }
-        }
+        build_error_body(exc, request_id=request_id_contextvar.get())
     ).encode()
     await send(
         {
             "type": "http.response.start",
-            "status": status,
+            "status": exc.http_status,
             "headers": [
                 (b"content-type", b"application/json"),
                 (b"content-length", str(len(body)).encode()),
@@ -282,9 +296,7 @@ class BodySizeLimitMiddleware:
             except ValueError:
                 oversized = True  # unparsable length → refuse, do not guess
             if oversized:
-                await _emit_error(
-                    send, 413, "payload_too_large", "Request body too large"
-                )
+                await _emit_error(send, PayloadTooLargeError())
                 return
 
         consumed = 0
@@ -308,9 +320,7 @@ class BodySizeLimitMiddleware:
             if exceeded:
                 if not started:
                     started = True
-                    await _emit_error(
-                        send, 413, "payload_too_large", "Request body too large"
-                    )
+                    await _emit_error(send, PayloadTooLargeError())
                 return
             if message.get("type") == "http.response.start":
                 started = True
@@ -318,7 +328,7 @@ class BodySizeLimitMiddleware:
 
         await self.app(scope, receive_guarded, send_guarded)
         if exceeded and not started:
-            await _emit_error(send, 413, "payload_too_large", "Request body too large")
+            await _emit_error(send, PayloadTooLargeError())
 
 
 # ---------------------------------------------------------------------------

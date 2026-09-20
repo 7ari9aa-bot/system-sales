@@ -41,11 +41,6 @@ def test_error_contract(
     assert err.message == "something broke"
     assert str(err) == "something broke"
     assert err.details == {"key": "value"}
-    assert err.to_dict() == {
-        "code": code,
-        "message": "something broke",
-        "details": {"key": "value"},
-    }
 
 
 def test_base_defaults() -> None:

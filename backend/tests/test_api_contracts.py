@@ -114,15 +114,6 @@ def test_request_id_contextvar_defaults_to_none() -> None:
     assert request_id_contextvar.get() is None
 
 
-def test_to_dict_backward_compatible() -> None:
-    # The legacy serialized form must not change shape.
-    assert NotFoundError("x").to_dict() == {
-        "code": "not_found",
-        "message": "x",
-        "details": {},
-    }
-
-
 # ------------------------------------------------------- route mounting ----
 
 

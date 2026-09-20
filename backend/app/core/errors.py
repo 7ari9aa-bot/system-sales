@@ -48,10 +48,6 @@ class DomainError(Exception):
     def __str__(self) -> str:
         return self.message
 
-    def to_dict(self) -> dict[str, Any]:
-        """Serializable form for API error responses and structured logs."""
-        return {"code": self.code, "message": self.message, "details": self.details}
-
 
 class NotFoundError(DomainError):
     code = "not_found"
@@ -109,6 +105,12 @@ class ExternalProviderError(DomainError):
     http_status = 502
     default_message = "External provider error"
     retryable = True
+
+
+class PayloadTooLargeError(DomainError):
+    code = "payload_too_large"
+    http_status = 413
+    default_message = "Request body too large"
 
 
 def build_error_body(

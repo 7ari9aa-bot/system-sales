@@ -17,7 +17,6 @@ module-level `engine` / `SessionLocal` names, which resolve lazily via PEP 562
 so every existing `from app.core.db import SessionLocal` keeps working.
 """
 
-from collections.abc import AsyncIterator
 from uuid import UUID
 
 from sqlalchemy import text
@@ -98,12 +97,6 @@ def __getattr__(name: str):
     if name == "SessionLocal":
         return get_sessionmaker()
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
-async def get_session() -> AsyncIterator[AsyncSession]:
-    """FastAPI dependency yielding a DB session."""
-    async with get_sessionmaker()() as session:
-        yield session
 
 
 async def bind_tenant(session: AsyncSession, tenant_id: UUID | str) -> None:

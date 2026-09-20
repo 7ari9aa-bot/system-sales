@@ -17,7 +17,12 @@ from sqlalchemy import text
 
 from app.core.config import get_settings
 from app.core.db import engine
-from app.core.errors import DomainError, build_error_body, request_id_contextvar
+from app.core.errors import (
+    DomainError,
+    PermissionDeniedError,
+    build_error_body,
+    request_id_contextvar,
+)
 from app.core.idempotency import IdempotencyMiddleware
 from app.core.middleware import (
     BodySizeLimitMiddleware,
@@ -114,7 +119,11 @@ def _exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(PermissionError)
     async def permission_error_handler(_: Request, exc: PermissionError) -> JSONResponse:
-        return JSONResponse(status_code=403, content={"detail": str(exc)})
+        error = PermissionDeniedError(str(exc))
+        return JSONResponse(
+            status_code=error.http_status,
+            content=build_error_body(error, request_id=request_id_contextvar.get()),
+        )
 
 
 def create_app() -> FastAPI:
@@ -136,7 +145,7 @@ def create_app() -> FastAPI:
     _exception_handlers(app)
     # Starlette builds the stack so the LAST added middleware is the OUTERMOST.
     # Order below therefore reads inner -> outer:
-    #   Idempotency -> RequestLogging -> RateLimit -> RequestID -> BodySize
+    #   Idempotency -> RequestLogging -> RateLimit -> BodySize -> RequestID
     #   -> CORS -> SecurityHeaders
     # Idempotency is INNERMOST on purpose: the body cap must reject an oversized
     # body before the idempotency layer buffers it to hash it, and a replayed
@@ -144,12 +153,14 @@ def create_app() -> FastAPI:
     # sit OUTSIDE both the rate limiter and the body cap, or their 429/413
     # responses reach the browser without Access-Control-Allow-Origin (an
     # opaque CORS failure instead of a readable error) — and preflight OPTIONS
-    # must short-circuit before they consume the rate budget (P6).
+    # must short-circuit before they consume the rate budget (P6). RequestID
+    # sits OUTSIDE the body cap so its 413 (emitted before any route runs) still
+    # carries the request id the unified error contract promises.
     app.add_middleware(IdempotencyMiddleware)
     app.add_middleware(RequestLoggingMiddleware)
     app.add_middleware(RateLimitMiddleware)
-    app.add_middleware(_RequestIDMiddleware)
     app.add_middleware(BodySizeLimitMiddleware)
+    app.add_middleware(_RequestIDMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[o.strip() for o in settings.cors_origins.split(",")],
