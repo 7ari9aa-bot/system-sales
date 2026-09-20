@@ -148,3 +148,33 @@ def test_debug_off_outside_development_is_silent(
     assert not [
         r for r in caplog.records if "debug_enabled_in_secure_environment" in r.message
     ]
+
+
+# ------------------------------------------- an UNSET variable must fail ----
+#
+# The tests above pass `environment=` as a CONSTRUCTOR ARGUMENT. That is not the
+# same thing as the variable being unset: an unset variable yields the field
+# DEFAULT, and the default used to be "local" — which is in the dev set, so a
+# deploy that forgot ENVIRONMENT skipped every check while these tests passed.
+# Review G-05 flagged exactly that gap. These two close it.
+
+
+def test_an_unset_environment_defaults_to_production(monkeypatch) -> None:
+    monkeypatch.delenv("ENVIRONMENT", raising=False)
+
+    settings = Settings(_env_file=None, **SECURE)
+
+    assert settings.environment == "production", (
+        "an unset ENVIRONMENT must default to the SECURE environment, not a dev one"
+    )
+    assert settings.is_secure_environment is True
+
+
+def test_an_unset_environment_with_insecure_defaults_refuses_to_start(
+    monkeypatch,
+) -> None:
+    """The whole point: forgetting the variable must fail closed, not run open."""
+    monkeypatch.delenv("ENVIRONMENT", raising=False)
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)

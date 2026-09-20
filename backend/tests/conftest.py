@@ -10,8 +10,16 @@ scripts/provision.py. Tests skip when it is not configured (e.g. fresh CI).
 
 from __future__ import annotations
 
+import os
 import uuid
 from collections.abc import AsyncIterator
+
+# Tests are not production. `environment` defaults to "production" (the secure
+# direction — an unset ENVIRONMENT must not silently skip the config checks), so
+# the suite declares itself local explicitly. `setdefault` so a developer can
+# still point it at "staging" deliberately. Must run before `get_settings()` is
+# first called, because it is lru_cached.
+os.environ.setdefault("ENVIRONMENT", "local")
 
 import pytest
 import sqlalchemy as sa

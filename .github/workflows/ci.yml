@@ -11,6 +11,10 @@ jobs:
       run:
         working-directory: backend
     env:
+      # CI is not production. `environment` defaults to "production" so that an
+      # unset ENVIRONMENT fails closed instead of skipping the config checks
+      # (review G-05), which means CI must opt out explicitly.
+      ENVIRONMENT: local
       # Local CI database — migrations + provision run against it, pytest
       # connects through DATABASE_URL_APP_ADMIN (tests skip without it).
       DATABASE_URL_ADMIN: postgresql+asyncpg://postgres:postgres@localhost:5432/sales
@@ -65,7 +69,43 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
+      # Static analysis gate — stock `next/core-web-vitals` + `next/typescript`
+      # (see frontend/eslint.config.mjs). Passes clean today; pre-existing
+      # warnings are reported but do not fail the build.
+      - run: npm run lint
       # The security header policy is the only protection on the HTML Vercel
       # serves; the API middleware never sees those responses (review G-07).
       - run: npm run check:headers
       - run: npm run build
+
+  # Browser tests against the production bundle. Split from `frontend` so a
+  # failing spec does not obscure lint/build results, and so the two jobs run
+  # in parallel.
+  frontend-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      # The config's project matrix is a single Desktop Chrome device.
+      - run: npx playwright install --with-deps chromium
+      # playwright.config.ts serves `npm run start` when CI is set, so the
+      # production bundle has to exist before the tests run.
+      - run: npm run build
+      - run: npx playwright test
+      # Traces/screenshots are captured on the first retry — keep them when the
+      # run fails so a red build is debuggable without a re-run.
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-test-results
+          path: frontend/test-results/
+          retention-days: 7

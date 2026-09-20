@@ -19,7 +19,17 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_ignore_empty=True, extra="ignore")
 
     # runtime
-    environment: str = "local"  # local | staging | production
+    #
+    # Defaults to "production" — the SECURE direction. It used to default to
+    # "local", which meant an UNSET or empty ENVIRONMENT silently selected the
+    # development branch and skipped every check below. (Review G-05: a test
+    # that passed `environment=""` as a constructor argument did not cover that,
+    # because an unset variable yields the default, not an empty string.)
+    #
+    # Local development sets ENVIRONMENT=local explicitly — see .env.example and
+    # the CI job env. A deploy that forgets the variable now fails closed rather
+    # than running unvalidated.
+    environment: str = "production"
     debug: bool = True
 
     # data stores
