@@ -70,35 +70,44 @@ Ordered by dependency and by the audit's own sequencing. Each wave ends with a r
 | G-05 config fails closed | ✅ closed |
 | G-07 browser headers | ✅ closed (token storage still open) |
 
-### Wave B — Make what exists actually work (in progress)
+### Wave B — Make what exists actually work (done)
 | Item | Team | State |
 |---|---|---|
 | N-01 entitlements | WS3 | ✅ closed |
 | N-02 tenant suspension (API + auth + workers) | WS4 | ✅ closed |
 | N-04 default privileges | WS4 | ✅ closed |
 | N-05 provisioning seed + live smoke | WS6 | ✅ closed |
-| **N-07 AI tool surface + RAG injection** | WS2 | ⬜ **next** |
-| G-09 consent enforced at send | WS1 | ⬜ |
-| G-13 circuit breaker wired | WS4 | ⬜ |
-| **Job RUNNER (the executor behind the control surface)** | WS3 | ⬜ **biggest single gap** |
+| N-07 AI tool surface + RAG injection | WS2 | ✅ closed |
+| G-09 consent enforced at send | WS1 | ✅ closed |
+| **Job RUNNER (the executor behind the control surface)** | WS3 | ✅ closed |
+| G-13 circuit breaker wired | WS4 | ⬜ **`app/core/circuit_breaker.py` exists and nothing calls it** |
+
+> Re-measured 2026-09-20: the table above said "next / in progress" for four items that the
+> progress log already recorded as closed. Corrected against the log rather than the plan.
+
 
 ### Wave C — Breadth to reach the target
-| Item | Team |
-|---|---|
-| G-08 outbox `locked_at` + replay | WS4 |
-| G-14 `Idempotency-Key` on side-effecting writes | WS4 |
-| G-15 `If-Match`/ETag optimistic concurrency | WS4 |
-| §25 layered rate limits (tenant/user/endpoint) | WS4 |
-| §33–35 media pipeline + Attachment | WS1 |
-| §32 marketing consent entity | WS1 |
-| §51–52 privacy + retention completion | WS3 |
-| §53–54 billing metering + immutable snapshots | WS3 |
-| §55–57 analytics read models, partition-ready, archiving | WS3 |
-| §82 segments as a shared entity | WS3 |
-| §65–67 security events + audit enrichment | WS6 |
-| §114–116 security + performance test suites | WS6 |
-| Playwright E2E in CI; frontend ESLint | WS5 |
-| Remaining W5 surfaces (Customer 360 done; command palette done) | WS5 |
+| Item | Team | Verified state (2026-09-20) |
+|---|---|---|
+| G-08 outbox `locked_at` + replay | WS4 | 🟡 `event_log` replay (§152) landed; no `locked_at` |
+| G-14 `Idempotency-Key` on side-effecting writes | WS4 | ✅ built + tested — **no frontend caller yet** |
+| G-15 `If-Match`/ETag optimistic concurrency | WS4 | ✅ built + tested — **no frontend caller yet** |
+| §25 layered rate limits (tenant/user/endpoint) | WS4 | ✅ closed |
+| §33–35 media pipeline + Attachment | WS1 | ✅ closed |
+| §32 marketing consent entity | WS1 | ✅ closed |
+| §51–52 privacy + retention completion | WS3 | 🟡 retention worker wired to a job type; completeness unverified |
+| §53–54 billing metering + immutable snapshots | WS3 | 🟡 metering landed; immutability is convention, not a DB rule |
+| §55–57 analytics read models, partition-ready, archiving | WS3 | ⬜ no `analytics` module |
+| §82 segments as a shared entity | WS3 | 🟡 service + job handler exist; "shared entity" unverified |
+| §65–67 security events + audit enrichment | WS6 | 🟡 `security_events` written from identity; enrichment unverified |
+| §114–116 security + performance test suites | WS6 | 🟡 e2e suite + load script exist |
+| Playwright E2E in CI; frontend ESLint | WS5 | ✅ closed (26 specs green) |
+| Remaining W5 surfaces (Customer 360 done; command palette done) | WS5 | ✅ Customer 360 closed; **approvals page still missing** |
+
+> Only rows I re-measured in the code carry a verdict here. The lesson from Wave C repeats in
+> Wave B's G-13: **the failure mode is not "not built", it is "built, tested in isolation, and
+> never called".** A unit test on an unused module passes forever and proves nothing.
+
 
 ### Wave D — Requires an owner decision (§7)
 G-03 staging · G-06 SecretStorePort · G-17 workspace/location RLS · G-18 money minor units ·
@@ -182,6 +191,8 @@ treated as a weak review, not a clean one.
 | 2026-09-20 | `37ad507` | **Job RUNNER** — the executor the control surface never had |
 | 2026-09-20 | `383c989` | G-09 consent-checked door for promotional sends |
 | 2026-09-20 | `24d60f9` | latent naive-timestamp drift on `segments.last_evaluated_at` |
+| 2026-09-20 | `f2db93e` | **N-11** engine built lazily — four ops scripts were un-runnable outside CI; backfill applied to production |
+| 2026-09-20 | `7f06d4d` | **N-09** SSE gateway now reads `lifecycle_state` (connect gate + mid-stream re-check) |
 
 ### Wave B outcome
 
@@ -230,5 +241,37 @@ overlapping periods**; `KEY_TTL` was written but never read.
 
 CI after Wave C: **717 passed, 1 skipped**. Production verified at `c4d5e6f7a8b9` with all three
 columns present.
+
+---
+
+### Wave D outcome — the built-but-unused surfaces
+
+Two items, both found by MEASURING rather than reading the plan.
+
+**N-11 — production had no operational defaults.** `business_calendars`, `sla_policies` and
+`subscriptions` were all **0 rows** across both live tenants, so SLA and entitlements were inert on
+real data even though `seed_tenant_defaults` had been written and tested. The seeder only ran at
+`register`, and both tenants predated it. Backfilled (calendar + SLA policy + budget policy), with
+the plan binding left **opt-in** because `starter` permits only whatsapp + webchat and binding an
+existing tenant to a plan could silently restrict a channel it already uses.
+
+**The ops-script failure was measured, not assumed.** My own earlier note named
+`rls_smoke_test` / `smoke_production` as broken; a subprocess probe with `ENVIRONMENT` and
+`JWT_SECRET` unset showed the real set was `provision` / `seed_demo` / `configure_ai` /
+`e2e_ai_test`. Root cause was one line: `app/core/db.py` built its engine at **module scope**, so
+importing the module demanded a fully valid production configuration. The engine is now lazy, and
+validation still fails closed — at first database access instead of at import.
+
+**N-09 — the SSE gateway never read the tenant lifecycle.** Suspension was enforced on the request
+path, the auth path and in the workers; `/realtime/events` was the one surface that skipped it, so a
+suspended workspace kept a live firehose. Fixed at connect AND mid-stream, because the case that
+matters is a workspace suspended while its inbox is already open.
+
+**Fourth dead-code instance: `app/core/circuit_breaker.py`.** Nothing in `app/` imports it — only
+its own unit test does. That is the Wave C finding repeating, and it is the reason G-13 is marked ⬜
+above rather than ✅: a complete, well-tested module that no call path reaches is not a feature.
+
+CI after Wave D: **728 passed, 2 skipped** (the two skips are Supabase-only migration guards).
+
 
 
