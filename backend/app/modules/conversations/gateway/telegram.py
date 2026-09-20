@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import httpx
 
+from app.core.circuit_breaker import PROVIDER_TELEGRAM, get_breaker
 from app.core.config import get_settings
 from app.core.errors import ExternalProviderError
 from app.modules.conversations.gateway.base import (
@@ -89,15 +90,30 @@ class TelegramAdapter:
         }
         if message.meta.get("reply_markup"):
             payload["reply_markup"] = message.meta["reply_markup"]
-        if _client is not None:
-            response = await _client.post(f"{API_BASE}/bot{token}/sendMessage", json=payload)
-        else:
-            async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.post(f"{API_BASE}/bot{token}/sendMessage", json=payload)
-        if response.status_code >= 400:
-            raise ExternalProviderError(
-                f"telegram send failed: {response.status_code} {response.text[:200]}"
-            )
+        url = f"{API_BASE}/bot{token}/sendMessage"
+
+        async def _post() -> httpx.Response:
+            if _client is not None:
+                response = await _client.post(url, json=payload)
+            else:
+                async with httpx.AsyncClient(timeout=30) as client:
+                    response = await client.post(url, json=payload)
+
+            # A provider that REJECTS the send is a provider FAILURE, so it must be
+            # raised INSIDE the breaker. Wrapping only the request meant a provider
+            # answering 500 to every call was recorded as a SUCCESS and the breaker
+            # never opened — the single case it exists for.
+            if response.status_code >= 400:
+                raise ExternalProviderError(
+                    f"telegram send failed: {response.status_code} {response.text[:200]}"
+                )
+            return response
+
+        # §47: the outbound call goes through the process-wide `provider.telegram`
+        # breaker, so a dead provider is backed off instead of hammered. An OPEN
+        # breaker raises CircuitOpenError; deciding whether that retries, defers or
+        # fails is the caller's job, not the adapter's.
+        response = await get_breaker(PROVIDER_TELEGRAM).call(_post)
         data = response.json()
         if not data.get("ok"):
             raise ExternalProviderError(f"telegram send failed: {data}")

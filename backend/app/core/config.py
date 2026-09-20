@@ -69,6 +69,13 @@ class Settings(BaseSettings):
     # without a deploy; the default preserves the previous hard-coded constant.
     ai_monthly_budget_cap_default: float = 50.0
 
+    # Circuit breaker (§47) applied to every external dependency — AI provider,
+    # WhatsApp/Telegram, object storage. Tunable so an operator can loosen the
+    # threshold without a deploy; the defaults match CircuitBreaker's own.
+    circuit_breaker_failure_threshold: int = 5
+    circuit_breaker_recovery_seconds: float = 30.0
+    circuit_breaker_half_open_successes: int = 2
+
     # channels
     whatsapp_app_secret: str = ""
     whatsapp_verify_token: str = ""

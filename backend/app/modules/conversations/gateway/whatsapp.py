@@ -14,6 +14,7 @@ from typing import Any
 
 import httpx
 
+from app.core.circuit_breaker import PROVIDER_WHATSAPP, get_breaker
 from app.core.config import get_settings
 from app.core.errors import ExternalProviderError
 from app.modules.conversations.gateway.base import (
@@ -155,23 +156,31 @@ class WhatsAppAdapter:
             raise ExternalProviderError("whatsapp integration missing credentials")
 
         body_payload = self._build_send_payload(message)
-        if _client is not None:
-            response = await _client.post(
-                f"{GRAPH_BASE}/{phone_number_id}/messages",
-                headers={"Authorization": f"Bearer {token}"},
-                json=body_payload,
-            )
-        else:
-            async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.post(
-                    f"{GRAPH_BASE}/{phone_number_id}/messages",
-                    headers={"Authorization": f"Bearer {token}"},
-                    json=body_payload,
+
+        async def _post() -> httpx.Response:
+            url = f"{GRAPH_BASE}/{phone_number_id}/messages"
+            headers = {"Authorization": f"Bearer {token}"}
+            if _client is not None:
+                response = await _client.post(url, headers=headers, json=body_payload)
+            else:
+                async with httpx.AsyncClient(timeout=30) as client:
+                    response = await client.post(url, headers=headers, json=body_payload)
+
+            # A provider that REJECTS the send is a provider FAILURE, so it must be
+            # raised INSIDE the breaker. Wrapping only the request meant a provider
+            # answering 500 to every call was recorded as a SUCCESS and the breaker
+            # never opened — the single case it exists for.
+            if response.status_code >= 400:
+                raise ExternalProviderError(
+                    f"whatsapp send failed: {response.status_code} {response.text[:200]}"
                 )
-        if response.status_code >= 400:
-            raise ExternalProviderError(
-                f"whatsapp send failed: {response.status_code} {response.text[:200]}"
-            )
+            return response
+
+        # §47: the outbound call goes through the process-wide `provider.whatsapp`
+        # breaker, so a dead provider is backed off instead of hammered. An OPEN
+        # breaker raises CircuitOpenError; deciding whether that retries, defers or
+        # fails is the caller's job, not the adapter's.
+        response = await get_breaker(PROVIDER_WHATSAPP).call(_post)
         data: dict[str, Any] = response.json()
         try:
             return data["messages"][0]["id"]
@@ -195,15 +204,22 @@ class WhatsAppAdapter:
             "payload": self._build_send_payload(message),
         }
         headers = {"Authorization": f"Bearer {credentials.get('n8n_service_token', '')}"}
-        if _client is not None:
-            response = await _client.post(n8n_url, json=body, headers=headers)
-        else:
-            async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.post(n8n_url, json=body, headers=headers)
-        if response.status_code >= 400:
-            raise ExternalProviderError(
-                f"whatsapp n8n send failed: {response.status_code} {response.text[:200]}"
-            )
+
+        async def _post() -> httpx.Response:
+            if _client is not None:
+                response = await _client.post(n8n_url, json=body, headers=headers)
+            else:
+                async with httpx.AsyncClient(timeout=30) as client:
+                    response = await client.post(n8n_url, json=body, headers=headers)
+            # Raised inside the breaker, for the same reason as the direct path.
+            if response.status_code >= 400:
+                raise ExternalProviderError(
+                    f"whatsapp n8n send failed: {response.status_code} {response.text[:200]}"
+                )
+            return response
+
+        # Same provider as the direct Graph path, so it spends the SAME breaker.
+        response = await get_breaker(PROVIDER_WHATSAPP).call(_post)
         data = response.json()
         # n8n lastNode returns the Graph response shape; unwrap either form.
         try:

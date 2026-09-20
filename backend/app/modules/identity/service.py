@@ -54,32 +54,25 @@ async def _record_security_event(
     tenant_id: uuid.UUID | None = None,
     actor_user_id: uuid.UUID | None = None,
 ) -> None:
-    """Persist a security event on its OWN transaction.
+    """Persist a security event on its OWN transaction (§67).
 
-    The auth failure paths raise immediately after recording, which rolls the
-    REQUEST transaction back — so `session.add(SecurityEvent(...))` on that
-    transaction meant the audit row never survived and the §67 trail was
-    silently empty. A separate short-lived session commits independently of
-    the caller's rollback. Failures here are logged, never raised: losing an
-    audit row must not turn a clean 401 into a 500.
+    Delegates to the platform writer. It commits independently of the caller's
+    transaction because the auth failure paths raise immediately after
+    recording, which rolls the REQUEST transaction back — so
+    `session.add(SecurityEvent(...))` on that transaction meant the audit row
+    never survived and the §67 trail was silently empty. The platform writer
+    also binds the tenant GUC for tenant-scoped rows, which `security_events`
+    (FORCE RLS) requires.
     """
-    from app.core.db import SessionLocal
-    from app.modules.platform.models import SecurityEvent
+    from app.modules.platform.security_events import record_security_event
 
-    try:
-        async with SessionLocal() as session:
-            async with session.begin():
-                session.add(
-                    SecurityEvent(
-                        event_type=event_type,
-                        tenant_id=tenant_id,
-                        actor_user_id=actor_user_id,
-                        details=details or {},
-                        ip=ip,
-                    )
-                )
-    except Exception:  # noqa: BLE001 — auditing must not break authentication
-        logger.warning("security_event.write_failed type=%s", event_type, exc_info=True)
+    await record_security_event(
+        event_type,
+        details=details,
+        ip=ip,
+        tenant_id=tenant_id,
+        actor_user_id=actor_user_id,
+    )
 
 
 def _now() -> datetime:
@@ -350,6 +343,15 @@ class AuthService:
             )
         ).scalar_one_or_none()
         if membership is None:
+            # §67: an authenticated user probing a tenant they do not belong to
+            # is a cross-tenant access attempt. tenant_id stays None on purpose:
+            # the caller has no legitimate context in the target tenant, so we
+            # must not bind (and write into) that tenant's trail.
+            await _record_security_event(
+                "cross_tenant_access_denied",
+                details={"requested_tenant_id": str(tenant_id)},
+                actor_user_id=user.id,
+            )
             raise PermissionDeniedError("not a member of this tenant")
         # §48: switching INTO a suspended/deleted tenant must not mint a token
         # family any more than logging into one would.
@@ -626,6 +628,16 @@ TENANT_OPERATIONAL_STATES: frozenset[str] = frozenset(
 # operator must say why (that reason is what the audit row preserves).
 _REASON_REQUIRED: frozenset[str] = frozenset({"suspended", "offboarding", "deleted"})
 
+# §67: a lifecycle change is a security-relevant capability change, so every
+# transition also writes a security event. The capability-reducing targets get a
+# distinct type so "who suspended/deleted this tenant" is a direct query;
+# leaving one of them for an operational state is a reactivation.
+_LIFECYCLE_SECURITY_EVENTS: dict[str, str] = {
+    "suspended": "tenant_suspended",
+    "offboarding": "tenant_offboarding_started",
+    "deleted": "tenant_deleted",
+}
+
 # How long a tenant keeps working after payment fails, and how long after
 # offboarding starts the data is retained before deletion.
 GRACE_PERIOD_DAYS = 14
@@ -803,6 +815,17 @@ class TenantLifecycleService:
                     "reason": reason,
                 },
             )
+        )
+        # §67: the security trail answers "who restricted this workspace" even
+        # for a platform operator who never touches the tenant's business audit.
+        event_type = _LIFECYCLE_SECURITY_EVENTS.get(target)
+        if event_type is None and target == "active" and current in _REASON_REQUIRED:
+            event_type = "tenant_reactivated"
+        await _record_security_event(
+            event_type or "tenant_lifecycle_changed",
+            details={"from": current, "to": target, "reason": reason},
+            tenant_id=tenant.id,
+            actor_user_id=actor_user_id,
         )
         await session.flush()
         return tenant

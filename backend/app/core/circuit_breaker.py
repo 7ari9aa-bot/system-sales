@@ -158,3 +158,72 @@ class CircuitBreaker:
         self._state = OPEN
         self._opened_at = self._time_fn()
         self._success_count = 0
+
+
+# --------------------------------------------------------------- registry ---
+#
+# A process-wide breaker PER DOWNSTREAM DEPENDENCY. This exists because the
+# module was complete, unit-tested and — measured 2026-09-20 — imported by
+# nothing except its own test. Each call site building its own breaker would be
+# the same bug in a new shape: N breakers for one provider means the provider
+# must fail N times before anyone backs off.
+#
+# The registry is deliberately NOT gated on settings at import: `get_breaker`
+# reads them on first use, so importing this module stays free (the same rule
+# `app/core/db.py` had to learn).
+
+_BREAKERS: dict[str, CircuitBreaker] = {}
+
+
+def get_breaker(name: str, **overrides: Any) -> CircuitBreaker:
+    """The breaker for a named dependency, created on first use.
+
+    No `await` in here, so the get-then-set is atomic under asyncio's
+    single-threaded scheduler.
+    """
+    existing = _BREAKERS.get(name)
+    if existing is not None:
+        return existing
+
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    breaker = CircuitBreaker(
+        name=name,
+        failure_threshold=overrides.pop(
+            "failure_threshold", settings.circuit_breaker_failure_threshold
+        ),
+        recovery_timeout_seconds=overrides.pop(
+            "recovery_timeout_seconds", settings.circuit_breaker_recovery_seconds
+        ),
+        half_open_successes=overrides.pop(
+            "half_open_successes", settings.circuit_breaker_half_open_successes
+        ),
+        **overrides,
+    )
+    _BREAKERS[name] = breaker
+    return breaker
+
+
+def breaker_states() -> dict[str, str]:
+    """Snapshot of every breaker this process has created. For diagnostics."""
+    return {name: breaker.state for name, breaker in _BREAKERS.items()}
+
+
+def open_breakers() -> list[str]:
+    """Names of the currently OPEN breakers."""
+    return [name for name, breaker in _BREAKERS.items() if breaker.is_open]
+
+
+def reset_breakers() -> None:
+    """Drop every breaker. For tests, so one case cannot leak state into the next."""
+    _BREAKERS.clear()
+
+
+# Names of the downstreams that go through a breaker. Defined here, not at the
+# call sites, so a typo cannot silently create a second breaker for the same
+# provider — the failure mode the registry exists to prevent.
+PROVIDER_AI = "provider.ai"
+PROVIDER_WHATSAPP = "provider.whatsapp"
+PROVIDER_TELEGRAM = "provider.telegram"
+STORAGE_OBJECTS = "storage.objects"

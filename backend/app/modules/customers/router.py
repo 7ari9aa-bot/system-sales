@@ -11,6 +11,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.core.errors import NotFoundError, ValidationError
+from app.core.idempotency import (
+    IfMatch,
+    apply_etag,
+    apply_versioned_update,
+    parse_if_match,
+)
 from app.core.pagination import decode_cursor, page_slice
 from app.modules.billing.service import EntitlementService
 from app.modules.customers.service import CustomerService
@@ -62,7 +68,7 @@ async def list_customers(
 
 
 @router.get("/customers/{customer_id}")
-async def get_customer(ctx: TenantCtxDep, customer_id: UUID):
+async def get_customer(ctx: TenantCtxDep, customer_id: UUID, response: Response):
     customer = await CustomerService.get(ctx.session, ctx.tenant_id, customer_id)
     tags = await CustomerService.list_tags(ctx.session, ctx.tenant_id, customer_id)
     identities = await CustomerService.list_identities(
@@ -70,12 +76,16 @@ async def get_customer(ctx: TenantCtxDep, customer_id: UUID):
     )
     addresses = await CustomerService.list_addresses(ctx.session, ctx.tenant_id, customer_id)
     notes = await CustomerService.list_notes(ctx.session, ctx.tenant_id, customer_id)
+    # G-15: the row's version is the concurrency token. It is exposed in the body
+    # AND as a strong ETag so a client can send it back as If-Match on a write.
+    apply_etag(response, customer.version)
     return {
         "id": str(customer.id),
         "name": customer.name,
         "phone": customer.phone,
         "email": customer.email,
         "locale": customer.locale,
+        "version": customer.version,
         "lifetime_value": str(customer.lifetime_value),
         "is_blocked": customer.is_blocked,
         "extra": customer.extra or {},
@@ -144,11 +154,26 @@ async def update_customer(
     customer_id: UUID,
     body: CustomerUpdate,
     ctx: WriteCtx,
+    response: Response,
+    if_match: IfMatch = None,
 ):
     fields = body.model_dump(exclude_unset=True)
-    customer = await CustomerService.update_customer(
-        ctx.session, ctx.tenant_id, customer_id, **fields
-    )
+    if parse_if_match(if_match) is None:
+        # No If-Match (or `*`): unconditional, exactly as before. A malformed
+        # value still fails here with a 400 rather than being ignored.
+        customer = await CustomerService.update_customer(
+            ctx.session, ctx.tenant_id, customer_id, **fields
+        )
+    else:
+        # Conditional: the DATABASE decides. ONE UPDATE ... WHERE id AND version
+        # is the write, so two writers holding the same valid ETag cannot both
+        # win — a Python read-then-write could be clobbered in between. A stale
+        # version matches no row and apply_versioned_update raises ConflictError
+        # (409), leaving the row untouched.
+        customer = await CustomerService.get(ctx.session, ctx.tenant_id, customer_id)
+        await apply_versioned_update(ctx.session, customer, if_match, fields)
+    # The version AFTER the write, so a client can chain its next edit.
+    apply_etag(response, customer.version)
     return _customer_summary(customer)
 
 

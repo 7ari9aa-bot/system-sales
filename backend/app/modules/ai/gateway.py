@@ -21,6 +21,7 @@ from uuid import UUID
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.circuit_breaker import PROVIDER_AI, get_breaker
 from app.core.config import get_settings
 from app.core.errors import RateLimitExceededError, ValidationError
 from app.modules.ai.models import AIUsage, ModelCall, ModelConfig
@@ -425,7 +426,15 @@ class AIGateway:
         status = "ok"
         result: ChatCompletionResult | None = None
         try:
-            result = await self._provider.chat(
+            # §47: the ONE provider HTTP request goes through the process-wide
+            # `provider.ai` breaker, so a dead or slow provider is backed off
+            # instead of hammered. Only the request is wrapped — the budget
+            # reservation above and the ModelCall bookkeeping below are not.
+            #
+            # CircuitOpenError is a DomainError and is re-raised unchanged by the
+            # handler below, so an open breaker stays visible as an open breaker.
+            result = await get_breaker(PROVIDER_AI).call(
+                self._provider.chat,
                 base_url=config["base_url"],
                 api_key=config["api_key"],
                 model=config["model"],
@@ -482,7 +491,12 @@ class AIGateway:
         status = "ok"
         vectors: list[list[float]] = []
         try:
-            vectors = await self._embeddings.embed(
+            # §47: embeddings hit the SAME provider, so they spend the SAME
+            # `provider.ai` breaker. Wrapping only `chat` left a dead provider
+            # reachable through the embedding path — it would be hammered there
+            # while the chat breaker sat open.
+            vectors = await get_breaker(PROVIDER_AI).call(
+                self._embeddings.embed,
                 base_url=config["base_url"],
                 api_key=config["api_key"],
                 model=config["model"],

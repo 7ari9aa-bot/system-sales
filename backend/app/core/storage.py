@@ -28,6 +28,7 @@ from urllib.parse import urljoin
 
 import httpx
 
+from app.core.circuit_breaker import STORAGE_OBJECTS, get_breaker
 from app.core.config import get_settings
 from app.core.errors import ValidationError
 from app.core.net_guard import assert_public_url
@@ -104,6 +105,12 @@ class ObjectStorage:
     ) -> FetchedMedia:
         """Download a provider media URL as a bounded, SSRF-checked stream.
 
+        Routed through the process-wide `storage.objects` breaker so a dead or
+        degraded provider stops being hammered: once open, the download is not
+        attempted at all and `CircuitOpenError` is raised instead. Callers that
+        treat media as a bonus (see `conversations.media`) already contain that
+        error, so an open breaker costs the attachment, never the message.
+
         S6: the URL comes from a channel payload, i.e. from the internet, so
         every hop is validated before we fetch it — otherwise a crafted media
         URL would make the worker fetch internal endpoints on the attacker's
@@ -118,6 +125,9 @@ class ObjectStorage:
         Content-Length (which a hostile server can understate or omit), so an
         oversized body is aborted mid-download instead of being buffered.
         """
+        return await get_breaker(STORAGE_OBJECTS).call(self._download, url, max_bytes)
+
+    async def _download(self, url: str, max_bytes: int | None) -> FetchedMedia:
         current = url
         async with httpx.AsyncClient(timeout=30, follow_redirects=False) as client:
             for _hop in range(self.MAX_REDIRECTS + 1):
@@ -205,7 +215,12 @@ class ObjectStorage:
         key = f"{prefix}/{uuid.uuid4().hex}.{self._extension(media.content_type)}"
         import asyncio
 
-        await asyncio.to_thread(
+        # `put_object` is SYNCHRONOUS boto3, so the blocking call is handed to
+        # `asyncio.to_thread` — the callable, not a pre-made coroutine, is what
+        # goes to the breaker, which keeps the thread-pool hop AND the breaker's
+        # failure accounting (an open breaker means boto3 is never entered).
+        await get_breaker(STORAGE_OBJECTS).call(
+            asyncio.to_thread,
             self._s3().put_object,
             Bucket=self._bucket,
             Key=key,

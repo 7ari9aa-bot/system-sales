@@ -121,6 +121,22 @@ class UsageRecord(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Ba
 
 
 class Invoice(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
+    """A bill, and — when it carries a period — an immutable billing snapshot.
+
+    Two rows share this table, and the difference is the period:
+
+    * ``period_start IS NULL`` — an ordinary invoice. Its lifecycle columns
+      (``status`` draft -> open -> paid -> void, ``issued_at``/``due_at``/
+      ``paid_at``, ``provider_ref``) are meant to be written.
+    * ``period_start IS NOT NULL`` — the FROZEN snapshot `close_period` wrote for
+      that period. Spec §53–54 makes it immutable, and that is enforced by the
+      DATABASE (a BEFORE UPDATE OR DELETE trigger created in migration
+      ``e7a8b9c0d1e2``), not by convention: a direct SQL client must be refused
+      too. The trigger allows the mutation only while the owning tenant is being
+      torn down, because the FK cascades from ``tenants``/``subscriptions``
+      delete and null these rows as a side effect of offboarding.
+    """
+
     __tablename__ = "invoices"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -166,10 +182,15 @@ class Invoice(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
 
     __table_args__ = (
         UniqueConstraint("tenant_id", "number", name="uq_invoices_tenant_number"),
-        # The enforcement point for immutability: one snapshot per period, per
-        # tenant. An application-level "already closed?" check is a
-        # check-then-insert race; only the database can serialise two concurrent
-        # closes.
+        # "A period is closed at most once", per tenant. An application-level
+        # "already closed?" check is a check-then-insert race; only the database
+        # can serialise two concurrent closes.
+        #
+        # This constraint is NOT what makes a closed invoice immutable — it only
+        # stops a SECOND snapshot for the same period. Editing the row that is
+        # already frozen is refused by the BEFORE UPDATE OR DELETE trigger in
+        # migration `e7a8b9c0d1e2`; both halves are needed, and neither is
+        # enforced by application code alone.
         UniqueConstraint(
             "tenant_id",
             "period_start",
