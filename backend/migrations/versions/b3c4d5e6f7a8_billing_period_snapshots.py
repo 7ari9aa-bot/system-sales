@@ -42,18 +42,6 @@ depends_on = None
 def upgrade() -> None:
     op.add_column("invoices", sa.Column("period_start", sa.Date(), nullable=True))
     op.add_column("invoices", sa.Column("period_end", sa.Date(), nullable=True))
-    # The frozen per-feature breakdown. The model's constructor has always
-    # accepted `extra=`, but the column never existed — so the original
-    # BillingSnapshotService was not just dead code, it was never runnable.
-    op.add_column(
-        "invoices",
-        sa.Column(
-            "extra",
-            sa.dialects.postgresql.JSONB(),
-            server_default="{}",
-            nullable=False,
-        ),
-    )
     op.create_unique_constraint(
         "uq_invoices_tenant_period",
         "invoices",
@@ -63,6 +51,5 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_constraint("uq_invoices_tenant_period", "invoices", type_="unique")
-    op.drop_column("invoices", "extra")
     op.drop_column("invoices", "period_end")
     op.drop_column("invoices", "period_start")
