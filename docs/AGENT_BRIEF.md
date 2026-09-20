@@ -58,6 +58,35 @@ worked here, including the mistakes.
    `app/core/circuit_breaker.py`, `BillingSnapshotService`, and the whole ETag/If-Match
    surface. An isolated unit test on an unused module passes forever and proves nothing.
 
+### 3a. READ THIS BEFORE WRITING A DB-BACKED TEST
+
+**You cannot verify a DB-backed test locally. There is no local Postgres** (no docker daemon,
+nothing on 5432). Such a test SKIPS with "no app database URL configured", so rule 2 above is
+**impossible to satisfy for it** — and that is not a loophole, it is the trap that has already
+cost this repo a multi-hour red `main`.
+
+What actually happened: two DB-backed tests called `db.expire_all()` and then read
+`tenant_ctx.tenant_id` / `invoice.id`. `expire_all()` expires every attribute, so the next access
+does a lazy refresh, which in an async session raises `MissingGreenlet`. Both tests SKIPPED
+locally, passed on nobody's machine, and failed only on CI — which blocked every commit stacked
+on top for hours while each agent reported "passes locally".
+
+So, for any DB-backed test you write:
+- **Report it as UNVERIFIED, not as passing.** Say plainly: "DB-backed; skips locally; not
+  executed." A false "passes locally" costs a whole CI cycle and hides the failure from everyone.
+- **Never touch an attribute of an object bound before `expire_all()`.** Bind the scalar first:
+  ```python
+  invoice_id = invoice.id          # while still loaded
+  db.expire_all()
+  assert reread.id == invoice_id   # plain local, no lazy load
+  ```
+  This is enforced by `tests/test_no_expired_attribute_access.py`, which is DB-free and runs
+  everywhere. It is the model to follow: **when a lesson can only be checked on CI, write a
+  static guard so it is checked everywhere.**
+- Prefer assertions that do not need a refreshed ORM object at all — a `SELECT` through
+  `db.execute(...)` returns plain values and cannot lazy-load.
+
+
 ---
 
 ## 4. Hard constraints — a violation here damages everyone's work
