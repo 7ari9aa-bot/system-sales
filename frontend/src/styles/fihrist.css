@@ -139,9 +139,9 @@
 .fh-demo-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--forest); flex-shrink: 0; }
 
 /* ---------- سيكشنز ---------- */
-.fh-section { padding-block: clamp(56px, 8vw, 92px); position: relative; }
+.fh-section { padding-block: clamp(34px, 4.5vw, 56px); position: relative; }
 .fh-section-alt { background: transparent; }
-.fh-section-head { max-width: 660px; margin-bottom: clamp(36px, 5vw, 52px); }
+.fh-section-head { max-width: 660px; margin-bottom: clamp(22px, 3vw, 34px); }
 .fh-section-head h2 { font-size: clamp(24px, 3.4vw, 32px); margin-bottom: 12px; }
 .fh-section-head p { color: var(--muted); font-size: 15.5px; }
 .fh-eyebrow {
@@ -233,7 +233,7 @@ html.js .fh-reveal-stagger.fh-pre > * { opacity: 0; transform: translateY(12px);
 .fh-nav.is-scrolled { box-shadow: var(--shadow-sm); }
 
 /* ---------- هيرو: شكل هندسي دوّار ---------- */
-.fh-hero { position: relative; padding-block: clamp(64px, 10vw, 120px) clamp(56px, 8vw, 96px); overflow: hidden; }
+.fh-hero { position: relative; padding-block: clamp(44px, 6.5vw, 76px) clamp(36px, 5vw, 56px); overflow: hidden; background: linear-gradient(180deg, #e7ece7 0%, #eef2ee 55%, #f3f5f2 100%); border-bottom: 1px solid var(--rule); }
 .fh-hero-shape {
   position: absolute; inset: 0; z-index: 0;
   display: flex; align-items: center; justify-content: flex-end;
@@ -248,9 +248,9 @@ html.js .fh-reveal-stagger.fh-pre > * { opacity: 0; transform: translateY(12px);
 .fh-hero-inner { position: relative; z-index: 2; }
 .fh-hero-copy { max-width: 760px; }
 .fh-hero-copy .fh-eyebrow { margin-bottom: 18px; }
-.fh-hero h1 { font-size: clamp(30px, 5.2vw, 52px); line-height: 1.28; margin-bottom: 20px; }
-.fh-hero-sub { font-size: clamp(16px, 2vw, 18px); color: var(--muted); max-width: 56ch; margin-bottom: 32px; }
-.fh-hero-cta { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 32px; }
+.fh-hero h1 { font-size: clamp(32px, 5.6vw, 58px); line-height: 1.22; margin-bottom: 16px; letter-spacing: -.02em; }
+.fh-hero-sub { font-size: clamp(16px, 2vw, 18.5px); color: var(--muted); max-width: 56ch; margin-bottom: 24px; }
+.fh-hero-cta { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 22px; }
 .fh-hero-cta-center { justify-content: center; }
 
 /* ---------- الشات التفاعلي ---------- */
@@ -721,6 +721,6 @@ html[lang="en"] .fh-nav-links { direction: ltr; }
 
 
 /* ---------- صور الأقسام التوضيحية ---------- */
-.fh-section-img { width: 100%; max-width: 720px; margin: 0 auto 2.5rem; display: block; border-radius: 14px; border: 1px solid var(--rule); box-shadow: 0 18px 40px -24px rgba(0,0,0,.28); background: var(--paper); }
+.fh-section-img { width: 100%; max-width: 720px; margin: 0 auto 1.75rem; display: block; border-radius: 14px; border: 1px solid var(--rule); box-shadow: 0 18px 40px -24px rgba(0,0,0,.28); background: var(--paper); }
 .fh-section-img-wide { max-width: 880px; }
 @media (max-width: 720px) { .fh-section-img { margin-bottom: 1.75rem; } }
