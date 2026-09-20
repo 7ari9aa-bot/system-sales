@@ -197,3 +197,38 @@ whole life because nothing had ever written it. That is the DoD rule earning its
 
 CI after the wave: **627 passed, 1 skipped** (was 564).
 
+---
+
+### Wave C outcome
+
+Three builders + one adversarial reviewer, disjoint modules.
+
+| Workstream | Deliverable |
+|---|---|
+| WS4 Integrity | `Idempotency-Key` (opt-in allow-list), atomic `If-Match`, layered tenant/user/endpoint rate limits |
+| WS3 Platform | Billing metering + immutable period snapshots (§53–54) |
+| WS1 Domain | Inbound media ingest pipeline + Attachment rows (§33–35) |
+
+**The dominant finding: DEAD CODE, three instances.** `BillingSnapshotService` (zero callers *and*
+it would have crashed on contact — it passed a constructor kwarg for a column that never existed),
+`app/core/storage.py` (a complete port with no caller), and the job-runner registry from Wave B.
+
+**The reviewer changed all three.** The worst: idempotency **deleted its reservation on any 5xx**, so
+the retry re-executed the effect — and a test asserted `calls == 2`, locking the double execution in.
+Also found: the whole `If-Match` surface had zero callers and was check-then-act; a media storage
+failure rolled back `add_message` and **lost the customer's message**; billing **double-billed
+overlapping periods**; `KEY_TTL` was written but never read.
+
+**Two of my own mistakes, both caught by CI:**
+
+1. `TypeError: 'extra' is an invalid keyword argument for Invoice` — every billing test. Fixed by
+   adding the column.
+2. **I then added that column to an already-applied migration.** Production was already stamped at
+   `b3c4d5e6f7a8`, so Alembic would never re-run it: production would lack the column forever while a
+   fresh database had it. Fixed by restoring the applied revision and adding `c4d5e6f7a8b9`.
+   **A migration that has been applied anywhere is immutable.**
+
+CI after Wave C: **717 passed, 1 skipped**. Production verified at `c4d5e6f7a8b9` with all three
+columns present.
+
+
