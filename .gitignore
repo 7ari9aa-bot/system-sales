@@ -22,6 +22,10 @@ build/
 # --- node / next ---
 node_modules/
 .next/
+# `mv .next .next.stale` is the documented workaround for the sandbox blocking
+# Next's own cache cleanup; without this the 137MB directory shows up as
+# untracked and is one `git add -A` away from being committed.
+.next.stale/
 out/
 *.tsbuildinfo
 next-env.d.ts

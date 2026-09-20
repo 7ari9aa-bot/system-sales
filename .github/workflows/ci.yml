@@ -65,4 +65,7 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
+      # The security header policy is the only protection on the HTML Vercel
+      # serves; the API middleware never sees those responses (review G-07).
+      - run: npm run check:headers
       - run: npm run build
