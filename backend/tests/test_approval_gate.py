@@ -81,6 +81,24 @@ def _request_call() -> ChatCompletionResult:
     )
 
 
+async def _conversation(db, tenant_id):
+    """A real conversation row — agent_runs.conversation_id is a real FK, so a
+    random uuid would fail on insert rather than exercise the gate."""
+    from app.modules.conversations.service import ConversationService
+    from app.modules.customers.service import CustomerService
+
+    customer = await CustomerService.get_or_create_by_identity(
+        db,
+        tenant_id,
+        channel="whatsapp",
+        external_id=f"wa-{uuid.uuid4().hex[:10]}",
+        name="Ops Customer",
+    )
+    return await ConversationService.get_or_create(
+        db, tenant_id, customer_id=customer.id, channel="whatsapp"
+    )
+
+
 async def test_high_risk_tool_does_not_execute_before_approval(db, tenant_ctx, monkeypatch):
     """The action must NOT happen — the run parks and asks first."""
     EXECUTED.clear()
@@ -135,7 +153,7 @@ async def test_an_approved_action_executes_once_and_is_consumed(
         )
     )
     agent = await _agent(db, tenant_ctx.tenant_id)
-    conversation_id = uuid.uuid4()
+    conversation_id = (await _conversation(db, tenant_ctx.tenant_id)).id
 
     # First pass: parked, nothing executed.
     _patch_gateway(monkeypatch, [_request_call(), _result(content="waiting")])
@@ -196,7 +214,7 @@ async def test_a_consumed_approval_does_not_authorize_a_second_run(
         )
     )
     agent = await _agent(db, tenant_ctx.tenant_id)
-    conversation_id = uuid.uuid4()
+    conversation_id = (await _conversation(db, tenant_ctx.tenant_id)).id
 
     _patch_gateway(monkeypatch, [_request_call(), _result(content="waiting")])
     await AgentRunner(gateway=AIGateway()).run(

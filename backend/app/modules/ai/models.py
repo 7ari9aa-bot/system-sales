@@ -215,8 +215,10 @@ class ToolCall(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base)
     name: Mapped[str] = mapped_column(String(63))
     args: Mapped[dict] = mapped_column(JSONB, server_default="{}")
     result: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    # status: ok | error | denied
-    status: Mapped[str] = mapped_column(String(15))
+    # status: ok | error | denied | awaiting_approval
+    # (31 chars — "awaiting_approval" is 17 and the §135 gate writes it here;
+    # varchar(15) made the first gated tool call raise TruncationError.)
+    status: Mapped[str] = mapped_column(String(31))
     error: Mapped[str | None] = mapped_column(Text)
     duration_ms: Mapped[int | None] = mapped_column()
 
