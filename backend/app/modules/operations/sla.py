@@ -66,7 +66,15 @@ def _windows_for(hours: dict, weekday: int) -> list[BusinessWindow]:
     if raw is None:
         # The key is missing: treat as closed for that weekday only if the
         # calendar defines other days, otherwise 24/7.
-        return [] if any(k in hours for k in range(7)) else [_ALWAYS_OPEN]
+        #
+        # JSON object keys are ALWAYS strings, and that is the shape the API
+        # receives and `validate_calendar` accepts. Checking for integer keys
+        # here meant a string-keyed calendar never matched this test, so every
+        # omitted weekday fell through to _ALWAYS_OPEN: a tenant closed on
+        # Friday and Saturday had both days read as 24/7 open, pushing every
+        # SLA deadline later than it should be. Normalise before comparing.
+        defined = {str(key) for key in hours}
+        return [] if defined & {str(day) for day in range(7)} else [_ALWAYS_OPEN]
     windows: list[BusinessWindow] = []
     for pair in raw or []:
         if not isinstance(pair, (list, tuple)) or len(pair) != 2:
