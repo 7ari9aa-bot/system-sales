@@ -17,6 +17,7 @@ export default function AuthLoginPage() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<{ message: string; retryable: boolean } | null>(null);
+  const [showPw, setShowPw] = useState(false);
 
   useEffect(() => {
     if (getTokens()) router.replace("/inbox");
@@ -70,15 +71,20 @@ export default function AuthLoginPage() {
         </div>
         <div>
           <label htmlFor="password">{t.auth.password}</label>
-          <input
-            id="password"
-            type="password"
-            dir="ltr"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
+          <div className="fh-pw-field">
+            <input
+              id="password"
+              type={showPw ? "text" : "password"}
+              dir="ltr"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+            <button type="button" className="fh-pw-toggle" onClick={() => setShowPw((s) => !s)} aria-label={showPw ? t.auth.hidePw : t.auth.showPw}>
+              {showPw ? t.auth.hidePw : t.auth.showPw}
+            </button>
+          </div>
         </div>
 
         {err && (
