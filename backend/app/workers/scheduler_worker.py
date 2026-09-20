@@ -195,6 +195,11 @@ class SchedulerWorker(StreamWorker):
     name = "scheduler-worker"
     poll_interval = 5.0
 
+    #: True once the recurring jobs have been seeded. Observable on purpose: a
+    #: boot that never seeded them must be detectable, instead of looking like a
+    #: healthy poll loop over an empty table — which is how the RLS bug survived.
+    bootstrap_done: bool = False
+
     async def handle(self, event: Event) -> None:
         # The scheduler does not consume stream events; run() drives polling.
         return
@@ -202,11 +207,18 @@ class SchedulerWorker(StreamWorker):
     async def run(self) -> None:  # noqa: D102 — override: poll loop, no streams
         logger.info("scheduler.started consumer=%s", self.name)
         self._running = True
-        try:
-            await ensure_recurring_jobs()
-        except Exception:  # noqa: BLE001 — never block the poll loop on bootstrap
-            logger.exception("scheduler.bootstrap_failed")
         while self._running:
+            # Bootstrap is RETRIED, not attempted once. It used to run once inside
+            # a try/except that only logged: a transient database blip at boot
+            # therefore meant no recurring job was EVER seeded and nothing ever
+            # retried — a permanent, invisible failure. The table being empty in
+            # production is exactly how that looked from the outside.
+            if not self.bootstrap_done:
+                try:
+                    await ensure_recurring_jobs()
+                    self.bootstrap_done = True
+                except Exception:  # noqa: BLE001 — never block the poll loop
+                    logger.exception("scheduler.bootstrap_failed — retrying next poll")
             try:
                 processed = await self._poll_once()
             except Exception:  # noqa: BLE001 — scheduler must survive anything
