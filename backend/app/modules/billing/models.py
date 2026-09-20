@@ -152,6 +152,17 @@ class Invoice(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     # constraint, so legacy rows never collide with each other.
     period_start: Mapped[date | None] = mapped_column(Date, nullable=True)
     period_end: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # The frozen per-feature breakdown: [{"feature": ..., "quantity": "12.00"}].
+    #
+    # This column did not exist. The original `BillingSnapshotService` passed
+    # `extra=` to this constructor, so it was not merely DEAD code — it was
+    # never runnable, and a TypeError was waiting for the first caller. That is
+    # the likeliest reason nobody ever called it.
+    #
+    # Quantities are stored as STRINGS: every Python JSON path decodes a number
+    # to an IEEE float, so a Numeric(14,2) total would silently lose precision
+    # on the way into JSONB. Strings round-trip exactly.
+    extra: Mapped[dict] = mapped_column(JSONB, server_default="{}")
 
     __table_args__ = (
         UniqueConstraint("tenant_id", "number", name="uq_invoices_tenant_number"),
