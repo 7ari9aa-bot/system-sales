@@ -99,15 +99,25 @@ async def _do_auto_reply(
         return
     customer_id: uuid.UUID | None = conversation.customer_id
 
-    # Knowledge context is a bonus, never a hard dependency.
+    # Knowledge context is a bonus, never a hard dependency: if retrieval fails
+    # the reply still goes out. That part is deliberate.
+    #
+    # But it must not fail QUIETLY. A misconfigured embedding model means RAG
+    # contributes nothing to every reply from then on — answer quality drops and
+    # nothing says so. WARNING (not INFO) so it is visible in normal log review,
+    # and the message states what was actually lost rather than just "failed".
     system_prompt = agent.system_prompt or ""
     try:
         hits = await search_knowledge(session, tenant_id, user_body, limit=KNOWLEDGE_SNIPPETS)
         snippets = "\n".join(f"- {item.title}: {item.content}" for item, _distance in hits)
         if snippets:
             system_prompt = f"{system_prompt}\n\nKnowledge base context:\n{snippets}".strip()
-    except Exception:  # noqa: BLE001 — context is optional
-        logger.info("auto-reply knowledge search failed", exc_info=True)
+    except Exception:  # noqa: BLE001 — context is optional, the reply is not
+        logger.warning(
+            "auto-reply continuing WITHOUT knowledge context — knowledge search "
+            "failed (check the embedding model config)",
+            exc_info=True,
+        )
 
     result = await AgentRunner().run(
         session,

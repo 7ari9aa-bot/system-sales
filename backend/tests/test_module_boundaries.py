@@ -53,7 +53,16 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # The edge adds no cycle (verified: still 8). The `ai -> identity` edge this
 # change briefly introduced WAS a new cycle and was removed instead of
 # baselined — see `_raise_budget_alerts`, which uses SQL for the owner lookup.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 80
+#
+# 80 -> 82 on 2026-09-20 for the N-07 tool surface: `ai -> customers.service`
+# (add_tag must reuse CustomerService's get-or-create rule rather than
+# duplicating it against their tables) and `ai -> operations.models` (operations
+# exposes no service at all, so there is no application-layer path to a Task).
+# Both are FUNCTION-scope imports, so module-scope service imports stayed at 8,
+# and cycles stayed at 8 — the hard rule holds. Removing them needs
+# `operations.service.create_task` and a `customers` read-model first; recorded
+# here as the follow-up that would take this back to 80.
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 82
 BASELINE_MODULE_SCOPE_SERVICE_IMPORTS = 8
 
 # Cycles are identified by the SET of modules involved, so the same loop
