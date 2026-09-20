@@ -1,8 +1,11 @@
-"""PLATFORM services — notifications queue + signed outbound webhooks.
+"""PLATFORM services — jobs, notifications queue + signed outbound webhooks.
 
-Both are event-driven: the API (or a service) queues a row + writes an outbox
-event; the relay forwards to Redis Streams; workers deliver with retries. If
-n8n/SMTP/SMS providers are down, the core keeps working (failure isolation).
+Notifications and webhooks are event-driven: the API (or a service) queues a
+row + writes an outbox event; the relay forwards to Redis Streams; workers
+deliver with retries. If n8n/SMTP/SMS providers are down, the core keeps
+working (failure isolation). Jobs are different: ``JobService.create`` only
+writes the durable record — the ``job-runner`` worker pool executes it, never
+the request path.
 """
 
 from __future__ import annotations
@@ -19,10 +22,61 @@ from app.core.config import get_settings
 from app.core.errors import ValidationError
 from app.core.events.writer import add_outbox_event
 from app.core.net_guard import assert_public_url
-from app.modules.platform.models import Notification, WebhookDelivery, WebhookEndpoint
+from app.modules.platform.models import (
+    Job,
+    Notification,
+    WebhookDelivery,
+    WebhookEndpoint,
+)
 
 NOTIFICATION_STREAM = "platform.events"
 WEBHOOK_STREAM = "platform.events"
+
+
+class JobService:
+    """Creates the user-facing Job record (§84) — the control surface only.
+
+    The Job row is the durable handle a user watches and controls; the
+    ``job-runner`` worker pool executes it. Creation is deliberately a plain
+    insert with no scheduling: ``jobs`` carries no ``run_at``/``next_attempt_at``
+    (that is ``scheduled_jobs``), so a new job is simply ``queued`` and the
+    runner picks it up on its next poll. Nothing runs inside the request.
+    """
+
+    @staticmethod
+    async def create(
+        session,
+        tenant_id: uuid.UUID,
+        *,
+        kind: str,
+        actor_user_id: uuid.UUID | None = None,
+        correlation_id: str | None = None,
+        max_attempts: int = 3,
+    ) -> Job:
+        """Queue a job of ``kind`` for this tenant.
+
+        ``kind`` must match a handler registered with
+        ``app.workers.job_runner.register_job_handler``; an unregistered kind is
+        not rejected here (this layer must not import the worker registry) —
+        the runner fails it with a clear error rather than leaving it queued.
+        """
+        if not kind:
+            raise ValidationError("job kind is required")
+        if max_attempts < 1:
+            raise ValidationError("max_attempts must be at least 1")
+        job = Job(
+            tenant_id=tenant_id,
+            kind=kind,
+            status="queued",
+            progress=0,
+            attempts=0,
+            max_attempts=max_attempts,
+            actor_user_id=actor_user_id,
+            correlation_id=correlation_id,
+        )
+        session.add(job)
+        await session.flush()
+        return job
 
 
 class NotificationService:

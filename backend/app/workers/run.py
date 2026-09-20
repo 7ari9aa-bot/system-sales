@@ -15,6 +15,7 @@ from app.core.events.bus import RedisStreamsBus
 from app.core.events.outbox import OutboxRelay
 from app.core.redis import close_redis, get_redis
 from app.workers.base import StreamWorker
+from app.workers.job_runner import JobRunner
 from app.workers.message_worker import MessageWorker
 from app.workers.platform_workers import NotificationWorker, WebhookWorker
 from app.workers.retention_worker import RetentionWorker
@@ -29,6 +30,7 @@ POOLS: dict[str, type[StreamWorker]] = {
     "webhooks": WebhookWorker,
     "scheduler": SchedulerWorker,
     "retention": RetentionWorker,
+    "jobs": JobRunner,
 }
 
 
