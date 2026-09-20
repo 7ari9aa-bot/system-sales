@@ -92,6 +92,11 @@ class AgentRunResult:
     tool_calls_made: list[dict] = field(default_factory=list)
     tokens_in: int = 0
     tokens_out: int = 0
+    # §41: the output-guardrail verdict, always populated. `content` is None
+    # whenever this is not "allow", so a caller cannot accidentally send
+    # unguarded text even if it forgets to check.
+    guardrail_decision: str = "allow"
+    guardrail_reason: str | None = None
 
 
 def _now() -> datetime:
@@ -158,7 +163,7 @@ class AgentRunner:
         run.output = {"content": result.content}
         run.tokens_in = result.tokens_in
         run.tokens_out = result.tokens_out
-        run.cost = estimate_cost(result.tokens_out)
+        run.cost = estimate_cost(result.tokens_in, result.tokens_out)
         run.finished_at = _now()
         await session.flush()
 
@@ -168,7 +173,7 @@ class AgentRunner:
             agent_id=agent.id,
             tokens_in=result.tokens_in,
             tokens_out=result.tokens_out,
-            cost=estimate_cost(result.tokens_out),
+            cost=estimate_cost(result.tokens_in, result.tokens_out),
         )
         return result
 
@@ -355,11 +360,32 @@ class AgentRunner:
             await session.flush()
             logger.warning("ai.run_limit_hit run=%s limit=max_steps", run.id)
 
+        # §41 output guardrail — enforced HERE, not in the caller. It used to
+        # live in the auto-reply hook, so any other entry point into the runner
+        # (automation, a campaign, a future API) would have bypassed it
+        # entirely. Withholding the content is what makes the gate real: a
+        # caller that forgets to inspect the verdict still cannot send it.
+        decision, reason = "allow", None
+        if content:
+            from app.modules.ai.guardrails import default_guardrail
+
+            verdict = default_guardrail().evaluate(
+                content, {"tool_results": tool_calls_made}
+            )
+            decision, reason = verdict.decision, verdict.reason
+            if decision != "allow":
+                logger.warning(
+                    "ai.guardrail_%s run=%s reason=%s", decision, run.id, reason
+                )
+                content = None
+
         return AgentRunResult(
             content=content,
             tool_calls_made=tool_calls_made,
             tokens_in=tokens_in,
             tokens_out=tokens_out,
+            guardrail_decision=decision,
+            guardrail_reason=reason,
         )
 
     @staticmethod

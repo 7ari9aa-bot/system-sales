@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
+from decimal import Decimal
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
@@ -30,7 +31,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
 from app.core.model_kit import (
-    MONEY,
+    AI_COST,
     AppendOnlyCreatedAtMixin,
     TenantMixin,
     TimestampMixin,
@@ -186,7 +187,7 @@ class AgentRun(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base)
     error: Mapped[str | None] = mapped_column(Text)
     tokens_in: Mapped[int] = mapped_column(default=0, server_default="0")
     tokens_out: Mapped[int] = mapped_column(default=0, server_default="0")
-    cost: Mapped[float] = mapped_column(MONEY, default=0, server_default="0")
+    cost: Mapped[Decimal] = mapped_column(AI_COST, default=0, server_default="0")
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -240,7 +241,7 @@ class ModelCall(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base
     model: Mapped[str | None] = mapped_column(String(127))
     tokens_in: Mapped[int] = mapped_column(default=0, server_default="0")
     tokens_out: Mapped[int] = mapped_column(default=0, server_default="0")
-    cost: Mapped[float] = mapped_column(MONEY, default=0, server_default="0")
+    cost: Mapped[Decimal] = mapped_column(AI_COST, default=0, server_default="0")
     latency_ms: Mapped[int | None] = mapped_column()
     # status: ok | error
     status: Mapped[str] = mapped_column(String(15), server_default="ok")
@@ -264,7 +265,7 @@ class AIUsage(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     )
     tokens_in: Mapped[int] = mapped_column(default=0, server_default="0")
     tokens_out: Mapped[int] = mapped_column(default=0, server_default="0")
-    cost: Mapped[float] = mapped_column(MONEY, default=0, server_default="0")
+    cost: Mapped[Decimal] = mapped_column(AI_COST, default=0, server_default="0")
     model_calls: Mapped[int] = mapped_column(default=0, server_default="0")
 
     __table_args__ = (
@@ -331,7 +332,7 @@ class BudgetPolicy(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
         UUID(as_uuid=True), ForeignKey("agents.id", ondelete="CASCADE")
     )
     period: Mapped[str] = mapped_column(String(15), server_default="monthly")  # daily|monthly
-    hard_cap: Mapped[float] = mapped_column(MONEY, server_default="0")
+    hard_cap: Mapped[Decimal] = mapped_column(AI_COST, server_default="0")
     warning_threshold: Mapped[int] = mapped_column(default=80)  # percent
     # allowed: block | fallback | warn
     on_exceed: Mapped[str] = mapped_column(String(15), server_default="block")
@@ -413,4 +414,32 @@ class AIEvaluation(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
 
     __table_args__ = (
         Index("ix_evaluations_tenant_agent", "tenant_id", "agent_id", "created_at"),
+    )
+
+
+class AIBudgetReservation(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
+    """Spec §42: budget taken BEFORE a provider call, settled after.
+
+    A preflight that only reads the spend so far lets N concurrent runs all
+    pass the same check and all spend — the cap is then overshot by the
+    concurrency factor. Reserving first makes the cap hold under load.
+
+    `expires_at` is the safety valve: a run that crashes between reserve and
+    settle must not hold budget forever, so a sweep expires stale rows.
+    """
+
+    __tablename__ = "ai_budget_reservations"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    agent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    amount: Mapped[Decimal] = mapped_column(AI_COST, nullable=False)
+    # allowed: active | settled | expired
+    status: Mapped[str] = mapped_column(String(15), server_default="active")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index("ix_ai_budget_reservations_active", "tenant_id", "status"),
     )

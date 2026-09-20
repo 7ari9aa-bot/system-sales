@@ -18,7 +18,9 @@ from app.core.pagination import paginate
 from app.modules.ai import knowledge
 from app.modules.ai.approvals import ApprovalService
 from app.modules.ai.models import Agent, AIUsage, KnowledgeItem
+from app.modules.ai.policy import AIProviderPolicyService
 from app.modules.ai.schemas import AgentCreateRequest, AgentOut, KnowledgeIngestRequest
+from app.modules.ai.trace import AITraceService
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
 
 router = APIRouter(prefix="/ai", tags=["ai"])
@@ -214,3 +216,79 @@ async def decide_approval(
         resumed = True
 
     return {**_approval_out(approval), "resumed": resumed}
+
+
+# ---------- trace (§44) ----------
+#
+# "What did the AI actually do, and why?" — assembled from agent_runs and its
+# model_calls / tool_calls children. Reads only need an authenticated tenant
+# context: a trace is operational evidence, not a settings mutation.
+
+
+@router.get("/trace/runs/{run_id}")
+async def trace_run(run_id: uuid.UUID, ctx: TenantCtxDep) -> dict:
+    return await AITraceService.for_run(ctx.session, ctx.tenant_id, run_id)
+
+
+@router.get("/trace/correlation/{correlation_id}")
+async def trace_correlation(correlation_id: str, ctx: TenantCtxDep) -> dict:
+    runs = await AITraceService.by_correlation(ctx.session, ctx.tenant_id, correlation_id)
+    return {"correlation_id": correlation_id, "runs": runs}
+
+
+@router.get("/trace/summary")
+async def trace_summary(
+    ctx: TenantCtxDep, days: Annotated[int, Query(ge=1, le=365)] = 7
+) -> dict:
+    return await AITraceService.summary(ctx.session, ctx.tenant_id, days=days)
+
+
+# ---------- provider policies (§43) ----------
+#
+# Data-egress governance: which providers/models may receive tenant data.
+# Writes are gated like platform settings (settings:write).
+
+
+class ProviderPolicyUpsertRequest(BaseModel):
+    provider: str = Field(min_length=1, max_length=31)
+    status: str = Field(default="allowed", description="allowed | denied")
+    allowed_models: list[str] = Field(default_factory=list)
+    pii_redaction_required: bool = False
+    data_classification: str = Field(default="internal", max_length=31)
+    notes: str | None = None
+
+
+def _policy_out(policy) -> dict:
+    return {
+        "id": str(policy.id),
+        "provider": policy.provider,
+        "status": policy.status,
+        "allowed_models": list(policy.allowed_models or []),
+        "pii_redaction_required": bool(policy.pii_redaction_required),
+        "data_classification": policy.data_classification,
+        "notes": policy.notes,
+        "updated_at": policy.updated_at.isoformat() if policy.updated_at else None,
+    }
+
+
+@router.get("/provider-policies")
+async def list_provider_policies(ctx: SettingsCtx) -> dict:
+    policies = await AIProviderPolicyService.list_policies(ctx.session, ctx.tenant_id)
+    return {"items": [_policy_out(p) for p in policies]}
+
+
+@router.put("/provider-policies")
+async def upsert_provider_policy(
+    body: ProviderPolicyUpsertRequest, ctx: SettingsCtx
+) -> dict:
+    policy = await AIProviderPolicyService.upsert(
+        ctx.session,
+        ctx.tenant_id,
+        provider=body.provider,
+        status=body.status,
+        allowed_models=body.allowed_models,
+        pii_redaction_required=body.pii_redaction_required,
+        data_classification=body.data_classification,
+        notes=body.notes,
+    )
+    return _policy_out(policy)

@@ -13,7 +13,8 @@ deployment settings and are intentionally NOT added to app/core/config.py.
 from __future__ import annotations
 
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -28,15 +29,35 @@ from app.modules.ai.providers import AIProvider, ChatCompletionResult, Embedding
 # Monthly AI spend cap per tenant (USD, estimated) — deliberately a constant.
 MONTHLY_BUDGET_CAP = 50.0
 
-# Flat output-token cost estimate used for model_calls / ai_usage rollups.
-_COST_PER_OUTPUT_TOKEN = 0.000002
+# Flat per-token estimates, used when a tenant has no per-model pricing row.
+# Both DIRECTIONS are priced: charging only output under-counts real spend,
+# because the prompt (history + knowledge + tools) is usually the larger half
+# of the tokens on a conversational turn.
+_COST_PER_INPUT_TOKEN = Decimal("0.0000005")   # $0.50 / 1M tokens
+_COST_PER_OUTPUT_TOKEN = Decimal("0.000002")   # $2.00 / 1M tokens
+
+# How long a reservation is held before a sweep may reclaim it. A run that
+# crashes between reserve and settle must not hold budget forever.
+RESERVATION_TTL_MINUTES = 30
 
 ALIASES = frozenset({"fast", "strong", "cheap", "embedding", "fallback"})
 
+_CENT = Decimal("0.00000001")
 
-def estimate_cost(tokens_out: int) -> float:
-    """Cost estimate for a response; stored as MONEY (2 decimals) in the DB."""
-    return float(round(tokens_out * _COST_PER_OUTPUT_TOKEN, 6))
+
+def estimate_cost(tokens_in: int, tokens_out: int) -> Decimal:
+    """Exact cost of a call, in Decimal.
+
+    Returns Decimal rather than float on purpose: the column is Numeric(18,8)
+    and float arithmetic would reintroduce exactly the rounding the column was
+    widened to avoid (a float cost of 0.001 was being stored as 0.00, so the
+    monthly total was always zero and the hard cap was unenforceable).
+    """
+    total = (
+        Decimal(max(int(tokens_in or 0), 0)) * _COST_PER_INPUT_TOKEN
+        + Decimal(max(int(tokens_out or 0), 0)) * _COST_PER_OUTPUT_TOKEN
+    )
+    return total.quantize(_CENT)
 
 
 async def resolve_model_config(
@@ -80,7 +101,7 @@ async def resolve_model_config(
     }
 
 
-async def _month_spend(session: AsyncSession, tenant_id: UUID) -> float:
+async def _month_spend(session: AsyncSession, tenant_id: UUID) -> Decimal:
     """Sum of ai_usage cost for the current calendar month, for this tenant."""
     month_start = datetime.now(UTC).date().replace(day=1)
     total = (
@@ -91,27 +112,98 @@ async def _month_spend(session: AsyncSession, tenant_id: UUID) -> float:
             )
         )
     ).scalar_one()
-    return float(total)
+    return Decimal(total or 0)
 
 
-async def enforce_budget(
-    session: AsyncSession, tenant_id: UUID, *, agent_id: UUID | None = None
-) -> dict:
-    """Spec §42: per-tenant/agent budget preflight (reserve/settle pattern).
+async def _reserved_spend(session: AsyncSession, tenant_id: UUID) -> Decimal:
+    """Budget already committed to in-flight runs (not yet settled)."""
+    from app.modules.ai.models import AIBudgetReservation
 
-    Resolves BudgetPolicy (agent-scope first, then tenant-scope, then the
-    MONTHLY_BUDGET_CAP default); returns policy context. Threshold crossings
-    are surfaced via the returned dict (warning emitted by the caller).
+    total = (
+        await session.execute(
+            select(func.coalesce(func.sum(AIBudgetReservation.amount), 0)).where(
+                AIBudgetReservation.tenant_id == tenant_id,
+                AIBudgetReservation.status == "active",
+                AIBudgetReservation.expires_at > datetime.now(UTC),
+            )
+        )
+    ).scalar_one()
+    return Decimal(total or 0)
+
+
+async def expire_stale_reservations(
+    session: AsyncSession, tenant_id: UUID, *, now: datetime | None = None
+) -> int:
+    """Release reservations held by runs that never settled (crash/restart)."""
+    from sqlalchemy import update
+
+    from app.modules.ai.models import AIBudgetReservation
+
+    result = await session.execute(
+        update(AIBudgetReservation)
+        .where(
+            AIBudgetReservation.tenant_id == tenant_id,
+            AIBudgetReservation.status == "active",
+            AIBudgetReservation.expires_at <= (now or datetime.now(UTC)),
+        )
+        .values(status="expired")
+    )
+    return result.rowcount or 0
+
+
+async def settle_reservation(
+    session: AsyncSession,
+    reservation_id: UUID | None,
+    *,
+    now: datetime | None = None,
+) -> None:
+    """Mark a reservation settled once its run has finished (success or not)."""
+    if reservation_id is None:
+        return
+    from sqlalchemy import update
+
+    from app.modules.ai.models import AIBudgetReservation
+
+    await session.execute(
+        update(AIBudgetReservation)
+        .where(
+            AIBudgetReservation.id == reservation_id,
+            AIBudgetReservation.status == "active",
+        )
+        .values(status="settled", settled_at=now or datetime.now(UTC))
+    )
+
+
+def _resolve_cap(policies: list, agent_id: UUID | None) -> tuple[Decimal, str]:
+    """Agent-scoped policy wins over tenant-scoped; falls back to the constant."""
+    for scope_policy in policies:
+        if scope_policy.agent_id is not None and scope_policy.agent_id != agent_id:
+            continue
+        return Decimal(scope_policy.hard_cap), scope_policy.on_exceed
+    return Decimal(MONTHLY_BUDGET_CAP), "block"
+
+
+async def reserve_budget(
+    session: AsyncSession,
+    tenant_id: UUID,
+    *,
+    agent_id: UUID | None = None,
+    estimated_cost: Decimal | float = 0,
+) -> UUID | None:
+    """Spec §42 reserve half: take budget BEFORE the provider call.
+
+    A preflight that only reads the spend so far lets N concurrent runs pass the
+    same check and all spend, so the cap is overshot by the concurrency factor.
+    Committing a reservation up front is what makes the cap hold under load.
+
+    Returns the reservation id to settle afterwards, or None when the tenant has
+    no cap (`on_exceed` is not "block" or the cap is zero/unset).
     """
-    spend = await _month_spend(session, tenant_id)
-    cap = MONTHLY_BUDGET_CAP
-    on_exceed = "block"
-
     from sqlalchemy import select as sa_select
 
-    from app.modules.ai.models import BudgetPolicy
+    from app.modules.ai.models import AIBudgetReservation, BudgetPolicy
 
-    for scope_policy in (
+    policies = (
         await session.execute(
             sa_select(BudgetPolicy)
             .where(
@@ -121,20 +213,76 @@ async def enforce_budget(
             # agent-specific policies win over tenant-level ones
             .order_by(BudgetPolicy.agent_id.is_(None))
         )
-    ).scalars().all():
-        if scope_policy.agent_id is not None and scope_policy.agent_id != agent_id:
-            continue
-        cap = float(scope_policy.hard_cap)
-        on_exceed = scope_policy.on_exceed
-        break
+    ).scalars().all()
+    cap, on_exceed = _resolve_cap(list(policies), agent_id)
 
-    ratio = (spend / cap * 100) if cap > 0 else 0.0
+    if cap <= 0 or on_exceed != "block":
+        return None
+
+    spend = await _month_spend(session, tenant_id)
+    reserved = await _reserved_spend(session, tenant_id)
+    estimate = Decimal(str(estimated_cost or 0))
+    committed = spend + reserved
+
+    if committed + estimate >= cap:
+        raise RateLimitExceededError(
+            "monthly AI budget exceeded",
+            details={
+                "spend": str(spend),
+                "reserved": str(reserved),
+                "cap": str(cap),
+            },
+        )
+
+    reservation = AIBudgetReservation(
+        tenant_id=tenant_id,
+        agent_id=agent_id,
+        amount=estimate,
+        status="active",
+        expires_at=datetime.now(UTC) + timedelta(minutes=RESERVATION_TTL_MINUTES),
+    )
+    session.add(reservation)
+    await session.flush()
+    return reservation.id
+
+
+async def enforce_budget(
+    session: AsyncSession, tenant_id: UUID, *, agent_id: UUID | None = None
+) -> dict:
+    """Read-only budget view (spend, cap, ratio) without taking a reservation.
+
+    Kept for callers that only want to report; `reserve_budget` is what a
+    spending path must call, because only it actually holds the budget.
+    """
+    from sqlalchemy import select as sa_select
+
+    from app.modules.ai.models import BudgetPolicy
+
+    policies = (
+        await session.execute(
+            sa_select(BudgetPolicy)
+            .where(
+                BudgetPolicy.tenant_id == tenant_id,
+                BudgetPolicy.period == "monthly",
+            )
+            .order_by(BudgetPolicy.agent_id.is_(None))
+        )
+    ).scalars().all()
+    cap, on_exceed = _resolve_cap(list(policies), agent_id)
+
+    spend = await _month_spend(session, tenant_id)
+    ratio = float(spend / cap * 100) if cap > 0 else 0.0
     if spend >= cap and on_exceed == "block":
         raise RateLimitExceededError(
             "monthly AI budget exceeded",
-            details={"spend": spend, "cap": cap},
+            details={"spend": str(spend), "cap": str(cap)},
         )
-    return {"spend": spend, "cap": cap, "ratio": ratio, "on_exceed": on_exceed}
+    return {
+        "spend": float(spend),
+        "cap": float(cap),
+        "ratio": ratio,
+        "on_exceed": on_exceed,
+    }
 
 
 class AIGateway:
@@ -158,8 +306,18 @@ class AIGateway:
         run_id: UUID | None = None,
         _client: Any | None = None,
     ) -> ChatCompletionResult:
-        await enforce_budget(session, tenant_id)
         config = await resolve_model_config(session, tenant_id, alias)
+        # §42 reserve: hold budget BEFORE the provider call so concurrent runs
+        # cannot all pass the same read-only preflight and overshoot the cap.
+        # A rough upper bound (max_tokens output + a prompt allowance) is
+        # reserved and the real cost is recorded when the call returns.
+        estimated = estimate_cost(
+            tokens_in=len(str(messages)) // 4,  # ~4 chars per token
+            tokens_out=max_tokens or 1024,
+        )
+        reservation_id = await reserve_budget(
+            session, tenant_id, agent_id=agent_id, estimated_cost=estimated
+        )
 
         started = time.perf_counter()
         status = "ok"
@@ -181,6 +339,8 @@ class AIGateway:
             raise
         finally:
             latency_ms = int((time.perf_counter() - started) * 1000)
+            tokens_in = result.tokens_in if result else 0
+            tokens_out = result.tokens_out if result else 0
             session.add(
                 ModelCall(
                     tenant_id=tenant_id,
@@ -188,13 +348,19 @@ class AIGateway:
                     alias=alias,
                     provider=config["provider"],
                     model=config["model"],
-                    tokens_in=result.tokens_in if result else 0,
-                    tokens_out=result.tokens_out if result else 0,
-                    cost=estimate_cost(result.tokens_out) if result else 0.0,
+                    tokens_in=tokens_in,
+                    tokens_out=tokens_out,
+                    # BOTH directions are priced: charging only output
+                    # under-counted spend, because the prompt is usually the
+                    # larger half of a conversational turn.
+                    cost=estimate_cost(tokens_in, tokens_out) if result else Decimal(0),
                     latency_ms=latency_ms,
                     status=status,
                 )
             )
+            # §42 settle: release the hold whether the call succeeded or not —
+            # a failed call must not hold budget until its TTL expires.
+            await settle_reservation(session, reservation_id)
             await session.flush()
 
     async def embed(

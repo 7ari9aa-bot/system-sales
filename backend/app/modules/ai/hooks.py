@@ -118,16 +118,10 @@ async def _do_auto_reply(
         customer_id=customer_id,
         system_prompt=system_prompt or None,
     )
-    if not result.content:
-        return
-
-    # §173 output guardrail: block/handover BEFORE anything is queued.
-    from app.modules.ai.guardrails import default_guardrail
-
-    verdict = default_guardrail().evaluate(
-        result.content, {"tool_results": result.tool_calls_made}
-    )
-    if verdict.decision != "allow":
+    # §41: the guardrail is evaluated INSIDE AgentRunner, so every caller is
+    # covered — this only reacts to the verdict. The runner already withheld
+    # the content, so there is nothing sendable here either way.
+    if result.guardrail_decision != "allow":
         from app.modules.ai.models import AIHandover
 
         session.add(
@@ -137,14 +131,17 @@ async def _do_auto_reply(
                 run_id=None,
                 reason="guardrail",
                 status="pending",
-                note=f"guardrail:{verdict.reason}",
+                note=f"guardrail:{result.guardrail_reason}",
             )
         )
         logger.warning(
             "ai.guardrail_blocked conversation=%s reason=%s",
             conversation_id,
-            verdict.reason,
+            result.guardrail_reason,
         )
+        return
+
+    if not result.content:
         return
 
     try:
