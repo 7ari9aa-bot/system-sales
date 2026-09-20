@@ -82,7 +82,7 @@ export default function AuthLoginPage() {
         </div>
 
         {err && (
-          <div className="fh-auth-error" role="alert">
+          <div className="fh-auth-error" role="alert" data-testid="auth-error">
             <p>{err.message}</p>
             <button type="button" onClick={() => setErr(null)}>{t.auth.dismiss}</button>
           </div>

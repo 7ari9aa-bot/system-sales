@@ -174,6 +174,7 @@ export default function OrdersPage() {
               icon={<ShoppingCart aria-hidden="true" />}
               title={t.noOrders}
               description={t.noOrdersHint}
+              testid="orders-empty"
               action={
                 <Button size="sm" onClick={() => setOpen(true)}>
                   <Plus aria-hidden="true" />

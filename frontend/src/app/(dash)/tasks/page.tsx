@@ -75,7 +75,7 @@ export default function TasksPage() {
 
       <div className="mb-4 flex flex-wrap gap-2" role="group" aria-label={t.actions}>
         {(["all", "todo", "in_progress", "done"] as const).map((value) => (
-          <Button key={value} size="sm" variant={filter === value ? "default" : "outline"} onClick={() => setFilter(value)}>
+          <Button key={value} size="sm" variant={filter === value ? "default" : "outline"} onClick={() => setFilter(value)} data-testid={`task-filter-${value}`}>
             {value === "all" ? t.taskAll : statusLabels[value]}
           </Button>
         ))}
@@ -84,7 +84,7 @@ export default function TasksPage() {
       {tasksQuery.isLoading ? (
         <Card><CardContent className="space-y-3 p-5"><div className="h-5 w-40 animate-pulse rounded bg-muted" /><div className="h-12 animate-pulse rounded bg-muted" /><div className="h-12 animate-pulse rounded bg-muted" /></CardContent></Card>
       ) : tasks.length === 0 ? (
-        <Card><EmptyState icon={<ListChecks aria-hidden="true" />} title={t.tasksEmpty} description={filter === "all" ? t.tasksEmptyHint : t.noTableResults} action={<Button size="sm" onClick={() => setOpen(true)}><Plus aria-hidden="true" />{t.newTask}</Button>} /></Card>
+        <Card><EmptyState icon={<ListChecks aria-hidden="true" />} title={t.tasksEmpty} description={filter === "all" ? t.tasksEmptyHint : t.noTableResults} testid="tasks-empty" action={<Button size="sm" onClick={() => setOpen(true)}><Plus aria-hidden="true" />{t.newTask}</Button>} /></Card>
       ) : (
         <Card>
           <CardContent className="divide-y divide-border p-0">
@@ -96,11 +96,11 @@ export default function TasksPage() {
                 </div>
                 <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_STYLES[task.status]}`}>{statusLabels[task.status]}</span>
                 {task.status !== "done" && task.status !== "cancelled" ? (
-                  <Button size="sm" variant="outline" onClick={() => updateStatus.mutate({ taskId: task.id, status: "done" })} disabled={updateStatus.isPending}>
+                  <Button size="sm" variant="outline" onClick={() => updateStatus.mutate({ taskId: task.id, status: "done" })} disabled={updateStatus.isPending} data-testid={`task-done-${task.id}`}>
                     <Check aria-hidden="true" />{t.taskMarkDone}
                   </Button>
                 ) : task.status === "done" ? (
-                  <Button size="sm" variant="ghost" onClick={() => updateStatus.mutate({ taskId: task.id, status: "todo" })} disabled={updateStatus.isPending}>{t.taskReopen}</Button>
+                  <Button size="sm" variant="ghost" onClick={() => updateStatus.mutate({ taskId: task.id, status: "todo" })} disabled={updateStatus.isPending} data-testid={`task-reopen-${task.id}`}>{t.taskReopen}</Button>
                 ) : null}
               </div>
             ))}
@@ -116,7 +116,7 @@ export default function TasksPage() {
             <div><Label htmlFor="task-description">{t.taskDescription}</Label><Textarea id="task-description" value={description} onChange={(e) => setDescription(e.target.value)} /></div>
             <div><Label htmlFor="task-priority">{t.taskPriority}</Label><Select id="task-priority" value={priority} onChange={(e) => setPriority(e.target.value)}><option value="1">1</option><option value="2">2</option><option value="3">3</option></Select></div>
           </div>
-          <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>{t.cancel}</Button><Button onClick={submit} disabled={!title.trim() || createTask.isPending}>{t.taskCreate}</Button></DialogFooter>
+          <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>{t.cancel}</Button><Button onClick={submit} disabled={!title.trim() || createTask.isPending} data-testid="task-submit">{t.taskCreate}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

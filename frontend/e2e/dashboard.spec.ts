@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { mockShell, seedAuth, seedLang } from "./support";
+
 const dashboardFixture = {
   orders: { orders_count: 4, revenue: 1250, aov: 312.5 },
   ai_orders_30d: 1,
@@ -12,12 +14,13 @@ const dashboardFixture = {
 };
 
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => {
-    window.localStorage.setItem(
-      "sales_os_tokens",
-      JSON.stringify({ access_token: "test-access", refresh_token: "test-refresh" }),
-    );
-  });
+  await seedAuth(page);
+  await seedLang(page, "en");
+  // The shell fetches /auth/me, the health badge and the notification bell, and
+  // opens the SSE stream. Without these mocked the page under test is competing
+  // with three unmocked requests and an SSE retry loop — which is what made this
+  // spec fail the first time it ever ran in CI.
+  await mockShell(page);
   await page.route("**/api/v1/analytics/dashboard", async (route) => {
     await route.fulfill({ json: dashboardFixture });
   });
@@ -37,6 +40,8 @@ test("command palette opens and filters navigation", async ({ page }) => {
 
   await page.keyboard.press("Control+k");
   await expect(page.getByTestId("command-input")).toBeVisible();
-  await page.getByTestId("command-input").fill("مخزون");
+  // "inventory" rather than the Arabic label: seedLang pins the UI to English so
+  // the assertion does not depend on which translation is active.
+  await page.getByTestId("command-input").fill("inventory");
   await expect(page.getByTestId("command-nav-inventory")).toBeVisible();
 });

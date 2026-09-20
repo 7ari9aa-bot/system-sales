@@ -356,6 +356,7 @@ function InboxContent() {
                 icon={<MessageCircleOff aria-hidden="true" />}
                 title={t.noConversations}
                 description={t.noConversationsHint}
+                testid="inbox-empty"
               />
             ) : (
               <>

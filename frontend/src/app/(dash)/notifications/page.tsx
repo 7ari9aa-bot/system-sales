@@ -303,6 +303,7 @@ export default function NotificationsPage() {
             icon={unreadOnly ? <BellOff aria-hidden="true" /> : <Inbox aria-hidden="true" />}
             title={unreadOnly ? t.allCaughtUp : t.noNotifications}
             description={unreadOnly ? t.notificationsAllRead : t.noNotificationsHint}
+            testid="notifications-empty"
           />
         ) : (
           <Card>

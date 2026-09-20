@@ -27,15 +27,21 @@ function EmptyState({
   description,
   action,
   className,
+  testid,
 }: {
   icon?: React.ReactNode;
   title: string;
   description?: string;
   action?: React.ReactNode;
   className?: string;
+  /** Stable hook for E2E — the copy itself is translated, the testid is not. */
+  testid?: string;
 }) {
   return (
-    <div className={cn("flex flex-col items-center justify-center gap-2 rounded-xl px-6 py-12 text-center", className)}>
+    <div
+      data-testid={testid}
+      className={cn("flex flex-col items-center justify-center gap-2 rounded-xl px-6 py-12 text-center", className)}
+    >
       {icon && (
         <div className="mb-1 flex size-11 items-center justify-center rounded-full bg-muted text-muted-foreground [&_svg]:size-5">
           {icon}
@@ -53,6 +59,7 @@ function ErrorState({ message, onRetry, className }: { message: string; onRetry?
   return (
     <div
       role="alert"
+      data-testid="error-state"
       className={cn(
         "flex flex-col items-center justify-center gap-2 rounded-xl border border-danger/20 bg-danger-soft/50 px-6 py-10 text-center",
         className,

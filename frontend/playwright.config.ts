@@ -13,7 +13,10 @@ export default defineConfig({
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
-    command: "npm run dev",
+    // CI exercises the artefact that ships: the job builds first and this then
+    // serves the production bundle. `next dev` compiles routes on demand, which
+    // turns the first hit of each page into a timeout risk under CI load.
+    command: process.env.CI ? "npm run start" : "npm run dev",
     url: "http://127.0.0.1:3000",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

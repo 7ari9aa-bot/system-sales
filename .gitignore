@@ -32,9 +32,15 @@ next-env.d.ts
 
 # --- playwright (test artefacts, never source) ---
 test-results/
+test-results.*/
 playwright-report/
 blob-report/
 .playwright/
+# Variants created by the `mv` workarounds for the sandbox blocking Next's and
+# Playwright's own cache cleanup. `.next/` alone does not cover `.next.dev/`,
+# `.next.prev/` etc., and each one left untracked junk that was one `git add -A`
+# away from being committed.
+.next.*/
 
 # --- misc ---
 .DS_Store
