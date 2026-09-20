@@ -8,25 +8,6 @@ import { Reveal } from "@/components/public/reveal";
 import { StepsRow, ContextGraph, FeatureList, FaqList } from "@/components/public/blocks";
 import { BentoFeatures } from "@/components/public/bento-features";
 
-/* ---------- شريط الإحصائيات ---------- */
-export function StatsBar() {
-  const { t } = useI18n();
-  return (
-    <section className="fh-stats" id="stats">
-      <div className="fh-container">
-        <div className="fh-stats-grid">
-          {(t.stats.items as [string, string][]).map(([num, label]) => (
-            <div key={label} className="fh-stat">
-              <b>{num}</b>
-              <small>{label}</small>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
 /* ---------- قسم موحّد: إزاي بيشتغل + سياق العمل ---------- */
 export function HowContextSection() {
   const { t } = useI18n();
