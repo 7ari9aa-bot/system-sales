@@ -15,10 +15,17 @@ jobs:
       # unset ENVIRONMENT fails closed instead of skipping the config checks
       # (review G-05), which means CI must opt out explicitly.
       ENVIRONMENT: local
-      # Local CI database — migrations + provision run against it, pytest
-      # connects through DATABASE_URL_APP_ADMIN (tests skip without it).
+      # Migrations and provisioning run as the admin role.
       DATABASE_URL_ADMIN: postgresql+asyncpg://postgres:postgres@localhost:5432/sales
-      DATABASE_URL_APP_ADMIN: postgresql+asyncpg://postgres:postgres@localhost:5432/sales
+      # Tests connect as `sales_app` — the SAME role production uses — because
+      # `postgres` has rolbypassrls, which meant RLS was never enforced for the
+      # test connection at all. That is how a FORCE-RLS production table was
+      # written to by an unbound worker for its entire life without a red build.
+      # provision.py creates this role and sets its password from
+      # SALES_APP_DB_PASSWORD (otherwise it generates a random one).
+      SALES_APP_DB_PASSWORD: ci-app-password
+      DATABASE_URL_APP: postgresql+asyncpg://sales_app:ci-app-password@localhost:5432/sales
+      DATABASE_URL_APP_ADMIN: postgresql+asyncpg://sales_app:ci-app-password@localhost:5432/sales
     services:
       postgres:
         image: pgvector/pgvector:pg17

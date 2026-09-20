@@ -1,11 +1,20 @@
 """Shared test fixtures.
 
-DB-backed tests run against the REAL Supabase database as the sales_app role
-(RLS enforced), but every test executes inside a transaction that is rolled
-back at the end — so tests are isolated and never leave data behind.
+DB-backed tests run against a REAL PostgreSQL as the `sales_app` role, with RLS
+enforced, but every test executes inside a transaction that is rolled back at
+the end — so tests are isolated and never leave data behind.
 
-Requires DATABASE_URL_APP_ADMIN (session pooler) — created by
-scripts/provision.py. Tests skip when it is not configured (e.g. fresh CI).
+**The connected ROLE matters, not just the database.** `DATABASE_URL_APP_ADMIN`
+must point at `sales_app`, which `scripts/provision.py` creates without
+BYPASSRLS. It previously pointed at `postgres` in CI, and `postgres` has
+`rolbypassrls = true` — so RLS was silently NOT enforced for the whole suite.
+That is how `scheduled_jobs`, a FORCE-RLS table in production, was written to by
+an unbound worker for its entire life without a single red build: the tests that
+should have caught it were running as a role that ignores the policy.
+
+If you point this at a superuser or a BYPASSRLS role, every RLS test becomes
+vacuous. `test_scheduler_rls.py` asserts the role does not bypass RLS and skips
+loudly if it does, so the gap is visible rather than silent.
 """
 
 from __future__ import annotations
