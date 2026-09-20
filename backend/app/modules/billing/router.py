@@ -11,10 +11,13 @@ future outbound-delivery surface.
 
 from __future__ import annotations
 
+from datetime import date
+from decimal import Decimal
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from app.modules.billing.service import BillingService
+from app.modules.billing.service import BillingService, BillingSnapshotService
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
 from app.modules.platform.service import WebhookService
 
@@ -70,7 +73,8 @@ async def start_trial(ctx: TenantContext = Depends(require_permission("billing:w
 
 class UsageRequest(BaseModel):
     feature: str = Field(max_length=63)
-    quantity: float = Field(gt=0)
+    # Decimal, not float: `usage_records.quantity` is Numeric(14,2).
+    quantity: Decimal = Field(gt=0)
 
 
 @billing_router.post("/usage", status_code=201)
@@ -80,4 +84,40 @@ async def record_usage(ctx: TenantCtxDep, body: UsageRequest):
     )
     used = await BillingService.used_this_period(ctx.session, ctx.tenant_id, body.feature)
     return {"feature": body.feature, "used_this_period": used}
+
+
+class ClosePeriodRequest(BaseModel):
+    period_start: date
+    period_end: date
+
+
+@billing_router.post("/periods/close", status_code=201)
+async def close_billing_period(
+    body: ClosePeriodRequest,
+    ctx: TenantContext = Depends(require_permission("billing:write")),
+):
+    """Freeze a period into an immutable snapshot. 409 if already closed."""
+    invoice = await BillingSnapshotService.close_period(
+        ctx.session,
+        ctx.tenant_id,
+        period_start=body.period_start,
+        period_end=body.period_end,
+    )
+    return BillingSnapshotService.snapshot_view(invoice)
+
+
+@billing_router.get("/periods/snapshot")
+async def get_billing_snapshot(
+    ctx: TenantCtxDep,
+    period_start: date,
+    period_end: date,
+):
+    """Read a closed period's frozen totals — never a live re-aggregation."""
+    invoice = await BillingSnapshotService.get_snapshot(
+        ctx.session,
+        ctx.tenant_id,
+        period_start=period_start,
+        period_end=period_end,
+    )
+    return BillingSnapshotService.snapshot_view(invoice)
 

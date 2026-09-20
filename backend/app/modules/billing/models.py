@@ -142,7 +142,27 @@ class Invoice(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     # provider: stripe | manual
     provider: Mapped[str | None] = mapped_column(String(15))
     provider_ref: Mapped[str | None] = mapped_column(String(255))
+    # Spec §53–54: the billing period this row is the FROZEN SNAPSHOT of.
+    #
+    # These were missing: the period only lived inside `extra` JSONB, where it
+    # cannot be constrained or indexed, so nothing stopped a second snapshot
+    # being written for a period that was already closed — which is the whole
+    # immutability guarantee. Nullable because rows created before period
+    # snapshots existed have no period; NULLs are distinct in a UNIQUE
+    # constraint, so legacy rows never collide with each other.
+    period_start: Mapped[date | None] = mapped_column(Date, nullable=True)
+    period_end: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     __table_args__ = (
         UniqueConstraint("tenant_id", "number", name="uq_invoices_tenant_number"),
+        # The enforcement point for immutability: one snapshot per period, per
+        # tenant. An application-level "already closed?" check is a
+        # check-then-insert race; only the database can serialise two concurrent
+        # closes.
+        UniqueConstraint(
+            "tenant_id",
+            "period_start",
+            "period_end",
+            name="uq_invoices_tenant_period",
+        ),
     )
