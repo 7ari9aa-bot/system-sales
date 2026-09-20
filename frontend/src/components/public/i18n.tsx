@@ -54,6 +54,11 @@ const ar = {
       ["نورة", "تم الرد", "طلب #1023"],
     ],
     mockAi: "العميل ده من العملاء المميزين وطلبهم شُحن بالفعل — أقترح ردّ جاهز للتأكيد.",
+    mockAiRows: [
+      "العميل ده من العملاء المميزين وطلبهم شُحن بالفعل — أقترح ردّ جاهز للتأكيد.",
+      "مفيش حد ردّ على العميل ده من 10 دقايق — أقترح تصعيد لفريق المبيعات.",
+      "الطلب اتردّ عليه بنجاح — أقترح متابعة بعد الشحن لقياس الرضا.",
+    ],
   },
   stats: {
     items: [
@@ -477,6 +482,11 @@ const en: typeof ar = {
       ["Noura", "Replied", "Order #1023"],
     ],
     mockAi: "This is a VIP customer and their order has shipped — here's a suggested reply to confirm.",
+    mockAiRows: [
+      "This is a VIP customer and their order has shipped — here's a suggested reply to confirm.",
+      "No one has replied to this customer in 10 min — I suggest escalating to the sales team.",
+      "This conversation was resolved — I suggest a follow-up after delivery to measure satisfaction.",
+    ],
   },
   stats: {
     items: [
