@@ -79,6 +79,37 @@ async def db(_engine) -> AsyncIterator[AsyncSession]:
         await _engine.dispose()
 
 
+@pytest.fixture
+async def app_sessions_on_test_connection(monkeypatch, db):
+    """Bind the APP's own session factory to the test connection.
+
+    Some production paths DELIBERATELY open their own short-lived session so their
+    writes survive the request rollback that follows a rejection —
+    `_revoke_family_on_reuse` and `record_security_event` both do, and that design
+    is correct. It is also untestable by default, for two separate reasons:
+
+    1. The app's engine is process-wide and bound to whichever event loop created
+       it, while pytest-asyncio gives every test a fresh loop — so the connection
+       raises RuntimeError. (In production there is one loop, so this is purely a
+       harness artifact.)
+    2. Even once it connects, a separate connection cannot see THIS test's
+       uncommitted rows, so an UPDATE against them matches nothing.
+
+    Binding the factory to the test connection fixes both at once: same loop, same
+    transaction.
+
+    Patched through `get_sessionmaker`, not `SessionLocal`: the latter is produced
+    by `app/core/db.py`'s `__getattr__`, and restoring it by assignment would leave
+    a real attribute permanently shadowing the lazy one.
+    """
+    conn = await db.connection()
+    factory = async_sessionmaker(
+        bind=conn, expire_on_commit=False, join_transaction_mode="create_savepoint"
+    )
+    monkeypatch.setattr("app.core.db.get_sessionmaker", lambda: factory)
+    return factory
+
+
 class TenantCtx:
     """A disposable tenant + owner user bound into the request context."""
 

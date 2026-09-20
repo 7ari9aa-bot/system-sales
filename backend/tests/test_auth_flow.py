@@ -61,7 +61,15 @@ async def test_login_wrong_password_denied(db):
         await AuthService.login(db, email="ghost@test.local", password="nope")
 
 
-async def test_refresh_token_reuse_revokes_family(db):
+async def test_refresh_token_reuse_revokes_family(db, app_sessions_on_test_connection):
+    """Reuse must revoke the whole family — and the revocation must be durable.
+
+    `_revoke_family_on_reuse` deliberately runs on its OWN session so the
+    revocation survives the rollback that follows the 401. That means it cannot
+    use the `db` fixture's connection unless the app's session factory is bound to
+    it, which is what `app_sessions_on_test_connection` does — see the fixture's
+    docstring for why the default fails.
+    """
     email = f"reuse-{uuid.uuid4().hex[:8]}@test.local"
     user, tenant = await AuthService.register(
         db,
