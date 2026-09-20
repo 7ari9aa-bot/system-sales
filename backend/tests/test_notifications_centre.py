@@ -12,6 +12,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from pydantic import ValidationError as PydanticValidationError
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import NotFoundError
@@ -81,14 +82,18 @@ async def _notify(
     tenant_id: uuid.UUID,
     user_id: uuid.UUID,
     *,
+    minutes: int,
     kind: str = "system",
     body: str = "hello",
-    minutes: int | None = None,
 ) -> Notification:
-    if minutes is None:
-        return await NotificationService.create(
-            db, tenant_id, user_id, kind=kind, body=body
-        )
+    """Insert a notification with an EXPLICIT created_at.
+
+    `minutes` is required on purpose. Postgres `now()` is the *transaction*
+    time, so every row created through the service inside one test transaction
+    shares a timestamp — and the list's `id` tiebreaker is a random uuid4, so an
+    ordering assertion over those rows is meaningless. A distinct `minutes` is
+    the only thing that makes an order assertion mean anything.
+    """
     notif = Notification(
         tenant_id=tenant_id,
         user_id=user_id,
@@ -115,9 +120,9 @@ async def test_list_is_newest_first(db: AsyncSession, tenant_ctx):
 
 async def test_list_filters_by_kind(db: AsyncSession, tenant_ctx):
     tenant_id, user_id = tenant_ctx.tenant_id, tenant_ctx.user.id
-    await _notify(db, tenant_id, user_id, kind="sla_breach", body="a")
-    await _notify(db, tenant_id, user_id, kind="order_paid", body="b")
-    await _notify(db, tenant_id, user_id, kind="order_paid", body="c")
+    await _notify(db, tenant_id, user_id, kind="sla_breach", body="a", minutes=10)
+    await _notify(db, tenant_id, user_id, kind="order_paid", body="b", minutes=20)
+    await _notify(db, tenant_id, user_id, kind="order_paid", body="c", minutes=30)
 
     only_paid = await NotificationService.list_for_user(
         db, tenant_id, user_id, kind="order_paid"
@@ -127,8 +132,8 @@ async def test_list_filters_by_kind(db: AsyncSession, tenant_ctx):
 
 async def test_list_filters_unread_only(db: AsyncSession, tenant_ctx):
     tenant_id, user_id = tenant_ctx.tenant_id, tenant_ctx.user.id
-    read_one = await _notify(db, tenant_id, user_id, body="read")
-    await _notify(db, tenant_id, user_id, body="unread")
+    read_one = await _notify(db, tenant_id, user_id, body="read", minutes=10)
+    await _notify(db, tenant_id, user_id, body="unread", minutes=20)
     await NotificationService.mark_read(db, tenant_id, user_id, read_one.id)
 
     unread = await NotificationService.list_for_user(
@@ -142,7 +147,7 @@ async def test_list_never_returns_another_users_notifications(
 ):
     tenant_id = tenant_ctx.tenant_id
     other = await _other_user(db)
-    await _notify(db, tenant_id, other.id, body="not yours")
+    await _notify(db, tenant_id, other.id, body="not yours", minutes=10)
 
     rows = await NotificationService.list_for_user(db, tenant_id, tenant_ctx.user.id)
     assert rows == []
@@ -155,9 +160,9 @@ async def test_summary_counts_total_unread_and_by_kind(
     db: AsyncSession, tenant_ctx
 ):
     tenant_id, user_id = tenant_ctx.tenant_id, tenant_ctx.user.id
-    first = await _notify(db, tenant_id, user_id, kind="sla_breach", body="a")
-    await _notify(db, tenant_id, user_id, kind="sla_breach", body="b")
-    await _notify(db, tenant_id, user_id, kind="order_paid", body="c")
+    first = await _notify(db, tenant_id, user_id, kind="sla_breach", body="a", minutes=10)
+    await _notify(db, tenant_id, user_id, kind="sla_breach", body="b", minutes=20)
+    await _notify(db, tenant_id, user_id, kind="order_paid", body="c", minutes=30)
     await NotificationService.mark_read(db, tenant_id, user_id, first.id)
 
     summary = await NotificationService.summary(db, tenant_id, user_id)
@@ -179,7 +184,7 @@ async def test_summary_on_an_empty_inbox_is_zeroed(db: AsyncSession, tenant_ctx)
 async def test_summary_ignores_other_users(db: AsyncSession, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     other = await _other_user(db)
-    await _notify(db, tenant_id, other.id, body="not yours")
+    await _notify(db, tenant_id, other.id, body="not yours", minutes=10)
 
     summary = await NotificationService.summary(db, tenant_id, tenant_ctx.user.id)
     assert summary["total"] == 0
@@ -198,7 +203,7 @@ async def test_mark_read_raises_not_found(db: AsyncSession, tenant_ctx):
 
 async def test_mark_read_is_idempotent(db: AsyncSession, tenant_ctx):
     tenant_id, user_id = tenant_ctx.tenant_id, tenant_ctx.user.id
-    notif = await _notify(db, tenant_id, user_id)
+    notif = await _notify(db, tenant_id, user_id, minutes=10)
 
     first = await NotificationService.mark_read(db, tenant_id, user_id, notif.id)
     stamped = first.read_at
@@ -214,7 +219,7 @@ async def test_mark_read_cannot_touch_another_users_notification(
 ):
     tenant_id = tenant_ctx.tenant_id
     other = await _other_user(db)
-    theirs = await _notify(db, tenant_id, other.id)
+    theirs = await _notify(db, tenant_id, other.id, minutes=10)
 
     with pytest.raises(NotFoundError):
         await NotificationService.mark_read(db, tenant_id, tenant_ctx.user.id, theirs.id)
@@ -224,9 +229,9 @@ async def test_mark_many_read_only_touches_the_given_ids(
     db: AsyncSession, tenant_ctx
 ):
     tenant_id, user_id = tenant_ctx.tenant_id, tenant_ctx.user.id
-    a = await _notify(db, tenant_id, user_id, body="a")
-    b = await _notify(db, tenant_id, user_id, body="b")
-    await _notify(db, tenant_id, user_id, body="c")
+    a = await _notify(db, tenant_id, user_id, body="a", minutes=10)
+    b = await _notify(db, tenant_id, user_id, body="b", minutes=20)
+    await _notify(db, tenant_id, user_id, body="c", minutes=30)
 
     marked = await NotificationService.mark_many_read(db, tenant_id, user_id, [a.id, b.id])
     assert marked == 2
@@ -240,7 +245,7 @@ async def test_mark_many_read_only_touches_the_given_ids(
 async def test_mark_many_read_is_scoped_to_the_caller(db: AsyncSession, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     other = await _other_user(db)
-    theirs = await _notify(db, tenant_id, other.id)
+    theirs = await _notify(db, tenant_id, other.id, minutes=10)
 
     marked = await NotificationService.mark_many_read(
         db, tenant_id, tenant_ctx.user.id, [theirs.id]
@@ -258,9 +263,9 @@ async def test_mark_all_read_reports_the_count_and_is_scoped(
 ):
     tenant_id, user_id = tenant_ctx.tenant_id, tenant_ctx.user.id
     other = await _other_user(db)
-    await _notify(db, tenant_id, user_id, body="a")
-    await _notify(db, tenant_id, user_id, body="b")
-    theirs = await _notify(db, tenant_id, other.id, body="theirs")
+    await _notify(db, tenant_id, user_id, body="a", minutes=10)
+    await _notify(db, tenant_id, user_id, body="b", minutes=20)
+    theirs = await _notify(db, tenant_id, other.id, body="theirs", minutes=30)
 
     marked = await NotificationService.mark_all_read(db, tenant_id, user_id)
     assert marked == 2
@@ -279,6 +284,7 @@ async def test_mark_all_read_reports_the_count_and_is_scoped(
 
 
 async def test_create_dedups_on_dedup_key(db: AsyncSession, tenant_ctx):
+    """Exercises the service's own create() path (not the _notify helper)."""
     tenant_id, user_id = tenant_ctx.tenant_id, tenant_ctx.user.id
 
     first = await NotificationService.create(
@@ -291,3 +297,24 @@ async def test_create_dedups_on_dedup_key(db: AsyncSession, tenant_ctx):
     assert second.id == first.id
     assert second.body == "x"
     assert await NotificationService.unread_count(db, tenant_id, user_id) == 1
+
+
+async def test_create_relies_on_the_channel_server_default(
+    db: AsyncSession, tenant_ctx
+):
+    """create() never sets `channel`.
+
+    The model declares server_default="inapp" for it, so SQLAlchemy omits the
+    column and Postgres supplies the value. When the database had no default
+    this raised NotNullViolationError and no notification could be created at
+    all — this pins that the default is really there.
+    """
+    notif = await NotificationService.create(
+        db, tenant_ctx.tenant_id, tenant_ctx.user.id, kind="system", body="hi"
+    )
+    stored = (
+        await db.execute(
+            select(Notification.channel).where(Notification.id == notif.id)
+        )
+    ).scalar_one()
+    assert stored == "inapp"
