@@ -7,6 +7,7 @@ import uuid
 from fastapi import APIRouter, Depends, Request, Response
 
 from app.core.errors import PermissionDeniedError
+from app.modules.billing.service import EntitlementService
 from app.modules.identity import schemas, service
 from app.modules.identity.deps import (
     CurrentUserDep,
@@ -154,6 +155,9 @@ async def create_invitation(
 ):
     if ctx.tenant_id != tenant_id:
         raise PermissionDeniedError("tenant mismatch")
+    # §165: seat limits are a plan entitlement. Enforced here so the invitation
+    # cannot be created at all, rather than failing at acceptance time.
+    await EntitlementService.ensure(ctx.session, tenant_id, "CanAddUser")
     invitation = await service.TenantService.invite(
         ctx.session,
         tenant_id=tenant_id,

@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
 from app.core.pagination import decode_cursor, page_slice
+from app.modules.billing.service import EntitlementService
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
 from app.modules.marketing import analytics
 from app.modules.marketing.service import MarketingService
@@ -97,6 +98,10 @@ async def list_campaigns(
 
 @router.post("/marketing/campaigns", status_code=201)
 async def create_campaign(ctx: WriteCtx, body: CampaignRequest):
+    # §165: entitlement enforcement lives in ONE service, not per module.
+    # Without this the plan was decorative — any tenant could launch campaigns
+    # regardless of what they pay for.
+    await EntitlementService.ensure(ctx.session, ctx.tenant_id, "CanSendCampaign")
     campaign = await MarketingService.create_campaign(
         ctx.session,
         ctx.tenant_id,

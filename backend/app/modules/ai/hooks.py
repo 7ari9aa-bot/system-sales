@@ -64,6 +64,19 @@ async def _do_auto_reply(
     if agent is None:
         return
 
+    # §165: whether the plan includes AI is an entitlement, and it is checked
+    # in ONE service rather than here. A tenant without it is not an error —
+    # the conversation simply waits for a human, so we skip (never raise: a
+    # raised error would retry and dead-letter the customer's message).
+    from app.modules.billing.service import EntitlementService
+
+    if not await EntitlementService.can(session, tenant_id, "CanUseAI"):
+        logger.info(
+            "auto-reply skipped: plan does not include AI conversation=%s",
+            conversation_id,
+        )
+        return
+
     history = await ConversationService.list_messages(
         session, tenant_id, conversation_id, limit=HISTORY_MESSAGES
     )

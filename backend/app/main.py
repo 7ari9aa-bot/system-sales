@@ -64,6 +64,7 @@ from app.modules.operations.router import (
     search_router as operations_search_router,
 )
 from app.modules.orders.router import router as orders_router
+from app.modules.platform.router import router as platform_module_router
 from app.modules.privacy.router import router as privacy_router
 from app.modules.realtime.router import router as realtime_router
 from app.modules.segments.router import router as segments_router
@@ -172,6 +173,7 @@ def create_app() -> FastAPI:
         realtime_router,
         notifications_router,
         privacy_router,
+        platform_module_router,
         segments_router,
         automation_router,
     ):

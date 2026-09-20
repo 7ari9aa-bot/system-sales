@@ -11,6 +11,7 @@ from sqlalchemy import select
 
 from app.core.errors import NotFoundError
 from app.core.pagination import decode_cursor, page_slice
+from app.modules.billing.service import EntitlementService
 from app.modules.customers.service import CustomerService
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
 from app.modules.identity.models import Invitation, Role
@@ -155,6 +156,10 @@ async def upsert_integration(
         existing.credentials = body.credentials
         existing.status = body.status
         return {"id": str(existing.id), "status": existing.status}
+    # §165: how many channels a plan includes is an entitlement. Only the
+    # CREATE branch is gated — refreshing an existing integration is not a new
+    # channel and must keep working after a downgrade.
+    await EntitlementService.ensure(ctx.session, ctx.tenant_id, "CanCreateChannel")
     integration = Integration(
         tenant_id=ctx.tenant_id,
         provider=body.provider,
