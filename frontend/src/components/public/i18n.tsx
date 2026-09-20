@@ -143,6 +143,39 @@ const ar = {
     ],
     note: "التسعير النهائي للإطلاق بيتحدد بعد فترة الوصول المبكر — واللي هيشتركوا بدري هياخدوا أفضل شروط نقدر نقدمها النهاردة.",
   },
+  features: {
+    title: "ليه FIHRIST؟ ست قدرات في نظام واحد.",
+    sub: "مش تجميع أدوات — كل قدرة بتبقى متصلة بنفس سياق العمل، فالقرارات أسرع والجهد أقل.",
+    items: [
+      ["صندوق موحّد لكل المحادثات", "شات الموقع وواتساب وتيليجرام وإنستجرام في صندوق واحد — مع تاريخ العميل وطلباته جنب كل رسالة."],
+      ["سياق عمل متصل", "المحادثة مرتبطة بالعميل، والعميل بطلباته، والطلب بدفعته — سياق واحد بيتحرك معاك في كل شاشة، من غير نسخ ولصق بين أدوات."],
+      ["أتمتة بمسارات ومنطق", "مسارات تشغيلية بحدث وشرط ومنطق — بتنفذ إجراءات جوه النظام بموافقات بشرية لما تلزم وتدقيق كامل لكل تشغيلة."],
+      ["ذكاء اصطناعي بصلاحيات", "المساعد بيفهم نية العميل وينفذ إجراءات مسموحة فقط — من غير أي وصول مباشر لقاعدة البيانات، وكل تشغيلة مسجّلة."],
+      ["تجارة ومخزون", "منتجات ومخزون وطلبات ومدفوعات — كل اللي بتحتاجه عشان تبيع وتدير عمليتك في مكان واحد."],
+      ["تحليلات وتقارير", "لوحات أداء ومؤشرات وتتبّع حملات — قرارات مبنية على بيانات حقيقية مش حدس."],
+    ],
+  },
+  useCases: {
+    title: "FIHRIST لمين؟",
+    sub: "مصمم لكل اللي بيبيع أونلاين — من المتجر الصغير للعملية الكبيرة.",
+    items: [
+      ["المتاجر الإلكترونية", "وحّد محادثات البيع والاستفسارات والمتابعات في صندوق واحد، وخلّي الأتمتة تردّ على الأسئلة الشائعة وتصعّد لما يلزم."],
+      ["الأنشطة التجارية", "مطاعم وكافيهات وصالونات — ردود سريعة للعملاء، طلبات منظّمة، ومسارات تلقائية للتأكيدات والتذكيرات."],
+      ["وكالات التسويق", "أدِر محادثات عملاء متعددين من فريق واحد، مع صلاحيات لكل عضو وتقارير أداء لكل عميل."],
+    ],
+  },
+  faq: {
+    title: "أسئلة شائعة",
+    sub: "كل اللي بيهمك تعرفه قبل ما تبدأ — ولو مفيش إجابتك، اسأل المساعد فوق.",
+    items: [
+      ["هل فعلاً مجاني؟", "أيوة — الوصول المبكر مجاني لكل الخطط بدون بطاقة. لما يبدأ التسعير الفعلي هننبّهك قبل أي تغيير."],
+      ["أحتاج كود أو تثبيت؟", "لأ — FIHRIST منصة على المتصفح. بتعمل حساب وتبدأ على طول."],
+      ["قنواتي موجودة؟", "شات الموقع شغّال دلوقتي. واتساب وتيليجرام وإنستجرام وماسنجر على خريطة التكامل القادمة."],
+      ["بياناتي آمنة؟", "عزل بيانات لكل مستأجر على مستوى قاعدة البيانات (RLS)، صلاحيات وأدوار، جلسات مصادقة آمنة، وسجلات تدقيق كاملة."],
+      ["أقدر ألغي؟", "أيوة — تقدر تحذف حسابك في أي وقت. بياناتك بتاعتك."],
+      ["الذكاء الاصطناعي بيستخدم بياناتي للتدريب؟", "لأ — مفيش استخدام لبياناتك في تدريب أي نموذج، ومفيش بيع للبيانات لأي حد."],
+    ],
+  },
   final: {
     title: "سياق عمل واحد. نظام تشغيل واحد.",
     sub: "ابدأ النهاردة مجانًا — وشوف كل حاجة بنفسك جوه النظام.",
@@ -501,6 +534,39 @@ const en: typeof ar = {
       },
     ],
     note: "Final launch pricing will be set after early access — early adopters get the best terms we can offer today.",
+  },
+  features: {
+    title: "Why FIHRIST? Six capabilities in one system.",
+    sub: "Not a bundle of tools — every capability shares the same business context, so decisions are faster and effort is lower.",
+    items: [
+      ["One inbox for every conversation", "Website chat, WhatsApp, Telegram and Instagram in a single inbox — with the customer's history and orders beside every message."],
+      ["Connected business context", "A conversation links to the customer, the customer to their orders, the order to its payment — one context moves with you across every screen, no copy-pasting between tools."],
+      ["Automation with paths and logic", "Operational runs with events, conditions and logic — performing actions inside the system, with human approvals where needed and full audit of every run."],
+      ["AI with permissions", "The assistant understands customer intent and runs only permitted actions — with no direct database access, and every run logged."],
+      ["Commerce and inventory", "Products, inventory, orders and payments — everything you need to sell and run your operation in one place."],
+      ["Analytics and reports", "Performance dashboards, metrics and campaign tracking — decisions based on real data, not guesswork."],
+    ],
+  },
+  useCases: {
+    title: "Who is FIHRIST for?",
+    sub: "Built for anyone selling online — from a small store to a large operation.",
+    items: [
+      ["E-commerce stores", "Unify sales chats, inquiries and follow-ups in one inbox, and let automation answer common questions and escalate when needed."],
+      ["Local businesses", "Restaurants, cafés and salons — fast customer replies, organized orders, and automated confirmations and reminders."],
+      ["Marketing agencies", "Manage multiple clients' conversations from one team, with per-member permissions and performance reports per client."],
+    ],
+  },
+  faq: {
+    title: "Frequently asked questions",
+    sub: "Everything you'd want to know before you start — and if your answer isn't here, ask the assistant above.",
+    items: [
+      ["Is it really free?", "Yes — early access is free across all plans, no card required. When real pricing begins, we'll notify you before any change."],
+      ["Do I need code or installation?", "No — FIHRIST is a browser platform. Create an account and start right away."],
+      ["Are my channels available?", "Website chat is live today. WhatsApp, Telegram, Instagram and Messenger are on the integration roadmap."],
+      ["Is my data safe?", "Per-tenant data isolation at the database level (RLS), role-based permissions, secure session authentication, and full audit logs."],
+      ["Can I cancel?", "Yes — you can delete your account anytime. Your data is yours."],
+      ["Does the AI use my data for training?", "No — your data is never used to train any model, and never sold to anyone."],
+    ],
   },
   final: {
     title: "One business context. One operating system.",
