@@ -5,7 +5,7 @@
 import Link from "next/link";
 import { useI18n } from "@/components/public/i18n";
 import { Reveal } from "@/components/public/reveal";
-import { StepsRow, ContextGraph } from "@/components/public/blocks";
+import { StepsRow, ContextGraph, FeatureList, FaqList } from "@/components/public/blocks";
 
 /* ---------- إزاي بيشتغل (3 خطوات) ---------- */
 export function HowItWorks() {
@@ -207,6 +207,60 @@ export function PricingPreview() {
   );
 }
 
+
+/* ---------- ليه FIHRIST (المميزات) ---------- */
+export function FeaturesSection() {
+  const { t } = useI18n();
+  return (
+    <section className="fh-section" id="features">
+      <div className="fh-container">
+        <Reveal className="fh-section-head">
+          <h2>{t.features.title}</h2>
+          <p>{t.features.sub}</p>
+        </Reveal>
+        <Reveal stagger>
+          <FeatureList items={t.features.items as [string, string][]} cols={3} />
+        </Reveal>
+      </div>
+    </section>
+  );
+}
+
+/* ---------- لمين FIHRIST (حالات الاستخدام) ---------- */
+export function UseCasesSection() {
+  const { t } = useI18n();
+  return (
+    <section className="fh-section fh-section-alt" id="use-cases">
+      <div className="fh-container">
+        <Reveal className="fh-section-head">
+          <h2>{t.useCases.title}</h2>
+          <p>{t.useCases.sub}</p>
+        </Reveal>
+        <Reveal stagger>
+          <FeatureList items={t.useCases.items as [string, string][]} cols={3} />
+        </Reveal>
+      </div>
+    </section>
+  );
+}
+
+/* ---------- أسئلة شائعة ---------- */
+export function FaqSection() {
+  const { t } = useI18n();
+  return (
+    <section className="fh-section" id="faq">
+      <div className="fh-container">
+        <Reveal className="fh-section-head">
+          <h2>{t.faq.title}</h2>
+          <p>{t.faq.sub}</p>
+        </Reveal>
+        <Reveal>
+          <FaqList faq={t.faq.items as [string, string][]} />
+        </Reveal>
+      </div>
+    </section>
+  );
+}
 /* ---------- CTA ختامي ---------- */
 export function FinalCTA() {
   const { t } = useI18n();
