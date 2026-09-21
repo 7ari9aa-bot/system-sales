@@ -190,6 +190,36 @@ def upgrade() -> None:
     op.create_index("ix_sagas_tenant_aggregate", "sagas", ["tenant_id", "aggregate_type", "aggregate_id"])
 
     # --- §175: Journey Runs ---
+    # --- §175: Journeys — the definition table itself. The ORM model existed
+    # (marketing/journey.py) but NO migration ever created the table; the
+    # journey_runs FK below assumes it. Fresh databases failed here.
+    op.create_table(
+        "journeys",
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("workspace_id", sa.UUID(), nullable=True),
+        sa.Column("location_id", sa.UUID(), nullable=True),
+        sa.Column("name", sa.String(255), nullable=False),
+        sa.Column("description", sa.Text(), nullable=True),
+        sa.Column("trigger", postgresql.JSONB(), server_default="{}", nullable=False),
+        sa.Column("steps", postgresql.JSONB(), server_default="[]", nullable=False),
+        sa.Column("status", sa.String(15), server_default="draft", nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    op.create_index("ix_journeys_tenant_status", "journeys", ["tenant_id", "status"])
+
     op.create_table(
         "journey_runs",
         sa.Column("id", sa.UUID(), nullable=False),
