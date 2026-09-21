@@ -3,7 +3,7 @@
 /** API client: token storage, refresh-on-401, typed helpers.
  *  Tokens live in localStorage (staff dashboard, not a public surface). */
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API = process.env.NEXT_PUBLIC_API_URL ?? "/api/v1";
 
 /** Versioned API prefix — every path is relative to it (/api/v1/...). */
 export const API_PREFIX = "/api/v1";
@@ -75,7 +75,10 @@ export async function api<T = unknown>(
   if (options.idempotencyKey) headers["Idempotency-Key"] = options.idempotencyKey;
   if (options.ifMatch !== undefined) headers["If-Match"] = String(options.ifMatch);
 
-  const res = await fetch(`${API}${API_PREFIX}${path}`, {
+  const url = API.startsWith("/")
+    ? `${API}${path}`
+    : `${API}${API_PREFIX}${path}`;
+  const res = await fetch(url, {
     method: options.method ?? "GET",
     headers,
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
