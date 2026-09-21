@@ -22,6 +22,19 @@ from app.modules.conversations.gateway.base import (
 
 API_BASE = "https://api.telegram.org"
 
+# §155: Telegram update kind → canonical Message.content_type. Checked in this
+# order — an `animation` update also carries a `document` field, so animation
+# must win over document; a `video_note` is a round video message.
+_MEDIA_CONTENT: dict[str, str] = {
+    "photo": "image",
+    "voice": "voice",
+    "video": "video",
+    "video_note": "video",
+    "animation": "video",
+    "audio": "file",
+    "document": "file",
+}
+
 
 class TelegramAdapter:
     name = "telegram"
@@ -52,7 +65,8 @@ class TelegramAdapter:
             return []
         sender = update_message.get("from", {})
         caption = update_message.get("caption")
-        media = self._extract_media(update_message)
+        media, content_type = self._extract_media(update_message)
+        reply_to = (update_message.get("reply_to_message") or {}).get("message_id")
         messages.append(
             InboundMessage(
                 channel=self.name,
@@ -61,6 +75,8 @@ class TelegramAdapter:
                 customer_name=sender.get("first_name") or chat.get("title"),
                 body=update_message.get("text") or caption,
                 media_url=media,
+                content_type=content_type,
+                reply_to_message_id=str(reply_to) if reply_to is not None else None,
                 raw=update_message,
             )
         )
@@ -69,11 +85,17 @@ class TelegramAdapter:
     def parse_status_updates(self, payload: dict) -> list[StatusUpdate]:
         return []  # Bot API has no delivery receipts
 
-    def _extract_media(self, update_message: dict) -> str | None:
-        for kind in ("photo", "document", "video", "audio"):
+    def _extract_media(self, update_message: dict) -> tuple[str | None, str]:
+        """→ (media marker, canonical content type) for the first media kind.
+
+        The marker ("telegram:<kind>") is fetched to durable storage via
+        getFile at ingest; the content type is the §155 canonical value the
+        model column stores.
+        """
+        for kind, content_type in _MEDIA_CONTENT.items():
             if kind in update_message:
-                return f"telegram:{kind}"  # file_id fetched via getFile at ingest
-        return None
+                return f"telegram:{kind}", content_type
+        return None, "text"
 
     async def send(
         self,

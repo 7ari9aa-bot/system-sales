@@ -55,7 +55,7 @@ from app.modules.conversations.gateway.registry import get_adapter
 from app.modules.conversations.models import Conversation, Message
 from app.modules.conversations.policy import MessagingPolicyService
 from app.modules.customers.models import CustomerIdentity
-from app.modules.platform.models import Integration, ProcessedEvent
+from app.modules.platform.models import DeliveryAttempt, Integration, ProcessedEvent
 from app.workers.base import (
     PermanentError,
     RetryableError,
@@ -397,6 +397,27 @@ class MessageWorker(StreamWorker):
         if status == "sent" and plan.set_channel_message_id:
             if message.channel_message_id is None:
                 message.channel_message_id = provider_id
+        # §130: one DeliveryAttempt row per provider send attempt, committed in
+        # the SAME transaction as the status flip — the audit cannot exist
+        # without its outcome. The provider's id for this event is the message
+        # id the adapter returned (provider_timestamp stays NULL here: only a
+        # later delivery receipt knows when the provider saw the message).
+        session.add(
+            DeliveryAttempt(
+                tenant_id=tenant_id,
+                message_id=message.id,
+                provider=plan.adapter.name,
+                # column contract: sending | sent | unknown | failed
+                outcome=status,
+                request_payload={
+                    "customer_ref": plan.outbound.customer_ref,
+                    "template_name": plan.outbound.template_name,
+                    "has_media": bool(plan.outbound.media_url),
+                },
+                provider_event_id=provider_id,
+                error=error,
+            )
+        )
         if status == "sent":
             # §53/§171: canonical usage event, recorded in the SAME transaction
             # as the SENT status flip — a replayed send skips this phase via the

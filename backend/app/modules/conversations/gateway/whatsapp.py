@@ -26,12 +26,18 @@ from app.modules.conversations.gateway.base import (
 
 GRAPH_BASE = "https://graph.facebook.com/v21.0"
 
-_MEDIA_TYPES = {
+# §155: provider media type → canonical Message.content_type. The model
+# supports text | image | voice | video | file | location | contact | buttons
+# | list | reaction | unsupported — every surface reads THAT column, so the
+# adapter (the only component that knows WhatsApp's vocabulary) must set it.
+# WhatsApp has no distinct "voice note" type: voice notes arrive as `audio`.
+# A sticker is a WebP image; media_type keeps the provider nuance.
+_CANONICAL_MEDIA_CONTENT: dict[str, str] = {
     "image": "image",
-    "audio": "audio",
+    "audio": "voice",
     "video": "video",
-    "document": "document",
-    "sticker": "sticker",
+    "document": "file",
+    "sticker": "image",
 }
 
 
@@ -80,7 +86,7 @@ class WhatsAppAdapter:
                     wa_id = msg.get("from")
                     contact = contacts.get(wa_id, {})
                     profile_name = (contact.get("profile") or {}).get("name")
-                    body, media_url, media_type = self._extract_content(msg)
+                    body, media_url, media_type, content_type = self._extract_content(msg)
                     messages.append(
                         InboundMessage(
                             channel=self.name,
@@ -90,6 +96,8 @@ class WhatsAppAdapter:
                             body=body,
                             media_url=media_url,
                             media_type=media_type,
+                            content_type=content_type,
+                            reply_to_message_id=self._reply_context(msg),
                             raw=msg,
                         )
                     )
@@ -112,25 +120,75 @@ class WhatsAppAdapter:
                     )
         return updates
 
-    def _extract_content(self, msg: dict) -> tuple[str | None, str | None, str | None]:
+    def _extract_content(
+        self, msg: dict
+    ) -> tuple[str | None, str | None, str | None, str]:
+        """Normalize one provider message.
+
+        Returns (body, media_url, media_type, canonical content_type). The
+        content type is §155's whole point: a voice note is `voice`, a document
+        is `file`, a button tap is `buttons` — never degraded to plain text.
+        """
         msg_type = msg.get("type")
         if msg_type == "text":
-            return msg.get("text", {}).get("body"), None, None
-        if msg_type in _MEDIA_TYPES:
+            return msg.get("text", {}).get("body"), None, None, "text"
+        if msg_type in _CANONICAL_MEDIA_CONTENT:
             media = msg.get(msg_type, {})
-            return msg.get("caption"), media.get("link") or media.get("id"), msg_type
+            return (
+                msg.get("caption"),
+                media.get("link") or media.get("id"),
+                msg_type,
+                _CANONICAL_MEDIA_CONTENT[msg_type],
+            )
         if msg_type == "location":
             loc = msg.get("location", {})
-            return f"📍 {loc.get('name') or ''} {loc.get('address') or ''}".strip(), None, None
+            return (
+                f"📍 {loc.get('name') or ''} {loc.get('address') or ''}".strip(),
+                None,
+                None,
+                "location",
+            )
         if msg_type == "contacts":
-            return "[contacts]", None, None
+            return self._contact_body(msg.get("contacts")), None, None, "contact"
         if msg_type == "button":
-            return msg.get("button", {}).get("text"), None, None
+            # A tap on a template quick-reply button.
+            return msg.get("button", {}).get("text"), None, None, "buttons"
         if msg_type == "interactive":
             interactive = msg.get("interactive", {})
-            reply = interactive.get("button_reply") or interactive.get("list_reply") or {}
-            return reply.get("title"), None, None
-        return json.dumps(msg)[:500] if msg else None, None, None
+            button_reply = interactive.get("button_reply")
+            if button_reply is not None:
+                return button_reply.get("title"), None, None, "buttons"
+            list_reply = interactive.get("list_reply")
+            if list_reply is not None:
+                return list_reply.get("title"), None, None, "list"
+            return None, None, None, "unsupported"
+        if msg_type == "reaction":
+            return msg.get("reaction", {}).get("emoji"), None, None, "reaction"
+        # A type this adapter does not know (order, system, referral, ...): the
+        # raw JSON is kept as the body for forensics, and the canonical type is
+        # honest about it instead of claiming "text".
+        return (json.dumps(msg)[:500] if msg else None, None, None, "unsupported")
+
+    @staticmethod
+    def _contact_body(contacts: list | None) -> str | None:
+        """First shared contact as a short human-readable body (§155)."""
+        first = contacts[0] if contacts else None
+        if not isinstance(first, dict):
+            return "[contacts]"
+        name = (first.get("name") or {}).get("formatted_name")
+        phones = first.get("phones") or []
+        phone = (phones[0] or {}).get("phone") if phones else None
+        return " ".join(part for part in (name, phone) if part) or "[contacts]"
+
+    @staticmethod
+    def _reply_context(msg: dict) -> str | None:
+        """§155 threading: the provider id this message replies to.
+
+        Every reply-shaped payload carries `context.id` (a quoted message,
+        a button tap quoting the template, a reaction quoting its target).
+        """
+        context = msg.get("context") or {}
+        return context.get("id") or (msg.get("reaction") or {}).get("message_id")
 
     # ---------- outbound ----------
 

@@ -16,7 +16,8 @@ from app.modules.conversations.gateway.telegram import telegram_adapter
 from app.modules.conversations.gateway.whatsapp import whatsapp_adapter
 
 
-def _wa_payload() -> dict:
+def _wa_payload_with_messages(messages: list[dict]) -> dict:
+    """A WhatsApp webhook envelope carrying the given messages verbatim."""
     return {
         "entry": [
             {
@@ -27,20 +28,26 @@ def _wa_payload() -> dict:
                             "contacts": [
                                 {"wa_id": "201234567890", "profile": {"name": "أحمد"}}
                             ],
-                            "messages": [
-                                {
-                                    "id": "wamid.abc123",
-                                    "from": "201234567890",
-                                    "type": "text",
-                                    "text": {"body": "السلام عليكم"},
-                                }
-                            ],
+                            "messages": messages,
                         }
                     }
                 ]
             }
         ]
     }
+
+
+def _wa_payload() -> dict:
+    return _wa_payload_with_messages(
+        [
+            {
+                "id": "wamid.abc123",
+                "from": "201234567890",
+                "type": "text",
+                "text": {"body": "السلام عليكم"},
+            }
+        ]
+    )
 
 
 def test_whatsapp_parse_inbound_normalizes():
@@ -52,6 +59,167 @@ def test_whatsapp_parse_inbound_normalizes():
     assert m.customer_ref == "201234567890"
     assert m.customer_name == "أحمد"
     assert m.body == "السلام عليكم"
+    assert m.content_type == "text"
+
+
+def test_whatsapp_media_payloads_map_to_canonical_content_types():
+    """§155: media never degrades to plain text — the canonical content_type
+    column is what every surface reads."""
+    messages = whatsapp_adapter.parse_inbound(
+        _wa_payload_with_messages(
+            [
+                {
+                    "id": "wamid.img",
+                    "from": "201234567890",
+                    "type": "image",
+                    "image": {"link": "https://cdn.example/img.jpg"},
+                    "caption": "صورة المنتج",
+                },
+                {
+                    "id": "wamid.aud",
+                    "from": "201234567890",
+                    "type": "audio",
+                    "audio": {"link": "https://cdn.example/voice.ogg"},
+                },
+                {
+                    "id": "wamid.vid",
+                    "from": "201234567890",
+                    "type": "video",
+                    "video": {"link": "https://cdn.example/clip.mp4"},
+                },
+                {
+                    "id": "wamid.doc",
+                    "from": "201234567890",
+                    "type": "document",
+                    "document": {"link": "https://cdn.example/offer.pdf"},
+                },
+            ]
+        )
+    )
+    by_id = {m.channel_message_id: m for m in messages}
+    image = by_id["wamid.img"]
+    assert image.content_type == "image"
+    assert image.media_type == "image"
+    assert image.media_url == "https://cdn.example/img.jpg"
+    assert image.body == "صورة المنتج"  # caption kept as body
+    voice = by_id["wamid.aud"]
+    # WhatsApp voice notes arrive as type "audio" — canonically they are voice.
+    assert voice.content_type == "voice"
+    assert voice.media_type == "audio"
+    assert by_id["wamid.vid"].content_type == "video"
+    document = by_id["wamid.doc"]
+    assert document.content_type == "file"
+    assert document.media_type == "document"
+
+
+def test_whatsapp_location_contact_buttons_list_and_reaction_types():
+    """§155: structured payloads keep their canonical kind, and a reaction
+    threads to the message it reacts to."""
+    messages = whatsapp_adapter.parse_inbound(
+        _wa_payload_with_messages(
+            [
+                {
+                    "id": "wamid.loc",
+                    "from": "201234567890",
+                    "type": "location",
+                    "location": {"name": "المكتب", "address": "القاهرة"},
+                },
+                {
+                    "id": "wamid.con",
+                    "from": "201234567890",
+                    "type": "contacts",
+                    "contacts": [
+                        {
+                            "name": {"formatted_name": "سارة"},
+                            "phones": [{"phone": "+201111111111"}],
+                        }
+                    ],
+                },
+                {
+                    "id": "wamid.btn",
+                    "from": "201234567890",
+                    "type": "button",
+                    "button": {"text": "تأكيد الطلب", "payload": "PAY-1"},
+                },
+                {
+                    "id": "wamid.itr",
+                    "from": "201234567890",
+                    "type": "interactive",
+                    "interactive": {
+                        "type": "list_reply",
+                        "list_reply": {"id": "opt-2", "title": "شحن سريع"},
+                    },
+                },
+                {
+                    "id": "wamid.rea",
+                    "from": "201234567890",
+                    "type": "reaction",
+                    "reaction": {"emoji": "👍", "message_id": "wamid.orig"},
+                    "context": {"id": "wamid.orig"},
+                },
+                {
+                    "id": "wamid.unk",
+                    "from": "201234567890",
+                    "type": "order",
+                    "order": {"catalog_id": "c1"},
+                },
+            ]
+        )
+    )
+    by_id = {m.channel_message_id: m for m in messages}
+    location = by_id["wamid.loc"]
+    assert location.content_type == "location"
+    assert "المكتب" in (location.body or "")
+    contact = by_id["wamid.con"]
+    assert contact.content_type == "contact"
+    assert "سارة" in (contact.body or "")
+    assert by_id["wamid.btn"].content_type == "buttons"
+    assert by_id["wamid.itr"].content_type == "list"
+    assert by_id["wamid.itr"].body == "شحن سريع"
+    reaction = by_id["wamid.rea"]
+    assert reaction.content_type == "reaction"
+    assert reaction.body == "👍"
+    assert reaction.reply_to_message_id == "wamid.orig"
+    assert by_id["wamid.unk"].content_type == "unsupported"
+
+
+def test_whatsapp_reply_context_sets_reply_to_message_id():
+    """§155 threading: context.id (the quoted wamid) rides on the message."""
+    messages = whatsapp_adapter.parse_inbound(
+        _wa_payload_with_messages(
+            [
+                {
+                    "id": "wamid.reply",
+                    "from": "201234567890",
+                    "type": "text",
+                    "text": {"body": "شكراً"},
+                    "context": {"id": "wamid.orig", "from": "201234567890"},
+                }
+            ]
+        )
+    )
+    assert messages[0].reply_to_message_id == "wamid.orig"
+
+
+def test_whatsapp_interactive_button_reply_is_buttons_and_threads():
+    messages = whatsapp_adapter.parse_inbound(
+        _wa_payload_with_messages(
+            [
+                {
+                    "id": "wamid.itrbtn",
+                    "from": "201234567890",
+                    "type": "interactive",
+                    "interactive": {
+                        "type": "button_reply",
+                        "button_reply": {"id": "b-1", "title": "تم"},
+                    },
+                    "context": {"id": "wamid.template-msg"},
+                }
+            ]
+        )
+    )
+    assert messages[0].content_type == "buttons"
+    assert messages[0].reply_to_message_id == "wamid.template-msg"
 
 
 def test_whatsapp_resolve_tenant_key():
@@ -201,6 +369,7 @@ async def test_telegram_send_and_parse():
     messages = telegram_adapter.parse_inbound(payload)
     assert messages[0].customer_ref == "555"
     assert messages[0].body == "مرحبا"
+    assert messages[0].content_type == "text"
     assert telegram_adapter.resolve_tenant_key({"_query": {"tenant_key": "pk1"}}) == "pk1"
 
     captured = {}
@@ -223,3 +392,62 @@ async def test_telegram_send_and_parse():
     )
     assert provider_id == "77"
     assert "/botBOT/sendMessage" in captured["url"]
+
+
+def test_telegram_media_payloads_map_to_canonical_content_types():
+    """§155: photo/voice/document/video updates set the canonical kind, and a
+    reply threads to the provider message it answers."""
+    messages = telegram_adapter.parse_inbound(
+        {
+            "message": {
+                "message_id": 7,
+                "chat": {"id": 555},
+                "from": {"first_name": "Sara"},
+                "photo": [{"file_id": "f1"}],
+                "caption": "غلاف الطلب",
+                "reply_to_message": {"message_id": 3},
+            }
+        }
+    )
+    photo = messages[0]
+    assert photo.content_type == "image"
+    assert photo.media_url == "telegram:photo"
+    assert photo.body == "غلاف الطلب"
+    assert photo.reply_to_message_id == "3"
+
+    voice = telegram_adapter.parse_inbound(
+        {"message": {"message_id": 8, "chat": {"id": 555}, "voice": {"file_id": "v1"}}}
+    )[0]
+    assert voice.content_type == "voice"
+    assert voice.media_url == "telegram:voice"
+
+    document = telegram_adapter.parse_inbound(
+        {
+            "message": {
+                "message_id": 9,
+                "chat": {"id": 555},
+                "document": {"file_id": "d1", "file_name": "invoice.pdf"},
+            }
+        }
+    )[0]
+    assert document.content_type == "file"
+    assert document.media_url == "telegram:document"
+
+    video = telegram_adapter.parse_inbound(
+        {"message": {"message_id": 10, "chat": {"id": 555}, "video": {"file_id": "vv"}}}
+    )[0]
+    assert video.content_type == "video"
+
+    # An animation update also carries a `document` field — animation wins.
+    animation = telegram_adapter.parse_inbound(
+        {
+            "message": {
+                "message_id": 11,
+                "chat": {"id": 555},
+                "animation": {"file_id": "a1"},
+                "document": {"file_id": "a1"},
+            }
+        }
+    )[0]
+    assert animation.content_type == "video"
+    assert animation.media_url == "telegram:animation"
