@@ -61,7 +61,15 @@ class DeletionService:
         # §131: delete knowledge chunks that carry this customer's conversation
         # content from the vector store. These are the embeddings used for
         # retrieval — they must be purged, not just the memories table.
-        try:
+        # knowledge_chunks may not exist yet (fail open). A failed DELETE
+        # would ABORT the whole transaction — the except block cannot un-poison
+        # it — so probe with to_regclass first, which never raises.
+        chunks_exist = (
+            await session.execute(
+                text("SELECT to_regclass('public.knowledge_chunks') IS NOT NULL")
+            )
+        ).scalar()
+        if chunks_exist:
             result = await session.execute(
                 text(
                     "DELETE FROM knowledge_chunks kc "
@@ -74,8 +82,7 @@ class DeletionService:
             report["steps"].append(
                 {"step": "vector_chunks_deleted", "rows": result.rowcount or 0}
             )
-        except Exception:
-            # knowledge_chunks table may not exist yet — fail open
+        else:
             report["steps"].append(
                 {"step": "vector_chunks_deleted", "rows": 0, "note": "table not found"}
             )

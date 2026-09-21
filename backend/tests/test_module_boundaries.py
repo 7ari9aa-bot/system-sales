@@ -78,7 +78,10 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 #   2. the phase9 governance batch (slo/entitlement/audit wiring).
 # Measured AFTER excluding the shared app.modules.errors module from the
 # scan (it was being miscounted as cross-module).
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 101
+# 101 -> 102 on 2026-09-21: orders._default_warehouse delegates to
+# inventory's race-safe MAIN bootstrap (test_create_order_bootstraps_
+# main_warehouse contract) — orders never touches warehouse tables.
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 102
 BASELINE_MODULE_SCOPE_SERVICE_IMPORTS = 5
 
 # Cycles are identified by the SET of modules involved, so the same loop

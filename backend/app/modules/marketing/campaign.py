@@ -15,7 +15,7 @@ import uuid
 from datetime import UTC, datetime
 from enum import StrEnum
 
-from sqlalchemy import ForeignKey, Index, Integer, String, Text, select
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, select
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
@@ -55,8 +55,12 @@ class CampaignRun(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     status: Mapped[str] = mapped_column(
         String(15), server_default="queued"
     )
-    started_at: Mapped[datetime | None] = mapped_column(nullable=True)
-    completed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     total_recipients: Mapped[int] = mapped_column(Integer, server_default="0")
     sent_count: Mapped[int] = mapped_column(Integer, server_default="0")
     failed_count: Mapped[int] = mapped_column(Integer, server_default="0")
