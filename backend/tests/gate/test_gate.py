@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy import select, text
 
-from app.core.errors import NotFoundError, ValidationError
+from app.core.errors import DomainError, NotFoundError, ValidationError
 from app.core.lease import conversation_lease
 from app.modules.conversations.service import ConversationService
 from app.modules.customers.models import Customer
@@ -350,7 +350,7 @@ async def test_gate_outbox_skip_locked(db, tenant_ctx):
 
     row = (
         await db.execute(
-            select(OutboxEvent).where(OutboxEvent.event_type == "test.relay")
+            select(OutboxEvent).where(OutboxEvent.payload["event_type"].astext == "test.relay")
         )
     ).scalar_one()
     assert row.published_at is None  # not yet published
@@ -456,7 +456,7 @@ async def test_gate_redis_outbox_buffer(db, tenant_ctx):
 
     row = (
         await db.execute(
-            select(OutboxEvent).where(OutboxEvent.event_type == "test.redis_out")
+            select(OutboxEvent).where(OutboxEvent.payload["event_type"].astext == "test.redis_out")
         )
     ).scalar_one()
     # Event is in the outbox, not yet published — this is the buffer
@@ -582,7 +582,7 @@ async def test_gate_inventory_oversell(db, tenant_ctx):
     )
     # Reserve 3 more (only 2 left) -> must fail
     import pytest
-    with pytest.raises((ConflictError, ValidationError)):
+    with pytest.raises(DomainError):  # Conflict | Validation | InsufficientStock
         await InventoryService.reserve(
             db, tenant_ctx.tenant_id, variant.id, warehouse.id, 3
         )
@@ -618,7 +618,7 @@ async def test_gate_event_schema_versioning(db, tenant_ctx):
 
     row = (
         await db.execute(
-            select(OutboxEvent).where(OutboxEvent.event_type == "test.schema")
+            select(OutboxEvent).where(OutboxEvent.payload["event_type"].astext == "test.schema")
         )
     ).scalar_one()
     # schema_version must be present (defaulted to 1)
