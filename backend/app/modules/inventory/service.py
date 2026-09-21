@@ -13,6 +13,7 @@ from uuid import UUID
 
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.errors import ConflictError, NotFoundError
@@ -447,7 +448,6 @@ class InventoryService:
                     )
                 ).scalar_one()
             except NoResultFound:
-                from sqlalchemy.exc import NoResultFound as _NRFE  # noqa: F811
 
                 await session.rollback()
                 continue

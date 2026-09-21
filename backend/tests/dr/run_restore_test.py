@@ -14,8 +14,6 @@ from __future__ import annotations
 
 import asyncio
 import sys
-import uuid
-from datetime import UTC, datetime
 
 from sqlalchemy import create_engine, text
 

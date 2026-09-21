@@ -21,7 +21,12 @@ from app.modules.ai.approvals import ApprovalService
 from app.modules.ai.models import Agent, AIUsage, KnowledgeItem
 from app.modules.ai.policy import AIProviderPolicyService
 from app.modules.ai.schemas import AgentCreateRequest, AgentOut, KnowledgeIngestRequest
-from app.modules.ai.trace import AITraceService, create_evaluation, list_evaluations, update_evaluation_status
+from app.modules.ai.trace import (
+    AITraceService,
+    create_evaluation,
+    list_evaluations,
+    update_evaluation_status,
+)
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
 
 router = APIRouter(prefix="/ai", tags=["ai"])

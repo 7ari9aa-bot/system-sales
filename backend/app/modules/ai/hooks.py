@@ -15,7 +15,6 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.ai.knowledge import search_knowledge
 from app.modules.ai.models import Agent
 from app.modules.ai.runtime import AgentRunner
 from app.modules.conversations.policy import OutboundBlockedError

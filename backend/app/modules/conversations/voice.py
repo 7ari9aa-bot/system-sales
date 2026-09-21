@@ -42,7 +42,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import NotFoundError, ValidationError
-from app.modules.conversations.models import Attachment, Message
+from app.modules.conversations.models import Attachment
 
 logger = logging.getLogger(__name__)
 

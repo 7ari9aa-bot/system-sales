@@ -9,7 +9,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.core.errors import PermissionDeniedError
+from app.core.errors import PermissionDeniedError, ValidationError
 from app.modules.billing.service import EntitlementService
 from app.modules.identity import schemas, service
 from app.modules.identity.deps import (

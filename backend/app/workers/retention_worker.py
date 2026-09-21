@@ -198,7 +198,6 @@ class OffboardingWorker:
         If the retention window has NOT expired, returns the remaining days.
         If it HAS expired, performs the final hard delete (CASCADE).
         """
-        from app.modules.identity.models import Tenant
         from app.modules.identity.service import TenantLifecycleService
         from app.modules.platform.models import AuditLog
 

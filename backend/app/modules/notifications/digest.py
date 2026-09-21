@@ -15,13 +15,13 @@ import uuid
 from datetime import UTC, datetime, time
 
 from sqlalchemy import (
+    Boolean,
     ForeignKey,
     Index,
     Integer,
     String,
-    Text,
     Time,
-    Boolean,
+    func,
     select,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -29,8 +29,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
-from app.core.model_kit import TenantMixin, TimestampMixin
 from app.core.ids import uuid7
+from app.core.model_kit import TenantMixin, TimestampMixin
 
 
 class NotificationPreference(TenantMixin, TimestampMixin, Base):
@@ -101,7 +101,6 @@ class NotificationDigest(TenantMixin, TimestampMixin, Base):
     )
 
 
-from sqlalchemy import func  # needed for server_default=func.now()
 
 
 class NotificationAggregator:

@@ -9,8 +9,6 @@ of another module's models is still a boundary violation.
 import ast
 from pathlib import Path
 
-import pytest
-
 MODULES_DIR = Path(__file__).resolve().parent.parent / "app" / "modules"
 SERVICE_FILES = sorted(MODULES_DIR.glob("*/service.py"))
 

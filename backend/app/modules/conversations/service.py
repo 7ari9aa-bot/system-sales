@@ -360,7 +360,6 @@ class ConversationService:
         model import).
         """
         from app.modules.customers.service import CustomerService
-        from app.modules.platform.service import AuditService
 
         stmt = select(Conversation).where(Conversation.tenant_id == tenant_id)
         if status:
@@ -391,8 +390,7 @@ class ConversationService:
             entry = name_phone_map.get(conv.customer_id) if conv.customer_id else None
             conv.customer_name = entry[0] if entry else None
             conv.customer_phone = entry[1] if entry else None
-            results.append(conv)
-        return results
+        return conversations
 
     # ------------------------------------------------------------------
     # §137 — InboxQuery: a dedicated read model for the inbox list.
@@ -416,7 +414,7 @@ class ConversationService:
         before_id: uuid.UUID | None = None,
     ) -> list[dict]:
         """§137: inbox list with preview + unread count + SLA in one query."""
-        from sqlalchemy import func, text
+        from sqlalchemy import text
 
         # Single SQL query that joins conversations → customers → last message
         # → unread count → SLA status. Using raw SQL because the subqueries

@@ -13,12 +13,15 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from sqlalchemy import func, select, tuple_
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.exc import IntegrityError, NoResultFound
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+
+if TYPE_CHECKING:
+    from app.modules.catalog.models import ProductVariant
 
 from app.core.events.writer import add_outbox_event
 from app.core.idempotency import apply_versioned_update, require_version  # §17
@@ -199,7 +202,6 @@ class OrderService:
         from app.modules.catalog.service import CatalogService
         from app.modules.customers.service import CustomerService
         from app.modules.inventory.service import (
-            InventoryReservationService,
             InventoryService,
         )
 

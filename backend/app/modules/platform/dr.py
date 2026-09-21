@@ -24,8 +24,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
-from app.core.model_kit import TimestampMixin
 from app.core.ids import uuid7
+from app.core.model_kit import TimestampMixin
 
 logger = logging.getLogger(__name__)
 

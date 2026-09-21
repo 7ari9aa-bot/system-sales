@@ -19,7 +19,6 @@ from datetime import datetime
 
 from sqlalchemy import (
     Boolean,
-    DateTime,
     ForeignKey,
     Index,
     Integer,
@@ -30,13 +29,13 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
+from app.core.ids import uuid7
 from app.core.model_kit import (
     AppendOnlyCreatedAtMixin,
     TenantMixin,
     TimestampMixin,
     WorkspaceScopeMixin,
 )
-from app.core.ids import uuid7
 
 
 class PhoneNumber(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):

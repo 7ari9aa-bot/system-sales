@@ -18,7 +18,7 @@ from typing import Protocol
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.search import SearchHit, SearchPort
+from app.core.search import SearchHit
 
 logger = logging.getLogger(__name__)
 
@@ -155,8 +155,9 @@ class SearchIndexerService:
         a DB read if the payload is incomplete.
         """
         if entity_type == "customer":
-            from app.modules.customers.models import Customer
             from sqlalchemy import select
+
+            from app.modules.customers.models import Customer
 
             customer = (
                 await session.execute(
@@ -178,8 +179,9 @@ class SearchIndexerService:
             }
 
         if entity_type == "product":
-            from app.modules.catalog.models import Product
             from sqlalchemy import select
+
+            from app.modules.catalog.models import Product
 
             product = (
                 await session.execute(

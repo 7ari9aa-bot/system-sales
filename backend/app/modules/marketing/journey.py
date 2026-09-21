@@ -28,8 +28,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.core.db import Base
 from app.core.errors import NotFoundError, ValidationError
 from app.core.events.writer import add_outbox_event
-from app.core.model_kit import TenantMixin, TimestampMixin, WorkspaceScopeMixin
 from app.core.ids import uuid7
+from app.core.model_kit import TenantMixin, TimestampMixin, WorkspaceScopeMixin
 
 logger = logging.getLogger(__name__)
 
@@ -256,7 +256,7 @@ class JourneyExecutionService:
 
         template = config.get("template")
         body = config.get("body", "")
-        channel = config.get("channel", "whatsapp")
+        _channel = config.get("channel", "whatsapp")
 
         await ConversationService.send_outbound_from_automation(
             session,
@@ -276,9 +276,9 @@ class JourneyExecutionService:
         config: dict,
     ) -> None:
         """Evaluate a condition and branch."""
-        condition = config.get("expression", "true")
+        _condition = config.get("expression", "true")
         true_step = config.get("true_step_index", run.current_step + 1)
-        false_step = config.get("false_step_index", run.current_step + 1)
+        _false_step = config.get("false_step_index", run.current_step + 1)
 
         # Simple evaluation — a real implementation would use the DSL/AST
         # from §82 segment definitions. For now, route to true_step.

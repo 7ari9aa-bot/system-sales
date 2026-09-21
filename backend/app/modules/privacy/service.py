@@ -10,7 +10,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import NotFoundError, ValidationError
@@ -32,7 +32,6 @@ class DeletionService:
 
         Returns a report of what was deleted where — auditable proof.
         """
-        from sqlalchemy import select
 
         from app.modules.customers.service import CustomerService
         from app.modules.platform.service import AuditService
@@ -96,7 +95,11 @@ class DeletionService:
             )
         except Exception:
             report["steps"].append(
-                {"step": "search_index_purged", "note": "failed", "error": "search port unavailable"}
+                {
+                    "step": "search_index_purged",
+                    "note": "failed",
+                    "error": "search port unavailable",
+                }
             )
 
         # §131: anonymize message transcripts — don't hard-delete (referential

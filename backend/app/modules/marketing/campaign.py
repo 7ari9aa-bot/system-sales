@@ -23,8 +23,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.core.db import Base
 from app.core.errors import NotFoundError, ValidationError
 from app.core.events.writer import add_outbox_event
-from app.core.model_kit import TenantMixin, TimestampMixin, WorkspaceScopeMixin
 from app.core.ids import uuid7
+from app.core.model_kit import TenantMixin, TimestampMixin, WorkspaceScopeMixin
 
 logger = logging.getLogger(__name__)
 
@@ -160,7 +160,7 @@ class CampaignExecutionService:
         config = run.config_snapshot or {}
         body = config.get("body", "")
         template = config.get("template")
-        channel = config.get("channel", "whatsapp")
+        _channel = config.get("channel", "whatsapp")
 
         from app.modules.conversations.service import ConversationService
 

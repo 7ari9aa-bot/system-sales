@@ -123,7 +123,8 @@ class AgentRunner:
         user_message: str,
         customer_id: uuid.UUID | None = None,
         system_prompt: str | None = None,
-        knowledge_context: str | None = None,  # §132: untrusted context, separate from system prompt
+        # §132: untrusted context, separate from system prompt
+        knowledge_context: str | None = None,
     ) -> AgentRunResult:
         agent = await self._load_agent(session, tenant_id, agent_id)
         agent_tools = await self._load_agent_tools(session, tenant_id, agent_id)

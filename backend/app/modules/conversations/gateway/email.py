@@ -10,7 +10,6 @@ ChannelAdapter interface.
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 import httpx
 
@@ -57,8 +56,8 @@ class EmailAdapter(ChannelAdapter):
             return headers.get("authorization", "").strip() == f"Bearer {self._webhook_secret}"
         if self._provider == "mailgun":
             # Mailgun signs with HMAC in a signature header
-            import hmac
             import hashlib
+            import hmac
             expected = hmac.new(
                 key=self._webhook_secret.encode() if self._webhook_secret else b"",
                 msg=body,
@@ -81,7 +80,7 @@ class EmailAdapter(ChannelAdapter):
         """Parse a SendGrid inbound parse webhook."""
         from_addr = raw.get("from", "")
         to_addr = raw.get("to", "")
-        subject = raw.get("subject", "")
+        _subject = raw.get("subject", "")
         body = raw.get("text", raw.get("html", ""))
         message_id = raw.get("messageId", raw.get("message_id"))
 
@@ -100,7 +99,7 @@ class EmailAdapter(ChannelAdapter):
         """Parse a Mailgun webhook payload."""
         from_addr = raw.get("sender", raw.get("from", ""))
         to_addr = raw.get("recipient", raw.get("to", ""))
-        subject = raw.get("subject", "")
+        _subject = raw.get("subject", "")
         body = raw.get("body-plain", raw.get("body-html", ""))
         message_id = raw.get("Message-Id", raw.get("messageId"))
 

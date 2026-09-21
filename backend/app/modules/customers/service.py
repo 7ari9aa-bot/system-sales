@@ -72,7 +72,9 @@ def normalize_phone_e164(raw: str | None) -> str | None:
 
     # Strip whitespace, dashes, dots, parentheses
     stripped = raw.strip()
-    cleaned = stripped.replace(" ", "").replace("-", "").replace(".", "").replace("(", "").replace(")", "")
+    cleaned = stripped
+    for ch in (" ", "-", ".", "(", ")"):
+        cleaned = cleaned.replace(ch, "")
 
     if not cleaned:
         return None

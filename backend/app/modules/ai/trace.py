@@ -40,7 +40,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import NotFoundError
-from app.modules.ai.models import AIEvaluation, AgentRun, ModelCall, ToolCall
+from app.modules.ai.models import AgentRun, AIEvaluation, ModelCall, ToolCall
 
 # Run statuses that represent a failed interaction from the customer's side.
 # ``timeout`` is included: the agent hit a run limit and produced no answer.

@@ -20,15 +20,14 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import Index, String, Text, JSONB
-from sqlalchemy.dialects.postgresql import JSONB as PG_JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import JSONB, Index, String, Text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
 from app.core.events.writer import add_outbox_event
-from app.core.model_kit import TenantMixin, TimestampMixin
 from app.core.ids import uuid7
+from app.core.model_kit import TenantMixin, TimestampMixin
 
 logger = logging.getLogger(__name__)
 

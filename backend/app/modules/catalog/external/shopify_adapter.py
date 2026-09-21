@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -20,7 +20,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ExternalProviderError
 from app.modules.catalog.external.source_of_truth import (
-    SourceOfTruthPolicy,
     SourceOfTruthService,
 )
 
@@ -147,7 +146,10 @@ class ShopifyAdapter:
             session, tenant_id, provider="shopify", entity_type="product"
         )
         if policy is None or policy.source_mode == "internal":
-            return {"synced": 0, "skipped": 0, "conflicts": 0, "errors": 0, "reason": "internal_source"}
+            return {
+                "synced": 0, "skipped": 0, "conflicts": 0,
+                "errors": 0, "reason": "internal_source",
+            }
 
         products = await self.fetch_products(
             since=policy.last_synced_at
@@ -196,7 +198,10 @@ class ShopifyAdapter:
             session, tenant_id, provider="shopify", entity_type="order"
         )
         if policy is None or policy.source_mode == "internal":
-            return {"synced": 0, "skipped": 0, "conflicts": 0, "errors": 0, "reason": "internal_source"}
+            return {
+                "synced": 0, "skipped": 0, "conflicts": 0,
+                "errors": 0, "reason": "internal_source",
+            }
 
         orders = await self.fetch_orders(since=policy.last_synced_at)
         report = {"synced": 0, "skipped": 0, "conflicts": 0, "errors": 0}

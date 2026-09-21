@@ -7,6 +7,7 @@ to a §176 line. Run: pytest tests/gate -q
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import select, text
@@ -16,6 +17,7 @@ from app.core.lease import conversation_lease
 from app.modules.conversations.service import ConversationService
 from app.modules.customers.models import Customer
 from app.modules.customers.service import IdentityMergeService
+from app.modules.errors import ConflictError
 from app.modules.platform.models import ProcessedEvent
 
 pytestmark = [pytest.mark.gate]
@@ -395,6 +397,7 @@ async def test_gate_ai_stale_run_cancellation(db, tenant_ctx):
         # While the lease is held, a second lease from a different connection
         # must fail — this is what prevents a stale run from racing.
         import asyncpg
+
         from app.core.config import get_settings
         dsn = get_settings().database_url_app_admin.replace(
             "postgresql+asyncpg://", "postgresql://"
@@ -575,7 +578,7 @@ async def test_gate_inventory_oversell(db, tenant_ctx):
     )
     # Reserve 3 more (only 2 left) -> must fail
     import pytest
-    with pytest.raises(Exception):  # ConflictError or ValidationError
+    with pytest.raises((ConflictError, ValidationError)):
         await InventoryService.reserve(
             db, tenant_ctx.tenant_id, variant.id, warehouse.id, 3
         )

@@ -39,7 +39,6 @@ import logging
 import uuid
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Annotated
 
 from app.core.redis import get_redis
 

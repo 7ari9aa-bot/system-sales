@@ -10,7 +10,6 @@ noisy tenant from starving others. The budgets are enforced via Redis
 semaphores with per-tenant keys.
 """
 
-import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from contextvars import ContextVar

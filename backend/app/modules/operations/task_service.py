@@ -15,7 +15,7 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import ConflictError, NotFoundError, ValidationError
+from app.core.errors import NotFoundError, ValidationError
 from app.modules.operations.models import Task
 
 

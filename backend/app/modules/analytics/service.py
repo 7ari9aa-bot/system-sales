@@ -21,10 +21,10 @@ Design rules (from the spec):
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, date, datetime, timedelta
+from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import func, select, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.platform.metrics import MetricRegistry

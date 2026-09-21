@@ -6,9 +6,9 @@ WhatsApp adapter but with Instagram-specific endpoints and payload shapes.
 
 from __future__ import annotations
 
-import logging
 import hashlib
 import hmac
+import logging
 from typing import Any
 
 import httpx
@@ -152,7 +152,7 @@ class InstagramAdapter(ChannelAdapter):
 
         data = resp.json()
         if resp.status_code in (200, 201):
-            recipient_id = data.get("recipient_id")
+            _recipient_id = data.get("recipient_id")
             message_id = data.get("message_id")
             return StatusUpdate(
                 message_id=message.message_id,

@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -141,7 +140,8 @@ class AIEvaluationService:
 
         if evaluation.rollout_status is None or not evaluation.rollout_status.startswith("canary_"):
             raise ConflictError(
-                f"evaluation {evaluation_id} is not in canary rollout (status={evaluation.rollout_status})"
+                f"evaluation {evaluation_id} is not in canary rollout "
+                f"(status={evaluation.rollout_status})"
             )
 
         # §169: check canary metrics before ramping
@@ -160,8 +160,8 @@ class AIEvaluationService:
         current_pct = int(evaluation.rollout_status.split("_")[1])
         try:
             current_idx = CANARY_RAMP_STEPS.index(current_pct)
-        except ValueError:
-            raise ConflictError(f"unknown canary percentage: {current_pct}")
+        except ValueError as err:
+            raise ConflictError(f"unknown canary percentage: {current_pct}") from err
 
         if current_idx >= len(CANARY_RAMP_STEPS) - 1:
             # Already at 100% — promote to fully rolled out

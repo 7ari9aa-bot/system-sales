@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
-from typing import Protocol
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession

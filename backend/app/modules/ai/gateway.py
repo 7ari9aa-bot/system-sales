@@ -12,6 +12,7 @@ deployment settings and are intentionally NOT added to app/core/config.py.
 
 from __future__ import annotations
 
+import logging
 import re
 import time
 from datetime import UTC, datetime, timedelta
@@ -27,6 +28,8 @@ from app.core.config import get_settings
 from app.core.errors import RateLimitExceededError, ValidationError
 from app.modules.ai.models import AIUsage, ModelCall, ModelConfig
 from app.modules.ai.providers import AIProvider, ChatCompletionResult, EmbeddingProvider
+
+logger = logging.getLogger(__name__)
 
 # Monthly AI spend cap per tenant (USD, estimated) — the fallback when a tenant
 # has no BudgetPolicy row. Read from settings so a deployment can raise or lower
@@ -500,7 +503,8 @@ class AIGateway:
         # must not starve the rest of the platform. This is a token-level
         # gate (estimated tokens), separate from the cost-level gate (§42)
         # which is about money.
-        from app.core.fairness import ResourceType, consume as consume_fairness
+        from app.core.fairness import ResourceType
+        from app.core.fairness import consume as consume_fairness
 
         fairness_ok = await consume_fairness(
             tenant_id,

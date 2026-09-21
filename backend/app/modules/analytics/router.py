@@ -10,13 +10,11 @@ this module is for the platform-wide canonical numbers.
 
 from __future__ import annotations
 
-import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
 
 from app.modules.analytics import service as analytics_service
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission

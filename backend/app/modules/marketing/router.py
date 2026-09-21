@@ -18,6 +18,9 @@ from app.core.pagination import decode_cursor, page_slice
 from app.modules.billing.service import EntitlementService
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
 from app.modules.marketing import analytics
+from app.modules.marketing.attribution_service import AttributionService
+from app.modules.marketing.campaign import CampaignExecutionService
+from app.modules.marketing.journey import JourneyExecutionService
 from app.modules.marketing.service import MarketingService
 
 router = APIRouter(tags=["marketing"])
@@ -205,10 +208,6 @@ async def dashboard(ctx: TenantCtxDep, days: int = 14):
 
 # ------------------------------------------------------- journeys ----
 
-from app.modules.marketing.journey import JourneyExecutionService
-from app.modules.marketing.campaign import CampaignExecutionService
-from app.modules.marketing.attribution_service import AttributionService
-
 
 class JourneyStartRequest(BaseModel):
     journey_id: uuid.UUID
@@ -250,6 +249,7 @@ async def list_journey_runs(
 ):
     """List journey runs for a journey."""
     from sqlalchemy import select
+
     from app.modules.marketing.journey import JourneyRun
 
     q = select(JourneyRun).where(
@@ -316,6 +316,7 @@ async def resume_campaign(run_id: uuid.UUID, ctx: WriteCtx):
 async def get_campaign_run(run_id: uuid.UUID, ctx: TenantCtxDep):
     """Get campaign run status and progress."""
     from sqlalchemy import select
+
     from app.modules.marketing.campaign import CampaignRun
 
     run = (

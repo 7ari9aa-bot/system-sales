@@ -131,7 +131,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                 request_id=request_id,
             )
             if span_cm is not None:
-                span = tracer  # type: ignore[assignment]
+                _span = tracer  # type: ignore[assignment]
                 from opentelemetry import trace as otel_trace
                 span_obj = otel_trace.get_current_span()
                 if span_obj:

@@ -19,7 +19,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import NotFoundError
 from app.modules.marketing.models import (
     Attribution,
-    Campaign,
     Conversion,
     Touchpoint,
 )

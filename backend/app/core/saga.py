@@ -18,11 +18,10 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any
 
-from sqlalchemy import ForeignKey, Index, Integer, String, Text, select
+from sqlalchemy import Index, Integer, String, Text, select
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
@@ -30,8 +29,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.core.db import Base
 from app.core.errors import NotFoundError, ValidationError
 from app.core.events.writer import add_outbox_event
-from app.core.model_kit import TenantMixin, TimestampMixin
 from app.core.ids import uuid7
+from app.core.model_kit import TenantMixin, TimestampMixin
 
 logger = logging.getLogger(__name__)
 

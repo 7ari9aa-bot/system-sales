@@ -13,12 +13,12 @@ accident.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
-from sqlalchemy import Index, String, UniqueConstraint, text
+from sqlalchemy import Index, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
 from app.core.errors import NotFoundError, ValidationError

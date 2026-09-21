@@ -200,7 +200,6 @@ async def sso_login(
     Returns the same shape as AuthService.login: (TokenPair, User, tenant_id).
     """
     from app.modules.identity.service import AuthService
-    from app.modules.identity.schemas import TokenPair
 
     key = f"{assertion.provider}:{assertion.subject}"
     user_id = _sso_store.get(key)

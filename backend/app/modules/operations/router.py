@@ -492,7 +492,10 @@ async def fairness_usage(ctx: TenantCtxDep):
 @router.get("/fairness/check")
 async def fairness_check(
     ctx: TenantCtxDep,
-    resource: str = Query(..., description="ai_tokens | messages_outbound | storage_bytes | worker_seconds"),
+    resource: str = Query(
+        ...,
+        description="ai_tokens | messages_outbound | storage_bytes | worker_seconds",
+    ),
     units: int = Query(default=1, ge=1),
 ):
     """§144: pre-flight check — does the tenant have `units` remaining?"""
@@ -500,11 +503,11 @@ async def fairness_check(
 
     try:
         res = ResourceType(resource)
-    except ValueError:
+    except ValueError as err:
         raise ValidationError(
             f"unknown resource type: {resource}",
             details={"valid_types": [r.value for r in ResourceType]},
-        )
+        ) from err
     result = await check_budget(ctx.tenant_id, res, units=units)
     return {
         "resource": result.resource.value,
@@ -623,4 +626,8 @@ async def reschedule_scheduled_job(
     job.run_at = body.run_at
     job.status = "queued"
     await ctx.session.flush()
-    return {"id": str(job.id), "status": job.status, "run_at": job.run_at.isoformat() if job.run_at else None}
+    return {
+        "id": str(job.id),
+        "status": job.status,
+        "run_at": job.run_at.isoformat() if job.run_at else None,
+    }

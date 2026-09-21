@@ -152,7 +152,8 @@ class ExchangeRate:
         """Convert money to the target currency at this rate."""
         if money.currency != self.from_currency:
             raise ValueError(
-                f"money currency {money.currency!r} does not match rate from_currency {self.from_currency!r}"
+                f"money currency {money.currency!r} does not match "
+                f"rate from_currency {self.from_currency!r}"
             )
         converted_minor = int(
             (Decimal(money.amount_minor) * self.rate).quantize(Decimal("1"))

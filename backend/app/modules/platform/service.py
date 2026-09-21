@@ -19,13 +19,14 @@ import httpx
 from sqlalchemy import select
 
 from app.core.config import get_settings
-from app.core.errors import ValidationError
+from app.core.errors import NotFoundError, ValidationError
 from app.core.events.writer import add_outbox_event
 from app.core.net_guard import assert_public_url
 from app.modules.platform.models import (
     AuditLog,
     Job,
     Notification,
+    SecretReference,
     WebhookDelivery,
     WebhookEndpoint,
 )
@@ -133,8 +134,9 @@ class SecretService:
         new_value: str,
     ) -> SecretReference:
         """§69: rotate a secret — old version stays for grace period."""
-        from app.core.secrets import get_secret_store
         from datetime import UTC, datetime
+
+        from app.core.secrets import get_secret_store
 
         ref = (
             await session.execute(

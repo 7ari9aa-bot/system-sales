@@ -117,7 +117,10 @@ async def break_glass(
                 admin_id,
                 kind="break_glass",
                 title="Break-glass access invoked",
-                body=f"User {user_id} invoked break-glass for {action} on {resource_type}/{resource_id}. Reason: {reason}",
+                body=(
+                    f"User {user_id} invoked break-glass for {action} "
+                    f"on {resource_type}/{resource_id}. Reason: {reason}"
+                ),
                 action_url=None,
                 payload={
                     "actor_user_id": str(user_id),
