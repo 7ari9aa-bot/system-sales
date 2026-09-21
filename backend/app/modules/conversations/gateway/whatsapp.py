@@ -41,10 +41,17 @@ class WhatsAppAdapter:
     # ---------- webhook auth ----------
 
     def verify_request(self, query_params: dict[str, str]) -> str | None:
-        settings = get_settings()
-        if (
-            query_params.get("hub.mode") == "subscribe"
-            and query_params.get("hub.verify_token") == settings.whatsapp_verify_token
+        expected = get_settings().whatsapp_verify_token
+        if not expected:
+            # Not configured -> cannot verify -> reject (fail closed), exactly
+            # like check_signature below and the Telegram adapter. Without this
+            # an empty `hub.verify_token` equalled the empty default.
+            return None
+        provided = query_params.get("hub.verify_token") or ""
+        # Constant-time compare on BYTES: compare_digest raises TypeError on
+        # non-ASCII str, which would turn a hostile query string into a 500.
+        if query_params.get("hub.mode") == "subscribe" and hmac.compare_digest(
+            provided.encode(), expected.encode()
         ):
             return query_params.get("hub.challenge", "")
         return None
