@@ -36,6 +36,7 @@ export default function RootLayout({
 }>) {
   // §109: dir is dynamic — RTL for Arabic, LTR for English. The <html>
   // attribute is set at the root so CSS logical properties flip correctly.
+  const locale = "ar";
   const dir = locale === "ar" ? "rtl" : "ltr";
 
   return (

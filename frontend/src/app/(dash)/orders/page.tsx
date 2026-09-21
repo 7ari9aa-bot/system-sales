@@ -145,13 +145,13 @@ export default function OrdersPage() {
         // the order detail page.
         toast({
           title: t.orderCreated,
-          description: `#${order.number ?? order.id.slice(0, 8)}`,
+          description: `#${order.number}`,
           variant: "success",
           action: {
             label: t.undo,
             onClick: () => {
               // Cancel the just-created order
-              fetch(`/api/orders/${order.id}/cancel`, {
+              fetch(`/api/orders/${order.number}/cancel`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ reason: "user_undo" }),

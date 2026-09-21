@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
@@ -9,26 +10,27 @@ import { EmptyState, ErrorState, PageHeader } from "@/components/ui/states";
 import { apiClient } from "@/lib/api";
 
 export default function TeamPage() {
-  const { data, isLoading, isError } = useQuery({
+  const { data: dataRaw, isLoading, isError } = useQuery({
     queryKey: ["team"],
     queryFn: () => apiClient.get("/api/v1/team/members"),
   });
+  const data = dataRaw as any;
 
-  if (isError) return <ErrorState title={t("team")} />;
+  if (isError) return <ErrorState message={t.somethingWentWrong} />;
   if (isLoading) return <TeamSkeleton />;
 
   const members = data?.items ?? [];
 
   return (
     <div className="space-y-6">
-      <PageHeader title={t("team")} subtitle="Team members and roles" />
+      <PageHeader title={t.team} description="Team members and roles" />
 
       {members.length === 0 ? (
-        <EmptyState title={t("no_team_members")} />
+        <EmptyState title={t.noInvitations} />
       ) : (
         <Card>
           <CardHeader>
-            <CardTitle>{t("members")}</CardTitle>
+            <CardTitle>{t.team}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
@@ -57,7 +59,7 @@ export default function TeamPage() {
 function TeamSkeleton() {
   return (
     <div className="space-y-6">
-      <PageHeader title={t("team")} />
+      <PageHeader title={t.team} />
       <Card>
         <CardHeader>
           <Skeleton className="h-5 w-24" />

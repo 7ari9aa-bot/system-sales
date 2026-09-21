@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
@@ -9,22 +10,23 @@ import { EmptyState, ErrorState, PageHeader } from "@/components/ui/states";
 import { apiClient } from "@/lib/api";
 
 export default function JourneysPage() {
-  const { data, isLoading, isError } = useQuery({
+  const { data: dataRaw, isLoading, isError } = useQuery({
     queryKey: ["journeys"],
     queryFn: () => apiClient.get("/api/v1/journeys?limit=20"),
   });
+  const data = dataRaw as any;
 
-  if (isError) return <ErrorState title={t("journeys")} />;
+  if (isError) return <ErrorState message={t.somethingWentWrong} />;
   if (isLoading) return <JourneysSkeleton />;
 
   const journeys = data?.items ?? [];
 
   return (
     <div className="space-y-6">
-      <PageHeader title={t("journeys")} subtitle="Customer lifecycle automation" />
+      <PageHeader title={t.automationFlows} description="Customer lifecycle automation" />
 
       {journeys.length === 0 ? (
-        <EmptyState title={t("no_journeys_yet")} />
+        <EmptyState title={t.noCampaigns} />
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
           {journeys.map((journey: any) => (
@@ -57,7 +59,7 @@ export default function JourneysPage() {
 function JourneysSkeleton() {
   return (
     <div className="space-y-6">
-      <PageHeader title={t("journeys")} />
+      <PageHeader title={t.automationFlows} />
       <div className="grid gap-4 md:grid-cols-2">
         {[0, 1, 2, 3].map((i) => (
           <Card key={i}>

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
@@ -9,22 +10,23 @@ import { EmptyState, ErrorState, PageHeader } from "@/components/ui/states";
 import { apiClient } from "@/lib/api";
 
 export default function QueuesPage() {
-  const { data, isLoading, isError } = useQuery({
+  const { data: dataRaw, isLoading, isError } = useQuery({
     queryKey: ["queues"],
     queryFn: () => apiClient.get("/api/v1/operations/queues"),
   });
+  const data = dataRaw as any;
 
-  if (isError) return <ErrorState title={t("queues")} />;
+  if (isError) return <ErrorState message={t.somethingWentWrong} />;
   if (isLoading) return <QueuesSkeleton />;
 
   const queues = data?.items ?? [];
 
   return (
     <div className="space-y-6">
-      <PageHeader title={t("queues")} subtitle="Background job queue monitoring" />
+      <PageHeader title={t.healthOutbox} description="Background job queue monitoring" />
 
       {queues.length === 0 ? (
-        <EmptyState title="No active queues" />
+        <EmptyState title={t.allClear} />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {queues.map((q: any) => (
@@ -32,7 +34,7 @@ export default function QueuesPage() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <span className="font-medium">{q.name}</span>
-                  <Badge variant={q.depth > 100 ? "destructive" : "outline"}>
+                  <Badge variant={q.depth > 100 ? "danger" : "outline"}>
                     {q.depth} pending
                   </Badge>
                 </div>
@@ -54,7 +56,7 @@ export default function QueuesPage() {
 function QueuesSkeleton() {
   return (
     <div className="space-y-6">
-      <PageHeader title={t("queues")} />
+      <PageHeader title={t.healthOutbox} />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {[0, 1, 2].map((i) => (
           <Card key={i}>

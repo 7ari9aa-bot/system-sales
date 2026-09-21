@@ -111,3 +111,26 @@ export function newIdempotencyKey(): string {
 }
 
 export const API_BASE_URL = API;
+
+/**
+ * Object-oriented wrapper for pages that prefer `apiClient.get(...)` style.
+ * Paths already include `/api/v1` prefix internally, so callers pass full paths
+ * like `/api/v1/team/members`.
+ */
+function buildPath(path: string): string {
+  // If the caller already includes /api/v1, strip it so we don't double-prefix.
+  if (path.startsWith(API_PREFIX)) return path.slice(API_PREFIX.length);
+  return path;
+}
+
+export const apiClient = {
+  get: <T = unknown>(path: string) => api<T>(buildPath(path)),
+  post: <T = unknown>(path: string, body?: unknown) =>
+    api<T>(buildPath(path), { method: "POST", body }),
+  patch: <T = unknown>(path: string, body?: unknown) =>
+    api<T>(buildPath(path), { method: "PATCH", body }),
+  put: <T = unknown>(path: string, body?: unknown) =>
+    api<T>(buildPath(path), { method: "PUT", body }),
+  delete: <T = unknown>(path: string) =>
+    api<T>(buildPath(path), { method: "DELETE" }),
+};

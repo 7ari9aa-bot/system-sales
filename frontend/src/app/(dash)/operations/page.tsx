@@ -49,7 +49,7 @@ export default function OperationsPage() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8">
-      <PageHeader title={t.health} subtitle={t.health} />
+      <PageHeader title={t.health} description={t.health} />
 
       {error && (
         <div className="mb-6 rounded-lg border border-danger/20 bg-danger-soft/50 p-4 text-sm text-danger">

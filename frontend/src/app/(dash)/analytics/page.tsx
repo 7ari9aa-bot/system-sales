@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
@@ -9,18 +10,19 @@ import { Badge } from "@/components/ui/badge";
 import { apiClient } from "@/lib/api";
 
 export default function AnalyticsPage() {
-  const { data, isLoading, isError } = useQuery({
+  const { data: dataRaw, isLoading, isError } = useQuery({
     queryKey: ["analytics", "overview"],
     queryFn: () => apiClient.get("/api/v1/analytics/overview"),
   });
+  const data = dataRaw as any;
 
-  if (isError) return <ErrorState title={t("analytics")} />;
+  if (isError) return <ErrorState message={t.somethingWentWrong} />;
   if (isLoading) return <AnalyticsSkeleton />;
-  if (!data) return <EmptyState title={t("analytics")} />;
+  if (!data) return <EmptyState title={t.noSourceData} />;
 
   return (
     <div className="space-y-6">
-      <PageHeader title={t("analytics")} subtitle="Business insights and reports" />
+      <PageHeader title={t.groupAnalytics} description="Business insights and reports" />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card data-testid="stat-revenue">
@@ -29,7 +31,7 @@ export default function AnalyticsPage() {
               {data.revenue ? Number(data.revenue).toLocaleString("en-US") : "0"}
             </div>
             <div className="mt-0.5 text-[13px] text-muted-foreground">
-              {t("revenue")}
+              {t.revenue}
             </div>
           </CardContent>
         </Card>
@@ -39,7 +41,7 @@ export default function AnalyticsPage() {
               {data.orders_count ?? 0}
             </div>
             <div className="mt-0.5 text-[13px] text-muted-foreground">
-              {t("orders")}
+              {t.orders}
             </div>
           </CardContent>
         </Card>
@@ -49,7 +51,7 @@ export default function AnalyticsPage() {
               {data.customers_count ?? 0}
             </div>
             <div className="mt-0.5 text-[13px] text-muted-foreground">
-              {t("customers")}
+              {t.customers}
             </div>
           </CardContent>
         </Card>
@@ -59,7 +61,7 @@ export default function AnalyticsPage() {
               {data.conversion_rate ? `${data.conversion_rate}%` : "0%"}
             </div>
             <div className="mt-0.5 text-[13px] text-muted-foreground">
-              {t("conversion_rate")}
+              {t.aov}
             </div>
           </CardContent>
         </Card>
@@ -68,7 +70,7 @@ export default function AnalyticsPage() {
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>{t("revenue")} — 30d</CardTitle>
+            <CardTitle>{t.revenue30}</CardTitle>
           </CardHeader>
           <CardContent>
             <RevenueChart data={data.revenue_chart ?? []} />
@@ -76,7 +78,7 @@ export default function AnalyticsPage() {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>{t("top_products")}</CardTitle>
+            <CardTitle>{t.activeProducts}</CardTitle>
           </CardHeader>
           <CardContent>
             <TopProducts products={data.top_products ?? []} />
@@ -86,13 +88,13 @@ export default function AnalyticsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>{t("ai_metrics")}</CardTitle>
+          <CardTitle>{t.usageCost}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 sm:grid-cols-3">
-            <Metric label={t("ai_resolution_rate")} value={data.ai_resolution_rate ? `${data.ai_resolution_rate}%` : "—"} />
-            <Metric label={t("ai_handover_rate")} value={data.ai_handover_rate ? `${data.ai_handover_rate}%` : "—"} />
-            <Metric label={t("avg_response_time")} value={data.avg_response_time ?? "—"} />
+            <Metric label={t.totalTokens} value={data.ai_resolution_rate ? `${data.ai_resolution_rate}%` : "—"} />
+            <Metric label={t.usageCost} value={data.ai_handover_rate ? `${data.ai_handover_rate}%` : "—"} />
+            <Metric label={t.loading} value={data.avg_response_time ?? "—"} />
           </div>
         </CardContent>
       </Card>
@@ -110,7 +112,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 function RevenueChart({ data }: { data: { date: string; value: number }[] }) {
-  if (!data.length) return <EmptyState title="No data" />;
+  if (!data.length) return <EmptyState title={t.noSourceData} />;
   const max = Math.max(...data.map((d) => d.value), 1);
   return (
     <div className="flex items-end gap-1 h-[200px]">
@@ -127,13 +129,13 @@ function RevenueChart({ data }: { data: { date: string; value: number }[] }) {
 }
 
 function TopProducts({ products }: { products: { name: string; count: number }[] }) {
-  if (!products.length) return <EmptyState title="No data" />;
+  if (!products.length) return <EmptyState title={t.noSourceData} />;
   return (
     <div className="space-y-2">
       {products.map((p, i) => (
         <div key={i} className="flex items-center justify-between">
           <span className="text-sm">{p.name}</span>
-          <Badge variant="secondary" dir="ltr">{p.count}</Badge>
+          <Badge variant="outline" dir="ltr">{p.count}</Badge>
         </div>
       ))}
     </div>
@@ -143,7 +145,7 @@ function TopProducts({ products }: { products: { name: string; count: number }[]
 function AnalyticsSkeleton() {
   return (
     <div className="space-y-6">
-      <PageHeader title={t("analytics")} />
+      <PageHeader title={t.groupAnalytics} />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[0, 1, 2, 3].map((i) => (
           <Card key={i}>

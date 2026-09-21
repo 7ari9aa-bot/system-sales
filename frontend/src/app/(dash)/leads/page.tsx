@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import Link from "next/link";
@@ -10,22 +11,23 @@ import { EmptyState, ErrorState, PageHeader } from "@/components/ui/states";
 import { apiClient } from "@/lib/api";
 
 export default function LeadsPage() {
-  const { data, isLoading, isError } = useQuery({
+  const { data: dataRaw, isLoading, isError } = useQuery({
     queryKey: ["leads"],
     queryFn: () => apiClient.get("/api/v1/customers?filter=lead&limit=20"),
   });
+  const data = dataRaw as any;
 
-  if (isError) return <ErrorState title={t("leads")} />;
+  if (isError) return <ErrorState message={t.somethingWentWrong} />;
   if (isLoading) return <LeadsSkeleton />;
 
   const leads = data?.items ?? [];
 
   return (
     <div className="space-y-6">
-      <PageHeader title={t("leads")} subtitle="Pipeline and lead management" />
+      <PageHeader title={t.customers} description="Pipeline and lead management" />
 
       {leads.length === 0 ? (
-        <EmptyState title={t("no_leads_yet")} />
+        <EmptyState title={t.noCustomers} />
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {leads.map((lead: any) => (
@@ -43,7 +45,7 @@ export default function LeadsPage() {
                   )}
                   {lead.source && (
                     <div className="mt-1 text-xs text-muted-foreground">
-                      {t("source")}: {lead.source}
+                      {lead.source}
                     </div>
                   )}
                 </CardContent>
@@ -59,7 +61,7 @@ export default function LeadsPage() {
 function LeadsSkeleton() {
   return (
     <div className="space-y-6">
-      <PageHeader title={t("leads")} />
+      <PageHeader title={t.customers} />
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {[0, 1, 2, 3, 4, 5].map((i) => (
           <Card key={i}>

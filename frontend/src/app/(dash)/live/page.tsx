@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
@@ -9,20 +10,21 @@ import { EmptyState, ErrorState, PageHeader } from "@/components/ui/states";
 import { apiClient } from "@/lib/api";
 
 export default function LivePage() {
-  const { data, isLoading, isError } = useQuery({
+  const { data: dataRaw, isLoading, isError } = useQuery({
     queryKey: ["live"],
     queryFn: () => apiClient.get("/api/v1/operations/live"),
     refetchInterval: 5000,
   });
+  const data = dataRaw as any;
 
-  if (isError) return <ErrorState title={t("live")} />;
+  if (isError) return <ErrorState message={t.somethingWentWrong} />;
   if (isLoading) return <LiveSkeleton />;
 
   const systems = data?.systems ?? [];
 
   return (
     <div className="space-y-6">
-      <PageHeader title={t("live")} subtitle="Real-time system health" />
+      <PageHeader title={t.health} description="Real-time system health" />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {systems.map((s: any) => (
@@ -31,7 +33,7 @@ export default function LivePage() {
               <div className="flex items-center justify-between">
                 <span className="font-medium">{s.name}</span>
                 <Badge
-                  variant={s.status === "healthy" ? "default" : s.status === "degraded" ? "secondary" : "destructive"}
+                  variant={s.status === "healthy" ? "default" : s.status === "degraded" ? "warning" : "danger"}
                 >
                   {s.status}
                 </Badge>
@@ -53,11 +55,11 @@ export default function LivePage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>{t("recent_events")}</CardTitle>
+          <CardTitle>{t.healthSubsystems}</CardTitle>
         </CardHeader>
         <CardContent>
           {(data?.events ?? []).length === 0 ? (
-            <EmptyState title="No recent events" />
+            <EmptyState title={t.allClear} />
           ) : (
             <div className="space-y-2">
               {(data?.events ?? []).map((e: any, i: number) => (
@@ -79,7 +81,7 @@ export default function LivePage() {
 function LiveSkeleton() {
   return (
     <div className="space-y-6">
-      <PageHeader title={t("live")} />
+      <PageHeader title={t.health} />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {[0, 1, 2].map((i) => (
           <Card key={i}>

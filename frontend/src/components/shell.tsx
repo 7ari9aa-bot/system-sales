@@ -82,7 +82,7 @@ function buildNavGroups(): NavGroup[] {
       label: t.groupBusiness,
       items: [
         { href: "/customers", label: t.customers, icon: <Users aria-hidden="true" />, testid: "nav-customers" },
-        { href: "/leads", label: t.leads ?? "Leads", icon: <Users aria-hidden="true" />, testid: "nav-leads" },
+        { href: "/leads", label: "Leads", icon: <Users aria-hidden="true" />, testid: "nav-leads" },
         { href: "/orders", label: t.orders, icon: <ShoppingCart aria-hidden="true" />, testid: "nav-orders" },
         { href: "/products", label: t.products, icon: <Package aria-hidden="true" />, testid: "nav-products" },
         { href: "/inventory", label: t.inventory, icon: <Warehouse aria-hidden="true" />, testid: "nav-inventory" },
@@ -93,7 +93,7 @@ function buildNavGroups(): NavGroup[] {
       label: t.groupGrowth,
       items: [
         { href: "/marketing", label: t.marketing, icon: <Megaphone aria-hidden="true" />, testid: "nav-marketing" },
-        { href: "/journeys", label: t.journeys ?? "Journeys", icon: <Workflow aria-hidden="true" />, testid: "nav-journeys" },
+        { href: "/journeys", label: t.automationFlows, icon: <Workflow aria-hidden="true" />, testid: "nav-journeys" },
       ],
     },
     {
@@ -126,9 +126,9 @@ function buildNavGroups(): NavGroup[] {
       label: t.groupOperations,
       items: [
         { href: "/operations", label: t.health, icon: <Activity aria-hidden="true" />, testid: "nav-operations" },
-        { href: "/live", label: t.live ?? "Live", icon: <Activity aria-hidden="true" />, testid: "nav-live" },
+        { href: "/live", label: "Live", icon: <Activity aria-hidden="true" />, testid: "nav-live" },
         { href: "/sla", label: "SLA", icon: <ShieldAlert aria-hidden="true" />, testid: "nav-sla" },
-        { href: "/queues", label: t.queues ?? "Queues", icon: <ListChecks aria-hidden="true" />, testid: "nav-queues" },
+        { href: "/queues", label: "Queues", icon: <ListChecks aria-hidden="true" />, testid: "nav-queues" },
         { href: "/operations/audit", label: t.auditLog, icon: <Activity aria-hidden="true" />, testid: "nav-operations-audit" },
       ],
     },
@@ -136,8 +136,8 @@ function buildNavGroups(): NavGroup[] {
       id: "admin",
       label: t.groupAdmin,
       items: [
-        { href: "/integrations", label: t.integrations ?? "Integrations", icon: <Building2 aria-hidden="true" />, testid: "nav-integrations" },
-        { href: "/team", label: t.team ?? "Team", icon: <Users aria-hidden="true" />, testid: "nav-team" },
+        { href: "/integrations", label: t.integrations, icon: <Building2 aria-hidden="true" />, testid: "nav-integrations" },
+        { href: "/team", label: t.team, icon: <Users aria-hidden="true" />, testid: "nav-team" },
         { href: "/settings", label: t.settings, icon: <Settings aria-hidden="true" />, testid: "nav-settings" },
       ],
     },

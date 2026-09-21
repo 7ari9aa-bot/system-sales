@@ -41,7 +41,7 @@ export default function ApprovalsPage() {
         {(["PENDING", "APPROVED", "REJECTED"] as const).map((s) => (
           <Button
             key={s}
-            variant={status === s ? "primary" : "ghost"}
+            variant={status === s ? "default" : "ghost"}
             size="sm"
             onClick={() => setStatus(s)}
           >
@@ -121,10 +121,10 @@ export default function ApprovalsPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {approval.requested_for && (
+                  {approval.requested_by && (
                     <div className="text-[13px] text-muted-foreground">
                       <Clock className="ml-1 inline size-3" aria-hidden="true" />
-                      طُلب بواسطة: {approval.requested_for}
+                      طُلب بواسطة: {approval.requested_by}
                     </div>
                   )}
 
@@ -133,7 +133,7 @@ export default function ApprovalsPage() {
                     <div className="flex gap-2">
                       <Button
                         size="sm"
-                        variant="primary"
+                        variant="default"
                         disabled={decideMutation.isPending}
                         onClick={() =>
                           decideMutation.mutate({
@@ -148,7 +148,7 @@ export default function ApprovalsPage() {
                       </Button>
                       <Button
                         size="sm"
-                        variant="danger"
+                        variant="destructive"
                         disabled={decideMutation.isPending}
                         onClick={() =>
                           decideMutation.mutate({
