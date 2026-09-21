@@ -160,7 +160,7 @@ class CampaignExecutionService:
         config = run.config_snapshot or {}
         body = config.get("body", "")
         template = config.get("template")
-        _channel = config.get("channel", "whatsapp")
+        channel = config.get("channel", "whatsapp")
 
         from app.modules.conversations.service import ConversationService
 
@@ -172,6 +172,7 @@ class CampaignExecutionService:
                     customer_id=cid,
                     body=body,
                     template_name=template,
+                    channel=channel,
                     source="campaign",
                     correlation_id=f"campaign:{run.id}",
                 )
@@ -242,29 +243,19 @@ class CampaignExecutionService:
 
         Uses the cursor to skip already-processed customers.
         """
-        from sqlalchemy import text
-
         if run.segment_id:
-            # Fetch from segment members — this is a simplified version;
-            # a real implementation would evaluate the segment DSL.
-            cursor_filter = ""
-            params: dict = {
-                "t": tenant_id,
-                "limit": batch_size,
-            }
-            if run.cursor:
-                cursor_filter = "AND customer_id > :cursor"
-                params["cursor"] = run.cursor
+            # §82: the shared Segment entity is the single audience source —
+            # evaluate its DSL (server-side compiled, RLS-scoped) instead of a
+            # materialized member table that does not exist.
+            from app.modules.segments.service import SegmentService
 
-            rows = await session.execute(
-                text(
-                    f"SELECT customer_id FROM segment_members "
-                    f"WHERE tenant_id = :t {cursor_filter} "
-                    f"ORDER BY customer_id LIMIT :limit"
-                ),
-                params,
+            member_ids = await SegmentService.list_segment_customers(
+                session, tenant_id, run.segment_id
             )
-            return [r[0] for r in rows.all()]
+            ordered = sorted(member_ids, key=str)
+            if run.cursor:
+                ordered = [c for c in ordered if str(c) > run.cursor]
+            return ordered[:batch_size]
 
         # No segment — no recipients
         return []

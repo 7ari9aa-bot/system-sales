@@ -289,6 +289,51 @@ class ConversationService:
         )
 
     @staticmethod
+    async def send_outbound_from_automation(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        *,
+        customer_id: uuid.UUID,
+        body: str | None = None,
+        template_name: str | None = None,
+        template_vars: dict | None = None,
+        channel: str = "whatsapp",
+        source: str = "automation",
+        correlation_id: str | None = None,
+        media_url: str | None = None,
+        media_type: str | None = None,
+        content_type: str = "text",
+    ) -> Message:
+        """§30 — the ONE door automation actors (campaign/journey/workflow)
+        send through.
+
+        Resolves or opens the customer's conversation on the configured
+        channel, then goes through ``add_promotional_message`` so the §32
+        marketing-consent gate, the §30 channel/window policy, the §173
+        guardrail chain and the durable queued outbound ALL apply — an
+        automation never gets a side door around the rules a human sender
+        follows.
+        """
+        conversation = await ConversationService.get_or_create(
+            session, tenant_id, customer_id=customer_id, channel=channel
+        )
+        payload: dict = {"source": source}
+        if correlation_id:
+            payload["correlation_id"] = correlation_id
+        return await ConversationService.add_promotional_message(
+            session,
+            tenant_id,
+            conversation_id=conversation.id,
+            body=body,
+            media_url=media_url,
+            media_type=media_type,
+            content_type=content_type,
+            template_name=template_name,
+            template_vars=template_vars,
+            payload=payload,
+        )
+
+    @staticmethod
     async def set_status(
         session: AsyncSession,
         tenant_id: uuid.UUID,

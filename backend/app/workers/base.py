@@ -211,28 +211,29 @@ class StreamWorker:
 
             from app.core.db import SessionLocal
 
+            # §127: read-only pre-check — was this event already processed?
+            # The marker itself is written AFTER handle() succeeds (see below):
+            # writing it before the effect (the old order) survived a transient
+            # failure and permanently suppressed the redelivery — a LOST event.
             try:
                 async with SessionLocal() as idem_session:
-                    async with idem_session.begin():
-                        result = await idem_session.execute(
+                    seen = (
+                        await idem_session.execute(
                             sa_text(
-                                "INSERT INTO processed_events "
-                                "(id, consumer_name, event_id, status) "
-                                "VALUES (gen_random_uuid(), :consumer, :eid, 'done') "
-                                "ON CONFLICT (consumer_name, event_id) DO NOTHING"
+                                "SELECT 1 FROM processed_events "
+                                "WHERE consumer_name = :consumer AND event_id = :eid "
+                                "LIMIT 1"
                             ),
                             {"consumer": self.name, "eid": dedupe_id},
                         )
-                        # ON CONFLICT DO NOTHING returns 0 rows inserted if the
-                        # row already existed — meaning this event was already
-                        # processed. Skip it.
-                        if (result.rowcount or 0) == 0:
-                            logger.info(
-                                "worker.idempotent_skip stream=%s consumer=%s id=%s",
-                                self.stream, self.name, dedupe_id,
-                            )
-                            await self._bus.ack(self.stream, self.group, event)
-                            return
+                    ).first()
+                if seen:
+                    logger.info(
+                        "worker.idempotent_skip stream=%s consumer=%s id=%s",
+                        self.stream, self.name, dedupe_id,
+                    )
+                    await self._bus.ack(self.stream, self.group, event)
+                    return
             except Exception:
                 # If the idempotency table is unavailable, fail open —
                 # the handler may have its own dedupe (message_worker does).
@@ -287,6 +288,34 @@ class StreamWorker:
             await self._republish_after(event, meta, delay)
             await self._bus.ack(self.stream, self.group, event)
             return
+        # §127: record the processed marker only after the effect committed.
+        # A crash between the effect and this write replays handle() on
+        # redelivery — handlers are status-guarded and idempotent — whereas a
+        # pre-written marker turned any transient failure into a lost event.
+        # Deferred/permanent-failure paths above return BEFORE this write, so
+        # retries and DLQ replays stay reprocessable.
+        if not getattr(self, "_skip_generic_idempotency", False):
+            from sqlalchemy import text as sa_text
+
+            from app.core.db import SessionLocal
+
+            try:
+                async with SessionLocal() as idem_session:
+                    async with idem_session.begin():
+                        await idem_session.execute(
+                            sa_text(
+                                "INSERT INTO processed_events "
+                                "(id, consumer_name, event_id, status) "
+                                "VALUES (gen_random_uuid(), :consumer, :eid, 'done') "
+                                "ON CONFLICT (consumer_name, event_id) DO NOTHING"
+                            ),
+                            {"consumer": self.name, "eid": dedupe_id},
+                        )
+            except Exception:
+                logger.debug(
+                    "worker.idempotency_write_failed stream=%s id=%s",
+                    self.stream, dedupe_id, exc_info=True,
+                )
         await self._bus.ack(self.stream, self.group, event)
 
     async def _republish_after(self, event: Event, meta: dict, delay: float) -> None:
@@ -322,7 +351,7 @@ class StreamWorker:
         async with SessionLocal() as session:
             async with session.begin():
                 # §125: bind tenant GUC so the outbox insert is tenant-scoped.
-                from app.core.tenancy import bind_tenant
+                from app.core.db import bind_tenant
 
                 await bind_tenant(session, envelope.tenant_id)
                 retry = await add_outbox_event(

@@ -256,7 +256,7 @@ class JourneyExecutionService:
 
         template = config.get("template")
         body = config.get("body", "")
-        _channel = config.get("channel", "whatsapp")
+        channel = config.get("channel", "whatsapp")
 
         await ConversationService.send_outbound_from_automation(
             session,
@@ -264,6 +264,7 @@ class JourneyExecutionService:
             customer_id=run.customer_id,
             body=body,
             template_name=template,
+            channel=channel,
             source="journey",
             correlation_id=f"journey:{run.id}",
         )
