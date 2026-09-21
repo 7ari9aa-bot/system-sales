@@ -15,6 +15,7 @@ from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.core.search import get_search
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
 from app.modules.operations.models import Task
+from app.modules.operations.task_service import TaskService  # §13-14
 from app.modules.platform.models import Job
 
 router = APIRouter(tags=["operations"])
@@ -78,16 +79,16 @@ async def list_tasks(
 
 @router.post("/tasks", status_code=201)
 async def create_task(ctx: TenantCtxDep, body: TaskCreate):
-    task = Task(
-        tenant_id=ctx.tenant_id,
+    # §13-14: route through TaskService — no direct model construction.
+    task = await TaskService.create_task(
+        ctx.session,
+        ctx.tenant_id,
         title=body.title,
         description=body.description,
         assignee_user_id=body.assignee_user_id,
         priority=body.priority,
         source="human",
     )
-    ctx.session.add(task)
-    await ctx.session.flush()
     return {"id": str(task.id), "status": task.status}
 
 
@@ -473,3 +474,153 @@ async def cancel_job(
     job.status = "cancelled"
     await ctx.session.flush()
     return _job_out(job)
+
+
+# ---------- Tenant fairness (§144) ----------
+#
+# Resource quotas: a single tenant cannot starve the platform.
+
+
+@router.get("/fairness/usage")
+async def fairness_usage(ctx: TenantCtxDep):
+    """§144: current tenant's resource usage against fairness budgets."""
+    from app.core.fairness import get_usage
+
+    return await get_usage(ctx.tenant_id)
+
+
+@router.get("/fairness/check")
+async def fairness_check(
+    ctx: TenantCtxDep,
+    resource: str = Query(..., description="ai_tokens | messages_outbound | storage_bytes | worker_seconds"),
+    units: int = Query(default=1, ge=1),
+):
+    """§144: pre-flight check — does the tenant have `units` remaining?"""
+    from app.core.fairness import ResourceType, check_budget
+
+    try:
+        res = ResourceType(resource)
+    except ValueError:
+        raise ValidationError(
+            f"unknown resource type: {resource}",
+            details={"valid_types": [r.value for r in ResourceType]},
+        )
+    result = await check_budget(ctx.tenant_id, res, units=units)
+    return {
+        "resource": result.resource.value,
+        "limit": result.limit,
+        "current_usage": result.current_usage,
+        "remaining": result.remaining,
+        "allowed": result.allowed,
+    }
+
+
+# ---------- SLO (§168) ----------
+#
+# Aggregate health objectives, distinct from per-conversation SLA.
+
+
+@sla_router.get("/slos")
+async def list_slo_definitions(ctx: TenantCtxDep):
+    """§168: list all SLO definitions (deployment-wide, not per-tenant)."""
+    from app.modules.operations.slo_service import get_slo_definitions
+
+    return {"items": get_slo_definitions()}
+
+
+@sla_router.get("/slos/measure")
+async def measure_all_slos(ctx: TenantCtxDep):
+    """§168: compute every SLO's compliance for the tenant."""
+    from app.modules.operations.slo_service import measure_all_slos
+
+    results = await measure_all_slos(ctx.session, ctx.tenant_id)
+    return {
+        "items": [
+            {
+                "name": r.name,
+                "compliance_percent": r.compliance_percent,
+                "total": r.total,
+                "met": r.met,
+                "target_percent": r.target_percent,
+                "status": r.status,
+                "window_since": r.window_since,
+            }
+            for r in results
+        ]
+    }
+
+
+@sla_router.get("/slos/{slo_name}")
+async def measure_one_slo(ctx: TenantCtxDep, slo_name: str):
+    """§168: compute one SLO's compliance for the tenant."""
+    from app.modules.operations.slo_service import measure_slo
+
+    result = await measure_slo(ctx.session, ctx.tenant_id, slo_name)
+    return {
+        "name": result.name,
+        "compliance_percent": result.compliance_percent,
+        "total": result.total,
+        "met": result.met,
+        "target_percent": result.target_percent,
+        "status": result.status,
+        "window_since": result.window_since,
+    }
+
+
+# ---------- §154: Scheduled job cancel/reschedule ----------
+
+class ScheduledJobReschedule(BaseModel):
+    run_at: datetime
+
+
+@router.post("/scheduled-jobs/{job_id}/cancel")
+async def cancel_scheduled_job(
+    job_id: uuid.UUID,
+    ctx: TenantContext = Depends(require_permission("settings:write")),
+):
+    """§154: cancel a queued/retrying scheduled job."""
+    from app.modules.platform.models import ScheduledJob
+
+    job = (
+        await ctx.session.execute(
+            select(ScheduledJob).where(
+                ScheduledJob.tenant_id == ctx.tenant_id, ScheduledJob.id == job_id
+            )
+        )
+    ).scalar_one_or_none()
+    if job is None:
+        raise NotFoundError("scheduled job not found")
+    if job.status in ("completed", "failed", "cancelled"):
+        raise ConflictError(
+            f"scheduled job is {job.status} and cannot be cancelled",
+        )
+    job.status = "cancelled"
+    job.cancelled_at = datetime.now(UTC)
+    await ctx.session.flush()
+    return {"id": str(job.id), "status": job.status}
+
+
+@router.post("/scheduled-jobs/{job_id}/reschedule")
+async def reschedule_scheduled_job(
+    job_id: uuid.UUID,
+    body: ScheduledJobReschedule,
+    ctx: TenantContext = Depends(require_permission("settings:write")),
+):
+    """§154: move a scheduled job's run_at."""
+    from app.modules.platform.models import ScheduledJob
+
+    job = (
+        await ctx.session.execute(
+            select(ScheduledJob).where(
+                ScheduledJob.tenant_id == ctx.tenant_id, ScheduledJob.id == job_id
+            )
+        )
+    ).scalar_one_or_none()
+    if job is None:
+        raise NotFoundError("scheduled job not found")
+    if job.status == "processing":
+        raise ConflictError("cannot reschedule a job that is currently processing")
+    job.run_at = body.run_at
+    job.status = "queued"
+    await ctx.session.flush()
+    return {"id": str(job.id), "status": job.status, "run_at": job.run_at.isoformat() if job.run_at else None}

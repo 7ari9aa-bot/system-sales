@@ -4,14 +4,25 @@ The middleware (Stage 2) resolves the tenant from the JWT claim / header, stores
 it here, and every session opened for the request binds it for RLS via
 bind_tenant(). Application-layer authorization checks it independently — tenant
 isolation is enforced twice by design.
+
+§144: Tenant fairness — per-tenant concurrency/queue budgets prevent a single
+noisy tenant from starving others. The budgets are enforced via Redis
+semaphores with per-tenant keys.
 """
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from uuid import UUID, uuid4
 
 _current_tenant: ContextVar[UUID | None] = ContextVar("current_tenant", default=None)
+
+# §144: per-tenant concurrency budgets. A tenant can hold at most N concurrent
+# in-flight requests; excess requests are rejected with 429. The default is
+# generous; lower it for noisy tenants via the plan configuration.
+DEFAULT_TENANT_CONCURRENCY = 50
+DEFAULT_TENANT_QUEUE_DEPTH = 100
 
 
 def set_current_tenant(tenant_id: UUID | str) -> None:

@@ -25,6 +25,8 @@ from app.core.errors import DomainError, NotFoundError
 from app.modules.ai.gateway import AIGateway, estimate_cost
 from app.modules.ai.models import Agent, AgentRun, AgentTool, ToolCall
 from app.modules.ai.providers import ToolCallRequest
+from app.modules.ai.tools import tool_to_openai_schema  # noqa: E402
+from app.modules.ai.usage import record_usage  # noqa: E402
 
 
 def _assistant_tool_call(tc: ToolCallRequest) -> dict:
@@ -40,8 +42,6 @@ def _assistant_tool_call(tc: ToolCallRequest) -> dict:
     return entry
 
 
-from app.modules.ai.tools import tool_to_openai_schema  # noqa: E402
-from app.modules.ai.usage import record_usage  # noqa: E402
 from app.modules.conversations import models as _conversations_models  # noqa: E402,F401
 
 # Importing the conversations models registers their tables in the shared
@@ -58,11 +58,15 @@ DEFAULT_RUN_LIMITS = {
     "max_steps": MAX_ITERATIONS,
     "max_tool_calls": 10,
     "max_wall_time_seconds": 120,
+    "max_retries": 2,  # §134: max tool-call retries before giving up
+    "max_handoffs": 1,  # §134: max agent handoffs before stopping
 }
 RUN_LIMITS_CEILINGS = {
     "max_steps": 25,
     "max_tool_calls": 100,
     "max_wall_time_seconds": 900,
+    "max_retries": 10,
+    "max_handoffs": 5,
 }
 
 
@@ -119,6 +123,7 @@ class AgentRunner:
         user_message: str,
         customer_id: uuid.UUID | None = None,
         system_prompt: str | None = None,
+        knowledge_context: str | None = None,  # §132: untrusted context, separate from system prompt
     ) -> AgentRunResult:
         agent = await self._load_agent(session, tenant_id, agent_id)
         agent_tools = await self._load_agent_tools(session, tenant_id, agent_id)
@@ -137,6 +142,19 @@ class AgentRunner:
         session.add(run)
         await session.flush()
 
+        # §126: acquire the conversation lease INSIDE the runtime, so any
+        # caller (not just the message-worker hook) is serialized. Two
+        # concurrent AI runs on the same conversation would produce
+        # conflicting state — duplicate orders, interleaved tool calls,
+        # lost writes. The advisory lock is transaction-scoped and
+        # reentrant, so the hook's own lease is a no-op.
+        lease_cm = None
+        if conversation_id is not None:
+            from app.core.lease import conversation_lease
+
+            lease_cm = conversation_lease(session, conversation_id)
+            await lease_cm.__aenter__()
+
         try:
             result = await self._loop(
                 session,
@@ -148,6 +166,7 @@ class AgentRunner:
                 user_message=user_message,
                 customer_id=customer_id,
                 system_prompt=system_prompt,
+                knowledge_context=knowledge_context,  # §132
             )
         except Exception as exc:
             run.status = "failed"
@@ -157,6 +176,9 @@ class AgentRunner:
             if isinstance(exc, DomainError):
                 raise
             raise DomainError(f"agent run failed: {exc}") from exc
+        finally:
+            if lease_cm is not None:
+                await lease_cm.__aexit__(None, None, None)
 
         if run.status == "running":
             run.status = "succeeded"
@@ -166,6 +188,27 @@ class AgentRunner:
         run.cost = estimate_cost(result.tokens_in, result.tokens_out)
         run.finished_at = _now()
         await session.flush()
+
+        # §38: persist a memory from the AI run so future runs can retrieve it.
+        # §158: the memory is labelled agent_inferred — NOT customer_stated —
+        # because this is an AI-generated summary, not something the customer
+        # explicitly said. confidence is moderate (not verified by a system event).
+        if customer_id is not None and result.content and result.guardrail_decision == "allow":
+            try:
+                from app.modules.ai.knowledge import add_memory
+
+                await add_memory(
+                    session,
+                    tenant_id,
+                    customer_id=customer_id,
+                    conversation_id=conversation_id,
+                    kind="summary",
+                    content=f"AI run: {result.content[:500]}",
+                    source="agent_inferred",
+                    confidence=0.6,
+                )
+            except Exception:  # noqa: BLE001 — memory is best-effort
+                logger.warning("ai.memory_persist_failed run=%s", run.id, exc_info=True)
 
         await record_usage(
             session,
@@ -228,6 +271,7 @@ class AgentRunner:
         user_message: str,
         customer_id: uuid.UUID | None,
         system_prompt: str | None,
+        knowledge_context: str | None = None,  # §132
     ) -> AgentRunResult:
         messages: list[dict] = [
             {
@@ -235,11 +279,36 @@ class AgentRunner:
                 "content": system_prompt or agent.system_prompt or DEFAULT_SYSTEM_PROMPT,
             }
         ]
+        # §132: knowledge context is injected as a SEPARATE user message,
+        # not appended to the system prompt. This separates trusted
+        # instructions from untrusted retrieved content, reducing the
+        # prompt-injection surface.
+        if knowledge_context:
+            messages.append({
+                "role": "user",
+                "content": f"[Knowledge base — untrusted context]\n{knowledge_context}",
+            })
         if conversation_id is not None:
             messages.extend(
                 await self._conversation_history(session, tenant_id, conversation_id)
             )
         messages.append({"role": "user", "content": user_message})
+
+        # §38: retrieve customer memories and inject into context (best-effort).
+        if customer_id is not None:
+            try:
+                from app.modules.ai.knowledge import search_memory
+
+                memories = await search_memory(
+                    session, tenant_id, user_message, customer_id=customer_id, limit=5
+                )
+                if memories:
+                    mem_snippets = "\n".join(
+                        f"- {m.content}" for m, _dist in memories
+                    )
+                    messages[0]["content"] += f"\n\nCustomer memories:\n{mem_snippets}"
+            except Exception:  # noqa: BLE001 — memory is best-effort context
+                logger.warning("ai.memory_search_failed customer=%s", customer_id, exc_info=True)
 
         tools_schema = [
             tool_to_openai_schema(spec)
@@ -422,8 +491,38 @@ class AgentRunner:
         §132: HIGH-risk tools (§15) require a durable human approval BEFORE
         execution — the run suspends as WAITING_APPROVAL. The tool's context
         pins the conversation's customer server-side (§132 scope binding).
+
+        §15-16: idempotency — the (run_id, tool_call_id) pair is the dedupe
+        key. A retried run or replayed event that re-issues the same tool
+        call finds the prior ToolCall row and returns its result without
+        re-executing the handler, preventing duplicate side-effects.
         """
         from app.modules.ai.tools import get_tool
+
+        # §15-16: idempotency pre-check. If this exact tool call (same run,
+        # same provider tool_call_id) was already executed, return the prior
+        # result. The unique constraint on (tenant_id, idempotency_key) makes
+        # the check-then-insert atomic under concurrent retries.
+        idempotency_key = f"{run.id}:{request.id}"
+        prior = (
+            await session.execute(
+                select(ToolCall).where(
+                    ToolCall.tenant_id == tenant_id,
+                    ToolCall.idempotency_key == idempotency_key,
+                )
+            )
+        ).scalar_one_or_none()
+        if prior is not None and prior.result is not None and prior.status == "ok":
+            logger.info(
+                "ai.tool_call_idempotent_skip run=%s tool=%s key=%s",
+                run.id, request.name, idempotency_key,
+            )
+            return {
+                "name": prior.name,
+                "status": prior.status,
+                "error": prior.error,
+                "result": prior.result,
+            }
 
         agent_tool = next((t for t in agent_tools if t.name == request.name), None)
         status = "ok"
@@ -535,6 +634,7 @@ class AgentRunner:
                 name=request.name,
                 args=request.arguments or {},
                 result=result,
+                idempotency_key=idempotency_key,
                 status=status,
                 error=error,
                 duration_ms=duration_ms if status == "ok" else None,

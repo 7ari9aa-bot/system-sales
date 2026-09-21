@@ -38,6 +38,8 @@ __all__ = [
     "MONEY_QUANTUM",
     "REFUNDED_PAYMENT_STATUSES",
     "SETTLED_PAYMENT_STATUSES",
+    "amount_minor",
+    "from_amount_minor",
     "net_collected",
     "order_balance",
     "positive_money",
@@ -159,3 +161,61 @@ def reconciliation_refusal(current: str, observed: str) -> str | None:
             "register_refund so it reconciles against the capture"
         )
     return None
+
+
+# ---------------------------------------------------------------------------
+# §47 — Minor-unit (amount_minor) helpers
+# ---------------------------------------------------------------------------
+# Payment provider APIs (Stripe, tap, etc.) expect amounts in MINOR units
+# (integer cents/fils), not Decimal dollars/dinars. Converting at the
+# provider boundary is mandatory: a ``Decimal("19.99")`` must become
+# ``1999`` (cents) for USD, or ``19990`` (fils) for IQD.
+#
+# Most currencies have 2 decimal places (100 minor per major). A few have
+# 3 (BHD, IQD, JOD, KWD, OMR) or 0 (JPY). The caller must pass the
+# currency's exponent so the function is correct for every currency.
+
+
+# ISO 4217 exponent lookup — the number of digits after the decimal point.
+# Most currencies: 2 (100 minor per major). A few: 3 (BHD, IQD, JOD, KWD,
+# OMR) or 0 (JPY, KRW). This table covers the ones this system uses.
+_CURRENCY_EXPONENTS: dict[str, int] = {
+    "USD": 2, "EUR": 2, "GBP": 2, "SAR": 2, "AED": 2, "EGP": 2,
+    "IQD": 3, "BHD": 3, "JOD": 3, "KWD": 3, "OMR": 3,
+    "JPY": 0, "KRW": 0,
+}
+
+
+def _exponent_for(currency: str) -> int:
+    """Get the decimal exponent for a currency (default 2)."""
+    return _CURRENCY_EXPONENTS.get(currency.upper(), 2)
+
+
+def amount_minor(value: object, currency: str) -> int:
+    """§47: convert a Decimal money value to minor units (integer).
+
+    Examples:
+        amount_minor(Decimal("19.99"), "USD") -> 1999
+        amount_minor(Decimal("19.990"), "IQD") -> 19990
+        amount_minor(Decimal("1000"), "JPY") -> 1000
+
+    Raises ValueError if the value is not finite.
+    """
+    amount = to_money(value)
+    exp = _exponent_for(currency)
+    # Scale to minor units: multiply by 10^exp, then truncate to int
+    scaled = amount * (Decimal(10) ** exp)
+    return int(scaled.to_integral_value(rounding=ROUND_HALF_UP))
+
+
+def from_amount_minor(minor: int, currency: str) -> Decimal:
+    """§47: convert minor units back to a Decimal money value.
+
+    Inverse of ``amount_minor``:
+        from_amount_minor(1999, "USD") -> Decimal("19.99")
+        from_amount_minor(19990, "IQD") -> Decimal("19.990")
+        from_amount_minor(1000, "JPY") -> Decimal("1000")
+    """
+    exp = _exponent_for(currency)
+    result = Decimal(minor) / (Decimal(10) ** exp)
+    return result.quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)

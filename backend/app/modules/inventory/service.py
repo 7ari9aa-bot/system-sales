@@ -15,7 +15,6 @@ from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.catalog.models import ProductVariant
 from app.modules.errors import ConflictError, NotFoundError
 from app.modules.inventory.models import (
     InventoryBalance,
@@ -313,19 +312,16 @@ class InventoryService:
     @staticmethod
     async def _get_variant(
         session: AsyncSession, tenant_id: UUID, variant_id: UUID
-    ) -> ProductVariant:
-        """Existence + tenant check (inactive variants still hold stock)."""
-        variant = (
-            await session.execute(
-                select(ProductVariant).where(
-                    ProductVariant.id == variant_id,
-                    ProductVariant.tenant_id == tenant_id,
-                )
-            )
-        ).scalar_one_or_none()
-        if variant is None:
-            raise NotFoundError(f"variant {variant_id} not found")
-        return variant
+    ):
+        """Existence + tenant check (inactive variants still hold stock).
+
+        §8: delegates to CatalogService instead of importing catalog models.
+        """
+        from app.modules.catalog.service import CatalogService
+
+        return await CatalogService.get_variant(
+            session, tenant_id, variant_id, include_inactive=True
+        )
 
     @staticmethod
     async def _get_warehouse(
@@ -400,6 +396,99 @@ class InventoryService:
             )
         ).scalars().all()
         return list(rows)
+
+    # --------------------------------------------------- public warehouse ---
+
+    @staticmethod
+    async def get_warehouse(
+        session: AsyncSession, tenant_id: UUID, warehouse_id: UUID
+    ) -> Warehouse:
+        """Public cross-module accessor — delegates to the private helper (§8)."""
+        return await InventoryService._get_warehouse(session, tenant_id, warehouse_id)
+
+    @staticmethod
+    async def get_default_warehouse(
+        session: AsyncSession, tenant_id: UUID
+    ) -> Warehouse:
+        """The tenant's first active warehouse, bootstrapping 'Main' if needed.
+
+        Moved here from OrderService so orders never touches the Warehouse
+        model directly (§8 module-boundary rule).
+        """
+        warehouse = (
+            await session.execute(
+                select(Warehouse)
+                .where(
+                    Warehouse.tenant_id == tenant_id,
+                    Warehouse.is_active.is_(True),
+                )
+                .order_by(Warehouse.created_at.asc(), Warehouse.name.asc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if warehouse is not None:
+            return warehouse
+
+        # No warehouse yet — create "Main" (race-safe: converge on one row).
+        await session.execute(
+            pg_insert(Warehouse)
+            .values(tenant_id=tenant_id, name="Main", code="MAIN")
+            .on_conflict_do_nothing(index_elements=["tenant_id", "code"])
+        )
+        # Retry the read: a competing bootstrap may still be uncommitted.
+        for _attempt in range(3):
+            try:
+                return (
+                    await session.execute(
+                        select(Warehouse).where(
+                            Warehouse.tenant_id == tenant_id,
+                            Warehouse.code == "MAIN",
+                        )
+                    )
+                ).scalar_one()
+            except NoResultFound:
+                from sqlalchemy.exc import NoResultFound as _NRFE  # noqa: F811
+
+                await session.rollback()
+                continue
+        # Last-resort: try one more time without rollback
+        return (
+            await session.execute(
+                select(Warehouse).where(
+                    Warehouse.tenant_id == tenant_id,
+                    Warehouse.code == "MAIN",
+                )
+            )
+        ).scalar_one()
+
+    @staticmethod
+    async def create_reservation(
+        session: AsyncSession,
+        tenant_id: UUID,
+        *,
+        variant_id: UUID,
+        warehouse_id: UUID,
+        order_id: UUID,
+        quantity: int,
+        expires_at: datetime,
+    ) -> None:
+        """Create a durable reservation row (§140) — cross-module safe (§8).
+
+        Orders calls this instead of touching InventoryReservation directly.
+        """
+        from app.modules.inventory.models import InventoryReservation
+
+        session.add(
+            InventoryReservation(
+                tenant_id=tenant_id,
+                variant_id=variant_id,
+                warehouse_id=warehouse_id,
+                order_id=order_id,
+                quantity=quantity,
+                status="ACTIVE",
+                expires_at=expires_at,
+            )
+        )
 
 
 class InventoryReservationService:

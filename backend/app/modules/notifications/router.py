@@ -80,6 +80,13 @@ async def summary(ctx: TenantCtxDep) -> dict:
     return await NotificationService.summary(ctx.session, ctx.tenant_id, ctx.user.id)
 
 
+@router.get("/digest", summary="§166: grouped unread notifications for the bell's collapsed view")
+async def digest(ctx: TenantCtxDep) -> dict:
+    from app.modules.notifications.service import NotificationService
+
+    return await NotificationService.digest(ctx.session, ctx.tenant_id, ctx.user.id)
+
+
 @router.patch("/{notification_id}/read", summary="Mark one notification as read")
 async def mark_read(
     notification_id: uuid.UUID,

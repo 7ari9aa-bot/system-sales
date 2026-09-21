@@ -25,7 +25,6 @@ from app.modules.conversations.models import (
     normalize_conversation_status,
 )
 from app.modules.conversations.policy import MessagingPolicyService, OutboundBlockedError
-from app.modules.platform.models import AuditLog
 
 
 class ConversationService:
@@ -355,28 +354,20 @@ class ConversationService:
         before_created_at: datetime | None = None,
         before_id: uuid.UUID | None = None,
     ) -> list[Conversation]:
-        """Keyset-aware inbox listing: pass before_created_at + before_id to page."""
-        from app.modules.customers.models import Customer
+        """Keyset-aware inbox listing: pass before_created_at + before_id to page.
 
-        stmt = (
-            select(
-                Conversation,
-                Customer.name.label("customer_name"),
-                Customer.phone.label("customer_phone"),
-            )
-            .outerjoin(
-                Customer,
-                (Customer.id == Conversation.customer_id) & (Customer.tenant_id == tenant_id),
-            )
-            .where(Conversation.tenant_id == tenant_id)
-        )
+        §8: customer name/phone fetched via CustomerService (no cross-module
+        model import).
+        """
+        from app.modules.customers.service import CustomerService
+        from app.modules.platform.service import AuditService
+
+        stmt = select(Conversation).where(Conversation.tenant_id == tenant_id)
         if status:
             stmt = stmt.where(Conversation.status == status)
         if assignee_user_id:
             stmt = stmt.where(Conversation.assignee_user_id == assignee_user_id)
         if customer_id is not None:
-            # Customer 360: scope to one customer server-side rather than
-            # filtering a tenant-wide page in the browser.
             stmt = stmt.where(Conversation.customer_id == customer_id)
         if before_created_at is not None and before_id is not None:
             stmt = stmt.where(
@@ -387,13 +378,114 @@ class ConversationService:
         else:
             stmt = stmt.order_by(Conversation.last_message_at.desc().nullslast())
         stmt = stmt.limit(limit).offset(offset)
-        rows = (await session.execute(stmt)).all()
-        results: list[Conversation] = []
-        for conv, cust_name, cust_phone in rows:
-            conv.customer_name = cust_name
-            conv.customer_phone = cust_phone
+        conversations = list((await session.execute(stmt)).scalars().all())
+        if not conversations:
+            return []
+
+        # Batch-fetch customer names via the public contract (§8).
+        customer_ids = [c.customer_id for c in conversations if c.customer_id]
+        name_phone_map = await CustomerService.get_name_phone_map(
+            session, tenant_id, customer_ids
+        )
+        for conv in conversations:
+            entry = name_phone_map.get(conv.customer_id) if conv.customer_id else None
+            conv.customer_name = entry[0] if entry else None
+            conv.customer_phone = entry[1] if entry else None
             results.append(conv)
         return results
+
+    # ------------------------------------------------------------------
+    # §137 — InboxQuery: a dedicated read model for the inbox list.
+    # ------------------------------------------------------------------
+    # The raw list_inbox returns Conversation rows. The inbox UI needs MORE:
+    # the last message preview, the unread count per conversation, and the
+    # SLA status. Computing these per-row in the UI is N+1; computing them
+    # in a single SQL query is the §137 read model.
+    #
+    # This is a READ-ONLY query — it never writes. It is the CQRS read side.
+
+    @staticmethod
+    async def inbox_query(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        *,
+        status: str | None = None,
+        assignee_user_id: uuid.UUID | None = None,
+        limit: int = 50,
+        before_created_at: datetime | None = None,
+        before_id: uuid.UUID | None = None,
+    ) -> list[dict]:
+        """§137: inbox list with preview + unread count + SLA in one query."""
+        from sqlalchemy import func, text
+
+        # Single SQL query that joins conversations → customers → last message
+        # → unread count → SLA status. Using raw SQL because the subqueries
+        # for "last message" and "unread count" are cleaner in SQL than ORM.
+        params: dict[str, object] = {"tenant_id": str(tenant_id)}
+        where_clauses = ["c.tenant_id = :tenant_id"]
+        if status:
+            params["status"] = status
+            where_clauses.append("c.status = :status")
+        if assignee_user_id:
+            params["assignee_user_id"] = str(assignee_user_id)
+            where_clauses.append("c.assignee_user_id = :assignee_user_id")
+        if before_created_at and before_id:
+            params["before_created_at"] = before_created_at
+            params["before_id"] = before_id
+            where_clauses.append(
+                "(c.created_at, c.id) < (:before_created_at, :before_id)"
+            )
+
+        order_by = (
+            "c.created_at DESC, c.id DESC"
+            if before_created_at
+            else "c.last_message_at DESC NULLS LAST"
+        )
+
+        sql = text(f"""
+            SELECT
+                c.id,
+                c.status,
+                c.channel,
+                c.customer_id,
+                cust.name AS customer_name,
+                cust.phone AS customer_phone,
+                c.assignee_user_id,
+                c.created_at,
+                c.last_message_at,
+                c.last_message_preview,
+                c.unread_count,
+                c.sla_status,
+                c.sla_deadline_at
+              FROM conversations c
+              LEFT JOIN customers cust
+                ON cust.id = c.customer_id
+               AND cust.tenant_id = c.tenant_id
+             WHERE {' AND '.join(where_clauses)}
+             ORDER BY {order_by}
+             LIMIT :limit
+        """)
+        params["limit"] = min(limit, 200)
+
+        rows = (await session.execute(sql, params)).all()
+        return [
+            {
+                "id": str(row.id),
+                "status": row.status,
+                "channel": row.channel,
+                "customer_id": str(row.customer_id) if row.customer_id else None,
+                "customer_name": row.customer_name,
+                "customer_phone": row.customer_phone,
+                "assignee_user_id": str(row.assignee_user_id) if row.assignee_user_id else None,
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+                "last_message_at": row.last_message_at.isoformat() if row.last_message_at else None,
+                "last_message_preview": row.last_message_preview,
+                "unread_count": int(row.unread_count or 0),
+                "sla_status": row.sla_status,
+                "sla_deadline_at": row.sla_deadline_at.isoformat() if row.sla_deadline_at else None,
+            }
+            for row in rows
+        ]
 
     @staticmethod
     async def list_messages(
@@ -448,14 +540,15 @@ class ConversationService:
         action: str,
         resource_id: str,
     ) -> None:
-        session.add(
-            AuditLog(
-                tenant_id=tenant_id,
-                actor_user_id=actor_user_id,
-                action=action,
-                resource_type="conversation",
-                resource_id=resource_id,
-            )
+        from app.modules.platform.service import AuditService
+
+        await AuditService.write(
+            session,
+            tenant_id,
+            actor_user_id,
+            action=action,
+            resource_type="conversation",
+            resource_id=resource_id,
         )
 
     @staticmethod

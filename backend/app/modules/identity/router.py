@@ -263,3 +263,58 @@ async def get_tenant_lifecycle(
     tenant = await service.TenantLifecycleService.get(ctx.session, tenant_id)
     return _lifecycle_out(tenant)
 
+
+@tenants_router.post("/{tenant_id}/offboarding/export")
+async def export_tenant_data(
+    tenant_id: uuid.UUID,
+    ctx: TenantContext = Depends(require_permission("settings:write")),
+):
+    """§49: export all tenant data during the offboarding window.
+
+    Only available when the tenant is in the 'offboarding' state — the
+    admin uses this to take their data out before the retention window
+    expires and the data is purged.
+    """
+    if ctx.tenant_id != tenant_id:
+        raise PermissionDeniedError("tenant mismatch")
+    tenant = await service.TenantLifecycleService.get(ctx.session, tenant_id)
+    if tenant.lifecycle_state != "offboarding":
+        raise ValidationError(
+            "data export is only available during offboarding "
+            f"(current state: {tenant.lifecycle_state})",
+            details={"lifecycle_state": tenant.lifecycle_state},
+        )
+    from app.workers.retention_worker import OffboardingWorker
+
+    return await OffboardingWorker.export_data(ctx.session, tenant_id)
+
+
+@tenants_router.get("/{tenant_id}/offboarding/status")
+async def offboarding_status(
+    tenant_id: uuid.UUID,
+    ctx: TenantContext = Depends(require_permission("settings:write")),
+):
+    """§50: check the offboarding retention window status."""
+    if ctx.tenant_id != tenant_id:
+        raise PermissionDeniedError("tenant mismatch")
+    tenant = await service.TenantLifecycleService.get(ctx.session, tenant_id)
+    if tenant.lifecycle_state != "offboarding":
+        return {
+            "tenant_id": str(tenant_id),
+            "lifecycle_state": tenant.lifecycle_state,
+            "action": "not_applicable",
+        }
+    from datetime import UTC, datetime
+
+    now = datetime.now(UTC)
+    deletion_at = tenant.deletion_scheduled_at
+    remaining_days = (deletion_at - now).days if deletion_at else None
+    return {
+        "tenant_id": str(tenant_id),
+        "lifecycle_state": tenant.lifecycle_state,
+        "deletion_scheduled_at": deletion_at.isoformat() if deletion_at else None,
+        "remaining_days": remaining_days,
+        "can_export": True,
+        "retention_days": 30,
+    }
+

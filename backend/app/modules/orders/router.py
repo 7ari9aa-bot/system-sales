@@ -7,6 +7,7 @@ import uuid
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
+from app.core.idempotency import IfMatch  # §17
 from app.core.pagination import decode_cursor, page_slice
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
 from app.modules.orders.service import OrderService
@@ -90,6 +91,7 @@ async def change_status(
     order_id: uuid.UUID,
     body: StatusChangeRequest,
     ctx: TenantContext = Depends(require_permission("orders:write")),
+    if_match: IfMatch = None,  # §17 optimistic-concurrency; absent = unconditional
 ):
     await OrderService.change_status(
         ctx.session,
@@ -98,6 +100,7 @@ async def change_status(
         body.status,
         by_user_id=ctx.user.id,
         note=body.note,
+        expected_version=if_match,  # §17 — None when header absent (backward compatible)
     )
     return {"ok": True}
 

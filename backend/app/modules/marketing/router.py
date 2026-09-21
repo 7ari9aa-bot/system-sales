@@ -201,3 +201,176 @@ async def dashboard(ctx: TenantCtxDep, days: int = 14):
     summary["daily_orders"] = await analytics.daily_orders(ctx.session, ctx.tenant_id, days=days)
     summary["revenue_by_source"] = await analytics.revenue_by_source(ctx.session, ctx.tenant_id)
     return summary
+
+
+# ------------------------------------------------------- journeys ----
+
+from app.modules.marketing.journey import JourneyExecutionService
+from app.modules.marketing.campaign import CampaignExecutionService
+from app.modules.marketing.attribution_service import AttributionService
+
+
+class JourneyStartRequest(BaseModel):
+    journey_id: uuid.UUID
+    customer_id: uuid.UUID
+
+
+class CampaignStartRequest(BaseModel):
+    campaign_id: uuid.UUID
+    segment_id: uuid.UUID | None = None
+    body: str | None = None
+    template: str | None = None
+    channel: str = "whatsapp"
+
+
+@router.post("/journeys/{journey_id}/start", status_code=201)
+async def start_journey(journey_id: uuid.UUID, ctx: WriteCtx, body: JourneyStartRequest):
+    """§175: Start a journey run for a customer."""
+    run = await JourneyExecutionService.start_journey(
+        ctx.session,
+        ctx.tenant_id,
+        journey_id=journey_id,
+        customer_id=body.customer_id,
+    )
+    return {
+        "id": str(run.id),
+        "journey_id": str(run.journey_id),
+        "customer_id": str(run.customer_id),
+        "status": run.status,
+        "current_step": run.current_step,
+    }
+
+
+@router.get("/journeys/{journey_id}/runs")
+async def list_journey_runs(
+    journey_id: uuid.UUID,
+    ctx: TenantCtxDep,
+    status: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+):
+    """List journey runs for a journey."""
+    from sqlalchemy import select
+    from app.modules.marketing.journey import JourneyRun
+
+    q = select(JourneyRun).where(
+        JourneyRun.tenant_id == ctx.tenant_id,
+        JourneyRun.journey_id == journey_id,
+    )
+    if status:
+        q = q.where(JourneyRun.status == status)
+    q = q.limit(limit)
+    rows = (await ctx.session.execute(q)).scalars().all()
+    return {
+        "items": [
+            {
+                "id": str(r.id),
+                "customer_id": str(r.customer_id),
+                "status": r.status,
+                "current_step": r.current_step,
+                "started_at": r.started_at.isoformat() if r.started_at else None,
+                "completed_at": r.completed_at.isoformat() if r.completed_at else None,
+            }
+            for r in rows
+        ]
+    }
+
+
+@router.post("/campaigns/{campaign_id}/start", status_code=201)
+async def start_campaign(campaign_id: uuid.UUID, ctx: WriteCtx, body: CampaignStartRequest):
+    """§175: Start a campaign run."""
+    await EntitlementService.ensure(ctx.session, ctx.tenant_id, "CanSendCampaign")
+    run = await CampaignExecutionService.start_campaign(
+        ctx.session,
+        ctx.tenant_id,
+        campaign_id=campaign_id,
+        segment_id=body.segment_id,
+        config={
+            "body": body.body or "",
+            "template": body.template,
+            "channel": body.channel,
+        },
+    )
+    return {
+        "id": str(run.id),
+        "campaign_id": str(run.campaign_id),
+        "status": run.status,
+        "total_recipients": run.total_recipients,
+    }
+
+
+@router.post("/campaigns/runs/{run_id}/pause")
+async def pause_campaign(run_id: uuid.UUID, ctx: WriteCtx):
+    """§175: Pause a running campaign."""
+    run = await CampaignExecutionService.pause(ctx.session, ctx.tenant_id, run_id)
+    return {"id": str(run.id), "status": run.status}
+
+
+@router.post("/campaigns/runs/{run_id}/resume")
+async def resume_campaign(run_id: uuid.UUID, ctx: WriteCtx):
+    """§175: Resume a paused campaign."""
+    run = await CampaignExecutionService.resume(ctx.session, ctx.tenant_id, run_id)
+    return {"id": str(run.id), "status": run.status}
+
+
+@router.get("/campaigns/runs/{run_id}")
+async def get_campaign_run(run_id: uuid.UUID, ctx: TenantCtxDep):
+    """Get campaign run status and progress."""
+    from sqlalchemy import select
+    from app.modules.marketing.campaign import CampaignRun
+
+    run = (
+        await ctx.session.execute(
+            select(CampaignRun).where(
+                CampaignRun.tenant_id == ctx.tenant_id,
+                CampaignRun.id == run_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if run is None:
+        from app.core.errors import NotFoundError
+        raise NotFoundError("campaign run not found")
+    return {
+        "id": str(run.id),
+        "campaign_id": str(run.campaign_id),
+        "status": run.status,
+        "total_recipients": run.total_recipients,
+        "sent_count": run.sent_count,
+        "failed_count": run.failed_count,
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "completed_at": run.completed_at.isoformat() if run.completed_at else None,
+    }
+
+
+# ----------------------------------------------------- attribution ----
+
+
+@router.get("/marketing/attribution")
+async def get_attribution(
+    ctx: TenantCtxDep,
+    campaign_id: uuid.UUID | None = None,
+    conversion_id: uuid.UUID | None = None,
+    days: int = Query(default=30, ge=1, le=365),
+):
+    """§82: Attribution report for a campaign or conversion."""
+    if conversion_id:
+        records = await AttributionService.compute_for_conversion(
+            ctx.session, ctx.tenant_id, conversion_id
+        )
+        return {
+            "conversion_id": str(conversion_id),
+            "touchpoints": [
+                {
+                    "touchpoint_id": str(r.touchpoint_id),
+                    "model": r.model,
+                    "weight": r.weight,
+                    "credited_value": float(r.credited_value),
+                }
+                for r in records
+            ],
+        }
+    if campaign_id:
+        report = await AttributionService.get_campaign_attribution(
+            ctx.session, ctx.tenant_id, campaign_id, days=days
+        )
+        return report
+    return {"error": "provide campaign_id or conversion_id"}

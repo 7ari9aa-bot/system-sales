@@ -40,7 +40,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import NotFoundError
-from app.modules.ai.models import AgentRun, ModelCall, ToolCall
+from app.modules.ai.models import AIEvaluation, AgentRun, ModelCall, ToolCall
 
 # Run statuses that represent a failed interaction from the customer's side.
 # ``timeout`` is included: the agent hit a run limit and produced no answer.
@@ -258,3 +258,88 @@ class AITraceService:
             "total_tokens": int(tokens_in or 0) + int(tokens_out or 0),
             "total_cost": _money(cost),
         }
+
+
+# ---------------------------------------------------------------------------
+# §169 — AI evaluation pipeline
+# ---------------------------------------------------------------------------
+# An offline evaluation records how an agent/prompt version performs against
+# a dataset before it is rolled out. The model exists (AIEvaluation) but was
+# never referenced; these functions make it reachable from the router.
+
+
+async def create_evaluation(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    agent_id: uuid.UUID,
+    prompt_version: int = 1,
+    dataset_ref: str | None = None,
+    notes: str | None = None,
+) -> AIEvaluation:
+    """§169: create an evaluation record for an agent/prompt version."""
+    evaluation = AIEvaluation(
+        tenant_id=tenant_id,
+        agent_id=agent_id,
+        prompt_version=prompt_version,
+        dataset_ref=dataset_ref,
+        status="pending",
+        quality_metrics={},
+        rollout_status="none",
+        notes=notes,
+    )
+    session.add(evaluation)
+    await session.flush()
+    return evaluation
+
+
+async def list_evaluations(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    agent_id: uuid.UUID | None = None,
+    limit: int = 50,
+) -> list[AIEvaluation]:
+    """List evaluations for a tenant, optionally filtered by agent."""
+    stmt = (
+        select(AIEvaluation)
+        .where(AIEvaluation.tenant_id == tenant_id)
+        .order_by(AIEvaluation.created_at.desc())
+        .limit(min(limit, 200))
+    )
+    if agent_id is not None:
+        stmt = stmt.where(AIEvaluation.agent_id == agent_id)
+    rows = (await session.execute(stmt)).scalars().all()
+    return list(rows)
+
+
+async def update_evaluation_status(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    evaluation_id: uuid.UUID,
+    *,
+    status: str,
+    quality_metrics: dict | None = None,
+    rollout_status: str | None = None,
+    notes: str | None = None,
+) -> AIEvaluation:
+    """Update an evaluation's status after the evaluation run completes."""
+    evaluation = (
+        await session.execute(
+            select(AIEvaluation).where(
+                AIEvaluation.tenant_id == tenant_id,
+                AIEvaluation.id == evaluation_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if evaluation is None:
+        raise NotFoundError(f"evaluation {evaluation_id} not found")
+    evaluation.status = status
+    if quality_metrics is not None:
+        evaluation.quality_metrics = quality_metrics
+    if rollout_status is not None:
+        evaluation.rollout_status = rollout_status
+    if notes is not None:
+        evaluation.notes = notes
+    await session.flush()
+    return evaluation

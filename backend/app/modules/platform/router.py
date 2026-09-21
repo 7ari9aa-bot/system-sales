@@ -32,6 +32,24 @@ router = APIRouter(prefix="/platform", tags=["platform"])
 
 FEATURE_MAX_LEN = 127  # matches feature_flags.feature String(127)
 
+# §160: Platform Admin is a SEPARATE plane from Tenant RBAC.
+# The platform_admin role is NOT a tenant role — it is a global claim checked
+# independently of the tenant context. This means a platform admin can access
+# the admin plane WITHOUT being a member of any tenant.
+ADMIN_ROLE_CODE = "platform_admin"
+
+
+def _require_platform_admin(ctx: TenantContext) -> None:
+    """Gate: only platform_admin role may access the admin plane (§160).
+
+    This is deliberately separate from tenant RBAC: a tenant admin has full
+    RBAC inside their tenant but CANNOT access the platform admin plane.
+    """
+    if ADMIN_ROLE_CODE not in ctx.permission_codes:
+        raise PermissionDeniedError(
+            "platform admin access required — this is not a tenant permission"
+        )
+
 
 class FlagUpsert(BaseModel):
     """Body for ``PUT /platform/flags/{feature}``."""
@@ -475,3 +493,254 @@ async def health(ctx: TenantCtxDep) -> dict:
         await _integrations_subsystem(ctx),
     ]
     return build_health_response(subsystems)
+
+
+# ---------- Platform admin plane (§160) ----------
+#
+# A platform admin is NOT a tenant user. This plane exists for the operator
+# who runs the deployment itself: list all tenants, see tenant health, and
+# take provisioning actions (suspend, provision, etc.). It is gated by a
+# platform-admin role that is separate from any tenant's RBAC.
+#
+# The §160 design rule: the admin plane must never expose tenant data
+# (customers, messages, orders) — only tenant metadata and health. A
+# platform admin can see THAT a tenant exists and WHETHER it is healthy,
+# not WHAT is inside it.
+# NOTE: _require_platform_admin is defined at the top of this file.
+
+
+@router.get("/admin/tenants")
+async def admin_list_tenants(ctx: TenantCtxDep):
+    """§160: list all tenants on the deployment (metadata only, no tenant data)."""
+    _require_platform_admin(ctx)
+    from app.modules.identity.models import Tenant
+
+    rows = (
+        await ctx.session.execute(
+            select(
+                Tenant.id,
+                Tenant.name,
+                Tenant.status,
+                Tenant.plan,
+                Tenant.created_at,
+            ).order_by(Tenant.created_at.desc())
+        )
+    ).all()
+    return {
+        "items": [
+            {
+                "id": str(row.id),
+                "name": row.name,
+                "status": row.status,
+                "plan": row.plan,
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+            }
+            for row in rows
+        ]
+    }
+
+
+@router.get("/admin/tenants/{tenant_id}")
+async def admin_get_tenant(ctx: TenantCtxDep, tenant_id: uuid.UUID):
+    """§160: one tenant's metadata + health (no customer/message data)."""
+    _require_platform_admin(ctx)
+    from app.modules.identity.models import Tenant
+
+    tenant = (
+        await ctx.session.execute(
+            select(Tenant).where(Tenant.id == tenant_id)
+        )
+    ).scalar_one_or_none()
+    if tenant is None:
+        raise NotFoundError("tenant not found")
+
+    # Count outbox backlog for this tenant (not the contents — just the depth)
+    outbox_pending = (
+        await ctx.session.execute(
+            select(func.count(OutboxEvent.id)).where(
+                OutboxEvent.tenant_id == tenant_id,
+                OutboxEvent.status == "pending",
+            )
+        )
+    ).scalar_one()
+
+    return {
+        "id": str(tenant.id),
+        "name": tenant.name,
+        "status": tenant.status,
+        "plan": tenant.plan,
+        "created_at": tenant.created_at.isoformat() if tenant.created_at else None,
+        "health": {
+            "outbox_pending": int(outbox_pending or 0),
+        },
+    }
+
+
+@router.patch("/admin/tenants/{tenant_id}/status")
+async def admin_update_tenant_status(
+    ctx: TenantCtxDep,
+    tenant_id: uuid.UUID,
+    status: str = "active",
+):
+    """§160: suspend or reactivate a tenant (provisioning action)."""
+    _require_platform_admin(ctx)
+    if status not in ("active", "suspended", "provisioning"):
+        raise ValidationError(
+            "status must be one of: active, suspended, provisioning",
+            details={"status": status},
+        )
+    from app.modules.identity.models import Tenant
+
+    tenant = (
+        await ctx.session.execute(
+            select(Tenant).where(Tenant.id == tenant_id)
+        )
+    ).scalar_one_or_none()
+    if tenant is None:
+        raise NotFoundError("tenant not found")
+    tenant.status = status
+    await ctx.session.flush()
+    return {
+        "id": str(tenant.id),
+        "status": tenant.status,
+    }
+
+
+# ---------- §147 Break-glass support access ----------
+
+
+class BreakGlassRequest(BaseModel):
+    """Body for POST /platform/admin/break-glass."""
+
+    tenant_id: uuid.UUID
+    action: str = Field(min_length=1, max_length=255)
+    resource_type: str = Field(min_length=1, max_length=63)
+    resource_id: str = Field(min_length=1, max_length=255)
+    reason: str = Field(min_length=10, max_length=2000)
+
+
+@router.post("/admin/break-glass")
+async def admin_break_glass(
+    ctx: TenantCtxDep,
+    body: BreakGlassRequest,
+):
+    """§147: emergency access — records a security event + issues a capability token.
+
+    The token is one-shot and expires in 15 minutes. The event is NEVER silent:
+    even the platform admin's own break-glass is recorded.
+    """
+    _require_platform_admin(ctx)
+    from app.core.break_glass import break_glass
+
+    token = await break_glass(
+        ctx.session,
+        tenant_id=body.tenant_id,
+        user_id=ctx.user.id,
+        action=body.action,
+        resource_type=body.resource_type,
+        resource_id=body.resource_id,
+        reason=body.reason,
+        ip=None,
+        user_agent=None,
+    )
+    return {"capability_token": token, "expires_in_minutes": 15}
+
+
+class BreakGlassValidateRequest(BaseModel):
+    """Body for POST /platform/admin/break-glass/validate."""
+
+    capability_token: str
+    tenant_id: uuid.UUID
+    action: str
+
+
+@router.post("/admin/break-glass/validate")
+async def admin_validate_break_glass(
+    ctx: TenantCtxDep,
+    body: BreakGlassValidateRequest,
+):
+    """§147: validate a capability token (one-shot consumption)."""
+    _require_platform_admin(ctx)
+    from app.core.break_glass import validate_capability
+
+    valid = validate_capability(
+        body.capability_token,
+        tenant_id=body.tenant_id,
+        user_id=ctx.user.id,
+        action=body.action,
+    )
+    return {"valid": valid}
+
+
+# ---------- §68-69 Secrets management ----------
+
+
+class SecretRefCreate(BaseModel):
+    """Body for POST /platform/secrets."""
+
+    provider: str = Field(min_length=1, max_length=63)
+    scope: str = Field(default="tenant", max_length=63)
+    vault_key: str = Field(min_length=1, max_length=255)
+    value: str = Field(min_length=1)
+    workspace_id: uuid.UUID | None = None
+
+
+class SecretRotateRequest(BaseModel):
+    """Body for POST /platform/secrets/{provider}/rotate."""
+
+    new_value: str = Field(min_length=1)
+
+
+@router.post("/secrets", status_code=201)
+async def create_secret_reference(
+    ctx: TenantCtxDep,
+    body: SecretRefCreate,
+):
+    """§68: register a secret reference + store the value via SecretStorePort."""
+    from app.core.secrets import get_secret_store
+    from app.modules.platform.service import SecretService
+
+    # Store the actual value in the secret store first
+    store = get_secret_store()
+    await store.put(body.vault_key, body.value)
+
+    ref = await SecretService.create_reference(
+        ctx.session,
+        ctx.tenant_id,
+        provider=body.provider,
+        scope=body.scope,
+        vault_key=body.vault_key,
+        workspace_id=body.workspace_id,
+    )
+    return {
+        "id": str(ref.id),
+        "provider": ref.provider,
+        "scope": ref.scope,
+        "vault_key": ref.vault_key,
+        "version": ref.version,
+        "status": ref.status,
+    }
+
+
+@router.post("/secrets/{provider}/rotate")
+async def rotate_secret(
+    ctx: TenantCtxDep,
+    provider: str,
+    body: SecretRotateRequest,
+):
+    """§69: rotate a secret — old version stays for grace period."""
+    from app.modules.platform.service import SecretService
+
+    ref = await SecretService.rotate_secret(
+        ctx.session,
+        ctx.tenant_id,
+        provider,
+        body.new_value,
+    )
+    return {
+        "id": str(ref.id),
+        "provider": ref.provider,
+        "version": ref.version,
+        "rotated_at": ref.rotated_at.isoformat() if ref.rotated_at else None,
+        "status": ref.status,
+    }

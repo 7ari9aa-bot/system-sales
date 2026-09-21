@@ -21,6 +21,13 @@ from typing import Any
 # request or when the edge middleware has not run.
 request_id_contextvar: ContextVar[str | None] = ContextVar("request_id", default=None)
 
+# §65: correlation id — links HTTP requests to domain events. Generated per
+# request (or honored from x-correlation-id header) and passed to
+# add_outbox_event so every event traces back to the request that caused it.
+correlation_id_contextvar: ContextVar[str | None] = ContextVar(
+    "correlation_id", default=None
+)
+
 
 class DomainError(Exception):
     """Base class for all expected (non-bug) failures."""

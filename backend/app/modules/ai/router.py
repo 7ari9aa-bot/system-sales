@@ -14,13 +14,14 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
+from app.core.errors import NotFoundError
 from app.core.pagination import paginate
 from app.modules.ai import knowledge
 from app.modules.ai.approvals import ApprovalService
 from app.modules.ai.models import Agent, AIUsage, KnowledgeItem
 from app.modules.ai.policy import AIProviderPolicyService
 from app.modules.ai.schemas import AgentCreateRequest, AgentOut, KnowledgeIngestRequest
-from app.modules.ai.trace import AITraceService
+from app.modules.ai.trace import AITraceService, create_evaluation, list_evaluations, update_evaluation_status
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
 
 router = APIRouter(prefix="/ai", tags=["ai"])
@@ -292,3 +293,125 @@ async def upsert_provider_policy(
         notes=body.notes,
     )
     return _policy_out(policy)
+
+
+# ---------- evaluations (§169) ----------
+#
+# Offline evaluation of an agent/prompt version before rollout.
+
+
+class EvaluationCreateRequest(BaseModel):
+    agent_id: uuid.UUID
+    prompt_version: int = Field(default=1, ge=1)
+    dataset_ref: str | None = Field(default=None, max_length=255)
+    notes: str | None = None
+
+
+class EvaluationUpdateRequest(BaseModel):
+    status: str = Field(description="pending | running | passed | failed | approved | rolled_back")
+    quality_metrics: dict | None = None
+    rollout_status: str | None = Field(default=None, description="none | canary | full")
+    notes: str | None = None
+
+
+def _evaluation_out(ev) -> dict:
+    return {
+        "id": str(ev.id),
+        "agent_id": str(ev.agent_id),
+        "prompt_version": ev.prompt_version,
+        "dataset_ref": ev.dataset_ref,
+        "status": ev.status,
+        "quality_metrics": ev.quality_metrics or {},
+        "rollout_status": ev.rollout_status,
+        "notes": ev.notes,
+        "created_at": ev.created_at.isoformat() if ev.created_at else None,
+        "updated_at": ev.updated_at.isoformat() if ev.updated_at else None,
+    }
+
+
+@router.get("/evaluations")
+async def list_eval(
+    ctx: TenantCtxDep,
+    agent_id: uuid.UUID | None = Query(default=None),
+) -> dict:
+    rows = await list_evaluations(ctx.session, ctx.tenant_id, agent_id=agent_id)
+    return {"items": [_evaluation_out(ev) for ev in rows]}
+
+
+@router.post("/evaluations", status_code=201)
+async def create_eval(body: EvaluationCreateRequest, ctx: SettingsCtx) -> dict:
+    ev = await create_evaluation(
+        ctx.session,
+        ctx.tenant_id,
+        agent_id=body.agent_id,
+        prompt_version=body.prompt_version,
+        dataset_ref=body.dataset_ref,
+        notes=body.notes,
+    )
+    return _evaluation_out(ev)
+
+
+@router.patch("/evaluations/{evaluation_id}")
+async def update_eval(
+    evaluation_id: uuid.UUID,
+    body: EvaluationUpdateRequest,
+    ctx: SettingsCtx,
+) -> dict:
+    ev = await update_evaluation_status(
+        ctx.session,
+        ctx.tenant_id,
+        evaluation_id,
+        status=body.status,
+        quality_metrics=body.quality_metrics,
+        rollout_status=body.rollout_status,
+        notes=body.notes,
+    )
+    return _evaluation_out(ev)
+
+
+# ---------- §169 canary rollout gate ----------
+#
+# Dedicated submit/status/approve flow — complements the trace.py-based CRUD
+# above with a service-level pipeline that gates rollout behind explicit approval.
+
+
+class EvaluationSubmitRequest(BaseModel):
+    agent_version_id: uuid.UUID
+    dataset_id: str | None = Field(default=None, max_length=255)
+    results: dict = Field(default_factory=dict)
+
+
+@router.post("/evaluations/submit", status_code=201)
+async def submit_evaluation(body: EvaluationSubmitRequest, ctx: SettingsCtx) -> dict:
+    from app.modules.ai.evaluation import AIEvaluationService
+
+    ev = await AIEvaluationService.submit_evaluation(
+        ctx.session,
+        ctx.tenant_id,
+        agent_version_id=body.agent_version_id,
+        dataset_id=body.dataset_id,
+        results=body.results,
+    )
+    return _evaluation_out(ev)
+
+
+@router.get("/evaluations/{agent_version_id}/status")
+async def evaluation_status(agent_version_id: uuid.UUID, ctx: TenantCtxDep) -> dict:
+    from app.modules.ai.evaluation import AIEvaluationService
+
+    ev = await AIEvaluationService.get_evaluation_status(
+        ctx.session, ctx.tenant_id, agent_version_id
+    )
+    if ev is None:
+        raise NotFoundError(f"no evaluation found for agent {agent_version_id}")
+    return _evaluation_out(ev)
+
+
+@router.post("/evaluations/{agent_version_id}/approve")
+async def approve_evaluation(agent_version_id: uuid.UUID, ctx: SettingsCtx) -> dict:
+    from app.modules.ai.evaluation import AIEvaluationService
+
+    ev = await AIEvaluationService.approve_rollout(
+        ctx.session, ctx.tenant_id, agent_version_id
+    )
+    return _evaluation_out(ev)

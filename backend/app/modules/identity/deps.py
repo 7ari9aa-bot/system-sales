@@ -95,6 +95,7 @@ class AuthedUser:
     id: uuid.UUID
     tenant_id: uuid.UUID | None
     role_code: str | None
+    is_platform_admin: bool = False  # §146: break-glass claim from JWT
 
 
 async def get_current_user(
@@ -124,6 +125,7 @@ async def get_current_user(
             id=user_id,
             tenant_id=uuid.UUID(payload["tenant_id"]) if payload.get("tenant_id") else None,
             role_code=payload.get("role"),
+            is_platform_admin=bool(payload.get("is_platform_admin", False)),  # §146
         )
     except PermissionDeniedError:
         raise
@@ -260,6 +262,17 @@ async def get_optional_user(
         return None
 
 
+def require_platform_admin(user: CurrentUserDep) -> AuthedUser:
+    """§146/§147: break-glass dependency — only is_platform_admin=True users pass.
+
+    Used by platform-level routes (cross-tenant admin, billing, system audit)
+    that no tenant role can access.
+    """
+    if not user.is_platform_admin:
+        raise PermissionDeniedError("platform admin access required")
+    return user
+
+
 __all__ = [
     "AuthedUser",
     "CurrentUserDep",
@@ -271,5 +284,6 @@ __all__ = [
     "get_optional_user",
     "get_tenant_ctx",
     "require_permission",
+    "require_platform_admin",
     "NotFoundError",
 ]

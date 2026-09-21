@@ -21,12 +21,8 @@ from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events.writer import add_outbox_event
-from app.modules.catalog.models import Product, ProductVariant
-from app.modules.catalog.service import CatalogService
-from app.modules.customers.service import CustomerService
+from app.core.idempotency import apply_versioned_update, require_version  # §17
 from app.modules.errors import ConflictError, NotFoundError, ValidationError
-from app.modules.inventory.models import InventoryReservation, Warehouse
-from app.modules.inventory.service import InventoryReservationService, InventoryService
 from app.modules.orders.models import (
     Order,
     OrderItem,
@@ -73,6 +69,17 @@ _NUMBER_ATTEMPTS = 2
 # §140: a durable reservation row expires after 15 minutes if the order never
 # completes (abandoned cart) — the maintenance worker flips it to EXPIRED.
 _RESERVATION_TTL = timedelta(minutes=15)
+
+# §139: order saga state machine — the cross-service fulfillment saga.
+# created -> paid -> stock_reserved -> fulfilled (terminal) or cancelled.
+ORDER_PROCESS_STATES = ("created", "paid", "stock_reserved", "fulfilled", "cancelled")
+_PROCESS_TRANSITIONS: dict[str, set[str]] = {
+    "created": {"paid", "cancelled"},
+    "paid": {"stock_reserved", "cancelled"},
+    "stock_reserved": {"fulfilled", "cancelled"},
+    "fulfilled": set(),  # terminal
+    "cancelled": set(),  # terminal
+}
 
 
 def _now() -> datetime:
@@ -187,7 +194,15 @@ class OrderService:
         channel: str | None = None,
         shipping_address: dict | None = None,
         warehouse_id: UUID | None = None,
+        # §8: function-scope imports — avoids module-scope service coupling.
     ) -> Order:
+        from app.modules.catalog.service import CatalogService
+        from app.modules.customers.service import CustomerService
+        from app.modules.inventory.service import (
+            InventoryReservationService,
+            InventoryService,
+        )
+
         """Checkout: validate, reserve stock, persist order + snapshots.
 
         items: [{"variant_id": UUID, "quantity": int}, ...]
@@ -211,9 +226,9 @@ class OrderService:
             )
 
         warehouse = (
-            await OrderService._get_warehouse(session, tenant_id, warehouse_id)
+            await InventoryService.get_warehouse(session, tenant_id, warehouse_id)
             if warehouse_id is not None
-            else await OrderService._default_warehouse(session, tenant_id)
+            else await InventoryService.get_default_warehouse(session, tenant_id)
         )
 
         # The price is CAPTURED here, once, and everything downstream — the
@@ -261,31 +276,21 @@ class OrderService:
         # line, expiring in 15 minutes unless the order completes.
         expires_at = _now() + _RESERVATION_TTL
         for variant, quantity, _price in prepared:
-            session.add(
-                InventoryReservation(
-                    tenant_id=tenant_id,
-                    variant_id=variant.id,
-                    warehouse_id=warehouse.id,
-                    order_id=order.id,
-                    quantity=quantity,
-                    status="ACTIVE",
-                    expires_at=expires_at,
-                )
+            await InventoryService.create_reservation(
+                session,
+                tenant_id,
+                variant_id=variant.id,
+                warehouse_id=warehouse.id,
+                order_id=order.id,
+                quantity=quantity,
+                expires_at=expires_at,
             )
 
         # Line snapshots (title/sku frozen at purchase time).
         product_ids = {variant.product_id for variant, _q, _p in prepared}
-        products: dict[UUID, Product] = {}
-        if product_ids:
-            rows = (
-                await session.execute(
-                    select(Product).where(
-                        Product.tenant_id == tenant_id,
-                        Product.id.in_(product_ids),
-                    )
-                )
-            ).scalars().all()
-            products = {p.id: p for p in rows}
+        products = await CatalogService.get_products_by_ids(
+            session, tenant_id, list(product_ids)
+        )
         for variant, quantity, price in prepared:
             product = products.get(variant.product_id)
             session.add(
@@ -331,6 +336,7 @@ class OrderService:
                 "grand_total": order.grand_total,
                 "item_count": sum(q for _v, q, _p in prepared),
             },
+            aggregate_version=1,
         )
         return order
 
@@ -367,11 +373,15 @@ class OrderService:
         order_id: UUID,
         *,
         by_user_id: UUID | None = None,
+        expected_version: str | None = None,  # §17 If-Match
     ) -> Order:
         """Cancel an open order and give its reserved stock back."""
         order = await OrderService.get(
             session, tenant_id, order_id, with_items=True, for_update=True
         )
+        # §17: fast-fail a stale If-Match before releasing stock.
+        if expected_version is not None:
+            require_version(expected_version, order.version)
         if order.status not in _CANCELLABLE_STATUSES:
             raise ConflictError(
                 f"order {order_id} cannot be cancelled from status '{order.status}'"
@@ -384,6 +394,7 @@ class OrderService:
             "cancelled",
             by_user_id=by_user_id,
             event_type="order.cancelled",
+            expected_version=expected_version,  # §17
         )
         return order
 
@@ -398,11 +409,15 @@ class OrderService:
         *,
         by_user_id: UUID | None = None,
         note: str | None = None,
+        expected_version: str | None = None,  # §17 If-Match
     ) -> Order:
         """Move an order along TRANSITIONS; cancellation frees the stock."""
         order = await OrderService.get(
             session, tenant_id, order_id, with_items=False, for_update=True
         )
+        # §17: fast-fail a stale If-Match before doing any work.
+        if expected_version is not None:
+            require_version(expected_version, order.version)
         allowed = TRANSITIONS.get(order.status, set())
         if to_status not in allowed:
             raise ConflictError(
@@ -427,7 +442,8 @@ class OrderService:
                     "payment(s) before marking the order refunded"
                 )
         await OrderService._transition(
-            session, tenant_id, order, to_status, by_user_id=by_user_id, note=note
+            session, tenant_id, order, to_status, by_user_id=by_user_id, note=note,
+            expected_version=expected_version,  # §17
         )
         return order
 
@@ -441,9 +457,16 @@ class OrderService:
         by_user_id: UUID | None = None,
         note: str | None = None,
         event_type: str = "order.status_changed",
+        expected_version: str | None = None,  # §17
     ) -> None:
         from_status = order.status
-        order.status = to_status
+        # §17: atomic compare-and-swap when If-Match is present; a stale version
+        # matches no row and apply_versioned_update raises ConflictError (409).
+        values: dict = {"status": to_status}
+        if expected_version is not None:
+            await apply_versioned_update(session, order, expected_version, values)
+        else:
+            order.status = to_status
         session.add(
             OrderStatusHistory(
                 tenant_id=tenant_id,
@@ -467,6 +490,7 @@ class OrderService:
                 "from_status": from_status,
                 "to_status": to_status,
             },
+            aggregate_version=2,
         )
 
     @staticmethod
@@ -494,13 +518,16 @@ class OrderService:
         if warehouse_raw:
             warehouse_id = UUID(str(warehouse_raw))
         else:  # legacy order without a recorded warehouse
-            warehouse_id = (await OrderService._default_warehouse(session, tenant_id)).id
+            from app.modules.inventory.service import InventoryService as _IS
+            warehouse_id = (await _IS.get_default_warehouse(session, tenant_id)).id
 
         for item in items:
-            await InventoryService.release(
+            from app.modules.inventory.service import InventoryService as _IS2
+            await _IS2.release(
                 session, tenant_id, item.variant_id, warehouse_id, item.quantity
             )
-        await InventoryReservationService.cancel_for_order(
+        from app.modules.inventory.service import InventoryReservationService as _IRS
+        await _IRS.cancel_for_order(
             session, tenant_id, order.id
         )
 
@@ -563,7 +590,8 @@ class OrderService:
 
         # §140: a captured payment converts the order's stock reservations
         # into a sale (ACTIVE -> CONVERTED).
-        await InventoryReservationService.convert(session, tenant_id, order.id)
+        from app.modules.inventory.service import InventoryReservationService as _IRS2
+        await _IRS2.convert(session, tenant_id, order.id)
 
         if order.status == "pending":
             await OrderService._transition(
@@ -630,7 +658,8 @@ class OrderService:
             payment.provider_ref = provider_ref
         if status == "captured":
             payment.paid_at = payment.paid_at or _now()
-            await InventoryReservationService.convert(session, tenant_id, order.id)
+            from app.modules.inventory.service import InventoryReservationService as _IRS3
+            await _IRS3.convert(session, tenant_id, order.id)
             if order.status == "pending":
                 await OrderService._transition(
                     session, tenant_id, order, "confirmed", note="payment reconciled"
@@ -776,12 +805,40 @@ class OrderService:
                 "amount": refund_amount,
                 "payment_status": payment.status,
             },
+            aggregate_version=3,
         )
         return refund
 
     # -------------------------------------------------------- helpers ----
 
     @staticmethod
+    # ------------------------------------------- §139 saga state ----
+
+    @staticmethod
+    async def transition_process_state(
+        session: AsyncSession,
+        tenant_id: UUID,
+        order_id: UUID,
+        new_state: str,
+    ) -> Order:
+        """§139: advance the order's saga state with a validated transition.
+
+        created -> paid -> stock_reserved -> fulfilled (terminal) or
+        cancelled (terminal from created/paid/stock_reserved).
+        """
+        if new_state not in ORDER_PROCESS_STATES:
+            raise ValidationError(f"unknown process_state: {new_state!r}")
+        order = await OrderService.get(
+            session, tenant_id, order_id, with_items=False, for_update=True
+        )
+        current = order.process_state or "created"
+        allowed = _PROCESS_TRANSITIONS.get(current, set())
+        if new_state not in allowed:
+            raise ConflictError(f"illegal saga transition {current} -> {new_state}")
+        order.process_state = new_state
+        await session.flush()
+        return order
+
     async def _settled_and_refunded(
         session: AsyncSession, tenant_id: UUID, order: Order
     ) -> tuple[Decimal, Decimal]:
@@ -819,60 +876,40 @@ class OrderService:
         ).scalar_one()
         return to_money(settled, "settled"), to_money(refunded, "refunded")
 
-    @staticmethod
-    async def _get_warehouse(
-        session: AsyncSession, tenant_id: UUID, warehouse_id: UUID
-    ) -> Warehouse:
-        warehouse = (
-            await session.execute(
-                select(Warehouse).where(
-                    Warehouse.id == warehouse_id,
-                    Warehouse.tenant_id == tenant_id,
-                )
-            )
-        ).scalar_one_or_none()
-        if warehouse is None:
-            raise NotFoundError(f"warehouse {warehouse_id} not found")
-        return warehouse
+        # Warehouse lookup + bootstrap now handled by InventoryService (§8).
+
+
+# ------------------------------------------- §137 read models ----
+
+class OrderListQuery:
+    """§137: read-optimized order list query.
+
+    Returns a list of dicts (not ORM objects) using specific column selects,
+    so list pages don't hydrate full ORM relationships.
+    """
 
     @staticmethod
-    async def _default_warehouse(
-        session: AsyncSession, tenant_id: UUID
-    ) -> Warehouse:
-        """The tenant's first active warehouse, bootstrapping 'Main' if needed."""
-        warehouse = (
-            await session.execute(
-                select(Warehouse)
-                .where(
-                    Warehouse.tenant_id == tenant_id,
-                    Warehouse.is_active.is_(True),
-                )
-                .order_by(Warehouse.created_at.asc(), Warehouse.name.asc())
-                .limit(1)
-            )
-        ).scalar_one_or_none()
-        if warehouse is not None:
-            return warehouse
+    async def search(
+        session: AsyncSession,
+        tenant_id: UUID,
+        *,
+        status: str | None = None,
+        limit: int = 20,
+    ) -> list[dict]:
+        """Read-optimized order list with optional status filter."""
+        from sqlalchemy import text
 
-        # No warehouse yet — create "Main" (race-safe: converge on one row).
-        await session.execute(
-            pg_insert(Warehouse)
-            .values(tenant_id=tenant_id, name="Main", code="MAIN")
-            .on_conflict_do_nothing(index_elements=["tenant_id", "code"])
+        params: dict[str, object] = {"t": str(tenant_id), "limit": limit}
+        sql = (
+            "SELECT id, number, customer_id, status, grand_total, currency, "
+            "placed_at, created_at "
+            "FROM orders WHERE tenant_id = :t"
         )
-        # Retry the read: a competing bootstrap may still be uncommitted, so
-        # a single scalar_one() could raise NoResultFound and 500 the checkout.
-        last_error: Exception | None = None
-        for _attempt in range(3):
-            try:
-                return (
-                    await session.execute(
-                        select(Warehouse).where(
-                            Warehouse.tenant_id == tenant_id,
-                            Warehouse.code == "MAIN",
-                        )
-                    )
-                ).scalar_one()
-            except NoResultFound as exc:
-                last_error = exc
-        raise ConflictError("warehouse bootstrap raced — retry the checkout") from last_error
+        if status is not None:
+            sql += " AND status = :status"
+            params["status"] = status
+        sql += " ORDER BY created_at DESC LIMIT :limit"
+
+        rows = (await session.execute(text(sql), params)).all()
+        return [dict(r._mapping) for r in rows]
+

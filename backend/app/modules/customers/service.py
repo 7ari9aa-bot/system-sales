@@ -28,6 +28,73 @@ from app.modules.errors import ConflictError, NotFoundError, ValidationError
 _RESOLVE_ATTEMPTS = 2
 
 
+# ---------------------------------------------------------------------------
+# §27-29 — E.164 phone normalization for identity resolution
+# ---------------------------------------------------------------------------
+# Customer identity resolution used to be exact-string: a customer with
+# phone "+9647701234567" would NOT match a message from "07701234567" or
+# "0770 123 4567". The §27-29 spec requires E.164 normalization so that
+# the same human is resolved regardless of how the phone was entered.
+#
+# E.164 format: a leading "+" followed by 8-15 digits, no spaces, no
+# dashes, no leading zeros beyond the country code. This function does a
+# best-effort normalization — it strips formatting and adds a default
+# country code if the number is a local format (no "+" prefix).
+#
+# The spec notes this is NOT a full phone parsing library — it is a
+# normalization that handles the 90% case. Unknown formats fall through
+# to exact-string matching (the old behavior), so no existing resolution
+# breaks.
+
+# Default country code for local numbers without a "+" prefix. Set to
+# Iraq (964) as the deployment default; a per-tenant override would be a
+# future task (§27 mentions this as a tenant configuration field).
+_DEFAULT_COUNTRY_CODE = "964"
+
+
+def normalize_phone_e164(raw: str | None) -> str | None:
+    """Normalize a phone string to E.164.
+
+    Returns None if the input is empty/None.
+    Returns the normalized E.164 string if the input is parseable.
+    Returns the original string (stripped) if it cannot be normalized —
+    so the caller falls through to exact-string matching.
+
+    Examples:
+        "+9647701234567"  -> "+9647701234567"
+        "07701234567"     -> "+9647701234567"  (default country code)
+        "0770 123 4567"   -> "+9647701234567"  (spaces stripped)
+        "+964 770 123 4567" -> "+9647701234567"
+        "abc"             -> "abc"            (unparseable, passthrough)
+    """
+    if not raw or not raw.strip():
+        return None
+
+    # Strip whitespace, dashes, dots, parentheses
+    stripped = raw.strip()
+    cleaned = stripped.replace(" ", "").replace("-", "").replace(".", "").replace("(", "").replace(")", "")
+
+    if not cleaned:
+        return None
+
+    # Already in E.164 format: "+" + digits only
+    if cleaned.startswith("+"):
+        digits = cleaned[1:]
+        if digits.isdigit() and 8 <= len(digits) <= 15:
+            return f"+{digits}"
+        return stripped  # unparseable — passthrough
+
+    # Local format: add default country code
+    if cleaned.isdigit():
+        # Strip leading 0 (trunk prefix) if present
+        if cleaned.startswith("0"):
+            cleaned = cleaned[1:]
+        if 7 <= len(cleaned) <= 14:
+            return f"+{_DEFAULT_COUNTRY_CODE}{cleaned}"
+
+    return stripped  # unparseable — passthrough
+
+
 def _now() -> datetime:
     return datetime.now(UTC)
 
@@ -51,6 +118,26 @@ class CustomerService:
         if customer is None:
             raise NotFoundError(f"customer {customer_id} not found")
         return customer
+
+    @staticmethod
+    async def get_name_phone_map(
+        session: AsyncSession, tenant_id: UUID, customer_ids: list[UUID]
+    ) -> dict[UUID, tuple[str | None, str | None]]:
+        """Batch-fetch customer name+phone — for cross-module read models (§8/§137).
+
+        Returns dict keyed by customer_id with (name, phone) tuples.
+        """
+        if not customer_ids:
+            return {}
+        rows = (
+            await session.execute(
+                select(Customer.id, Customer.name, Customer.phone).where(
+                    Customer.tenant_id == tenant_id,
+                    Customer.id.in_(customer_ids),
+                )
+            )
+        ).all()
+        return {row[0]: (row[1], row[2]) for row in rows}
 
     @staticmethod
     async def list_customers(
@@ -230,7 +317,7 @@ class CustomerService:
                     customer = Customer(
                         tenant_id=tenant_id,
                         name=name or phone or "",
-                        phone=phone,
+                        phone=normalize_phone_e164(phone) or phone,
                     )
                     session.add(customer)
                     await session.flush()
@@ -275,14 +362,27 @@ class CustomerService:
     ) -> Customer | None:
         if not phone:
             return None
-        return (
-            await session.execute(
-                select(Customer).where(
-                    Customer.tenant_id == tenant_id,
-                    Customer.phone == phone,
+        # §27-29: normalize to E.164 before matching so "+9647701234567"
+        # and "07701234567" resolve to the same customer. If the phone
+        # is unparseable, the normalizer returns the original string, so
+        # the query falls through to exact-string match (the old behavior).
+        normalized = normalize_phone_e164(phone)
+        if normalized is None:
+            return None
+        # Try the normalized form first, then the original as fallback
+        # (in case the stored value was not normalized).
+        for candidate in (normalized, phone):
+            result = (
+                await session.execute(
+                    select(Customer).where(
+                        Customer.tenant_id == tenant_id,
+                        Customer.phone == candidate,
+                    )
                 )
-            )
-        ).scalar_one_or_none()
+            ).scalar_one_or_none()
+            if result is not None:
+                return result
+        return None
 
     @staticmethod
     def _touch(customer: Customer, name: str | None) -> None:
@@ -620,7 +720,7 @@ class IdentityMergeService:
         from app.core.errors import ConflictError, NotFoundError
         from app.core.events.writer import add_outbox_event
         from app.modules.customers.models import IdentityMergeEvent
-        from app.modules.platform.models import AuditLog
+        from app.modules.platform.service import AuditService
 
         if canonical_customer_id == merged_away_customer_id:
             raise ConflictError("cannot merge a customer into itself")
@@ -708,15 +808,14 @@ class IdentityMergeService:
                 details={},
             )
         )
-        session.add(
-            AuditLog(
-                tenant_id=tenant_id,
-                actor_user_id=performed_by_user_id,
-                action="customer.merged",
-                resource_type="customer",
-                resource_id=str(canonical_customer_id),
-                after={"merged_away": str(merged_away_customer_id), "source": source},
-            )
+        await AuditService.write(
+            session,
+            tenant_id,
+            performed_by_user_id,
+            action="customer.merged",
+            resource_type="customer",
+            resource_id=str(canonical_customer_id),
+            after={"merged_away": str(merged_away_customer_id), "source": source},
         )
         await add_outbox_event(
             session,
@@ -728,6 +827,7 @@ class IdentityMergeService:
                 "canonical_customer_id": str(canonical_customer_id),
                 "merged_away_customer_id": str(merged_away_customer_id),
             },
+            aggregate_version=2,
         )
         await session.flush()
         return canonical_customer_id
@@ -807,3 +907,85 @@ class IdentityMergeService:
         candidate.decided_at = datetime.now(UTC)
         await session.flush()
         return candidate
+
+
+# ------------------------------------------- §137 read models ----
+
+class Customer360Query:
+    """§137: read-optimized Customer 360 view.
+
+    A single get_360() call assembles the customer's 360° profile using
+    raw SQL (not full ORM loads) so the dashboard drawer fetches everything
+    in one round-trip without hydrating relationships.
+    """
+
+    @staticmethod
+    async def get_360(
+        session: AsyncSession, tenant_id: UUID, customer_id: UUID
+    ) -> dict:
+        """Return a dict with customer info, recent orders, conversations,
+        lifetime_value, and memories — all read-optimized."""
+        from sqlalchemy import text
+
+        customer_row = (
+            await session.execute(
+                text(
+                    "SELECT id, name, phone, email, is_blocked, "
+                    "lifetime_value, created_at, updated_at "
+                    "FROM customers "
+                    "WHERE tenant_id = :t AND id = :cid AND deleted_at IS NULL"
+                ),
+                {"t": str(tenant_id), "cid": str(customer_id)},
+            )
+        ).one_or_none()
+        if customer_row is None:
+            raise NotFoundError(f"customer {customer_id} not found")
+        customer_info = dict(customer_row._mapping)
+
+        order_rows = (
+            await session.execute(
+                text(
+                    "SELECT id, number, status, grand_total, currency, "
+                    "placed_at, created_at "
+                    "FROM orders "
+                    "WHERE tenant_id = :t AND customer_id = :cid "
+                    "ORDER BY created_at DESC LIMIT 10"
+                ),
+                {"t": str(tenant_id), "cid": str(customer_id)},
+            )
+        ).all()
+        recent_orders = [dict(r._mapping) for r in order_rows]
+
+        conv_rows = (
+            await session.execute(
+                text(
+                    "SELECT id, channel, status, unread_count, created_at "
+                    "FROM conversations "
+                    "WHERE tenant_id = :t AND customer_id = :cid "
+                    "ORDER BY created_at DESC LIMIT 5"
+                ),
+                {"t": str(tenant_id), "cid": str(customer_id)},
+            )
+        ).all()
+        recent_conversations = [dict(r._mapping) for r in conv_rows]
+
+        mem_rows = (
+            await session.execute(
+                text(
+                    "SELECT id, kind, content, source, confidence, created_at "
+                    "FROM memories "
+                    "WHERE tenant_id = :t AND customer_id = :cid "
+                    "ORDER BY created_at DESC LIMIT 5"
+                ),
+                {"t": str(tenant_id), "cid": str(customer_id)},
+            )
+        ).all()
+        memories = [dict(r._mapping) for r in mem_rows]
+
+        return {
+            "customer": customer_info,
+            "recent_orders": recent_orders,
+            "recent_conversations": recent_conversations,
+            "lifetime_value": float(customer_info.get("lifetime_value") or 0),
+            "memories": memories,
+        }

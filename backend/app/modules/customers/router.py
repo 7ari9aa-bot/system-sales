@@ -31,8 +31,11 @@ platform_router = APIRouter(tags=["platform"])
 WriteCtx = Annotated[TenantContext, Depends(require_permission("customers:write"))]
 
 
-def _customer_summary(customer) -> dict:
-    return {
+def _customer_summary(customer, *, permission_codes: set[str] | None = None) -> dict:
+    """Serialize a customer — §146: PII fields redacted without pii:read permission."""
+    from app.core.field_auth import redact_customer
+
+    raw = {
         "id": str(customer.id),
         "name": customer.name,
         "phone": customer.phone,
@@ -40,6 +43,9 @@ def _customer_summary(customer) -> dict:
         "lifetime_value": str(customer.lifetime_value),
         "is_blocked": customer.is_blocked,
     }
+    if permission_codes is None:
+        return raw
+    return redact_customer(raw, permission_codes=permission_codes)
 
 
 @router.get("/customers")
@@ -62,7 +68,10 @@ async def list_customers(
     )
     page, next_cursor = page_slice(rows, limit)
     return {
-        "items": [_customer_summary(c) for c in page],
+        "items": [
+            _customer_summary(c, permission_codes=ctx.permission_codes)
+            for c in page
+        ],
         "next_cursor": next_cursor,
     }
 
@@ -174,7 +183,7 @@ async def update_customer(
         await apply_versioned_update(ctx.session, customer, if_match, fields)
     # The version AFTER the write, so a client can chain its next edit.
     apply_etag(response, customer.version)
-    return _customer_summary(customer)
+    return _customer_summary(customer, permission_codes=ctx.permission_codes)
 
 
 @router.post("/customers/{customer_id}/block")
@@ -211,6 +220,33 @@ async def archive_customer(
         reason=body.reason if body else None,
     )
     return {"id": str(customer.id), "deleted_at": customer.deleted_at.isoformat()}
+
+
+class MergeBody(BaseModel):
+    source_customer_id: UUID
+    target_customer_id: UUID
+
+
+@router.post("/customers/merge")
+async def merge_customers(
+    body: MergeBody,
+    ctx: WriteCtx,
+):
+    """§27-28: merge two duplicate customers into one canonical record.
+
+    source_customer_id is tombstoned; target_customer_id survives.
+    """
+    from app.modules.customers.service import IdentityMergeService
+
+    canonical_id = await IdentityMergeService.merge(
+        ctx.session,
+        ctx.tenant_id,
+        canonical_customer_id=body.target_customer_id,
+        merged_away_customer_id=body.source_customer_id,
+        performed_by_user_id=ctx.user.id,
+    )
+    customer = await CustomerService.get(ctx.session, ctx.tenant_id, canonical_id)
+    return _customer_summary(customer, permission_codes=ctx.permission_codes)
 
 
 class TagBody(BaseModel):

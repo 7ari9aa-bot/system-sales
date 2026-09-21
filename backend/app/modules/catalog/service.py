@@ -418,3 +418,20 @@ class CatalogService:
             )
         ).scalars().all()
         return list(rows)
+
+    @staticmethod
+    async def get_products_by_ids(
+        session: AsyncSession, tenant_id: UUID, product_ids: list[UUID]
+    ) -> dict[UUID, Product]:
+        """Batch-fetch products by ID — for cross-module line snapshotting (§8)."""
+        if not product_ids:
+            return {}
+        rows = (
+            await session.execute(
+                select(Product).where(
+                    Product.tenant_id == tenant_id,
+                    Product.id.in_(product_ids),
+                )
+            )
+        ).scalars().all()
+        return {p.id: p for p in rows}

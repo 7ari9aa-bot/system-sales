@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Users, ChevronLeft } from "lucide-react";
 import { useCustomers, type Customer } from "@/lib/queries";
@@ -8,12 +9,32 @@ import { t } from "@/lib/t";
 import { DataTable } from "@/components/data-table";
 import { EmptyState, ErrorState, PageHeader } from "@/components/ui/states";
 import { CustomerDrawer } from "@/components/customer-drawer";
+import { SavedViewsSelector } from "@/components/saved-views-selector";
 import { Badge } from "@/components/ui/badge";
 
 export default function CustomersPage() {
-  const [selectedCustomerId, setSelectedCustomerId] = React.useState<string | null>(null);
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  // §87: filters/sort/view/pagination are in the URL, not useState. This
+  // makes every view deep-linkable, shareable, and survives a refresh.
+  const selectedCustomerId = searchParams.get("customer") ?? null;
+  const activeViewId = searchParams.get("view") ?? null;
+  const searchQuery = searchParams.get("q") ?? "";
   const customersQuery = useCustomers();
   const customers = customersQuery.data ?? [];
+
+  const setSelectedCustomerId = (id: string | null) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (id) params.set("customer", id);
+    else params.delete("customer");
+    router.replace(`?${params.toString()}`, { scroll: false });
+  };
+  const setActiveViewId = (id: string | null) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (id) params.set("view", id);
+    else params.delete("view");
+    router.replace(`?${params.toString()}`, { scroll: false });
+  };
 
   const columns = React.useMemo<ColumnDef<Customer, unknown>[]>(
     () => [
@@ -103,6 +124,13 @@ export default function CustomersPage() {
   return (
     <div>
       <PageHeader title={t.customers} description="قاعدة عملائك، سجل الشراء، ومعلومات العميل الكاملة (360°)" />
+      <SavedViewsSelector
+        entity="customers"
+        currentFilters={{ q: searchQuery }}
+        onSelect={(view) => setActiveViewId(view.id)}
+        activeViewId={activeViewId}
+        className="mb-3"
+      />
       <DataTable
         columns={columns}
         data={customers}

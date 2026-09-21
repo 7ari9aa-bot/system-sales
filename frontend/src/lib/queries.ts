@@ -12,7 +12,7 @@ import {
   type InfiniteData,
   type QueryKey,
 } from "@tanstack/react-query";
-import { api, getTokens } from "@/lib/api";
+import { api, getTokens, newIdempotencyKey } from "@/lib/api";
 import { authPost, type AuthResult } from "@/lib/auth-api";
 import { t } from "@/lib/t";
 import { toast } from "@/components/ui/toast";
@@ -248,6 +248,17 @@ export type SlaRiskItem = {
   at_risk: boolean;
 };
 
+/** §95 — a persisted list view (filters + sort + columns snapshot). */
+export type SavedView = {
+  id: string;
+  entity: string;
+  name: string;
+  filters: Record<string, unknown>;
+  sort: Record<string, unknown> | null;
+  columns: string[] | null;
+  created_at: string | null;
+};
+
 /** §135 — a parked HIGH-risk tool call awaiting a human decision. */
 export type Approval = {
   id: string;
@@ -308,6 +319,7 @@ export const qk = {
   slaRisk: ["operations", "sla", "risk"] as QueryKey,
   approvals: (status: string) => ["ai", "approvals", status] as QueryKey,
   health: ["platform", "health"] as QueryKey,
+  savedViews: (entity: string) => ["platform", "saved-views", entity] as QueryKey,
 };
 
 function errMessage(err: unknown) {
@@ -525,6 +537,41 @@ export function useApprovals(status = "PENDING") {
   });
 }
 
+/** §135 — approve or reject a parked HIGH-risk AI action. */
+export function useDecideApproval() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      approvalId,
+      decision,
+      reason,
+    }: {
+      approvalId: string;
+      decision: "APPROVED" | "REJECTED";
+      reason?: string;
+    }) =>
+      api<Approval>(`/ai/approvals/${approvalId}/decide`, {
+        method: "POST",
+        body: { decision, rejection_reason: reason },
+        idempotencyKey: newIdempotencyKey(),
+      }),
+    onSuccess: (_data, variables) => {
+      toast({
+        title:
+          variables.decision === "APPROVED"
+            ? "تمت الموافقة على الإجراء"
+            : "تم رفض الإجراء",
+        variant: variables.decision === "APPROVED" ? "success" : "default",
+      });
+      qc.invalidateQueries({ queryKey: qk.approvals("PENDING") });
+      qc.invalidateQueries({ queryKey: qk.approvals("APPROVED") });
+      qc.invalidateQueries({ queryKey: qk.approvals("REJECTED") });
+    },
+    onError: (err) =>
+      toast({ title: t.somethingWentWrong, description: errMessage(err), variant: "danger" }),
+  });
+}
+
 /** §103 — subsystem health for the top-bar indicator.
  *  A failing check must read as "unknown", never crash the shell, so we do not
  *  retry and let the caller fall back on missing data. */
@@ -535,6 +582,56 @@ export function usePlatformHealth() {
     refetchInterval: 60_000,
     staleTime: 30_000,
     retry: false,
+  });
+}
+
+/** §95 — saved views for a given entity (e.g. "customers"). */
+export function useSavedViews(entity = "customers") {
+  return useQuery({
+    queryKey: qk.savedViews(entity),
+    queryFn: () =>
+      api<{ items: SavedView[] }>(`/platform/saved-views?entity=${encodeURIComponent(entity)}`).then(
+        (r) => r.items,
+      ),
+    staleTime: 60_000,
+  });
+}
+
+/** §95 — persist the current view (filters/sort/columns). */
+export function useCreateSavedView() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      entity: string;
+      name: string;
+      filters: Record<string, unknown>;
+      sort?: Record<string, unknown> | null;
+      columns?: string[] | null;
+    }) =>
+      api<SavedView>("/platform/saved-views", {
+        method: "POST",
+        body,
+        idempotencyKey: newIdempotencyKey(),
+      }),
+    onSuccess: (_data, variables) => {
+      toast({ title: "تم حفظ العرض", variant: "success" });
+      qc.invalidateQueries({ queryKey: qk.savedViews(variables.entity) });
+    },
+    onError: (err) => toast({ title: t.somethingWentWrong, description: errMessage(err), variant: "danger" }),
+  });
+}
+
+/** §95 — delete a saved view. */
+export function useDeleteSavedView() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, entity }: { id: string; entity: string }) =>
+      api<void>(`/platform/saved-views/${id}`, { method: "DELETE" }),
+    onSuccess: (_data, { entity }) => {
+      toast({ title: "تم حذف العرض" });
+      qc.invalidateQueries({ queryKey: qk.savedViews(entity) });
+    },
+    onError: (err) => toast({ title: t.somethingWentWrong, description: errMessage(err), variant: "danger" }),
   });
 }
 
@@ -588,7 +685,7 @@ export function useCreateOrder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: { customer_id: string; items: { variant_id: string; quantity: number }[]; channel: string }) =>
-      api<{ number: string }>("/orders", { method: "POST", body }),
+      api<{ number: string }>("/orders", { method: "POST", body, idempotencyKey: newIdempotencyKey() }),
     onSuccess: (created) => {
       toast({ title: `${t.orderCreated} ${created.number}`, description: t.orderCreatedHint, variant: "success" });
       qc.invalidateQueries({ queryKey: qk.orders });
@@ -602,7 +699,7 @@ export function useCreateProduct() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: { title: string; slug: string; price: number }) =>
-      api("/products", { method: "POST", body }),
+      api("/products", { method: "POST", body, idempotencyKey: newIdempotencyKey() }),
     onSuccess: () => {
       toast({ title: t.addProduct, description: t.products, variant: "success" });
       qc.invalidateQueries({ queryKey: qk.products });
@@ -616,7 +713,7 @@ export function useRecordMovement() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: { variant_id: string; warehouse_id: string; direction: string; quantity: number; reason: string }) =>
-      api("/inventory/movements", { method: "POST", body }),
+      api("/inventory/movements", { method: "POST", body, idempotencyKey: newIdempotencyKey() }),
     onSuccess: () => {
       toast({ title: t.movementRecorded, variant: "success" });
       qc.invalidateQueries({ queryKey: qk.balances });
@@ -631,7 +728,7 @@ export function useCreateCampaign() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: { name: string; provider: string; budget: number | null }) =>
-      api("/marketing/campaigns", { method: "POST", body }),
+      api("/marketing/campaigns", { method: "POST", body, idempotencyKey: newIdempotencyKey() }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: qk.campaigns });
       qc.invalidateQueries({ queryKey: qk.marketingSummary });
@@ -644,7 +741,7 @@ export function useAddKnowledge() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: { title: string; content: string }) =>
-      api("/ai/knowledge", { method: "POST", body }),
+      api("/ai/knowledge", { method: "POST", body, idempotencyKey: newIdempotencyKey() }),
     onSuccess: () => {
       toast({ title: t.knowledgeAdded, variant: "success" });
       qc.invalidateQueries({ queryKey: qk.knowledge });
@@ -722,7 +819,14 @@ export function useRevokeInvitation() {
     mutationFn: (invitationId: string) =>
       api<void>(`/invitations/${invitationId}`, { method: "DELETE" }),
     onSuccess: () => {
-      toast({ title: "تم إلغاء الدعوة", variant: "default" });
+      toast({
+        title: "تم إلغاء الدعوة",
+        variant: "default",
+        action: {
+          label: "تراجع",
+          onClick: () => qc.invalidateQueries({ queryKey: qk.invitations }),
+        },
+      });
       qc.invalidateQueries({ queryKey: qk.invitations });
     },
     onError: (err) => toast({ title: t.somethingWentWrong, description: errMessage(err), variant: "danger" }),
@@ -733,7 +837,7 @@ export function useCreateTask() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: { title: string; description?: string; priority: number }) =>
-      api<{ id: string; status: string }>("/tasks", { method: "POST", body }),
+      api<{ id: string; status: string }>("/tasks", { method: "POST", body, idempotencyKey: newIdempotencyKey() }),
     onSuccess: () => {
       toast({ title: t.taskCreated, variant: "success" });
       qc.invalidateQueries({ queryKey: qk.tasks });

@@ -12,6 +12,7 @@ deployment settings and are intentionally NOT added to app/core/config.py.
 
 from __future__ import annotations
 
+import re
 import time
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -50,6 +51,44 @@ _COST_PER_OUTPUT_TOKEN = Decimal("0.000002")   # $2.00 / 1M tokens
 RESERVATION_TTL_MINUTES = 30
 
 ALIASES = frozenset({"fast", "strong", "cheap", "embedding", "fallback"})
+
+# §43: PII redaction patterns. Applied to message content before sending to
+# an external AI provider when the tenant's AIProviderPolicy has
+# pii_redaction_required=True. The redactor is deliberately conservative — it
+# masks anything that looks like PII rather than attempting perfect detection,
+# because a false negative leaks PII while a false positive only degrades
+# the model's context.
+_PII_PATTERNS: list[tuple[str, str]] = [
+    # Email addresses
+    (re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"), "[REDACTED_EMAIL]"),
+    # Phone numbers: international (+966...) and local (05...)
+    (re.compile(r"\+?\d[\d\s\-()]{7,}\d"), "[REDACTED_PHONE]"),
+    # Saudi national ID (10 digits)
+    (re.compile(r"\b[1-2]\d{9}\b"), "[REDACTED_ID]"),
+    # Credit card numbers (13-19 digits, with optional separators)
+    (re.compile(r"\b(?:\d[ -]*?){13,19}\b"), "[REDACTED_CARD]"),
+]
+
+
+def _redact_pii(messages: list[dict]) -> list[dict]:
+    """§43: mask PII in message content before sending to an AI provider.
+
+    Returns a NEW list (does not mutate the input). Only the ``content``
+    field of role=user/assistant/system messages is scanned; tool_call
+    arguments and tool results are left as-is (they are server-side bound
+    and already tenant-scoped by §132).
+    """
+    redacted: list[dict] = []
+    for msg in messages:
+        role = msg.get("role", "")
+        content = msg.get("content")
+        if role in ("user", "assistant", "system") and isinstance(content, str):
+            for pattern, replacement in _PII_PATTERNS:
+                content = pattern.sub(replacement, content)
+            redacted.append({**msg, "content": content})
+        else:
+            redacted.append(msg)
+    return redacted
 
 _CENT = Decimal("0.00000001")
 
@@ -122,6 +161,27 @@ async def _month_spend(session: AsyncSession, tenant_id: UUID) -> Decimal:
         )
     ).scalar_one()
     return Decimal(total or 0)
+
+
+async def _day_spend(session: AsyncSession, tenant_id: UUID) -> Decimal:
+    """§42: sum of ai_usage cost for today (UTC), for this tenant."""
+    today = datetime.now(UTC).date()
+    total = (
+        await session.execute(
+            select(func.coalesce(func.sum(AIUsage.cost), 0)).where(
+                AIUsage.tenant_id == tenant_id,
+                AIUsage.period_date == today,
+            )
+        )
+    ).scalar_one()
+    return Decimal(total or 0)
+
+
+def _daily_cap(monthly_cap: Decimal) -> Decimal:
+    """§42: the daily cost cap — defaults to monthly_cap / 30."""
+    if monthly_cap <= 0:
+        return Decimal(0)
+    return (monthly_cap / Decimal(30)).quantize(Decimal("0.01"))
 
 
 async def _reserved_spend(session: AsyncSession, tenant_id: UUID) -> Decimal:
@@ -326,6 +386,20 @@ async def reserve_budget(
     # tenant is actually on the hook for.
     await _raise_budget_alerts(session, tenant_id, cap=cap, committed=committed)
 
+    # §42: daily cost cap — prevents a single day from burning the entire
+    # monthly budget. Defaults to monthly_cap / 30.
+    day_spend = await _day_spend(session, tenant_id)
+    daily_cap = _daily_cap(cap)
+    if daily_cap > 0 and day_spend + estimate >= daily_cap:
+        raise RateLimitExceededError(
+            "daily AI budget exceeded",
+            details={
+                "day_spend": str(day_spend),
+                "daily_cap": str(daily_cap),
+                "estimate": str(estimate),
+            },
+        )
+
     if committed + estimate >= cap:
         raise RateLimitExceededError(
             "monthly AI budget exceeded",
@@ -422,6 +496,54 @@ class AIGateway:
         )
         config = await resolve_model_config(session, tenant_id, alias)
 
+        # §144: tenant fairness budget — a single tenant's AI consumption
+        # must not starve the rest of the platform. This is a token-level
+        # gate (estimated tokens), separate from the cost-level gate (§42)
+        # which is about money.
+        from app.core.fairness import ResourceType, consume as consume_fairness
+
+        fairness_ok = await consume_fairness(
+            tenant_id,
+            ResourceType.AI_TOKENS,
+            units=(len(str(messages)) // 4) + (max_tokens or 1024),
+        )
+        if not fairness_ok:
+            from app.core.errors import ValidationError as _VE
+            raise _VE(
+                "tenant AI token fairness budget exhausted — daily limit reached"
+            )
+
+        # §43: data-egress policy — is this tenant allowed to send data to
+        # this provider/model? This is NOT authorization (the entitlement
+        # check already happened); it is a DATA-CLASSIFICATION gate. A
+        # provider with no policy row is allowed (fail-open; see policy.py).
+        from app.modules.ai.policy import AIProviderPolicyService
+
+        egress_decision = await AIProviderPolicyService.evaluate(
+            session,
+            tenant_id,
+            provider=config["provider"],
+            model=config["model"],
+            data_class="internal",
+        )
+        if not egress_decision.allowed:
+            raise ValidationError(
+                f"AI provider blocked by data-egress policy: {egress_decision.reason}"
+            )
+        if egress_decision.redact_required:
+            # §43: actually redact PII before sending to the provider.
+            # The policy flag existed but was never enforced — a tenant with
+            # pii_redaction_required=True got a warning log while raw PII
+            # flowed to the provider. The redactor masks email addresses,
+            # phone numbers, and Saudi ID numbers in the message content
+            # before the HTTP call leaves this process.
+            messages = _redact_pii(messages)
+            logger.info(
+                "ai.provider_redaction_applied tenant=%s provider=%s",
+                tenant_id,
+                config["provider"],
+            )
+
         started = time.perf_counter()
         status = "ok"
         result: ChatCompletionResult | None = None
@@ -486,6 +608,29 @@ class AIGateway:
         """Embed texts through the tenant's 'embedding' alias (recorded too)."""
         await enforce_budget(session, tenant_id)
         config = await resolve_model_config(session, tenant_id, "embedding")
+
+        # §43: data-egress policy on the embedding path too — embeddings
+        # carry customer text to a provider, so the same gate applies.
+        from app.modules.ai.policy import AIProviderPolicyService
+
+        egress_decision = await AIProviderPolicyService.evaluate(
+            session,
+            tenant_id,
+            provider=config["provider"],
+            model=config["model"],
+            data_class="internal",
+        )
+        if not egress_decision.allowed:
+            raise ValidationError(
+                f"AI embedding provider blocked by data-egress policy: {egress_decision.reason}"
+            )
+        if egress_decision.redact_required:
+            # §43: redact PII in embedding texts too — embeddings carry
+            # customer text to a provider, so the same gate applies.
+            texts = [
+                _redact_pii([{"role": "user", "content": t}])[0]["content"]
+                for t in texts
+            ]
 
         started = time.perf_counter()
         status = "ok"

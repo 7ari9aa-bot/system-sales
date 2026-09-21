@@ -107,11 +107,27 @@ async def _do_auto_reply(
     # nothing says so. WARNING (not INFO) so it is visible in normal log review,
     # and the message states what was actually lost rather than just "failed".
     system_prompt = agent.system_prompt or ""
+
+    # §132: knowledge snippets are injected as a SEPARATE context block, not
+    # appended to the system prompt. This separates trusted instructions from
+    # untrusted retrieved content, reducing the prompt-injection surface.
+    #
+    # Knowledge context is a bonus, never a hard dependency: if retrieval fails
+    # the reply still goes out. But it must not fail QUIETLY — a misconfigured
+    # embedding model means RAG contributes nothing to every reply from then on.
+    knowledge_context: str | None = None
     try:
-        hits = await search_knowledge(session, tenant_id, user_body, limit=KNOWLEDGE_SNIPPETS)
-        snippets = "\n".join(f"- {item.title}: {item.content}" for item, _distance in hits)
+        from app.modules.ai.knowledge import retrieve_relevant
+
+        snippets = await retrieve_relevant(
+            session,
+            tenant_id,
+            query=user_body,
+            customer_id=customer_id,
+            limit=KNOWLEDGE_SNIPPETS,
+        )
         if snippets:
-            system_prompt = f"{system_prompt}\n\nKnowledge base context:\n{snippets}".strip()
+            knowledge_context = "\n".join(f"- {s}" for s in snippets)
     except Exception:  # noqa: BLE001 — context is optional, the reply is not
         logger.warning(
             "auto-reply continuing WITHOUT knowledge context — knowledge search "
@@ -127,7 +143,33 @@ async def _do_auto_reply(
         user_message=user_body,
         customer_id=customer_id,
         system_prompt=system_prompt or None,
+        knowledge_context=knowledge_context,  # §132: separate from system prompt
     )
+
+    # §158: persist a memory from the AI run with governed provenance.
+    # source="agent_inferred" marks it as AI-generated, NOT customer_stated —
+    # a downstream system trusting source=customer_stated would treat AI
+    # hallucinations as customer-verified facts. confidence is moderate
+    # because the summary is inferred, not confirmed by a system event.
+    if customer_id is not None and result.content:
+        try:
+            from app.modules.ai.knowledge import add_memory
+
+            await add_memory(
+                session,
+                tenant_id,
+                customer_id=customer_id,
+                conversation_id=conversation_id,
+                kind="summary",
+                content=f"AI run on conversation {conversation_id}: {result.content[:500]}",
+                source="agent_inferred",
+                confidence=0.6,
+            )
+        except Exception:  # noqa: BLE001 — memory is best-effort, not critical path
+            logger.warning(
+                "ai.memory_persist_failed conversation=%s", conversation_id, exc_info=True
+            )
+
     # §41: the guardrail is evaluated INSIDE AgentRunner, so every caller is
     # covered — this only reacts to the verdict. The runner already withheld
     # the content, so there is nothing sendable here either way.
@@ -196,4 +238,5 @@ async def _do_auto_reply(
             "message_id": str(message.id),
             "conversation_id": str(conversation_id),
         },
+        aggregate_version=1,
     )

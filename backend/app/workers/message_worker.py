@@ -83,6 +83,9 @@ class MessageWorker(StreamWorker):
     stream = "message.events"
     group = "message-workers"
     name = "message-worker"
+    # §127: message_worker has its own finer-grained ProcessedEvent check
+    # (per delivery phase), so skip the generic check in StreamWorker._process.
+    _skip_generic_idempotency = True
 
     async def handle(self, event: Event) -> None:
         # Read the event through the §19 envelope's read half (finding 2): the

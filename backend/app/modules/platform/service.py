@@ -23,6 +23,7 @@ from app.core.errors import ValidationError
 from app.core.events.writer import add_outbox_event
 from app.core.net_guard import assert_public_url
 from app.modules.platform.models import (
+    AuditLog,
     Job,
     Notification,
     WebhookDelivery,
@@ -31,6 +32,129 @@ from app.modules.platform.models import (
 
 NOTIFICATION_STREAM = "platform.events"
 WEBHOOK_STREAM = "platform.events"
+
+
+class AuditService:
+    """§66 — append-only audit log writer (cross-module safe, §8).
+
+    Every critical mutation is auditable. Modules call this instead of
+    touching AuditLog directly.
+    """
+
+    @staticmethod
+    async def write(
+        session,
+        tenant_id: uuid.UUID | None,
+        actor_user_id: uuid.UUID | None,
+        action: str,
+        resource_type: str,
+        resource_id: str,
+        *,
+        before: dict | None = None,
+        after: dict | None = None,
+        ip: str | None = None,
+        user_agent: str | None = None,
+    ) -> AuditLog:
+        entry = AuditLog(
+            tenant_id=tenant_id,
+            actor_user_id=actor_user_id,
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            before=before,
+            after=after,
+            ip=ip,
+            user_agent=user_agent,
+        )
+        session.add(entry)
+        await session.flush()
+        return entry
+
+
+class SecretService:
+    """§68-69: manage secret references + delegate to SecretStorePort.
+
+    Business tables hold SecretReference rows (metadata + vault_key), never
+    raw secret values. The actual values live behind SecretStorePort.
+    """
+
+    @staticmethod
+    async def create_reference(
+        session,
+        tenant_id: uuid.UUID,
+        *,
+        provider: str,
+        scope: str = "tenant",
+        vault_key: str,
+        workspace_id: uuid.UUID | None = None,
+    ) -> SecretReference:
+        """Register a secret reference. The actual value is stored via the port."""
+        ref = SecretReference(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            provider=provider,
+            scope=scope,
+            vault_key=vault_key,
+            status="active",
+            version=1,
+        )
+        session.add(ref)
+        await session.flush()
+        return ref
+
+    @staticmethod
+    async def get_secret_value(
+        session,
+        tenant_id: uuid.UUID,
+        provider: str,
+    ) -> str | None:
+        """Fetch the actual secret value through SecretStorePort (§68)."""
+        from app.core.secrets import get_secret_store
+
+        ref = (
+            await session.execute(
+                select(SecretReference).where(
+                    SecretReference.tenant_id == tenant_id,
+                    SecretReference.provider == provider,
+                    SecretReference.status == "active",
+                )
+            )
+        ).scalar_one_or_none()
+        if ref is None:
+            return None
+        store = get_secret_store()
+        return await store.get_or_none(ref.vault_key)
+
+    @staticmethod
+    async def rotate_secret(
+        session,
+        tenant_id: uuid.UUID,
+        provider: str,
+        new_value: str,
+    ) -> SecretReference:
+        """§69: rotate a secret — old version stays for grace period."""
+        from app.core.secrets import get_secret_store
+        from datetime import UTC, datetime
+
+        ref = (
+            await session.execute(
+                select(SecretReference).where(
+                    SecretReference.tenant_id == tenant_id,
+                    SecretReference.provider == provider,
+                    SecretReference.status == "active",
+                )
+            )
+        ).scalar_one_or_none()
+        if ref is None:
+            raise NotFoundError(f"no secret reference found for provider {provider}")
+
+        store = get_secret_store()
+        new_version = await store.rotate(ref.vault_key, new_value)
+        ref.version = new_version
+        ref.rotated_at = datetime.now(UTC)
+        ref.status = "active"
+        await session.flush()
+        return ref
 
 
 class JobService:

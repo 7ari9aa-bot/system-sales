@@ -31,6 +31,19 @@ class SearchPort(Protocol):
     ) -> list[SearchHit]:
         ...
 
+    async def delete_from_index(
+        self, session: AsyncSession, tenant_id: uuid.UUID, *,
+        entity_type: str, entity_id: uuid.UUID,
+    ) -> int:
+        """§131: remove a customer's data from the search index on deletion.
+
+        For PostgresSearch the index is the customers/products table itself
+        (soft-deleted rows are filtered by `deleted_at IS NULL`). For an
+        external engine (Meilisearch/Typesense) this deletes the document
+        from the engine's index. Returns the number of entries removed.
+        """
+        ...
+
 
 class PostgresSearch:
     """PG full-text search over customers/products with trigram fallback.
@@ -86,6 +99,19 @@ class PostgresSearch:
                 )
 
         return hits[:limit]
+
+    async def delete_from_index(
+        self, session: AsyncSession, tenant_id: uuid.UUID, *,
+        entity_type: str, entity_id: uuid.UUID,
+    ) -> int:
+        """§131: for PostgresSearch the index IS the table. Soft-deleted rows
+        are already filtered by `deleted_at IS NULL` in search(). This method
+        is a no-op for the PG implementation — the tombstone set by the
+        domain layer (step 1 of propagate_customer_deletion) already hides
+        the row from search. For an external engine, this would delete the
+        document from the engine's index.
+        """
+        return 0
 
 
 def get_search() -> SearchPort:

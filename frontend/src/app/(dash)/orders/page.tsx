@@ -6,6 +6,7 @@ import { Plus, ShoppingCart, Trash2 } from "lucide-react";
 import { useCreateOrder, useCustomers, useOrders, useProducts, type Order } from "@/lib/queries";
 import { t } from "@/lib/t";
 import { formatDate, formatMoney } from "@/lib/utils";
+import { toast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import { EmptyState, ErrorState, PageHeader } from "@/components/ui/states";
 import { DataTable } from "@/components/data-table";
+import { SavedViewsSelector } from "@/components/saved-views-selector";
 
 const STATUS_VARIANT: Record<string, "warning" | "primary" | "success" | "danger" | "default"> = {
   pending: "warning",
@@ -132,16 +134,37 @@ export default function OrdersPage() {
       .filter((l) => l.variant_id)
       .map((l) => ({ variant_id: l.variant_id, quantity: l.quantity }));
     if (!customerId || items.length === 0) return;
-    createOrder.mutate(
-      { customer_id: customerId, items, channel: "dashboard" },
-      {
-        onSuccess: () => {
-          setOpen(false);
-          setLines([{ variant_id: "", quantity: 1 }]);
-          setCustomerId("");
-        },
+    const payload = { customer_id: customerId, items, channel: "dashboard" as const };
+    createOrder.mutate(payload, {
+      onSuccess: (order) => {
+        setOpen(false);
+        setLines([{ variant_id: "", quantity: 1 }]);
+        setCustomerId("");
+        // §104: undo action — the toast offers a way to cancel the order
+        // immediately if the user made a mistake, without navigating to
+        // the order detail page.
+        toast({
+          title: t.orderCreated,
+          description: `#${order.number ?? order.id.slice(0, 8)}`,
+          variant: "success",
+          action: {
+            label: t.undo,
+            onClick: () => {
+              // Cancel the just-created order
+              fetch(`/api/orders/${order.id}/cancel`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ reason: "user_undo" }),
+              }).then(() => {
+                toast({ title: t.orderCancelled, variant: "default" });
+              }).catch(() => {
+                toast({ title: t.undoFailed, variant: "danger" });
+              });
+            },
+          },
+        });
       },
-    );
+    });
   }
 
   return (
@@ -155,6 +178,14 @@ export default function OrdersPage() {
             {t.createOrder}
           </Button>
         }
+      />
+
+      <SavedViewsSelector
+        entity="orders"
+        currentFilters={{}}
+        onSelect={() => {}}
+        activeViewId={null}
+        className="mb-3"
       />
 
       {ordersQuery.isError ? (

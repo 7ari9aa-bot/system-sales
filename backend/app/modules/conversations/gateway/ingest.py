@@ -113,6 +113,15 @@ class IngestService:
         conversation = await ConversationService.get_or_create(
             session, tenant_id, customer_id=customer.id, channel=message.channel
         )
+        # §155: convert provider reply_to_message_id (string) to UUID if
+        # it matches a local message. None if it doesn't (foreign reply).
+        reply_to_uuid: uuid.UUID | None = None
+        if message.reply_to_message_id:
+            try:
+                reply_to_uuid = uuid.UUID(message.reply_to_message_id)
+            except ValueError:
+                reply_to_uuid = None  # provider-side id, not a local UUID
+
         created = await ConversationService.add_message(
             session,
             tenant_id,
@@ -122,6 +131,8 @@ class IngestService:
             body=message.body,
             media_url=message.media_url,
             media_type=message.media_type,
+            content_type=message.content_type,
+            reply_to_message_id=reply_to_uuid,
             channel_message_id=message.channel_message_id,
             payload={"raw": message.raw} if message.raw else None,
         )
@@ -131,6 +142,33 @@ class IngestService:
             message.channel_message_id,
             {"conversation_id": str(conversation.id)},
         )
+
+        # §142: also record in the tenant-scoped inbound_message_dedupe table.
+        # This is a SEPARATE dedupe record from the IdempotencyKey (which is
+        # scope-based). The InboundMessageDedupe table is (tenant_id,
+        # channel_account_id, external_message_id) and lives on its own
+        # retention lifecycle — it can be pruned independently of the
+        # IdempotencyKey (which expires after 7 days). The dedupe record
+        # has no response payload — it is a pure existence check.
+        from app.modules.platform.models import InboundMessageDedupe
+
+        existing_dedupe = (
+            await session.execute(
+                select(InboundMessageDedupe).where(
+                    InboundMessageDedupe.tenant_id == tenant_id,
+                    InboundMessageDedupe.channel_account_id == message.customer_ref,
+                    InboundMessageDedupe.external_message_id == message.channel_message_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if existing_dedupe is None:
+            session.add(
+                InboundMessageDedupe(
+                    tenant_id=tenant_id,
+                    channel_account_id=message.customer_ref,
+                    external_message_id=message.channel_message_id,
+                )
+            )
         # §46: the customer's message starts the first-response clock. A no-op
         # when the tenant has no SLA policy, so this costs nothing for tenants
         # that do not use SLAs. Idempotent by conversation, so a replayed
@@ -157,5 +195,6 @@ class IngestService:
                 "media_url": message.media_url,
                 "media_type": message.media_type,
             },
+            aggregate_version=1,
         )
         return conversation.id

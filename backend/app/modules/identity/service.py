@@ -41,7 +41,6 @@ from app.modules.identity.models import (
     User,
 )
 from app.modules.identity.schemas import TokenPair
-from app.modules.platform.models import AuditLog
 
 logger = logging.getLogger(__name__)
 
@@ -203,7 +202,7 @@ class AuthService:
         from app.modules.identity.bootstrap import seed_tenant_defaults
 
         await seed_tenant_defaults(session, tenant.id)
-        AuthService._audit(
+        await AuthService._audit(
             session, None, "auth.registered", "user", str(user.id), tenant_id=tenant.id
         )
         return user, tenant
@@ -413,7 +412,13 @@ class AuthService:
         ip: str | None = None,
     ) -> TokenPair:
         settings = get_settings()
-        claims = {"tenant_id": str(tenant_id)} if tenant_id else {}
+        claims: dict = {"tenant_id": str(tenant_id)} if tenant_id else {}
+        # §146: is_platform_admin in JWT — the break-glass claim. The
+        # middleware checks this to grant platform-level access (cross-tenant
+        # admin, billing, audit). The claim is set from the user row, not
+        # from a request parameter, so it cannot be forged.
+        if getattr(user, "is_platform_admin", False):
+            claims["is_platform_admin"] = True
         access = create_access_token(str(user.id), claims)
         refresh = create_refresh_token(str(user.id), claims)
         session.add(
@@ -433,15 +438,16 @@ class AuthService:
         )
 
     @staticmethod
-    def _audit(session, actor_user_id, action, resource_type, resource_id, tenant_id=None):
-        session.add(
-            AuditLog(
-                tenant_id=tenant_id,
-                actor_user_id=actor_user_id,
-                action=action,
-                resource_type=resource_type,
-                resource_id=str(resource_id),
-            )
+    async def _audit(session, actor_user_id, action, resource_type, resource_id, tenant_id=None):
+        from app.modules.platform.service import AuditService
+
+        await AuditService.write(
+            session,
+            tenant_id,
+            actor_user_id,
+            action=action,
+            resource_type=resource_type,
+            resource_id=str(resource_id),
         )
 
 
@@ -833,20 +839,20 @@ class TenantLifecycleService:
         # Every transition leaves an audit row naming actor, from, to and why —
         # a lifecycle change with no trail is the failure this feature exists
         # to prevent.
-        session.add(
-            AuditLog(
-                tenant_id=tenant.id,
-                actor_user_id=actor_user_id,
-                action="tenant.lifecycle_changed",
-                resource_type="tenant",
-                resource_id=str(tenant.id),
-                before={"lifecycle_state": current, "is_active": was_active},
-                after={
-                    "lifecycle_state": target,
-                    "is_active": tenant.is_active,
-                    "reason": reason,
-                },
-            )
+        from app.modules.platform.service import AuditService
+        await AuditService.write(
+            session,
+            tenant.id,
+            actor_user_id,
+            action="tenant.lifecycle_changed",
+            resource_type="tenant",
+            resource_id=str(tenant.id),
+            before={"lifecycle_state": current, "is_active": was_active},
+            after={
+                "lifecycle_state": target,
+                "is_active": tenant.is_active,
+                "reason": reason,
+            },
         )
         # §67: the security trail answers "who restricted this workspace" even
         # for a platform operator who never touches the tenant's business audit.

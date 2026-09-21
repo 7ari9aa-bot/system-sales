@@ -97,6 +97,10 @@ class Conversation(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     assignee_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    # §143: tombstone — soft-delete columns (privacy deletion).
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    deletion_reason: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
 
 class Message(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
@@ -172,9 +176,15 @@ class Message(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
         String(15), nullable=False, default="received", server_default="received"
     )
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # §143: tombstone — soft-delete columns (privacy deletion).
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    deletion_reason: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
 
 class Assignment(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
+    """Conversation assignment history — who was assigned and when."""
+
     __tablename__ = "assignments"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -289,4 +299,131 @@ class Attachment(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Bas
     __table_args__ = (
         Index("ix_attachments_tenant_message", "tenant_id", "message_id"),
         Index("ix_attachments_tenant_conversation", "tenant_id", "conversation_id"),
+    )
+
+
+# ------------------------------------------- §36 Voice Gateway ----
+
+class PhoneNumber(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
+    """§36: a phone number owned/rented by the tenant for voice calls.
+
+    Routed to a conversation channel — inbound calls on this number
+    open a CallSession linked to the conversation.
+    """
+
+    __tablename__ = "phone_numbers"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    # E.164 format: +9665XXXXXXXX
+    number: Mapped[str] = mapped_column(String(20), nullable=False)
+    provider: Mapped[str] = mapped_column(String(31))  # twilio | vonage | ...
+    # allowed: pending | active | released
+    status: Mapped[str] = mapped_column(String(15), server_default="pending")
+    display_name: Mapped[str | None] = mapped_column(String(127))
+    # webhook config for inbound calls
+    voice_url: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "number", name="uq_phone_numbers_tenant_number"),
+    )
+
+
+class Call(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
+    """§36: a voice call (inbound or outbound).
+
+    A call may have multiple legs (transfers, forwarding). The call
+    itself is the top-level entity; legs track individual connections.
+    """
+
+    __tablename__ = "calls"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True
+    )
+    phone_number_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("phone_numbers.id", ondelete="SET NULL"), nullable=True
+    )
+    direction: Mapped[str] = mapped_column(String(15))  # inbound | outbound
+    from_number: Mapped[str] = mapped_column(String(20))
+    to_number: Mapped[str] = mapped_column(String(20))
+    # allowed: ringing | in_progress | completed | failed | no_answer | busy
+    status: Mapped[str] = mapped_column(String(15), server_default="ringing")
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    answered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    duration_seconds: Mapped[int | None] = mapped_column()
+    provider_call_id: Mapped[str | None] = mapped_column(String(255))  # provider's call id
+    # recording + transcript (durable — §33-35)
+    recording_url: Mapped[str | None] = mapped_column(Text)
+    transcript: Mapped[str | None] = mapped_column(Text)
+    transcript_status: Mapped[str | None] = mapped_column(String(15))  # pending | ready | failed
+
+    __table_args__ = (
+        Index("ix_calls_tenant_conversation", "tenant_id", "conversation_id"),
+        Index("ix_calls_tenant_status", "tenant_id", "status"),
+    )
+
+
+class CallSession(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
+    """§36: an AI or IVR session within a call.
+
+    A call may have multiple sessions (e.g., IVR menu → agent handoff).
+    Each session tracks the AI agent or IVR flow that handled it.
+    """
+
+    __tablename__ = "call_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    call_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("calls.id", ondelete="CASCADE"), nullable=False
+    )
+    # AI agent or IVR flow that handled this segment
+    agent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))  # AI module owns agents
+    ivr_flow_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    # allowed: active | completed | failed | transferred
+    status: Mapped[str] = mapped_column(String(15), server_default="active")
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index("ix_call_sessions_tenant_call", "tenant_id", "call_id"),
+    )
+
+
+class CallLeg(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
+    """§36: a single leg of a call (one endpoint connection).
+
+    A call with a transfer has 2+ legs. Each leg tracks the individual
+    connection's start/end, direction, and outcome.
+    """
+
+    __tablename__ = "call_legs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    call_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("calls.id", ondelete="CASCADE"), nullable=False
+    )
+    # allowed: inbound | outbound | transfer
+    leg_type: Mapped[str] = mapped_column(String(15))
+    from_number: Mapped[str] = mapped_column(String(20))
+    to_number: Mapped[str] = mapped_column(String(20))
+    # allowed: ringing | answered | completed | failed | no_answer | busy
+    status: Mapped[str] = mapped_column(String(15), server_default="ringing")
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    answered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    duration_seconds: Mapped[int | None] = mapped_column()
+    provider_leg_id: Mapped[str | None] = mapped_column(String(255))
+
+    __table_args__ = (
+        Index("ix_call_legs_tenant_call", "tenant_id", "call_id"),
     )

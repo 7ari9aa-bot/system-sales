@@ -59,11 +59,21 @@ async function tryRefresh(): Promise<boolean> {
 
 export async function api<T = unknown>(
   path: string,
-  options: { method?: string; body?: unknown; retry?: boolean } = {},
+  options: {
+    method?: string;
+    body?: unknown;
+    retry?: boolean;
+    /** §91: pass an Idempotency-Key on POST/PUT so a retried request does not double-write. */
+    idempotencyKey?: string;
+    /** §17: pass If-Match with the aggregate's version for optimistic locking. */
+    ifMatch?: string | number;
+  } = {},
 ): Promise<T> {
   const tokens = getTokens();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (tokens?.access_token) headers["Authorization"] = `Bearer ${tokens.access_token}`;
+  if (options.idempotencyKey) headers["Idempotency-Key"] = options.idempotencyKey;
+  if (options.ifMatch !== undefined) headers["If-Match"] = String(options.ifMatch);
 
   const res = await fetch(`${API}${API_PREFIX}${path}`, {
     method: options.method ?? "GET",
@@ -90,6 +100,14 @@ export async function api<T = unknown>(
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
+}
+
+/** §91: generate a random Idempotency-Key for safe-retry POSTs. */
+export function newIdempotencyKey(): string {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 }
 
 export const API_BASE_URL = API;

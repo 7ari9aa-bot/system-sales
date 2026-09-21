@@ -34,6 +34,9 @@ class Settings(BaseSettings):
 
     # data stores
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/sales"
+    # §58: Supavisor pooler port is 6543 (5432 is the direct/admin port).
+    # The pooler URL is used by the app runtime; admin/migrations use 5432.
+    database_url_pooler: str = "postgresql+asyncpg://postgres:postgres@localhost:6543/sales"
     # Direct/admin URL used by migrations and maintenance scripts (bypasses pgbouncer).
     database_url_admin: str = ""
     # App runtime role (sales_app, no bypassrls — RLS applies to it). Written by

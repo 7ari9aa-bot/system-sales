@@ -34,10 +34,14 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // §109: dir is dynamic — RTL for Arabic, LTR for English. The <html>
+  // attribute is set at the root so CSS logical properties flip correctly.
+  const dir = locale === "ar" ? "rtl" : "ltr";
+
   return (
     <html
-      lang="ar"
-      dir="rtl"
+      lang={locale}
+      dir={dir}
       className={`${plexAr.variable} ${grotesk.variable} ${archivo.variable}`}
     >
       <body>

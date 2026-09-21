@@ -119,6 +119,26 @@ class AuditLog(Base):
 class Integration(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "integrations"
 
+    # §145: channel account lifecycle — allowed transitions.
+    _LIFECYCLE_TRANSITIONS: dict[str, set[str]] = {
+        "pending": {"connecting", "disabled"},
+        "connecting": {"active", "reauth_required", "disabled"},
+        "active": {"reauth_required", "restricted", "disconnected", "disabled"},
+        "reauth_required": {"connecting", "active", "disabled"},
+        "restricted": {"active", "disconnected", "disabled"},
+        "disconnected": {"connecting", "disabled"},
+        "disabled": set(),  # terminal
+    }
+
+    @classmethod
+    def validate_transition(cls, from_status: str, to_status: str) -> None:
+        """§145: raise if the transition is not in the allowed set."""
+        allowed = cls._LIFECYCLE_TRANSITIONS.get(from_status, set())
+        if to_status not in allowed:
+            raise ValueError(
+                f"illegal channel account transition: {from_status} -> {to_status}"
+            )
+
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
@@ -208,6 +228,40 @@ class Notification(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     dedup_key: Mapped[str | None] = mapped_column(String(127), nullable=True)
+
+
+class NotificationPreference(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
+    """§166: per-user notification channel preferences + quiet hours.
+
+    A row per (tenant, user, channel). `enabled` defaults True; the
+    dispatcher checks this before sending. `quiet_hours_start/end` are
+    nullable Time fields; when both are set and the current time falls
+    within the window, the channel is suppressed.
+    """
+
+    __tablename__ = "notification_preferences"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    # channel: email | sms | whatsapp | push
+    channel: Mapped[str] = mapped_column(String(15), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, server_default="true", default=True)
+    quiet_hours_start: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    quiet_hours_end: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "user_id", "channel", name="uq_notif_prefs_user_channel"
+        ),
+    )
 
 
 class Automation(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
@@ -356,6 +410,12 @@ class DeliveryAttempt(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin
     request_payload: Mapped[dict] = mapped_column(JSONB, server_default="{}")
     response_status: Mapped[int | None] = mapped_column(Integer)
     error: Mapped[str | None] = mapped_column(Text)
+    # §130: provider event metadata — the provider's event id and the
+    # timestamp it reported for the delivery receipt.
+    provider_event_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    provider_timestamp: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     __table_args__ = (
         Index("ix_delivery_attempts_message", "tenant_id", "message_id"),

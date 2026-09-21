@@ -9,6 +9,7 @@ is not wired up. Search embeds the query and ranks by cosine distance.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -104,8 +105,21 @@ async def add_memory(
     kind: str,
     content: str,
     embedding: list[float] | None = None,
+    source: str = "customer_stated",
+    confidence: float = 0.5,
+    verified_at: datetime | None = None,
 ) -> Memory:
-    """Persist a customer/conversation memory (kind: summary | preference | fact)."""
+    """Persist a customer/conversation memory with governed provenance (§158).
+
+    ``source`` distinguishes customer-stated facts from AI-inferred summaries:
+     - customer_stated: the customer explicitly said this
+     - agent_inferred: the AI deduced/summarized this from the conversation
+     - system_verified: a system process confirmed this (e.g., order delivered)
+     - staff_entered: a human staff member recorded this
+
+    ``confidence`` (0.0–1.0) reflects how trustworthy the memory is.
+    ``verified_at`` is set when the memory is confirmed by a system event.
+    """
     memory = Memory(
         tenant_id=tenant_id,
         customer_id=customer_id,
@@ -113,6 +127,9 @@ async def add_memory(
         kind=kind,
         content=content,
         embedding=embedding,
+        source=source,
+        confidence=confidence,
+        verified_at=verified_at,
     )
     session.add(memory)
     await session.flush()

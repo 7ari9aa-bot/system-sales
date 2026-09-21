@@ -40,6 +40,10 @@ class Order(TenantMixin, TimestampMixin, WorkspaceScopeMixin, VersionMixin, Base
     # allowed: draft | pending | confirmed | processing | shipped | delivered
     #        | completed | cancelled | refunded
     status: Mapped[str] = mapped_column(String(31), server_default="pending")
+    # §139: saga state machine — created -> paid -> stock_reserved -> fulfilled -> cancelled
+    process_state: Mapped[str | None] = mapped_column(
+        String(31), nullable=True, default="created", server_default="created"
+    )
     currency: Mapped[str] = mapped_column(String(3), server_default="EGP")
     subtotal: Mapped[float] = mapped_column(MONEY, server_default="0")
     discount_total: Mapped[float] = mapped_column(MONEY, server_default="0")
@@ -51,6 +55,10 @@ class Order(TenantMixin, TimestampMixin, WorkspaceScopeMixin, VersionMixin, Base
     shipping_address: Mapped[dict | None] = mapped_column(JSONB)
     placed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     extra: Mapped[dict] = mapped_column(JSONB, server_default="{}")
+    # §143: tombstone — soft-delete columns (privacy/GDPR deletion).
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    deletion_reason: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
     __table_args__ = (
         UniqueConstraint("tenant_id", "number", name="uq_orders_tenant_number"),

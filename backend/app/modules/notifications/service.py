@@ -209,3 +209,48 @@ class NotificationService:
             )
         ).scalar_one()
         return result or 0
+
+    # ------------------------------------------------------------------
+    # §166 — Notification dedupe/digest
+    # ------------------------------------------------------------------
+    # The dedupe path is already wired (dedup_key above). The DIGEST path
+    # groups unread notifications by kind and returns a summary so a user
+    # can see "5 new orders, 2 SLA breaches" instead of 7 individual rows.
+    # The route uses this to power the bell's collapsed view.
+
+    @staticmethod
+    async def digest(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+    ) -> dict:
+        """§166: group unread notifications by kind for the bell's collapsed view."""
+        rows = (
+            await session.execute(
+                select(
+                    Notification.kind,
+                    func.count().label("count"),
+                    func.max(Notification.created_at).label("latest_at"),
+                )
+                .where(
+                    Notification.tenant_id == tenant_id,
+                    Notification.user_id == user_id,
+                    Notification.read_at.is_(None),
+                )
+                .group_by(Notification.kind)
+                .order_by(func.count().desc())
+            )
+        ).all()
+
+        groups = [
+            {
+                "kind": kind,
+                "count": int(count),
+                "latest_at": latest_at.isoformat() if latest_at else None,
+            }
+            for kind, count, latest_at in rows
+        ]
+        return {
+            "total_unread": sum(g["count"] for g in groups),
+            "groups": groups,
+        }

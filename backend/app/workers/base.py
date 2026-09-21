@@ -200,6 +200,47 @@ class StreamWorker:
         # make every redelivery look new.
         dedupe_id = str(envelope_meta.get("outbox_id") or event.id)
         attempts = int(envelope_meta.get(ATTEMPTS_META_KEY, 0)) + 1
+
+        # §127: generic consumer idempotency. Every StreamWorker gets a
+        # ProcessedEvent check — not just message_worker. A redelivered event
+        # that was already processed hits the unique constraint and is skipped.
+        # message_worker does its own finer-grained check (per delivery phase),
+        # so it sets _skip_generic_idempotency = True.
+        if not getattr(self, "_skip_generic_idempotency", False):
+            from sqlalchemy import text as sa_text
+
+            from app.core.db import SessionLocal
+
+            try:
+                async with SessionLocal() as idem_session:
+                    async with idem_session.begin():
+                        result = await idem_session.execute(
+                            sa_text(
+                                "INSERT INTO processed_events "
+                                "(id, consumer_name, event_id, status) "
+                                "VALUES (gen_random_uuid(), :consumer, :eid, 'done') "
+                                "ON CONFLICT (consumer_name, event_id) DO NOTHING"
+                            ),
+                            {"consumer": self.name, "eid": dedupe_id},
+                        )
+                        # ON CONFLICT DO NOTHING returns 0 rows inserted if the
+                        # row already existed — meaning this event was already
+                        # processed. Skip it.
+                        if (result.rowcount or 0) == 0:
+                            logger.info(
+                                "worker.idempotent_skip stream=%s consumer=%s id=%s",
+                                self.stream, self.name, dedupe_id,
+                            )
+                            await self._bus.ack(self.stream, self.group, event)
+                            return
+            except Exception:
+                # If the idempotency table is unavailable, fail open —
+                # the handler may have its own dedupe (message_worker does).
+                logger.debug(
+                    "worker.idempotency_check_failed stream=%s id=%s",
+                    self.stream, dedupe_id, exc_info=True,
+                )
+
         try:
             await self.handle(event)
         except DeferredError as exc:
@@ -280,6 +321,10 @@ class StreamWorker:
         original_outbox_id = envelope.meta.get("outbox_id")
         async with SessionLocal() as session:
             async with session.begin():
+                # §125: bind tenant GUC so the outbox insert is tenant-scoped.
+                from app.core.tenancy import bind_tenant
+
+                await bind_tenant(session, envelope.tenant_id)
                 retry = await add_outbox_event(
                     session,
                     aggregate_type=envelope.aggregate_type,

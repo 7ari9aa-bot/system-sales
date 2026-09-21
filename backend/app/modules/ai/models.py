@@ -216,6 +216,11 @@ class ToolCall(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base)
     name: Mapped[str] = mapped_column(String(63))
     args: Mapped[dict] = mapped_column(JSONB, server_default="{}")
     result: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # §15-16: idempotency key = f"{run_id}:{tool_call_id}" — a retried run or
+    # replayed event that re-issues the same tool call finds the prior row
+    # and skips execution, preventing duplicate side-effects (double orders,
+    # double tags). The unique constraint makes the check atomic.
+    idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
     # status: ok | error | denied | awaiting_approval
     # (31 chars — "awaiting_approval" is 17 and the §135 gate writes it here;
     # varchar(15) made the first gated tool call raise TruncationError.)
@@ -223,7 +228,12 @@ class ToolCall(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base)
     error: Mapped[str | None] = mapped_column(Text)
     duration_ms: Mapped[int | None] = mapped_column()
 
-    __table_args__ = (Index("ix_tool_calls_tenant_run", "tenant_id", "run_id"),)
+    __table_args__ = (
+        Index("ix_tool_calls_tenant_run", "tenant_id", "run_id"),
+        UniqueConstraint(
+            "tenant_id", "idempotency_key", name="uq_tool_calls_tenant_idempotency"
+        ),
+    )
 
 
 class ModelCall(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):

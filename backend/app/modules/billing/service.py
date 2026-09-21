@@ -44,6 +44,10 @@ from app.modules.billing.models import (
 _CAPABILITY_FEATURE: dict[str, str] = {
     "CanAddUser": "max_users",
     "CanUseAI": "ai_agents",
+    # §165: map the remaining capabilities so they don't silently return True
+    "CanSendCampaign": "marketing",  # plan-level marketing feature
+    "CanUseVoice": "voice",  # voice/STT/TTS feature
+    "CanUseAPI": "api_access",  # API access feature
     # `channels` is an ALLOWLIST of channel names, not a numeric limit, so it
     # cannot go through check_entitlement (which compares a limit against a
     # usage counter). Use EntitlementService.ensure_channel_allowed instead.

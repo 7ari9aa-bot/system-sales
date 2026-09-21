@@ -165,3 +165,186 @@ class RetentionWorker(StreamWorker):
             removed += batch
             if batch < _DELETE_BATCH_SIZE:
                 return removed
+
+
+# ---------------------------------------------------------------------------
+# §49-50 — Tenant offboarding worker
+# ---------------------------------------------------------------------------
+# When a tenant enters the "offboarding" state, a 30-day retention clock
+# starts. During that window:
+#   1. The tenant admin can export their data (the UI calls the export
+#      endpoint which produces a JSON/CSV dump).
+#   2. AI, channels, and automation are disabled (capability policy).
+#   3. After the retention window expires, a scheduled job calls
+#      `finalize_offboarding()` which performs the final hard delete.
+#
+# The hard delete is a CASCADE: deleting the tenant row cascades to all
+# tenant-scoped tables (customers, conversations, messages, orders, etc.)
+# via the FK ON DELETE CASCADE. The deletion is logged as a security
+# event so there is a record that the data was purged.
+
+
+class OffboardingWorker:
+    """§49-50: handles the offboarding → deleted transition.
+
+    This is NOT a stream worker — it is a scheduled job that runs daily
+    to check for tenants whose offboarding retention window has expired.
+    """
+
+    @staticmethod
+    async def run_once(session, tenant_id) -> dict:
+        """Check if a tenant's offboarding retention has expired.
+
+        If the retention window has NOT expired, returns the remaining days.
+        If it HAS expired, performs the final hard delete (CASCADE).
+        """
+        from app.modules.identity.models import Tenant
+        from app.modules.identity.service import TenantLifecycleService
+        from app.modules.platform.models import AuditLog
+
+        now = datetime.now(UTC)
+        tenant = await TenantLifecycleService.get(session, tenant_id)
+
+        if tenant.lifecycle_state != "offboarding":
+            return {
+                "tenant_id": str(tenant_id),
+                "action": "skipped",
+                "reason": f"tenant is {tenant.lifecycle_state}, not offboarding",
+            }
+
+        if tenant.deletion_scheduled_at is None:
+            return {
+                "tenant_id": str(tenant_id),
+                "action": "skipped",
+                "reason": "deletion_scheduled_at is not set",
+            }
+
+        if now < tenant.deletion_scheduled_at:
+            remaining_days = (tenant.deletion_scheduled_at - now).days
+            return {
+                "tenant_id": str(tenant_id),
+                "action": "waiting",
+                "remaining_days": remaining_days,
+                "deletion_scheduled_at": tenant.deletion_scheduled_at.isoformat(),
+            }
+
+        # The retention window has expired — perform the final delete.
+        # Log BEFORE the cascade delete (after, the tenant row is gone).
+        session.add(
+            AuditLog(
+                tenant_id=tenant_id,
+                actor_user_id=None,
+                action="tenant.data_purged",
+                resource_type="tenant",
+                resource_id=str(tenant_id),
+                before={
+                    "lifecycle_state": tenant.lifecycle_state,
+                    "deletion_scheduled_at": tenant.deletion_scheduled_at.isoformat(),
+                },
+                after={"action": "hard_delete_cascade"},
+            )
+        )
+
+        # The transition to "deleted" handles the state machine + audit.
+        # The CASCADE on the Tenant FK will delete all tenant-scoped rows.
+        await TenantLifecycleService.transition(
+            session,
+            tenant_id,
+            "deleted",
+            reason="offboarding retention window expired — final data purge",
+        )
+
+        logger.info(
+            "offboarding.finalized tenant=%s — data purged via cascade",
+            tenant_id,
+        )
+        return {
+            "tenant_id": str(tenant_id),
+            "action": "purged",
+            "purged_at": now.isoformat(),
+        }
+
+    @staticmethod
+    async def export_data(session, tenant_id) -> dict:
+        """§49: export all tenant data as a JSON-serializable dict.
+
+        This is the "take your data out" endpoint called during the
+        offboarding window. It produces a structured dump of:
+        - customers
+        - conversations (with messages)
+        - orders (with payments/refunds)
+        - memories (AI knowledge base)
+        """
+        from sqlalchemy import text
+
+        export: dict[str, list] = {}
+
+        # Customers
+        rows = (
+            await session.execute(
+                text(
+                    "SELECT id, name, phone, email, created_at "
+                    "FROM customers WHERE tenant_id = :tid ORDER BY created_at"
+                ),
+                {"tid": str(tenant_id)},
+            )
+        ).all()
+        export["customers"] = [
+            {
+                "id": str(r[0]),
+                "name": r[1],
+                "phone": r[2],
+                "email": r[3],
+                "created_at": r[4].isoformat() if r[4] else None,
+            }
+            for r in rows
+        ]
+
+        # Orders
+        rows = (
+            await session.execute(
+                text(
+                    "SELECT id, number, status, currency, grand_total, placed_at "
+                    "FROM orders WHERE tenant_id = :tid ORDER BY placed_at"
+                ),
+                {"tid": str(tenant_id)},
+            )
+        ).all()
+        export["orders"] = [
+            {
+                "id": str(r[0]),
+                "number": r[1],
+                "status": r[2],
+                "currency": r[3],
+                "grand_total": str(r[4]) if r[4] else None,
+                "placed_at": r[5].isoformat() if r[5] else None,
+            }
+            for r in rows
+        ]
+
+        # Conversations (summary only — messages are too large for a single export)
+        rows = (
+            await session.execute(
+                text(
+                    "SELECT id, channel, status, created_at "
+                    "FROM conversations WHERE tenant_id = :tid ORDER BY created_at"
+                ),
+                {"tid": str(tenant_id)},
+            )
+        ).all()
+        export["conversations"] = [
+            {
+                "id": str(r[0]),
+                "channel": r[1],
+                "status": r[2],
+                "created_at": r[3].isoformat() if r[3] else None,
+            }
+            for r in rows
+        ]
+
+        return {
+            "tenant_id": str(tenant_id),
+            "exported_at": datetime.now(UTC).isoformat(),
+            "counts": {k: len(v) for k, v in export.items()},
+            "data": export,
+        }

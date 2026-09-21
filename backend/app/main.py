@@ -21,6 +21,7 @@ from app.core.errors import (
     DomainError,
     PermissionDeniedError,
     build_error_body,
+    correlation_id_contextvar,
     request_id_contextvar,
 )
 from app.core.idempotency import IdempotencyMiddleware
@@ -32,6 +33,7 @@ from app.core.middleware import (
 from app.core.observability import RequestLoggingMiddleware, configure_logging
 from app.core.redis import close_redis, get_redis
 from app.modules.ai.router import router as ai_router
+from app.modules.analytics.router import router as analytics_module_router
 from app.modules.automation.router import router as automation_router
 from app.modules.billing.router import (
     billing_router,
@@ -102,11 +104,17 @@ class _RequestIDMiddleware:
             return
         headers = {k.decode().lower(): v.decode() for k, v in scope.get("headers", [])}
         request_id = headers.get("x-request-id") or uuid.uuid4().hex[:16]
-        token = request_id_contextvar.set(request_id)
+        # §65: correlation_id links HTTP requests to domain events. Honored
+        # from x-correlation-id (for cross-service tracing) or generated fresh.
+        # Passed to add_outbox_event so every event traces back to its cause.
+        correlation_id = headers.get("x-correlation-id") or uuid.uuid4().hex[:16]
+        req_token = request_id_contextvar.set(request_id)
+        cor_token = correlation_id_contextvar.set(correlation_id)
         try:
             await self.app(scope, receive, send)
         finally:
-            request_id_contextvar.reset(token)
+            request_id_contextvar.reset(req_token)
+            correlation_id_contextvar.reset(cor_token)
 
 
 def _exception_handlers(app: FastAPI) -> None:
@@ -197,6 +205,7 @@ def create_app() -> FastAPI:
         platform_module_router,
         segments_router,
         automation_router,
+        analytics_module_router,
     ):
         api_v1.include_router(router)
     app.include_router(api_v1)

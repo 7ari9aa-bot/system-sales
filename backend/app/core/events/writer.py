@@ -25,6 +25,22 @@ from app.core.events.schemas import build_envelope, serialize
 from app.modules.platform.models import OutboxEvent
 
 
+def _auto_correlation_id() -> str | None:
+    """§65: pick up the request-scoped correlation_id when available.
+
+    Returns None outside a request (workers, scheduled jobs). Callers that
+    process a domain event should pass the event's correlation_id explicitly;
+    this auto-fill covers the HTTP → outbox path so every event staged from
+    a request carries the request's correlation_id without boilerplate.
+    """
+    try:
+        from app.core.errors import correlation_id_contextvar
+
+        return correlation_id_contextvar.get()
+    except LookupError:
+        return None
+
+
 async def add_outbox_event(
     session: AsyncSession,
     *,
@@ -58,7 +74,7 @@ async def add_outbox_event(
         aggregate_id=aggregate_id,
         payload=payload or {},
         meta=meta or {},
-        correlation_id=correlation_id,
+        correlation_id=correlation_id or _auto_correlation_id(),
         causation_id=causation_id,
         producer=producer,
         schema_version=schema_version,

@@ -440,26 +440,29 @@ async def _add_task(
     priority: int = 2,
     context: dict | None = None,
 ) -> dict:
-    """Create a follow-up Task. Linked to the bound customer when there is one."""
-    Task = _task_model()
+    """Create a follow-up Task. Linked to the bound customer when there is one.
+
+    §13-14: routes through TaskService — never constructs the Task model
+    directly. This ensures consistent validation, defaults, and future
+    hooks (audit, events) are in one place.
+    """
+    from app.modules.operations.task_service import TaskService
+
     # Same defensive parse as _bound_customer_id: a malformed binding must be a
     # controlled tool error, not a bare ValueError from uuid.UUID().
     customer_id = _parse_bound_id((context or {}).get("customer_id"))
-    task = Task(
-        tenant_id=tenant_id,
+    task = await TaskService.create_task(
+        session,
+        tenant_id,
         title=title,
         description=description,
         due_date=due_date,
         priority=priority,
-        status="todo",
         source="ai",
         created_by="ai",
-        # The link is the server-side binding, never a model argument.
         related_entity_type="customer" if customer_id else None,
         related_entity_id=customer_id,
     )
-    session.add(task)
-    await session.flush()
     return {
         "task_id": str(task.id),
         "title": task.title,

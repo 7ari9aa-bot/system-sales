@@ -7,6 +7,7 @@ import json
 import logging
 import time
 import uuid
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, Field
@@ -92,6 +93,42 @@ async def list_conversations(
         ],
         "next_cursor": next_cursor,
     }
+
+
+@router.get("/inbox")
+async def inbox_query(
+    ctx: TenantCtxDep,
+    status: str | None = None,
+    assignee_user_id: uuid.UUID | None = None,
+    cursor: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+):
+    """§137: inbox read model — conversations with preview, unread, SLA.
+
+    A dedicated query that returns everything the inbox list needs in one
+    round-trip: last message preview, unread count, SLA status, and the
+    customer's name/phone. This is the read side of CQRS; it never writes.
+    """
+    before_created_at, before_id = decode_cursor(cursor) if cursor else (None, None)
+    items = await ConversationService.inbox_query(
+        ctx.session,
+        ctx.tenant_id,
+        status=status,
+        assignee_user_id=assignee_user_id,
+        limit=limit + 1,
+        before_created_at=before_created_at,
+        before_id=before_id,
+    )
+    page = items[:limit]
+    next_cursor = None
+    if len(items) > limit and page:
+        # Encode cursor from the last item's created_at + id
+        last = page[-1]
+        next_cursor = encode_cursor(
+            datetime.fromisoformat(last["created_at"]) if last["created_at"] else datetime.now(UTC),
+            uuid.UUID(last["id"]),
+        )
+    return {"items": page, "next_cursor": next_cursor}
 
 
 @router.get("/conversations/{conversation_id}/messages")

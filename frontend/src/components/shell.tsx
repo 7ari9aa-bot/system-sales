@@ -14,7 +14,11 @@ import { LayoutDashboard,
   Package,
   Warehouse,
   Megaphone,
+  Workflow,
+  BarChart3,
+  Activity,
   Sparkles,
+  ShieldAlert,
   Settings,
   Search,
   Plus,
@@ -46,6 +50,7 @@ import {
 import { CommandPalette } from "@/components/command-palette";
 import { NotificationsBell } from "@/components/notifications-bell";
 import { HealthIndicator } from "@/components/health-indicator";
+import { Toaster } from "@/components/ui/toast";
 import { useMe } from "@/lib/queries";
 
 /* ------------------------------------------------------------- nav model */
@@ -77,6 +82,7 @@ function buildNavGroups(): NavGroup[] {
       label: t.groupBusiness,
       items: [
         { href: "/customers", label: t.customers, icon: <Users aria-hidden="true" />, testid: "nav-customers" },
+        { href: "/leads", label: t.leads ?? "Leads", icon: <Users aria-hidden="true" />, testid: "nav-leads" },
         { href: "/orders", label: t.orders, icon: <ShoppingCart aria-hidden="true" />, testid: "nav-orders" },
         { href: "/products", label: t.products, icon: <Package aria-hidden="true" />, testid: "nav-products" },
         { href: "/inventory", label: t.inventory, icon: <Warehouse aria-hidden="true" />, testid: "nav-inventory" },
@@ -85,17 +91,55 @@ function buildNavGroups(): NavGroup[] {
     {
       id: "growth",
       label: t.groupGrowth,
-      items: [{ href: "/marketing", label: t.marketing, icon: <Megaphone aria-hidden="true" />, testid: "nav-marketing" }],
+      items: [
+        { href: "/marketing", label: t.marketing, icon: <Megaphone aria-hidden="true" />, testid: "nav-marketing" },
+        { href: "/journeys", label: t.journeys ?? "Journeys", icon: <Workflow aria-hidden="true" />, testid: "nav-journeys" },
+      ],
     },
     {
       id: "ai",
       label: t.groupAi,
-      items: [{ href: "/ai", label: t.ai, icon: <Sparkles aria-hidden="true" />, testid: "nav-ai" }],
+      items: [
+        { href: "/ai", label: t.ai, icon: <Sparkles aria-hidden="true" />, testid: "nav-ai" },
+        { href: "/approvals", label: t.approvalsTitle, icon: <ShieldAlert aria-hidden="true" />, testid: "nav-approvals" },
+      ],
+    },
+    // §89: AUTOMATION, ANALYTICS, OPERATIONS groups
+    {
+      id: "automation",
+      label: t.groupAutomation,
+      items: [
+        { href: "/automation", label: t.automationFlows, icon: <Workflow aria-hidden="true" />, testid: "nav-automation" },
+        { href: "/automation/n8n", label: t.n8nWorkflows, icon: <Workflow aria-hidden="true" />, testid: "nav-n8n" },
+      ],
+    },
+    {
+      id: "analytics",
+      label: t.groupAnalytics,
+      items: [
+        { href: "/analytics", label: t.dashboards, icon: <BarChart3 aria-hidden="true" />, testid: "nav-analytics" },
+        { href: "/analytics/reports", label: t.reports, icon: <BarChart3 aria-hidden="true" />, testid: "nav-analytics-reports" },
+      ],
+    },
+    {
+      id: "operations",
+      label: t.groupOperations,
+      items: [
+        { href: "/operations", label: t.health, icon: <Activity aria-hidden="true" />, testid: "nav-operations" },
+        { href: "/live", label: t.live ?? "Live", icon: <Activity aria-hidden="true" />, testid: "nav-live" },
+        { href: "/sla", label: "SLA", icon: <ShieldAlert aria-hidden="true" />, testid: "nav-sla" },
+        { href: "/queues", label: t.queues ?? "Queues", icon: <ListChecks aria-hidden="true" />, testid: "nav-queues" },
+        { href: "/operations/audit", label: t.auditLog, icon: <Activity aria-hidden="true" />, testid: "nav-operations-audit" },
+      ],
     },
     {
       id: "admin",
       label: t.groupAdmin,
-      items: [{ href: "/settings", label: t.settings, icon: <Settings aria-hidden="true" />, testid: "nav-settings" }],
+      items: [
+        { href: "/integrations", label: t.integrations ?? "Integrations", icon: <Building2 aria-hidden="true" />, testid: "nav-integrations" },
+        { href: "/team", label: t.team ?? "Team", icon: <Users aria-hidden="true" />, testid: "nav-team" },
+        { href: "/settings", label: t.settings, icon: <Settings aria-hidden="true" />, testid: "nav-settings" },
+      ],
     },
   ];
 }
@@ -417,6 +461,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
       </Sheet>
 
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
+      <Toaster />
     </div>
   );
 }

@@ -55,7 +55,7 @@ function EmptyState({
 }
 
 /** حالة خطأ مع إعادة محاولة (§108). */
-function ErrorState({ message, onRetry, className }: { message: string; onRetry?: () => void; className?: string }) {
+function ErrorState({ message, onRetry, requestId, className }: { message: string; onRetry?: () => void; requestId?: string; className?: string }) {
   return (
     <div
       role="alert"
@@ -67,6 +67,10 @@ function ErrorState({ message, onRetry, className }: { message: string; onRetry?
     >
       <p className="text-sm font-bold text-danger">{t.somethingWentWrong}</p>
       <p className="max-w-sm text-[13px] text-muted-foreground">{message}</p>
+      {/* §106: show request_id so support can trace the exact request */}
+      {requestId && (
+        <p dir="ltr" className="text-[11px] text-muted-foreground/70">request_id: {requestId}</p>
+      )}
       {onRetry && (
         <Button variant="outline" size="sm" className="mt-2" onClick={onRetry}>
           <RotateCw aria-hidden="true" />

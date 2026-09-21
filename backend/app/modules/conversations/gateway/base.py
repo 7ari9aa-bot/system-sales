@@ -52,6 +52,13 @@ class InboundMessage:
     body: str | None = None
     media_url: str | None = None  # original provider URL (expires!) — fetch to S3
     media_type: str | None = None
+    # §155: canonical content type derived by the adapter from the provider
+    # payload. text | image | voice | video | file | location | contact |
+    # buttons | list | reaction | unsupported. Falls back to "text" when the
+    # adapter does not set it, preserving backward compatibility.
+    content_type: str = "text"
+    # §155: threaded reply — the provider's message id this message replies to.
+    reply_to_message_id: str | None = None
     conversation_ref: str | None = None  # channel-side thread id when separate
     raw: dict = field(default_factory=dict)
 

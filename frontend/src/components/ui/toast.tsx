@@ -14,6 +14,8 @@ export type ToastOptions = {
   description?: string;
   variant?: ToastVariant;
   duration?: number;
+  /** §104 — optional action button (e.g. "Undo"). */
+  action?: { label: string; onClick: () => void };
 };
 
 type ToastItem = ToastOptions & { id: number };
@@ -82,6 +84,17 @@ function Toaster() {
               </ToastPrimitive.Description>
             )}
           </div>
+          {item.action && (
+            <ToastPrimitive.Close asChild>
+              <button
+                type="button"
+                onClick={item.action.onClick}
+                className="shrink-0 rounded-md bg-primary-soft px-2.5 py-1 text-[12px] font-bold text-primary transition-colors duration-150 hover:bg-primary-soft/70"
+              >
+                {item.action.label}
+              </button>
+            </ToastPrimitive.Close>
+          )}
           <ToastPrimitive.Close
             aria-label="إغلاق"
             className="rounded-md p-1 text-muted-foreground transition-colors duration-150 hover:bg-muted"

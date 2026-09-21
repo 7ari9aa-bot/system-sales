@@ -46,6 +46,15 @@ class _Session:
     async def flush(self) -> None:
         return None
 
+    async def execute(self, *_args, **_kwargs):
+        """Minimal execute stub — returns a result with scalar_one_or_none()."""
+
+        class _Result:
+            def scalar_one_or_none(self):
+                return None
+
+        return _Result()
+
 
 async def _no_reservation(*args, **kwargs):
     return None

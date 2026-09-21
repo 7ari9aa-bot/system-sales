@@ -6,5 +6,48 @@
     "healthcheckPath": "/healthz",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 5
+  },
+  "environments": {
+    "staging": {
+      "startCommand": "uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --log-level debug",
+      "healthcheckPath": "/healthz",
+      "restartPolicyType": "ON_FAILURE",
+      "restartPolicyMaxRetries": 3,
+      "env": {
+        "ENVIRONMENT": "staging",
+        "DATABASE_URL": "${{STAGING_DATABASE_URL}}",
+        "REDIS_URL": "${{STAGING_REDIS_URL}}",
+        "SUPABASE_URL": "${{STAGING_SUPABASE_URL}}",
+        "SUPABASE_ANON_KEY": "${{STAGING_SUPABASE_ANON_KEY}}",
+        "SUPABASE_SERVICE_ROLE_KEY": "${{STAGING_SUPABASE_SERVICE_ROLE_KEY}}",
+        "JWT_SECRET": "${{STAGING_JWT_SECRET}}",
+        "WHATSAPP_WEBHOOK_SECRET": "${{STAGING_WHATSAPP_WEBHOOK_SECRET}}",
+        "WHATSAPP_PHONE_NUMBER_ID": "${{STAGING_WHATSAPP_PHONE_NUMBER_ID}}",
+        "WHATSAPP_ACCESS_TOKEN": "${{STAGING_WHATSAPP_ACCESS_TOKEN}}",
+        "OPENAI_API_KEY": "${{STAGING_OPENAI_API_KEY}}",
+        "OTEL_EXPORTER_OTLP_ENDPOINT": "${{STAGING_OTEL_ENDPOINT}}",
+        "FEATURE_FLAGS": "voice.enabled=false,ai.new_router.enabled=true,new_search.enabled=false"
+      }
+    },
+    "production": {
+      "startCommand": "uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 2",
+      "healthcheckPath": "/healthz",
+      "restartPolicyType": "ON_FAILURE",
+      "restartPolicyMaxRetries": 5,
+      "env": {
+        "ENVIRONMENT": "production",
+        "DATABASE_URL": "${{DATABASE_URL}}",
+        "REDIS_URL": "${{REDIS_URL}}",
+        "SUPABASE_URL": "${{SUPABASE_URL}}",
+        "SUPABASE_ANON_KEY": "${{SUPABASE_ANON_KEY}}",
+        "SUPABASE_SERVICE_ROLE_KEY": "${{SUPABASE_SERVICE_ROLE_KEY}}",
+        "JWT_SECRET": "${{JWT_SECRET}}",
+        "WHATSAPP_WEBHOOK_SECRET": "${{WHATSAPP_WEBHOOK_SECRET}}",
+        "WHATSAPP_PHONE_NUMBER_ID": "${{WHATSAPP_PHONE_NUMBER_ID}}",
+        "WHATSAPP_ACCESS_TOKEN": "${{WHATSAPP_ACCESS_TOKEN}}",
+        "OPENAI_API_KEY": "${{OPENAI_API_KEY}}",
+        "OTEL_EXPORTER_OTLP_ENDPOINT": "${{OTEL_ENDPOINT}}"
+      }
+    }
   }
 }
