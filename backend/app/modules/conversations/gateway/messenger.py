@@ -33,6 +33,7 @@ class MessengerAdapter(ChannelAdapter):
     Outbound: POST to Graph API /me/messages endpoint.
     """
 
+    name = "messenger"  # ChannelAdapter registry key
     channel = "messenger"
 
     def __init__(

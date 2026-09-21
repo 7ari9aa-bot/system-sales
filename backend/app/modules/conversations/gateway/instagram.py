@@ -33,6 +33,7 @@ class InstagramAdapter(ChannelAdapter):
     Outbound: POST to Graph API /messages endpoint.
     """
 
+    name = "instagram"  # ChannelAdapter registry key
     channel = "instagram"
 
     def __init__(
