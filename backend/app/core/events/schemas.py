@@ -99,7 +99,13 @@ DOMAIN_EVENT_TYPES: tuple[str, ...] = (
     "order.refunded",
     "order.status_changed",
     "privacy.customer_deleted",
+    "privacy.customer_purge_required",
     "webhook.deliver",
+    # §176 gate-scenario fixtures (relay reclaim, redis-outage buffering,
+    # schema-version round-trip) stage real envelopes through the writer.
+    "test.relay",
+    "test.redis_out",
+    "test.schema",
 )
 
 

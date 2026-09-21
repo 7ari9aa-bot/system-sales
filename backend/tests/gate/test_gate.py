@@ -572,8 +572,9 @@ async def test_gate_inventory_oversell(db, tenant_ctx):
 
     # Get default warehouse and set on-hand to 5
     warehouse = await InventoryService.get_default_warehouse(db, tenant_ctx.tenant_id)
-    await InventoryService.set_balance(
-        db, tenant_ctx.tenant_id, variant.id, warehouse.id, on_hand=5,
+    await InventoryService.move(
+        db, tenant_ctx.tenant_id, variant.id, warehouse.id,
+        direction="in", quantity=5, reason="gate seed",
     )
     # Reserve 3 (ok)
     await InventoryService.reserve(
