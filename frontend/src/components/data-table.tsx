@@ -33,6 +33,10 @@ type DataTableProps<TData> = {
   empty?: React.ReactNode;
   onRowClick?: (row: TData) => void;
   className?: string;
+  /** §95/§87 — بحث مُتحكَّم فيه اختياريًا: للصفحات التي تربط البحث بالـURL
+   *  أو بفلاتر عرض محفوظ. بدون هذين الخصائين يظل البحث حالة داخلية. */
+  globalFilter?: string;
+  onGlobalFilterChange?: (value: string) => void;
 };
 
 export function DataTable<TData>({
@@ -46,11 +50,25 @@ export function DataTable<TData>({
   empty,
   onRowClick,
   className,
+  globalFilter: globalFilterProp,
+  onGlobalFilterChange,
 }: DataTableProps<TData>) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
-  const [globalFilter, setGlobalFilter] = React.useState("");
+  const [internalFilter, setInternalFilter] = React.useState("");
   const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({});
   const [pagination, setPagination] = React.useState({ pageIndex: 0, pageSize: initialPageSize });
+
+  // بحث مُتحكَّم فيه عند تمرير onGlobalFilterChange، وإلا حالة داخلية كما كان.
+  const isControlled = typeof onGlobalFilterChange === "function";
+  const globalFilter = isControlled ? (globalFilterProp ?? "") : internalFilter;
+
+  // تغيير الفلتر من الخارج (عرض محفوظ / رابط) يعيد الترقيم لأول صفحة.
+  const previousExternal = React.useRef(globalFilterProp);
+  React.useEffect(() => {
+    if (!isControlled || globalFilterProp === previousExternal.current) return;
+    previousExternal.current = globalFilterProp;
+    setPagination((p) => (p.pageIndex === 0 ? p : { ...p, pageIndex: 0 }));
+  }, [isControlled, globalFilterProp]);
 
   const tableColumns = React.useMemo<ColumnDef<TData, unknown>[]>(() => {
     if (!enableSelection) return columns;
@@ -90,7 +108,11 @@ export function DataTable<TData>({
     columns: tableColumns,
     state: { sorting, globalFilter, rowSelection, pagination },
     onSortingChange: setSorting,
-    onGlobalFilterChange: setGlobalFilter,
+    onGlobalFilterChange: (updater) => {
+      const next = typeof updater === "function" ? updater(globalFilter) : updater;
+      if (isControlled) onGlobalFilterChange(next);
+      else setInternalFilter(next);
+    },
     onRowSelectionChange: setRowSelection,
     onPaginationChange: setPagination,
     getCoreRowModel: getCoreRowModel(),
@@ -117,7 +139,8 @@ export function DataTable<TData>({
           <Input
             value={globalFilter}
             onChange={(e) => {
-              setGlobalFilter(e.target.value);
+              if (isControlled) onGlobalFilterChange(e.target.value);
+              else setInternalFilter(e.target.value);
               setPagination((p) => ({ ...p, pageIndex: 0 }));
             }}
             placeholder={searchPlaceholder}

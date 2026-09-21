@@ -585,14 +585,17 @@ export function usePlatformHealth() {
   });
 }
 
-/** §95 — saved views for a given entity (e.g. "customers"). */
-export function useSavedViews(entity = "customers") {
+/** §95 — saved views for a given entity (e.g. "customers").
+ *  Pass `null` to list the caller's views across every entity (used by «شغلي»). */
+export function useSavedViews(entity: string | null = "customers") {
   return useQuery({
-    queryKey: qk.savedViews(entity),
+    queryKey: qk.savedViews(entity ?? "all"),
     queryFn: () =>
-      api<{ items: SavedView[] }>(`/platform/saved-views?entity=${encodeURIComponent(entity)}`).then(
-        (r) => r.items,
-      ),
+      api<{ items: SavedView[] }>(
+        entity
+          ? `/platform/saved-views?entity=${encodeURIComponent(entity)}`
+          : "/platform/saved-views",
+      ).then((r) => r.items),
     staleTime: 60_000,
   });
 }
@@ -818,15 +821,10 @@ export function useRevokeInvitation() {
   return useMutation({
     mutationFn: (invitationId: string) =>
       api<void>(`/invitations/${invitationId}`, { method: "DELETE" }),
+    // §104: الإلغاء إجراء خطر — الحماية هي نافذة التأكيد قبل التنفيذ، لا
+    // «تراجع» وهمي بعد ما الـDELETE خلص (كان بيعيد الجلب فقط، لا يلغي شيئًا).
     onSuccess: () => {
-      toast({
-        title: "تم إلغاء الدعوة",
-        variant: "default",
-        action: {
-          label: "تراجع",
-          onClick: () => qc.invalidateQueries({ queryKey: qk.invitations }),
-        },
-      });
+      toast({ title: t.invitationRevoked, variant: "default" });
       qc.invalidateQueries({ queryKey: qk.invitations });
     },
     onError: (err) => toast({ title: t.somethingWentWrong, description: errMessage(err), variant: "danger" }),

@@ -2,11 +2,13 @@
 
 import * as React from "react";
 import { Check, X, Clock, AlertTriangle } from "lucide-react";
-import { useApprovals, useDecideApproval } from "@/lib/queries";
+import { useApprovals, useDecideApproval, type Approval } from "@/lib/queries";
+import { t } from "@/lib/t";
 import { PageHeader } from "@/components/ui/states";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 const RISK_LABELS: Record<string, string> = {
   LOW: "منخفض",
@@ -26,6 +28,11 @@ export default function ApprovalsPage() {
   const [status, setStatus] = React.useState<"PENDING" | "APPROVED" | "REJECTED">("PENDING");
   const approvalsQuery = useApprovals(status);
   const decideMutation = useDecideApproval();
+  // §104 — قرار بشري في إجراء عالي المخاطرة يمر من تأكيد أولًا (موافقة ورفض)
+  const [pendingDecision, setPendingDecision] = React.useState<{
+    approval: Approval;
+    decision: "APPROVED" | "REJECTED";
+  } | null>(null);
 
   const approvals = approvalsQuery.data ?? [];
 
@@ -128,7 +135,7 @@ export default function ApprovalsPage() {
                     </div>
                   )}
 
-                  {/* Decision buttons */}
+                  {/* Decision buttons — كل قرار يفتح نافذة تأكيد (§104) */}
                   {approval.status === "PENDING" && (
                     <div className="flex gap-2">
                       <Button
@@ -136,11 +143,9 @@ export default function ApprovalsPage() {
                         variant="default"
                         disabled={decideMutation.isPending}
                         onClick={() =>
-                          decideMutation.mutate({
-                            approvalId: approval.id,
-                            decision: "APPROVED",
-                          })
+                          setPendingDecision({ approval, decision: "APPROVED" })
                         }
+                        data-testid={`approve-${approval.id}`}
                         className="gap-1.5"
                       >
                         <Check className="size-4" aria-hidden="true" />
@@ -151,12 +156,9 @@ export default function ApprovalsPage() {
                         variant="destructive"
                         disabled={decideMutation.isPending}
                         onClick={() =>
-                          decideMutation.mutate({
-                            approvalId: approval.id,
-                            decision: "REJECTED",
-                            reason: "rejected by human reviewer",
-                          })
+                          setPendingDecision({ approval, decision: "REJECTED" })
                         }
+                        data-testid={`reject-${approval.id}`}
                         className="gap-1.5"
                       >
                         <X className="size-4" aria-hidden="true" />
@@ -170,6 +172,33 @@ export default function ApprovalsPage() {
           ))}
         </div>
       )}
+
+      {/* §104 — تأكيد القرار قبل إبلاغ السيرفر */}
+      <ConfirmDialog
+        open={Boolean(pendingDecision)}
+        onOpenChange={(open) => {
+          if (!open) setPendingDecision(null);
+        }}
+        title={pendingDecision?.decision === "REJECTED" ? t.rejectConfirmTitle : t.approveConfirmTitle}
+        description={pendingDecision?.decision === "REJECTED" ? t.rejectConfirmBody : t.approveConfirmBody}
+        confirmLabel={pendingDecision?.decision === "REJECTED" ? t.rejectConfirmAction : t.confirm}
+        destructive={pendingDecision?.decision === "REJECTED"}
+        pending={decideMutation.isPending}
+        testid="approval-decision-dialog"
+        onConfirm={() => {
+          if (!pendingDecision) return;
+          decideMutation.mutate(
+            {
+              approvalId: pendingDecision.approval.id,
+              decision: pendingDecision.decision,
+              ...(pendingDecision.decision === "REJECTED"
+                ? { reason: "rejected by human reviewer" }
+                : {}),
+            },
+            { onSettled: () => setPendingDecision(null) },
+          );
+        }}
+      />
     </div>
   );
 }

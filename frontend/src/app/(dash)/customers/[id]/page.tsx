@@ -10,7 +10,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowRight,
   Ban,
@@ -204,11 +204,38 @@ function RecordSkeleton() {
 
 /* ------------------------------------------------------------------ page -- */
 
+/** التبويبات المتاحة في سجل العميل — مصدر الحقيقة لمعامل الـURL ?tab= (§87). */
+const C360_TABS = ["overview", "orders", "conversations", "tasks", "timeline"] as const;
+type C360Tab = (typeof C360_TABS)[number];
+
 export default function Customer360Page() {
+  // useSearchParams يحتاج حدود Suspense أثناء التصيير المسبق
+  return (
+    <React.Suspense fallback={null}>
+      <Customer360Content />
+    </React.Suspense>
+  );
+}
+
+function Customer360Content() {
   const params = useParams<{ id: string }>();
   const customerId = typeof params?.id === "string" ? params.id : "";
   const query = useCustomer360(customerId);
   const record = query.data;
+
+  // §87 — التبويب النشط في الـURL (?tab=) حتى يكون السجل deep-linkable
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const tabParam = searchParams.get("tab");
+  const activeTab: C360Tab = C360_TABS.includes(tabParam as C360Tab)
+    ? (tabParam as C360Tab)
+    : "overview";
+
+  function setTab(tab: string) {
+    const next = new URLSearchParams(searchParams.toString());
+    next.set("tab", tab);
+    router.replace(`/customers/${customerId}?${next.toString()}`, { scroll: false });
+  }
 
   const backLink = (
     <Link
@@ -335,7 +362,7 @@ export default function Customer360Page() {
       </div>
 
       {/* ---------------------------------------------------------- tabs -- */}
-      <Tabs defaultValue="overview" className="mt-4">
+      <Tabs value={activeTab} onValueChange={setTab} className="mt-4">
         <TabsList className="flex-wrap">
           <TabsTrigger value="overview">{t.c360Overview}</TabsTrigger>
           <TabsTrigger value="orders">

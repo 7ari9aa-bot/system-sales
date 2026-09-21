@@ -4,7 +4,7 @@ import * as React from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Users, ChevronLeft } from "lucide-react";
-import { useCustomers, type Customer } from "@/lib/queries";
+import { useCustomers, useSavedViews, type Customer } from "@/lib/queries";
 import { t } from "@/lib/t";
 import { DataTable } from "@/components/data-table";
 import { EmptyState, ErrorState, PageHeader } from "@/components/ui/states";
@@ -19,21 +19,57 @@ export default function CustomersPage() {
   // makes every view deep-linkable, shareable, and survives a refresh.
   const selectedCustomerId = searchParams.get("customer") ?? null;
   const activeViewId = searchParams.get("view") ?? null;
-  const searchQuery = searchParams.get("q") ?? "";
+  const urlQuery = searchParams.get("q") ?? "";
   const customersQuery = useCustomers();
   const customers = customersQuery.data ?? [];
 
-  const setSelectedCustomerId = (id: string | null) => {
+  // §95 — العرض المحفوظ يحمل فلاتره؛ عند تفعيله نقود بها حالة الجدول
+  const viewsQuery = useSavedViews("customers");
+  const views = viewsQuery.data ?? [];
+  const activeView = React.useMemo(
+    () => views.find((v) => v.id === activeViewId) ?? null,
+    [views, activeViewId],
+  );
+  /** البحث الفعّال: من فلاتر العرض المحفوظ إن كان مفعّلًا، وإلا من الـURL. */
+  const activeQuery = activeView
+    ? typeof activeView.filters.q === "string"
+      ? activeView.filters.q
+      : ""
+    : urlQuery;
+
+  const setUrlParams = (mutate: (params: URLSearchParams) => void) => {
     const params = new URLSearchParams(searchParams.toString());
-    if (id) params.set("customer", id);
-    else params.delete("customer");
+    mutate(params);
     router.replace(`?${params.toString()}`, { scroll: false });
   };
-  const setActiveViewId = (id: string | null) => {
-    const params = new URLSearchParams(searchParams.toString());
-    if (id) params.set("view", id);
-    else params.delete("view");
-    router.replace(`?${params.toString()}`, { scroll: false });
+
+  const setSelectedCustomerId = (id: string | null) =>
+    setUrlParams((params) => {
+      if (id) params.set("customer", id);
+      else params.delete("customer");
+    });
+
+  /** تحرير البحث يدويًا يعني مغادرة العرض المحفوظ — نمسح view ونكتب q. */
+  const handleSearchChange = (value: string) =>
+    setUrlParams((params) => {
+      if (value) params.set("q", value);
+      else params.delete("q");
+      params.delete("view");
+    });
+
+  /** اختيار عرض محفوظ: نفعّله ونطبّق فلاتره على الجدول (§95). */
+  const handleSelectView = (view: {
+    id: string;
+    filters: Record<string, unknown>;
+    sort: Record<string, unknown> | null;
+    columns: string[] | null;
+  }) => {
+    setUrlParams((params) => {
+      params.set("view", view.id);
+      const q = typeof view.filters.q === "string" ? view.filters.q : "";
+      if (q) params.set("q", q);
+      else params.delete("q");
+    });
   };
 
   const columns = React.useMemo<ColumnDef<Customer, unknown>[]>(
@@ -126,8 +162,8 @@ export default function CustomersPage() {
       <PageHeader title={t.customers} description="قاعدة عملائك، سجل الشراء، ومعلومات العميل الكاملة (360°)" />
       <SavedViewsSelector
         entity="customers"
-        currentFilters={{ q: searchQuery }}
-        onSelect={(view) => setActiveViewId(view.id)}
+        currentFilters={{ q: activeQuery }}
+        onSelect={handleSelectView}
         activeViewId={activeViewId}
         className="mb-3"
       />
@@ -137,6 +173,8 @@ export default function CustomersPage() {
         testid="customers-table"
         searchPlaceholder={t.searchCustomers}
         searchTestid="customer-search"
+        globalFilter={activeQuery}
+        onGlobalFilterChange={handleSearchChange}
         onRowClick={(c) => setSelectedCustomerId(c.id)}
         empty={
           <EmptyState

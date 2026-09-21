@@ -53,9 +53,25 @@ test("logging out clears the session and returns to the login page", async ({ pa
 
   await page.goto("/dashboard");
   await page.getByTestId("user-menu").click();
+  // §104 — sign-out is destructive, so it goes through the confirm dialog
   await page.getByTestId("logout").click();
+  await page.getByTestId("confirm-dialog-confirm").click();
 
   await expect(page).toHaveURL(/\/auth\/login$/);
   const stored = await page.evaluate(() => window.localStorage.getItem("sales_os_tokens"));
   expect(stored).toBeNull();
+});
+
+test("cancelling the logout confirmation keeps the session", async ({ page }) => {
+  await seedAuth(page);
+  await mockShell(page);
+
+  await page.goto("/dashboard");
+  await page.getByTestId("user-menu").click();
+  await page.getByTestId("logout").click();
+  await page.getByTestId("confirm-dialog-cancel").click();
+
+  await expect(page).toHaveURL(/\/dashboard$/);
+  const stored = await page.evaluate(() => window.localStorage.getItem("sales_os_tokens"));
+  expect(stored).not.toBeNull();
 });

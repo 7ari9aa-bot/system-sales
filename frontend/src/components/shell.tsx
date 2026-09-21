@@ -50,6 +50,7 @@ import {
 import { CommandPalette } from "@/components/command-palette";
 import { NotificationsBell } from "@/components/notifications-bell";
 import { HealthIndicator } from "@/components/health-indicator";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Toaster } from "@/components/ui/toast";
 import { useMe } from "@/lib/queries";
 
@@ -104,21 +105,12 @@ function buildNavGroups(): NavGroup[] {
         { href: "/approvals", label: t.approvalsTitle, icon: <ShieldAlert aria-hidden="true" />, testid: "nav-approvals" },
       ],
     },
-    // §89: AUTOMATION, ANALYTICS, OPERATIONS groups
-    {
-      id: "automation",
-      label: t.groupAutomation,
-      items: [
-        { href: "/automation", label: t.automationFlows, icon: <Workflow aria-hidden="true" />, testid: "nav-automation" },
-        { href: "/automation/n8n", label: t.n8nWorkflows, icon: <Workflow aria-hidden="true" />, testid: "nav-n8n" },
-      ],
-    },
+    // §89: ANALYTICS, OPERATIONS groups — روابط فقط لصفحات موجودة فعلًا
     {
       id: "analytics",
       label: t.groupAnalytics,
       items: [
         { href: "/analytics", label: t.dashboards, icon: <BarChart3 aria-hidden="true" />, testid: "nav-analytics" },
-        { href: "/analytics/reports", label: t.reports, icon: <BarChart3 aria-hidden="true" />, testid: "nav-analytics-reports" },
       ],
     },
     {
@@ -129,7 +121,6 @@ function buildNavGroups(): NavGroup[] {
         { href: "/live", label: "Live", icon: <Activity aria-hidden="true" />, testid: "nav-live" },
         { href: "/sla", label: "SLA", icon: <ShieldAlert aria-hidden="true" />, testid: "nav-sla" },
         { href: "/queues", label: "Queues", icon: <ListChecks aria-hidden="true" />, testid: "nav-queues" },
-        { href: "/operations/audit", label: t.auditLog, icon: <Activity aria-hidden="true" />, testid: "nav-operations-audit" },
       ],
     },
     {
@@ -246,6 +237,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   }, []);
 
   const [lang, setLangState] = useState<Lang>("ar");
+  const [confirmLogout, setConfirmLogout] = useState(false);
   const createItems = buildCreateItems();
 
   useEffect(() => {
@@ -435,7 +427,16 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 <Settings aria-hidden="true" />
                 {t.settings}
               </DropdownMenuItem>
-              <DropdownMenuItem variant="destructive" onSelect={logout} data-testid="logout">
+              {/* preventDefault يبقي قائمة الـdropdown مفتوحة بينما تفتح نافذة
+                  التأكيد — نمط Radix الموثّق لفتح Dialog من عنصر قائمة */}
+              <DropdownMenuItem
+                variant="destructive"
+                onSelect={(e) => {
+                  e.preventDefault();
+                  setConfirmLogout(true);
+                }}
+                data-testid="logout"
+              >
                 <LogOut aria-hidden="true" />
                 {t.logout}
               </DropdownMenuItem>
@@ -459,6 +460,16 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <SidebarNav onNavigate={() => setMobileOpen(false)} />
         </SheetContent>
       </Sheet>
+
+      {/* §104 — الخروج إجراء مؤثر: تأكيد قبل مسح الجلسة */}
+      <ConfirmDialog
+        open={confirmLogout}
+        onOpenChange={setConfirmLogout}
+        title={t.logoutConfirmTitle}
+        description={t.logoutConfirmBody}
+        confirmLabel={t.logout}
+        onConfirm={logout}
+      />
 
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
       <Toaster />

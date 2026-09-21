@@ -27,10 +27,14 @@ import {
   useMessages,
   useSendMessage,
   useCustomer,
+  qk,
   type Conversation,
+  type Page,
   type Message,
 } from "@/lib/queries";
-import { useRealtimeEvents } from "@/lib/use-realtime";
+import type { InfiniteData } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
+import { useRealtimeEvents, type RealtimeEvent } from "@/lib/use-realtime";
 import { t } from "@/lib/t";
 import { formatTime } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
@@ -52,6 +56,9 @@ const CHANNEL_VARIANT: Record<string, "success" | "primary" | "default"> = {
 function safeUrl(url: string): string | null {
   return /^https?:\/\//i.test(url) ? url : null;
 }
+
+/** §111 — نستمع فقط لجداول صندوق الوارد؛ لكل جدول من order/notification مستمعوه الخاصون. */
+const INBOX_STREAMS: string[] = ["message.events", "conversation.events"];
 
 function StatusIcon({ status }: { status: string }) {
   if (status === "read") return <CheckCheck className="size-3 text-primary inline" />;
@@ -229,15 +236,59 @@ function InboxContent() {
   const messagesQuery = useMessages(selected);
   const markRead = useMarkConversationRead();
   const sendMessage = useSendMessage(selected ?? "");
+  const queryClient = useQueryClient();
 
-  // Realtime events via SSE
+  // §111 — لا إعادة جلب كاملة مع كل حدث SSE. التحديث موجّه: المحادثة المتأثرة
+  // وحدها تعيد جلب رسائلها، وصف القائمة يُرقَّع في مكانه. الأحداث التي لا يمكن
+  // تطبيقها محليًا فقط هي التي تُسوّى بـinvalidateQueries. الفواصل الدورية
+  // (refetchInterval) تبقى طبقة التسوية في الخلفية.
   useRealtimeEvents({
-    onEvent: React.useCallback(() => {
-      conversationsQuery.refetch();
-      if (selected) {
-        messagesQuery.refetch();
-      }
-    }, [conversationsQuery, messagesQuery, selected]),
+    streams: INBOX_STREAMS,
+    onEvent: React.useCallback(
+      (event: RealtimeEvent) => {
+        const payload = event.payload;
+        const conversationId =
+          typeof payload.conversation_id === "string" ? payload.conversation_id : null;
+
+        if (event.stream === "message.events" && conversationId) {
+          // 1) المحادثة المتأثرة فقط — الـpayload لا يحمل شكل Message كاملًا
+          //    (لا id ولا status ولا created_at) فلا يمكن تركيب الرسالة محليًا.
+          queryClient.invalidateQueries({ queryKey: qk.messages(conversationId) });
+
+          // 2) ترقيع صف القائمة: message.received دائمًا وارد (يزيد غير المقروء)،
+          //    أما message.outbound فيحمل message_id فقط (آخر ظهور فقط).
+          const isInbound =
+            typeof payload.body === "string" || typeof payload.channel === "string";
+          queryClient.setQueryData<InfiniteData<Page<Conversation>>>(qk.conversations, (previous) => {
+            if (!previous) return previous;
+            return {
+              ...previous,
+              pages: previous.pages.map((page) => ({
+                ...page,
+                items: page.items.map((c) =>
+                  c.id === conversationId
+                    ? {
+                        ...c,
+                        last_message_at: new Date().toISOString(),
+                        unread_count:
+                          isInbound && conversationId !== selected
+                            ? c.unread_count + 1
+                            : c.unread_count,
+                      }
+                    : c,
+                ),
+              })),
+            };
+          });
+          return;
+        }
+
+        // أحداث بلا شكل قابل للتطبيق محليًا (conversation.events — لا منتج
+        // له في الـbackend حتى الآن) → تسوية القائمة كاملة.
+        queryClient.invalidateQueries({ queryKey: qk.conversations });
+      },
+      [queryClient, selected],
+    ),
   });
 
   const allConversations = React.useMemo(
@@ -265,11 +316,11 @@ function InboxContent() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
 
-  // فتح المحادثة القادمة من البحث العام (?conversation=<id>) ثم تنظيف الرابط
+  // فتح المحادثة القادمة من الرابط (?conversation=<id>) — §87: المعامل يبقى
+  // في الـURL حتى يكون الرابط قابلًا للمشاركة والتحديث دون فقدان الحالة.
   React.useEffect(() => {
     if (!conversationParam) return;
     setSelected(conversationParam);
-    router.replace("/inbox", { scroll: false });
   }, [conversationParam, router]);
 
   // تصفير المسودة عند أي تبديل للمحادثة المختارة — يمنع إرسال ردّ لعميل خطأ
@@ -280,6 +331,10 @@ function InboxContent() {
   function selectConversation(id: string) {
     setSelected(id);
     setDraft(""); // ردّ نظيف عند تبديل المحادثة
+    // §87 — كتابة المحادثة المفتوحة في الـURL مع الحفاظ على باقي المعاملات
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("conversation", id);
+    router.replace(`/inbox?${params.toString()}`, { scroll: false });
     const target = allConversations.find((c) => c.id === id);
     if (target && target.unread_count > 0) markRead.mutate(id);
   }

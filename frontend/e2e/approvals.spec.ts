@@ -66,6 +66,9 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/api/v1/conversations**", (route) =>
     json(route, { items: [], next_cursor: null }),
   );
+  // my-work also lists the user's saved views (§97) — keep it mocked so only
+  // the section under test can surface an error-state.
+  await page.route("**/api/v1/platform/saved-views**", (route) => json(route, { items: [] }));
 });
 
 test("my-work surfaces pending approvals, their risk level, and assigned work", async ({ page }) => {

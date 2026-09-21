@@ -7,15 +7,25 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowUpRight, Clock, ListChecks, MessagesSquare, ShieldAlert, TriangleAlert } from "lucide-react";
+import {
+  ArrowUpRight,
+  Bookmark,
+  Clock,
+  ListChecks,
+  MessagesSquare,
+  ShieldAlert,
+  TriangleAlert,
+} from "lucide-react";
 import {
   useApprovals,
   useConversations,
   useMe,
+  useSavedViews,
   useSlaRisk,
   useTasks,
   type Approval,
   type Conversation,
+  type SavedView,
   type SlaRiskItem,
   type Task,
 } from "@/lib/queries";
@@ -56,6 +66,13 @@ function riskLabel(level: string): string {
 function riskVariant(level: string): "danger" | "default" {
   return level.toUpperCase() === "HIGH" ? "danger" : "default";
 }
+
+/** §95 — صفحات الجهات التي لها عروض محفوظة يمكن الوصول إليها من هنا.
+ *  أي كيان آخر يظهر بلا رابط حتى تتوفر له صفحة قائمة. */
+const VIEW_ENTITY_HREF: Record<string, string> = {
+  customers: "/customers",
+  orders: "/orders",
+};
 
 /* ---------------------------------------------------------------- sections */
 
@@ -126,6 +143,8 @@ export default function MyWorkPage() {
   const approvalsQuery = useApprovals("PENDING");
   const tasksQuery = useTasks();
   const conversationsQuery = useConversations();
+  const savedViewsQuery = useSavedViews(null);
+  const savedViews = savedViewsQuery.data ?? [];
 
   const myId = me.data?.id;
 
@@ -347,6 +366,71 @@ export default function MyWorkPage() {
                   )}
                 </Link>
               ))}
+            </div>
+          )}
+        </Section>
+
+        {/* 5 — My saved views (§95/§97) */}
+        <Section
+          title={t.mySavedViews}
+          hint={t.mySavedViewsHint}
+          href="/customers"
+          linkLabel={t.customers}
+        >
+          {savedViewsQuery.isLoading ? (
+            <RowsSkeleton />
+          ) : savedViewsQuery.error ? (
+            <ErrorState
+              message={(savedViewsQuery.error as Error).message}
+              onRetry={() => savedViewsQuery.refetch()}
+            />
+          ) : savedViews.length === 0 ? (
+            <EmptyState
+              icon={<Bookmark aria-hidden="true" />}
+              title={t.mySavedViewsEmpty}
+              description={t.mySavedViewsEmptyHint}
+              className="py-8"
+            />
+          ) : (
+            <div className="space-y-2">
+              {savedViews.map((view: SavedView) => {
+                const href = VIEW_ENTITY_HREF[view.entity];
+                // التسمية داخل الرندر حتى تتبع اللغة النشطة
+                const entityLabel =
+                  view.entity === "customers"
+                    ? t.customers
+                    : view.entity === "orders"
+                      ? t.orders
+                      : view.entity;
+                const body = (
+                  <>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Bookmark
+                        aria-hidden="true"
+                        className="size-4 shrink-0 text-primary"
+                      />
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold">{view.name}</div>
+                        <div className="mt-0.5 text-xs text-muted-foreground">
+                          {entityLabel}
+                        </div>
+                      </div>
+                    </div>
+                    <Badge variant="outline">{entityLabel}</Badge>
+                  </>
+                );
+                const className =
+                  "flex items-center justify-between gap-3 rounded-lg border border-border p-3 transition-colors hover:bg-muted";
+                return href ? (
+                  <Link key={view.id} href={`${href}?view=${view.id}`} className={className}>
+                    {body}
+                  </Link>
+                ) : (
+                  <div key={view.id} className={className}>
+                    {body}
+                  </div>
+                );
+              })}
             </div>
           )}
         </Section>

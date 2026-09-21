@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Bookmark, Plus, Trash2, ChevronDown } from "lucide-react";
 import { useSavedViews, useCreateSavedView, useDeleteSavedView } from "@/lib/queries";
+import { t } from "@/lib/t";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import {
@@ -21,6 +22,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { cn } from "@/lib/utils";
 
 /** §95 — reusable saved-views dropdown with save dialog and per-view delete. */
@@ -48,6 +50,10 @@ export function SavedViewsSelector({
 }) {
   const [saveDialogOpen, setSaveDialogOpen] = React.useState(false);
   const [viewName, setViewName] = React.useState("");
+  // §104 — حذف عرض محفوظ إجراء خطر: نافذة تأكيد قبل الـDELETE
+  const [deleteTarget, setDeleteTarget] = React.useState<{ id: string; name: string } | null>(
+    null,
+  );
 
   const viewsQuery = useSavedViews(entity);
   const createMutation = useCreateSavedView();
@@ -114,7 +120,7 @@ export function SavedViewsSelector({
                 aria-label={`حذف العرض ${view.name}`}
                 onClick={(e) => {
                   e.stopPropagation();
-                  deleteMutation.mutate({ id: view.id, entity });
+                  setDeleteTarget({ id: view.id, name: view.name });
                 }}
                 disabled={deleteMutation.isPending}
                 className="rounded-md p-1.5 text-muted-foreground transition-colors duration-150 hover:bg-danger-soft hover:text-danger disabled:opacity-50"
@@ -163,6 +169,25 @@ export function SavedViewsSelector({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* §104 — تأكيد حذف العرض */}
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title={t.deleteViewConfirmTitle}
+        description={deleteTarget ? t.deleteViewConfirmBody(deleteTarget.name) : ""}
+        confirmLabel={t.deleteViewConfirmAction}
+        pending={deleteMutation.isPending}
+        onConfirm={() => {
+          if (!deleteTarget) return;
+          deleteMutation.mutate(
+            { id: deleteTarget.id, entity },
+            { onSettled: () => setDeleteTarget(null) },
+          );
+        }}
+      />
     </div>
   );
 }

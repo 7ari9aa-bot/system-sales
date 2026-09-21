@@ -26,12 +26,15 @@ import {
 } from "@/components/ui/table";
 import { EmptyState, PageHeader } from "@/components/ui/states";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 export default function SettingsPage() {
   const [email, setEmail] = React.useState("");
   const [roleCode, setRoleCode] = React.useState("staff");
   const [created, setCreated] = React.useState<Invitation | null>(null);
   const [copied, setCopied] = React.useState(false);
+  // §104 — الإلغاء إجراء خطر: يمر من نافذة تأكيد قبل أي DELETE
+  const [revokeTarget, setRevokeTarget] = React.useState<Invitation | null>(null);
 
   function inviteLink(token: string) {
     return `${window.location.origin}/accept?token=${token}`;
@@ -192,7 +195,8 @@ export default function SettingsPage() {
                                   size="sm"
                                   className="text-xs text-danger hover:text-danger hover:bg-danger/10 h-7 px-2"
                                   disabled={revoke.isPending}
-                                  onClick={() => revoke.mutate(inv.id)}
+                                  onClick={() => setRevokeTarget(inv)}
+                                  data-testid={`revoke-invitation-${inv.id}`}
                                 >
                                   {t.revoke}
                                 </Button>
@@ -252,6 +256,22 @@ export default function SettingsPage() {
           </TabsContent>
         </Tabs>
       )}
+
+      {/* §104 — تأكيد قبل إلغاء الدعوة */}
+      <ConfirmDialog
+        open={Boolean(revokeTarget)}
+        onOpenChange={(open) => {
+          if (!open) setRevokeTarget(null);
+        }}
+        title={t.revokeConfirmTitle}
+        description={t.revokeConfirmBody}
+        confirmLabel={t.revokeConfirmAction}
+        pending={revoke.isPending}
+        onConfirm={() => {
+          if (!revokeTarget) return;
+          revoke.mutate(revokeTarget.id, { onSettled: () => setRevokeTarget(null) });
+        }}
+      />
     </div>
   );
 }

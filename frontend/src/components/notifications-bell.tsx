@@ -62,12 +62,18 @@ export function NotificationsBell() {
 
   const unread = countData?.count ?? 0;
 
-  // Live-update when the SSE gateway delivers a notification event.
+  // §111 — Live-update when the SSE gateway delivers a notification event.
+  // الـpayload يحمل notification_id فقط (لا شكل Notification كامل)، فلا يمكن
+  // تطبيقه محليًا — الحد الأدنى إذًا: تحديث الكاشات الثلاثة المتأثرة فقط
+  // (العدّاد، القائمة، الملخص) ولا شيء آخر، مع بوابة على شكل الـpayload.
   const onEvent = useCallback(
     (event: RealtimeEvent) => {
-      if (event.stream === "notification.events") {
-        qc.invalidateQueries({ queryKey: ["notifications"] });
-      }
+      if (event.stream !== "notification.events") return;
+      const notificationId = event.payload.notification_id;
+      if (typeof notificationId !== "string" || !notificationId) return;
+      qc.invalidateQueries({ queryKey: ["notifications", "unread-count"] });
+      qc.invalidateQueries({ queryKey: ["notifications", "list"] });
+      qc.invalidateQueries({ queryKey: ["notifications", "summary"] });
     },
     [qc]
   );

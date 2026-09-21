@@ -366,6 +366,29 @@ const ar = {
   allCaughtUp: "مفيش جديد",
   notificationsAllRead: "كل الإشعارات اتقرت",
   toOpen: "للفتح",
+
+  // §104 — تأكيد الإجراءات الخطرة
+  confirm: "تأكيد",
+  confirmDescription: "هل أنت متأكد من تنفيذ هذا الإجراء؟ لا يمكن التراجع عنه.",
+  revokeConfirmTitle: "إلغاء الدعوة؟",
+  revokeConfirmBody: "سيتم إلغاء الدعوة ولن يستطيع صاحبها قبولها بعد كده. لا يمكن التراجع.",
+  revokeConfirmAction: "إلغاء الدعوة",
+  logoutConfirmTitle: "تسجيل الخروج؟",
+  logoutConfirmBody: "هتحتاج تسجّل الدخول تاني للوصول إلى حسابك.",
+  deleteViewConfirmTitle: "حذف العرض المحفوظ؟",
+  deleteViewConfirmBody: (name: string) => `سيتم حذف العرض «${name}» نهائيًا. لا يمكن التراجع.`,
+  deleteViewConfirmAction: "حذف العرض",
+  approveConfirmTitle: "الموافقة على الإجراء؟",
+  approveConfirmBody: "سيتم تنفيذ إجراء الذكاء الاصطناعي عالي المخاطرة فورًا بعد موافقتك — راجع التفاصيل كويس.",
+  rejectConfirmTitle: "رفض الإجراء؟",
+  rejectConfirmBody: "سيتم رفض الطلب وإنهاؤه. لا يمكن التراجع.",
+  rejectConfirmAction: "تأكيد الرفض",
+
+  // §97 — عروضي المحفوظة في «شغلي»
+  mySavedViews: "عروضي المحفوظة",
+  mySavedViewsHint: "اختصارات لعروض الفلاتر اللي حفظتها.",
+  mySavedViewsEmpty: "مفيش عروض محفوظة",
+  mySavedViewsEmptyHint: "احفظ عرض من صفحة العملاء أو الطلبات وسيظهر اختصار له هنا.",
 } as const;
 
 
@@ -732,6 +755,29 @@ const en = {
   allCaughtUp: "Nothing new",
   notificationsAllRead: "All notifications are read",
   toOpen: "to open",
+
+  // §104 — confirmation for destructive actions
+  confirm: "Confirm",
+  confirmDescription: "Are you sure you want to do this? This cannot be undone.",
+  revokeConfirmTitle: "Revoke invitation?",
+  revokeConfirmBody: "The invitation will be revoked and can no longer be accepted. This cannot be undone.",
+  revokeConfirmAction: "Revoke invitation",
+  logoutConfirmTitle: "Sign out?",
+  logoutConfirmBody: "You will need to sign in again to access your account.",
+  deleteViewConfirmTitle: "Delete saved view?",
+  deleteViewConfirmBody: (name: string) => `The view "${name}" will be deleted permanently. This cannot be undone.`,
+  deleteViewConfirmAction: "Delete view",
+  approveConfirmTitle: "Approve this action?",
+  approveConfirmBody: "The high-risk AI action will run immediately once approved — review the details carefully.",
+  rejectConfirmTitle: "Reject this action?",
+  rejectConfirmBody: "The request will be rejected and closed. This cannot be undone.",
+  rejectConfirmAction: "Confirm rejection",
+
+  // §97 — my saved views
+  mySavedViews: "My saved views",
+  mySavedViewsHint: "Shortcuts to the filtered views you saved.",
+  mySavedViewsEmpty: "No saved views",
+  mySavedViewsEmptyHint: "Save a view from the customers or orders page and it will show up here.",
 } as const;
 
 
