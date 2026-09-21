@@ -17,7 +17,6 @@ from app.core.lease import conversation_lease
 from app.modules.conversations.service import ConversationService
 from app.modules.customers.models import Customer
 from app.modules.customers.service import IdentityMergeService
-from app.modules.errors import ConflictError
 from app.modules.platform.models import ProcessedEvent
 
 pytestmark = [pytest.mark.gate]
@@ -109,6 +108,71 @@ async def test_gate_worker_replay_skips_sent(db, tenant_ctx):
     finally:
         mw.get_adapter = original
     assert sent_calls == []  # already-sent message was NOT resent
+
+
+# --- 4b. DeliveryAttempt audit (§130) ---
+async def test_gate_send_attempt_writes_a_delivery_attempt_row(db, tenant_ctx):
+    """Every provider send attempt is audited IN the transaction that flips the
+    status (§130): provider, outcome, the provider's id and any error land on
+    the delivery_attempts row — no invisible sends."""
+
+    from app.modules.conversations.gateway.base import (
+        OutboundMessage,
+        ProviderCredentials,
+    )
+    from app.modules.conversations.models import Message
+    from app.modules.platform.models import DeliveryAttempt
+    from app.workers.message_worker import MessageWorker
+
+    class _AuditAdapter:
+        name = "webchat"
+
+        async def send(self, credentials, message):  # pragma: no cover
+            return "prov-99"
+
+    customer = Customer(tenant_id=tenant_ctx.tenant_id, name="Audit")
+    db.add(customer)
+    await db.flush()
+    convo = await ConversationService.get_or_create(
+        db, tenant_ctx.tenant_id, customer_id=customer.id, channel="webchat"
+    )
+    message = await ConversationService.add_message(
+        db, tenant_ctx.tenant_id, conversation_id=convo.id,
+        direction="outbound", sender_type="agent", body="audit me",
+    )
+    await db.flush()
+
+    import app.workers.message_worker as mw
+
+    worker = MessageWorker.__new__(MessageWorker)  # skip __init__ (bus unused)
+    plan = mw._SendPlan(
+        adapter=_AuditAdapter(),
+        credentials=ProviderCredentials(config={}),
+        outbound=OutboundMessage(
+            tenant_id=tenant_ctx.tenant_id,
+            conversation_id=convo.id,
+            message_id=message.id,
+            customer_ref="cust-1",
+            body="audit me",
+        ),
+        set_channel_message_id=True,
+    )
+    await worker._apply_outcome(
+        db, tenant_ctx.tenant_id, message.id, plan, "sent", "prov-99", None
+    )
+
+    stored = await db.get(Message, message.id)
+    assert stored.status == "sent"
+    row = (
+        await db.execute(
+            select(DeliveryAttempt).where(DeliveryAttempt.message_id == message.id)
+        )
+    ).scalar_one()
+    assert row.tenant_id == tenant_ctx.tenant_id
+    assert row.provider == "webchat"
+    assert row.outcome == "sent"
+    assert row.provider_event_id == "prov-99"
+    assert row.error is None
 
 
 # --- 5. Conversation race serialization (§126/§176.7) ---
