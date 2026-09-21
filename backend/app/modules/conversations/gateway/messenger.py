@@ -13,6 +13,7 @@ from typing import Any
 
 import httpx
 
+from app.core.config import get_settings
 from app.core.errors import ExternalProviderError
 from app.modules.conversations.gateway.base import (
     ChannelAdapter,
@@ -60,11 +61,42 @@ class MessengerAdapter(ChannelAdapter):
         ).hexdigest()
         return hmac.compare_digest(signature, expected)
 
-    async def parse_inbound(
-        self, raw: dict, headers: dict[str, str]
-    ) -> InboundMessage | None:
+    def verify_request(self, query_params: dict[str, str]) -> str | None:
+        """Meta webhook subscription handshake (GET hub.challenge)."""
+        settings = get_settings()
+        if (
+            query_params.get("hub.mode") == "subscribe"
+            and query_params.get("hub.verify_token") == settings.messenger_verify_token
+        ):
+            return query_params.get("hub.challenge", "")
+        return None
+
+    def check_signature(self, headers: dict[str, str], raw_body: bytes) -> bool:
+        """X-Hub-Signature-256 (HMAC-SHA256) — fail closed without a secret."""
+        secret = get_settings().messenger_app_secret
+        if not secret:
+            return False
+        signature = headers.get("x-hub-signature-256", "")
+        if not signature.startswith("sha256="):
+            return False
+        expected = hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
+        return hmac.compare_digest(signature, expected)
+
+    def resolve_tenant_key(self, payload: dict) -> str | None:
+        """Meta routes by the page / IG account id in entry[0].id."""
+        try:
+            return str(payload["entry"][0]["id"])
+        except (KeyError, IndexError, TypeError):
+            return None
+
+    def parse_status_updates(self, payload: dict) -> list[StatusUpdate]:
+        # Meta delivery/read receipts arrive as messaging[0].delivery|read —
+        # inbound-only for now; the generic status path handles the rest.
+        return []
+
+    def parse_inbound(self, payload: dict) -> list[InboundMessage]:
         """Parse a Meta Messenger webhook payload."""
-        entries = raw.get("entry", [])
+        entries = payload.get("entry", [])
         if not entries:
             return None
 
@@ -100,7 +132,7 @@ class MessengerAdapter(ChannelAdapter):
 
         mid = message.get("mid")
 
-        return InboundMessage(
+        return [InboundMessage(
             channel="messenger",
             channel_message_id=mid,
             customer_ref=str(sender.get("id", "")),
@@ -110,12 +142,12 @@ class MessengerAdapter(ChannelAdapter):
             media_type=content_type if media_url else None,
             content_type=content_type,
             conversation_ref=str(recipient.get("id", "")),
-            raw=raw,
-        )
+            raw=payload,
+        )]
 
     async def send(
-        self, message: OutboundMessage, credentials: ProviderCredentials
-    ) -> StatusUpdate:
+        self, credentials: ProviderCredentials, message: OutboundMessage
+    ) -> str:
         """Send an outbound Messenger message via Graph API."""
         url = f"{self._base}/me/messages"
         headers = {
@@ -142,12 +174,10 @@ class MessengerAdapter(ChannelAdapter):
 
         data = resp.json()
         if resp.status_code in (200, 201):
-            message_id = data.get("message_id")
-            return StatusUpdate(
-                message_id=message.message_id,
-                provider_message_id=message_id,
-                status="sent",
-            )
+            return str(data.get("message_id", ""))
         raise ExternalProviderError(
             f"messenger send failed: HTTP {resp.status_code} — {data}"
         )
+
+
+messenger_adapter = MessengerAdapter()

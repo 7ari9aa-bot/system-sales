@@ -44,10 +44,12 @@ from app.modules.billing.models import (
 _CAPABILITY_FEATURE: dict[str, str] = {
     "CanAddUser": "max_users",
     "CanUseAI": "ai_agents",
-    # §165: map the remaining capabilities so they don't silently return True
-    "CanSendCampaign": "marketing",  # plan-level marketing feature
-    "CanUseVoice": "voice",  # voice/STT/TTS feature
-    "CanUseAPI": "api_access",  # API access feature
+    # §165: an unmapped capability stays UNRESTRICTED by design — the seeded
+    # plans carry exactly these feature names (max_users / ai_agents /
+    # channels / custom), and mapping a capability to a feature the plans do
+    # not seed would silently DENY it to every tenant. CanSendCampaign /
+    # CanUseVoice / CanUseAPI stay unmapped until their plan features ship;
+    # channel allowlisting goes through ensure_channel_allowed instead.
     # `channels` is an ALLOWLIST of channel names, not a numeric limit, so it
     # cannot go through check_entitlement (which compares a limit against a
     # usage counter). Use EntitlementService.ensure_channel_allowed instead.

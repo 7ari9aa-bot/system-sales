@@ -20,7 +20,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 
-from sqlalchemy import ForeignKey, Index, Integer, String, Text, select
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, select
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
@@ -92,8 +92,12 @@ class JourneyRun(TenantMixin, TimestampMixin, Base):
     status: Mapped[str] = mapped_column(
         String(20), server_default="pending"
     )
-    started_at: Mapped[datetime | None] = mapped_column(nullable=True)
-    completed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # Execution context: variables, results from previous steps
     context: Mapped[dict] = mapped_column(JSONB, server_default="{}")
     last_error: Mapped[str | None] = mapped_column(Text)

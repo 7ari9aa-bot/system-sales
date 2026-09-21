@@ -145,29 +145,10 @@ async def _do_auto_reply(
         knowledge_context=knowledge_context,  # §132: separate from system prompt
     )
 
-    # §158: persist a memory from the AI run with governed provenance.
-    # source="agent_inferred" marks it as AI-generated, NOT customer_stated —
-    # a downstream system trusting source=customer_stated would treat AI
-    # hallucinations as customer-verified facts. confidence is moderate
-    # because the summary is inferred, not confirmed by a system event.
-    if customer_id is not None and result.content:
-        try:
-            from app.modules.ai.knowledge import add_memory
-
-            await add_memory(
-                session,
-                tenant_id,
-                customer_id=customer_id,
-                conversation_id=conversation_id,
-                kind="summary",
-                content=f"AI run on conversation {conversation_id}: {result.content[:500]}",
-                source="agent_inferred",
-                confidence=0.6,
-            )
-        except Exception:  # noqa: BLE001 — memory is best-effort, not critical path
-            logger.warning(
-                "ai.memory_persist_failed conversation=%s", conversation_id, exc_info=True
-            )
+    # §158: the memory for this run is persisted ONCE, inside AgentRunner
+    # (same provenance rules, plus an explicit guardrail==allow check). The
+    # duplicate write that used to live here produced two rows and two
+    # embeddings per run.
 
     # §41: the guardrail is evaluated INSIDE AgentRunner, so every caller is
     # covered — this only reacts to the verdict. The runner already withheld

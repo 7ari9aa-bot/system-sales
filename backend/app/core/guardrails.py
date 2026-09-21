@@ -96,6 +96,25 @@ def default_guardrail(*, require_tool_evidence: bool = False) -> OutputGuardrail
             return GuardrailVerdict(decision="handover", reason="injection_risk")
         return None
 
+    def _cross_tenant_request(content: str, ctx: dict) -> GuardrailVerdict | None:
+        # §115/§132: an explicit request for ANOTHER tenant's data is an
+        # access attempt, not a question. Server-side tool scoping is the
+        # enforcement; this catches the phrasing so the attempt is handed to
+        # a human instead of being answered with a refusal the model may
+        # talk its way around.
+        low = content.lower()
+        markers = (
+            "تينانت تاني",  # another tenant
+            "tenant آخر",
+            "another tenant",
+            "other tenant",
+            "different tenant",
+            "cross-tenant",
+        )
+        if any(marker in low for marker in markers):
+            return GuardrailVerdict(decision="handover", reason="cross_tenant_request")
+        return None
+
     def _tool_evidence(content: str, ctx: dict) -> GuardrailVerdict | None:
         # Factual constraint: price/stock claims must come from tool results.
         if require_tool_evidence and ctx.get("claims_facts") and not ctx.get("tool_results"):
@@ -105,6 +124,7 @@ def default_guardrail(*, require_tool_evidence: bool = False) -> OutputGuardrail
     chain.add_check("validity", _validity)
     chain.add_check("pii", _pii)
     chain.add_check("injection_echo", _injection_echo)
+    chain.add_check("cross_tenant", _cross_tenant_request)
     chain.add_check("tool_evidence", _tool_evidence)
     return chain
 

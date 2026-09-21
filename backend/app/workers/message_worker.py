@@ -397,6 +397,17 @@ class MessageWorker(StreamWorker):
         if status == "sent" and plan.set_channel_message_id:
             if message.channel_message_id is None:
                 message.channel_message_id = provider_id
+        if status == "sent":
+            # §53/§171: canonical usage event, recorded in the SAME transaction
+            # as the SENT status flip — a replayed send skips this phase via the
+            # ProcessedEvent marker, so no double metering.
+            from decimal import Decimal
+
+            from app.modules.billing.service import BillingService
+
+            await BillingService.record_usage(
+                session, tenant_id, feature="messages_outbound", quantity=Decimal("1")
+            )
         await session.flush()
 
 

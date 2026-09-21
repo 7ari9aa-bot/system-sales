@@ -83,6 +83,10 @@ class Settings(BaseSettings):
     whatsapp_app_secret: str = ""
     whatsapp_verify_token: str = ""
     telegram_webhook_secret: str = ""
+    messenger_app_secret: str = ""
+    messenger_verify_token: str = ""
+    instagram_app_secret: str = ""
+    instagram_verify_token: str = ""
 
     # object storage
     s3_endpoint: str = ""

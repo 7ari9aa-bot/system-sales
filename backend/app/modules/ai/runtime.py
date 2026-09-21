@@ -22,7 +22,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import DomainError, NotFoundError
-from app.modules.ai.gateway import AIGateway, estimate_cost
+from app.modules.ai.gateway import (
+    AIBudgetFallbackRequested,
+    AIGateway,
+    estimate_cost,
+)
 from app.modules.ai.models import Agent, AgentRun, AgentTool, ToolCall
 from app.modules.ai.providers import ToolCallRequest
 from app.modules.ai.tools import tool_to_openai_schema  # noqa: E402
@@ -336,17 +340,38 @@ class AgentRunner:
             if datetime.now(UTC) - started_at > max_wall_time:
                 hit_limit = "max_wall_time"
                 break
-            chat_result = await self.gateway.chat(
-                session,
-                tenant_id,
-                alias=self._alias_for(agent),
-                messages=messages,
-                tools=tools_schema,
-                temperature=float(agent.temperature),
-                max_tokens=agent.max_output_tokens,
-                agent_id=agent.id,
-                run_id=run.id,
-            )
+            try:
+                chat_result = await self.gateway.chat(
+                    session,
+                    tenant_id,
+                    alias=self._alias_for(agent),
+                    messages=messages,
+                    tools=tools_schema,
+                    temperature=float(agent.temperature),
+                    max_tokens=agent.max_output_tokens,
+                    agent_id=agent.id,
+                    run_id=run.id,
+                )
+            except AIBudgetFallbackRequested:
+                # §42: cap exhausted, policy says downgrade — retry this step
+                # on the "fallback" alias (the cheap model). If the fallback
+                # alias is what just failed, stop and hand over instead of
+                # looping the same exhausted budget.
+                if self._alias_for(agent) != "fallback":
+                    chat_result = await self.gateway.chat(
+                        session,
+                        tenant_id,
+                        alias="fallback",
+                        messages=messages,
+                        tools=tools_schema,
+                        temperature=float(agent.temperature),
+                        max_tokens=agent.max_output_tokens,
+                        agent_id=agent.id,
+                        run_id=run.id,
+                    )
+                else:
+                    hit_limit = "budget_fallback_exhausted"
+                    break
             tokens_in += chat_result.tokens_in
             tokens_out += chat_result.tokens_out
 
@@ -418,6 +443,22 @@ class AgentRunner:
         elif hit_limit:
             run.status = "timeout"
             run.error = f"run limit hit: {hit_limit}"
+            # §134: a run that hits its limit must not leave the conversation
+            # in AI limbo — the customer would get silence. Record a durable
+            # handover so a human picks it up.
+            if conversation_id is not None:
+                from app.modules.ai.models import AIHandover
+
+                session.add(
+                    AIHandover(
+                        tenant_id=tenant_id,
+                        conversation_id=conversation_id,
+                        run_id=run.id,
+                        reason="failure",
+                        status="pending",
+                        note=f"run_limit:{hit_limit}",
+                    )
+                )
             await session.flush()
             logger.warning("ai.run_limit_hit run=%s limit=%s", run.id, hit_limit)
         elif exhausted:
@@ -427,6 +468,21 @@ class AgentRunner:
             # with no content (test_agent_run_uses_configured_step_limit).
             run.status = "timeout"
             run.error = "run limit hit: max_steps"
+            # §134: same as above — the step budget ran out, so a human takes
+            # over rather than the customer staring at silence.
+            if conversation_id is not None:
+                from app.modules.ai.models import AIHandover
+
+                session.add(
+                    AIHandover(
+                        tenant_id=tenant_id,
+                        conversation_id=conversation_id,
+                        run_id=run.id,
+                        reason="failure",
+                        status="pending",
+                        note="run_limit:max_steps",
+                    )
+                )
             await session.flush()
             logger.warning("ai.run_limit_hit run=%s limit=max_steps", run.id)
 

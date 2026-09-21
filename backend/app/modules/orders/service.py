@@ -13,15 +13,12 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import func, select, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-
-if TYPE_CHECKING:
-    from app.modules.catalog.models import ProductVariant
 
 from app.core.events.writer import add_outbox_event
 from app.core.idempotency import apply_versioned_update, require_version  # §17
@@ -236,7 +233,7 @@ class OrderService:
         # The price is CAPTURED here, once, and everything downstream — the
         # line totals, the order total, the outbox payload — reads that
         # snapshot. Nothing recomputes a total from the (mutable) variant price.
-        prepared: list[tuple[ProductVariant, int, Decimal]] = []
+        prepared: list[tuple[Any, int, Decimal]] = []
         for item in items:
             try:
                 variant_id = UUID(str(item["variant_id"]))
@@ -448,6 +445,17 @@ class OrderService:
             expected_version=expected_version,  # §17
         )
         return order
+
+    @staticmethod
+    async def _default_warehouse(session: AsyncSession, tenant_id: UUID):
+        """Fetch (or race-safe bootstrap) the tenant's MAIN warehouse.
+
+        Thin delegation: inventory owns warehouses; orders only needs the
+        default when a cart arrives without an explicit warehouse_id.
+        """
+        from app.modules.inventory.service import InventoryService
+
+        return await InventoryService.get_default_warehouse(session, tenant_id)
 
     @staticmethod
     async def _transition(

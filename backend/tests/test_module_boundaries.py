@@ -71,7 +71,14 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # grew because every former lazy model import is now a lazy service import,
 # and the orders create_order function now imports 3 services at once.
 # Module-scope service imports DROPPED from 8 to 5 — the ratchet tightened.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 99
+# 99 -> 101 on 2026-09-21, two Justified additions:
+#   1. marketing -> segments.service: §82 finally wired — campaign
+#      dispatch evaluates the shared Segment DSL instead of the
+#      nonexistent segment_members table.
+#   2. the phase9 governance batch (slo/entitlement/audit wiring).
+# Measured AFTER excluding the shared app.modules.errors module from the
+# scan (it was being miscounted as cross-module).
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 101
 BASELINE_MODULE_SCOPE_SERVICE_IMPORTS = 5
 
 # Cycles are identified by the SET of modules involved, so the same loop
@@ -139,6 +146,10 @@ def _cross_module_imports() -> list[tuple[str, str, str, bool]]:
                 continue
             parts = target.split(".")
             if len(parts) < 3 or parts[2] == source:
+                continue
+            if len(parts) == 3 and parts[2] == "errors":
+                # app/modules/errors.py is the SHARED exceptions module every
+                # domain imports by design — not another module's internals.
                 continue
             kind = parts[3] if len(parts) > 3 else "<pkg>"
             found.append((source, parts[2], kind, id(node) in top_level))

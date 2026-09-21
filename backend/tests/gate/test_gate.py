@@ -339,8 +339,8 @@ async def test_gate_outbox_skip_locked(db, tenant_ctx):
     from app.core.events.writer import add_outbox_event
 
     await add_outbox_event(
-        db, tenant_ctx.tenant_id,
-        aggregate_type="test", aggregate_id="relay-1",
+        db,
+        aggregate_type="test", aggregate_id=uuid.uuid5(uuid.NAMESPACE_URL, "relay-1"),
         event_type="test.relay", payload={"n": 1},
     )
     await db.flush()
@@ -445,8 +445,8 @@ async def test_gate_redis_outbox_buffer(db, tenant_ctx):
     from app.core.events.writer import add_outbox_event
 
     await add_outbox_event(
-        db, tenant_ctx.tenant_id,
-        aggregate_type="test", aggregate_id="redis-out",
+        db,
+        aggregate_type="test", aggregate_id=uuid.uuid5(uuid.NAMESPACE_URL, "redis-out"),
         event_type="test.redis_out", payload={"check": True},
     )
     await db.flush()
@@ -604,8 +604,8 @@ async def test_gate_event_schema_versioning(db, tenant_ctx):
     from app.core.events.writer import add_outbox_event
 
     await add_outbox_event(
-        db, tenant_ctx.tenant_id,
-        aggregate_type="test", aggregate_id="schema-v",
+        db,
+        aggregate_type="test", aggregate_id=uuid.uuid5(uuid.NAMESPACE_URL, "schema-v"),
         event_type="test.schema", payload={"v": 1},
     )
     await db.flush()

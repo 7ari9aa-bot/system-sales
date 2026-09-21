@@ -343,6 +343,32 @@ async def _raise_budget_alerts(
         )
 
 
+class AIBudgetFallbackRequested(Exception):
+    """§42: the cap is exhausted and the policy says DOWNGRADE, not die.
+
+    Raised instead of RateLimitExceededError when BudgetPolicy.on_exceed ==
+    "fallback". The runner catches it and retries the same step on the
+    "fallback" alias; if the fallback alias is the one that just failed it
+    hands the conversation to a human instead of looping.
+    """
+
+    def __init__(self, message: str, *, details: dict | None = None) -> None:
+        super().__init__(message)
+        self.details = details or {}
+
+
+def _on_budget_exceeded(on_exceed: str, message: str, *, details: dict) -> None:
+    """§42 mode dispatch when committed spend crosses the cap."""
+    if on_exceed == "fallback":
+        raise AIBudgetFallbackRequested(message, details=details)
+    if on_exceed == "warn":
+        # Alert-and-allow: the tenant explicitly chose overrun-with-warning.
+        # The reservation is still taken and settled, so spend stays accounted.
+        logger.warning("ai.budget_exceeded_warn %s %s", message, details)
+        return
+    raise RateLimitExceededError(message, details=details)
+
+
 async def reserve_budget(
     session: AsyncSession,
     tenant_id: UUID,
@@ -357,7 +383,11 @@ async def reserve_budget(
     Committing a reservation up front is what makes the cap hold under load.
 
     Returns the reservation id to settle afterwards, or None when the tenant has
-    no cap (`on_exceed` is not "block" or the cap is zero/unset).
+    no cap (the cap is zero/unset). The cap is enforced for EVERY on_exceed
+    mode — "warn" allows the call but alerts, "fallback" raises
+    AIBudgetFallbackRequested so the runner can downgrade to the cheaper
+    model, "block" raises RateLimitExceededError. A mode NEVER disables the
+    cap itself (§42: the hard cap exists to stop runaway spend).
     """
     from sqlalchemy import select as sa_select
 
@@ -376,7 +406,7 @@ async def reserve_budget(
     ).scalars().all()
     cap, on_exceed = _resolve_cap(list(policies), agent_id)
 
-    if cap <= 0 or on_exceed != "block":
+    if cap <= 0:
         return None
 
     spend = await _month_spend(session, tenant_id)
@@ -393,23 +423,26 @@ async def reserve_budget(
     # monthly budget. Defaults to monthly_cap / 30.
     day_spend = await _day_spend(session, tenant_id)
     daily_cap = _daily_cap(cap)
-    if daily_cap > 0 and day_spend + estimate >= daily_cap:
-        raise RateLimitExceededError(
-            "daily AI budget exceeded",
-            details={
-                "day_spend": str(day_spend),
-                "daily_cap": str(daily_cap),
-                "estimate": str(estimate),
-            },
-        )
-
     if committed + estimate >= cap:
-        raise RateLimitExceededError(
+        _on_budget_exceeded(
+            on_exceed,
             "monthly AI budget exceeded",
             details={
                 "spend": str(spend),
                 "reserved": str(reserved),
                 "cap": str(cap),
+            },
+        )
+
+
+    if daily_cap > 0 and day_spend + estimate >= daily_cap:
+        _on_budget_exceeded(
+            on_exceed,
+            "daily AI budget exceeded",
+            details={
+                "day_spend": str(day_spend),
+                "daily_cap": str(daily_cap),
+                "estimate": str(estimate),
             },
         )
 

@@ -37,6 +37,34 @@ def upgrade() -> None:
         sa.Column("provider_timestamp", sa.DateTime(timezone=True), nullable=True),
     )
 
+    # §166: notification_preferences columns the model declares that the
+    # w8 migration (already applied) did not create. Nullable with server
+    # defaults so the add is safe on a populated table.
+    op.add_column(
+        "notification_preferences",
+        sa.Column("channel", sa.String(length=15), nullable=True),
+    )
+    op.add_column(
+        "notification_preferences",
+        sa.Column("enabled", sa.Boolean(), server_default="true", nullable=True),
+    )
+    op.add_column(
+        "notification_preferences",
+        sa.Column("quiet_hours_start", sa.DateTime(timezone=True), nullable=True),
+    )
+    op.add_column(
+        "notification_preferences",
+        sa.Column("quiet_hours_end", sa.DateTime(timezone=True), nullable=True),
+    )
+    op.add_column(
+        "notification_preferences",
+        sa.Column("workspace_id", sa.UUID(as_uuid=True), nullable=True),
+    )
+    op.add_column(
+        "notification_preferences",
+        sa.Column("location_id", sa.UUID(as_uuid=True), nullable=True),
+    )
+
     # §139: orders.process_state
     op.add_column(
         "orders",
