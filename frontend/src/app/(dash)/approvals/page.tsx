@@ -3,7 +3,7 @@
 import * as React from "react";
 import { Check, X, Clock, AlertTriangle } from "lucide-react";
 import { useApprovals, useDecideApproval } from "@/lib/queries";
-import { PageHeader } from "@/components/page-header";
+import { PageHeader } from "@/components/ui/states";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
