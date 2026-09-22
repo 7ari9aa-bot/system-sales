@@ -66,7 +66,7 @@ def _ctx(db: AsyncSession, tenant_ctx, permissions: set[str]) -> TenantContext:
         ),
         tenant_id=tenant_ctx.tenant_id,
         role_code="owner",
-        permission_codes=permissions | {"settings:write"},
+        permission_codes=set(permissions),
     )
 
 
@@ -142,7 +142,7 @@ async def test_staff_can_edit_invalidate_and_delete_a_memory(
         # delete: hard removal (staff purge; distinct from invalidate)
         deleted = await client.delete(f"/api/v1/ai/memories/{memory_id}")
         assert deleted.status_code == 204
-        await db.expire_all()
+        db.expire_all()
         assert await db.get(Memory, uuid.UUID(memory_id)) is None
 
 
