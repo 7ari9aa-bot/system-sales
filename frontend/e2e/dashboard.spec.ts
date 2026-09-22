@@ -36,7 +36,12 @@ test("dashboard surfaces actionable attention items", async ({ page }) => {
 });
 
 test("command palette opens and filters navigation", async ({ page }) => {
+  // The Ctrl+K listener is attached by hydrated React — a press before that is
+  // silently lost. /auth/me is fetched by client-side React Query, so waiting
+  // for its response proves the app is live before the shortcut is sent.
+  const hydrated = page.waitForResponse("**/api/v1/auth/me");
   await page.goto("/dashboard");
+  await hydrated;
 
   await page.keyboard.press("Control+k");
   await expect(page.getByTestId("command-input")).toBeVisible();

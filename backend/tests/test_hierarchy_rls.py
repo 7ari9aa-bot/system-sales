@@ -7,9 +7,9 @@ were guarded only by an app-side filter. §151 makes the hierarchy load-bearing
 (API + scope GUCs land in Q2/Q3), so the golden rule applies: RLS must reflect
 the ownership hierarchy, not the caller's memory of it.
 
-user_location_access already got a user-keyed policy in the sweep; its FORCE
-flag is asserted here as a regression guard, and its admin-grant OR-clause is
-deliberately NOT added yet — it belongs to Q3's API design (see task board).
+user_location_access already got a user-keyed policy in the sweep; Q3 widened
+it to self-OR-tenant-owner (migration f151ee151ee1) so the admin who issues
+grants can see and manage them — asserted at the bottom of this file.
 
 DB-backed (CI-only): these tests prove the DATABASE refuses, not the ORM.
 """
@@ -107,13 +107,15 @@ async def test_location_rows_are_isolated_two_levels_deep(
     assert [row.id for row in mine] == [loc.id]
 
 
-async def test_location_access_stays_self_keyed(db: AsyncSession, tenant_ctx) -> None:
-    """Regression guard: the sweep's user-keyed policy (app.user_id) must hold.
+async def test_location_access_is_self_or_tenant_owner(
+    db: AsyncSession, tenant_ctx
+) -> None:
+    """§151 Q3 policy: a grant row is visible to the member it names AND to
+    the tenant's owner (the admin who issues grants) — and to nobody else.
+    The owner clause mirrors who holds ``settings:write`` in ROLE_MATRIX."""
+    from app.core.security import hash_password
+    from app.modules.identity.models import User
 
-    A grant row is visible to the member it names — and to nobody else, even
-    inside the same tenant. (Admin-grant writes need an OR-clause that only
-    exists once the Q3 API defines the authorization shape — asserted there.)
-    """
     ws = Workspace(
         tenant_id=tenant_ctx.tenant_id,
         name="Ops2",
@@ -125,23 +127,46 @@ async def test_location_access_stays_self_keyed(db: AsyncSession, tenant_ctx) ->
     db.add(loc)
     await db.flush()
 
-    member = uuid.uuid4()
-    db.add(UserLocationAccess(user_id=member, location_id=loc.id))
+    member = User(
+        email=f"member-{uuid.uuid4().hex[:10]}@test.local",
+        password_hash=hash_password("secret-password"),
+        full_name="Granted Member",
+    )
+    db.add(member)
+    await db.flush()
+    db.add(
+        UserLocationAccess(
+            user_id=member.id, location_id=loc.id, granted_by=tenant_ctx.user.id
+        )
+    )
     await db.flush()
 
+    # The issuing owner sees it (Q3 admin OR-clause, migration f151ee151ee1).
     rows = (
         await db.execute(
-            select(UserLocationAccess).where(UserLocationAccess.user_id == member)
+            select(UserLocationAccess).where(UserLocationAccess.user_id == member.id)
         )
     ).scalars().all()
-    assert rows == [], "app.user_id is bound to the OWNER — not the member"
+    assert [g.location_id for g in rows] == [loc.id], "owner sees grants it manages"
 
+    # The named member sees their own row.
     await db.execute(
-        text("SELECT set_config('app.user_id', :u, true)"), {"u": str(member)}
+        text("SELECT set_config('app.user_id', :u, true)"), {"u": str(member.id)}
     )
     mine = (
         await db.execute(
-            select(UserLocationAccess).where(UserLocationAccess.user_id == member)
+            select(UserLocationAccess).where(UserLocationAccess.user_id == member.id)
         )
     ).scalars().all()
     assert [g.location_id for g in mine] == [loc.id]
+
+    # An unrelated user sees nothing — even with this tenant bound.
+    await db.execute(
+        text("SELECT set_config('app.user_id', :u, true)"), {"u": str(uuid.uuid4())}
+    )
+    stranger = (
+        await db.execute(
+            select(UserLocationAccess).where(UserLocationAccess.user_id == member.id)
+        )
+    ).scalars().all()
+    assert stranger == [], "RLS — not the app filter — must hide the grant"

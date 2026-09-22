@@ -121,7 +121,8 @@ test("undo on the create toast cancels the order via POST /orders/{id}/cancel", 
   await createOrderFromDialog(page);
   await page.getByRole("button", { name: "Undo" }).click();
 
-  await expect(page.getByText("Order cancelled")).toBeVisible();
+  // exact: Radix's aria live region also carries "Notification Order cancelled".
+  await expect(page.getByText("Order cancelled", { exact: true })).toBeVisible();
   // Keyed by the order id, never the human-facing number ORD-1002.
   expect(cancelPaths).toEqual(["/api/v1/orders/o-new/cancel"]);
 });
@@ -137,7 +138,8 @@ test("a failed cancel surfaces the API error in a danger toast", async ({ page }
   await createOrderFromDialog(page);
   await page.getByRole("button", { name: "Undo" }).click();
 
-  const danger = page.getByText("Undo failed");
+  // exact: skip the aria live-region clone ("Notification Undo failed …").
+  const danger = page.getByText("Undo failed", { exact: true });
   await expect(danger).toBeVisible();
-  await expect(page.getByText("cannot cancel")).toBeVisible();
+  await expect(page.getByText("cannot cancel", { exact: true })).toBeVisible();
 });

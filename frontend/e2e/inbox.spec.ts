@@ -177,10 +177,20 @@ test("a deep link with view and conversation opens the thread directly", async (
 /* §99 — assign action */
 
 test("assigning a conversation to me patches the row optimistically", async ({ page }) => {
-  await page.route("**/api/v1/conversations**", (route) => json(route, CONVERSATIONS));
-  await page.route("**/api/v1/conversations/c1/assign", (route) =>
-    json(route, { id: "assign-1" }),
-  );
+  // A coherent mock: the list endpoint must reflect the assign the POST
+  // accepted, or the onSettled refetch would clobber the optimistic patch.
+  const state: { assignee: string | null } = { assignee: null };
+  const list = () => ({
+    ...CONVERSATIONS,
+    items: CONVERSATIONS.items.map((c) =>
+      c.id === "c1" ? { ...c, assignee_user_id: state.assignee } : c,
+    ),
+  });
+  await page.route("**/api/v1/conversations**", (route) => json(route, list()));
+  await page.route("**/api/v1/conversations/c1/assign", (route) => {
+    state.assignee = route.request().postDataJSON().user_id;
+    return json(route, { id: "assign-1" });
+  });
 
   await page.goto("/inbox");
   await page.getByTestId("convo-c1").click();
@@ -199,16 +209,18 @@ test("assigning a conversation to me patches the row optimistically", async ({ p
 });
 
 test("unassigning clears the assignee", async ({ page }) => {
-  const assigned = {
+  const state: { assignee: string | null } = { assignee: "user-1" };
+  const list = () => ({
     ...CONVERSATIONS,
     items: CONVERSATIONS.items.map((c) =>
-      c.id === "c1" ? { ...c, assignee_user_id: "user-1" } : c,
+      c.id === "c1" ? { ...c, assignee_user_id: state.assignee } : c,
     ),
-  };
-  await page.route("**/api/v1/conversations**", (route) => json(route, assigned));
-  await page.route("**/api/v1/conversations/c1/assign", (route) =>
-    json(route, { id: "assign-2" }),
-  );
+  });
+  await page.route("**/api/v1/conversations**", (route) => json(route, list()));
+  await page.route("**/api/v1/conversations/c1/assign", (route) => {
+    state.assignee = route.request().postDataJSON().user_id;
+    return json(route, { id: "assign-2" });
+  });
 
   await page.goto("/inbox");
   await page.getByTestId("convo-c1").click();

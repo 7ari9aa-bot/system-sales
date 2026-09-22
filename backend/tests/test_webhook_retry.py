@@ -296,7 +296,9 @@ async def test_admin_retry_schedules_the_worker_event(db, tenant_ctx):
     assert result["retry"] == "scheduled"
     staged = (
         await db.execute(
-            select(OutboxEvent).where(OutboxEvent.event_type == "webhook.event.retry")
+            select(OutboxEvent).where(
+                OutboxEvent.payload["event_type"].astext == "webhook.event.retry"
+            )
         )
     ).scalar_one()
     assert staged.aggregate_id == row.id

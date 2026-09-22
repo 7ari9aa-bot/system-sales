@@ -51,7 +51,6 @@ import { CommandPalette } from "@/components/command-palette";
 import { NotificationsBell } from "@/components/notifications-bell";
 import { HealthIndicator } from "@/components/health-indicator";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Toaster } from "@/components/ui/toast";
 import { useMe } from "@/lib/queries";
 
 /* ------------------------------------------------------------- nav model */
@@ -472,7 +471,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
       />
 
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
-      <Toaster />
     </div>
   );
 }

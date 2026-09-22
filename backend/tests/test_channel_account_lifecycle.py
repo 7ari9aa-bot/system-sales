@@ -27,6 +27,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.secrets import decrypt_credentials_dict
 from app.main import create_app
 from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 from app.modules.platform.models import Integration
@@ -105,7 +106,8 @@ async def test_illegal_transition_is_rejected_and_row_is_untouched(
 
     row = await _get_row(db, tenant_ctx.tenant_id)
     assert row.status == "pending", "a rejected transition must not write status"
-    assert row.credentials == {"token": original_token}, (
+    # §68: credentials are envelope-encrypted at rest — compare the plaintext.
+    assert decrypt_credentials_dict(row.credentials) == {"token": original_token}, (
         "a rejected transition must not write credentials either"
     )
 
@@ -150,7 +152,7 @@ async def test_same_status_reupsert_is_idempotent(db: AsyncSession, tenant_ctx) 
     assert refreshed.status_code == 201
     assert refreshed.json()["status"] == "active"
     row = await _get_row(db, tenant_ctx.tenant_id)
-    assert row.credentials == {"token": refreshed_token}, (
+    assert decrypt_credentials_dict(row.credentials) == {"token": refreshed_token}, (
         "the refresh must still update credentials"
     )
 

@@ -36,11 +36,14 @@ from app.modules.identity.models import (
 
 
 async def _guc(session: AsyncSession, name: str) -> str | None:
-    return (
+    value = (
         await session.execute(
             sa.text("SELECT current_setting(:guc, true)"), {"guc": name}
         )
     ).scalar()
+    # set_config(guc, NULL) stores ''; the canonical NULLIF(...,'') guard
+    # treats '' exactly like unset — both mean "unbound", so the test does too.
+    return value or None
 
 
 def test_tenant_context_defaults_scope_to_none() -> None:

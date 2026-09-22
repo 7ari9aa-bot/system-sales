@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 
 from sqlalchemy import DateTime, Index, String, Text, bindparam, select, text
@@ -159,8 +159,8 @@ class TenantRestoreService:
             )
         point = backup_point
         if point.tzinfo is None:
-            point = point.replace(tzinfo=datetime.UTC)
-        if point > datetime.now(datetime.UTC):
+            point = point.replace(tzinfo=UTC)
+        if point > datetime.now(UTC):
             raise ValidationError(
                 "backup_point is in the future",
                 details={"backup_point": backup_point.isoformat()},
@@ -408,7 +408,7 @@ class TenantRestoreService:
         await bind_tenant(session, tenant_id)
         job.restore_results = restore_results
         job.status = TenantRestoreStatus.COMPLETED.value
-        job.completed_at = datetime.now(datetime.UTC)
+        job.completed_at = datetime.now(UTC)
         await session.flush()
         return job
 

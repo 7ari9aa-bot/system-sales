@@ -115,11 +115,18 @@ def _order(version: int) -> Order:
     return order
 
 
-def _app(session: object, tenant_id: uuid.UUID, permissions: set[str]):
+def _app(
+    session: object,
+    tenant_id: uuid.UUID,
+    permissions: set[str],
+    user_id: uuid.UUID | None = None,
+):
     app = create_app()
     ctx = TenantContext(
         session=session,  # type: ignore[arg-type]
-        user=AuthedUser(id=uuid.uuid4(), tenant_id=tenant_id, role_code="owner"),
+        user=AuthedUser(
+            id=user_id or uuid.uuid4(), tenant_id=tenant_id, role_code="owner"
+        ),
         tenant_id=tenant_id,
         role_code="owner",
         permission_codes=permissions,
@@ -291,8 +298,13 @@ async def test_get_order_emits_version_and_etag(monkeypatch) -> None:
 
 
 def _db_app(db: AsyncSession, tenant_ctx, permissions: set[str]) -> object:
+    # FK-guarded paths read the caller's user id, so it must be a real users
+    # row — a fabricated uuid4 violates FKs the moment CI runs this.
     return _app(
-        db, tenant_ctx.tenant_id, permissions | {"settings:write", "orders:write"}
+        db,
+        tenant_ctx.tenant_id,
+        permissions | {"settings:write", "orders:write"},
+        user_id=tenant_ctx.user.id,
     )
 
 

@@ -322,7 +322,7 @@ async def test_validate_is_refused_before_extraction(
         await db.execute(
             select(OutboxEvent).where(
                 OutboxEvent.aggregate_id == job.id,
-                OutboxEvent.event_type == "tenant.restore.completed",
+                OutboxEvent.payload["event_type"].astext == "tenant.restore.completed",
             )
         )
     ).scalars().all()

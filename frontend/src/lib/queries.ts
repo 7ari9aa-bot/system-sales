@@ -714,7 +714,10 @@ function patchConversationEverywhere(
   qc.setQueriesData<InfiniteData<Page<Conversation>>>(
     { queryKey: qk.conversations },
     (previous) => {
-      if (!previous) return previous;
+      // The ["conversations"] prefix also matches the per-thread messages
+      // queries, whose data is a plain Page (no `pages`). Only touch the
+      // infinite inbox lists — patching anything else throws here.
+      if (!previous || !Array.isArray(previous.pages)) return previous;
       return {
         ...previous,
         pages: previous.pages.map((page) => ({
