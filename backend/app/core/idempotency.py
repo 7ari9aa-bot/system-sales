@@ -61,10 +61,14 @@ is no second concurrency mechanism here: ``apply_versioned_update`` issues one
 DATABASE decides the winner. ``etag_for`` / ``apply_etag`` render the version
 back on responses.
 
-This surface is NOT yet wired into any route: ``app/modules`` is out of scope
-for this workstream, so nothing reads ``If-Match`` or sets ``ETag`` today. The
-atomicity is real in the helper; it is simply not yet exercised in production.
-See the workstream report for the recommended first adopter.
+This surface is WIRED (§17): customers PATCH, orders status/cancel + the
+detail GET's ETag, and the automation writes — workflow status PATCH and
+version publish both route through ``apply_versioned_update``, so the row
+version bumps on EVERY write (conditional or not) and the read advertises it
+as an ETag. The remaining versioned models — campaigns, agents, refunds —
+have NO HTTP mutation endpoint today (their routes create, they never update),
+so there is no conditional-write seam to wire; when such an endpoint is added
+it must follow the customers/automation pattern, not a raw attribute write.
 """
 
 from __future__ import annotations

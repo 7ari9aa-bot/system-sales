@@ -12,7 +12,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, func, or_, select, text
 
@@ -22,30 +22,35 @@ from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permi
 from app.modules.platform.flags import FeatureFlagService
 from app.modules.platform.metrics import MetricRegistry
 from app.modules.platform.models import (
+    WEBHOOK_EVENT_STATUSES,
+    AuditLog,
     FeatureFlag,
     Integration,
     OutboxEvent,
     SavedView,
+    WebhookEvent,
 )
+from app.modules.platform.tenant_restore import TenantRestoreJob, TenantRestoreService
 
 router = APIRouter(prefix="/platform", tags=["platform"])
 
 FEATURE_MAX_LEN = 127  # matches feature_flags.feature String(127)
 
 # §160: Platform Admin is a SEPARATE plane from Tenant RBAC.
-# The platform_admin role is NOT a tenant role — it is a global claim checked
-# independently of the tenant context. This means a platform admin can access
-# the admin plane WITHOUT being a member of any tenant.
-ADMIN_ROLE_CODE = "platform_admin"
-
-
+# The claim is global (users.is_platform_admin, minted into the JWT at login)
+# and checked independently of the tenant context — a tenant admin has full
+# RBAC inside their tenant but CANNOT touch this plane.
 def _require_platform_admin(ctx: TenantContext) -> None:
-    """Gate: only platform_admin role may access the admin plane (§160).
+    """Gate: only the global is_platform_admin JWT claim opens the admin plane.
 
-    This is deliberately separate from tenant RBAC: a tenant admin has full
-    RBAC inside their tenant but CANNOT access the platform admin plane.
+    Deliberately NOT a permission code: ctx.permission_codes come from the
+    caller's TENANT role, so gating on a "platform_admin" code would be both
+    unreachable (nothing seeds a cross-tenant permission) and dangerous — an
+    operator granting that code to a tenant role would turn a plain tenant
+    user into a cross-tenant admin able to mint break-glass capabilities for
+    ANY tenant. The claim cannot be granted per-tenant.
     """
-    if ADMIN_ROLE_CODE not in ctx.permission_codes:
+    if not ctx.user.is_platform_admin:
         raise PermissionDeniedError(
             "platform admin access required — this is not a tenant permission"
         )
@@ -520,8 +525,8 @@ async def admin_list_tenants(ctx: TenantCtxDep):
             select(
                 Tenant.id,
                 Tenant.name,
-                Tenant.status,
-                Tenant.plan,
+                Tenant.lifecycle_state,
+                Tenant.is_active,
                 Tenant.created_at,
             ).order_by(Tenant.created_at.desc())
         )
@@ -531,8 +536,8 @@ async def admin_list_tenants(ctx: TenantCtxDep):
             {
                 "id": str(row.id),
                 "name": row.name,
-                "status": row.status,
-                "plan": row.plan,
+                "lifecycle_state": row.lifecycle_state,
+                "is_active": row.is_active,
                 "created_at": row.created_at.isoformat() if row.created_at else None,
             }
             for row in rows
@@ -567,8 +572,9 @@ async def admin_get_tenant(ctx: TenantCtxDep, tenant_id: uuid.UUID):
     return {
         "id": str(tenant.id),
         "name": tenant.name,
-        "status": tenant.status,
-        "plan": tenant.plan,
+        "lifecycle_state": tenant.lifecycle_state,
+        "is_active": tenant.is_active,
+        "status_reason": tenant.status_reason,
         "created_at": tenant.created_at.isoformat() if tenant.created_at else None,
         "health": {
             "outbox_pending": int(outbox_pending or 0),
@@ -580,17 +586,31 @@ async def admin_get_tenant(ctx: TenantCtxDep, tenant_id: uuid.UUID):
 async def admin_update_tenant_status(
     ctx: TenantCtxDep,
     tenant_id: uuid.UUID,
-    status: str = "active",
+    status: str,
+    reason: str | None = None,
+    x_break_glass_token: str | None = Header(default=None),
 ):
-    """§160: suspend or reactivate a tenant (provisioning action)."""
-    _require_platform_admin(ctx)
-    if status not in ("active", "suspended", "provisioning"):
-        raise ValidationError(
-            "status must be one of: active, suspended, provisioning",
-            details={"status": status},
-        )
-    from app.modules.identity.models import Tenant
+    """§160/§48: move a tenant's lifecycle state (suspend, reactivate, ...).
 
+    §147: this is a cross-tenant privileged action, so platform-admin rights
+    alone are NOT enough — the caller must present a one-shot break-glass
+    capability scoped to this tenant and ``tenant_status_change``.
+
+    The mutation runs through TenantLifecycleService.transition — the single
+    writer that validates the state machine, keeps ``is_active`` consistent
+    and writes the before/after audit + security trail (§66/§67). Request
+    validation happens BEFORE the capability is consumed: a bad request must
+    not destroy the one-shot token.
+    """
+    _require_platform_admin(ctx)
+    from app.modules.identity.models import Tenant
+    from app.modules.identity.service import STATE_POLICIES, TenantLifecycleService
+
+    if status not in STATE_POLICIES:
+        raise ValidationError(
+            "unknown tenant lifecycle state",
+            details={"status": status, "allowed": sorted(STATE_POLICIES)},
+        )
     tenant = (
         await ctx.session.execute(
             select(Tenant).where(Tenant.id == tenant_id)
@@ -598,12 +618,252 @@ async def admin_update_tenant_status(
     ).scalar_one_or_none()
     if tenant is None:
         raise NotFoundError("tenant not found")
-    tenant.status = status
-    await ctx.session.flush()
+
+    from app.core.break_glass import validate_capability
+
+    elevated = await validate_capability(
+        x_break_glass_token or "",
+        tenant_id=tenant_id,
+        user_id=ctx.user.id,
+        action="tenant_status_change",
+    )
+    if not elevated:
+        raise PermissionDeniedError(
+            "tenant status changes require a break-glass capability scoped to "
+            "this tenant (POST /platform/admin/break-glass with "
+            "action=tenant_status_change)"
+        )
+    tenant = await TenantLifecycleService.transition(
+        ctx.session,
+        tenant_id,
+        status,
+        reason=reason,
+        actor_user_id=ctx.user.id,
+    )
     return {
         "id": str(tenant.id),
-        "status": tenant.status,
+        "lifecycle_state": tenant.lifecycle_state,
+        "is_active": tenant.is_active,
     }
+
+
+@router.post("/webhook-events/{event_id}/retry")
+async def admin_retry_webhook_event(ctx: TenantCtxDep, event_id: uuid.UUID):
+    """§24: replay a failed or dead-lettered inbound webhook ingress row.
+
+    Stages a ``webhook.event.retry`` event on the webhook.events stream; the
+    WebhookWorker then re-runs the EXACT ingest block the channel webhook
+    router runs (``IngestService.process_webhook_event``) under the row's
+    tenant — the per-message idempotency keys make the replay safe.
+
+    webhook_events is FORCE-RLS, so the row is loaded under the request's
+    tenant context: the admin operates on the ACTIVE tenant's rows (X-Tenant-Id
+    selects the tenant). FAILED rows (budget left) and DEAD rows (budget spent
+    — the DLQ: replay is exactly what it exists for) can be retried; the row
+    must have resolved a tenant — an un-attributed ingress has nothing to
+    re-ingest and no tenant scope to run it under.
+    """
+    _require_platform_admin(ctx)
+    from app.core.events.writer import add_outbox_event
+
+    row = await _load_webhook_event(ctx, event_id)
+    if row.tenant_id is None:
+        raise ValidationError(
+            "webhook event has no resolved tenant — nothing to re-ingest",
+            details={"event_id": str(event_id)},
+        )
+    if row.processing_status not in ("failed", "dead"):
+        raise ValidationError(
+            "only failed or dead-lettered webhook events can be retried",
+            details={"event_id": str(event_id), "status": row.processing_status},
+        )
+    await add_outbox_event(
+        ctx.session,
+        aggregate_type="webhook",
+        aggregate_id=row.id,
+        event_type="webhook.event.retry",
+        tenant_id=row.tenant_id,
+        payload={"webhook_event_id": str(row.id)},
+    )
+    _audit_webhook_dlq_op(
+        ctx, row, action="webhook_event.retry_scheduled",
+        before={"processing_status": row.processing_status},
+        after={"retry": "scheduled"},
+    )
+    return {
+        "id": str(row.id),
+        "tenant_id": str(row.tenant_id),
+        "status": row.processing_status,
+        "retry": "scheduled",
+    }
+
+
+# ---------------------------------------------------------------------------
+# §24 — the DLQ surface: Inspect / Ignore / Mark resolved (retry + replay
+# above). Rows are NEVER deleted; a closed case changes status and is audited.
+# ---------------------------------------------------------------------------
+
+# Which statuses each close-out accepts — the law against silent drift.
+_WEBHOOK_IGNORE_FROM: frozenset[str] = frozenset(
+    {"pending", "processing", "failed", "dead"}
+)
+_WEBHOOK_RESOLVE_FROM: frozenset[str] = frozenset({"failed", "dead", "ignored"})
+
+
+async def _load_webhook_event(ctx: TenantContext, event_id: uuid.UUID) -> WebhookEvent:
+    row = (
+        await ctx.session.execute(
+            select(WebhookEvent).where(WebhookEvent.id == event_id)
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise NotFoundError("webhook event not found")
+    return row
+
+
+def _audit_webhook_dlq_op(
+    ctx: TenantContext,
+    row: WebhookEvent,
+    *,
+    action: str,
+    before: dict | None,
+    after: dict | None,
+) -> None:
+    """§66/§67: every DLQ decision leaves a paper trail (who, which row,
+    from what to what, and the operator's reason)."""
+    ctx.session.add(
+        AuditLog(
+            tenant_id=row.tenant_id or ctx.tenant_id,
+            actor_user_id=ctx.user.id,
+            action=action,
+            resource_type="webhook_event",
+            resource_id=str(row.id),
+            before=before,
+            after=after,
+        )
+    )
+
+
+def _webhook_event_summary(row: WebhookEvent) -> dict:
+    return {
+        "id": str(row.id),
+        "provider": row.provider,
+        "external_event_id": row.external_event_id,
+        "tenant_id": str(row.tenant_id) if row.tenant_id else None,
+        "received_at": row.received_at.isoformat() if row.received_at else None,
+        "signature_valid": row.signature_valid,
+        "processing_status": row.processing_status,
+        "attempts": row.attempts,
+        "last_error": row.last_error,
+        "processed_at": row.processed_at.isoformat() if row.processed_at else None,
+    }
+
+
+@router.get("/webhook-events")
+async def admin_list_webhook_events(
+    ctx: TenantCtxDep,
+    status: str | None = None,
+    provider: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+):
+    """§24 Inspect: the active tenant's ingress ledger — newest first, with
+    the full DLQ vocabulary (dead/ignored/resolved included). The raw payload
+    body is deliberately NOT listed; fetch a row for that."""
+    _require_platform_admin(ctx)
+    if status is not None and status not in WEBHOOK_EVENT_STATUSES:
+        raise ValidationError(
+            "unknown webhook event status",
+            details={"status": status, "allowed": sorted(WEBHOOK_EVENT_STATUSES)},
+        )
+    conditions = []
+    if status is not None:
+        conditions.append(WebhookEvent.processing_status == status)
+    if provider is not None:
+        conditions.append(WebhookEvent.provider == provider)
+    total = (
+        await ctx.session.execute(
+            select(func.count(WebhookEvent.id)).where(*conditions)
+        )
+    ).scalar_one()
+    rows = (
+        await ctx.session.execute(
+            select(WebhookEvent)
+            .where(*conditions)
+            .order_by(WebhookEvent.received_at.desc(), WebhookEvent.id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+    ).scalars().all()
+    return {
+        "total": int(total),
+        "limit": limit,
+        "offset": offset,
+        "items": [_webhook_event_summary(row) for row in rows],
+    }
+
+
+@router.get("/webhook-events/{event_id}")
+async def admin_inspect_webhook_event(ctx: TenantCtxDep, event_id: uuid.UUID):
+    """§24 Inspect: the full ingress row — envelope, attempts trail AND the
+    raw payload, the evidence a replay/ignore/resolve decision is made on."""
+    _require_platform_admin(ctx)
+    row = await _load_webhook_event(ctx, event_id)
+    return {**_webhook_event_summary(row), "payload": row.payload}
+
+
+@router.post("/webhook-events/{event_id}/ignore")
+async def admin_ignore_webhook_event(
+    ctx: TenantCtxDep, event_id: uuid.UUID, reason: str | None = None
+):
+    """§24 Ignore: close a DLQ case as not-worth-processing. The row stays
+    (nothing disappears) with status → ignored, and the decision is audited."""
+    _require_platform_admin(ctx)
+    row = await _load_webhook_event(ctx, event_id)
+    if row.processing_status not in _WEBHOOK_IGNORE_FROM:
+        raise ValidationError(
+            "cannot ignore a webhook event in this state",
+            details={
+                "event_id": str(event_id),
+                "status": row.processing_status,
+                "allowed_from": sorted(_WEBHOOK_IGNORE_FROM),
+            },
+        )
+    before = row.processing_status
+    row.processing_status = "ignored"
+    _audit_webhook_dlq_op(
+        ctx, row, action="webhook_event.ignored",
+        before={"processing_status": before, "reason": reason},
+        after={"processing_status": "ignored"},
+    )
+    return {"id": str(row.id), "status": "ignored"}
+
+
+@router.post("/webhook-events/{event_id}/resolve")
+async def admin_resolve_webhook_event(
+    ctx: TenantCtxDep, event_id: uuid.UUID, reason: str | None = None
+):
+    """§24 Mark resolved: the underlying issue was fixed out-of-band (or the
+    effect was applied manually) — close the case as resolved. Audited."""
+    _require_platform_admin(ctx)
+    row = await _load_webhook_event(ctx, event_id)
+    if row.processing_status not in _WEBHOOK_RESOLVE_FROM:
+        raise ValidationError(
+            "cannot resolve a webhook event in this state",
+            details={
+                "event_id": str(event_id),
+                "status": row.processing_status,
+                "allowed_from": sorted(_WEBHOOK_RESOLVE_FROM),
+            },
+        )
+    before = row.processing_status
+    row.processing_status = "resolved"
+    _audit_webhook_dlq_op(
+        ctx, row, action="webhook_event.resolved",
+        before={"processing_status": before, "reason": reason},
+        after={"processing_status": "resolved"},
+    )
+    return {"id": str(row.id), "status": "resolved"}
 
 
 # ---------- §147 Break-glass support access ----------
@@ -623,6 +883,7 @@ class BreakGlassRequest(BaseModel):
 async def admin_break_glass(
     ctx: TenantCtxDep,
     body: BreakGlassRequest,
+    request: Request,
 ):
     """§147: emergency access — records a security event + issues a capability token.
 
@@ -640,8 +901,8 @@ async def admin_break_glass(
         resource_type=body.resource_type,
         resource_id=body.resource_id,
         reason=body.reason,
-        ip=None,
-        user_agent=None,
+        ip=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
     )
     return {"capability_token": token, "expires_in_minutes": 15}
 
@@ -659,11 +920,15 @@ async def admin_validate_break_glass(
     ctx: TenantCtxDep,
     body: BreakGlassValidateRequest,
 ):
-    """§147: validate a capability token (one-shot consumption)."""
-    _require_platform_admin(ctx)
-    from app.core.break_glass import validate_capability
+    """§147: pre-flight check whether a capability token is valid.
 
-    valid = validate_capability(
+    Read-only on purpose: a *check* must not burn the one-shot token — the
+    capability is consumed by the protected action itself (GETDEL there).
+    """
+    _require_platform_admin(ctx)
+    from app.core.break_glass import peek_capability
+
+    valid = await peek_capability(
         body.capability_token,
         tenant_id=body.tenant_id,
         user_id=ctx.user.id,
@@ -693,10 +958,15 @@ class SecretRotateRequest(BaseModel):
 
 @router.post("/secrets", status_code=201)
 async def create_secret_reference(
-    ctx: TenantCtxDep,
     body: SecretRefCreate,
+    ctx: TenantContext = Depends(require_permission("settings:write")),
 ):
-    """§68: register a secret reference + store the value via SecretStorePort."""
+    """§68: register a secret reference + store the value via SecretStorePort.
+
+    Gated by settings:write like every other credential surface (flags,
+    integrations): registering a secret is a configuration action, not
+    something any tenant member may do.
+    """
     from app.core.secrets import get_secret_store
     from app.modules.platform.service import SecretService
 
@@ -711,6 +981,7 @@ async def create_secret_reference(
         scope=body.scope,
         vault_key=body.vault_key,
         workspace_id=body.workspace_id,
+        actor_user_id=ctx.user.id,
     )
     return {
         "id": str(ref.id),
@@ -736,6 +1007,7 @@ async def rotate_secret(
         ctx.tenant_id,
         provider,
         body.new_value,
+        actor_user_id=ctx.user.id,
     )
     return {
         "id": str(ref.id),
@@ -744,3 +1016,119 @@ async def rotate_secret(
         "rotated_at": ref.rotated_at.isoformat() if ref.rotated_at else None,
         "status": ref.status,
     }
+
+
+# ---------------------------------------------------------------------------
+# §164: tenant-scoped restore
+#
+# A tenant that destroyed its own data (the §164 "3000 customers" incident)
+# restores it HERE — on the tenant plane, not the §160 admin plane, because
+# the job reads and revives tenant data. §143 tombstones keep soft-deleted
+# rows in place, so extraction/validation/execution run against the live
+# tables under the caller's RLS-bound session (the service re-binds to the
+# job's target tenant regardless); no other tenant's rows can be read or
+# revived, and a full production PITR is never overwritten for one tenant.
+# ---------------------------------------------------------------------------
+
+
+class TenantRestoreJobCreate(BaseModel):
+    """Body for ``POST /platform/tenant-restores``."""
+
+    backup_point: datetime
+    entity_types: list[str] = Field(min_length=1)
+
+
+def _restore_job_payload(job: TenantRestoreJob) -> dict:
+    return {
+        "id": str(job.id),
+        "target_tenant_id": str(job.target_tenant_id),
+        "backup_point": job.backup_point.isoformat() if job.backup_point else None,
+        "entity_types": job.entity_types,
+        "status": job.status,
+        "extraction_results": job.extraction_results,
+        "validation_results": job.validation_results,
+        "restore_results": job.restore_results,
+        "last_error": job.last_error,
+        "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+    }
+
+
+@router.post("/tenant-restores", status_code=201)
+async def create_tenant_restore_job(
+    body: TenantRestoreJobCreate,
+    ctx: TenantContext = Depends(require_permission("settings:write")),
+):
+    """§164: open a restore job for the CALLER's tenant (never another's).
+
+    ``backup_point`` is the incident watermark: rows tombstoned at or after
+    it are the restore candidates; rows already dead before it predate the
+    incident and stay dead.
+    """
+    job = await TenantRestoreService.create_restore_job(
+        ctx.session,
+        ctx.tenant_id,
+        target_tenant_id=ctx.tenant_id,
+        backup_point=body.backup_point,
+        entity_types=body.entity_types,
+    )
+    return _restore_job_payload(job)
+
+
+@router.get("/tenant-restores/{job_id}")
+async def get_tenant_restore_job(ctx: TenantCtxDep, job_id: uuid.UUID):
+    """One restore job's status + extraction/validation/restore manifests."""
+    job = await TenantRestoreService.get_restore_job(
+        ctx.session, ctx.tenant_id, job_id
+    )
+    return _restore_job_payload(job)
+
+
+@router.post("/tenant-restores/{job_id}/extract")
+async def extract_tenant_restore_job(
+    job_id: uuid.UUID,
+    ctx: TenantContext = Depends(require_permission("settings:write")),
+):
+    """§164 step 2: stage the tenant's tombstoned rows into the job manifest.
+
+    Tombstones live in the live tables, so the request session doubles as
+    the recovery session; the full-PITR variant injects an isolated one.
+    """
+    job = await TenantRestoreService.extract_tenant_data(
+        ctx.session,
+        ctx.tenant_id,
+        job_id,
+        recovery_session=ctx.session,
+    )
+    return _restore_job_payload(job)
+
+
+@router.post("/tenant-restores/{job_id}/validate")
+async def validate_tenant_restore_job(
+    job_id: uuid.UUID,
+    ctx: TenantContext = Depends(require_permission("settings:write")),
+):
+    """§164 step 3: re-check staged rows against current state.
+
+    Any conflict (row already live, id collision, tenant mismatch, failed
+    extraction) FAILS the job; only a clean validation unlocks execute.
+    """
+    job = await TenantRestoreService.validate_against_current(
+        ctx.session, ctx.tenant_id, job_id
+    )
+    return _restore_job_payload(job)
+
+
+@router.post("/tenant-restores/{job_id}/execute")
+async def execute_tenant_restore_job(
+    job_id: uuid.UUID,
+    ctx: TenantContext = Depends(require_permission("settings:write")),
+):
+    """§164 step 4: revive the staged tombstoned rows in one transaction.
+
+    Refuses to run unless validation passed. Writes an audit row and stages
+    ``tenant.restore.completed`` on the outbox in the same transaction.
+    """
+    job = await TenantRestoreService.execute_restore(
+        ctx.session, ctx.tenant_id, job_id
+    )
+    return _restore_job_payload(job)

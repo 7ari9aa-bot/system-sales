@@ -81,7 +81,22 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # 101 -> 102 on 2026-09-21: orders._default_warehouse delegates to
 # inventory's race-safe MAIN bootstrap (test_create_order_bootstraps_
 # main_warehouse contract) — orders never touches warehouse tables.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 102
+# 102 -> 103 on 2026-09-22, one deliberate edge: automation -> platform.models.
+# §136 per-tenant n8n service tokens: the TenantServiceToken credential model
+# lives in platform alongside Integration (the other tenant-credential model),
+# and automation.tokens must hash/verify/rotate those rows. The alternative —
+# routing token verification through platform.service — would put an
+# auth-hot-path DB lookup behind a cross-module service call for zero
+# decoupling gain. Adds no cycle (platform never imports automation) and is
+# not a module-scope service import, so the two hard rules hold.
+# 103 -> 104 on 2026-09-22, one deliberate edge (wave-1 review B1):
+# platform.router.admin_update_tenant_status -> identity.service.
+# TenantLifecycleService.transition is the SINGLE writer of lifecycle_state
+# + is_active (§48); the review's whole finding was that the admin endpoint
+# bypassed it. Any other seam (raw model write, read-model copy) re-opens
+# the bug this edge closes. Function-scope import, and platform -> identity
+# already exists at module scope (deps/models), so no new cycle forms.
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 104
 BASELINE_MODULE_SCOPE_SERVICE_IMPORTS = 5
 
 # Cycles are identified by the SET of modules involved, so the same loop

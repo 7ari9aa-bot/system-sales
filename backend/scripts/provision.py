@@ -105,17 +105,27 @@ def _rls_statements() -> list[str]:
     # user_location_access (spec §151): tenant-scoping comes from the location
     # row, so the policy keys on the request user (tenant_users-style user
     # GUC) instead of app.tenant_id. The general tenant_isolation policy is
-    # untouched; this is the only table with this variant.
+    # untouched; this is the only table with this variant. The owner OR-clause
+    # lets the §151 Q3 admin API manage OTHER members' grants; kept identical
+    # to migration f151ee151ee1 so an already-migrated database converges.
     ula = "user_location_access"
     if ula in Base.metadata.tables:
         ula_user_guard = f"NULLIF(current_setting('{USER_GUC}', true), '')::uuid"
+        ula_self = f"user_id = {ula_user_guard}"
+        ula_admin = (
+            "EXISTS (SELECT 1 FROM public.locations l "
+            "JOIN public.tenant_users tu ON tu.tenant_id = l.tenant_id "
+            "JOIN public.roles r ON r.id = tu.role_id "
+            f"WHERE l.id = {ula}.location_id AND tu.user_id = {ula_user_guard} "
+            "AND r.code = 'owner')"
+        )
         stmts.append(f'ALTER TABLE public.{ula} ENABLE ROW LEVEL SECURITY;')
         stmts.append(f'ALTER TABLE public.{ula} FORCE ROW LEVEL SECURITY;')
         stmts.append(f'DROP POLICY IF EXISTS location_access ON public.{ula};')
         stmts.append(
             f'CREATE POLICY location_access ON public.{ula} '
-            f'USING (user_id = {ula_user_guard}) '
-            f'WITH CHECK (user_id = {ula_user_guard});'
+            f'USING ({ula_self} OR {ula_admin}) '
+            f'WITH CHECK ({ula_self} OR {ula_admin});'
         )
 
     audit = "audit_logs"

@@ -1,28 +1,19 @@
-"""Spec §146 — MFA / SSO support.
+"""Spec §146 — MFA (TOTP) with durable state + SSO support.
 
-MFA (Multi-Factor Authentication): after the password is verified, the user
-must also provide a TOTP code (RFC 6238, 30-second window). This is the
-"something you have" factor on top of the "something you know" (password).
+MFA login flow: after the password is verified, an MFA-enabled account gets a
+short-lived challenge (Redis, 5-minute TTL, single-use via GETDEL) instead of
+tokens; the client completes login at POST /auth/mfa/verify with a TOTP code
+(RFC 6238, 30s step, ±1 window for clock drift). Five wrong codes lock the
+challenge and the client must sign in again.
 
-SSO (Single Sign-On): an external identity provider (Google, GitHub, etc.)
-can be used INSTEAD of the password. The user authenticates with the
-provider; the provider returns a signed assertion; this service verifies it
-and issues a token pair.
+State lives where §59 (stateless API) requires it — never in process memory:
+- TOTP secrets + backup-code hashes: Postgres (`user_mfa_secrets`, migration
+  c146bb146bb1) — durable across restarts.
+- Login challenges + failure counters: Redis (`mfa:challenge:*`) — shared
+  across API instances, expiring automatically.
+- SSO subject → user links: Redis (`sso:identity:*`) — instance-shared.
 
-This module provides:
-- `enable_mfa()`: generate a TOTP secret, store it (encrypted-at-rest), and
-  return the otpauth:// URL for QR code rendering.
-- `verify_mfa()`: verify a TOTP code against the user's secret.
-- `disable_mfa()`: remove the secret (requires current code or admin action).
-- `sso_login()`: verify an external assertion and issue tokens.
-
-The login flow (identity/service.py) checks if MFA is enabled AFTER password
-verification; if so, it raises `MfaRequiredError` instead of returning tokens.
-The client then calls `/auth/mfa/verify` with the code.
-
-TOTP implementation uses the `pyotp` library (already a dependency via the
-AI module's provider configuration). If pyotp is not available, the functions
-raise ImportError — this is a hard dependency, not optional.
+TOTP is implemented manually with hmac/hashlib — pyotp is NOT a dependency.
 """
 
 from __future__ import annotations
@@ -30,17 +21,36 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import json
 import secrets as py_secrets
 import struct
 import time
 import uuid
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import PermissionDeniedError, ValidationError
-from app.modules.identity.models import User
+from app.core.errors import (
+    ConflictError,
+    DomainError,
+    PermissionDeniedError,
+    ValidationError,
+)
+from app.core.redis import get_redis
+from app.modules.identity.models import User, UserMfaSecret
+
+# Login challenge: 5 minutes is enough for a human to open their authenticator;
+# a leaked challenge id is useless after the window.
+CHALLENGE_TTL_SECONDS = 300
+# Wrong-code attempts before the challenge locks — bounded so an online
+# brute-force of the 10^6 TOTP space cannot run against one challenge.
+CHALLENGE_MAX_FAILURES = 5
+BACKUP_CODE_COUNT = 8
+
+_CHALLENGE_PREFIX = "mfa:challenge:"
+_SSO_PREFIX = "sso:identity:"
 
 
 @dataclass(slots=True, frozen=True)
@@ -49,6 +59,11 @@ class MfaSecret:
 
     secret: str
     otpauth_url: str
+
+
+# ---------------------------------------------------------------------------
+# RFC 4226 / 6238 — implemented manually (pyotp is not a dependency)
+# ---------------------------------------------------------------------------
 
 
 def _generate_totp_secret() -> str:
@@ -73,9 +88,23 @@ def _totp(secret: str, timestamp: int | None = None, digits: int = 6) -> str:
     return _hotp(secret, counter, digits)
 
 
-def _build_otpauth_url(
-    secret: str, *, email: str, issuer: str = "SalesOS"
-) -> str:
+def verify_totp(secret: str, code: str, *, timestamp: int | None = None) -> bool:
+    """Verify a TOTP code with a ±1 step window for clock drift.
+
+    Constant-time comparison per candidate window; non-numeric input fails
+    closed without touching the HMAC path.
+    """
+    code = (code or "").strip()
+    if not code.isdigit():
+        return False
+    now = int(time.time()) if timestamp is None else timestamp
+    for offset in (-30, 0, 30):
+        if hmac.compare_digest(_totp(secret, now + offset), code):
+            return True
+    return False
+
+
+def _build_otpauth_url(secret: str, *, email: str, issuer: str = "SalesOS") -> str:
     """Build the otpauth:// URL for QR code rendering (RFC 6238)."""
     label = f"{issuer}:{email}"
     return (
@@ -88,21 +117,61 @@ def _build_otpauth_url(
     )
 
 
-# In-memory store for MFA secrets. In production this would be encrypted in
-# the database (users table mfa_secret column). For now, a process-local dict
-# so the flow is testable without a migration.
-_mfa_store: dict[uuid.UUID, str] = {}
+# ---------------------------------------------------------------------------
+# Durable secret store (Postgres user_mfa_secrets)
+# ---------------------------------------------------------------------------
 
 
-async def enable_mfa(
-    session: AsyncSession,
-    *,
-    user_id: uuid.UUID,
-) -> MfaSecret:
-    """§146: generate and store a TOTP secret for the user.
+def _encrypt_secret(secret: str) -> str:
+    """§68/§146: envelope-encrypt the TOTP seed at rest.
 
-    Returns the secret + otpauth URL. The user scans the QR code with their
-    authenticator app, then calls `verify_mfa` with a code to confirm.
+    A DB dump must not yield usable authenticator seeds. ``EnvelopeSecretStore``
+    (AES-256-GCM, ``v1:`` wire format) is the §68 at-rest boundary; the seed is
+    a secret like any other, so it goes through the same store the master-key
+    rotation governs.
+    """
+    from app.core.secrets import get_envelope_store
+
+    return get_envelope_store().encrypt(secret)
+
+
+def _decrypt_secret(stored: str) -> str:
+    """Decrypt a stored seed, transparently reading legacy base64 rows.
+
+    Rows written before §68 landed in this module stored plain base64 (no
+    ``v1:`` prefix). Those are base64-decoded as before; every NEW write goes
+    through :func:`_encrypt_secret`, so the population migrates lazily as users
+    re-enroll.
+    """
+    from app.core.secrets import EnvelopeSecretStore, get_envelope_store
+
+    if stored.startswith(EnvelopeSecretStore.PREFIX):
+        return get_envelope_store().decrypt(stored).value
+    return base64.b64decode(stored.encode("ascii")).decode("ascii")
+
+
+def _hash_backup_code(code: str) -> str:
+    return hashlib.sha256(code.strip().encode("utf-8")).hexdigest()
+
+
+def _generate_backup_codes() -> list[str]:
+    # 8 bytes = 64 bits of entropy: a DB dump of the unsalted SHA-256 hashes
+    # must not be offline-brute-forceable within the recovery-code lifetime.
+    return [py_secrets.token_hex(8) for _ in range(BACKUP_CODE_COUNT)]
+
+
+async def _get_row(session: AsyncSession, user_id: uuid.UUID) -> UserMfaSecret | None:
+    return (
+        await session.execute(select(UserMfaSecret).where(UserMfaSecret.user_id == user_id))
+    ).scalar_one_or_none()
+
+
+async def enroll_mfa(session: AsyncSession, *, user_id: uuid.UUID) -> MfaSecret:
+    """§146: start enrollment — store a PENDING secret, returned to the user once.
+
+    The row is not enabled until `confirm_mfa` proves the authenticator holds
+    the same secret. Re-enrolling over a pending row replaces the secret;
+    re-enrolling over an ENABLED row is a conflict (disable first).
     """
     user = (
         await session.execute(select(User).where(User.id == user_id))
@@ -111,41 +180,77 @@ async def enable_mfa(
         raise ValidationError("user not found")
 
     secret = _generate_totp_secret()
-    _mfa_store[user_id] = secret
-    url = _build_otpauth_url(secret, email=user.email)
-    return MfaSecret(secret=secret, otpauth_url=url)
+    row = await _get_row(session, user_id)
+    if row is None:
+        row = UserMfaSecret(
+            user_id=user_id,
+            totp_secret_encrypted=_encrypt_secret(secret),
+            backup_codes_hashes=[],
+        )
+        session.add(row)
+    else:
+        if row.enabled_at is not None:
+            raise ConflictError("MFA is already enabled — disable it before re-enrolling")
+        row.totp_secret_encrypted = _encrypt_secret(secret)
+        row.backup_codes_hashes = []
+    await session.flush()
+    return MfaSecret(secret=secret, otpauth_url=_build_otpauth_url(secret, email=user.email))
 
 
-async def verify_mfa(
-    session: AsyncSession,
-    *,
-    user_id: uuid.UUID,
-    code: str,
-) -> bool:
-    """§146: verify a TOTP code. Returns True on success.
+async def confirm_mfa(session: AsyncSession, *, user_id: uuid.UUID, code: str) -> list[str]:
+    """§146: prove possession of the secret → enable MFA + issue 8 backup codes.
 
-    Allows a ±1 window (previous, current, next) to tolerate clock drift.
+    The plaintext backup codes are returned ONCE; only sha256 hashes persist.
     """
-    secret = _mfa_store.get(user_id)
-    if secret is None:
-        # MFA not enabled — this should not happen (the login flow only
-        # raises MfaRequiredError when MFA is enabled). But fail closed.
+    row = await _get_row(session, user_id)
+    if row is None:
+        raise ValidationError("MFA enrollment not started — enroll first")
+    if row.enabled_at is not None:
+        raise ConflictError("MFA is already enabled")
+    if not verify_totp(_decrypt_secret(row.totp_secret_encrypted), code):
+        raise PermissionDeniedError("invalid MFA code")
+    row.enabled_at = datetime.now(UTC)
+    codes = _generate_backup_codes()
+    row.backup_codes_hashes = [_hash_backup_code(c) for c in codes]
+    await session.flush()
+    return codes
+
+
+async def is_mfa_enabled(session: AsyncSession, *, user_id: uuid.UUID) -> bool:
+    """True only once enrollment is CONFIRMED (a pending row never challenges)."""
+    row = await _get_row(session, user_id)
+    return row is not None and row.enabled_at is not None
+
+
+async def verify_mfa(session: AsyncSession, *, user_id: uuid.UUID, code: str) -> bool:
+    """Verify a TOTP code against the user's ENABLED secret. Fails closed."""
+    row = await _get_row(session, user_id)
+    if row is None or row.enabled_at is None:
         return False
-
-    now = int(time.time())
-    for offset in (-30, 0, 30):
-        if _totp(secret, now + offset) == code:
-            return True
-    return False
+    return verify_totp(_decrypt_secret(row.totp_secret_encrypted), code)
 
 
-async def is_mfa_enabled(
-    session: AsyncSession,
-    *,
-    user_id: uuid.UUID,
+async def _consume_backup_code(
+    session: AsyncSession, user_id: uuid.UUID, code: str
 ) -> bool:
-    """Check if MFA is enabled for the user."""
-    return user_id in _mfa_store
+    """§146: validate a recovery code and burn it in the same transaction.
+
+    Backup codes exist for exactly one scenario — the authenticator is gone —
+    so they must work wherever the TOTP works, including the login challenge.
+    Hash-compare (the row stores SHA-256 digests only), one-time consume (the
+    matched digest is removed BEFORE the caller lets the login through).
+    """
+    row = await _get_row(session, user_id)
+    if row is None or row.enabled_at is None:
+        return False
+    digest = _hash_backup_code(code)
+    hashes = list(row.backup_codes_hashes or [])
+    if digest not in hashes:
+        return False
+    hashes.remove(digest)
+    row.backup_codes_hashes = hashes
+    await session.flush()
+    return True
 
 
 async def disable_mfa(
@@ -153,25 +258,153 @@ async def disable_mfa(
     *,
     user_id: uuid.UUID,
     code: str | None = None,
+    backup_code: str | None = None,
 ) -> None:
-    """§146: disable MFA. Requires the current code OR an admin context.
-
-    If `code` is provided, it must match the current TOTP. If `code` is None,
-    the caller is assumed to be an admin (the route layer enforces this).
-    """
+    """§146: disable MFA with a current TOTP code OR a one-time backup code."""
+    row = await _get_row(session, user_id)
+    if row is None or row.enabled_at is None:
+        raise ValidationError("MFA is not enabled")
+    if code is None and backup_code is None:
+        raise ValidationError("a TOTP code or backup code is required")
+    ok = False
     if code is not None:
-        if not await verify_mfa(session, user_id=user_id, code=code):
-            raise PermissionDeniedError("invalid MFA code")
-    _mfa_store.pop(user_id, None)
+        ok = verify_totp(_decrypt_secret(row.totp_secret_encrypted), code)
+    elif backup_code is not None:
+        ok = await _consume_backup_code(session, user_id, backup_code)
+    if not ok:
+        raise PermissionDeniedError("invalid MFA code")
+    await session.delete(row)
+    await session.flush()
+
+
+# ---------------------------------------------------------------------------
+# Login challenges (Redis — short-lived, single-use, instance-shared)
+# ---------------------------------------------------------------------------
+
+
+def _challenge_key(challenge_id: str) -> str:
+    return f"{_CHALLENGE_PREFIX}{challenge_id}"
+
+
+def _failures_key(challenge_id: str) -> str:
+    return f"{_CHALLENGE_PREFIX}{challenge_id}:failures"
+
+
+async def start_challenge(
+    user_id: uuid.UUID,
+    tenant_id: uuid.UUID | None = None,
+    *,
+    redis=None,
+) -> str:
+    """Create the opaque challenge an MFA-enabled account gets after password success."""
+    client = redis if redis is not None else get_redis()
+    challenge_id = py_secrets.token_urlsafe(24)
+    payload = json.dumps(
+        {"user_id": str(user_id), "tenant_id": str(tenant_id) if tenant_id else None}
+    )
+    await client.set(_challenge_key(challenge_id), payload, ex=CHALLENGE_TTL_SECONDS)
+    return challenge_id
+
+
+async def load_challenge(challenge_id: str, *, redis=None) -> dict | None:
+    """Read a challenge payload WITHOUT consuming it (None if unknown/expired)."""
+    client = redis if redis is not None else get_redis()
+    raw = await client.get(_challenge_key(challenge_id))
+    if raw is None:
+        return None
+    try:
+        return json.loads(raw)
+    except ValueError:
+        return None
+
+
+async def challenge_failures(challenge_id: str, *, redis=None) -> int:
+    """How many wrong codes this challenge has seen."""
+    client = redis if redis is not None else get_redis()
+    return int(await client.get(_failures_key(challenge_id)) or 0)
+
+
+async def record_challenge_failure(challenge_id: str, *, redis=None) -> int:
+    """Count a wrong code against the challenge (same TTL as the challenge)."""
+    client = redis if redis is not None else get_redis()
+    key = _failures_key(challenge_id)
+    attempts = await client.incr(key)
+    if attempts == 1:
+        await client.expire(key, CHALLENGE_TTL_SECONDS)
+    return attempts
+
+
+async def consume_challenge(challenge_id: str, *, redis=None) -> dict | None:
+    """Atomically consume a challenge (GETDEL) — the single-use guarantee.
+
+    Returns the payload, or None when the id is unknown, expired, or already
+    consumed — a consumed challenge can never mint a second token pair.
+    """
+    client = redis if redis is not None else get_redis()
+    raw = await client.getdel(_challenge_key(challenge_id))
+    if raw is None:
+        return None
+    try:
+        return json.loads(raw)
+    except ValueError:
+        return None
+
+
+async def drop_challenge(challenge_id: str, *, redis=None) -> None:
+    """Delete challenge + failure counter (the lock path)."""
+    client = redis if redis is not None else get_redis()
+    await client.delete(_challenge_key(challenge_id), _failures_key(challenge_id))
+
+
+async def check_challenge_code(
+    session: AsyncSession,
+    *,
+    challenge_id: str,
+    code: str,
+    redis=None,
+) -> tuple[uuid.UUID, uuid.UUID | None]:
+    """Verify a login challenge's TOTP code; consume the challenge on success.
+
+    Failure semantics:
+    - unknown / expired / already-used challenge → PermissionDeniedError
+    - wrong code → counted in Redis; the 5th failure LOCKS the challenge
+    - right code → GETDEL consume (single-use, race-safe), then return
+      ``(user_id, tenant_id)`` for token issuance.
+    """
+    client = redis if redis is not None else get_redis()
+    payload = await load_challenge(challenge_id, redis=client)
+    if payload is None:
+        raise PermissionDeniedError("invalid or expired MFA challenge")
+    if await challenge_failures(challenge_id, redis=client) >= CHALLENGE_MAX_FAILURES:
+        await drop_challenge(challenge_id, redis=client)
+        raise PermissionDeniedError("MFA challenge locked — too many failed attempts")
+    user_id = uuid.UUID(str(payload["user_id"]))
+    ok = await verify_mfa(session, user_id=user_id, code=code)
+    if not ok:
+        # §146: a lost authenticator must not mean a lost account — the
+        # recovery codes issued at confirm time work at login too. TOTP codes
+        # are 6 digits and recovery codes are hex, so a presented string can
+        # only ever be one kind; the TOTP path rejects non-digit input before
+        # touching the HMAC.
+        ok = await _consume_backup_code(session, user_id, code)
+    if not ok:
+        attempts = await record_challenge_failure(challenge_id, redis=client)
+        if attempts >= CHALLENGE_MAX_FAILURES:
+            await drop_challenge(challenge_id, redis=client)
+            raise PermissionDeniedError("MFA challenge locked — too many failed attempts")
+        raise PermissionDeniedError("invalid MFA code")
+    consumed = await consume_challenge(challenge_id, redis=client)
+    if consumed is None:
+        # Lost a consume race — one challenge MUST NOT mint two token pairs.
+        raise PermissionDeniedError("MFA challenge already used")
+    await client.delete(_failures_key(challenge_id))
+    tenant_raw = payload.get("tenant_id")
+    return user_id, uuid.UUID(str(tenant_raw)) if tenant_raw else None
 
 
 # ---------------------------------------------------------------------------
 # SSO (Single Sign-On)
 # ---------------------------------------------------------------------------
-
-# In-memory store for SSO provider associations. In production, a
-# `user_oauth_accounts` table would persist these.
-_sso_store: dict[str, uuid.UUID] = {}  # provider_subject -> user_id
 
 
 @dataclass(slots=True, frozen=True)
@@ -190,19 +423,24 @@ async def sso_login(
     assertion: SSOAssertion,
     user_agent: str | None = None,
     ip: str | None = None,
+    redis=None,
 ) -> tuple[object, User, uuid.UUID | None]:
     """§146: log in via an external identity provider.
 
     The assertion must already be VERIFIED (the caller decoded the OIDC
     token / OAuth response). This function maps the provider subject to a
-    local user, creating one if needed, then issues tokens.
+    local user, creating one if needed, then issues tokens. The subject →
+    user link lives in Redis (`sso:identity:*`) — shared across instances,
+    unlike the process-local dict it replaced.
 
     Returns the same shape as AuthService.login: (TokenPair, User, tenant_id).
     """
     from app.modules.identity.service import AuthService
 
-    key = f"{assertion.provider}:{assertion.subject}"
-    user_id = _sso_store.get(key)
+    client = redis if redis is not None else get_redis()
+    key = f"{_SSO_PREFIX}{assertion.provider}:{assertion.subject}"
+    raw = await client.get(key)
+    user_id = uuid.UUID(raw) if raw else None
 
     if user_id is not None:
         user = (
@@ -221,12 +459,12 @@ async def sso_login(
             user = User(
                 email=assertion.email,
                 password_hash="",  # empty = SSO-only account
-                name=assertion.name or assertion.email.split("@")[0],
+                full_name=assertion.name or assertion.email.split("@")[0],
                 is_active=True,
             )
             session.add(user)
             await session.flush()
-        _sso_store[key] = user.id
+        await client.set(key, str(user.id))
 
     # Issue tokens — reuse the same flow as password login
     pair = AuthService._issue_pair(
@@ -235,13 +473,21 @@ async def sso_login(
     return pair, user, None
 
 
-class MfaRequiredError(Exception):
-    """Raised by the login flow when MFA is enabled and a code is needed.
+class MfaRequiredError(DomainError):
+    """Password verified; a TOTP challenge must now be completed.
 
-    This is NOT a ValidationError — it carries a different HTTP status
-    (403 with a specific error code) so the client knows to prompt for MFA.
+    NOT a login failure: the login route turns this into the `mfa_challenge`
+    response (no tokens issued yet). If it ever escapes the route layer it
+    renders as 403/mfa_required with the challenge id in details.
     """
 
-    def __init__(self, user_id: uuid.UUID):
-        self.user_id = user_id
-        super().__init__("MFA required")
+    code = "mfa_required"
+    http_status = 403
+    default_message = "MFA verification required"
+
+    def __init__(self, challenge_id: str):
+        self.challenge_id = challenge_id
+        super().__init__(
+            self.default_message,
+            details={"challenge_id": challenge_id, "mfa_required": True},
+        )

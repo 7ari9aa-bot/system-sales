@@ -31,6 +31,10 @@ from sqlalchemy.orm import DeclarativeBase
 from app.core.config import get_settings
 
 TENANT_GUC = "app.tenant_id"
+# §151 — the hierarchy below the tenant. Same transaction-local mechanism;
+# RLS policies on scope-aware tables read these and fail closed when unset.
+WORKSPACE_GUC = "app.workspace_id"
+LOCATION_GUC = "app.location_id"
 
 
 class Base(DeclarativeBase):
@@ -99,7 +103,13 @@ def __getattr__(name: str):
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
-async def bind_tenant(session: AsyncSession, tenant_id: UUID | str) -> None:
+async def bind_tenant(
+    session: AsyncSession,
+    tenant_id: UUID | str,
+    *,
+    workspace_id: UUID | str | None = None,
+    location_id: UUID | str | None = None,
+) -> None:
     """Bind the tenant for RLS policies on the current transaction.
 
     set_config(..., is_local := true) is transaction-scoped exactly like
@@ -107,8 +117,42 @@ async def bind_tenant(session: AsyncSession, tenant_id: UUID | str) -> None:
     SET LOCAL it accepts bind parameters (SET is a utility statement and
     rejects $1 placeholders).
     Call inside an active transaction (session.begin() / tenant_scope()).
+
+    §151: the optional workspace/location ids bind the scope GUCs in the same
+    round; omitting them leaves any previously bound scope untouched — use
+    bind_scope() when the scope must be cleared as well.
     """
     await session.execute(
         text("SELECT set_config(:guc, :tenant_id, true)"),
         {"guc": TENANT_GUC, "tenant_id": str(tenant_id)},
+    )
+    if workspace_id is not None:
+        await session.execute(
+            text("SELECT set_config(:guc, :value, true)"),
+            {"guc": WORKSPACE_GUC, "value": str(workspace_id)},
+        )
+    if location_id is not None:
+        await session.execute(
+            text("SELECT set_config(:guc, :value, true)"),
+            {"guc": LOCATION_GUC, "value": str(location_id)},
+        )
+
+
+async def bind_scope(
+    session: AsyncSession,
+    workspace_id: UUID | str | None,
+    location_id: UUID | str | None,
+) -> None:
+    """Set BOTH §151 scope GUCs, clearing whichever is None.
+
+    Always both-or-null: a request that resolves no scope must never inherit a
+    scope an earlier bind in the same transaction left behind.
+    """
+    await session.execute(
+        text("SELECT set_config(:guc, :value, true)"),
+        {"guc": WORKSPACE_GUC, "value": None if workspace_id is None else str(workspace_id)},
+    )
+    await session.execute(
+        text("SELECT set_config(:guc, :value, true)"),
+        {"guc": LOCATION_GUC, "value": None if location_id is None else str(location_id)},
     )

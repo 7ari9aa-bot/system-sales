@@ -18,6 +18,7 @@ from app.core.idempotency import (
     parse_if_match,
 )
 from app.core.pagination import decode_cursor, page_slice
+from app.core.secrets import encrypt_credentials_dict
 from app.modules.billing.service import EntitlementService
 from app.modules.customers.service import CustomerService
 from app.modules.customers.timeline import Customer360Service
@@ -314,6 +315,14 @@ class IntegrationBody(BaseModel):
     status: str = "connected"
 
 
+# §145: pre-lifecycle status values and the canonical states the migration
+# (f8a1c2d3e4b5) rewrites them to. The request body above still defaults to
+# the legacy 'connected', so transition decisions must compare through this
+# mapping — otherwise every re-registration of a legacy row would look like
+# a jump from a state the lifecycle table does not name.
+_LEGACY_STATUS_ALIASES = {"connected": "active", "error": "reauth_required"}
+
+
 @platform_router.get("/invitations")
 async def list_invitations(
     ctx: TenantContext = Depends(require_permission("settings:write")),
@@ -389,8 +398,36 @@ async def upsert_integration(
         )
     ).scalar_one_or_none()
     if existing is not None:
+        # §145: a status CHANGE on an existing row must be a legal lifecycle
+        # transition — validate_transition was dead code while this wrote
+        # status directly. Creation (below) and same-status re-upserts skip
+        # the check so the webhook-credential refresh path (idempotent
+        # re-register) cannot fail. The check runs BEFORE any field is
+        # written so a rejected upsert stages no partial write.
+        from_status = _LEGACY_STATUS_ALIASES.get(existing.status, existing.status)
+        to_status = _LEGACY_STATUS_ALIASES.get(body.status, body.status)
+        if to_status != from_status:
+            try:
+                Integration.validate_transition(from_status, to_status)
+            except ValueError as exc:
+                raise ValidationError(
+                    str(exc),
+                    details={
+                        "from_status": existing.status,
+                        "to_status": body.status,
+                        "allowed": sorted(
+                            Integration._LIFECYCLE_TRANSITIONS.get(from_status, set())
+                        ),
+                    },
+                ) from exc
         existing.config = body.config
-        existing.credentials = body.credentials
+        # §68: credentials are encrypted at rest BEFORE they touch the row.
+        # Merge semantics (§145): an update WITHOUT a credentials payload is
+        # the documented idempotent re-register (webhook/config refresh) and
+        # must not erase the channel secrets already stored — the default {}
+        # would otherwise silently wipe them and break the next outbound send.
+        if body.credentials:
+            existing.credentials = encrypt_credentials_dict(body.credentials)
         existing.status = body.status
         return {"id": str(existing.id), "status": existing.status}
     # §165: which channels a plan includes is an entitlement. Only the CREATE
@@ -409,7 +446,8 @@ async def upsert_integration(
         provider=body.provider,
         kind=body.kind,
         config=body.config,
-        credentials=body.credentials,
+        # §68: credentials are encrypted at rest BEFORE they touch the row.
+        credentials=encrypt_credentials_dict(body.credentials),
         status=body.status,
     )
     ctx.session.add(integration)

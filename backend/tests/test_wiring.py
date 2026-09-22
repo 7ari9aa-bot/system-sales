@@ -18,6 +18,7 @@ import asyncio
 import json
 import uuid
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -447,7 +448,11 @@ def test_relay_event_log_param_mapping_is_defensive():
 
     relay = OutboxRelay(bus=MagicMock())
     session = MagicMock()
-    session.execute = AsyncMock()
+    # The relay's §153 ordering probe reads result.scalar() synchronously —
+    # mirror a real Result so the mock can't leak a coroutine into the guard.
+    session.execute = AsyncMock(
+        side_effect=lambda *a, **k: SimpleNamespace(scalar=lambda: None)
+    )
     created_at = datetime.now(UTC)
     row = {
         "id": uuid.uuid4(),

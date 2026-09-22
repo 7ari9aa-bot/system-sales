@@ -1,0 +1,2687 @@
+# ARCHITECTURE PATCH — FINAL 35 GAPS
+
+هذه الوثيقة امتداد مباشر للـArchitecture السابقة حتى §124.
+
+الـrules هنا **تُعدّل وتُكمّل** الـsections السابقة، وأي تعارض بينها وبين صياغة قديمة يُحسم لصالح هذه الـpatch.
+
+الهدف: إغلاق الـ35 فجوة الأخيرة قبل بدء تنفيذ الـcore architecture.
+
+---
+
+# §125 — TENANT CONTEXT FOR ALL EXECUTION MODES
+
+Tenant context ليس خاصًا بالـHTTP.
+
+يجب أن يكون موحدًا لكل execution path:
+
+```text
+HTTP Request
+Webhook
+Worker
+Outbox Relay
+Redis Consumer
+Scheduled Job
+n8n Callback
+AI Run
+Maintenance Job
+Billing Job
+Retention Job
+Analytics Job
+```
+
+كل execution يحصل على:
+
+```text
+tenant_id
+workspace_id
+location_id
+actor_id
+correlation_id
+```
+
+## Worker / Consumer
+
+أي job/event tenant-scoped:
+
+```text
+Job
+↓
+Resolve tenant context
+↓
+Open transaction
+↓
+Set transaction-scoped tenant context
+↓
+Execute under RLS
+↓
+Commit
+```
+
+## Cross-tenant jobs
+
+مثل:
+
+```text
+Billing
+Retention
+Analytics
+Maintenance
+```
+
+تعمل:
+
+```text
+Enumerate tenants
+↓
+Tenant A transaction
+↓
+commit
+↓
+Tenant B transaction
+↓
+commit
+```
+
+ولا تستخدم transaction واحدة لكل tenants.
+
+## Webhook ingress
+
+الـWebhook يأتي قبل معرفة الـtenant.
+
+لذلك:
+
+```text
+Webhook
+↓
+Verify signature
+↓
+Lookup provider_account/channel_account
+↓
+Resolve tenant
+↓
+Enter tenant-scoped business path
+↓
+RLS-protected processing
+```
+
+الـlookup نفسه يكون عبر **ingress mapping** ضيقة الصلاحيات، وليس bypass مفتوحًا لقاعدة البيانات.
+
+---
+
+# §126 — CONVERSATION SERIALIZATION
+
+كل Conversation لها processing serialization key:
+
+```text
+conversation_id
+```
+
+ممنوع تشغيل أكثر من state-mutating AI/message processor لنفس conversation في نفس الوقت.
+
+استخدم:
+
+```text
+conversation lease
++
+fencing/version
+```
+
+مثال:
+
+```text
+Message A
+Message B
+Message C
+```
+
+لا تصبح:
+
+```text
+AI A ──────┐
+AI B ──────┼── parallel writes
+AI C ──────┘
+```
+
+بل:
+
+```text
+Conversation Queue
+↓
+Acquire lease
+↓
+Process next event
+↓
+Commit
+↓
+Release / renew
+```
+
+## Conversation ownership state
+
+يجب أن تكون صريحة:
+
+```text
+AI_ACTIVE
+HUMAN_ACTIVE
+PAUSED
+HANDOVER_PENDING
+CLOSED
+```
+
+## Newer-message policy
+
+لو AI Run قديم ما زال يعمل ووصلت رسالة أحدث:
+
+```text
+older run
+→ mark stale/cancelled where possible
+```
+
+ولا يسمح له بإرسال stale response بعد أن أصبح السياق قديمًا.
+
+لو Human تدخل:
+
+```text
+Human response
+→ AI outbound run becomes stale
+```
+
+---
+
+# §127 — CONSUMER IDEMPOTENCY
+
+"Consumer يجب أن يكون idempotent" ليست implementation.
+
+استخدم:
+
+```text
+processed_events
+```
+
+أو equivalent inbox table:
+
+```text
+ProcessedEvent
+├── consumer_name
+├── event_id
+├── processed_at
+├── result_reference
+└── status
+```
+
+مع unique constraint:
+
+```text
+(consumer_name, event_id)
+```
+
+والأهم:
+
+```text
+BEGIN
+    insert processed_event
+    apply business effect
+    update domain
+COMMIT
+```
+
+أي يتم تسجيل processing marker والـeffect داخل نفس transaction عندما يكون ذلك ممكنًا.
+
+---
+
+# §128 — OUTBOX RELAY CONCURRENCY
+
+إذا كان أكثر من Outbox Relay instance يعمل:
+
+```text
+SELECT ... FOR UPDATE SKIP LOCKED
+```
+
+أو equivalent leasing mechanism.
+
+الـrelay يحصل على:
+
+```text
+lease
+attempt
+locked_at
+next_attempt_at
+```
+
+ثم ينشر event.
+
+لو instance مات:
+
+```text
+lease expires
+↓
+another relay can reclaim
+```
+
+---
+
+# §129 — OUTBOUND MESSAGE DELIVERY
+
+الإرسال ليس:
+
+```text
+POST provider
+→ done
+```
+
+بل:
+
+```text
+OutboundMessage
+↓
+QUEUED
+↓
+SENDING
+├── SENT
+├── UNKNOWN
+└── FAILED
+        │
+        ├── DELIVERED
+        └── READ
+```
+
+الحالات:
+
+```text
+QUEUED
+SENDING
+SENT
+UNKNOWN
+DELIVERED
+READ
+FAILED
+```
+
+## UNKNOWN
+
+لو connection انقطع بعد request وقبل معرفة نتيجة provider:
+
+```text
+UNKNOWN
+```
+
+ولا تعيد الإرسال blindly.
+
+يتم reconciliation باستخدام:
+
+```text
+provider message status
+external message id
+provider lookup
+delivery webhook
+```
+
+## Idempotency
+
+كل outbound operation لها:
+
+```text
+idempotency_key
+```
+
+ويجب أن يكون الـHTTP/API mutation نفسه يدعم:
+
+```text
+Idempotency-Key
+```
+
+عند الحاجة.
+
+---
+
+# §130 — PROVIDER DELIVERY RECONCILIATION
+
+Provider webhooks هي source إضافي لتقدم حالة الرسالة.
+
+مثلاً:
+
+```text
+SENT
+↓
+DELIVERED
+↓
+READ
+```
+
+ولو وصل:
+
+```text
+READ
+```
+
+قبل:
+
+```text
+SENT
+```
+
+نخزنه كـout-of-order event ونعيد reconciliation.
+
+لا تعتمد فقط على:
+
+```text
+received_at
+```
+
+بل:
+
+```text
+provider_timestamp
++
+provider_event_id
++
+state transition rules
+```
+
+---
+
+# §131 — PII / DATA-LIFECYCLE MAP
+
+أي data copy يجب أن تكون معروفة:
+
+```text
+Primary DB
+Outbox
+Event Log
+Audit
+Logs
+n8n
+Search Index
+Vector Store
+Analytics Read Models
+Object Storage
+Backups
+```
+
+لا نضع PII كاملة في كل layer.
+
+القاعدة:
+
+```text
+Events
+→ IDs + minimal metadata
+
+Logs
+→ no raw PII by default
+
+Audit
+→ minimum necessary before/after
+
+Search
+→ deletable derived index
+
+Vector store
+→ deletable derived data
+
+n8n
+→ minimum payload + retention policy
+```
+
+يجب أن توجد:
+
+```text
+Data Classification Map
+Retention Policy
+Deletion Propagation Policy
+```
+
+أي:
+
+```text
+Customer deleted
+↓
+Primary records
+↓
+Search index
+↓
+Vector chunks
+↓
+Analytics derived data
+↓
+Memory
+↓
+n8n retained data
+↓
+Other derived stores
+```
+
+كلها تدخل في deletion workflow حسب policy.
+
+Backups لها retention منفصل ومعلن.
+
+---
+
+# §132 — AI SECURITY BOUNDARY
+
+كل input من:
+
+```text
+Customer
+Message
+Attachment
+Transcript
+Knowledge Document
+External API
+Tool Result
+```
+
+يعتبر:
+
+```text
+UNTRUSTED DATA
+```
+
+ولا يمكنه تعديل system/developer instructions.
+
+يجب الفصل بين:
+
+```text
+SYSTEM / POLICY INSTRUCTIONS
+```
+
+و:
+
+```text
+UNTRUSTED CONTEXT
+```
+
+## Tool argument binding
+
+الـAI لا يحدد authorization scope من prompt.
+
+مثلاً:
+
+```text
+get_order(order_id)
+```
+
+السيرفر يتحقق أن:
+
+```text
+order belongs to allowed customer/conversation/tenant scope
+```
+
+ولا يقبل:
+
+```text
+"get order 9911"
+```
+
+كإثبات للصلاحية.
+
+---
+
+# §133 — AI ACTOR IDENTITY
+
+لا نستخدم صياغة:
+
+```text
+AI = Human
+```
+
+الصياغة النهائية:
+
+```text
+Human Actor
+AI Agent Actor
+Automation Actor
+System Actor
+Integration Actor
+```
+
+الـAI Agent له:
+
+```text
+agent_id
+tenant_id
+policy
+tool permissions
+risk policy
+```
+
+لكن عندما ينفذ:
+
+```text
+AI Agent
+↓
+Application Service
+↓
+Domain
+```
+
+لا يوجد bypass.
+
+---
+
+# §134 — AI RUN LIMITS
+
+AI Budget وحده لا يكفي.
+
+لكل AIRun:
+
+```text
+max_steps
+max_tool_calls
+max_wall_time
+max_retries
+max_handoffs
+```
+
+لو تجاوز:
+
+```text
+STOP
+↓
+handover / failure / fallback
+```
+
+لا يسمح للـagent بالloop إلى ما لا نهاية.
+
+---
+
+# §135 — APPROVAL WORKFLOW
+
+Approval يصبح first-class entity:
+
+```text
+ApprovalRequest
+ApprovalStep
+ApprovalDecision
+```
+
+مثال:
+
+```text
+AIRun
+↓
+High-risk tool
+↓
+ApprovalRequest
+↓
+WAITING_APPROVAL
+```
+
+Approval يحتوي:
+
+```text
+requested_by
+requested_for
+tenant
+entity
+action
+risk_level
+expires_at
+status
+approved_by
+approved_at
+rejection_reason
+```
+
+Statuses:
+
+```text
+PENDING
+APPROVED
+REJECTED
+EXPIRED
+CANCELLED
+```
+
+## Suspended AI Run
+
+يجب أن يكون durable:
+
+```text
+AIRun
+→ WAITING_APPROVAL
+→ persisted state
+```
+
+ثم:
+
+```text
+Approved
+→ Resume
+
+Rejected
+→ Stop
+
+Expired
+→ Stop
+```
+
+لو العميل أرسل رسالة جديدة أثناء الانتظار:
+
+```text
+Approval becomes stale
+↓
+Re-evaluate context
+```
+
+ولا يستمر run قديم بنفس السياق تلقائيًا.
+
+---
+
+# §136 — N8N VS INTERNAL WORKFLOW
+
+القرار النهائي:
+
+```text
+Our Workflow Domain
+= Canonical Workflow Definition
+```
+
+و:
+
+```text
+n8n
+= Execution / Integration Adapter
+```
+
+أي:
+
+```text
+Tenant Workflow
+↓
+Our DB
+↓
+Our Workflow Version
+↓
+Execution Policy
+↓
+Internal engine and/or n8n adapter
+```
+
+n8n ليس source of truth للـtenant workflow.
+
+## n8n isolation
+
+الـtenant credentials لا تكون داخل workflow definitions كنصوص raw.
+
+تستخدم:
+
+```text
+Secret Reference
+```
+
+والـn8n callback إلى FastAPI يستخدم:
+
+```text
+Automation Actor
++
+tenant-scoped credential/token
+```
+
+ولا يملك token global unrestricted.
+
+---
+
+# §137 — CROSS-MODULE READ LAYER
+
+قاعدة:
+
+```text
+No cross-module repository access
+```
+
+تظل صحيحة.
+
+لكن نسمح:
+
+```text
+Read / Query Layer
+```
+
+يقرأ من:
+
+```text
+public read contracts
+read models
+approved DB views
+analytics models
+```
+
+مثال Inbox:
+
+```text
+Conversation
++
+Customer
++
+Last Message
++
+Assignment
+```
+
+لا يحدث عبر:
+
+```text
+ConversationRepository
+→ CustomerRepository
+```
+
+بل عبر:
+
+```text
+InboxQuery
+```
+
+أو read model.
+
+## Consistency
+
+لا نفترض أن كل read model:
+
+```text
+immediately consistent
+```
+
+Mutation response يعيد canonical result مباشرة.
+
+والـread model يحدث asynchronously.
+
+لـcritical read-after-write:
+
+```text
+authoritative read
+```
+
+أو local cache/state reconciliation.
+
+---
+
+# §138 — ARCHITECTURE ENFORCEMENT
+
+الـmodule boundaries يجب ألا تكون مجرد documentation.
+
+استخدم architecture checks مثل:
+
+```text
+Import boundary tests
+Architecture tests
+Static dependency checks
+Schema/grant separation where useful
+CI enforcement
+```
+
+الهدف:
+
+```text
+Module A
+X→ Module B internal repository
+```
+
+يفشل في CI.
+
+---
+
+# §139 — SAGAS / PROCESS MANAGERS
+
+أي business process طويل:
+
+```text
+Order
+→ Payment
+→ Inventory Reservation
+→ Fulfillment
+→ Shipment
+```
+
+يمتلك:
+
+```text
+Process Manager / Saga
+```
+
+أو state machine واضحة.
+
+لا تعتمد فقط على choreography مبهمة.
+
+مثال:
+
+```text
+ORDER_CREATED
+↓
+PAYMENT_PENDING
+↓
+PAYMENT_CONFIRMED
+↓
+STOCK_RESERVED
+↓
+FULFILLMENT_PENDING
+↓
+FULFILLED
+```
+
+Failure:
+
+```text
+Payment failed
+→ release reservation
+
+Fulfillment failed
+→ compensation policy
+```
+
+---
+
+# §140 — INVENTORY CONCURRENCY
+
+Stock reservation يجب أن تكون durable:
+
+```text
+Reservation
+├── quantity
+├── expires_at
+├── status
+├── order_id
+```
+
+الـreservation لها:
+
+```text
+ACTIVE
+EXPIRED
+CONVERTED
+CANCELLED
+```
+
+الـinventory update يستخدم transaction/concurrency control يمنع oversell.
+
+---
+
+# §141 — PAYMENT UNKNOWN + RECONCILIATION
+
+Payment states تشمل:
+
+```text
+PENDING
+AUTHORIZED
+CAPTURED
+FAILED
+UNKNOWN
+REFUNDED
+PARTIALLY_REFUNDED
+```
+
+لو provider result غير معروف:
+
+```text
+UNKNOWN
+↓
+Reconciliation
+↓
+Provider status lookup
+↓
+Resolve
+```
+
+لا نعيد charge تلقائيًا لمجرد timeout.
+
+---
+
+# §142 — DEDUPE + IDENTIFIER STRATEGY
+
+للـhigh-volume tables:
+
+```text
+UUIDv7 / equivalent time-sortable IDs
+```
+
+حيث مناسب.
+
+بالنسبة لـpartitioned Messages:
+
+لا تعتمد على unique constraint المركب الذي يتأثر بالـpartition key وحده.
+
+استخدم dedicated dedupe record:
+
+```text
+InboundMessageDedupe
+├── tenant_id
+├── channel_account_id
+├── external_message_id
+├── first_seen_at
+```
+
+Unique:
+
+```text
+tenant_id
++
+channel_account_id
++
+external_message_id
+```
+
+هذا يفصل dedupe عن retention/partition lifecycle.
+
+---
+
+# §143 — TOMBSTONES / SOFT DELETE
+
+Entity الحساسة التي تحتاج reconciliation/restore تستخدم:
+
+```text
+deleted_at
+deleted_by
+deletion_reason
+```
+
+وعند الحاجة:
+
+```text
+tombstone
+```
+
+حتى لا تعيد integration قديمة entity محذوفة بدون علم النظام.
+
+---
+
+# §144 — TENANT FAIRNESS / NOISY NEIGHBOR
+
+كل tenant له:
+
+```text
+concurrency budget
+queue budget
+rate budget
+AI budget
+campaign throughput budget
+```
+
+الأولوية:
+
+```text
+Human Response
+AI Response
+Critical System Events
+Customer Webhooks
+↓
+Normal Automation
+↓
+Bulk / Campaign Work
+```
+
+Campaign كبيرة من Tenant A لا يجوز أن تجوع:
+
+```text
+Tenant B
+```
+
+---
+
+# §145 — CHANNEL ACCOUNT LIFECYCLE
+
+`ChannelAccount` له lifecycle:
+
+```text
+PENDING
+CONNECTING
+ACTIVE
+REAUTH_REQUIRED
+RESTRICTED
+DISCONNECTED
+DISABLED
+```
+
+يدعم:
+
+```text
+credential/token refresh
+provider account mapping
+quality/status metadata
+rate limits
+messaging limits
+webhook health
+```
+
+كل channel adapter يملك state provider-specific، لكن Core يرى canonical state.
+
+---
+
+# §146 — AUTH / PLATFORM ACCESS MODEL
+
+Tenant plane:
+
+```text
+Supabase Auth
++
+Tenant memberships
++
+RBAC
++
+Resource permissions
+```
+
+Token لا يحتوي افتراضًا على tenant واحد فقط إذا المستخدم ينتمي لأكثر من tenant.
+
+الـcurrent tenant/workspace context يتم اختياره والتحقق منه server-side.
+
+## Additional requirements
+
+```text
+MFA
+SSO-ready architecture
+OAuth scopes
+Public API keys
+API key rotation
+Field-level authorization
+```
+
+Field-level restrictions مطلوبة للبيانات الحساسة مثل:
+
+```text
+PII
+supplier cost
+internal margins
+secrets
+```
+
+---
+
+# §147 — BREAK-GLASS SUPPORT ACCESS
+
+Platform support قد يحتاج الدخول إلى tenant data.
+
+هذا لا يتم عبر:
+
+```text
+shared admin credentials
+```
+
+بل:
+
+```text
+Break-glass request
+↓
+Explicit scope
+↓
+Time-limited elevation
+↓
+Reason
+↓
+Audit
+↓
+Automatic expiry
+```
+
+كل access يظهر في independent platform audit.
+
+---
+
+# §148 — OUTBOUND WEBHOOKS
+
+الـtenants يستطيعون استقبال events:
+
+```text
+Webhook Subscription
+Webhook Endpoint
+Webhook Delivery
+```
+
+Delivery لها:
+
+```text
+queued
+sending
+delivered
+failed
+retrying
+dead_lettered
+```
+
+مع:
+
+```text
+signature
+timestamp
+replay protection
+idempotency
+```
+
+---
+
+# §149 — REALTIME RECOVERY
+
+كل realtime client يمتلك:
+
+```text
+connection_id
+subscription scope
+last_event_id / cursor
+```
+
+عند reconnect:
+
+```text
+Reconnect
+↓
+Re-authenticate
+↓
+Re-check tenant/role/permissions
+↓
+Resume from cursor where possible
+↓
+Otherwise resync authoritative state
+```
+
+لو الـrole تغير أو tenant اتعطل:
+
+```text
+subscription revoked
+```
+
+ولا يستمر connection بالصلاحيات القديمة.
+
+---
+
+# §150 — CANONICAL ENTITY MODEL PATCH
+
+أضف رسميًا:
+
+```text
+ApprovalRequest
+ApprovalStep
+ApprovalDecision
+
+Note
+Tag
+Mention
+Notification
+
+SavedView
+Favorite
+
+Review
+Attribution
+
+BusinessCalendar
+BusinessHours
+Holiday
+
+BudgetPolicy
+AIProviderPolicy
+
+ApiKey
+Transcript
+
+WebhookEvent
+OutboundMessage
+DeliveryAttempt
+
+IdentityMergeCandidate
+
+InboundMessageDedupe
+
+EventLog
+ScheduledJob
+
+FeatureFlag
+MetricDefinition
+```
+
+ولا تكرر:
+
+```text
+Segment
+```
+
+Segment واحدة shared entity بين:
+
+```text
+CRM
+Marketing
+Analytics
+AI
+```
+
+---
+
+# §151 — ENTITY OWNERSHIP / RLS SCOPE
+
+يجب تحديد ownership قبل الـschema.
+
+القاعدة:
+
+```text
+Tenant
+↓
+Workspace
+↓
+Location
+```
+
+ثم لكل Entity في schema يوجد:
+
+```text
+ownership_scope
+```
+
+مثلاً:
+
+```text
+Customer
+→ Tenant-scoped or workspace-scoped حسب business decision
+
+Conversation
+→ Location / Channel scoped
+
+ChannelAccount
+→ Workspace / Location scoped
+
+Inventory
+→ Location scoped
+
+Orders
+→ Workspace / Location scoped
+```
+
+لا تجعل كل شيء تلقائيًا `tenant_id only`.
+
+الـRLS يجب أن يعكس نفس ownership hierarchy.
+
+مثال:
+
+```text
+User
+→ Tenant
+→ Workspace
+→ Location
+```
+
+ثم policy تمنع المستخدم من Location غير المصرح بها.
+
+---
+
+# §152 — OUTBOX VS DURABLE EVENT LOG
+
+افصل المفهومين:
+
+```text
+Outbox
+= temporary reliable publication buffer
+```
+
+و:
+
+```text
+EventLog
+= append-only durable event history
+```
+
+Flow:
+
+```text
+Transaction
+├── Domain state
+├── Audit
+├── EventLog
+└── Outbox
+```
+
+ثم:
+
+```text
+Outbox
+↓
+Redis Streams
+```
+
+الـOutbox قد يتم تنظيفه بعد نجاح publication/retention window.
+
+الـEventLog هو durable replay source.
+
+---
+
+# §153 — EVENT ORDERING + EVENT VERSIONING
+
+لكل aggregate:
+
+```text
+aggregate_version
+```
+
+والـevents تحمل:
+
+```text
+schema_version
+aggregate_version
+occurred_at
+correlation_id
+causation_id
+```
+
+ordering policy:
+
+```text
+same aggregate
+→ ordered
+
+different aggregates
+→ no global ordering guarantee
+```
+
+Event schema evolution:
+
+```text
+Backward compatible change
+→ allowed
+
+Breaking change
+→ new event/schema version
+```
+
+يجب وجود:
+
+```text
+consumer-driven contract tests
+producer contract tests
+event schema registry/documentation
+```
+
+والـold event يجب أن يبقى قابلًا للفهم عبر versioned consumer/adapter.
+
+---
+
+# §154 — DURABLE SCHEDULER
+
+Redis Streams ليست scheduler.
+
+أضف:
+
+```text
+ScheduledJob
+├── run_at
+├── status
+├── tenant_id
+├── job_type
+├── payload/reference
+├── attempts
+├── next_attempt_at
+├── cancelled_at
+└── idempotency_key
+```
+
+Scheduler:
+
+```text
+DB ScheduledJob
+↓
+Scheduler Poller
+↓
+Claim due jobs
+↓
+Worker
+```
+
+يدعم:
+
+```text
+cancel
+reschedule
+retry
+```
+
+وعند execution:
+
+```text
+Re-check condition
+```
+
+لأن:
+
+```text
+Customer may have replied
+Order may have changed
+Consent may have changed
+Campaign may have been cancelled
+```
+
+---
+
+# §155 — CANONICAL MESSAGE CONTENT MODEL
+
+Channel normalization تتحول إلى canonical model:
+
+```text
+Message
+├── text
+├── media
+├── voice
+├── image
+├── video
+├── file
+├── location
+├── contact
+├── buttons
+├── list
+├── reaction
+├── reply_to
+├── story_reference
+├── edited
+├── deleted
+└── provider_metadata
+```
+
+الـmessage لها:
+
+```text
+direction
+content_type
+provider_message_id
+conversation_id
+sender
+timestamp
+reply_to
+```
+
+Unsupported content:
+
+```text
+UNSUPPORTED_CONTENT
+```
+
+مع حفظ raw/provider metadata قدر الإمكان بدون كسر الـcore.
+
+---
+
+# §156 — CONVERSATION LIFECYCLE
+
+Conversation ليست بالضرورة:
+
+```text
+one customer = one conversation forever
+```
+
+بل تعريف واضح:
+
+```text
+Conversation
+= customer/channel context + active interaction lifecycle
+```
+
+states:
+
+```text
+OPEN
+WAITING_CUSTOMER
+WAITING_HUMAN
+WAITING_AI
+PAUSED
+CLOSED
+```
+
+قواعد:
+
+```text
+Customer replies after closed
+→ reopen according to policy
+
+New subject
+→ may create new conversation/thread
+
+Human takeover
+→ AI state changes
+
+Customer merge
+→ preserve conversations
+→ remap canonical customer
+```
+
+كل policy تكون قابلة للضبط حسب channel/domain.
+
+---
+
+# §157 — KNOWLEDGE VISIBILITY
+
+كل Knowledge Document/Chunk يجب أن يحتوي:
+
+```text
+visibility
+```
+
+مثال:
+
+```text
+CUSTOMER_FACING
+STAFF_ONLY
+INTERNAL
+ADMIN_ONLY
+```
+
+Retrieval pipeline:
+
+```text
+Retrieve candidates
+↓
+Tenant filter
+↓
+Permission filter
+↓
+Visibility filter
+↓
+Agent policy filter
+↓
+Context
+```
+
+لا يكفي وضع permissions ثم إدخال الـchunks مباشرة في context.
+
+---
+
+# §158 — MEMORY WRITE GOVERNANCE
+
+AI لا يكتب customer memory بحرية.
+
+Memory write policy تحدد:
+
+```text
+allowed memory types
+source
+verification level
+confidence
+retention
+```
+
+فرق واضح بين:
+
+```text
+Customer said X
+```
+
+و:
+
+```text
+System verified X
+```
+
+كل memory claim يملك:
+
+```text
+source
+actor
+created_at
+verified_at
+confidence
+```
+
+والـstaff يستطيع:
+
+```text
+review
+edit
+delete
+invalidate
+```
+
+---
+
+# §159 — PUBLIC CUSTOMER-FACING PLANE
+
+Webchat / checkout / payment links ليست نفس staff plane.
+
+Architecture:
+
+```text
+Customer-facing App
+↓
+Public Gateway
+↓
+Session / Signed Token
+↓
+Tenant Resolution
+↓
+Rate Limit / CAPTCHA
+↓
+Allowed Public APIs
+```
+
+لا تعطي anonymous users staff permissions.
+
+## Payments
+
+Card data:
+
+```text
+must not become application business data
+```
+
+استخدم:
+
+```text
+Hosted payment page
+or provider tokenization
+```
+
+والـPayment entity تخزن:
+
+```text
+provider reference
+amount
+currency
+status
+method metadata
+```
+
+وليس raw card data.
+
+---
+
+# §160 — PLATFORM ADMIN PLANE
+
+أنشئ plane منفصل:
+
+```text
+Platform Admin
+```
+
+عن:
+
+```text
+Tenant Admin
+```
+
+Platform Admin يدير:
+
+```text
+Tenants
+Plans
+Entitlements
+Global integrations
+DLQ
+System incidents
+Platform billing
+Support access
+```
+
+له:
+
+```text
+separate permissions
+separate audit scope
+break-glass access
+```
+
+ولا يعتمد على Tenant RBAC.
+
+---
+
+# §161 — EXTERNAL COMMERCE SOURCE OF TRUTH
+
+عند اتصال Shopify/WooCommerce/other external store:
+
+لا يوجد:
+
+```text
+blind two-way sync
+```
+
+بل:
+
+```text
+SourceOfTruthPolicy
+```
+
+لكل entity:
+
+```text
+Products
+Inventory
+Orders
+Customers
+Payments
+```
+
+نحدد:
+
+```text
+Internal
+External
+Hybrid
+```
+
+مع:
+
+```text
+sync direction
+conflict policy
+last_synced_at
+external_version
+internal_version
+```
+
+CSV/import:
+
+```text
+Import
+↓
+Validation
+↓
+Identity Resolution
+↓
+Deduplication
+↓
+Domain Application Services
+```
+
+ولا يحقن مباشرة في DB.
+
+---
+
+# §162 — RUNTIME TOPOLOGY
+
+Production topology:
+
+```text
+                    ┌───────────────┐
+                    │ Load Balancer │
+                    └───────┬───────┘
+                            │
+              ┌─────────────┴─────────────┐
+              ▼                           ▼
+        FastAPI replicas            Realtime replicas
+              │                           │
+              └──────────────┬────────────┘
+                             │
+              ┌──────────────┼──────────────┐
+              ▼              ▼              ▼
+         PostgreSQL         Redis         Object Storage
+         / Supabase       Streams
+              │
+        ┌─────┴─────────┐
+        ▼               ▼
+   Outbox Relay       Workers
+                          │
+              ┌───────────┼───────────┐
+              ▼           ▼           ▼
+             AI          n8n        Media/Jobs
+```
+
+API instances are stateless.
+
+Realtime state is externalized.
+
+Redis persistence should be enabled according to deployment requirements, but:
+
+```text
+Redis failure
+≠
+data loss
+```
+
+لأن الـOutbox/EventLog/DB هما recovery source.
+
+---
+
+# §163 — REDIS FAILURE MODE
+
+لو Redis وقع:
+
+```text
+Existing DB
+= continues to function
+```
+
+new events:
+
+```text
+remain in Outbox
+```
+
+حتى يعود Redis:
+
+```text
+Outbox Relay
+↓
+republish pending events
+```
+
+بعد العودة:
+
+```text
+Consumers
+↓
+dedupe
+↓
+continue
+```
+
+يجب اختبار هذا السيناريو فعليًا.
+
+---
+
+# §164 — TENANT-SCOPED RESTORE
+
+PITR يعالج disaster-level recovery، لكنه ليس sufficient لـ:
+
+```text
+Tenant A
+deleted 3000 customers
+```
+
+لذلك نحتاج:
+
+```text
+soft-delete / tombstones
++
+tenant-scoped restore process
+```
+
+عند recovery من backup:
+
+```text
+Backup/PITR
+↓
+isolated recovery database
+↓
+extract target tenant
+↓
+validate
+↓
+restore selected records
+```
+
+ولا يتم restore قاعدة production كلها فوق باقي tenants بسبب حادث Tenant واحد.
+
+---
+
+# §165 — ENTITLEMENTS
+
+أضف:
+
+```text
+EntitlementService
+```
+
+كل Application Service يستخدمه حسب الحاجة:
+
+```text
+tenant plan
++
+tenant status
++
+entitlement
++
+current usage
+```
+
+مثال:
+
+```text
+CanCreateChannel
+CanAddUser
+CanSendCampaign
+CanUseAI
+CanUseVoice
+CanUseAPI
+```
+
+لا تضع entitlement checks متفرقة في modules.
+
+Flow:
+
+```text
+Auth
+↓
+Tenant
+↓
+Permission
+↓
+Entitlement
+↓
+Domain rule
+↓
+Execute
+```
+
+---
+
+# §166 — STAFF NOTIFICATION INFRASTRUCTURE
+
+Notification تصبح first-class:
+
+```text
+Notification
+NotificationPreference
+NotificationDelivery
+NotificationDigest
+```
+
+يدعم:
+
+```text
+in-app
+email
+push
+```
+
+مع:
+
+```text
+priority
+dedupe_key
+quiet_hours
+digest policy
+delivery status
+```
+
+مثلاً 40 updates لنفس conversation لا تنتج 40 notifications.
+
+يتم dedupe/aggregation.
+
+SLA escalation:
+
+```text
+SLA approaching
+↓
+in-app
+↓
+push
+↓
+email/escalation
+```
+
+حسب policy.
+
+---
+
+# §167 — METRIC DEFINITIONS
+
+الأرقام لا تحسب في كل صفحة بطريقة مختلفة.
+
+أنشئ:
+
+```text
+MetricDefinition
+```
+
+ولكل metric:
+
+```text
+name
+definition
+source
+filters
+timezone rule
+business-hours rule
+currency rule
+refund treatment
+aggregation
+version
+```
+
+مثال:
+
+```text
+Revenue
+```
+
+يجب أن يكون تعريفه واحدًا في:
+
+```text
+Home
+Analytics
+Reports
+Billing
+```
+
+نفس الشيء:
+
+```text
+First Response Time
+Resolution Time
+AI Resolution Rate
+Conversion Rate
+AOV
+ROAS
+```
+
+---
+
+# §168 — SLO / ALERTING
+
+Operations لا تعتمد على metrics فقط.
+
+نحتاج SLO catalog:
+
+```text
+API availability
+Webhook processing latency
+Outbox lag
+Queue depth
+DLQ size
+AI fallback rate
+AI failure rate
+Realtime disconnect rate
+Provider error rate
+Search latency
+Job failure rate
+```
+
+كل metric مهم له:
+
+```text
+SLO
+warning threshold
+critical threshold
+alert destination
+owner
+runbook
+```
+
+القيم الرقمية النهائية تضبط بعد baseline/load testing، لكن الـframework نفسه يجب أن يكون موجودًا من البداية.
+
+---
+
+# §169 — AI EVALUATION PIPELINE
+
+`AIEvaluation` ليست مجرد table.
+
+الpipeline:
+
+```text
+Prompt/Agent Version
+↓
+Evaluation Dataset
+↓
+Offline Evaluation
+↓
+Safety / Policy Checks
+↓
+Regression Comparison
+↓
+Approve
+↓
+Canary / Limited Rollout
+↓
+Production
+↓
+Monitor
+↓
+Rollback if needed
+```
+
+كل Agent/Prompt Version يجب أن يعرف:
+
+```text
+evaluation status
+quality metrics
+rollout status
+```
+
+---
+
+# §170 — CHANNEL TESTING ENVIRONMENT
+
+البيئات:
+
+```text
+Development
+Staging
+Production
+```
+
+القنوات production لا تربط افتراضيًا بـdev/staging.
+
+استخدم:
+
+```text
+test accounts
+test numbers
+test credentials
+```
+
+والـconfiguration تكون environment-scoped:
+
+```text
+channel credentials
+webhooks
+templates
+provider IDs
+```
+
+---
+
+# §171 — BILLING / CHANNEL COST INTEGRATION
+
+لو النظام سيحاسب على provider usage:
+
+```text
+Provider Usage Event
+↓
+Usage Meter
+↓
+Billing
+```
+
+مثلاً:
+
+```text
+message category
+voice minutes
+AI usage
+storage
+```
+
+لا تحسب provider charges من UI.
+
+الـbilling يستخدم canonical usage events.
+
+---
+
+# §172 — FINAL ARCHITECTURE RULE FOR DELETE / RETENTION
+
+أي Delete Request يجب أن يمر:
+
+```text
+Application Service
+↓
+Privacy Policy
+↓
+Domain deletion
+↓
+Derived data deletion
+↓
+Search deletion
+↓
+Vector deletion
+↓
+Memory deletion
+↓
+Integration propagation where required
+↓
+Audit
+```
+
+ولا تعمل:
+
+```text
+DELETE FROM customers
+```
+
+وتعتبر الـprivacy request انتهت.
+
+---
+
+# §173 — FINAL ARCHITECTURE RULE FOR AI OUTPUT
+
+Outbound pipeline النهائي:
+
+```text
+AI Run
+↓
+AI Output Guardrail
+↓
+Knowledge / factual policy
+↓
+Tool/result consistency
+↓
+Brand policy
+↓
+PII/safety policy
+↓
+Channel Policy
+↓
+Conversation Window
+↓
+Approval if required
+↓
+OutboundMessage QUEUED
+↓
+Provider
+```
+
+AI cannot jump مباشرة إلى provider.
+
+---
+
+# §174 — ADR INDEX
+
+هذه هي الـADR decisions الرسمية التي يجب إضافتها للrepo:
+
+```text
+ADR-013 Tenant Context Across Execution Modes
+ADR-014 Conversation Serialization & AI Cancellation
+ADR-015 Event Consumer Idempotency
+ADR-016 Outbound Message Delivery State Machine
+ADR-017 PII Data Lifecycle / Deletion Propagation
+ADR-018 AI Untrusted Input & Tool Scope Security
+ADR-019 Human Approval Workflow
+ADR-020 n8n vs Internal Workflow Ownership
+ADR-021 Cross-Module Read Architecture
+ADR-022 Sagas / Process Managers
+ADR-023 High-Volume Identity & Dedupe Strategy
+ADR-024 Tenant Fairness / Queue Governance
+ADR-025 Channel Account Lifecycle
+ADR-026 Auth / Platform Admin Separation
+ADR-027 Realtime Recovery
+ADR-028 Canonical Entity & Ownership Model
+ADR-029 Durable Event Log vs Outbox
+ADR-030 Durable Scheduler
+ADR-031 Provider Event Ordering
+ADR-032 Canonical Message Model
+ADR-033 Conversation Lifecycle
+ADR-034 Event Schema Evolution
+ADR-035 Knowledge Visibility
+ADR-036 AI Memory Governance
+ADR-037 Public Customer Plane / Payment Boundary
+ADR-038 External Commerce Source of Truth
+ADR-039 Runtime Topology / Redis Failure
+ADR-040 Tenant-Scoped Recovery
+ADR-041 Entitlement Enforcement
+ADR-042 Notification Infrastructure
+ADR-043 Metric Definition Registry
+ADR-044 SLO / Alerting
+ADR-045 AI Evaluation & Rollout
+ADR-046 Channel Test Environments
+ADR-047 Billing Metering Integration
+```
+
+كل ADR يحتوي:
+
+```text
+Problem
+Decision
+Alternatives
+Rationale
+Consequences
+Security implications
+Operational implications
+Migration / Exit strategy
+```
+
+---
+
+# §175 — UPDATED IMPLEMENTATION PHASES
+
+## PHASE 0 — ARCHITECTURE GUARANTEES
+
+قبل أي core code:
+
+```text
+├── Tenant ownership model
+├── RLS
+├── Tenant context propagation
+├── Auth / RBAC
+├── Platform admin separation
+├── Module boundaries
+├── Architecture enforcement
+├── Ports / Contracts
+├── Actor model
+├── Idempotency
+├── Optimistic locking
+├── Outbox / EventLog
+├── Event schema versioning
+├── Secrets
+├── Rate limiting
+├── Audit
+├── Privacy data map
+└── Observability
+```
+
+---
+
+## PHASE 1 — CORE INFRASTRUCTURE
+
+```text
+├── PostgreSQL
+├── RLS
+├── Connection pooling
+├── Redis Streams
+├── Outbox Relay
+├── Consumer Groups
+├── Processed Events
+├── Webhook Ingress
+├── Webhook Retry
+├── DLQ
+├── Scheduler
+├── Job System
+├── Realtime Gateway
+├── Notification infrastructure
+├── Object storage
+└── Search abstraction
+```
+
+---
+
+## PHASE 2 — CORE DOMAIN
+
+```text
+├── Tenant
+├── Workspace
+├── Location
+├── User
+├── Roles
+├── Permissions
+├── Entitlements
+├── Customer
+├── CustomerIdentity
+├── IdentityMerge
+├── Conversation
+├── Message
+├── Canonical Message Content
+├── Assignment
+├── SLA
+├── Task
+├── Order
+├── Payment
+├── Inventory
+├── Product
+└── Business Calendar
+```
+
+---
+
+## PHASE 3 — MESSAGING / CHANNELS
+
+```text
+├── WhatsApp
+├── Instagram
+├── Messenger
+├── Telegram
+├── Webchat
+├── Email
+├── Channel Account Lifecycle
+├── Templates
+├── Consent
+├── Outbound Delivery
+├── Delivery Reconciliation
+└── Media Pipeline
+```
+
+---
+
+## PHASE 4 — AI
+
+قبل production AI:
+
+```text
+├── Agent Actor
+├── Tool Policy
+├── Tool Scope Binding
+├── AI Run serialization
+├── Step/loop limits
+├── Budget
+├── Provider policy
+├── Knowledge visibility
+├── RAG
+├── Memory policy
+├── Output Guardrail
+├── Approval workflow
+├── Evaluation pipeline
+└── AI data governance
+```
+
+---
+
+## PHASE 5 — GROWTH
+
+```text
+├── Segment
+├── Campaigns
+├── Journeys
+├── Marketing Consent
+├── Attribution
+├── Provider messaging cost
+└── Billing metering
+```
+
+---
+
+## PHASE 6 — AUTOMATION
+
+```text
+├── Workflow Domain
+├── Workflow Versions
+├── Scheduler
+├── Process execution
+├── n8n adapter
+├── Automation Actor
+├── Scoped credentials
+├── Execution logs
+└── Failure / retry / DLQ
+```
+
+---
+
+## PHASE 7 — ANALYTICS
+
+```text
+├── Metric Registry
+├── Analytics Read Models
+├── EventLog consumers
+├── Revenue definitions
+├── SLA metrics
+├── AI metrics
+├── Attribution
+├── Reports
+└── SLO dashboards
+```
+
+---
+
+## PHASE 8 — PLATFORM
+
+```text
+├── Billing
+├── Usage Metering
+├── Entitlements
+├── Privacy
+├── Data Requests
+├── Security
+├── Platform Admin
+├── Break-glass
+├── Integrations
+├── Tenant Lifecycle
+├── DR
+└── Tenant-scoped recovery
+```
+
+---
+
+## PHASE 9 — ADVANCED
+
+```text
+├── External Commerce Connectors
+├── Search Engine if needed
+├── Voice
+├── Advanced Localization
+├── Large-scale Partitioning
+└── Advanced Multi-region strategy
+```
+
+---
+
+# §176 — PRE-PRODUCTION ARCHITECTURE GATE
+
+قبل أول tenant حقيقي، يجب أن تنجح الاختبارات التالية:
+
+```text
+Cross-tenant RLS test
+Worker tenant-context test
+Webhook tenant-resolution test
+Duplicate event test
+Duplicate outbound test
+Out-of-order provider event test
+Conversation race test
+AI stale-run cancellation test
+AI tool-scope attack test
+Prompt-injection test
+Approval expiry test
+n8n outage test
+Redis outage/replay test
+DLQ replay test
+Payment UNKNOWN reconciliation test
+Inventory oversell concurrency test
+Tenant restore test
+Data deletion propagation test
+AI budget exhaustion test
+Noisy-neighbor load test
+Realtime reconnect/resync test
+Event schema compatibility test
+```
+
+---
+
+# §177 — FINAL NON-NEGOTIABLE RULES
+
+```text
+1. Tenant context exists outside HTTP too.
+2. RLS protects every tenant-scoped DB path.
+3. AI never bypasses Application/Domain rules.
+4. Every side effect is idempotent.
+5. Every critical mutation is auditable.
+6. Conversation processing is serialized.
+7. Outbound messaging is stateful and reconcilable.
+8. Outbox is not the permanent event archive.
+9. EventLog is durable replay history.
+10. Redis is transport, not business truth.
+11. Modules cannot access internal repositories directly.
+12. Read models may join through dedicated query/read architecture.
+13. Long business processes use explicit state machines/process managers.
+14. n8n is never core business truth.
+15. Untrusted AI input is never trusted as instructions or authorization.
+16. AI tools are server-side scoped to the actual conversation/tenant.
+17. High-risk AI actions require durable human approval.
+18. Customer PII has a complete lifecycle map.
+19. Derived data must participate in deletion/retention policies.
+20. Search/RAG/Memory are tenant- and permission-scoped.
+21. Provider events can arrive late/out of order.
+22. Conversation lifecycle is explicit.
+23. All scheduled work is durable.
+24. Entitlements are centrally enforced.
+25. Metrics have one canonical definition.
+26. Realtime supports reconnect and authorization revalidation.
+27. Platform Admin is separate from Tenant Admin.
+28. External stores require explicit source-of-truth policies.
+29. Tenant-specific recovery is different from full-database DR.
+30. Production rollout requires evaluation, observability, and rollback.
+```
+
+# FINAL ARCHITECTURAL SHAPE
+
+```text
+                              INTERNET
+                                  │
+                  ┌───────────────┴────────────────┐
+                  │                                │
+             STAFF PLANE                     CUSTOMER PLANE
+                  │                                │
+              Next.js                         Webchat / Checkout
+                  │                                │
+                  └──────────────┬─────────────────┘
+                                 │
+                              GATEWAY
+                                 │
+                ┌────────────────┼────────────────┐
+                │                │                │
+             Auth/RBAC       Tenant Context    Rate Limits
+                │                │                │
+                └────────────────┼────────────────┘
+                                 │
+                         FASTAPI APPLICATION
+                                 │
+                ┌────────────────┼────────────────┐
+                │                │                │
+            Application        Domain           Query
+             Services          Modules           Layer
+                │                │                │
+                └────────────────┼────────────────┘
+                                 │
+                     ┌───────────┴───────────┐
+                     │                       │
+                 PostgreSQL                 RLS
+                     │
+              ┌──────┴──────┐
+              │             │
+          EventLog        Outbox
+              │             │
+              │         Outbox Relay
+              │             │
+              └──────┬──────┘
+                     │
+                Redis Streams
+                     │
+       ┌─────────────┼─────────────────────┐
+       │             │                     │
+    Workers         n8n                Realtime
+       │             │                     │
+       ├──────┬──────┤                     │
+       │      │      │                     │
+      AI   Media  Billing             WebSocket/SSE
+       │
+       ├── Tools
+       ├── Knowledge
+       ├── Memory
+       ├── Policies
+       ├── Budget
+       ├── Approval
+       └── Evaluation
+
+External Providers
+├── WhatsApp
+├── Instagram
+├── Messenger
+├── Payments
+├── AI Providers
+├── Shipping
+└── External Commerce
+
+ALL external systems
+        ↓
+     ADAPTERS
+        ↓
+     CORE CONTRACTS
+```
+
+# FINAL IMPLEMENTATION PRINCIPLE
+
+```text
+Architecture
+↓
+Contracts
+↓
+Database ownership / RLS
+↓
+Domain boundaries
+↓
+Event semantics
+↓
+Infrastructure
+↓
+Core business flows
+↓
+AI / Automation
+↓
+Read models / Analytics
+↓
+Frontend
+↓
+Production hardening
+```
+
+**بعد الـPatch دي، أي feature جديدة تدخل في حدود الـArchitecture الموجودة، وليس العكس.**
+
+أي تغيير في:
+
+```text
+Tenant model
+Event model
+Module boundary
+Identity model
+Message model
+Conversation lifecycle
+AI authorization
+Payment flow
+Source of truth
+```
+
+يحتاج ADR جديد قبل implementation.
+
+وبكده الـ124 section السابقة + هذا الـPatch يصبحون **Source of Truth واحد للنظام بالكامل**.

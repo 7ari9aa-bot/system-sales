@@ -819,6 +819,18 @@ class IdentityMergeService:
             resource_id=str(canonical_customer_id),
             after={"merged_away": str(merged_away_customer_id), "source": source},
         )
+        # §153: the canonical row's REAL version (Customer carries
+        # VersionMixin). The merge's raw SQL above does not bump it, so read
+        # the post-merge value from the row instead of hardcoding a literal.
+        canonical_version = (
+            await session.execute(
+                text(
+                    "SELECT version FROM customers "
+                    "WHERE tenant_id = :t AND id = :cid"
+                ),
+                {"t": tenant_id, "cid": canonical_customer_id},
+            )
+        ).scalar_one()
         await add_outbox_event(
             session,
             aggregate_type="customer",
@@ -829,7 +841,7 @@ class IdentityMergeService:
                 "canonical_customer_id": str(canonical_customer_id),
                 "merged_away_customer_id": str(merged_away_customer_id),
             },
-            aggregate_version=2,
+            aggregate_version=canonical_version,
         )
         await session.flush()
         return canonical_customer_id

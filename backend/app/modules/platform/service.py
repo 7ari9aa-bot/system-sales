@@ -19,6 +19,12 @@ import httpx
 from sqlalchemy import select
 
 from app.core.config import get_settings
+from app.core.context import (
+    actor_kind_contextvar,
+    correlation_id_contextvar,
+    credentials_audit_contextvar,
+    request_id_contextvar,
+)
 from app.core.errors import NotFoundError, ValidationError
 from app.core.events.writer import add_outbox_event
 from app.core.net_guard import assert_public_url
@@ -27,6 +33,7 @@ from app.modules.platform.models import (
     Job,
     Notification,
     SecretReference,
+    SecurityEvent,
     WebhookDelivery,
     WebhookEndpoint,
 )
@@ -56,6 +63,11 @@ class AuditService:
         ip: str | None = None,
         user_agent: str | None = None,
     ) -> AuditLog:
+        # §66 lineage comes from request-scoped context (installed by the edge
+        # middleware and the worker runtime), never from caller arguments — an
+        # argument could lie about which request caused the write. source
+        # defaults to "human" when no actor kind was set; request/correlation
+        # ids stay NULL outside a request/event scope (scripts, sweeps).
         entry = AuditLog(
             tenant_id=tenant_id,
             actor_user_id=actor_user_id,
@@ -66,10 +78,55 @@ class AuditService:
             after=after,
             ip=ip,
             user_agent=user_agent,
+            source=actor_kind_contextvar.get() or "human",
+            request_id=request_id_contextvar.get(),
+            correlation_id=correlation_id_contextvar.get(),
         )
         session.add(entry)
         await session.flush()
         return entry
+
+
+class IntegrationCredentialsService:
+    """§68: lazy decryption of Integration.credentials + access auditing.
+
+    Credentials are encrypted at rest (EnvelopeSecretStore, app.core.secrets);
+    they are decrypted ONLY at the point a provider call needs them. Every
+    decryption is audited (§66 action "integration.credentials.read"), batched
+    to ONE row per integration per request/event scope so a chatty consumer
+    cannot spam the audit log.
+    """
+
+    READ_ACTION = "integration.credentials.read"
+
+    @staticmethod
+    async def decrypt(session, integration) -> dict:
+        from app.core.secrets import decrypt_credentials_dict
+
+        plaintext = decrypt_credentials_dict(integration.credentials or {})
+        await IntegrationCredentialsService._audit_read_once(session, integration)
+        return plaintext
+
+    @staticmethod
+    async def _audit_read_once(session, integration) -> None:
+        seen = credentials_audit_contextvar.get()
+        if seen is None:
+            # No request/event scope installed a set (script path): scope the
+            # batch to this context so the row-per-decrypt spam guard holds.
+            seen = set()
+            credentials_audit_contextvar.set(seen)
+        marker = str(integration.id)
+        if marker in seen:
+            return
+        seen.add(marker)
+        await AuditService.write(
+            session,
+            integration.tenant_id,
+            None,  # the ACTOR is carried by the §66 source column
+            IntegrationCredentialsService.READ_ACTION,
+            "integration",
+            str(integration.id),
+        )
 
 
 class SecretService:
@@ -88,6 +145,8 @@ class SecretService:
         scope: str = "tenant",
         vault_key: str,
         workspace_id: uuid.UUID | None = None,
+        actor_user_id: uuid.UUID | None = None,
+        ip: str | None = None,
     ) -> SecretReference:
         """Register a secret reference. The actual value is stored via the port."""
         ref = SecretReference(
@@ -100,6 +159,19 @@ class SecretService:
             version=1,
         )
         session.add(ref)
+        await session.flush()
+        # §67: registering a credential is a security event ("API key
+        # created"); the value never touches this table but who wired which
+        # provider must be on the trail.
+        session.add(
+            SecurityEvent(
+                event_type="api_key_created",
+                tenant_id=tenant_id,
+                actor_user_id=actor_user_id,
+                details={"provider": provider, "scope": scope, "vault_key": vault_key},
+                ip=ip,
+            )
+        )
         await session.flush()
         return ref
 
@@ -132,8 +204,15 @@ class SecretService:
         tenant_id: uuid.UUID,
         provider: str,
         new_value: str,
+        *,
+        actor_user_id: uuid.UUID | None = None,
+        ip: str | None = None,
     ) -> SecretReference:
-        """§69: rotate a secret — old version stays for grace period."""
+        """§69: rotate a secret — old version stays for grace period.
+
+        §67/§69: rotation is a security event AND an audited mutation, not
+        just a column bump — the trail must name who rotated what.
+        """
         from datetime import UTC, datetime
 
         from app.core.secrets import get_secret_store
@@ -151,11 +230,37 @@ class SecretService:
             raise NotFoundError(f"no secret reference found for provider {provider}")
 
         store = get_secret_store()
+        from_version = ref.version
         new_version = await store.rotate(ref.vault_key, new_value)
         ref.version = new_version
         ref.rotated_at = datetime.now(UTC)
         ref.status = "active"
         await session.flush()
+
+        session.add(
+            SecurityEvent(
+                event_type="secret_rotated",
+                tenant_id=tenant_id,
+                actor_user_id=actor_user_id,
+                details={
+                    "provider": provider,
+                    "vault_key": ref.vault_key,
+                    "from_version": from_version,
+                    "to_version": new_version,
+                },
+                ip=ip,
+            )
+        )
+        await AuditService.write(
+            session,
+            tenant_id,
+            actor_user_id,
+            "secret.rotated",
+            "secret_reference",
+            str(ref.id),
+            before={"version": from_version},
+            after={"version": new_version},
+        )
         return ref
 
 
@@ -333,13 +438,37 @@ class WebhookService:
 
 
 class WebhookDispatcher:
-    """Delivers signed webhooks: X-SalesOS-Signature: sha256=HMAC(secret, body)."""
+    """Delivers signed outbound webhooks (§148 replay protection).
+
+    Every delivery carries three SalesOS headers:
+
+        X-SalesOS-Signature:  sha256=HMAC-SHA256(secret, "<timestamp>.<body>")
+        X-SalesOS-Timestamp:  unix seconds (UTC) — INSIDE the signed input
+        X-SalesOS-Delivery-Id: the webhook_deliveries row id (dedupe key)
+
+    Verification recipe for receivers:
+
+        1. Read the three headers. Reject when
+           |now - X-SalesOS-Timestamp| > 300 seconds (replay window).
+        2. Recompute HMAC-SHA256(secret, "<timestamp>.<raw body>") over the
+           RAW request bytes and compare against the signature (after the
+           "sha256=" prefix) with hmac.compare_digest. Because the timestamp
+           is covered by the signature, a captured delivery cannot be replayed
+           later with a refreshed timestamp, and the body cannot be tampered
+           with without breaking the signature.
+        3. Dedupe on X-SalesOS-Delivery-Id: a delivery may arrive more than
+           once (at-least-once retries); process each id at most once.
+
+    A secret is issued per endpoint by WebhookService.register_endpoint.
+    """
 
     TIMEOUT = 15.0
 
     @classmethod
-    def sign(cls, secret: str, body: bytes) -> str:
-        return "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    def sign(cls, secret: str, body: bytes, timestamp: str | int) -> str:
+        """§148: the unix-seconds timestamp is part of the signed input."""
+        covered = f"{timestamp}.".encode() + body
+        return "sha256=" + hmac.new(secret.encode(), covered, hashlib.sha256).hexdigest()
 
     @classmethod
     async def deliver(
@@ -385,10 +514,15 @@ class WebhookDispatcher:
         import json
 
         body = json.dumps(delivery.payload, default=str).encode()
+        # §148: the timestamp rides INSIDE the signature (replay protection)
+        # and the delivery row id lets receivers dedupe redeliveries.
+        timestamp = str(int(datetime.now(UTC).timestamp()))
         headers = {
             "Content-Type": "application/json",
             "X-SalesOS-Event": delivery.event_name,
-            "X-SalesOS-Signature": cls.sign(endpoint.secret, body),
+            "X-SalesOS-Signature": cls.sign(endpoint.secret, body, timestamp),
+            "X-SalesOS-Timestamp": timestamp,
+            "X-SalesOS-Delivery-Id": str(delivery.id),
         }
         client = _client or httpx.AsyncClient(timeout=cls.TIMEOUT)
         try:

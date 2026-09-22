@@ -76,19 +76,30 @@ WIRED_CORE_MODULES: tuple[str, ...] = (
     "app.core.search",
     "app.core.security",
     "app.core.storage",
+    # §68/G-06 wave: identity/deps.py now publishes the ambient tenant via
+    # set_current_tenant(), and DatabaseSecretStore reads it — wired on purpose.
+    "app.core.tenancy",
 )
 
 # Modules with ZERO non-test importers today, with the reason. Recorded rather
 # than deleted: a deletion is the owner's call, and a wrong deletion is
 # unrecoverable. See the triage report for what would wire each one.
 KNOWN_DEAD_CORE_MODULES: dict[str, str] = {
-    "app.core.tenancy": (
-        "Zero non-test importers. The ContextVar surface (set/current/"
-        "try_current/reset_current_tenant, new_tenant_id) has no reader; "
-        "tenant_scope() is a wrapper over bind_tenant that nothing calls. "
-        "The request path binds RLS via bind_tenant directly in "
-        "app/modules/identity/deps.py:221 and propagates tenant_id explicitly "
-        "in the TenantContext dataclass instead of ambient context."
+    "app.core.money": (
+        "Zero non-test importers. §47 money value object; monetary math is "
+        "done with Decimal/NUMERIC in the commerce modules instead."
+    ),
+    "app.core.partitioning": (
+        "Zero non-test importers. §56 partition-maintenance helpers are not "
+        "run by any worker or script in the source roots."
+    ),
+    "app.core.saga": (
+        "Zero non-test importers. §139 saga orchestrator has no runtime "
+        "caller; workflows/automation is the live execution path."
+    ),
+    "app.core.search_indexer": (
+        "Zero non-test importers. §45 external-search indexer; search runs "
+        "on pgvector via app.core.search directly."
     ),
 }
 
@@ -211,5 +222,5 @@ def test_detector_distinguishes_wired_from_dead() -> None:
     wired/dead split above is known to be a real measurement.
     """
     assert importers_of("app.core.circuit_breaker"), "detector found no importer for a wired module"
-    assert importers_of("app.core.tenancy") == set(), "detector found importers for a dead module"
+    assert importers_of("app.core.saga") == set(), "detector found importers for a dead module"
     assert importers_of("app.core.not_a_real_module") == set(), "detector matches anything"

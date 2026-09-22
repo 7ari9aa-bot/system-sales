@@ -33,7 +33,12 @@ const contentSecurityPolicy = [
   "frame-ancestors 'none'",
   "form-action 'self'",
   // See the module comment: remove unsafe-inline only with a nonce strategy.
-  "script-src 'self' 'unsafe-inline'",
+  // Dev-only relaxation: Next.js dev server (React Refresh / HMR) evaluates
+  // inline scripts, so without 'unsafe-eval' every page breaks under
+  // `next dev` — production builds stay strict.
+  ...(process.env.NODE_ENV === "production"
+    ? ["script-src 'self' 'unsafe-inline'"]
+    : ["script-src 'self' 'unsafe-inline' 'unsafe-eval'"]),
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self' data:",

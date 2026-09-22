@@ -540,7 +540,7 @@ async def test_gate_dlq_replay(db, tenant_ctx):
             external_event_id="dlq-test-1",
             payload={"test": True},
             signature_valid=True,
-            processing_status="dead_lettered",
+            processing_status="dead",
             attempts=3,
             last_error="simulated failure",
         )
@@ -554,7 +554,7 @@ async def test_gate_dlq_replay(db, tenant_ctx):
             )
         )
     ).scalar_one()
-    assert row.processing_status == "dead_lettered"
+    assert row.processing_status == "dead"
     # Replay = reset status to pending
     row.processing_status = "pending"
     row.attempts = 0
@@ -685,6 +685,9 @@ async def test_gate_event_schema_versioning(db, tenant_ctx):
             select(OutboxEvent).where(OutboxEvent.payload["event_type"].astext == "test.schema")
         )
     ).scalar_one()
-    # schema_version must be present (defaulted to 1)
-    assert row.schema_version is not None
-    assert row.schema_version >= 1
+    # schema_version must be present (defaulted to 1). The outbox table's
+    # columns are frozen by design (§152: the durable typed history is
+    # event_log), so envelope-v2 lineage rides in the meta JSONB — that is
+    # what consumers deserialize, so that is what the gate asserts on.
+    assert row.meta["schema_version"] is not None
+    assert row.meta["schema_version"] >= 1

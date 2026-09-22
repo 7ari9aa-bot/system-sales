@@ -25,10 +25,14 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
 from app.core.ids import uuid7
-from app.core.model_kit import TenantMixin, TimestampMixin
+from app.core.model_kit import TenantMixin, TimestampMixin, VersionMixin
 
 
-class Workflow(TenantMixin, TimestampMixin, Base):
+class Workflow(TenantMixin, TimestampMixin, VersionMixin, Base):
+    """§17: ``version`` (row CAS) is distinct from ``current_version`` — the
+    latter is the definition-snapshot number, the former gates concurrent
+    writes to the row itself."""
+
     __tablename__ = "workflows"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid7)

@@ -120,9 +120,8 @@ class CampaignExecutionService:
         session.add(run)
         await session.flush()
 
-        add_outbox_event(
+        await add_outbox_event(
             session,
-            stream="campaign.events",
             event_type="campaign.run.started",
             aggregate_type="campaign_run",
             aggregate_id=run.id,
@@ -270,9 +269,8 @@ class CampaignExecutionService:
         run.completed_at = datetime.now(UTC)
         await session.flush()
 
-        add_outbox_event(
+        await add_outbox_event(
             session,
-            stream="campaign.events",
             event_type="campaign.run.completed",
             aggregate_type="campaign_run",
             aggregate_id=run.id,

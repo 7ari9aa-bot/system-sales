@@ -91,13 +91,30 @@ _EVENT_LOG_SQL = sa.text(
     INSERT INTO event_log (
         id, event_id, event_type, aggregate_type, aggregate_id,
         aggregate_version, schema_version, occurred_at, producer,
-        correlation_id, causation_id, payload, tenant_id
+        correlation_id, causation_id, payload, tenant_id,
+        workspace_id, location_id
     ) VALUES (
         :id, :event_id, :event_type, :aggregate_type, :aggregate_id,
         :aggregate_version, :schema_version, :occurred_at, :producer,
-        :correlation_id, :causation_id, CAST(:payload AS jsonb), :tenant_id
+        :correlation_id, :causation_id, CAST(:payload AS jsonb), :tenant_id,
+        :workspace_id, :location_id
     )
     ON CONFLICT (event_id) DO NOTHING
+    """
+)
+
+# §153 ordering probe: the durable log must reveal a same-aggregate event that
+# lands BELOW the highest version already recorded (multi-relay publishes, or a
+# replay out of order). Detection is loud but never blocks — event_log stays
+# append-only.
+_AGGREGATE_MAX_VERSION_SQL = sa.text(
+    """
+    SELECT max(aggregate_version)
+      FROM event_log
+     WHERE tenant_id = :tenant_id
+       AND aggregate_type = :aggregate_type
+       AND aggregate_id = :aggregate_id
+       AND aggregate_version IS NOT NULL
     """
 )
 
@@ -230,6 +247,31 @@ class OutboxRelay:
             return
 
         await bind_tenant(session, str(envelope.tenant_id))
+        # §153: same aggregate → ordered. A version landing below the max
+        # already in the durable log means the stream was consumed out of
+        # order — surface it for ops; never drop or reorder history here.
+        if envelope.aggregate_version is not None:
+            current_max = (
+                await session.execute(
+                    _AGGREGATE_MAX_VERSION_SQL,
+                    {
+                        "tenant_id": str(envelope.tenant_id),
+                        "aggregate_type": envelope.aggregate_type,
+                        "aggregate_id": str(envelope.aggregate_id),
+                    },
+                )
+            ).scalar()
+            if current_max is not None and envelope.aggregate_version < current_max:
+                logger.error(
+                    "event_log.aggregate_version_regression tenant=%s aggregate=%s/%s "
+                    "incoming_version=%s already_logged_max=%s event_id=%s",
+                    envelope.tenant_id,
+                    envelope.aggregate_type,
+                    envelope.aggregate_id,
+                    envelope.aggregate_version,
+                    current_max,
+                    row["id"],
+                )
         await session.execute(
             _EVENT_LOG_SQL,
             {
@@ -246,6 +288,8 @@ class OutboxRelay:
                 "causation_id": envelope.causation_id,
                 "payload": json.dumps(payload, default=str),
                 "tenant_id": str(envelope.tenant_id),
+                "workspace_id": str(envelope.workspace_id) if envelope.workspace_id else None,
+                "location_id": str(envelope.location_id) if envelope.location_id else None,
             },
         )
 

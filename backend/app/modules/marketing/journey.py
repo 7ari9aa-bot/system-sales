@@ -147,9 +147,8 @@ class JourneyExecutionService:
         session.add(run)
         await session.flush()
 
-        add_outbox_event(
+        await add_outbox_event(
             session,
-            stream="journey.events",
             event_type="journey.run.started",
             aggregate_type="journey_run",
             aggregate_id=run.id,
@@ -315,9 +314,8 @@ class JourneyExecutionService:
         run.completed_at = datetime.now(UTC)
         await session.flush()
 
-        add_outbox_event(
+        await add_outbox_event(
             session,
-            stream="journey.events",
             event_type="journey.run.completed",
             aggregate_type="journey_run",
             aggregate_id=run.id,

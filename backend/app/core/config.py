@@ -1,3 +1,5 @@
+import base64
+import binascii
 import logging
 from functools import lru_cache
 
@@ -13,6 +15,7 @@ _DEV_ENVIRONMENTS = frozenset({"local", "test"})
 
 _INSECURE_JWT_SECRETS = frozenset({"", "change-me", "changeme", "secret", "test"})
 _INSECURE_SERVICE_TOKENS = frozenset({"", "change-me", "change-me-too"})
+_INSECURE_MASTER_KEYS = frozenset({"", "change-me", "change-me-too", "secret", "test"})
 
 
 class Settings(BaseSettings):
@@ -108,6 +111,16 @@ class Settings(BaseSettings):
     # internal service auth (n8n -> core)
     service_token_internal: str = "change-me-too"
 
+    # §68: at-rest envelope encryption of Integration.credentials
+    # (app.core.secrets.EnvelopeSecretStore). Base64-encoded; must decode to
+    # at least 32 bytes. Empty is tolerated ONLY in local/test, where a
+    # published dev-only key is used (loudly logged); secure environments
+    # refuse to boot without it.
+    secrets_master_key: str = ""
+    # Comma-separated OLD master keys, kept for decryption only during a
+    # rotation grace period (§69: existing rows must not break at switch-over).
+    secrets_previous_master_keys: str = ""
+
     @property
     def is_secure_environment(self) -> bool:
         """True when this deployment must satisfy the production-grade checks.
@@ -146,6 +159,18 @@ class Settings(BaseSettings):
             raise ValueError(f"JWT_SECRET must be at least 32 bytes {where}")
         if self.service_token_internal in _INSECURE_SERVICE_TOKENS:
             raise ValueError(f"SERVICE_TOKEN_INTERNAL must be set {where}")
+        if self.secrets_master_key in _INSECURE_MASTER_KEYS:
+            raise ValueError(f"SECRETS_MASTER_KEY must be set {where}")
+        # The master key protects every integration credential at rest; a
+        # short or non-base64 key would weaken AES-256-GCM to brute-forceable.
+        try:
+            decoded_master = base64.b64decode(self.secrets_master_key, validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise ValueError(f"SECRETS_MASTER_KEY must be base64 {where}") from exc
+        if len(decoded_master) < 32:
+            raise ValueError(
+                f"SECRETS_MASTER_KEY must decode to at least 32 bytes {where}"
+            )
         if self.cors_origins.strip() == "*":
             raise ValueError(f"CORS_ORIGINS must not be * {where}")
 

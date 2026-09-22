@@ -6,6 +6,8 @@ operational probes (/healthz, /readyz) stay at the root for load balancers.
 
 from __future__ import annotations
 
+import hmac
+import re
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -16,6 +18,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from app.core.config import get_settings
+from app.core.context import actor_kind_contextvar, credentials_audit_contextvar
 from app.core.db import engine
 from app.core.errors import (
     DomainError,
@@ -54,6 +57,7 @@ from app.modules.conversations.router import (
 )
 from app.modules.customers.router import platform_router as platform_router
 from app.modules.customers.router import router as customers_router
+from app.modules.identity.router import hierarchy_router as identity_hierarchy_router
 from app.modules.identity.router import router as identity_router
 from app.modules.identity.router import tenants_router as identity_tenants_router
 from app.modules.identity.router import users_router as identity_users_router
@@ -83,6 +87,20 @@ from app.modules.segments.router import router as segments_router
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    # G-06: a secure environment must never serve secrets from process memory
+    # (EnvSecretStore is per-process os.environ — unshared across workers and
+    # lost on restart). get_secret_store() resolves DatabaseSecretStore there
+    # by default; this catches a mistaken set_secret_store() override at boot
+    # rather than at first secret read.
+    from app.core.secrets import EnvSecretStore, get_secret_store
+
+    if get_settings().is_secure_environment and isinstance(
+        get_secret_store(), EnvSecretStore
+    ):
+        raise RuntimeError(
+            "secure environment resolved EnvSecretStore — secret values would be "
+            "process-local and lost on restart; refusing to boot"
+        )
     yield
     await engine.dispose()
     await close_redis()
@@ -103,18 +121,63 @@ class _RequestIDMiddleware:
             await self.app(scope, receive, send)
             return
         headers = {k.decode().lower(): v.decode() for k, v in scope.get("headers", [])}
-        request_id = headers.get("x-request-id") or uuid.uuid4().hex[:16]
+        request_id = _trusted_trace_id(headers.get("x-request-id")) or uuid.uuid4().hex[:16]
         # §65: correlation_id links HTTP requests to domain events. Honored
         # from x-correlation-id (for cross-service tracing) or generated fresh.
         # Passed to add_outbox_event so every event traces back to its cause.
-        correlation_id = headers.get("x-correlation-id") or uuid.uuid4().hex[:16]
+        correlation_id = (
+            _trusted_trace_id(headers.get("x-correlation-id")) or uuid.uuid4().hex[:16]
+        )
         req_token = request_id_contextvar.set(request_id)
         cor_token = correlation_id_contextvar.set(correlation_id)
+        # §66: actor kind for the audit source column — an internal service
+        # token (n8n -> core) marks the request "automation", everything else
+        # is a "human" request. Workers set their own kind outside HTTP. This
+        # is a label for audit lineage, NOT an auth check (that lives in deps).
+        service_token = get_settings().service_token_internal
+        actor_kind = "automation" if _presents_service_token(headers, service_token) else "human"
+        kind_token = actor_kind_contextvar.set(actor_kind)
+        # §68: fresh per-request batch set for credential-read auditing.
+        audit_token = credentials_audit_contextvar.set(set())
         try:
             await self.app(scope, receive, send)
         finally:
             request_id_contextvar.reset(req_token)
             correlation_id_contextvar.reset(cor_token)
+            actor_kind_contextvar.reset(kind_token)
+            credentials_audit_contextvar.reset(audit_token)
+
+
+# §66: audit_logs.request_id / correlation_id are String(64); client-supplied
+# ids must fit that shape or they break the INSERT and pollute the trail.
+_TRACE_ID_MAX = 64
+_TRACE_ID_RE = re.compile(r"[A-Za-z0-9._-]{1,64}")
+
+
+def _trusted_trace_id(raw: str | None) -> str | None:
+    """Return a client-supplied request/correlation id only if it is plausible.
+
+    Anything else (too long, weird charset, empty) is ignored — the caller
+    falls back to a freshly generated id. Honoring arbitrary client content in
+    durable lineage columns is not free: it is a stored-value attack surface.
+    """
+    if raw and _TRACE_ID_RE.fullmatch(raw):
+        return raw
+    return None
+
+
+def _presents_service_token(headers: dict[str, str], service_token: str | None) -> bool:
+    """True when Authorization carries the internal service token (§66 label).
+
+    Constant-time digest comparison on the token itself (m11: a lowercase
+    string compare both leaked timing and case-collapsed the credential);
+    only the ``Bearer`` scheme keyword is case-insensitive, per RFC 9110.
+    """
+    if not service_token:
+        return False
+    authorization = headers.get("authorization", "")
+    scheme, _, presented = authorization.partition(" ")
+    return scheme.lower() == "bearer" and hmac.compare_digest(presented, service_token)
 
 
 def _exception_handlers(app: FastAPI) -> None:
@@ -182,6 +245,7 @@ def create_app() -> FastAPI:
         identity_router,
         identity_users_router,
         identity_tenants_router,
+        identity_hierarchy_router,
         conversations_router,
         conversations_templates_router,
         conversations_public_router,

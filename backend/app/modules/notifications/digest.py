@@ -1,26 +1,31 @@
 """Spec §166 — Notification infrastructure enhancements.
 
 Extends the existing Notification model with:
-    NotificationPreference  — per-user channel + quiet hours settings
     NotificationDigest      — aggregated notifications (dedupe)
     NotificationAggregator  — prevents notification storms (40 updates → 1)
 
 §166: "40 updates for the same conversation should not produce 40
 notifications. Dedupe/aggregation."
+
+``NotificationPreference`` is NOT declared here: the canonical model lives in
+``app.modules.platform.models`` (re-exported by ``app.modules.notifications.models``).
+This module previously re-declared ``__tablename__ = "notification_preferences"``,
+so importing it next to the canonical model raised SQLAlchemy table-redefinition
+(InvalidRequestError) — a latent startup crash, hidden only because nothing
+imported the module. It now binds the canonical class instead.
 """
 
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime, time
+from datetime import UTC, datetime
 
 from sqlalchemy import (
-    Boolean,
+    DateTime,
     ForeignKey,
     Index,
     Integer,
     String,
-    Time,
     func,
     select,
 )
@@ -32,37 +37,11 @@ from app.core.db import Base
 from app.core.ids import uuid7
 from app.core.model_kit import TenantMixin, TimestampMixin
 
-
-class NotificationPreference(TenantMixin, TimestampMixin, Base):
-    """Per-user notification channel preferences and quiet hours (§166)."""
-
-    __tablename__ = "notification_preferences"
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid7
-    )
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE")
-    )
-    # Channel toggles
-    in_app_enabled: Mapped[bool] = mapped_column(Boolean, server_default="true")
-    email_enabled: Mapped[bool] = mapped_column(Boolean, server_default="true")
-    push_enabled: Mapped[bool] = mapped_column(Boolean, server_default="false")
-    # Quiet hours (in user's timezone)
-    quiet_start: Mapped[time | None] = mapped_column(Time, nullable=True)
-    quiet_end: Mapped[time | None] = mapped_column(Time, nullable=True)
-    timezone: Mapped[str] = mapped_column(String(63), server_default="Africa/Cairo")
-    # Digest settings
-    digest_enabled: Mapped[bool] = mapped_column(Boolean, server_default="false")
-    digest_frequency: Mapped[str] = mapped_column(
-        String(15), server_default="hourly"  # hourly | daily | weekly
-    )
-    # Priority overrides: {priority: {channel: bool}}
-    priority_overrides: Mapped[dict] = mapped_column(JSONB, server_default="{}")
-
-    __table_args__ = (
-        Index("ix_notif_prefs_tenant_user", "tenant_id", "user_id"),
-    )
+# The canonical NotificationPreference (app.modules.platform.models), reached
+# through this module's own re-export surface rather than a second direct
+# platform import — the module-boundary ratchet (tests/test_module_boundaries.py)
+# is at its baseline, and same-module imports do not count against it.
+from app.modules.notifications.models import NotificationPreference
 
 
 class NotificationDigest(TenantMixin, TimestampMixin, Base):
@@ -87,9 +66,14 @@ class NotificationDigest(TenantMixin, TimestampMixin, Base):
     count: Mapped[int] = mapped_column(Integer, server_default="1")
     # The latest notification payload
     latest_payload: Mapped[dict] = mapped_column(JSONB, server_default="{}")
-    # First and last occurrence
-    first_at: Mapped[datetime] = mapped_column(server_default=func.now())
-    last_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    # First and last occurrence — TIMESTAMPTZ in the migration (§166), so the
+    # model must declare timezone=True or asyncpg gets a naive datetime.
+    first_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    last_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
     # allowed: pending | delivered | expired
     status: Mapped[str] = mapped_column(String(15), server_default="pending")
     # Delivery channels: {in_app: bool, email: bool, push: bool}

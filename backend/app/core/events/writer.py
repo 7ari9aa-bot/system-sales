@@ -48,6 +48,8 @@ async def add_outbox_event(
     aggregate_id: UUID,
     event_type: str,
     tenant_id: UUID,
+    workspace_id: UUID | None = None,
+    location_id: UUID | None = None,
     payload: dict | None = None,
     meta: dict | None = None,
     correlation_id: str | None = None,
@@ -63,13 +65,17 @@ async def add_outbox_event(
       on it: message_worker / platform_workers / event_log)
     - meta: the §19 envelope routing keys PLUS user meta. Always carries
       tenant_id (the relay is cross-tenant, and the SSE gateway fails CLOSED
-      without it). Envelope v2 lineage (correlation_id / causation_id /
-      producer / schema_version / aggregate_version) rides inside meta too —
+      without it); the §19 scope claims (workspace_id / location_id) ride the
+      same way, optional until a mutation resolves sub-tenant scope (§151).
+      Envelope v2 lineage (correlation_id / causation_id / producer /
+      schema_version / aggregate_version) rides inside meta too —
       the outbox_events table columns are frozen, so no migration is needed.
     """
     envelope = build_envelope(
         event_type,
         tenant_id=tenant_id,
+        workspace_id=workspace_id,
+        location_id=location_id,
         aggregate_type=aggregate_type,
         aggregate_id=aggregate_id,
         payload=payload or {},

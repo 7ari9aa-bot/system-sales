@@ -18,7 +18,7 @@ from sqlalchemy import (
     Table,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -72,6 +72,31 @@ class User(TimestampMixin, Base):
     full_name: Mapped[str] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(Boolean, server_default="true")
     is_platform_admin: Mapped[bool] = mapped_column(Boolean, server_default="false")
+
+
+class UserMfaSecret(TimestampMixin, Base):
+    """§146: one TOTP secret per user — the durable half of MFA.
+
+    Global table like `users` (no tenant_id, no RLS): the secret belongs to
+    the user, not to one of their memberships, and the login-time MFA check
+    runs before any tenant GUC exists. `enabled_at` NULL means enrollment was
+    started but never confirmed — only an ENABLED row challenges logins.
+    Backup codes persist as sha256 hashes only; the plaintext is shown once
+    at confirm time.
+    """
+
+    __tablename__ = "user_mfa_secrets"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True
+    )
+    # base64 of the base32 secret — envelope encryption lands with the §68/69 work.
+    totp_secret_encrypted: Mapped[str] = mapped_column(String(255))
+    enabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    backup_codes_hashes: Mapped[list] = mapped_column(JSONB, server_default="[]")
 
 
 class Role(Base):

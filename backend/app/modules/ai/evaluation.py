@@ -112,6 +112,8 @@ class AIEvaluationService:
                 "evaluation_id": str(evaluation.id),
                 "traffic_percent": CANARY_RAMP_STEPS[0],
             },
+            # Literal: AIEvaluation has no version column (no VersionMixin on
+            # the model), so there is no aggregate version source to read.
             aggregate_version=1,
         )
         return evaluation
@@ -220,6 +222,8 @@ class AIEvaluationService:
                 "evaluation_id": str(evaluation_id),
                 "reason": reason,
             },
+            # Literal: AIEvaluation has no version column (no VersionMixin on
+            # the model), so there is no aggregate version source to read.
             aggregate_version=1,
         )
 

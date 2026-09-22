@@ -12,10 +12,11 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
+from app.core.idempotency import IfMatch, apply_etag  # §17
 from app.modules.automation.models import Workflow, WorkflowExecution, WorkflowVersion
 from app.modules.automation.service import WorkflowService
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
@@ -52,6 +53,7 @@ def _workflow_dict(workflow: Workflow) -> dict:
         "execution_backend": workflow.execution_backend,
         "n8n_workflow_ref": workflow.n8n_workflow_ref,
         "current_version": workflow.current_version,
+        "version": workflow.version,  # §17 CAS token (mirrors the ETag)
         "created_at": workflow.created_at.isoformat(),
         "updated_at": workflow.updated_at.isoformat(),
     }
@@ -123,31 +125,54 @@ async def run_workflow_execution(ctx: WriteCtx, execution_id: uuid.UUID):
 
 
 @router.get("/{workflow_id}")
-async def get_workflow(ctx: TenantCtxDep, workflow_id: uuid.UUID):
-    """Fetch one workflow by id."""
-    return _workflow_dict(await WorkflowService.get(ctx.session, ctx.tenant_id, workflow_id))
+async def get_workflow(
+    ctx: TenantCtxDep, workflow_id: uuid.UUID, response: Response
+):
+    """Fetch one workflow by id (§17: version in the body + strong ETag)."""
+    workflow = await WorkflowService.get(ctx.session, ctx.tenant_id, workflow_id)
+    apply_etag(response, workflow.version)
+    return _workflow_dict(workflow)
 
 
 @router.patch("/{workflow_id}/status")
 async def update_workflow_status(
-    ctx: WriteCtx, workflow_id: uuid.UUID, body: WorkflowStatusUpdate
+    ctx: WriteCtx,
+    workflow_id: uuid.UUID,
+    body: WorkflowStatusUpdate,
+    response: Response,
+    if_match: IfMatch = None,  # §17 optimistic concurrency; absent = unconditional
 ):
     """Change a workflow's lifecycle status (draft | active | paused | archived)."""
     workflow = await WorkflowService.set_status(
-        ctx.session, ctx.tenant_id, workflow_id, body.status
+        ctx.session,
+        ctx.tenant_id,
+        workflow_id,
+        body.status,
+        expected_version=if_match,
     )
     await ctx.session.flush()
+    apply_etag(response, workflow.version)
     return _workflow_dict(workflow)
 
 
 @router.post("/{workflow_id}/versions", status_code=201)
 async def publish_workflow_version(
-    ctx: WriteCtx, workflow_id: uuid.UUID, body: WorkflowVersionCreate
+    ctx: WriteCtx,
+    workflow_id: uuid.UUID,
+    body: WorkflowVersionCreate,
+    response: Response,
+    if_match: IfMatch = None,  # §17: two publishers of one version cannot both win
 ):
     """Publish a new immutable definition snapshot (bumps current_version)."""
     version = await WorkflowService.publish_new_version(
-        ctx.session, ctx.tenant_id, workflow_id, definition=body.definition
+        ctx.session,
+        ctx.tenant_id,
+        workflow_id,
+        definition=body.definition,
+        expected_version=if_match,
     )
+    workflow = await WorkflowService.get(ctx.session, ctx.tenant_id, workflow_id)
+    apply_etag(response, workflow.version)
     return {"workflow_id": str(workflow_id), "version": version.version}
 
 

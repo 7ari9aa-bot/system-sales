@@ -338,11 +338,20 @@ class MessageWorker(StreamWorker):
             )
             return None
         await session.flush()
+        # §68: integration credentials are encrypted at rest — decrypt lazily,
+        # only after the claim is won (a lost claim must not audit a read).
+        # The decryption writes ONE "integration.credentials.read" audit row
+        # per integration per event.
+        credentials_config: dict = {}
+        if integration is not None:
+            from app.modules.platform.service import IntegrationCredentialsService
+
+            credentials_config = await IntegrationCredentialsService.decrypt(
+                session, integration
+            )
         return _SendPlan(
             adapter=adapter,
-            credentials=ProviderCredentials(
-                config=(integration.credentials if integration else {}) or {}
-            ),
+            credentials=ProviderCredentials(config=credentials_config),
             outbound=OutboundMessage(
                 tenant_id=tenant_id,
                 conversation_id=conversation.id,

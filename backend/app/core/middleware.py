@@ -18,6 +18,11 @@
   limit across a boundary. The sliding window has neither problem.
 - Auth endpoints get a much tighter bucket (brute-force protection) and fail
   CLOSED when Redis is unavailable; everything else fails open.
+- §144: behind the rate tiers sits an in-process per-tenant CONCURRENCY gate
+  (tenancy.TenantConcurrencyGovernor) for signature-verified tenants: at-capacity
+  requests queue up to the tenant queue depth, then get 429 tier="concurrency".
+  It is Redis-free on purpose — it keeps providing backpressure during exactly
+  the outages the rate limiter fails open through.
 - The tenant/user tiers are derived from the SIGNATURE-VERIFIED bearer token
   here, at the edge, rather than waiting for the auth dependency — the
   dependency runs inside the route, after this middleware, so it is too late
@@ -51,6 +56,7 @@ from app.core.errors import (
 from app.core.ratelimit import LayeredRateLimiter, TierLimit
 from app.core.redis import get_redis
 from app.core.security import decode_token
+from app.core.tenancy import TenantBusyError, TenantConcurrencyGovernor
 
 EXEMPT_PATHS = {"/healthz", "/readyz", "/docs", "/openapi.json"}
 AUTH_LIMIT = 10          # per window, per IP — login/register/refresh
@@ -173,6 +179,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         window_seconds: int = 60,
         client=None,
         enabled: bool | None = None,
+        governor: TenantConcurrencyGovernor | None = None,
     ) -> None:
         super().__init__(app)
         self.limit = limit or DEFAULT_LIMIT
@@ -188,6 +195,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         )
         self._client = client  # injectable for tests; lazily defaults to Redis
         self._limiter: LayeredRateLimiter | None = None
+        # §144: per-tenant in-flight cap. Redis-free by design — it keeps
+        # enforcing backpressure during the outages the limiter fails open
+        # through. Shared across the middleware instance (one per process).
+        self._governor = governor or TenantConcurrencyGovernor()
 
     def _limiter_for(self) -> LayeredRateLimiter:
         if self._limiter is None:
@@ -217,7 +228,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                         exc, request_id=request_id_contextvar.get()
                     ),
                 )
-            return await call_next(request)
+            return await self._call_with_slot(request, call_next, principal)
 
         if not result.allowed:
             retry = max(int(result.retry_after_seconds), 1)
@@ -234,7 +245,41 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 content=body,
                 headers={"Retry-After": str(retry)},
             )
-        return await call_next(request)
+        return await self._call_with_slot(request, call_next, principal)
+
+    async def _call_with_slot(
+        self,
+        request: Request,
+        call_next: RequestResponseEndpoint,
+        principal: _Principal,
+    ) -> Response:
+        """Run the endpoint inside the tenant's §144 concurrency slot.
+
+        Only authenticated tenant traffic is governed — the signature-verified
+        principal is the only key that attributes load to a tenant. A full
+        queue is refused with the same 429 contract shape as the rate tiers
+        (``tier="concurrency"`` names which gate denied); a queued request
+        simply waits, which is the point of having a queue at all. The slot
+        ALWAYS returns via finally — a raising route must not leak capacity.
+        """
+        if principal.tenant_id is None:
+            return await call_next(request)
+        try:
+            await self._governor.acquire(principal.tenant_id)
+        except TenantBusyError:
+            exc = RateLimitExceededError("tenant at capacity, try again shortly")
+            body = build_error_body(exc, request_id=request_id_contextvar.get())
+            body["tier"] = "concurrency"
+            body["retry_after"] = 1
+            return JSONResponse(
+                status_code=exc.http_status,
+                content=body,
+                headers={"Retry-After": "1"},
+            )
+        try:
+            return await call_next(request)
+        finally:
+            self._governor.release(principal.tenant_id)
 
 
 # ---------------------------------------------------------------------------

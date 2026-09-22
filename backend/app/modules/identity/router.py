@@ -23,6 +23,10 @@ from app.modules.identity.deps import (
 router = APIRouter(tags=["auth"])
 users_router = APIRouter(prefix="/users", tags=["users"])
 tenants_router = APIRouter(prefix="/tenants", tags=["tenants"])
+# §151 — the tenant's hierarchy surface. Tenancy comes from the request
+# context only (no tenant ids in paths): every handler passes ctx.tenant_id
+# into the service, which filters with it AND runs under the bound RLS GUC.
+hierarchy_router = APIRouter(prefix="/hierarchy", tags=["hierarchy"])
 
 _CLIENT_TTL = 60 * 60 * 24 * 30  # refresh cookie life if cookie mode used
 
@@ -132,6 +136,99 @@ async def switch_tenant(
     return await service.AuthService.switch_tenant(
         session, user=user, tenant_id=tenant_id, refresh_token=body.refresh_token
     )
+
+
+# ---------- §146 MFA (TOTP) ----------
+
+class MfaVerifyRequest(BaseModel):
+    """Body for POST /auth/mfa/verify — the login challenge's second step.
+
+    The code is a 6-digit TOTP *or* a 16-char hex recovery code (§146: backup
+    codes must work when the authenticator is gone).
+    """
+
+    challenge_id: str = Field(min_length=1, max_length=255)
+    code: str = Field(min_length=6, max_length=64)
+
+
+class MfaEnrollOut(BaseModel):
+    """The TOTP secret + provisioning URL, shown ONCE at enrollment."""
+
+    secret: str
+    otpauth_url: str
+
+
+class MfaEnrollRequest(BaseModel):
+    """Body for POST /auth/mfa/enroll — §146 step-up.
+
+    Enrollment permanently changes how an account proves identity, so a
+    bearer token alone must not be enough: with only a token, an attacker who
+    stole a session could attach THEIR authenticator and lock the real user
+    out at the next login.
+    """
+
+    password: str = Field(min_length=1)
+
+
+class MfaCodeRequest(BaseModel):
+    code: str = Field(min_length=6, max_length=10)
+
+
+class MfaDisableRequest(BaseModel):
+    code: str | None = Field(default=None, min_length=6, max_length=10)
+    backup_code: str | None = Field(default=None, min_length=6, max_length=32)
+
+
+@router.post("/auth/mfa/verify", response_model=schemas.TokenPair)
+async def mfa_verify(body: MfaVerifyRequest, request: Request, session: DbSession):
+    """§146: complete an MFA-challenged login (challenge is single-use)."""
+    user_agent, ip = _client_meta(request)
+    pair, _user, _tenant_id = await service.AuthService.mfa_verify(
+        session,
+        challenge_id=body.challenge_id,
+        code=body.code,
+        user_agent=user_agent,
+        ip=ip,
+    )
+    return pair
+
+
+@router.post("/auth/mfa/enroll", response_model=MfaEnrollOut, status_code=201)
+async def mfa_enroll(body: MfaEnrollRequest, user: CurrentUserDep, session: DbSession):
+    """§146: start TOTP enrollment — confirm with a code before it challenges.
+
+    Step-up (§146): the password is re-verified before a secret is minted, so
+    a stolen access token cannot be used to bind an attacker's authenticator.
+    """
+    from app.core.mfa import enroll_mfa
+    from app.core.security import verify_password
+
+    row = await service.UserService.get(session, user.id)
+    if not verify_password(body.password, row.password_hash):
+        raise PermissionDeniedError("password step-up failed — re-authenticate first")
+
+    enrolled = await enroll_mfa(session, user_id=user.id)
+    return MfaEnrollOut(secret=enrolled.secret, otpauth_url=enrolled.otpauth_url)
+
+
+@router.post("/auth/mfa/confirm")
+async def mfa_confirm(body: MfaCodeRequest, user: CurrentUserDep, session: DbSession):
+    """§146: prove possession → MFA enabled; backup codes are returned ONCE."""
+    from app.core.mfa import confirm_mfa
+
+    codes = await confirm_mfa(session, user_id=user.id, code=body.code)
+    return {"backup_codes": codes}
+
+
+@router.post("/auth/mfa/disable", status_code=204)
+async def mfa_disable(body: MfaDisableRequest, user: CurrentUserDep, session: DbSession):
+    """§146: disable with a current TOTP code OR a one-time backup code."""
+    from app.core.mfa import disable_mfa
+
+    await disable_mfa(
+        session, user_id=user.id, code=body.code, backup_code=body.backup_code
+    )
+    return Response(status_code=204)
 
 
 async def bind_tenant_user(session, user_id) -> None:
@@ -317,4 +414,149 @@ async def offboarding_status(
         "can_export": True,
         "retention_days": 30,
     }
+
+
+# --- §151 hierarchy routes -------------------------------------------------
+
+
+@hierarchy_router.get("/workspaces", response_model=schemas.WorkspaceListOut)
+async def list_workspaces(ctx: TenantContext = Depends(require_permission("settings:read"))):
+    rows = await service.HierarchyService.list_workspaces(ctx.session, ctx.tenant_id)
+    return schemas.WorkspaceListOut(items=list(rows))
+
+
+@hierarchy_router.post(
+    "/workspaces", response_model=schemas.WorkspaceOut, status_code=201
+)
+async def create_workspace(
+    body: schemas.WorkspaceCreate,
+    ctx: TenantContext = Depends(require_permission("settings:write")),
+):
+    return await service.HierarchyService.create_workspace(
+        ctx.session, ctx.tenant_id, name=body.name, slug=body.slug
+    )
+
+
+@hierarchy_router.get(
+    "/workspaces/{workspace_id}", response_model=schemas.WorkspaceOut
+)
+async def get_workspace(
+    workspace_id: uuid.UUID,
+    ctx: TenantContext = Depends(require_permission("settings:read")),
+):
+    return await service.HierarchyService.get_workspace(ctx.session, ctx.tenant_id, workspace_id)
+
+
+@hierarchy_router.patch(
+    "/workspaces/{workspace_id}", response_model=schemas.WorkspaceOut
+)
+async def update_workspace(
+    workspace_id: uuid.UUID,
+    body: schemas.WorkspaceUpdate,
+    ctx: TenantContext = Depends(require_permission("settings:write")),
+):
+    return await service.HierarchyService.update_workspace(
+        ctx.session,
+        ctx.tenant_id,
+        workspace_id,
+        name=body.name,
+        is_active=body.is_active,
+    )
+
+
+@hierarchy_router.get(
+    "/workspaces/{workspace_id}/locations", response_model=schemas.LocationListOut
+)
+async def list_locations(
+    workspace_id: uuid.UUID,
+    ctx: TenantContext = Depends(require_permission("settings:read")),
+):
+    rows = await service.HierarchyService.list_locations(
+        ctx.session, ctx.tenant_id, workspace_id
+    )
+    return schemas.LocationListOut(items=list(rows))
+
+
+@hierarchy_router.post(
+    "/workspaces/{workspace_id}/locations",
+    response_model=schemas.LocationOut,
+    status_code=201,
+)
+async def create_location(
+    workspace_id: uuid.UUID,
+    body: schemas.LocationCreate,
+    ctx: TenantContext = Depends(require_permission("settings:write")),
+):
+    return await service.HierarchyService.create_location(
+        ctx.session,
+        ctx.tenant_id,
+        workspace_id,
+        name=body.name,
+        code=body.code,
+    )
+
+
+@hierarchy_router.patch(
+    "/locations/{location_id}", response_model=schemas.LocationOut
+)
+async def update_location(
+    location_id: uuid.UUID,
+    body: schemas.LocationUpdate,
+    ctx: TenantContext = Depends(require_permission("settings:write")),
+):
+    return await service.HierarchyService.update_location(
+        ctx.session,
+        ctx.tenant_id,
+        location_id,
+        name=body.name,
+        code=body.code,
+        is_active=body.is_active,
+    )
+
+
+@hierarchy_router.get(
+    "/locations/{location_id}/access", response_model=schemas.LocationAccessListOut
+)
+async def list_location_access(
+    location_id: uuid.UUID,
+    ctx: TenantContext = Depends(require_permission("settings:read")),
+):
+    rows = await service.HierarchyService.list_access(
+        ctx.session, ctx.tenant_id, location_id
+    )
+    return schemas.LocationAccessListOut(items=list(rows))
+
+
+@hierarchy_router.put(
+    "/locations/{location_id}/access/{user_id}",
+    response_model=schemas.LocationAccessOut,
+)
+async def grant_location_access(
+    location_id: uuid.UUID,
+    user_id: uuid.UUID,
+    body: schemas.LocationAccessGrant,
+    ctx: TenantContext = Depends(require_permission("settings:write")),
+):
+    return await service.HierarchyService.grant_access(
+        ctx.session,
+        ctx.tenant_id,
+        location_id,
+        user_id=user_id,
+        role_override=body.role_override,
+        granted_by=ctx.user.id,
+    )
+
+
+@hierarchy_router.delete(
+    "/locations/{location_id}/access/{user_id}", status_code=204
+)
+async def revoke_location_access(
+    location_id: uuid.UUID,
+    user_id: uuid.UUID,
+    ctx: TenantContext = Depends(require_permission("settings:write")),
+):
+    await service.HierarchyService.revoke_access(
+        ctx.session, ctx.tenant_id, location_id, user_id=user_id
+    )
+    return Response(status_code=204)
 

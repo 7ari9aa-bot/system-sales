@@ -54,6 +54,96 @@ class ResourceType(StrEnum):
     WORKER_SECONDS = "worker_seconds"
 
 
+# §144: the priority order is fixed by the spec —
+#   Human Response > AI Response > Critical System Events >
+#   Customer Webhooks > Normal Automation > Bulk / Campaign Work
+# A big campaign (BULK_CAMPAIGN) may never starve a customer conversation
+# (rank 1-2). Streams are per-aggregate, so the tier is not a reordering
+# inside one queue: it tells the CONSUMER side what may be throttled and
+# what may not (CampaignWorker paces; MessageWorker never does), and gives
+# the scheduler a total order for picking which bulk work runs next.
+class EventPriority(StrEnum):
+    HUMAN_RESPONSE = "human_response"
+    AI_RESPONSE = "ai_response"
+    CRITICAL_SYSTEM = "critical_system"
+    CUSTOMER_WEBHOOK = "customer_webhook"
+    NORMAL_AUTOMATION = "normal_automation"
+    BULK_CAMPAIGN = "bulk_campaign"
+
+    @property
+    def rank(self) -> int:
+        """1 = most urgent (§144 order), 6 = lowest."""
+        return _PRIORITY_RANKS[self]
+
+    def __lt__(self, other: object) -> bool:
+        if not isinstance(other, EventPriority):
+            return NotImplemented
+        return self.rank < other.rank
+
+
+_PRIORITY_RANKS: dict[EventPriority, int] = {
+    priority: rank
+    for rank, priority in enumerate(
+        (
+            EventPriority.HUMAN_RESPONSE,
+            EventPriority.AI_RESPONSE,
+            EventPriority.CRITICAL_SYSTEM,
+            EventPriority.CUSTOMER_WEBHOOK,
+            EventPriority.NORMAL_AUTOMATION,
+            EventPriority.BULK_CAMPAIGN,
+        ),
+        start=1,
+    )
+}
+
+# Every real DOMAIN_EVENT_TYPES entry (minus test fixtures) names its tier —
+# the mapping is over event types the outbox actually publishes.
+DOMAIN_PRIORITIES: dict[str, EventPriority] = {
+    # Human Response: staff-initiated outbound is the thing fairness must
+    # never delay behind bulk work.
+    "message.outbound": EventPriority.HUMAN_RESPONSE,
+    # AI Response: inbound customer messages drive the AI reply path.
+    "message.received": EventPriority.AI_RESPONSE,
+    # Critical system: money, privacy, security and restore lifecycle events.
+    "order.created": EventPriority.CRITICAL_SYSTEM,
+    "order.status_changed": EventPriority.CRITICAL_SYSTEM,
+    "order.cancelled": EventPriority.CRITICAL_SYSTEM,
+    "order.refunded": EventPriority.CRITICAL_SYSTEM,
+    "privacy.customer_deleted": EventPriority.CRITICAL_SYSTEM,
+    "privacy.customer_purge_required": EventPriority.CRITICAL_SYSTEM,
+    "platform.secret_rotated": EventPriority.CRITICAL_SYSTEM,
+    "tenant.restore.requested": EventPriority.CRITICAL_SYSTEM,
+    "tenant.restore.completed": EventPriority.CRITICAL_SYSTEM,
+    "ai.canary_started": EventPriority.CRITICAL_SYSTEM,
+    "ai.canary_rolled_back": EventPriority.CRITICAL_SYSTEM,
+    # Customer Webhooks: provider deliveries (§22 ingress, §24 replay,
+    # outbound deliveries) outrank automation but not interactive paths.
+    "webhook.ingest": EventPriority.CUSTOMER_WEBHOOK,
+    "webhook.event.retry": EventPriority.CUSTOMER_WEBHOOK,
+    "webhook.deliver": EventPriority.CUSTOMER_WEBHOOK,
+    # Normal Automation: orchestration and housekeeping events.
+    "notification.queued": EventPriority.NORMAL_AUTOMATION,
+    "customer.merged": EventPriority.NORMAL_AUTOMATION,
+    "saga.started": EventPriority.NORMAL_AUTOMATION,
+    "saga.completed": EventPriority.NORMAL_AUTOMATION,
+    "saga.failed": EventPriority.NORMAL_AUTOMATION,
+    "journey.run.started": EventPriority.NORMAL_AUTOMATION,
+    "journey.run.completed": EventPriority.NORMAL_AUTOMATION,
+    "automation.service_token.issued": EventPriority.NORMAL_AUTOMATION,
+    "automation.service_token.revoked": EventPriority.NORMAL_AUTOMATION,
+    # Bulk / Campaign: the throttled tier.
+    "campaign.run.started": EventPriority.BULK_CAMPAIGN,
+    "campaign.run.batch": EventPriority.BULK_CAMPAIGN,
+    "campaign.run.completed": EventPriority.BULK_CAMPAIGN,
+}
+
+
+def priority_for(event_type: str) -> EventPriority:
+    """The §144 tier of one event type; unknown future types land on the
+    automation tier — never more urgent than the spec says."""
+    return DOMAIN_PRIORITIES.get(event_type, EventPriority.NORMAL_AUTOMATION)
+
+
 # Per-tenant daily budgets. These are deployment-wide defaults; a per-tenant
 # override would be a database column (tenant_fairness_budgets table) in a
 # future task. The values are intentionally generous for a single tenant but
@@ -212,9 +302,12 @@ async def get_usage(tenant_id: uuid.UUID) -> dict:
 __all__ = [
     "BudgetCheck",
     "DEFAULT_DAILY_BUDGETS",
+    "DOMAIN_PRIORITIES",
+    "EventPriority",
     "ResourceType",
     "check_budget",
     "consume",
     "get_usage",
+    "priority_for",
     "refund",
 ]

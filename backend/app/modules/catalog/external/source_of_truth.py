@@ -15,7 +15,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import Index, String, UniqueConstraint
+from sqlalchemy import DateTime, Index, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
@@ -66,9 +66,10 @@ class SourceOfTruthPolicy(TenantMixin, TimestampMixin, Base):
     source_mode: Mapped[str] = mapped_column(String(15), nullable=False)
     sync_direction: Mapped[str] = mapped_column(String(15), nullable=False)
     conflict_policy: Mapped[str] = mapped_column(String(15), nullable=False)
-    # Tracking fields for reconciliation
+    # Tracking fields for reconciliation — TIMESTAMPTZ in the migration
+    # (f9b0c1d2e3f4), so the model must declare timezone=True.
     last_synced_at: Mapped[datetime | None] = mapped_column(
-        nullable=True
+        DateTime(timezone=True), nullable=True
     )
     # External version marker (e.g. Shopify's updated_at or version_id)
     external_version: Mapped[str | None] = mapped_column(String(255), nullable=True)

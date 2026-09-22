@@ -137,7 +137,8 @@ class DeletionService:
                 "reason": reason,
                 "requested_by": str(requested_by_user_id) if requested_by_user_id else None,
             },
-            aggregate_version=1,
+            # §153: the customer row's real version (VersionMixin), not a literal.
+            aggregate_version=customer.version,
         )
 
         # 4) Close pending data subject requests for this customer
@@ -168,7 +169,9 @@ class DeletionService:
             event_type="privacy.customer_deleted",
             tenant_id=tenant_id,
             payload=report,
-            aggregate_version=3,
+            # §153: same customer aggregate — the row's real version (the
+            # tombstone path does not bump it), never a fabricated literal.
+            aggregate_version=customer.version,
         )
         await session.flush()
         return report

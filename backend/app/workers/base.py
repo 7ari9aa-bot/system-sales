@@ -23,6 +23,11 @@ import random
 import socket
 
 from app.core.config import get_settings
+from app.core.context import (
+    actor_kind_contextvar,
+    correlation_id_contextvar,
+    credentials_audit_contextvar,
+)
 from app.core.db import SessionLocal
 from app.core.errors import ValidationError
 from app.core.events.bus import ATTEMPTS_META_KEY, Event, EventBus
@@ -193,6 +198,40 @@ class StreamWorker:
             return dict(event.meta)
 
     async def _process(self, event: Event) -> None:
+        """Handle one event, then pay for the time it took.
+
+        §144: WORKER_SECONDS is charged to the envelope's tenant on EVERY
+        handled event — success, failure, retry-later alike (a crashing
+        handler burned real capacity). The charge is pure accounting here:
+        the GATE lives on the throttled tiers (bulk/campaign defer on an
+        exhausted budget), because the §144 priority order forbids human /
+        AI / webhook work from being starved by a tenant's own meter.
+        """
+        import time
+
+        started = time.monotonic()
+        try:
+            await self._process_event(event)
+        finally:
+            await self._charge_worker_seconds(event, started)
+
+    async def _charge_worker_seconds(self, event: Event, started: float) -> None:
+        import math
+        import time
+
+        try:
+            envelope = deserialize_event(event)
+        except (ValidationError, KeyError, TypeError, ValueError):
+            return  # no tenant attribution → charge nobody
+        units = max(1, math.ceil(time.monotonic() - started))
+        try:
+            from app.core.fairness import ResourceType, consume
+
+            await consume(envelope.tenant_id, ResourceType.WORKER_SECONDS, units=units)
+        except Exception:  # noqa: BLE001 — metering must never break handling
+            logger.debug("worker.metering_failed id=%s", event.id, exc_info=True)
+
+    async def _process_event(self, event: Event) -> None:
         settings = get_settings()
         envelope_meta = self._envelope_meta(event)
         # Dedupe id: prefer the stable outbox row id (survives relay
@@ -242,8 +281,25 @@ class StreamWorker:
                     self.stream, dedupe_id, exc_info=True,
                 )
 
+        # §66: publish the envelope's lineage into request-scoped context for
+        # the duration of the handler, so audit rows written while processing
+        # carry source="system" and the correlation_id of the event that
+        # caused them (NULL when the entry is not a §19 envelope). Also
+        # installs a fresh §68 credential-audit batch set per event.
         try:
-            await self.handle(event)
+            event_correlation_id: str | None = deserialize_event(event).correlation_id
+        except (ValidationError, KeyError, TypeError, ValueError):
+            event_correlation_id = None
+        _cor_token = correlation_id_contextvar.set(event_correlation_id)
+        _kind_token = actor_kind_contextvar.set("system")
+        _audit_token = credentials_audit_contextvar.set(set())
+        try:
+            try:
+                await self.handle(event)
+            finally:
+                correlation_id_contextvar.reset(_cor_token)
+                actor_kind_contextvar.reset(_kind_token)
+                credentials_audit_contextvar.reset(_audit_token)
         except DeferredError as exc:
             # Not a failure: defer with an explicit delay and leave the attempts
             # counter untouched, so a long suspension cannot exhaust the retry

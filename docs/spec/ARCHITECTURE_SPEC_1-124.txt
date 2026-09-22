@@ -1,0 +1,4192 @@
+تمام. دي النسخة التي أعتبرها **Architecture Source of Truth بعد دمج كل الـ40 نقطة والتكرارات**، وليست مجرد قائمة أفكار. حافظت فيها على المبدأ الأصلي أن الـFrontend طبقة تطبيق/عرض فوق الـFastAPI والـDomain، وأن PostgreSQL هي مصدر الحقيقة، وRedis Streams هو event backbone وليس database بديلة. 
+
+# FINAL SYSTEM ARCHITECTURE — SOURCE OF TRUTH
+
+اعتبر هذه الوثيقة الـArchitecture النهائية للنظام.
+
+أي implementation يجب أن يحافظ على الـboundaries والـcontracts المذكورة هنا.
+
+لو احتجت تغييرًا جوهريًا في Architecture، يتم توثيقه كـADR قبل تنفيذه، ولا يتم تغيير الـboundaries بشكل عشوائي أثناء التطوير.
+
+---
+
+# 1. SYSTEM VISION
+
+النظام:
+
+```text
+Business Operating System
+```
+
+وليس مجموعة منتجات منفصلة ملصقة بجانب بعضها.
+
+المكونات الأساسية:
+
+```text
+CRM
+Messaging
+Commerce
+Marketing
+Automation
+AI
+Analytics
+Operations
+Billing
+Team
+Security
+Privacy
+Platform
+```
+
+كلها تعمل داخل:
+
+```text
+One Application
++
+One Domain Architecture
++
+One Data Model
++
+One Event Backbone
++
+One Identity Model
+```
+
+---
+
+# 2. FINAL HIGH-LEVEL ARCHITECTURE
+
+```text
+                           USERS / CLIENTS
+                                  │
+                                  ▼
+                       ┌────────────────────┐
+                       │    WEB FRONTEND    │
+                       │ Next.js / React    │
+                       └─────────┬──────────┘
+                                 │
+                          HTTPS / WS / SSE
+                                 │
+                                 ▼
+                       ┌────────────────────┐
+                       │      FASTAPI       │
+                       │     API Layer      │
+                       └─────────┬──────────┘
+                                 │
+                 ┌───────────────┼────────────────┐
+                 │               │                │
+                 ▼               ▼                ▼
+          Authentication     Tenant/Role      Rate Limit
+          Authorization       Resolution       / Policy
+                 │               │                │
+                 └───────────────┼────────────────┘
+                                 ▼
+                    ┌─────────────────────────┐
+                    │   APPLICATION LAYER     │
+                    │     Use Cases            │
+                    └────────────┬────────────┘
+                                 │
+                                 ▼
+                    ┌─────────────────────────┐
+                    │      DOMAIN LAYER       │
+                    │  Business Truth / Rules │
+                    └────────────┬────────────┘
+                                 │
+             ┌───────────────────┼────────────────────┐
+             │                   │                    │
+             ▼                   ▼                    ▼
+       Repositories          Ports/Contracts       Policies
+             │                   │                    │
+             └───────────────────┼────────────────────┘
+                                 ▼
+                     PostgreSQL / Supabase
+                           + RLS
+                                 │
+                      ┌──────────┴──────────┐
+                      │                     │
+                   Outbox                Audit
+                      │
+                      ▼
+                Outbox Relay
+                      │
+                      ▼
+                Redis Streams
+                      │
+        ┌─────────────┼─────────────┬──────────────┐
+        ▼             ▼             ▼              ▼
+     Workers         n8n        AI Runtime     Analytics
+        │                           │              │
+        │                           │              │
+        └──────────────┬────────────┴──────────────┘
+                       ▼
+                  Updated State
+                       │
+          ┌────────────┼──────────────┐
+          ▼            ▼              ▼
+      Read APIs    Realtime       Search Layer
+          │            │              │
+          └────────────┼──────────────┘
+                       ▼
+                    Frontend
+```
+
+---
+
+# 3. ARCHITECTURAL STYLE
+
+استخدم:
+
+```text
+Modular Monolith
++
+Domain / Application separation
++
+Ports & Adapters
++
+Event-driven asynchronous processing
++
+CQRS-style read separation where useful
+```
+
+لا تبدأ Microservices.
+
+لكن الـmodules تكون boundaries حقيقية بحيث يمكن فصل module لاحقًا لو احتاج scale مستقل.
+
+---
+
+# 4. GOLDEN RULES
+
+```text
+FastAPI
+= Application / API Brain
+
+Domain
+= Business Truth
+
+PostgreSQL
+= Data Truth
+
+RLS
+= Database-level authorization defense
+
+Redis Streams
+= Event Delivery Backbone
+
+Workers
+= Async Execution
+
+n8n
+= Automation / Orchestration
+
+AI Runtime
+= Intelligence Execution
+
+Adapters
+= External Provider Isolation
+
+Frontend
+= Presentation + Application UX
+```
+
+لا توجد Business Truth خاصة داخل الـFrontend.
+
+ولا توجد Business-critical rules مخفية داخل n8n.
+
+---
+
+# 5. BACKEND LAYERS
+
+```text
+API
+↓
+Application
+↓
+Domain
+↓
+Ports
+↓
+Infrastructure / Adapters
+```
+
+## API
+
+مسؤول عن:
+
+```text
+HTTP
+Authentication extraction
+Request parsing
+Validation
+Pagination
+Filtering
+Serialization
+OpenAPI
+Error mapping
+```
+
+الـroute handlers لا تحتوي business logic.
+
+---
+
+# 6. APPLICATION LAYER
+
+كل use case يدخل من هنا.
+
+أمثلة:
+
+```text
+CreateCustomer
+MergeCustomers
+CreateLead
+AssignConversation
+SendMessage
+CreateOrder
+RefundPayment
+CreateCampaign
+CreateSegment
+StartJourney
+RunWorkflow
+CreateHandover
+CreateTask
+ReconnectIntegration
+ProcessDataDeletionRequest
+```
+
+الـApplication Service:
+
+```text
+Resolve actor
+Resolve tenant
+Authorize
+Load required data
+Call domain rules
+Persist transaction
+Write audit
+Create outbox events
+Return result
+```
+
+---
+
+# 7. DOMAIN LAYER
+
+Domains:
+
+```text
+Identity / Tenancy
+Customers / CRM
+Messaging
+Channels
+Commerce
+Products
+Inventory
+Payments
+Marketing
+Audiences / Segments
+Campaigns
+Journeys
+Automation
+AI
+Operations
+Tasks
+Billing
+Team
+Privacy
+Security
+Analytics
+```
+
+كل Domain يملك:
+
+```text
+Entities
+Value Objects
+State
+Business Rules
+Invariants
+Policies
+Domain Events
+```
+
+---
+
+# 8. MODULE BOUNDARY RULE
+
+هذه قاعدة إلزامية:
+
+```text
+A module MUST NOT access another module's repository directly.
+```
+
+ممنوع:
+
+```text
+Customers
+→ OrdersRepository
+```
+
+المسموح:
+
+```text
+Customers
+→ Orders public application contract
+```
+
+أو:
+
+```text
+Customers
+→ Domain Event
+→ Orders reacts
+```
+
+مثال:
+
+```text
+Order
+→ OrderCreated
+→ Customer module reacts
+→ Analytics reacts
+→ Notification reacts
+```
+
+الـinternal tables/repositories تظل private داخل module.
+
+---
+
+# 9. PORTS & ADAPTERS
+
+Application/Domain لا يعرف:
+
+```text
+Stripe SDK
+Meta SDK
+Gemini SDK
+OpenAI SDK
+Redis implementation
+Supabase SDK
+n8n API
+```
+
+بل يعرف:
+
+```text
+CustomerRepository
+OrderRepository
+MessageChannelPort
+PaymentProviderPort
+AIProviderPort
+StoragePort
+SearchPort
+NotificationPort
+SecretStorePort
+```
+
+ثم adapters:
+
+```text
+channels/
+payments/
+ai/
+storage/
+search/
+notifications/
+```
+
+---
+
+# 10. MULTI-TENANCY
+
+Hierarchy:
+
+```text
+Tenant
+ └── Workspace / Brand
+      └── Location
+           ├── Teams
+           ├── Channels
+           ├── Data
+           └── Policies
+```
+
+كل request:
+
+```text
+Authentication
+↓
+Tenant Resolution
+↓
+Workspace/Location Context
+↓
+RBAC
+↓
+Policy
+↓
+Application Service
+↓
+Domain
+↓
+PostgreSQL
+↓
+RLS
+```
+
+---
+
+# 11. RLS — REQUIRED
+
+Application-level tenant filtering وحده غير كافٍ.
+
+PostgreSQL RLS هي defense-in-depth.
+
+مهم جدًا:
+
+لا تستخدم privileged/service role الذي bypasses RLS لتنفيذ كل tenant-scoped business queries.
+
+التصميم المطلوب:
+
+```text
+Backend Request
+↓
+resolve tenant
+↓
+open transaction
+↓
+set transaction-scoped tenant context
+↓
+queries execute under RLS
+```
+
+الـRLS policies تستخدم tenant context للتحقق.
+
+الـprivileged role يستخدم فقط لحالات إدارية/maintenance/migrations التي تحتاج ذلك، وليس كمسار business عادي.
+
+---
+
+# 12. AUTHORIZATION
+
+نستخدم:
+
+```text
+Authentication
++
+RBAC
++
+Resource-level authorization
++
+Domain policies
+```
+
+الـUI visibility ليست security.
+
+القرار النهائي داخل backend.
+
+---
+
+# 13. ACTOR MODEL
+
+الـActors في النظام:
+
+```text
+Human User
+AI Agent
+System
+Automation
+Integration
+```
+
+الـAI ليس privileged actor.
+
+مثال:
+
+```text
+Human
+   │
+   ▼
+Application Service
+   │
+   ▼
+Domain
+
+AI
+   │
+   ▼
+Application Service
+   │
+   ▼
+Domain
+```
+
+لا يوجد:
+
+```text
+AI
+→ direct DB mutation
+```
+
+ولا:
+
+```text
+AI
+→ bypass Application Service
+```
+
+---
+
+# 14. AI TOOL AUTHORIZATION
+
+أي tool call من AI:
+
+```text
+AI Agent
+↓
+Tool Policy
+↓
+Authorization
+↓
+Application Service
+↓
+Domain Rules
+↓
+Transaction
+↓
+Audit
+↓
+Event
+```
+
+نفس business rules التي يستخدمها الـHuman.
+
+مثال:
+
+```text
+AI create_order
+=
+Human create_order
+```
+
+من ناحية الـbusiness authorization.
+
+---
+
+# 15. AI RISK LEVELS
+
+كل tool لها:
+
+```text
+risk_level
+```
+
+مثلاً:
+
+```text
+LOW
+get_customer
+get_order
+search_knowledge
+
+MEDIUM
+add_tag
+create_task
+send_message
+
+HIGH
+create_order
+refund
+cancel_order
+change_price
+delete_data
+```
+
+الـHIGH-risk actions تتطلب:
+
+```text
+Human-in-the-loop approval
+```
+
+ولا يمكن للـAI تجاوزها عبر prompt أو retry.
+
+---
+
+# 16. AI IDEMPOTENCY
+
+أي tool لها side effect يجب أن تستقبل:
+
+```text
+idempotency_key
+```
+
+مثال:
+
+```text
+AI
+→ create_order
+→ idempotency_key = agent_run_id + tool_call_id
+```
+
+لو حصل retry:
+
+```text
+same idempotency key
+→ same logical operation
+→ no duplicate side effect
+```
+
+---
+
+# 17. OPTIMISTIC LOCKING
+
+كل record حساس يملك:
+
+```text
+version
+```
+
+مثلاً:
+
+```text
+Customer.version
+Order.version
+Payment.version
+Campaign.version
+Workflow.version
+Agent.version
+```
+
+Mutation:
+
+```text
+UPDATE ...
+WHERE id = ?
+AND version = expected_version
+```
+
+ثم:
+
+```text
+version = version + 1
+```
+
+لو version mismatch:
+
+```text
+409 CONFLICT
+```
+
+الـFrontend يظهر:
+
+```text
+This record was changed by someone else.
+Reload / Compare / Keep your changes
+```
+
+---
+
+# 18. OUTBOX PATTERN
+
+أي transaction business مهمة:
+
+```text
+BEGIN
+    update domain state
+    create audit record
+    insert outbox event
+COMMIT
+```
+
+ثم:
+
+```text
+Outbox Relay
+↓
+Redis Streams
+```
+
+الـevent لا يكتب مباشرة إلى Redis قبل نجاح الـDB transaction.
+
+---
+
+# 19. EVENT CONTRACT
+
+كل event:
+
+```text
+event_id
+event_type
+tenant_id
+workspace_id
+location_id
+aggregate_type
+aggregate_id
+aggregate_version
+occurred_at
+producer
+correlation_id
+causation_id
+schema_version
+payload
+```
+
+مثال:
+
+```text
+order.created
+order.paid
+payment.failed
+conversation.created
+message.received
+message.sent
+customer.merged
+ai.handover.created
+workflow.failed
+integration.disconnected
+```
+
+---
+
+# 20. REDIS STREAMS
+
+Redis يستخدم:
+
+```text
+XGROUP
+XREADGROUP
+XACK
+XPENDING
+XAUTOCLAIM / claim mechanism
+```
+
+نستخدم Consumer Groups.
+
+مثال:
+
+```text
+orders:
+    analytics-consumer
+    notification-consumer
+
+messaging:
+    ai-consumer
+    automation-consumer
+    realtime-consumer
+```
+
+Consumers تعمل at-least-once delivery.
+
+لذلك:
+
+```text
+Consumers MUST be idempotent.
+```
+
+Redis Stream ليس source of truth.
+
+---
+
+# 21. STREAM RETENTION
+
+لا تعتمد على Redis إلى الأبد.
+
+استخدم retention/trimming مناسبًا للـoperational stream.
+
+مثلاً:
+
+```text
+Redis
+= transport / recent delivery state
+
+Outbox / durable event history
+= replay source
+```
+
+لو consumer توقف طويلًا وتجاوز retention:
+
+```text
+Durable event source
+↓
+Replay
+↓
+Redis Stream
+```
+
+لا نعتمد على retention غير محدود.
+
+---
+
+# 22. WEBHOOK INGRESS
+
+أي webhook من الإنترنت:
+
+```text
+Provider
+↓
+Webhook Endpoint
+↓
+Signature Verification
+↓
+Basic validation
+↓
+Idempotency / dedupe
+↓
+Persist raw inbound event
+↓
+ACK quickly
+↓
+Async processing
+```
+
+لا تعالج business workflow الطويل داخل HTTP webhook request.
+
+---
+
+# 23. WEBHOOK EVENT STORE
+
+احتفظ بـ:
+
+```text
+WebhookEvent
+├── id
+├── provider
+├── external_event_id
+├── tenant_id
+├── received_at
+├── signature_valid
+├── payload
+├── processing_status
+├── attempts
+├── last_error
+└── processed_at
+```
+
+---
+
+# 24. WEBHOOK RETRY + DLQ
+
+بعد:
+
+```text
+Retry 1
+Retry 2
+Retry 3
+...
+```
+
+لو فشل الحد الأقصى:
+
+```text
+Dead Letter Queue
+```
+
+والـDLQ لها:
+
+```text
+Inspect
+Replay
+Retry
+Ignore
+Mark resolved
+```
+
+ولا تختفي الرسالة.
+
+الـoriginal payload يجب أن يظل محفوظًا لإعادة المعالجة.
+
+---
+
+# 25. RATE LIMITING / ABUSE PROTECTION
+
+طبقات:
+
+```text
+Edge / WAF
+↓
+IP-based limits
+↓
+Tenant limits
+↓
+User limits
+↓
+Endpoint limits
+↓
+Provider limits
+```
+
+خصوصًا:
+
+```text
+public APIs
+webhooks
+authentication endpoints
+message sending
+AI requests
+bulk operations
+search
+exports
+```
+
+Webhooks تعتمد أيضًا على:
+
+```text
+signature verification
+idempotency
+provider validation
+```
+
+وليس IP allowlisting فقط.
+
+---
+
+# 26. CHANNEL GATEWAY
+
+Canonical architecture:
+
+```text
+External Channel
+↓
+Channel Adapter
+↓
+Verify
+↓
+Parse
+↓
+Normalize
+↓
+Canonical Event
+↓
+Messaging Domain
+```
+
+Outbound:
+
+```text
+Messaging Domain
+↓
+Outbound Message
+↓
+Channel Policy
+↓
+Channel Adapter
+↓
+Provider
+```
+
+Core لا يعرف payload الخاص بكل provider.
+
+---
+
+# 27. CUSTOMER IDENTITY RESOLUTION
+
+`CustomerIdentity` لا يكفي وحده.
+
+نحتاج:
+
+```text
+Customer
+CustomerIdentity
+IdentityMergeCandidate
+IdentityMergeEvent
+```
+
+Resolution layers:
+
+```text
+1. Deterministic matching
+2. High-confidence verified matching
+3. AI-assisted candidate generation
+4. Manual review
+5. Merge
+```
+
+Examples:
+
+```text
+same verified phone
+same verified email
+same provider identity
+```
+
+AI لا يعمل automatic destructive merges بدون policy.
+
+---
+
+# 28. CUSTOMER MERGE MODEL
+
+عند merge:
+
+```text
+Customer A
++
+Customer B
+↓
+Canonical Customer
+```
+
+نحافظ على:
+
+```text
+historical identities
+conversations
+orders
+payments
+tasks
+timeline
+consent
+audit
+```
+
+ونحتاج redirect/alias mechanism لمنع الروابط القديمة من الانكسار.
+
+مثلاً:
+
+```text
+merged_into_customer_id
+```
+
+أو equivalent canonical mapping.
+
+كل merge:
+
+```text
+audited
+reversible where technically feasible
+```
+
+---
+
+# 29. CUSTOMER 360
+
+Customer 360 يعتمد على:
+
+```text
+Customer
++
+Resolved identities
++
+Conversations
++
+Orders
++
+Payments
++
+Marketing
++
+Journeys
++
+Tasks
++
+Reviews
++
+AI interactions
+```
+
+ليس على channel-specific customer records منفصلة.
+
+---
+
+# 30. WHATSAPP / OUTBOUND MESSAGING POLICY
+
+Conversation يجب أن تحتوي:
+
+```text
+last_customer_message_at
+channel
+channel_account
+messaging_policy_state
+```
+
+Outbound pipeline:
+
+```text
+Outbound message
+↓
+Channel Policy
+↓
+Conversation Window
+↓
+Allowed?
+├── Free-form → send
+└── Template required → template flow
+```
+
+قاعدة الـ24-hour window الخاصة بـWhatsApp يجب أن تكون في policy/domain layer، وليس فقط في Composer.
+
+تستخدم نفس policy من:
+
+```text
+Human
+AI
+Automation
+Journey
+Campaign
+```
+
+---
+
+# 31. MESSAGE TEMPLATES
+
+Template هي first-class entity:
+
+```text
+MessageTemplate
+TemplateVersion
+TemplateVariable
+TemplateApproval
+TemplateLocale
+```
+
+states:
+
+```text
+Draft
+Submitted
+Approved
+Rejected
+Paused
+Archived
+```
+
+ولا تعتمد الـAI أو Automation على template غير مسموح بها للchannel/context الحالي.
+
+---
+
+# 32. MARKETING CONSENT
+
+Marketing opt-in/out يجب أن يكون first-class data:
+
+```text
+Consent
+├── customer_id
+├── channel
+├── purpose
+├── source
+├── captured_at
+├── status
+├── proof/metadata
+└── revoked_at
+```
+
+يجب أن يكون لدينا distinction بين:
+
+```text
+Service messaging consent/state
+Marketing consent
+```
+
+لا تستخدم boolean واحدة لكل شيء.
+
+---
+
+# 33. MEDIA PIPELINE
+
+الـAttachment ليست مجرد URL.
+
+```text
+Inbound Media
+↓
+Provider download
+↓
+Temporary / Quarantine storage
+↓
+Content validation
+↓
+Malware scan
+↓
+Metadata extraction
+↓
+Transcoding / derivatives
+↓
+Durable object storage
+↓
+CDN / Signed URL
+```
+
+Provider URLs المؤقتة يجب ألا تكون source of truth.
+
+---
+
+# 34. MEDIA MODEL
+
+```text
+Attachment
+├── id
+├── tenant_id
+├── conversation_id
+├── storage_key
+├── provider_url
+├── mime_type
+├── size
+├── checksum
+├── duration
+├── width
+├── height
+├── scan_status
+├── processing_status
+└── created_at
+```
+
+للصوت:
+
+```text
+transcription_status
+transcript_id
+language
+```
+
+---
+
+# 35. STT / TTS
+
+Voice media pipeline:
+
+```text
+Audio
+↓
+Normalize / Transcode
+↓
+STT
+↓
+Transcript
+↓
+AI context
+```
+
+Outgoing AI voice:
+
+```text
+AI response
+↓
+TTS
+↓
+Audio processing
+↓
+Channel / Voice Gateway
+```
+
+STT/TTS providers isolated behind ports.
+
+---
+
+# 36. VOICE ARCHITECTURE
+
+Voice ليس مجرد Channel Adapter عادي.
+
+Architecture منفصلة:
+
+```text
+Voice Gateway
+├── SIP / Telephony Adapter
+├── Call Session
+├── Call Legs
+├── RTP/WebRTC streaming
+├── IVR
+├── STT
+├── TTS
+├── Recording
+├── Transcript
+└── AI Voice Runtime
+```
+
+Entities:
+
+```text
+Call
+CallSession
+CallLeg
+PhoneNumber
+Recording
+Transcript
+IVRSession
+```
+
+Voice module يمكن تفعيله كـseparate capability لاحقًا بدون تغيير Messaging core.
+
+---
+
+# 37. AI ARCHITECTURE
+
+```text
+Conversation
+↓
+Agent
+↓
+Context Builder
+├── Customer
+├── Conversation
+├── Memory
+├── Knowledge
+├── Policies
+└── Available Tools
+↓
+AI Policy
+↓
+Budget Check
+↓
+Model Router
+↓
+Provider Adapter
+↓
+Model
+↓
+Tool / Response
+↓
+Output Guardrail
+↓
+Messaging Policy
+↓
+Send / Handover
+```
+
+---
+
+# 38. AI MEMORY
+
+Memory لها explicit scope:
+
+```text
+Conversation Memory
+Customer Memory
+Agent Session Memory
+```
+
+ولا توجد global memory بلا tenant/customer scope.
+
+Persistent customer memory:
+
+```text
+tenant_id
+customer_id
+memory_type
+content
+source
+created_at
+updated_at
+retention
+```
+
+Deletion request يجب أن يحذف الذاكرة المتعلقة بالعميل حسب policy.
+
+---
+
+# 39. AI KNOWLEDGE / RAG
+
+Pipeline:
+
+```text
+Document
+↓
+Ingestion Job
+↓
+Parser
+↓
+Normalization
+↓
+Chunking
+↓
+Metadata
+↓
+Embedding
+↓
+Vector Store
+↓
+Retrieval
+↓
+Reranking if needed
+↓
+AI Context
+```
+
+ابدأ:
+
+```text
+PostgreSQL
++
+pgvector
+```
+
+ولا تدخل Vector DB منفصلة من البداية بدون حاجة.
+
+كل chunk يحتوي على:
+
+```text
+tenant_id
+workspace_id
+source_document_id
+document_version
+permissions
+language
+content
+embedding
+created_at
+```
+
+---
+
+# 40. KNOWLEDGE FRESHNESS
+
+المعلومات الديناميكية لا تعتمد فقط على RAG.
+
+مثلاً:
+
+```text
+Current order status
+Current inventory
+Current price
+Current payment
+```
+
+تأتي من domain tools/source of truth.
+
+Knowledge Base تستخدم للمعرفة التي تحتاج retrieval.
+
+عند تعديل document:
+
+```text
+New version
+↓
+Invalidate old index
+↓
+Re-index
+```
+
+ويمكن دعم:
+
+```text
+stale
+fresh
+reindexing
+failed
+```
+
+---
+
+# 41. AI OUTPUT GUARDRAIL
+
+قبل إرسال أي AI output:
+
+```text
+AI Response
+↓
+Schema / validity
+↓
+Policy checks
+↓
+Factual constraints
+↓
+PII / leakage checks
+↓
+Brand / tone policy
+↓
+Channel policy
+↓
+Safety checks
+↓
+Send OR block OR handover
+```
+
+لا تعتمد على Tool Authorization وحده.
+
+Tool Authorization = "هل AI مسموح له يفعل شيئًا؟"
+
+Output Guardrail = "هل الكلام الذي سيقوله صالح لإرساله؟"
+
+---
+
+# 42. AI COST GOVERNANCE
+
+لكل Tenant:
+
+```text
+daily_budget
+monthly_budget
+warning_threshold
+hard_cap
+fallback_policy
+```
+
+ويُفضّل أيضًا:
+
+```text
+per-agent budget
+per-model policy
+per-provider policy
+```
+
+قبل provider call:
+
+```text
+AI Request
+↓
+Budget preflight
+↓
+Reserve allowance
+↓
+Model Router
+```
+
+بعد call:
+
+```text
+Actual usage
+↓
+Settle budget
+↓
+Usage event
+```
+
+Alerts:
+
+```text
+50%
+80%
+90%
+100%
+```
+
+Hard cap يمنع runaway retries/fallback loops.
+
+---
+
+# 43. AI PROVIDER DATA GOVERNANCE
+
+كل tenant له AI provider policy:
+
+```text
+Allowed providers
+Denied providers
+Allowed models
+Data classification
+PII policy
+Data residency policy
+Retention policy
+```
+
+قبل إرسال data خارجيًا:
+
+```text
+Classify
+↓
+Redact / Mask PII where required
+↓
+Apply tenant/provider policy
+↓
+Send
+```
+
+يجب توثيق provider data-processing terms/retention requirements قبل production، ولا تفترض أن كل provider يعامل البيانات بنفس الطريقة.
+
+---
+
+# 44. AI TRACE
+
+User-facing:
+
+```text
+AI understood
+Used knowledge
+Used tool
+Result
+Final action
+```
+
+Technical/Admin:
+
+```text
+Agent
+Model
+Provider
+Prompt version
+Tokens
+Latency
+Cost
+Tools
+Tool results
+Retries
+Fallback
+Policy decisions
+Request ID
+Correlation ID
+Errors
+```
+
+---
+
+# 45. SEARCH ARCHITECTURE
+
+ابدأ:
+
+```text
+PostgreSQL
+├── exact indexes
+├── Full Text Search
+├── trigram/search indexes where useful
+```
+
+اعمل abstraction:
+
+```text
+SearchPort
+```
+
+لو الحجم/complexity زادت:
+
+```text
+Domain Events
+↓
+Search Indexer
+↓
+Meilisearch / Typesense / OpenSearch / equivalent
+```
+
+الـApplication layer لا يعتمد على search engine معين.
+
+كل search index يجب أن يحتفظ بـ:
+
+```text
+tenant_id
+workspace_id
+entity_id
+permissions/filter metadata
+```
+
+حتى لا يكسر authorization.
+
+---
+
+# 46. BUSINESS HOURS + SLA
+
+Entities:
+
+```text
+BusinessCalendar
+BusinessHours
+Holiday
+Timezone
+SLAPolicy
+```
+
+قد يكون لكل:
+
+```text
+Tenant
+Workspace
+Location
+```
+
+calendar مختلف.
+
+SLA clock يجب أن يكون:
+
+```text
+timezone-aware
+business-hours-aware
+holiday-aware
+```
+
+مثلاً:
+
+```text
+Customer message
+↓
+SLA clock
+↓
+business hours
+↓
+pause after close
+↓
+resume next opening
+```
+
+---
+
+# 47. CURRENCY
+
+كل monetary object يجب أن يخزن:
+
+```text
+amount_minor
+currency
+```
+
+مثلاً:
+
+```text
+9999
+EGP
+```
+
+وليس floating point money.
+
+عند cross-currency analytics:
+
+```text
+Original transaction amount
++
+Original currency
++
+Exchange rate
++
+Rate timestamp/source
+```
+
+لا نغير المبلغ الأصلي.
+
+---
+
+# 48. TENANT LIFECYCLE
+
+States:
+
+```text
+Provisioning
+Trial
+Active
+Past Due
+Grace
+Suspended
+Offboarding
+Deleted
+```
+
+كل state لها policy واضحة.
+
+مثلاً suspension:
+
+```text
+Billing suspended
+AI capability
+Channels
+Automation
+API access
+Existing data access
+```
+
+لا تعمل global "disable everything" بدون policy.
+
+---
+
+# 49. TENANT ONBOARDING
+
+```text
+Create Tenant
+↓
+Create Workspace
+↓
+Create Location
+↓
+Create Owner
+↓
+Provision defaults
+↓
+Connect channels
+↓
+Configure AI
+↓
+Configure billing
+↓
+Activate
+```
+
+كل provisioning step قابل للتتبع وإعادة التشغيل.
+
+---
+
+# 50. TENANT OFFBOARDING
+
+```text
+Request offboarding
+↓
+Freeze mutations
+↓
+Export data
+↓
+Revoke integrations
+↓
+Revoke secrets
+↓
+Cancel subscriptions
+↓
+Delete / archive according to policy
+↓
+Final audit
+```
+
+لا تحذف tenant في transaction عملاقة.
+
+استخدم async offboarding job.
+
+---
+
+# 51. PRIVACY DOMAIN
+
+Privacy يصبح domain مستقل:
+
+```text
+Privacy
+├── Consent
+├── Data Subject Requests
+├── Export
+├── Deletion
+├── Retention
+└── Privacy Audit
+```
+
+Data requests:
+
+```text
+Access
+Export
+Delete
+Rectify
+```
+
+حسب الأسواق والسياسات التي يستهدفها المنتج.
+
+---
+
+# 52. DATA RETENTION
+
+كل data class لها policy:
+
+```text
+Messages
+Attachments
+Audit
+AI Usage
+Logs
+Analytics
+Backups
+```
+
+مثلاً:
+
+```text
+hot
+↓
+archive
+↓
+delete
+```
+
+وretention لا يعتمد على UI فقط؛ worker/scheduled jobs تنفذه.
+
+---
+
+# 53. BILLING METERING
+
+الاستخدام لا يحسب عند إصدار الفاتورة فقط.
+
+Pipeline:
+
+```text
+Domain Event / Usage Event
+↓
+Usage Meter
+↓
+Deduplication
+↓
+Aggregation
+↓
+Billable Usage
+↓
+Billing Period Snapshot
+↓
+Invoice Line
+```
+
+Usage events تحتاج:
+
+```text
+usage_event_id
+tenant_id
+metric
+quantity
+unit
+occurred_at
+source
+idempotency_key
+```
+
+أمثلة:
+
+```text
+messages_sent
+ai_tokens
+ai_requests
+storage
+automation_runs
+campaign_messages
+voice_minutes
+```
+
+---
+
+# 54. BILLING SOURCE OF TRUTH
+
+لا تعتمد على live recalculation للفواتير القديمة.
+
+عند close period:
+
+```text
+Billing Snapshot
+```
+
+يصبح immutable.
+
+ثم:
+
+```text
+Invoice
+InvoiceLine
+```
+
+ترتبط بالـsnapshot.
+
+---
+
+# 55. ANALYTICS ARCHITECTURE
+
+Transactional DB لا تتحمل كل analytical queries الثقيلة.
+
+```text
+Domain State
++
+Events
+↓
+Analytics Consumers
+↓
+Read Models / Aggregations
+↓
+Analytics API
+↓
+Frontend
+```
+
+لا تجعل browser يعمل business aggregation.
+
+---
+
+# 56. PARTITIONING
+
+لا تعمل partition لكل table.
+
+ابدأ بتصميم الجداول الكبيرة لتكون partition-ready.
+
+المرشحون:
+
+```text
+Messages
+AuditLog
+AIUsage
+Event history
+WebhookEvent
+```
+
+القاعدة المبدئية:
+
+```text
+time-based partitioning
++
+tenant_id indexes
+```
+
+وعند أحجام ضخمة جدًا يمكن دراسة composite/subpartition strategy.
+
+لا تبني آلاف partitions بسبب عدد tenants.
+
+---
+
+# 57. ARCHIVING
+
+Hot data:
+
+```text
+current operational state
+```
+
+Cold/archive:
+
+```text
+old messages
+old audit
+old usage
+old events
+```
+
+Archive jobs async.
+
+يجب ألا تغير archival عملية الـCustomer 360 أو legal audit requirements.
+
+---
+
+# 58. CONNECTION POOLING
+
+FastAPI replicas + workers + analytics workers يمكن أن تستهلك connections بسرعة.
+
+استخدم:
+
+```text
+Supabase pooler / Supavisor
+```
+
+أو equivalent connection pooler مناسب للـdeployment.
+
+لا تفتح connection persistent جديد لكل request.
+
+راقب:
+
+```text
+active connections
+pool saturation
+query latency
+waiting connections
+```
+
+---
+
+# 59. STATELESS API
+
+FastAPI API instances يجب أن تكون stateless قدر الإمكان.
+
+لا تخزن:
+
+```text
+session state
+workflow execution state
+conversation processing state
+```
+
+في process memory.
+
+تخزينها يكون في:
+
+```text
+PostgreSQL
+Redis
+Job system
+```
+
+حسب نوع state.
+
+---
+
+# 60. REALTIME
+
+Realtime:
+
+```text
+Domain Event
+↓
+Outbox
+↓
+Redis Streams
+↓
+Realtime Gateway
+↓
+WebSocket / SSE
+↓
+Frontend
+```
+
+الـWebSocket connections state تكون خارج الـAPI process.
+
+لذلك يمكن زيادة:
+
+```text
+API replicas
+Realtime replicas
+```
+
+بدون sticky session كمتطلب أساسي.
+
+---
+
+# 61. REALTIME SCOPING
+
+Subscriptions يجب أن تكون:
+
+```text
+tenant scoped
+workspace scoped
+location scoped
+entity scoped
+role aware
+```
+
+لا broadcast global لكل client.
+
+مثلاً:
+
+```text
+tenant:123
+workspace:22
+conversation:881
+```
+
+حسب الحاجة.
+
+---
+
+# 62. N8N ISOLATION
+
+n8n لا يدخل في core synchronous request path.
+
+ممنوع:
+
+```text
+Incoming Message
+↓
+wait for n8n
+↓
+then save response
+```
+
+المسموح:
+
+```text
+Incoming Message
+↓
+Persist
+↓
+Domain event
+↓
+ACK / continue
+↓
+n8n asynchronously reacts
+```
+
+لو n8n وقع:
+
+```text
+Messaging Core
+= continues working
+```
+
+وأي workflow result يعود عبر:
+
+```text
+event
+callback
+job
+```
+
+حسب use case.
+
+---
+
+# 63. WORKER SYSTEM
+
+Worker types:
+
+```text
+Webhook Processor
+Message Worker
+AI Worker
+Automation Worker
+Campaign Worker
+Media Worker
+STT Worker
+Analytics Worker
+Billing Worker
+Maintenance Worker
+Export Worker
+Privacy Worker
+```
+
+كل worker:
+
+```text
+idempotent
+retryable
+observable
+tenant-aware
+```
+
+---
+
+# 64. RETRY POLICY
+
+ليس كل failure يعاد تلقائيًا.
+
+```text
+Transient
+→ retry
+
+Rate limit
+→ delayed retry
+
+Provider unavailable
+→ retry/fallback
+
+Validation error
+→ no retry
+
+Authorization error
+→ no retry
+
+Permanent provider rejection
+→ DLQ / human action
+```
+
+Exponential backoff + jitter حيث مناسب.
+
+---
+
+# 65. OBSERVABILITY
+
+كل request/event/job/AI run يمكن ربطه عبر:
+
+```text
+request_id
+correlation_id
+causation_id
+tenant_id
+actor_id
+```
+
+Observability:
+
+```text
+Structured Logs
+Metrics
+Distributed Tracing
+Error Tracking
+Audit Logs
+Queue Metrics
+Provider Metrics
+```
+
+OpenTelemetry مناسب كطبقة tracing/telemetry.
+
+---
+
+# 66. AUDIT LOG
+
+كل mutation مهم:
+
+```text
+actor
+action
+entity
+entity_id
+before
+after
+timestamp
+tenant
+source
+request_id
+correlation_id
+```
+
+Sources:
+
+```text
+human
+ai
+automation
+system
+integration
+```
+
+AI actions يجب أن تكون واضحة في الـaudit.
+
+---
+
+# 67. SECURITY EVENTS
+
+بعيدًا عن business audit:
+
+```text
+Login failure
+Role changed
+Permission changed
+Secret rotated
+API key created
+Webhook changed
+Integration connected
+Suspicious activity
+Data export
+Data deletion
+```
+
+---
+
+# 68. SECRETS MANAGEMENT
+
+لا تخزن raw secrets في business table.
+
+استخدم abstraction:
+
+```text
+SecretStorePort
+```
+
+Implementation يمكن أن تكون:
+
+```text
+Supabase Vault
+```
+
+أو external KMS/Vault لاحقًا.
+
+الـapplication database يخزن فقط:
+
+```text
+secret_reference
+metadata
+provider
+tenant
+scope
+rotation info
+```
+
+Secrets يجب أن تكون:
+
+```text
+tenant-scoped
+encrypted
+access-controlled
+audited
+rotatable
+```
+
+---
+
+# 69. SECRET ROTATION
+
+كل secret له:
+
+```text
+created_at
+rotated_at
+expires_at
+status
+version
+```
+
+Rotation:
+
+```text
+create new
+↓
+validate
+↓
+switch reference
+↓
+revoke old
+↓
+audit
+```
+
+لا تغير secret production بطريقة تكسر كل requests فجأة.
+
+---
+
+# 70. BACKUP / DISASTER RECOVERY
+
+قبل production يجب تحديد:
+
+```text
+RPO
+RTO
+Backup retention
+PITR window
+Restore procedure
+Restore test schedule
+```
+
+استخدم:
+
+```text
+automated backups
++
+PITR
++
+periodic restore tests
+```
+
+الـbackup الذي لم يتم اختبار restore منه ليس DR strategy مكتملة.
+
+---
+
+# 71. ENVIRONMENTS
+
+بيئات منفصلة:
+
+```text
+Development
+Staging
+Production
+```
+
+ويكون لكل بيئة:
+
+```text
+Database
+Redis
+Secrets
+Provider credentials
+Storage
+Webhooks
+Feature flags
+```
+
+لا تستخدم production credentials في development.
+
+---
+
+# 72. META / CHANNEL SANDBOX
+
+Development يجب أن يستخدم:
+
+```text
+test numbers
+test accounts
+sandbox/test credentials
+```
+
+ولا يربط dev بشكل افتراضي بأرقام العملاء الحقيقيين.
+
+Template testing يجب أن يكون جزءًا من deployment/testing strategy.
+
+---
+
+# 73. CI/CD
+
+Pipeline:
+
+```text
+Commit
+↓
+Lint
+↓
+Type checks
+↓
+Unit tests
+↓
+Integration tests
+↓
+Contract tests
+↓
+Build
+↓
+Security checks
+↓
+Deploy staging
+↓
+Migration checks
+↓
+E2E
+↓
+Production deployment
+```
+
+Production deploy لا يتم قبل نجاح migration compatibility checks.
+
+---
+
+# 74. DATABASE MIGRATIONS
+
+استخدم:
+
+```text
+versioned migrations
+```
+
+ولا تعدّل migration قديمة سبق تطبيقها في production.
+
+للتغييرات الكبيرة استخدم:
+
+```text
+Expand
+↓
+Deploy compatible code
+↓
+Backfill
+↓
+Switch reads/writes
+↓
+Contract
+```
+
+لا تعمل destructive schema migration مباشرة على production.
+
+---
+
+# 75. ZERO / LOW DOWNTIME MIGRATION RULE
+
+مثال:
+
+```text
+Add nullable column
+↓
+Deploy code that writes both
+↓
+Backfill
+↓
+Deploy code reads new field
+↓
+Remove old field later
+```
+
+لا:
+
+```text
+DROP COLUMN
+↓
+hope nothing breaks
+```
+
+---
+
+# 76. FEATURE FLAGS
+
+Feature flags تكون جزءًا من platform:
+
+```text
+feature
+tenant
+workspace
+role
+environment
+rollout
+```
+
+مثلاً:
+
+```text
+voice.enabled
+ai.new_router.enabled
+new_search.enabled
+```
+
+Feature flag لا تستبدل authorization.
+
+---
+
+# 77. SEARCH / ANALYTICS / AI READ PATH
+
+أي search/analytics/AI context query لا ينبغي أن يسحب جداول transactional ضخمة بلا حدود.
+
+استخدم:
+
+```text
+Read API
+Read Models
+Indexes
+Aggregations
+Cache where appropriate
+```
+
+---
+
+# 78. API CONTRACTS
+
+استخدم:
+
+```text
+/api/v1/...
+```
+
+الـAPI contract يكون consistent.
+
+مثال:
+
+```text
+GET    /api/v1/customers
+GET    /api/v1/customers/{id}
+POST   /api/v1/customers
+PATCH  /api/v1/customers/{id}
+
+GET    /api/v1/orders
+GET    /api/v1/orders/{id}
+POST   /api/v1/orders
+
+POST   /api/v1/orders/{id}/refund
+
+GET    /api/v1/jobs/{id}
+POST   /api/v1/jobs/{id}/retry
+```
+
+---
+
+# 79. API PAGINATION
+
+للقوائم الكبيرة:
+
+```text
+cursor pagination
+```
+
+حيث مناسب.
+
+Requests تدعم:
+
+```text
+filter
+sort
+search
+cursor
+limit
+fields
+```
+
+ولا تسمح unbounded collection requests.
+
+---
+
+# 80. ERROR CONTRACT
+
+موحد:
+
+```json
+{
+  "error": {
+    "code": "PAYMENT_ALREADY_REFUNDED",
+    "message": "Payment has already been fully refunded.",
+    "retryable": false,
+    "request_id": "..."
+  }
+}
+```
+
+لا تجعل الـFrontend يفسر strings غير موحدة.
+
+---
+
+# 81. CORE ENTITY MODEL
+
+الكيانات الرئيسية:
+
+```text
+TENANCY
+Tenant
+Workspace
+Location
+
+IDENTITY
+User
+Role
+Permission
+Team
+Membership
+
+CRM
+Customer
+CustomerIdentity
+IdentityMergeCandidate
+Lead
+Pipeline
+PipelineStage
+Segment
+
+MESSAGING
+Conversation
+Participant
+Message
+Attachment
+Assignment
+SLA
+MessageTemplate
+TemplateApproval
+
+COMMERCE
+Product
+ProductVariant
+Category
+Collection
+Order
+OrderItem
+Fulfillment
+Shipment
+
+INVENTORY
+Warehouse
+StockItem
+InventoryMovement
+
+PAYMENTS
+Payment
+Transaction
+Refund
+Payout
+Reconciliation
+
+MARKETING
+Campaign
+Audience
+Segment
+Journey
+JourneyRun
+
+AUTOMATION
+Workflow
+WorkflowVersion
+WorkflowExecution
+WorkflowFailure
+Rule
+Trigger
+
+AI
+AIAgent
+AgentVersion
+Prompt
+KnowledgeBase
+KnowledgeDocument
+KnowledgeChunk
+Tool
+ToolPolicy
+AIRun
+AIToolCall
+AIHandover
+AIEvaluation
+AIMemory
+AIUsage
+
+OPERATIONS
+Task
+Job
+Queue
+Incident
+SystemEvent
+
+BILLING
+Plan
+Subscription
+Entitlement
+Usage
+BillingSnapshot
+Invoice
+InvoiceLine
+
+PRIVACY
+Consent
+DataRequest
+RetentionPolicy
+DeletionJob
+
+SECURITY
+AuditLog
+SecurityEvent
+SecretReference
+
+INFRASTRUCTURE
+OutboxEvent
+WebhookEvent
+DeliveryAttempt
+```
+
+---
+
+# 82. SEGMENT ENTITY
+
+هناك Entity واحدة فقط:
+
+```text
+Segment
+```
+
+تستخدمها:
+
+```text
+CRM
+Marketing
+Analytics
+AI
+```
+
+لا تعمل:
+
+```text
+CRM Segment
++
+Marketing Segment
+```
+
+تعريف segment يكون visual AST/DSL:
+
+```text
+orders_count > 3
+AND
+revenue > 500
+AND
+last_purchase < 30d
+AND
+source = instagram
+```
+
+لا SQL حر في UI.
+
+---
+
+# 83. TASK SYSTEM
+
+Task entity مستقلة:
+
+```text
+Task
+├── assignee
+├── due_date
+├── priority
+├── status
+├── related_entity
+├── source
+└── automation
+```
+
+Sources:
+
+```text
+Human
+AI
+Automation
+System
+```
+
+---
+
+# 84. JOB SYSTEM
+
+كل async job:
+
+```text
+Job
+├── queued
+├── processing
+├── completed
+├── failed
+├── retrying
+└── cancelled
+```
+
+و:
+
+```text
+progress
+attempts
+error
+result
+tenant
+actor
+correlation_id
+```
+
+---
+
+# 85. FRONTEND ARCHITECTURE
+
+```text
+Next.js
+↓
+React
+↓
+TypeScript
+↓
+Tailwind
+↓
+shadcn/ui
+↓
+Base UI
+↓
+Feature architecture
+↓
+Application APIs
+```
+
+State layers:
+
+```text
+Global
+Page
+Entity
+Job
+```
+
+ولا تستخدم global store ضخم لكل شيء.
+
+---
+
+# 86. FRONTEND STATE
+
+```text
+GLOBAL
+├── Tenant
+├── Workspace
+├── Location
+├── User
+├── Role
+├── Permissions
+├── Navigation
+├── Search
+├── Command Palette
+├── Notifications
+├── Realtime
+└── Preferences
+
+PAGE
+├── URL State
+├── Filters
+├── Sort
+├── View
+├── Pagination
+├── Selection
+└── Local UI
+
+ENTITY
+├── Record
+├── Related
+├── Timeline
+├── Actions
+└── State
+
+JOB
+├── Status
+├── Progress
+├── Result
+├── Errors
+└── Retry
+```
+
+---
+
+# 87. FRONTEND URL STATE
+
+Logical state يجب أن يكون deep-linkable:
+
+```text
+/customers
+/customers/123?tab=orders
+
+/orders?status=failed&view=finance&page=3
+
+/inbox?view=sla-risk&conversation=8821
+
+/analytics/revenue?range=30d&compare=previous
+```
+
+لا تضع temporary UI state في URL.
+
+---
+
+# 88. ENTITY UX PATTERN
+
+كل entity:
+
+```text
+LIST
+↓
+QUICK PREVIEW
+↓
+FULL RECORD
+↓
+RELATED
+↓
+TIMELINE
+↓
+ACTIONS
+```
+
+هذا pattern إلزامي قدر الإمكان.
+
+---
+
+# 89. APPLICATION SHELL
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│ Logo   Workspace ▼   Search / Ctrl+K   +Create  Health  User│
+├───────────────┬─────────────────────────────────────────────┤
+│               │                                             │
+│ Sidebar       │                Main Content                 │
+│               │                                             │
+└───────────────┴─────────────────────────────────────────────┘
+```
+
+Sidebar:
+
+```text
+HOME
+
+WORK
+  Inbox
+  My Work
+  Tasks
+
+BUSINESS
+  Customers
+  Leads
+  Orders
+  Products
+  Inventory
+  Payments
+
+GROWTH
+  Marketing
+  Campaigns
+  Audiences
+  Journeys
+  Reviews
+
+AUTOMATION
+  Workflows
+  Rules
+  Events
+
+AI
+  Agents
+  Knowledge
+  Activity
+  Handoffs
+  Quality
+  Cost
+
+ANALYTICS
+  Reports
+  Insights
+
+OPERATIONS
+  Live
+  SLA
+  Queues
+  Health
+  Jobs
+
+ADMIN
+  Channels
+  Integrations
+  Team
+  Billing
+  Security
+  API
+  Settings
+```
+
+Role-based visibility + collapsible sections + Favorites/Recent/Pinned Views.
+
+---
+
+# 90. MODERN UI DIRECTION
+
+الـVisual Language:
+
+```text
+Calm Modern Enterprise UI
+```
+
+الهدف:
+
+```text
+Premium
+Modern
+Professional
+Fast
+Readable
+Dense
+Consistent
+```
+
+وليس:
+
+```text
+Admin Template
+Dribbble concept
+Glassmorphism playground
+```
+
+---
+
+# 91. DESIGN TOKENS
+
+مركزية:
+
+```text
+Colors
+Typography
+Spacing
+Radius
+Shadows
+Motion
+Semantic states
+```
+
+لا hard-code عشوائي داخل كل component.
+
+---
+
+# 92. VISUAL STYLE
+
+```text
+Light mode default
+Dark mode supported
+
+Neutral / warm-neutral background
+White / near-white surfaces
+Subtle borders
+Minimal shadows
+Medium radius
+One brand color
+Semantic colors only
+```
+
+ممنوع:
+
+```text
+neon UI
+rainbow charts
+glass everywhere
+huge gradients
+heavy shadows
+excessive rounded cards
+```
+
+---
+
+# 93. TYPOGRAPHY
+
+Arabic-first.
+
+```text
+Page title: 24–28
+Section: 16–18
+Body: 14–15
+Metadata: 12–13
+```
+
+الـTypography hierarchy أهم من decoration.
+
+---
+
+# 94. TABLE SYSTEM
+
+كل tables الكبيرة تستخدم headless table architecture مثل:
+
+```text
+TanStack Table
++
+Our visual layer
+```
+
+Capabilities:
+
+```text
+Search
+Advanced Filters
+Sort
+Group
+Columns
+Density
+Saved Views
+Bulk Select
+Bulk Actions
+Quick Preview
+Export
+Pagination
+```
+
+---
+
+# 95. SAVED VIEWS
+
+System-wide concept:
+
+```text
+Private
+Team
+Workspace
+```
+
+يحفظ:
+
+```text
+filters
+sort
+columns
+grouping
+density
+```
+
+---
+
+# 96. COMMAND PALETTE
+
+```text
+Ctrl / Cmd + K
+```
+
+ليست search فقط:
+
+```text
+Search
+Navigation
+Actions
+Commands
+```
+
+أمثلة:
+
+```text
+Find Ahmed
+Create order
+Create campaign
+Open Inbox
+Show failed payments
+Switch workspace
+Open AI Agent
+```
+
+---
+
+# 97. MY WORK
+
+Workspace حقيقية:
+
+```text
+My Conversations
+My Tasks
+My Follow-ups
+My Mentions
+My Approvals
+My SLA Risks
+My AI Handoffs
+My Saved Views
+```
+
+السؤال:
+
+```text
+What do I need to do?
+```
+
+---
+
+# 98. HOME
+
+السؤال:
+
+```text
+What is happening in the business?
+```
+
+الترتيب:
+
+```text
+Header
+↓
+Needs Attention
+↓
+Core KPIs
+↓
+Business Pulse
+↓
+Optional widgets
+```
+
+Home configurable:
+
+```text
+Default Layout
++
+Personal Customization
+```
+
+لكن default layout تكون ممتازة بدون customization.
+
+---
+
+# 99. INBOX
+
+```text
+Views
+|
+Conversation
+|
+Context
+```
+
+Context tabs:
+
+```text
+Customer
+Orders
+Timeline
+AI
+Notes
+```
+
+Views:
+
+```text
+My Inbox
+Unassigned
+All
+Priority
+SLA Risk
+Waiting Customer
+Waiting Team
+VIP
+AI
+AI Handover
+Mentioned
+Team
+Custom
+```
+
+---
+
+# 100. CUSTOMER RECORD
+
+```text
+Customer
+↓
+Overview
+Timeline
+Conversations
+Orders
+Payments
+Marketing
+Journeys
+Reviews
+Tasks
+AI
+```
+
+Quick preview:
+
+```text
+Drawer
+```
+
+Full detail:
+
+```text
+Dedicated Record
+```
+
+Back يحافظ على logical context.
+
+---
+
+# 101. GLOBAL ACTIVITY ≠ CUSTOMER TIMELINE
+
+Customer Timeline:
+
+```text
+customer-specific events
+```
+
+Workspace Activity:
+
+```text
+people
+customers
+orders
+AI
+automation
+system
+```
+
+لا تخلط الاثنين.
+
+---
+
+# 102. NOTIFICATIONS
+
+```text
+All
+Needs Action
+```
+
+Priority:
+
+```text
+Critical
+Action Required
+Information
+```
+
+Critical فقط تولد alert عندما تستحق ذلك.
+
+---
+
+# 103. GLOBAL HEALTH
+
+Top bar:
+
+```text
+●
+```
+
+وعند وجود problem:
+
+```text
+⚠ 2
+```
+
+Click:
+
+```text
+System Health
+
+WhatsApp     Healthy
+Payments     Degraded
+AI Router    Healthy
+Automation   2 Failures
+Webhooks     Healthy
+```
+
+---
+
+# 104. UNDO / CONFIRMATION
+
+Safe actions:
+
+```text
+Undo
+```
+
+مثلاً:
+
+```text
+Conversation assigned to Sara
+[Undo]
+```
+
+Dangerous:
+
+```text
+Delete
+Archive
+Disconnect
+Refund
+Cancel
+Remove access
+```
+
+High-risk:
+
+```text
+Rotate production secret
+Delete workspace data
+Mass destructive actions
+```
+
+---
+
+# 105. PROGRESSIVE DISCLOSURE
+
+كل شاشة complex:
+
+```text
+Basic
+↓
+Advanced
+↓
+Technical
+```
+
+الـTechnical layer ليست للـregular staff.
+
+---
+
+# 106. LOADING / ERROR / EMPTY
+
+Loading:
+
+```text
+Skeleton
+```
+
+وليس spinner في كل شيء.
+
+Error:
+
+```text
+Human-readable
+Retryable when possible
+Error ID
+Request ID
+```
+
+Empty:
+
+```text
+Explain
++
+Next action
+```
+
+---
+
+# 107. RESPONSIVE
+
+Desktop:
+
+```text
+Sidebar
++
+Main
++
+Context panel
+```
+
+Tablet:
+
+```text
+Collapsible sidebar
++
+Main
+```
+
+Mobile:
+
+```text
+Home
+Inbox
+Tasks
+Customers
+Orders
+Notifications
+More
+```
+
+Heavy builders تكون desktop-first.
+
+---
+
+# 108. ACCESSIBILITY
+
+من أول component:
+
+```text
+Keyboard
+Focus
+ARIA
+Semantic HTML
+Contrast
+Screen reader
+Reduced motion
+Touch targets
+RTL
+```
+
+---
+
+# 109. RTL
+
+RTL-native من البداية:
+
+```text
+layout
+navigation
+tables
+forms
+drawers
+timeline
+menus
+filters
+```
+
+استخدم CSS logical properties.
+
+أما:
+
+```text
+URLs
+API keys
+IDs
+phone numbers
+timestamps
+```
+
+تعامل معها بالdirection المناسب.
+
+---
+
+# 110. PERFORMANCE BUDGET
+
+Frontend:
+
+```text
+Lazy loading
+Code splitting
+Virtualized large lists
+Pagination
+Cached server state
+Background refresh
+Selective realtime
+Image optimization
+```
+
+لا تحمل كل الـAI/analytics/heavy builders في initial bundle.
+
+Backend:
+
+```text
+No N+1
+No unbounded queries
+No huge payloads
+No long synchronous operations
+```
+
+---
+
+# 111. REALTIME UX
+
+لا تعمل:
+
+```text
+full page refetch
+```
+
+لكل event.
+
+اعمل:
+
+```text
+targeted state update
+```
+
+مع background reconciliation عند الحاجة.
+
+---
+
+# 112. OPTIMISTIC UI
+
+يستخدم فقط عندما العملية:
+
+```text
+reversible
+low-risk
+```
+
+مثلاً:
+
+```text
+Assign
+Tag
+Mark read
+```
+
+لا تستخدم optimistic final-state assumptions لأفعال:
+
+```text
+Refund
+Payment
+Order finalization
+Security
+```
+
+---
+
+# 113. NO DEAD ENDS
+
+أي شاشة مهمة يجب أن تجيب:
+
+```text
+Where am I?
+What can I do?
+What is related?
+What is next?
+How do I go back?
+```
+
+---
+
+# 114. TESTING ARCHITECTURE
+
+Backend:
+
+```text
+Unit
+Domain
+Application
+Integration
+Adapter Contracts
+Authorization
+Events
+Idempotency
+```
+
+Frontend:
+
+```text
+Component
+Interaction
+Accessibility
+RTL
+Responsive
+E2E
+```
+
+Critical E2E:
+
+```text
+Login
+Tenant switch
+Customer creation
+Identity merge
+Conversation receive
+Conversation assign
+AI handover
+Order creation
+Payment failure
+Refund approval
+Workflow execution
+Webhook retry
+DLQ replay
+Bulk job
+Realtime update
+Tenant suspension
+Data export
+Data deletion
+```
+
+---
+
+# 115. SECURITY TESTING
+
+اختبارات خاصة:
+
+```text
+Cross-tenant access
+RLS enforcement
+Broken authorization
+Privilege escalation
+IDOR
+Webhook replay
+Duplicate event
+Duplicate tool call
+Secret exposure
+Rate-limit bypass
+AI policy bypass
+```
+
+---
+
+# 116. PERFORMANCE TESTING
+
+اختبر:
+
+```text
+Concurrent users
+Concurrent conversations
+Webhook bursts
+AI bursts
+Bulk actions
+Large customer tables
+Large message histories
+Realtime connections
+Queue backlog
+Provider failures
+Database connection pressure
+```
+
+---
+
+# 117. ARCHITECTURE DECISION RECORDS
+
+كل قرار جوهري يتوثق:
+
+```text
+ADR-001 Multi-tenancy / RLS
+ADR-002 Module boundaries
+ADR-003 Event architecture
+ADR-004 Search
+ADR-005 Secrets
+ADR-006 AI governance
+ADR-007 Media
+ADR-008 Identity resolution
+ADR-009 Billing metering
+ADR-010 Partitioning
+ADR-011 DR
+ADR-012 Voice
+```
+
+كل ADR:
+
+```text
+Problem
+Decision
+Alternatives
+Why
+Consequences
+Exit strategy
+```
+
+---
+
+# 118. DEFINITION OF DONE — BACKEND MODULE
+
+أي module لا يعتبر completed إلا عندما يحتوي على:
+
+```text
+Domain
+Application Service
+Repository / Port
+Authorization
+Validation
+Audit
+Events
+Idempotency where needed
+Error handling
+Observability
+Tests
+```
+
+---
+
+# 119. DEFINITION OF DONE — FRONTEND MODULE
+
+```text
+List
+Filters
+Saved Views where applicable
+Quick Preview
+Record
+Related
+Timeline where applicable
+Actions
+Permissions
+Loading
+Empty
+Error
+Success
+Realtime if needed
+Responsive
+RTL
+Keyboard
+Accessibility
+E2E
+```
+
+---
+
+# 120. FINAL DATA FLOW
+
+```text
+                 USER / PROVIDER
+                       │
+                       ▼
+                API / WEBHOOK
+                       │
+             ┌─────────┴─────────┐
+             │                   │
+       Authentication        Signature
+             │                 Verify
+             └─────────┬─────────┘
+                       ▼
+                Tenant Context
+                       │
+                       ▼
+                  RBAC / Policy
+                       │
+                       ▼
+                Application Service
+                       │
+                       ▼
+                     Domain
+                       │
+                ┌──────┴──────┐
+                ▼             ▼
+            PostgreSQL      Audit
+             + RLS            │
+                │             │
+                └──────┬──────┘
+                       ▼
+                    Outbox
+                       │
+                       ▼
+                 Redis Streams
+                       │
+       ┌───────────────┼────────────────┐
+       ▼               ▼                ▼
+    Workers           n8n             AI
+       │               │                │
+       └───────────────┼────────────────┘
+                       ▼
+                 Updated State
+                       │
+              ┌────────┴────────┐
+              ▼                 ▼
+          Read APIs          Realtime
+              │                 │
+              └────────┬────────┘
+                       ▼
+                    Frontend
+```
+
+---
+
+# 121. FINAL PRINCIPLES
+
+## Principle 1
+
+```text
+Frontend never becomes source of truth.
+```
+
+## Principle 2
+
+```text
+AI never bypasses the domain.
+```
+
+## Principle 3
+
+```text
+n8n never owns core business truth.
+```
+
+## Principle 4
+
+```text
+Redis is not the database.
+```
+
+## Principle 5
+
+```text
+RLS is defense-in-depth.
+```
+
+## Principle 6
+
+```text
+Every side effect must be idempotent.
+```
+
+## Principle 7
+
+```text
+Every critical mutation must be auditable.
+```
+
+## Principle 8
+
+```text
+Every external provider is behind an adapter.
+```
+
+## Principle 9
+
+```text
+Modules communicate through contracts/events,
+not internal repositories.
+```
+
+## Principle 10
+
+```text
+System depth ↑
+Screen complexity ↓
+```
+
+---
+
+# 122. FINAL SYSTEM MAP
+
+```text
+                           PRODUCT
+                              │
+                  ┌───────────┴───────────┐
+                  │   APPLICATION SHELL  │
+                  └───────────┬───────────┘
+                              │
+        ┌─────────────────────┼─────────────────────┐
+        │                     │                     │
+      HOME                 MY WORK              SEARCH
+        │                     │                     │
+   Business             Personal work       Records / Actions
+   Overview             Tasks               Navigation
+   Alerts               SLA                 Commands
+   KPIs                 Handoffs
+        │
+        └──────────────── WORKSPACES ────────────────
+                              │
+       ┌──────────┬───────────┼────────────┬─────────┐
+       │          │           │            │         │
+      CRM     MESSAGING    COMMERCE      GROWTH      AI
+       │          │           │            │         │
+   Customers  Inbox        Orders       Campaigns   Agents
+   Leads      Channels     Products     Audiences   Knowledge
+   Segments   Templates    Inventory    Journeys    Runs
+                             Payments    Reviews     Handoffs
+                                                        Quality
+                                                        Cost
+       │
+       ├──────────────── AUTOMATION ──────────────────
+       │
+       │       Workflows / Rules / Events
+       │
+       ├──────────────── ANALYTICS ───────────────────
+       │
+       │       Reports / Insights / Attribution
+       │
+       ├──────────────── OPERATIONS ──────────────────
+       │
+       │       Live / SLA / Queues / Jobs / Health
+       │
+       └──────────────── PLATFORM ────────────────────
+               Channels
+               Integrations
+               Team
+               Billing
+               Security
+               Privacy
+               API
+               Settings
+```
+
+# 123. IMPLEMENTATION ORDER
+
+لا تبدأ ببناء كل الـmodules مرة واحدة.
+
+```text
+PHASE 0 — ARCHITECTURE GUARANTEES
+├── Tenancy + RLS
+├── Auth / RBAC
+├── Module boundaries
+├── Ports / Contracts
+├── Outbox
+├── Event contracts
+├── Idempotency
+├── Rate limiting
+├── Secrets
+├── Audit
+└── Observability
+
+PHASE 1 — CORE INFRASTRUCTURE
+├── PostgreSQL
+├── Redis Streams
+├── Workers
+├── Webhook ingress
+├── DLQ
+├── Job system
+├── Realtime
+└── CI/CD / environments
+
+PHASE 2 — CORE DOMAINS
+├── Tenant
+├── User / Team
+├── Customer
+├── Identity
+├── Conversation
+├── Message
+├── Task
+├── Order
+├── Payment
+└── Product / Inventory
+
+PHASE 3 — CHANNELS
+├── WhatsApp
+├── Instagram
+├── Messenger
+├── Telegram
+├── Webchat
+└── Email
+
+PHASE 4 — AI
+├── Agent
+├── Model Router
+├── Tools
+├── Policies
+├── Knowledge / RAG
+├── Memory
+├── Output Guardrails
+├── Budget
+└── Evaluation
+
+PHASE 5 — GROWTH
+├── Segments
+├── Campaigns
+├── Journeys
+├── Marketing consent
+└── Attribution
+
+PHASE 6 — AUTOMATION
+├── Workflows
+├── Rules
+├── Triggers
+├── n8n integration
+└── Async execution
+
+PHASE 7 — PLATFORM
+├── Billing
+├── Privacy
+├── Security
+├── Integrations
+├── Secrets
+└── Tenant lifecycle
+
+PHASE 8 — ADVANCED
+├── Search engine if needed
+├── Voice
+├── Advanced analytics
+├── Large-scale partitioning
+└── Advanced localization
+```
+
+# 124. FINAL DIRECTIVE TO THE DEVELOPER
+
+لا تبني النظام على أساس:
+
+```text
+"نعمل الصفحات وبعدين نشوف"
+```
+
+بل:
+
+```text
+Architecture
+↓
+Contracts
+↓
+Database
+↓
+Domain
+↓
+Application
+↓
+Events
+↓
+Infrastructure
+↓
+Design System
+↓
+Frontend
+↓
+Integration
+↓
+Testing
+↓
+Production hardening
+```
+
+والقاعدة الأهم:
+
+```text
+Build the boundaries first.
+Build the reusable systems second.
+Build the features third.
+```
+
+المنتج النهائي يجب أن يكون:
+
+```text
+Multi-tenant
+Secure
+Auditable
+Idempotent
+Event-driven
+Provider-agnostic
+AI-safe
+Cost-controlled
+Observable
+Recoverable
+Horizontally scalable
+RTL-native
+Modern
+Calm
+Consistent
+```
+
+وليس مجرد Dashboard كبيرة تحتوي Features كثيرة.

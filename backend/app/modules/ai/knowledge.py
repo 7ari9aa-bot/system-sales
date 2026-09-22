@@ -96,6 +96,29 @@ async def search_knowledge(
     return [(row[0], float(row[1])) for row in rows]
 
 
+async def retrieve_relevant(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    query: str,
+    customer_id: uuid.UUID | None = None,
+    limit: int = 5,
+) -> list[str]:
+    """Auto-reply retrieval (§39): wraps search_knowledge and returns snippets.
+
+    §157: the auto-reply path speaks to the CUSTOMER, so retrieval is pinned
+    to customer_facing visibility — staff surfaces call search_knowledge
+    directly with visibility=None instead. Knowledge items are tenant-scoped
+    (never per-customer), so ``customer_id`` is accepted for call-site
+    context/signature stability and deliberately not used as a filter.
+    """
+    del customer_id  # tenant-scoped knowledge; see docstring (§157)
+    results = await search_knowledge(
+        session, tenant_id, query, limit=limit, visibility="customer_facing"
+    )
+    return [item.content for item, _distance in results]
+
+
 async def add_memory(
     session: AsyncSession,
     tenant_id: uuid.UUID,

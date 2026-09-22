@@ -14,14 +14,15 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import select, text
+from sqlalchemy import case, select, text
+from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events.writer import add_outbox_event
 from app.modules.conversations.gateway.base import InboundMessage
 from app.modules.conversations.service import ConversationService
 from app.modules.customers.service import CustomerService
-from app.modules.platform.models import IdempotencyKey
+from app.modules.platform.models import IdempotencyKey, WebhookEvent
 
 
 class IngestError(Exception):
@@ -195,6 +196,129 @@ class IngestService:
                 "media_url": message.media_url,
                 "media_type": message.media_type,
             },
+            # Literal: Message is append-only (AppendOnlyCreatedAtMixin) with
+            # no version column — a message row is never mutated, so 1 is its
+            # only possible aggregate version (§153).
             aggregate_version=1,
         )
         return conversation.id
+
+    # ------------------------------------------------ §24 ingress lifecycle --
+
+    @staticmethod
+    async def process_webhook_event(
+        session: AsyncSession,
+        *,
+        adapter,
+        channel: str,
+        tenant_id: uuid.UUID,
+        event_id: uuid.UUID,
+        payload: dict,
+    ) -> int:
+        """The synchronous processing block for one stored ingress row.
+
+        parse → ingest → delivery receipts → processed marker, all inside a
+        SAVEPOINT: a failure anywhere in the block rolls back ALL of its
+        writes (including the processed marker) while leaving the caller's
+        transaction alive. The webhook router calls this to ACK 200 and
+        quarantine the row on failure (§24 — provider retry storms help
+        nobody); the WebhookWorker retry re-runs this EXACT block, so a
+        retried event is processed by the same code path that failed once.
+
+        Returns the accepted-message count; raises on failure — the caller
+        decides the fate of the ingress row via `mark_webhook_event_failed`.
+        """
+        from app.core.db import bind_tenant
+
+        # RLS: ingest writes tenant-scoped rows — bind the GUC before any insert.
+        await bind_tenant(session, tenant_id)
+        accepted = 0
+        async with session.begin_nested():
+            for message in adapter.parse_inbound(payload):
+                conversation_id = await IngestService.ingest(
+                    session,
+                    tenant_id=tenant_id,
+                    message=message,
+                    idempotency_scope=f"webhook:{channel}",
+                )
+                if conversation_id is not None:
+                    accepted += 1
+            await IngestService.apply_status_updates(
+                session, tenant_id, adapter.parse_status_updates(payload)
+            )
+            await session.execute(
+                sa_update(WebhookEvent)
+                .where(WebhookEvent.id == event_id)
+                .values(
+                    processing_status="processed",
+                    attempts=WebhookEvent.attempts + 1,
+                )
+            )
+        return accepted
+
+    @staticmethod
+    async def mark_webhook_event_failed(
+        session: AsyncSession, event_id: uuid.UUID, exc: Exception
+    ) -> None:
+        """§24: quarantine a failed ingress row in the caller's transaction.
+
+        The error text is recorded and attempts incremented. While the retry
+        budget holds, the row stays ``failed`` for the WebhookWorker sweep;
+        the failure that SPENDS the budget dead-letters it instead (§24:
+        Retry 1..N → Dead Letter Queue). A dead row leaves the automatic
+        rotation for good — only an explicit human decision replays, ignores
+        or resolves it — and it is never deleted: nothing disappears.
+        """
+        from app.core.config import get_settings
+
+        max_attempts = get_settings().worker_max_attempts
+        await session.execute(
+            sa_update(WebhookEvent)
+            .where(WebhookEvent.id == event_id)
+            .values(
+                processing_status=case(
+                    (WebhookEvent.attempts + 1 >= max_attempts, "dead"),
+                    else_="failed",
+                ),
+                last_error=str(exc)[:500],
+                attempts=WebhookEvent.attempts + 1,
+            )
+        )
+
+    @staticmethod
+    async def apply_status_updates(session, tenant_id: uuid.UUID, updates) -> None:
+        """Delivery receipts: update our outbound message rows by provider id.
+
+        Monotonic state machine (§130): a receipt may only move a message
+        forward. Out-of-order or replayed provider events (e.g. a late `sent`
+        after `read`) are dropped instead of regressing the row.
+        """
+        from app.modules.conversations.models import Message
+
+        # target status → statuses it may legally be advanced from
+        _FORWARD_FROM: dict[str, tuple[str, ...]] = {
+            "sent": ("queued", "sending", "unknown"),
+            "delivered": ("queued", "sending", "unknown", "sent"),
+            "read": ("queued", "sending", "unknown", "sent", "delivered"),
+            "failed": ("queued", "sending", "unknown"),
+        }
+
+        for receipt in updates:
+            if not receipt.channel_message_id or not receipt.status:
+                continue
+            allowed_from = _FORWARD_FROM.get(receipt.status)
+            if allowed_from is None:
+                continue  # unknown/arbitrary provider status — never written raw
+            values: dict = {"status": receipt.status}
+            if receipt.error:
+                values["error"] = receipt.error
+            await session.execute(
+                sa_update(Message)
+                .where(
+                    Message.tenant_id == tenant_id,
+                    Message.channel_message_id == receipt.channel_message_id,
+                    Message.direction == "outbound",
+                    Message.status.in_(allowed_from),
+                )
+                .values(**values)
+            )

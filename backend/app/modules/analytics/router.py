@@ -10,7 +10,7 @@ this module is for the platform-wide canonical numbers.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Annotated
 
@@ -54,49 +54,5 @@ async def compute_metric(
         "value": str(value) if isinstance(value, (Decimal, float)) else value,
         "since": since.isoformat(),
         "until": until.isoformat(),
-    }
-
-
-@router.get("/dashboard")
-async def dashboard(
-    ctx: TenantCtxDep,
-    days: Annotated[int, Query(ge=1, le=365)] = 30,
-) -> dict:
-    """The headline numbers a dashboard needs in one round-trip."""
-    until = datetime.now(UTC)
-    since = until - timedelta(days=days)
-
-    metrics = {}
-    for name in ("revenue", "orders_count", "net_revenue", "aov", "refunded_amount"):
-        try:
-            value = await analytics_service.compute_metric(
-                ctx.session,
-                ctx.tenant_id,
-                metric_name=name,
-                since=since,
-                until=until,
-            )
-            metrics[name] = str(value) if isinstance(value, (Decimal, float)) else value
-        except Exception:
-            metrics[name] = None
-
-    for name in ("first_response_time", "resolution_time", "ai_resolution_rate"):
-        try:
-            value = await analytics_service.compute_metric(
-                ctx.session,
-                ctx.tenant_id,
-                metric_name=name,
-                since=since,
-                until=until,
-            )
-            metrics[name] = value
-        except Exception:
-            metrics[name] = None
-
-    return {
-        "days": days,
-        "since": since.isoformat(),
-        "until": until.isoformat(),
-        "metrics": metrics,
     }
 

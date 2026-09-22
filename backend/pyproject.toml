@@ -24,6 +24,9 @@ dependencies = [
     "pgvector>=0.3",
     "email-validator>=2.1",
     "boto3>=1.34",
+    # §68: AES-256-GCM envelope encryption for secrets at rest
+    # (app.core.secrets.EnvelopeSecretStore). Vetted AEAD — no hand-rolled crypto.
+    "cryptography>=42",
     # zoneinfo needs a tz database: present on Linux/macOS images but NOT on
     # Windows, where every lookup raises ZoneInfoNotFoundError and the SLA
     # clock silently degrades to UTC. Pinning it here makes the behaviour

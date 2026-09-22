@@ -3,7 +3,7 @@
 import * as React from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Plus, ShoppingCart, Trash2 } from "lucide-react";
-import { useCreateOrder, useCustomers, useOrders, useProducts, type Order } from "@/lib/queries";
+import { useCancelOrder, useCreateOrder, useCustomers, useOrders, useProducts, type Order } from "@/lib/queries";
 import { t } from "@/lib/t";
 import { formatDate, formatMoney } from "@/lib/utils";
 import { toast } from "@/components/ui/toast";
@@ -47,6 +47,7 @@ export default function OrdersPage() {
   const productsQuery = useProducts();
   const customersQuery = useCustomers();
   const createOrder = useCreateOrder();
+  const cancelOrder = useCancelOrder();
 
   const orders = ordersQuery.data ?? [];
   const customers = customersQuery.data ?? [];
@@ -150,16 +151,10 @@ export default function OrdersPage() {
           action: {
             label: t.undo,
             onClick: () => {
-              // Cancel the just-created order
-              fetch(`/api/orders/${order.number}/cancel`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ reason: "user_undo" }),
-              }).then(() => {
-                toast({ title: t.orderCancelled, variant: "default" });
-              }).catch(() => {
-                toast({ title: t.undoFailed, variant: "danger" });
-              });
+              // Cancel the just-created order. The API keys lifecycle actions
+              // by order id, not the human-facing number; success/error
+              // toasts + list invalidation live in useCancelOrder.
+              cancelOrder.mutate(order.id);
             },
           },
         });

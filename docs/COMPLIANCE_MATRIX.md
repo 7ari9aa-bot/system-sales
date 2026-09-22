@@ -49,9 +49,9 @@ Consequences, stated honestly:
 | §10–11 | Tenancy + RLS (non-bypass) | ✅ | `backend/app/core/db.py:109` `bind_tenant` (`set_config(...,true)`); RLS DDL in `migrations/versions/b2c3d4e5f6a7_*.py`; `tests/gate/test_gate.py:25` |
 | §12 | RBAC + resource-level authz | 🟡 | `backend/app/modules/identity/deps.py` `require_permission`; resource-level policies not systematic |
 | §13–16 | Actor model, AI tool authz, risk levels, idempotency keys | 🟡 | `backend/app/modules/ai/policy.py`; `core/idempotency.py:499` middleware — but per-tool idempotency keys not universal |
-| §17 | Optimistic locking (version) | 🟡 | `backend/app/core/model_kit.py:48` `VersionMixin`; ETag/If-Match only on **customers** (`modules/customers/router.py:81,161`) |
+| §17 | Optimistic locking (version) | ✅ | `VersionMixin` + `apply_versioned_update`; If-Match/ETag wired on customers, orders (status/cancel + detail ETag), workflows (status/publish; column `d170cc170dd0`); campaigns/agents/refunds rows are create-only over HTTP — documented exemption in `core/idempotency.py` |
 | §18 | Outbox (same-tx emit + relay) | ✅ | `backend/app/core/events/outbox.py:103` `OutboxRelay`; `core/events/writer.py` |
-| §19 | Event contract (correlation/causation/schema_version) | 🟡 | `backend/app/core/events/schemas.py:61` defines the envelope but **nothing in `app/` imports it** (tests only) — see dead-code list |
+| §19 | Event contract (correlation/causation/schema_version) | ✅ | `core/events/schemas.py` envelope is live on both sides: writers stage via `add_outbox_event` (§22 webhook.ingest, §24 retry, §144 campaign pump, §175 journeys/sagas), workers read via `deserialize_event` (`workers/base.py` metering, `campaign_worker.py`, `platform_workers.py`); closed type set guarded by AST tests in `tests/test_campaign_fairness.py` |
 | §20–21 | Streams, consumer groups, retention/replay | ✅ | `backend/app/core/events/bus.py:117` `reclaim_stale` (XAUTOCLAIM), `:156` `send_to_dlq` |
 | §22–24 | Webhook ingress store + retry/DLQ | 🟡 | `backend/app/modules/conversations/router.py:341` writes `WebhookEvent`; `workers/platform_workers.py` retries — durable raw ingress still partial |
 | §25 | Layered rate limiting (IP/tenant/user/endpoint) | ✅ | `backend/app/core/ratelimit.py`; wired at `backend/app/main.py:150` |

@@ -11,7 +11,6 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import update as sa_update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.core.errors import ConflictError, NotFoundError, PermissionDeniedError, ValidationError
@@ -354,7 +353,7 @@ async def verify_webhook(channel: str, request: Request):
 
 @webhook_router.post("/webhooks/{channel}")
 async def channel_webhook(channel: str, request: Request, session: DbSession):
-    """Signature check → replay guard → durable ingest (per-channel adapter)."""
+    """Signature → replay guard → persist raw → queue (§22) → fast ACK."""
     if channel not in _WEBHOOK_CHANNELS:
         raise NotFoundError(f"unknown channel: {channel}")
     adapter = get_adapter(channel)
@@ -375,6 +374,27 @@ async def channel_webhook(channel: str, request: Request, session: DbSession):
     tenant_key = adapter.resolve_tenant_key(payload)
     tenant_id = await IngestService.resolve_tenant(session, channel, tenant_key)
 
+    if tenant_id is None:
+        # Unknown tenant: acknowledge without detail (do not leak existence).
+        #
+        # webhook_events is FORCE-RLS with a strict tenant_isolation policy
+        # (tenant_id = app.tenant_id), so a NULL-tenant ingress row cannot be
+        # written by the app role under ANY GUC — attempting the insert here
+        # would error the request and trigger exactly the provider retry
+        # storm §24 exists to avoid. Nothing can be ingested for an
+        # unattributed delivery, so log and ACK; the durable audit trail and
+        # the §24 retry cover attributed deliveries only.
+        logger.info("webhook.unknown_tenant channel=%s", channel)
+        return {"ok": True}
+
+    from app.core.db import bind_tenant
+
+    # RLS: the ingress row itself is tenant-scoped — bind the GUC BEFORE the
+    # insert. (It used to be bound only after, so the FORCE-RLS WITH CHECK
+    # rejected every ingress row and the audit trail the table was built for
+    # silently never materialized.)
+    await bind_tenant(session, tenant_id)
+
     # S10: durable ingress record + replay rejection. Both providers sign a
     # STATIC HMAC over the raw body — neither contract carries a timestamp or
     # nonce — so a captured delivery can be replayed byte-for-byte. The digest
@@ -392,7 +412,7 @@ async def channel_webhook(channel: str, request: Request, session: DbSession):
                 tenant_id=tenant_id,
                 signature_valid=True,
                 payload=payload,
-                processing_status="processing",
+                processing_status="pending",
             )
             .on_conflict_do_nothing(index_elements=["provider", "external_event_id"])
             .returning(WebhookEvent.id)
@@ -404,70 +424,23 @@ async def channel_webhook(channel: str, request: Request, session: DbSession):
         # a replay is. Reprocessing would double-write.
         return {"ok": True, "duplicate": True}
 
-    if tenant_id is None:
-        # Unknown tenant: acknowledge without detail (do not leak existence).
-        return {"ok": True}
-    # RLS: ingest writes tenant-scoped rows — bind the GUC before any insert.
-    from app.core.db import bind_tenant
+    # §22: the request path ENDS here. The long ingest block (parse → customer
+    # → conversation → messages → AI fan-out) runs on the WebhookWorker via a
+    # ``webhook.ingest`` event staged in THIS transaction — the outbox makes
+    # "row persisted + work queued" atomic, so there is no dual-write window.
+    # Running it inline turned a slow provider call into a provider timeout →
+    # retry storm over the very work that timed out.
+    from app.core.events.writer import add_outbox_event
 
-    await bind_tenant(session, tenant_id)
-    accepted = 0
-    for message in adapter.parse_inbound(payload):
-        conversation_id = await IngestService.ingest(
-            session,
-            tenant_id=tenant_id,
-            message=message,
-            idempotency_scope=f"webhook:{channel}",
-        )
-        if conversation_id is not None:
-            accepted += 1
-    await _apply_status_updates(session, tenant_id, adapter.parse_status_updates(payload))
-    await session.execute(
-        sa_update(WebhookEvent)
-        .where(WebhookEvent.id == inserted)
-        .values(processing_status="processed", attempts=1)
+    await add_outbox_event(
+        session,
+        aggregate_type="webhook",
+        aggregate_id=inserted,
+        event_type="webhook.ingest",
+        tenant_id=tenant_id,
+        payload={"webhook_event_id": str(inserted)},
     )
-    return {"ok": True, "accepted": accepted}
-
-
-async def _apply_status_updates(session, tenant_id, updates) -> None:
-    """Delivery receipts: update our outbound message rows by provider id.
-
-    Monotonic state machine (§130): a receipt may only move a message
-    forward. Out-of-order or replayed provider events (e.g. a late `sent`
-    after `read`) are dropped instead of regressing the row.
-    """
-    from sqlalchemy import update as sa_update
-
-    from app.modules.conversations.models import Message
-
-    # target status → statuses it may legally be advanced from
-    _FORWARD_FROM: dict[str, tuple[str, ...]] = {
-        "sent": ("queued", "sending", "unknown"),
-        "delivered": ("queued", "sending", "unknown", "sent"),
-        "read": ("queued", "sending", "unknown", "sent", "delivered"),
-        "failed": ("queued", "sending", "unknown"),
-    }
-
-    for receipt in updates:
-        if not receipt.channel_message_id or not receipt.status:
-            continue
-        allowed_from = _FORWARD_FROM.get(receipt.status)
-        if allowed_from is None:
-            continue  # unknown/arbitrary provider status — never written raw
-        values: dict = {"status": receipt.status}
-        if receipt.error:
-            values["error"] = receipt.error
-        await session.execute(
-            sa_update(Message)
-            .where(
-                Message.tenant_id == tenant_id,
-                Message.channel_message_id == receipt.channel_message_id,
-                Message.direction == "outbound",
-                Message.status.in_(allowed_from),
-            )
-            .values(**values)
-        )
+    return {"ok": True, "queued": True}
 
 
 @router.post("/conversations/messages/reconcile")

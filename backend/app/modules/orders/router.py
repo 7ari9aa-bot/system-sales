@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel, Field
 
-from app.core.idempotency import IfMatch  # §17
+from app.core.idempotency import IfMatch, apply_etag  # §17
 from app.core.pagination import decode_cursor, page_slice
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
 from app.modules.orders.service import OrderService
@@ -63,13 +63,16 @@ async def list_orders(
 
 
 @router.get("/orders/{order_id}")
-async def get_order(ctx: TenantCtxDep, order_id: uuid.UUID):
+async def get_order(ctx: TenantCtxDep, order_id: uuid.UUID, response: Response):
     order = await OrderService.get(ctx.session, ctx.tenant_id, order_id)
     items = getattr(order, "items", [])
+    # §17: advertise the CAS token the status route's If-Match expects.
+    apply_etag(response, order.version)
     return {
         "id": str(order.id),
         "number": order.number,
         "status": order.status,
+        "version": order.version,
         "grand_total": str(order.grand_total),
         "currency": order.currency,
         "items": [

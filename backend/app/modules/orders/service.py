@@ -335,7 +335,8 @@ class OrderService:
                 "grand_total": order.grand_total,
                 "item_count": sum(q for _v, q, _p in prepared),
             },
-            aggregate_version=1,
+            # §153: the row's real version (VersionMixin) — never a literal.
+            aggregate_version=order.version,
         )
         return order
 
@@ -500,7 +501,9 @@ class OrderService:
                 "from_status": from_status,
                 "to_status": to_status,
             },
-            aggregate_version=2,
+            # §153: post-mutation row version (bumped by apply_versioned_update
+            # when If-Match was supplied; otherwise the row's current version).
+            aggregate_version=order.version,
         )
 
     @staticmethod
@@ -815,7 +818,8 @@ class OrderService:
                 "amount": refund_amount,
                 "payment_status": payment.status,
             },
-            aggregate_version=3,
+            # §153: the order row's real version, post-mutation — not a literal.
+            aggregate_version=order.version,
         )
         return refund
 

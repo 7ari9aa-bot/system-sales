@@ -15,6 +15,7 @@ from app.core.events.bus import RedisStreamsBus
 from app.core.events.outbox import OutboxRelay
 from app.core.redis import close_redis, get_redis
 from app.workers.base import StreamWorker
+from app.workers.campaign_worker import CampaignWorker
 from app.workers.job_runner import JobRunner
 from app.workers.message_worker import MessageWorker
 from app.workers.platform_workers import NotificationWorker, WebhookWorker
@@ -28,6 +29,10 @@ POOLS: dict[str, type[StreamWorker]] = {
     "messages": MessageWorker,
     "notifications": NotificationWorker,
     "webhooks": WebhookWorker,
+    # §144: bulk/campaign tier gets its OWN pool — a 100k-audience campaign
+    # churns through campaign workers and can never occupy the message or
+    # webhook pools that carry interactive traffic.
+    "campaigns": CampaignWorker,
     "scheduler": SchedulerWorker,
     "retention": RetentionWorker,
     "jobs": JobRunner,

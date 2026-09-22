@@ -24,38 +24,31 @@ leave a paper trail that the glass was broken, regardless of who broke it.
 
 from __future__ import annotations
 
+import json
 import secrets as py_secrets
 import uuid
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.redis import get_redis
 from app.modules.notifications.service import NotificationService
-from app.modules.platform.models import AuditLog
+from app.modules.platform.models import AuditLog, SecurityEvent
 
 # A capability token is short-lived: 15 minutes is enough for a human to
 # perform the emergency action, and short enough that a leaked token is
 # useless after the window.
 CAPABILITY_TTL_MINUTES = 15
 
-# In-process capability registry. In production this would be Redis; for
-# now the process-local dict is sufficient because the API is stateless and
-# the token is validated on the same request that consumes it (or the next
-# request within the same process).
-_capabilities: dict[str, _Capability] = {}
+# §59/§147: capabilities live in Redis — shared across API instances and
+# surviving restarts, unlike the process-local dict this replaced. The TTL
+# is enforced by Redis itself (EX), so an expired token cannot validate
+# even if the clock of one instance skews.
+_CAPABILITY_PREFIX = "breakglass:cap:"
 
 
-@dataclass(slots=True, frozen=True)
-class _Capability:
-    token: str
-    tenant_id: uuid.UUID
-    user_id: uuid.UUID
-    action: str
-    resource_type: str
-    resource_id: str
-    reason: str
-    expires_at: datetime
+def _capability_key(token: str) -> str:
+    return f"{_CAPABILITY_PREFIX}{token}"
 
 
 async def break_glass(
@@ -70,6 +63,7 @@ async def break_glass(
     ip: str | None = None,
     user_agent: str | None = None,
     admin_user_ids: list[uuid.UUID] | None = None,
+    redis=None,
 ) -> str:
     """Record a break-glass event and issue a short-lived capability token.
 
@@ -79,7 +73,8 @@ async def break_glass(
     if not reason or len(reason.strip()) < 10:
         raise ValueError("break-glass requires a reason of at least 10 characters")
 
-    # 1. Record the audit event — this is the paper trail.
+    # 1. Record the paper trail — BOTH the business audit log and the
+    # platform §67 security event stream (event_type break_glass).
     log = AuditLog(
         tenant_id=tenant_id,
         actor_user_id=user_id,
@@ -92,20 +87,39 @@ async def break_glass(
         user_agent=user_agent,
     )
     session.add(log)
+    session.add(
+        SecurityEvent(
+            event_type="break_glass",
+            tenant_id=tenant_id,
+            actor_user_id=user_id,
+            details={
+                "action": action,
+                "resource_type": resource_type,
+                "resource_id": resource_id,
+                "reason": reason,
+            },
+            ip=ip,
+        )
+    )
     await session.flush()
 
-    # 2. Issue a capability token
+    # 2. Issue the capability — Redis, self-expiring, consumable exactly once.
     token = py_secrets.token_urlsafe(32)
     expires = datetime.now(UTC) + timedelta(minutes=CAPABILITY_TTL_MINUTES)
-    _capabilities[token] = _Capability(
-        token=token,
-        tenant_id=tenant_id,
-        user_id=user_id,
-        action=action,
-        resource_type=resource_type,
-        resource_id=resource_id,
-        reason=reason,
-        expires_at=expires,
+    payload = json.dumps(
+        {
+            "tenant_id": str(tenant_id),
+            "user_id": str(user_id),
+            "action": action,
+            "resource_type": resource_type,
+            "resource_id": resource_id,
+            "reason": reason,
+            "expires_at": expires.isoformat(),
+        }
+    )
+    client = redis if redis is not None else get_redis()
+    await client.set(
+        _capability_key(token), payload, ex=CAPABILITY_TTL_MINUTES * 60
     )
 
     # 3. Notify platform admins (if any admin user ids were provided)
@@ -135,26 +149,58 @@ async def break_glass(
     return token
 
 
-def validate_capability(
+async def validate_capability(
     token: str,
     *,
     tenant_id: uuid.UUID,
     user_id: uuid.UUID,
     action: str,
+    redis=None,
 ) -> bool:
     """Check if a capability token is valid for the given action.
 
-    The token is consumed (deleted) after a successful validation — it is
-    one-shot, not a session.
+    The token is consumed ATOMICALLY on presentation (GETDEL): it is
+    one-shot, and a token presented with mismatched parameters is burned
+    rather than left reusable — a capability that escapes its intended
+    action must never remain valid. Expiry is enforced by Redis TTL.
     """
-    cap = _capabilities.get(token)
-    if cap is None:
+    client = redis if redis is not None else get_redis()
+    raw = await client.getdel(_capability_key(token))
+    return _payload_matches(raw, tenant_id=tenant_id, user_id=user_id, action=action)
+
+
+async def peek_capability(
+    token: str,
+    *,
+    tenant_id: uuid.UUID,
+    user_id: uuid.UUID,
+    action: str,
+    redis=None,
+) -> bool:
+    """§147 pre-flight: is this capability valid — WITHOUT consuming it?
+
+    ``validate_capability`` is PRESENTATION (atomic GETDEL: one-shot, and a
+    mismatched token is burned). A "check whether this works" surface must
+    not destroy the token, so the admin-facing validate endpoint uses this
+    read-only GET instead; the capability still burns exactly once, at the
+    protected action itself.
+    """
+    client = redis if redis is not None else get_redis()
+    raw = await client.get(_capability_key(token))
+    return _payload_matches(raw, tenant_id=tenant_id, user_id=user_id, action=action)
+
+
+def _payload_matches(
+    raw, *, tenant_id: uuid.UUID, user_id: uuid.UUID, action: str
+) -> bool:
+    if raw is None:
         return False
-    if cap.expires_at < datetime.now(UTC):
-        _capabilities.pop(token, None)
+    try:
+        data = json.loads(raw)
+    except ValueError:
         return False
-    if cap.tenant_id != tenant_id or cap.user_id != user_id or cap.action != action:
-        return False
-    # Consume the token
-    _capabilities.pop(token, None)
-    return True
+    return (
+        data.get("tenant_id") == str(tenant_id)
+        and data.get("user_id") == str(user_id)
+        and data.get("action") == action
+    )

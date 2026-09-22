@@ -3,6 +3,9 @@
 Dependency order matters: get_db opens the request transaction; get_current_user
 authenticates (no DB); require_tenant binds BOTH GUCs (app.tenant_id,
 app.user_id) on that same transaction so every query below runs under RLS.
+§151 adds a third pair (app.workspace_id, app.location_id), bound last and only
+after the scope headers have been validated fail-closed against the tenant and
+the user's location grants.
 """
 
 from __future__ import annotations
@@ -16,15 +19,19 @@ from fastapi import Depends, Header, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.db import SessionLocal, bind_tenant
+from app.core.db import SessionLocal, bind_scope, bind_tenant
 from app.core.errors import NotFoundError, PermissionDeniedError
 from app.core.security import decode_token
+from app.core.tenancy import set_current_tenant
 from app.modules.identity.models import (
+    Location,
     Permission,
     Role,
     Tenant,
     TenantUser,
     User,
+    UserLocationAccess,
+    Workspace,
     role_permissions,
 )
 
@@ -143,6 +150,63 @@ class TenantContext:
     tenant_id: uuid.UUID
     role_code: str | None
     permission_codes: set[str]
+    # §151 — resolved hierarchy scope for this request (None = tenant-wide).
+    # Validated fail-closed by resolve_scope() before they are ever populated.
+    workspace_id: uuid.UUID | None = None
+    location_id: uuid.UUID | None = None
+
+
+async def resolve_scope(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    user_id: uuid.UUID,
+    workspace_id: uuid.UUID | None = None,
+    location_id: uuid.UUID | None = None,
+) -> tuple[uuid.UUID | None, uuid.UUID | None]:
+    """§151: validate the requested workspace/location; return (workspace, location).
+
+    Fail-closed on every mismatch — a wrong scope is a 403, never a silent
+    widening. Tenancy is checked twice on purpose: the tenant GUC is already
+    bound (RLS visibility) AND tenant_id is filtered explicitly. A workspace is
+    visible to any member of its tenant; a location additionally requires an
+    explicit user_location_access grant. The workspace is never inferred
+    upward from the location's absence — when both headers arrive they must
+    agree, and when only a location arrives its workspace is derived from it.
+    """
+    if location_id is not None:
+        loc = (
+            await session.execute(
+                select(Location).where(Location.id == location_id, Location.tenant_id == tenant_id)
+            )
+        ).scalar_one_or_none()
+        if loc is None:
+            raise PermissionDeniedError("location not available for this tenant")
+        if workspace_id is not None and loc.workspace_id != workspace_id:
+            raise PermissionDeniedError("location is not in the requested workspace")
+        grant = (
+            await session.execute(
+                select(UserLocationAccess).where(
+                    UserLocationAccess.user_id == user_id,
+                    UserLocationAccess.location_id == loc.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if grant is None:
+            raise PermissionDeniedError("no access grant for this location")
+        return loc.workspace_id, loc.id
+    if workspace_id is not None:
+        ws = (
+            await session.execute(
+                select(Workspace).where(
+                    Workspace.id == workspace_id, Workspace.tenant_id == tenant_id
+                )
+            )
+        ).scalar_one_or_none()
+        if ws is None:
+            raise PermissionDeniedError("workspace not available for this tenant")
+        return ws.id, None
+    return None, None
 
 
 async def _role_permissions(session: AsyncSession, role_id: uuid.UUID) -> set[str]:
@@ -161,6 +225,8 @@ async def get_tenant_ctx(
     session: DbSession,
     user: CurrentUserDep,
     x_tenant_id: Annotated[str | None, Header()] = None,
+    x_workspace_id: Annotated[str | None, Header()] = None,
+    x_location_id: Annotated[str | None, Header()] = None,
 ) -> TenantContext:
     """Resolve the active tenant, verify membership, enforce §48, bind RLS GUCs."""
     tenant_id = user.tenant_id
@@ -171,6 +237,21 @@ async def get_tenant_ctx(
             raise PermissionDeniedError("invalid tenant header") from exc
     if tenant_id is None:
         raise PermissionDeniedError("no active tenant — switch or pick a tenant")
+
+    # §151 — the scope headers are only parsed here; whether the caller may USE
+    # the scope is decided by resolve_scope() after the tenant GUC is bound.
+    workspace_hdr: uuid.UUID | None = None
+    location_hdr: uuid.UUID | None = None
+    if x_workspace_id:
+        try:
+            workspace_hdr = uuid.UUID(x_workspace_id)
+        except ValueError as exc:
+            raise PermissionDeniedError("invalid workspace header") from exc
+    if x_location_id:
+        try:
+            location_hdr = uuid.UUID(x_location_id)
+        except ValueError as exc:
+            raise PermissionDeniedError("invalid location header") from exc
 
     # Bind the user GUC first: the tenant_users self-access policy requires
     # it before any membership row is visible (pre-tenant-context stage).
@@ -221,15 +302,34 @@ async def get_tenant_ctx(
             perms = await _role_permissions(session, role_id)
 
     await bind_tenant(session, tenant_id)
+    # Publish the resolved tenant for infrastructure that runs OUTSIDE this
+    # session — DatabaseSecretStore (§68) opens its own session and binds the
+    # same tenant for RLS from the ambient context.
+    set_current_tenant(tenant_id)
     await session.execute(
         sa.text("SELECT set_config('app.user_id', :uid, true)"), {"uid": str(user.id)}
     )
+    # §151 — resolve and bind the workspace/location scope LAST: it needs the
+    # tenant GUC (for hierarchy-table visibility) and the user GUC (for the
+    # self-keyed user_location_access policy), both bound just above.
+    # bind_scope always runs, even with no headers, so a stale scope can never
+    # survive into this request from an earlier bind on the same transaction.
+    scope_workspace_id, scope_location_id = await resolve_scope(
+        session,
+        tenant_id=tenant_id,
+        user_id=user.id,
+        workspace_id=workspace_hdr,
+        location_id=location_hdr,
+    )
+    await bind_scope(session, scope_workspace_id, scope_location_id)
     return TenantContext(
         session=session,
         user=user,
         tenant_id=tenant_id,
         role_code=role_code,
         permission_codes=perms,
+        workspace_id=scope_workspace_id,
+        location_id=scope_location_id,
     )
 
 
@@ -283,6 +383,7 @@ __all__ = [
     "get_db",
     "get_optional_user",
     "get_tenant_ctx",
+    "resolve_scope",
     "require_permission",
     "require_platform_admin",
     "NotFoundError",

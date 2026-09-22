@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { json, mockShell, seedAuth, serverError } from "./support";
+import { json, mockShell, seedAuth, seedLang, serverError } from "./support";
 
 /* W5 exit gate — orders. */
 
@@ -29,6 +29,24 @@ const CUSTOMERS = {
       is_blocked: false,
     },
   ],
+};
+
+const PRODUCTS = [
+  {
+    id: "prod-1",
+    title: "Coffee Beans",
+    slug: "coffee-beans",
+    status: "active",
+    variants: [{ id: "var-1", title: "250g", sku: "CB-250", price: "120.00" }],
+  },
+];
+
+const CREATED_ORDER = {
+  id: "o-new",
+  number: "ORD-1002",
+  status: "pending",
+  grand_total: "120.00",
+  currency: "EGP",
 };
 
 test.beforeEach(async ({ page }) => {
@@ -75,4 +93,51 @@ test("a failed orders request renders a retryable alert", async ({ page }) => {
   await expect(alert).toBeVisible();
   await expect(alert).toContainText("orders unavailable");
   await expect(alert.getByRole("button")).toBeVisible();
+});
+
+/* W0.2 — the create toast's Undo must hit the real cancel route, keyed by
+ * order id (not number), through the shared API client. */
+
+async function createOrderFromDialog(page: import("@playwright/test").Page) {
+  await page.goto("/orders");
+  await page.getByTestId("toggle-order-form").click();
+  await page.locator("#o-customer").selectOption("cust-1");
+  await page.getByLabel("Products 1").selectOption("var-1");
+  await page.getByTestId("submit-order").click();
+}
+
+test("undo on the create toast cancels the order via POST /orders/{id}/cancel", async ({ page }) => {
+  await seedLang(page, "en");
+  await page.route("**/api/v1/products**", (route) => json(route, PRODUCTS));
+  await page.route("**/api/v1/orders**", (route) =>
+    route.request().method() === "POST" ? json(route, CREATED_ORDER, 201) : json(route, ORDERS),
+  );
+  const cancelPaths: string[] = [];
+  await page.route("**/api/v1/orders/*/cancel", (route) => {
+    cancelPaths.push(new URL(route.request().url()).pathname);
+    return json(route, { ok: true });
+  });
+
+  await createOrderFromDialog(page);
+  await page.getByRole("button", { name: "Undo" }).click();
+
+  await expect(page.getByText("Order cancelled")).toBeVisible();
+  // Keyed by the order id, never the human-facing number ORD-1002.
+  expect(cancelPaths).toEqual(["/api/v1/orders/o-new/cancel"]);
+});
+
+test("a failed cancel surfaces the API error in a danger toast", async ({ page }) => {
+  await seedLang(page, "en");
+  await page.route("**/api/v1/products**", (route) => json(route, PRODUCTS));
+  await page.route("**/api/v1/orders**", (route) =>
+    route.request().method() === "POST" ? json(route, CREATED_ORDER, 201) : json(route, ORDERS),
+  );
+  await page.route("**/api/v1/orders/*/cancel", (route) => serverError(route, "cannot cancel"));
+
+  await createOrderFromDialog(page);
+  await page.getByRole("button", { name: "Undo" }).click();
+
+  const danger = page.getByText("Undo failed");
+  await expect(danger).toBeVisible();
+  await expect(page.getByText("cannot cancel")).toBeVisible();
 });

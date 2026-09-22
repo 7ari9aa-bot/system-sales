@@ -1,36 +1,39 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
 import {
   MessagesSquare,
   MessageCircleOff,
   Send,
-  User,
-  Phone,
-  Mail,
-  ShoppingBag,
-  ExternalLink,
-  PanelRightClose,
-  PanelRightOpen,
-  RefreshCw,
+  UserCheck,
+  UserPlus,
+  UserRoundX,
+  Users,
   Search,
   Check,
   CheckCheck,
   Clock,
   AlertCircle,
+  PanelRightClose,
+  PanelRightOpen,
 } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   useConversations,
+  useAssignConversation,
   useMarkConversationRead,
+  useMe,
   useMessages,
   useSendMessage,
-  useCustomer,
+  useSlaRisk,
+  INBOX_VIEW_IDS,
+  INBOX_VIEW_STATUS,
+  INBOX_CLIENT_VIEWS,
+  isInboxViewId,
   qk,
   type Conversation,
+  type InboxViewId,
   type Page,
-  type Message,
 } from "@/lib/queries";
 import type { InfiniteData } from "@tanstack/react-query";
 import { useQueryClient } from "@tanstack/react-query";
@@ -44,6 +47,14 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState, ErrorState, PageHeader } from "@/components/ui/states";
 import { CustomerDrawer } from "@/components/customer-drawer";
+import { InboxContextPanel } from "@/components/inbox-context-panel";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
 const CHANNEL_VARIANT: Record<string, "success" | "primary" | "default"> = {
@@ -51,6 +62,50 @@ const CHANNEL_VARIANT: Record<string, "success" | "primary" | "default"> = {
   telegram: "primary",
   webchat: "default",
 };
+
+const CHANNELS = ["all", "whatsapp", "telegram", "webchat"] as const;
+
+/** §99 — views wired end-to-end: server-backed (status param) plus the
+ *  client-filtered ones. Everything else renders disabled (قريبًا) — never
+ *  faked. */
+const SUPPORTED_VIEWS: ReadonlySet<InboxViewId> = new Set<InboxViewId>([
+  "all",
+  ...(Object.keys(INBOX_VIEW_STATUS) as InboxViewId[]),
+  ...INBOX_CLIENT_VIEWS,
+]);
+
+/** Labels are read at render time (not module load) so a language switch
+ *  re-renders them. */
+function viewLabel(id: InboxViewId): string {
+  switch (id) {
+    case "my":
+      return t.viewMy;
+    case "unassigned":
+      return t.viewUnassigned;
+    case "all":
+      return t.filterAll;
+    case "priority":
+      return t.viewPriority;
+    case "sla-risk":
+      return t.viewSlaRisk;
+    case "waiting-customer":
+      return t.viewWaitingCustomer;
+    case "waiting-team":
+      return t.viewWaitingTeam;
+    case "vip":
+      return t.viewVip;
+    case "ai":
+      return t.viewAi;
+    case "ai-handover":
+      return t.viewAiHandover;
+    case "mentioned":
+      return t.viewMentioned;
+    case "team":
+      return t.viewTeam;
+    case "custom":
+      return t.viewCustom;
+  }
+}
 
 /** روابط الوسائط الواردة: نسمح فقط بـ http/https — أي قيمة أخرى (مثل javascript:) تُعرض كنص */
 function safeUrl(url: string): string | null {
@@ -115,99 +170,20 @@ function ConversationRow({
       </div>
       <div className="mt-1 flex items-center justify-between">
         <span className="text-xs text-muted-foreground">{formatTime(convo.last_message_at)}</span>
-        {convo.unread_count > 0 && (
-          <Badge variant="primary" data-testid={`unread-${convo.id}`}>
-            {convo.unread_count}
-          </Badge>
-        )}
+        <span className="flex items-center gap-1.5">
+          {/* §156: عرض حالة الانتظار في الصف — يوضّح وجه الفرق بين القنوات
+              المُصفّاة بـstatus (بانتظار العميل/الفريق/AI). */}
+          {convo.status !== "open" && convo.status !== "closed" && (
+            <span className="text-[10px] text-muted-foreground">{convo.status}</span>
+          )}
+          {convo.unread_count > 0 && (
+            <Badge variant="primary" data-testid={`unread-${convo.id}`}>
+              {convo.unread_count}
+            </Badge>
+          )}
+        </span>
       </div>
     </button>
-  );
-}
-
-function CustomerSidebar({
-  customerId,
-  channel,
-  onOpenCustomerDrawer,
-}: {
-  customerId: string;
-  channel: string;
-  onOpenCustomerDrawer: () => void;
-}) {
-  const customerQuery = useCustomer(customerId);
-  const customer = customerQuery.data;
-
-  return (
-    <div className="flex flex-col border-s border-border bg-card/50 p-4 space-y-5 overflow-y-auto">
-      <div className="flex items-center justify-between border-b border-border pb-3">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-          معلومات العميل (360°)
-        </h3>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={onOpenCustomerDrawer}
-          className="text-xs text-primary gap-1 h-7 px-2"
-        >
-          عرض كامل <ExternalLink className="size-3" />
-        </Button>
-      </div>
-
-      <div className="flex flex-col items-center text-center space-y-2">
-        <div className="flex size-14 items-center justify-center rounded-full bg-primary/10 text-primary font-bold text-xl">
-          {customer?.name?.slice(0, 2) || <User className="size-6" />}
-        </div>
-        <div>
-          <h4 className="font-bold text-sm text-foreground">{customer?.name || "عميل بدون اسم"}</h4>
-          <span className="text-[11px] text-muted-foreground" dir="ltr">
-            ID: {customerId.slice(0, 10)}…
-          </span>
-        </div>
-        <Badge variant={CHANNEL_VARIANT[channel] ?? "default"} className="capitalize text-[11px]">
-          قناة: {channel}
-        </Badge>
-      </div>
-
-      <div className="space-y-3 pt-2 text-xs">
-        <div className="rounded-lg border border-border bg-muted/40 p-2.5 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground flex items-center gap-1.5">
-              <Phone className="size-3.5" /> الهاتف
-            </span>
-            <span dir="ltr" className="font-medium">
-              {customer?.phone || "—"}
-            </span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground flex items-center gap-1.5">
-              <Mail className="size-3.5" /> البريد
-            </span>
-            <span dir="ltr" className="font-medium truncate max-w-[140px]">
-              {customer?.email || "—"}
-            </span>
-          </div>
-        </div>
-
-        <div className="rounded-lg border border-border bg-muted/40 p-2.5">
-          <span className="text-muted-foreground">إجمالي قيمة المشتريات (LTV)</span>
-          <div className="mt-1 text-base font-bold text-foreground" dir="ltr">
-            {Number(customer?.lifetime_value || 0).toLocaleString("en-US", {
-              minimumFractionDigits: 2,
-            })}{" "}
-            <span className="text-xs font-normal">ج.م</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="space-y-2 pt-2">
-        <Button variant="outline" size="sm" asChild className="w-full text-xs justify-start">
-          <Link href="/orders">
-            <ShoppingBag className="size-3.5 me-2" />
-            إنشاء طلب جديد
-          </Link>
-        </Button>
-      </div>
-    </div>
   );
 }
 
@@ -224,24 +200,41 @@ function InboxContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const conversationParam = searchParams.get("conversation");
+  // §87 — الـview جزء من حالة الصفحة في الـURL، فأي رابط مثل
+  // /inbox?view=unassigned&conversation=... يفتح على نفس الشاشة.
+  const viewParam = searchParams.get("view");
+  const view: InboxViewId = isInboxViewId(viewParam) ? viewParam : "all";
   const [selected, setSelected] = React.useState<string | null>(null);
   const [channelFilter, setChannelFilter] = React.useState<string>("all");
   const [searchQuery, setSearchQuery] = React.useState("");
-  const [showCustomerSidebar, setShowCustomerSidebar] = React.useState(true);
+  const [showContextPanel, setShowContextPanel] = React.useState(true);
   const [drawerCustomerId, setDrawerCustomerId] = React.useState<string | null>(null);
   const [draft, setDraft] = React.useState("");
   const bottomRef = React.useRef<HTMLDivElement>(null);
 
-  const conversationsQuery = useConversations();
+  const conversationsQuery = useConversations(view);
   const messagesQuery = useMessages(selected);
   const markRead = useMarkConversationRead();
   const sendMessage = useSendMessage(selected ?? "");
+  const assignConversation = useAssignConversation();
+  const me = useMe();
   const queryClient = useQueryClient();
 
+  // §99 SLA risk — client join with GET /sla/risk; fetched only while the
+  // view is active so no other inbox surface pays for it.
+  const slaRiskQuery = useSlaRisk({ enabled: view === "sla-risk" });
+  const slaRiskIds = React.useMemo(
+    () =>
+      new Set(
+        (slaRiskQuery.data?.items ?? [])
+          .filter((item) => item.status === "breached" || item.at_risk)
+          .map((item) => item.conversation_id),
+      ),
+    [slaRiskQuery.data],
+  );
+
   // §111 — لا إعادة جلب كاملة مع كل حدث SSE. التحديث موجّه: المحادثة المتأثرة
-  // وحدها تعيد جلب رسائلها، وصف القائمة يُرقَّع في مكانه. الأحداث التي لا يمكن
-  // تطبيقها محليًا فقط هي التي تُسوّى بـinvalidateQueries. الفواصل الدورية
-  // (refetchInterval) تبقى طبقة التسوية في الخلفية.
+  // وحدها تعيد جلب رسائلها، وصف القائمة يُرقَّع في مكانه (في كل كاشات الـviews).
   useRealtimeEvents({
     streams: INBOX_STREAMS,
     onEvent: React.useCallback(
@@ -255,31 +248,35 @@ function InboxContent() {
           //    (لا id ولا status ولا created_at) فلا يمكن تركيب الرسالة محليًا.
           queryClient.invalidateQueries({ queryKey: qk.messages(conversationId) });
 
-          // 2) ترقيع صف القائمة: message.received دائمًا وارد (يزيد غير المقروء)،
-          //    أما message.outbound فيحمل message_id فقط (آخر ظهور فقط).
+          // 2) ترقيع صف القائمة في كل الـviews: message.received دائمًا وارد
+          //    (يزيد غير المقروء)، أما message.outbound فيحمل message_id فقط
+          //    (آخر ظهور فقط).
           const isInbound =
             typeof payload.body === "string" || typeof payload.channel === "string";
-          queryClient.setQueryData<InfiniteData<Page<Conversation>>>(qk.conversations, (previous) => {
-            if (!previous) return previous;
-            return {
-              ...previous,
-              pages: previous.pages.map((page) => ({
-                ...page,
-                items: page.items.map((c) =>
-                  c.id === conversationId
-                    ? {
-                        ...c,
-                        last_message_at: new Date().toISOString(),
-                        unread_count:
-                          isInbound && conversationId !== selected
-                            ? c.unread_count + 1
-                            : c.unread_count,
-                      }
-                    : c,
-                ),
-              })),
-            };
-          });
+          queryClient.setQueriesData<InfiniteData<Page<Conversation>>>(
+            { queryKey: qk.conversations },
+            (previous) => {
+              if (!previous) return previous;
+              return {
+                ...previous,
+                pages: previous.pages.map((page) => ({
+                  ...page,
+                  items: page.items.map((c) =>
+                    c.id === conversationId
+                      ? {
+                          ...c,
+                          last_message_at: new Date().toISOString(),
+                          unread_count:
+                            isInbound && conversationId !== selected
+                              ? c.unread_count + 1
+                              : c.unread_count,
+                        }
+                      : c,
+                  ),
+                })),
+              };
+            },
+          );
           return;
         }
 
@@ -297,8 +294,17 @@ function InboxContent() {
   );
   const activeConversation = allConversations.find((c) => c.id === selected);
 
+  // §99 — client-filtered views operate on fields already in the payload:
+  // my/unassigned read assignee_user_id, sla-risk joins the /sla/risk ids.
+  const viewFilteredConversations = React.useMemo(() => {
+    if (!INBOX_CLIENT_VIEWS.includes(view)) return allConversations;
+    if (view === "my") return me.data ? allConversations.filter((c) => c.assignee_user_id === me.data?.id) : [];
+    if (view === "unassigned") return allConversations.filter((c) => c.assignee_user_id == null);
+    return allConversations.filter((c) => slaRiskIds.has(c.id));
+  }, [allConversations, view, me.data, slaRiskIds]);
+
   const filteredConversations = React.useMemo(() => {
-    return allConversations.filter((c) => {
+    return viewFilteredConversations.filter((c) => {
       const matchChannel = channelFilter === "all" || c.channel === channelFilter;
       const q = searchQuery.toLowerCase().trim();
       const matchSearch =
@@ -308,7 +314,7 @@ function InboxContent() {
         c.channel.toLowerCase().includes(q);
       return matchChannel && matchSearch;
     });
-  }, [allConversations, channelFilter, searchQuery]);
+  }, [viewFilteredConversations, channelFilter, searchQuery]);
 
   const messages = messagesQuery.data ?? [];
 
@@ -321,20 +327,29 @@ function InboxContent() {
   React.useEffect(() => {
     if (!conversationParam) return;
     setSelected(conversationParam);
-  }, [conversationParam, router]);
+  }, [conversationParam]);
 
   // تصفير المسودة عند أي تبديل للمحادثة المختارة — يمنع إرسال ردّ لعميل خطأ
   React.useEffect(() => {
     setDraft("");
   }, [selected]);
 
+  function updateParams(mutate: (params: URLSearchParams) => void) {
+    const params = new URLSearchParams(searchParams.toString());
+    mutate(params);
+    router.replace(`/inbox?${params.toString()}`, { scroll: false });
+  }
+
+  function selectView(next: InboxViewId) {
+    if (next === view) return;
+    updateParams((params) => params.set("view", next));
+  }
+
   function selectConversation(id: string) {
     setSelected(id);
     setDraft(""); // ردّ نظيف عند تبديل المحادثة
     // §87 — كتابة المحادثة المفتوحة في الـURL مع الحفاظ على باقي المعاملات
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("conversation", id);
-    router.replace(`/inbox?${params.toString()}`, { scroll: false });
+    updateParams((params) => params.set("conversation", id));
     const target = allConversations.find((c) => c.id === id);
     if (target && target.unread_count > 0) markRead.mutate(id);
   }
@@ -345,6 +360,8 @@ function InboxContent() {
     setDraft("");
     sendMessage.mutate(body);
   }
+
+  const slaRiskLoading = view === "sla-risk" && slaRiskQuery.isLoading;
 
   return (
     <div className="flex h-full flex-col">
@@ -362,7 +379,7 @@ function InboxContent() {
       )}
 
       <div className="grid flex-1 gap-4 lg:grid-cols-[300px_1fr] lg:min-h-[calc(100dvh-13rem)]">
-        {/* conversations list */}
+        {/* conversations list + §99 views rail */}
         <Card className="flex flex-col overflow-hidden p-0 border border-border">
           <div className="border-b border-border p-3 space-y-2">
             <div className="flex items-center justify-between">
@@ -383,12 +400,42 @@ function InboxContent() {
               />
             </div>
 
-            {/* channel filter pills */}
-            <div className="flex gap-1 overflow-x-auto pb-1 text-[11px]">
-              {["all", "whatsapp", "telegram", "webchat"].map((ch) => (
+            {/* §99 views rail — spec order; server views hit the API param,
+                client views filter loaded pages, the rest stay disabled. */}
+            <div className="flex flex-wrap gap-1 text-[11px]" data-testid="views-rail">
+              {INBOX_VIEW_IDS.map((id) => {
+                const supported = SUPPORTED_VIEWS.has(id);
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    data-testid={`view-${id}`}
+                    title={supported ? viewLabel(id) : `${viewLabel(id)} — ${t.comingSoon}`}
+                    disabled={!supported}
+                    aria-pressed={view === id}
+                    onClick={() => selectView(id)}
+                    className={cn(
+                      "rounded-md px-2 py-0.5 transition-colors",
+                      view === id
+                        ? "bg-primary text-white font-medium"
+                        : "bg-muted text-muted-foreground hover:bg-muted/80",
+                      !supported && "opacity-40 hover:bg-muted cursor-not-allowed",
+                    )}
+                  >
+                    {viewLabel(id)}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* channel filter pills — merged into the §99 rail */}
+            <div className="flex items-center gap-1 overflow-x-auto pb-1 text-[11px]">
+              <span className="shrink-0 text-[10px] text-muted-foreground">{t.allChannels}:</span>
+              {CHANNELS.map((ch) => (
                 <button
                   key={ch}
                   type="button"
+                  data-testid={`channel-${ch}`}
                   onClick={() => setChannelFilter(ch)}
                   className={cn(
                     "rounded-md px-2 py-0.5 capitalize transition-colors",
@@ -397,14 +444,14 @@ function InboxContent() {
                       : "bg-muted text-muted-foreground hover:bg-muted/80",
                   )}
                 >
-                  {ch === "all" ? "الكل" : ch}
+                  {ch === "all" ? t.filterAll : ch}
                 </button>
               ))}
             </div>
           </div>
 
           <div className="flex-1 overflow-y-auto p-2 space-y-1">
-            {conversationsQuery.isLoading ? (
+            {conversationsQuery.isLoading || slaRiskLoading ? (
               <ConversationsSkeleton />
             ) : filteredConversations.length === 0 ? (
               <EmptyState
@@ -442,7 +489,7 @@ function InboxContent() {
           </div>
         </Card>
 
-        {/* thread and optional customer sidebar */}
+        {/* thread and optional context panel */}
         <Card className="flex flex-col overflow-hidden p-0 border border-border">
           {!selected || !activeConversation ? (
             <EmptyState
@@ -452,7 +499,7 @@ function InboxContent() {
               className="flex-1"
             />
           ) : (
-            <div className={cn("grid flex-1 overflow-hidden", showCustomerSidebar ? "lg:grid-cols-[1fr_260px]" : "grid-cols-1")}>
+            <div className={cn("grid flex-1 overflow-hidden", showContextPanel ? "lg:grid-cols-[1fr_280px]" : "grid-cols-1")}>
               {/* Message thread container */}
               <div className="flex flex-col h-full overflow-hidden">
                 {/* Thread Header */}
@@ -480,14 +527,74 @@ function InboxContent() {
                   </div>
 
                   <div className="flex items-center gap-1">
+                    {/* §99 — assign action. The backend has no team-members
+                        listing endpoint yet, so the menu offers self-assign
+                        and unassign; picking another member stays disabled. */}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-xs gap-1.5"
+                          data-testid="assign-button"
+                        >
+                          {activeConversation.assignee_user_id != null ? (
+                            <UserCheck className="size-3.5" />
+                          ) : (
+                            <UserPlus className="size-3.5" />
+                          )}
+                          {activeConversation.assignee_user_id == null
+                            ? t.assign
+                            : activeConversation.assignee_user_id === me.data?.id
+                              ? t.assignedToYou
+                              : t.assignedBadge}
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          data-testid="assign-to-me"
+                          disabled={!me.data || assignConversation.isPending}
+                          onSelect={() =>
+                            me.data &&
+                            assignConversation.mutate({
+                              conversationId: activeConversation.id,
+                              userId: me.data.id,
+                            })
+                          }
+                        >
+                          <UserPlus aria-hidden="true" />
+                          {t.assignToMe}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          variant="destructive"
+                          data-testid="unassign-button"
+                          disabled={activeConversation.assignee_user_id == null || assignConversation.isPending}
+                          onSelect={() =>
+                            assignConversation.mutate({
+                              conversationId: activeConversation.id,
+                              userId: null,
+                            })
+                          }
+                        >
+                          <UserRoundX aria-hidden="true" />
+                          {t.unassign}
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem disabled title={t.comingSoon}>
+                          <Users aria-hidden="true" />
+                          {t.assignOtherMember} — {t.comingSoon}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+
                     <Button
                       variant="ghost"
                       size="icon"
                       className="size-8"
-                      title={showCustomerSidebar ? "إخفاء لوحة العميل" : "إظهار لوحة العميل"}
-                      onClick={() => setShowCustomerSidebar(!showCustomerSidebar)}
+                      title={showContextPanel ? "إخفاء لوحة السياق" : "إظهار لوحة السياق"}
+                      onClick={() => setShowContextPanel(!showContextPanel)}
                     >
-                      {showCustomerSidebar ? (
+                      {showContextPanel ? (
                         <PanelRightClose className="size-4" />
                       ) : (
                         <PanelRightOpen className="size-4" />
@@ -581,9 +688,9 @@ function InboxContent() {
                 </div>
               </div>
 
-              {/* Customer 360 sidebar */}
-              {showCustomerSidebar && (
-                <CustomerSidebar
+              {/* §99 context panel — customer / orders / timeline / AI / notes */}
+              {showContextPanel && (
+                <InboxContextPanel
                   customerId={activeConversation.customer_id}
                   channel={activeConversation.channel}
                   onOpenCustomerDrawer={() => setDrawerCustomerId(activeConversation.customer_id)}

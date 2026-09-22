@@ -18,7 +18,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 
-from sqlalchemy import Index, String, Text
+from sqlalchemy import DateTime, Index, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
@@ -60,8 +60,11 @@ class DRPolicy(Base, TimestampMixin):
     restore_test_cron: Mapped[str] = mapped_column(
         String(63), server_default="0 2 * * 0"  # weekly Sunday 2am
     )
-    # Last restore test result
-    last_restore_test_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    # Last restore test result — TIMESTAMPTZ in the migration (f9b0c1d2e3f4),
+    # so the model must declare timezone=True.
+    last_restore_test_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     last_restore_test_status: Mapped[str | None] = mapped_column(
         String(15), nullable=True
     )
@@ -80,8 +83,12 @@ class RestoreTestRun(Base, TimestampMixin):
     status: Mapped[str] = mapped_column(
         String(15), server_default="scheduled"
     )
-    started_at: Mapped[datetime | None] = mapped_column(nullable=True)
-    completed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # Time to restore (seconds) — compared against RTO
     restore_duration_seconds: Mapped[int | None] = mapped_column(nullable=True)
     # Data loss (seconds) — compared against RPO

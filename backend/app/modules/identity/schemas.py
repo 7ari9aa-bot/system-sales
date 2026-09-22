@@ -74,3 +74,75 @@ class AcceptInvitationRequest(BaseModel):
     token: str = Field(min_length=16, max_length=64)
     password: str = Field(min_length=8, max_length=128)
     full_name: str = Field(min_length=1, max_length=255)
+
+
+# --- §151 hierarchy (workspaces / locations / location access) -------------
+
+
+class WorkspaceCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    slug: str = Field(min_length=1, max_length=63, pattern=r"^[a-z0-9-]+$")
+
+
+class WorkspaceUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    is_active: bool | None = None
+
+
+class WorkspaceOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    name: str
+    slug: str
+    is_active: bool
+
+
+class WorkspaceListOut(BaseModel):
+    items: list[WorkspaceOut]
+
+
+class LocationCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    code: str | None = Field(default=None, min_length=1, max_length=31)
+
+
+class LocationUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    code: str | None = Field(default=None, min_length=1, max_length=31)
+    is_active: bool | None = None
+
+
+class LocationOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    workspace_id: uuid.UUID
+    name: str
+    code: str | None
+    is_active: bool
+
+
+class LocationListOut(BaseModel):
+    items: list[LocationOut]
+
+
+class LocationAccessGrant(BaseModel):
+    """PUT body — role_override is the only mutable grant attribute."""
+
+    role_override: str | None = Field(default=None, max_length=63)
+
+
+class LocationAccessOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    user_id: uuid.UUID
+    location_id: uuid.UUID
+    role_override: str | None
+    granted_by: uuid.UUID | None
+
+
+class LocationAccessListOut(BaseModel):
+    items: list[LocationAccessOut]

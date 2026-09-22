@@ -23,6 +23,13 @@ from app.core.errors import ValidationError
 
 EVENT_TYPES: dict[str, type[EventEnvelope]] = {}
 
+# §153: schema_version-specific adapters. A consumer that understands an
+# evolved payload registers its subclass under (event_type, schema_version);
+# ``build_envelope`` / ``deserialize`` pick the adapter when one exists for
+# the event's own version and fall back to the type-level class otherwise —
+# so an old event stays readable through the base contract.
+VERSIONED_EVENT_TYPES: dict[tuple[str, int], type[EventEnvelope]] = {}
+
 # Meta keys that carry envelope routing rather than user-supplied metadata.
 ROUTING_KEYS: frozenset[str] = frozenset(
     {
@@ -30,6 +37,8 @@ ROUTING_KEYS: frozenset[str] = frozenset(
         "type",
         "version",
         "tenant_id",
+        "workspace_id",
+        "location_id",
         "occurred_at",
         "aggregate_type",
         "aggregate_id",
@@ -42,14 +51,28 @@ ROUTING_KEYS: frozenset[str] = frozenset(
 )
 
 
-def register_event(name: str) -> Callable[[type[EventEnvelope]], type[EventEnvelope]]:
+def register_event(
+    name: str, schema_version: int | None = None
+) -> Callable[[type[EventEnvelope]], type[EventEnvelope]]:
     """Register an envelope class under an event type name (e.g. "order.created").
 
-    Re-registering the same class under the same name is a no-op; a different
-    class for a taken name is a programming error and raises ValueError.
+    With ``schema_version`` the class is registered as the §153 adapter for
+    that wire version only; without it, the class is the type-level contract.
+    Re-registering the same class under the same key is a no-op; a different
+    class for a taken key is a programming error and raises ValueError.
     """
 
     def decorator(cls: type[EventEnvelope]) -> type[EventEnvelope]:
+        if schema_version is not None:
+            key = (name, schema_version)
+            existing = VERSIONED_EVENT_TYPES.get(key)
+            if existing is not None and existing is not cls:
+                raise ValueError(
+                    f"event adapter already registered: {name!r} @ v{schema_version}"
+                    f" -> {existing.__name__}"
+                )
+            VERSIONED_EVENT_TYPES[key] = cls
+            return cls
         existing = EVENT_TYPES.get(name)
         if existing is not None and existing is not cls:
             raise ValueError(f"event type already registered: {name!r} -> {existing.__name__}")
@@ -70,6 +93,11 @@ class EventEnvelope(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     type: str
     tenant_id: UUID
+    # §19 scope: the sub-tenant ownership the event happened under. Optional
+    # until a mutation resolves a workspace/location scope (§151); routing
+    # keys, so user meta can never forge them.
+    workspace_id: UUID | None = None
+    location_id: UUID | None = None
     occurred_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     aggregate_type: str
     aggregate_id: UUID
@@ -90,7 +118,21 @@ class EventEnvelope(BaseModel):
 # payload/meta yet; a module that adds a typed subclass must register it BEFORE
 # this import runs (or replace the base registration) — see register_event.
 DOMAIN_EVENT_TYPES: tuple[str, ...] = (
+    # §169: AI evaluation canary rollout lifecycle (ai/evaluation.py).
+    "ai.canary_rolled_back",
+    "ai.canary_started",
+    # §136: per-tenant n8n service-token lifecycle (issue / rotate / revoke).
+    "automation.service_token.issued",
+    "automation.service_token.revoked",
+    # §175: campaign + journey execution lifecycle (marketing/). The
+    # campaign.run.batch continuation is staged by the CampaignWorker with a
+    # pacing not_before (§144 bulk tier).
+    "campaign.run.batch",
+    "campaign.run.completed",
+    "campaign.run.started",
     "customer.merged",
+    "journey.run.completed",
+    "journey.run.started",
     "message.outbound",
     "message.received",
     "notification.queued",
@@ -98,9 +140,27 @@ DOMAIN_EVENT_TYPES: tuple[str, ...] = (
     "order.created",
     "order.refunded",
     "order.status_changed",
+    # §69: master-key rotation emits this through the outbox (durable audit of
+    # a security-relevant event — see app.core.secrets.rotate_master_key).
+    "platform.secret_rotated",
     "privacy.customer_deleted",
     "privacy.customer_purge_required",
+    # §126: saga orchestration milestones (core/saga.py).
+    "saga.completed",
+    "saga.failed",
+    "saga.started",
+    # §164: tenant-scoped restore job lifecycle (create → extract → validate
+    # → execute) stages these from platform/tenant_restore.py.
+    "tenant.restore.completed",
+    "tenant.restore.requested",
     "webhook.deliver",
+    # §24: failed inbound webhook ingress rows are reprocessed by the
+    # WebhookWorker (admin retry endpoint / per-tenant sweep) on the same
+    # webhook.events stream.
+    "webhook.event.retry",
+    # §22: the webhook route persists the raw delivery and queues the long
+    # ingest block onto this event — the request path never runs it inline.
+    "webhook.ingest",
     # §176 gate-scenario fixtures (relay reclaim, redis-outage buffering,
     # schema-version round-trip) stage real envelopes through the writer.
     "test.relay",
@@ -117,12 +177,20 @@ def _register_domain_event_types() -> None:
 _register_domain_event_types()
 
 
+def _resolve_class(event_type: str, schema_version: int) -> type[EventEnvelope] | None:
+    """§153 dispatch: the adapter registered for this exact wire version, else
+    the type-level class. An unregistered type resolves to None (rejected)."""
+    return VERSIONED_EVENT_TYPES.get((event_type, schema_version)) or EVENT_TYPES.get(event_type)
+
+
 def build_envelope(
     event_type: str,
     *,
     tenant_id: UUID | str,
     aggregate_type: str,
     aggregate_id: UUID | str,
+    workspace_id: UUID | str | None = None,
+    location_id: UUID | str | None = None,
     payload: dict[str, Any] | None = None,
     meta: dict[str, Any] | None = None,
     occurred_at: datetime | None = None,
@@ -136,10 +204,12 @@ def build_envelope(
     """Build a registered envelope; unknown event types are rejected.
 
     The v2 lineage kwargs (correlation_id / causation_id / producer /
-    schema_version / aggregate_version) are optional and default to the base
-    envelope's defaults, so v1 callers keep working unchanged.
+    schema_version / aggregate_version) and the §19 scope kwargs
+    (workspace_id / location_id) are optional and default to the base
+    envelope's defaults, so v1 callers keep working unchanged. A registered
+    §153 adapter for (event_type, schema_version) is built when present.
     """
-    cls = EVENT_TYPES.get(event_type)
+    cls = _resolve_class(event_type, schema_version)
     if cls is None:
         raise ValidationError(
             f"event type not registered: {event_type!r}",
@@ -149,6 +219,8 @@ def build_envelope(
         id=envelope_id or str(uuid.uuid4()),
         type=event_type,
         tenant_id=tenant_id,
+        workspace_id=workspace_id,
+        location_id=location_id,
         occurred_at=occurred_at or datetime.now(UTC),
         aggregate_type=aggregate_type,
         aggregate_id=aggregate_id,
@@ -243,6 +315,8 @@ def serialize(envelope: EventEnvelope) -> dict[str, str]:
             "type": data["type"],
             "version": data["version"],
             "tenant_id": data["tenant_id"],
+            "workspace_id": data["workspace_id"],
+            "location_id": data["location_id"],
             "occurred_at": data["occurred_at"],
             "aggregate_type": data["aggregate_type"],
             "aggregate_id": data["aggregate_id"],
@@ -270,7 +344,8 @@ def deserialize(fields: Mapping[str, Any]) -> EventEnvelope:
     payload = _decode_value(_ensure_dict(fields.get("payload", "{}")))
     meta = _decode_value(_ensure_dict(fields.get("meta", "{}")))
     event_type = meta.get("type")
-    cls = EVENT_TYPES.get(event_type) if isinstance(event_type, str) else None
+    schema_version = int(meta.get("schema_version", 1))
+    cls = _resolve_class(event_type, schema_version) if isinstance(event_type, str) else None
     if cls is None:
         raise ValidationError(
             f"event type not registered: {event_type!r}",
@@ -281,13 +356,15 @@ def deserialize(fields: Mapping[str, Any]) -> EventEnvelope:
         type=event_type,
         version=int(meta.get("version", 1)),
         tenant_id=meta["tenant_id"],
+        workspace_id=meta.get("workspace_id"),
+        location_id=meta.get("location_id"),
         occurred_at=datetime.fromisoformat(meta["occurred_at"]),
         aggregate_type=meta["aggregate_type"],
         aggregate_id=meta["aggregate_id"],
         correlation_id=meta.get("correlation_id"),
         causation_id=meta.get("causation_id"),
         producer=meta.get("producer", "core"),
-        schema_version=int(meta.get("schema_version", 1)),
+        schema_version=schema_version,
         aggregate_version=meta.get("aggregate_version"),
         payload=payload,
         meta={k: v for k, v in meta.items() if k not in ROUTING_KEYS},

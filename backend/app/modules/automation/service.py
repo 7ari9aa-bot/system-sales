@@ -16,7 +16,13 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import ExternalProviderError, NotFoundError, ValidationError
+from app.core.errors import (
+    DomainError,
+    ExternalProviderError,
+    NotFoundError,
+    ValidationError,
+)
+from app.core.idempotency import apply_versioned_update  # §17
 from app.modules.automation.models import (
     Workflow,
     WorkflowExecution,
@@ -66,10 +72,23 @@ class WorkflowService:
 
     @staticmethod
     async def publish_new_version(
-        session: AsyncSession, tenant_id: uuid.UUID, workflow_id: uuid.UUID, *, definition: dict
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        workflow_id: uuid.UUID,
+        *,
+        definition: dict,
+        expected_version: str | None = None,  # §17 If-Match
     ) -> WorkflowVersion:
         workflow = await WorkflowService.get(session, tenant_id, workflow_id)
-        workflow.current_version += 1
+        # §17: the CAS on the workflow row IS the race guard — two publishers
+        # holding the same version cannot both bump current_version; the loser
+        # gets ConflictError before any snapshot is inserted.
+        await apply_versioned_update(
+            session,
+            workflow,
+            expected_version,
+            {"current_version": workflow.current_version + 1},
+        )
         version = WorkflowVersion(
             workflow_id=workflow.id,
             version=workflow.current_version,
@@ -92,12 +111,21 @@ class WorkflowService:
 
     @staticmethod
     async def set_status(
-        session: AsyncSession, tenant_id: uuid.UUID, workflow_id: uuid.UUID, status: str
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        workflow_id: uuid.UUID,
+        status: str,
+        *,
+        expected_version: str | None = None,  # §17 If-Match
     ) -> Workflow:
         if status not in ("draft", "active", "paused", "archived"):
             raise ValidationError(f"invalid status: {status}")
         workflow = await WorkflowService.get(session, tenant_id, workflow_id)
-        workflow.status = status
+        # ONE statement, always version-bumped (even without If-Match) so an
+        # ETag never goes stale silently on a concurrent unconditional write.
+        await apply_versioned_update(
+            session, workflow, expected_version, {"status": status}
+        )
         return workflow
 
     @staticmethod
@@ -237,18 +265,28 @@ class WorkflowService:
     ) -> dict:
         """n8n execution adapter — POST context to the n8n webhook."""
         from app.core.config import get_settings
+        from app.modules.automation.tokens import get_or_issue_outbound_token
 
         settings = get_settings()
         base = getattr(settings, "n8n_base_url", "")
         if not base:
             raise ExternalProviderError("n8n base url not configured")
+        # §136: per-tenant credential only — the global SERVICE_TOKEN_INTERNAL
+        # Bearer let any tenant act as any other tenant and must never be sent
+        # again. Issuance failure is a hard DomainError, never a fallback.
+        try:
+            token = await get_or_issue_outbound_token(session, tenant_id)
+        except DomainError:
+            raise
+        except Exception as exc:  # noqa: BLE001 — re-raised as a domain error
+            raise ExternalProviderError(
+                f"n8n service token issuance failed: {str(exc)[:200]}"
+            ) from exc
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.post(
                 f"{base}/webhook/{workflow.n8n_workflow_ref or 'default'}",
                 json={"execution_id": str(execution.id), "context": execution.context},
-                headers={
-                    "Authorization": f"Bearer {getattr(settings, 'service_token_internal', '')}"
-                },
+                headers={"Authorization": f"Bearer {token}"},
             )
         if response.status_code >= 400:
             raise ExternalProviderError(f"n8n execution failed: {response.status_code}")

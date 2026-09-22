@@ -567,14 +567,34 @@ def _migration_datetime_timezone() -> dict[tuple[str, str], bool]:
     return found
 
 
+def _import_all_model_modules() -> None:
+    """Base.metadata fills LAZILY: a table only appears once its defining
+    module is imported. Without this walk the timezone guard below passed
+    vacuously for every model file no test happened to import — the exact
+    mechanism that let tenant_restore_jobs / notification_digests /
+    dr_policy / source_of_truth_policies drift unnoticed."""
+    import importlib
+    import pkgutil
+
+    import app.modules as pkg
+
+    for _finder, name, _ispkg in pkgutil.walk_packages(pkg.__path__, "app.modules."):
+        importlib.import_module(name)
+
+
 def test_model_and_migration_agree_on_timestamp_timezone() -> None:
     """A naive/aware mismatch here fails only when the column is first written."""
     from sqlalchemy import DateTime
 
     from app.core.model_registry import Base
 
+    _import_all_model_modules()
     declared = _migration_datetime_timezone()
     assert declared, "no DateTime columns found in the migrations — parser broken"
+    assert len(Base.metadata.tables) >= 100, (
+        "model metadata looks only partially loaded — this guard would pass "
+        "vacuously; investigate the module walk"
+    )
 
     problems: list[str] = []
     for table_name, table in Base.metadata.tables.items():

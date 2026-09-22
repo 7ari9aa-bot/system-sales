@@ -218,5 +218,7 @@ async def _do_auto_reply(
             "message_id": str(message.id),
             "conversation_id": str(conversation_id),
         },
+        # Messages are append-only and carry no VersionMixin column, so the
+        # aggregate version is the constant 1 (created once, never mutated).
         aggregate_version=1,
     )

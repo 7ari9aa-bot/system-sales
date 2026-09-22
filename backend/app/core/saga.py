@@ -158,9 +158,8 @@ class SagaManager:
         session.add(saga)
         await session.flush()
 
-        add_outbox_event(
+        await add_outbox_event(
             session,
-            stream="saga.events",
             event_type="saga.started",
             aggregate_type="saga",
             aggregate_id=saga.id,
@@ -201,9 +200,8 @@ class SagaManager:
             saga.status = SagaStatus.COMPLETED.value
             saga.completed_at = datetime.now(UTC)
             await session.flush()
-            add_outbox_event(
+            await add_outbox_event(
                 session,
-                stream="saga.events",
                 event_type="saga.completed",
                 aggregate_type="saga",
                 aggregate_id=saga.id,
@@ -280,9 +278,8 @@ class SagaManager:
         saga.completed_at = datetime.now(UTC)
         await session.flush()
 
-        add_outbox_event(
+        await add_outbox_event(
             session,
-            stream="saga.events",
             event_type="saga.failed",
             aggregate_type="saga",
             aggregate_id=saga.id,

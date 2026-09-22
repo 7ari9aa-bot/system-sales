@@ -10,6 +10,7 @@ import {
   useQueryClient,
   keepPreviousData,
   type InfiniteData,
+  type QueryClient,
   type QueryKey,
 } from "@tanstack/react-query";
 import { api, getTokens, newIdempotencyKey } from "@/lib/api";
@@ -349,18 +350,78 @@ export function useDashboard() {
 /** Page size for the inbox list — the API caps `limit` at 200. */
 export const CONVERSATIONS_PAGE_SIZE = 50;
 
-function withCursor(path: string, limit: number, cursor: string | null) {
-  const params = new URLSearchParams({ limit: String(limit) });
+function withCursor(path: string, limit: number, cursor: string | null, extra: Record<string, string> = {}) {
+  const params = new URLSearchParams({ limit: String(limit), ...extra });
   if (cursor) params.set("cursor", cursor);
   return `${path}?${params.toString()}`;
 }
 
-/** Server-paginated inbox list — pages accumulate via `fetchNextPage`. */
-export function useConversations() {
+/* ------------------------------------------------------------------ §99 views */
+
+/** Spec §99 — the inbox views rail, in the spec's order.
+ *
+ *  Wiring honesty per view (backend contract as of today):
+ *  - `all`                     → GET /conversations with no filter (server).
+ *  - `waiting-customer`        → server filter `status=waiting_customer` (§156).
+ *  - `waiting-team`            → server filter `status=waiting_human` (§156).
+ *  - `ai`                      → server filter `status=waiting_ai` (§156).
+ *  - `my` / `unassigned`       → client filter on `assignee_user_id`, which the
+ *    payload already carries. The server cannot answer these yet: GET
+ *    /conversations has no assignee param, and the richer GET /inbox read
+ *    model references sla columns that are not in the schema, so it cannot be
+ *    adopted as the list source.
+ *  - `sla-risk`                → client join with GET /sla/risk (§46), the
+ *    endpoint the backend documents as "the query behind the inbox SLA risk
+ *    view". Filtering happens in the browser over the loaded pages.
+ *  - `priority` `vip` `ai-handover` `mentioned` `team` `custom`
+ *                              → no backend field/endpoint exists; rendered
+ *    disabled (قريبًا), never faked. */
+export const INBOX_VIEW_IDS = [
+  "my",
+  "unassigned",
+  "all",
+  "priority",
+  "sla-risk",
+  "waiting-customer",
+  "waiting-team",
+  "vip",
+  "ai",
+  "ai-handover",
+  "mentioned",
+  "team",
+  "custom",
+] as const;
+
+export type InboxViewId = (typeof INBOX_VIEW_IDS)[number];
+
+/** Views the backend answers server-side via the status filter. */
+export const INBOX_VIEW_STATUS: Partial<Record<InboxViewId, string>> = {
+  "waiting-customer": "waiting_customer",
+  "waiting-team": "waiting_human",
+  "ai": "waiting_ai",
+};
+
+/** Views filtered in the browser over the already-loaded pages (the fields
+ *  they need are in the payload). They share the unfiltered `all` cache so
+ *  switching between them never refetches. */
+export const INBOX_CLIENT_VIEWS: readonly InboxViewId[] = ["my", "unassigned", "sla-risk"];
+
+export function isInboxViewId(value: string | null): value is InboxViewId {
+  return value !== null && (INBOX_VIEW_IDS as readonly string[]).includes(value);
+}
+
+/** Server-paginated inbox list — pages accumulate via `fetchNextPage`.
+ *
+ *  Status-backed views (§99) get their own cache per status; client views
+ *  share the unfiltered `all` cache and are filtered in the page. */
+export function useConversations(view: InboxViewId = "all") {
+  const status = INBOX_VIEW_STATUS[view];
   return useInfiniteQuery<Page<Conversation>, Error, InfiniteData<Page<Conversation>>, QueryKey, string | null>({
-    queryKey: qk.conversations,
+    queryKey: [...qk.conversations, status ? view : "all"],
     queryFn: ({ pageParam }) =>
-      api<Page<Conversation>>(withCursor("/conversations", CONVERSATIONS_PAGE_SIZE, pageParam)),
+      api<Page<Conversation>>(
+        withCursor("/conversations", CONVERSATIONS_PAGE_SIZE, pageParam, status ? { status } : {}),
+      ),
     initialPageParam: null,
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
     refetchInterval: 15_000,
@@ -516,12 +577,15 @@ export function useTasks() {
   });
 }
 
-/** §46 — conversations whose first-response SLA is running or breached. */
-export function useSlaRisk() {
+/** §46 — conversations whose first-response SLA is running or breached.
+ *  Pass `enabled: false` on surfaces that only need it for one view (the
+ *  §99 inbox "sla-risk" view gates it on activation). */
+export function useSlaRisk(opts: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: qk.slaRisk,
     queryFn: () => api<{ items: SlaRiskItem[]; timezone: string }>("/sla/risk"),
     refetchInterval: 30_000,
+    enabled: opts.enabled ?? true,
   });
 }
 
@@ -640,6 +704,28 @@ export function useDeleteSavedView() {
 
 /* ------------------------------------------------------------------ mutations */
 
+/** Patch a conversation row across EVERY cached inbox view (§99: each view is
+ *  its own query key, but one event must not leave the other views stale). */
+function patchConversationEverywhere(
+  qc: QueryClient,
+  conversationId: string,
+  patch: (c: Conversation) => Conversation,
+) {
+  qc.setQueriesData<InfiniteData<Page<Conversation>>>(
+    { queryKey: qk.conversations },
+    (previous) => {
+      if (!previous) return previous;
+      return {
+        ...previous,
+        pages: previous.pages.map((page) => ({
+          ...page,
+          items: page.items.map((c) => (c.id === conversationId ? patch(c) : c)),
+        })),
+      };
+    },
+  );
+}
+
 export function useMarkConversationRead() {
   const qc = useQueryClient();
   return useMutation({
@@ -648,25 +734,61 @@ export function useMarkConversationRead() {
     // Optimistic UI — مسموح فقط للتعليم كمقروء
     onMutate: async (conversationId: string) => {
       await qc.cancelQueries({ queryKey: qk.conversations });
-      const previous = qc.getQueryData<InfiniteData<Page<Conversation>>>(qk.conversations);
-      if (previous) {
-        qc.setQueryData<InfiniteData<Page<Conversation>>>(qk.conversations, {
-          ...previous,
-          pages: previous.pages.map((page) => ({
-            ...page,
-            items: page.items.map((c) => (c.id === conversationId ? { ...c, unread_count: 0 } : c)),
-          })),
-        });
-      }
+      const previous = qc.getQueriesData<InfiniteData<Page<Conversation>>>({
+        queryKey: qk.conversations,
+      });
+      patchConversationEverywhere(qc, conversationId, (c) => ({ ...c, unread_count: 0 }));
       return { previous };
     },
     onError: (_err, _id, ctx) => {
-      if (ctx?.previous) qc.setQueryData(qk.conversations, ctx.previous);
+      for (const [key, data] of ctx?.previous ?? []) qc.setQueryData(key, data);
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: qk.conversations });
       // جرس الإشعارات كمان لازم يتحدث لما المحادثة تتقري
       qc.invalidateQueries({ queryKey: ["notifications", "unread-count"] });
+    },
+  });
+}
+
+/** §99 — assign / unassign a conversation.
+ *
+ *  The backend endpoint (POST /conversations/{id}/assign) accepts the caller's
+ *  own id, a teammate id, or null to unassign. There is no team-members
+ *  listing endpoint yet, so today the UI offers self-assign and unassign
+ *  only; the optimistic row patch below is member-agnostic. */
+export function useAssignConversation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ conversationId, userId }: { conversationId: string; userId: string | null }) =>
+      api<{ id: string }>(`/conversations/${conversationId}/assign`, {
+        method: "POST",
+        body: { user_id: userId },
+        idempotencyKey: newIdempotencyKey(),
+      }),
+    onMutate: async ({ conversationId, userId }) => {
+      await qc.cancelQueries({ queryKey: qk.conversations });
+      const previous = qc.getQueriesData<InfiniteData<Page<Conversation>>>({
+        queryKey: qk.conversations,
+      });
+      patchConversationEverywhere(qc, conversationId, (c) => ({
+        ...c,
+        assignee_user_id: userId,
+      }));
+      return { previous };
+    },
+    onSuccess: (_data, { userId }) => {
+      toast({
+        title: userId ? "تم تعيين المحادثة عليك" : "تم إلغاء تعيين المحادثة",
+        variant: "success",
+      });
+    },
+    onError: (err, _vars, ctx) => {
+      for (const [key, data] of ctx?.previous ?? []) qc.setQueryData(key, data);
+      toast({ title: t.somethingWentWrong, description: errMessage(err), variant: "danger" });
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: qk.conversations });
     },
   });
 }
@@ -688,13 +810,30 @@ export function useCreateOrder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: { customer_id: string; items: { variant_id: string; quantity: number }[]; channel: string }) =>
-      api<{ number: string }>("/orders", { method: "POST", body, idempotencyKey: newIdempotencyKey() }),
+      api<{ id: string; number: string }>("/orders", { method: "POST", body, idempotencyKey: newIdempotencyKey() }),
     onSuccess: (created) => {
       toast({ title: `${t.orderCreated} ${created.number}`, description: t.orderCreatedHint, variant: "success" });
       qc.invalidateQueries({ queryKey: qk.orders });
       qc.invalidateQueries({ queryKey: qk.dashboard });
     },
     onError: (err) => toast({ title: t.somethingWentWrong, description: errMessage(err), variant: "danger" }),
+  });
+}
+
+/** §104 — undo of a just-created order: cancel it through the real lifecycle
+ *  route `POST /orders/{order_id}/cancel`. The backend keys the action by the
+ *  order id (uuid), not the human-facing number, and takes no body. */
+export function useCancelOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (orderId: string) =>
+      api<{ ok: boolean }>(`/orders/${orderId}/cancel`, { method: "POST" }),
+    onSuccess: () => {
+      toast({ title: t.orderCancelled, variant: "default" });
+      qc.invalidateQueries({ queryKey: qk.orders });
+      qc.invalidateQueries({ queryKey: qk.dashboard });
+    },
+    onError: (err) => toast({ title: t.undoFailed, description: errMessage(err), variant: "danger" }),
   });
 }
 

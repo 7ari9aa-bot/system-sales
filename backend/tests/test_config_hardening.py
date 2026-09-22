@@ -17,6 +17,7 @@ development environment must satisfy the production-grade checks.
 
 from __future__ import annotations
 
+import base64
 import logging
 import os
 import subprocess
@@ -32,6 +33,9 @@ SECURE = {
     "jwt_secret": "k" * 40,
     "service_token_internal": "internal-token-" + "v" * 24,
     "cors_origins": "https://app.example.com",
+    # §68: secure environments also refuse to boot without a master key that
+    # base64-decodes to >= 32 bytes.
+    "secrets_master_key": base64.b64encode(b"m" * 32).decode(),
 }
 INSECURE = {
     "jwt_secret": "change-me",

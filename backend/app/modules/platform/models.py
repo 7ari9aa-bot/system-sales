@@ -109,11 +109,22 @@ class AuditLog(Base):
     after: Mapped[dict | None] = mapped_column(JSONB)
     ip: Mapped[str | None] = mapped_column(String(64))
     user_agent: Mapped[str | None] = mapped_column(Text)
+    # §66 lineage — copied from request-scoped contextvars by AuditService at
+    # write time (NULL outside a request/event scope): source is the actor
+    # kind (§66 vocabulary: "human" | "ai" | "automation" | "system" |
+    # "integration"), request_id links the row to
+    # the HTTP request / bus event, correlation_id links it across services.
+    source: Mapped[str | None] = mapped_column(String(63))
+    request_id: Mapped[str | None] = mapped_column(String(64))
+    correlation_id: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    __table_args__ = (Index("ix_audit_tenant_created", "tenant_id", "created_at"),)
+    __table_args__ = (
+        Index("ix_audit_tenant_created", "tenant_id", "created_at"),
+        Index("ix_audit_tenant_request", "tenant_id", "request_id"),
+    )
 
 
 class Integration(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
@@ -279,16 +290,29 @@ class Automation(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, server_default="true")
 
 
+# §24: the closed vocabulary of webhook_events.processing_status (column is a
+# plain String — the application is the type system here, so the set is named).
+WEBHOOK_EVENT_STATUSES: frozenset[str] = frozenset(
+    {"pending", "processing", "processed", "failed", "dead", "ignored", "resolved"}
+)
+
+
 class WebhookEvent(Base):
     """Inbound webhook ingress (provider -> us) — every delivery lands here first.
 
-    System table like outbox_events: rows are written before authentication, so
     tenant_id is a plain nullable column (resolved once the signature is
-    verified) with no FK and the table stays outside RLS.
+    verified) with no FK. The table is FORCE RLS with the strict
+    tenant_isolation policy (migration d5e6f7a8b9c0), so every ingress write
+    binds the tenant GUC first (see the webhook router).
     """
 
     __tablename__ = "webhook_events"
 
+    # §24 DLQ lifecycle — the only values processing_status may take:
+    # pending → processing → processed, or → failed (budget left, the sweep
+    # re-runs it) → dead (budget spent — human hands only: replay/ignore/
+    # resolve). ignored/resolved are the terminal DLQ close-outs; the row is
+    # NEVER deleted — nothing disappears (§24).
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
@@ -301,7 +325,7 @@ class WebhookEvent(Base):
     )
     signature_valid: Mapped[bool] = mapped_column(Boolean, server_default="false")
     payload: Mapped[dict] = mapped_column(JSONB)
-    # allowed: pending | processing | processed | failed | dead
+    # allowed: WEBHOOK_EVENT_STATUSES (§24, defined next to the class above)
     processing_status: Mapped[str] = mapped_column(String(15), server_default="pending")
     attempts: Mapped[int] = mapped_column(Integer, server_default="0")
     last_error: Mapped[str | None] = mapped_column(Text)
@@ -492,6 +516,34 @@ class SecretReference(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     )
 
 
+class SecretValue(TenantMixin, AppendOnlyCreatedAtMixin, Base):
+    """§68: the actual secret values behind SecretStorePort's database adapter.
+
+    SecretReference holds the business metadata (provider, status); THIS table
+    holds the values, one row per version, encrypted by EnvelopeSecretStore
+    (AES-256-GCM, ``v1:`` wire format) so the column never carries plaintext.
+    Rows are immutable: rotation expires the live rows (§69 grace) and inserts
+    a new version; reads serve the newest non-expired version.
+    """
+
+    __tablename__ = "secret_values"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    vault_key: Mapped[str] = mapped_column(String(255))
+    version: Mapped[int] = mapped_column(Integer)
+    ciphertext: Mapped[str] = mapped_column(Text)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "vault_key", "version", name="uq_secret_values_key_version"
+        ),
+        Index("ix_secret_values_tenant_key", "tenant_id", "vault_key"),
+    )
+
+
 class FeatureFlag(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     """Spec §76: per-tenant/workspace/role feature flags (not authorization)."""
 
@@ -601,3 +653,31 @@ class SavedView(TenantMixin, TimestampMixin, Base):
     )
 
     __table_args__ = (Index("ix_saved_views_tenant_entity", "tenant_id", "entity"),)
+
+
+class TenantServiceToken(TenantMixin, TimestampMixin, Base):
+    """§136: per-tenant service credential for the n8n adapter.
+
+    Replaces the single global SERVICE_TOKEN_INTERNAL Bearer, which let any
+    tenant's automation act as any other tenant. Only the sha256 hex digest
+    of the presented token is stored — the plaintext is returned exactly
+    once at issuance and never persisted. Lives in platform alongside
+    Integration (the other tenant-credential model).
+    """
+
+    __tablename__ = "tenant_service_tokens"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    name: Mapped[str] = mapped_column(String(127))  # human label, e.g. "n8n-outbound"
+    token_hash: Mapped[str] = mapped_column(String(64))  # sha256 hex — never plaintext
+    scopes: Mapped[list] = mapped_column(JSONB, server_default="[]")
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rotated_from_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenant_service_tokens.id", ondelete="SET NULL"),
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (Index("uq_tenant_service_tokens_hash", "token_hash", unique=True),)
