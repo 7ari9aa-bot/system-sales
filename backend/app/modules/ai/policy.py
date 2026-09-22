@@ -36,6 +36,7 @@ The service never commits — it flushes inside the caller's transaction.
 
 from __future__ import annotations
 
+import re
 import uuid
 from dataclasses import dataclass
 
@@ -58,6 +59,54 @@ _CLASSIFICATION_ORDER: dict[str, int] = {
 }
 
 POLICY_STATUSES = frozenset({"allowed", "denied"})
+
+# §43 "Classify" — the payload decides its own class. A prompt that carries
+# direct identifiers is ``restricted``; anything else is treated as ordinary
+# tenant business data (``internal``). Deliberately coarse: this is an egress
+# gate, not a DLP product, and the ladder in _CLASSIFICATION_ORDER only has
+# these two practical rungs in our flows.
+_RESTRICTED_RE = re.compile(
+    r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"  # email
+    r"|\+?\d[\d\s\-()]{7,}\d"  # phone (intl-ish, separators allowed)
+    r"|\b(?:\d[ -]*?){13,19}\b"  # card number
+    r"|\b[1-2]\d{13}\b"  # national ID (14-digit, Egypt-style)
+)
+
+
+def classify_data(payload) -> str:
+    """Classify what is about to leave the tenant boundary (§43).
+
+    Accepts the provider message list (``[{"role", "content"}]``), a list of
+    plain strings (the embedding path), or a single string. Tool-call
+    arguments are server-side bound and already tenant-scoped (§132), so only
+    text content is scanned.
+    """
+    if isinstance(payload, str):
+        texts = [payload]
+    elif isinstance(payload, list):
+        texts = []
+        for item in payload:
+            if isinstance(item, str):
+                texts.append(item)
+            elif isinstance(item, dict) and isinstance(item.get("content"), str):
+                texts.append(item["content"])
+    else:  # pragma: no cover - defensive
+        return "internal"
+    joined = "\n".join(texts)
+    return "restricted" if _RESTRICTED_RE.search(joined) else "internal"
+
+
+def _region_matches(residency: str, region: str) -> bool:
+    """Does a provider region satisfy the declared residency?
+
+    Substring match both ways so "eu" matches "eu-west-1" and "Frankfurt
+    (eu-central-1)" — residency tokens are operator-declared, provider
+    regions are configuration strings; a strict equality check would deny on
+    formatting noise and teach nobody anything.
+    """
+    r = residency.strip().lower()
+    g = region.strip().lower()
+    return bool(r) and bool(g) and (r in g or g in r)
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,12 +137,15 @@ def decide(
     provider: str,
     model: str | None,
     data_class: str | None,
+    region: str | None = None,
 ) -> PolicyDecision:
     """Pure precedence function — no session, so it is directly testable.
 
     ``AIProviderPolicyService.evaluate`` loads the row and delegates here. Kept
     module-level (not a method) precisely so the precedence rules can be pinned
-    without a database.
+    without a database. ``region`` is where the resolved model actually runs
+    (from the model config's ``region`` key); it is only consulted when the
+    policy declares a residency.
     """
     if policy is None:
         # Fail-open: no policy for this provider ⇒ allowed. See module docstring.
@@ -126,7 +178,33 @@ def decide(
             policy_id=policy.id,
         )
 
-    # 3. Classification clearance. Only enforced when both sides are ranked.
+    # 3. §43 Data residency: a declared residency is a hard constraint, and
+    # an unknown provider region fails CLOSED — "we don't know where this
+    # runs" is not the same as "it runs inside the residency you declared".
+    residency = (getattr(policy, "data_residency", None) or "").strip()
+    if residency:
+        if not (region or "").strip():
+            return PolicyDecision(
+                allowed=False,
+                reason=(
+                    f"data residency '{residency}' declared but provider '{provider}' "
+                    "region is unknown — configure the model config's 'region'"
+                ),
+                redact_required=False,
+                policy_id=policy.id,
+            )
+        if not _region_matches(residency, region or ""):
+            return PolicyDecision(
+                allowed=False,
+                reason=(
+                    f"data residency '{residency}' violated: provider '{provider}' "
+                    f"runs in region '{region}'"
+                ),
+                redact_required=False,
+                policy_id=policy.id,
+            )
+
+    # 4. Classification clearance. Only enforced when both sides are ranked.
     data_level = _level(data_class)
     cleared_level = _level(policy.data_classification)
     if data_level is not None and cleared_level is not None and data_level > cleared_level:
@@ -140,7 +218,7 @@ def decide(
             policy_id=policy.id,
         )
 
-    # 4. Allowed by policy; redaction is whatever the policy demands.
+    # 5. Allowed by policy; redaction is whatever the policy demands.
     return PolicyDecision(
         allowed=True,
         reason=f"provider '{provider}' allowed by policy",
@@ -160,13 +238,15 @@ class AIProviderPolicyService:
         provider: str,
         model: str | None = None,
         data_class: str | None = None,
+        region: str | None = None,
     ) -> PolicyDecision:
         """Decide whether ``data_class``-classified data may go to ``provider``.
 
         **Absent policy ⇒ allowed** (fail-open; see module docstring). An
         explicit deny always wins over any allow. This is a data-egress
         decision, NOT an authorization decision: it does not check user
-        permissions, entitlements or budgets.
+        permissions, entitlements or budgets. ``region`` is consulted only
+        when the policy declares a data residency.
         """
         policy = (
             await session.execute(
@@ -176,7 +256,9 @@ class AIProviderPolicyService:
                 )
             )
         ).scalar_one_or_none()
-        return decide(policy, provider=provider, model=model, data_class=data_class)
+        return decide(
+            policy, provider=provider, model=model, data_class=data_class, region=region
+        )
 
     @staticmethod
     async def list_policies(
@@ -203,6 +285,8 @@ class AIProviderPolicyService:
         pii_redaction_required: bool = False,
         data_classification: str = "internal",
         notes: str | None = None,
+        data_residency: str | None = None,
+        retention_terms: str | None = None,
     ) -> AIProviderPolicy:
         """Create or replace the ``(tenant_id, provider)`` policy row."""
         if status not in POLICY_STATUSES:
@@ -229,6 +313,8 @@ class AIProviderPolicyService:
         policy.allowed_models = list(allowed_models or [])
         policy.pii_redaction_required = pii_redaction_required
         policy.data_classification = data_classification
+        policy.data_residency = (data_residency or "").strip() or None
+        policy.retention_terms = (retention_terms or "").strip() or None
         policy.notes = notes
         await session.flush()
         return policy

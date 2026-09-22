@@ -127,10 +127,20 @@ class Memory(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     # §158: governed provenance — "customer said X" ≠ "system verified X"
     # allowed sources: customer_stated | system_verified | agent_inferred | staff_entered
     source: Mapped[str] = mapped_column(String(31), server_default="customer_stated")
+    # §158: every claim records WHO wrote it (staff audit + invalidation trail)
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     verified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     confidence: Mapped[float] = mapped_column(Numeric(5, 4), server_default="0.5")
+    # §158: staff can take a claim out of service without losing the audit
+    # trail — allowed: active | invalidated
+    status: Mapped[str] = mapped_column(String(15), server_default="active")
+    invalidated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # kind: summary | preference | fact
     kind: Mapped[str] = mapped_column(String(15))
     content: Mapped[str] = mapped_column(Text)
@@ -374,6 +384,13 @@ class AIProviderPolicy(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     allowed_models: Mapped[list] = mapped_column(JSONB, server_default="[]")
     pii_redaction_required: Mapped[bool] = mapped_column(Boolean, server_default="false")
     data_classification: Mapped[str] = mapped_column(String(31), server_default="internal")
+    # §43 Data residency: a region token the tenant's data may not leave
+    # ("eu", "me", ...). Enforced against the model config's resolved region;
+    # a declared residency with an unknown provider region FAILS CLOSED.
+    data_residency: Mapped[str | None] = mapped_column(String(31))
+    # §43 Retention: documented provider data-processing/retention terms.
+    # Stored on the row so "where did this data go, for how long" is auditable.
+    retention_terms: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (

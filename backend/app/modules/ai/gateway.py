@@ -554,19 +554,24 @@ class AIGateway:
         # this provider/model? This is NOT authorization (the entitlement
         # check already happened); it is a DATA-CLASSIFICATION gate. A
         # provider with no policy row is allowed (fail-open; see policy.py).
-        from app.modules.ai.policy import AIProviderPolicyService
+        #
+        # The spec's pre-send order is honored literally:
+        # Classify → Redact where required → Apply policy → Send. Redaction
+        # can downgrade the class (masked PII is no longer restricted), so
+        # the gate is evaluated with the class the payload actually has when
+        # it would leave this process.
+        from app.modules.ai.policy import AIProviderPolicyService, classify_data
 
+        region = str((config.get("extra") or {}).get("region") or "")
+        data_class = classify_data(messages)
         egress_decision = await AIProviderPolicyService.evaluate(
             session,
             tenant_id,
             provider=config["provider"],
             model=config["model"],
-            data_class="internal",
+            data_class=data_class,
+            region=region or None,
         )
-        if not egress_decision.allowed:
-            raise ValidationError(
-                f"AI provider blocked by data-egress policy: {egress_decision.reason}"
-            )
         if egress_decision.redact_required:
             # §43: actually redact PII before sending to the provider.
             # The policy flag existed but was never enforced — a tenant with
@@ -575,10 +580,23 @@ class AIGateway:
             # phone numbers, and Saudi ID numbers in the message content
             # before the HTTP call leaves this process.
             messages = _redact_pii(messages)
+            data_class = classify_data(messages)
+            egress_decision = await AIProviderPolicyService.evaluate(
+                session,
+                tenant_id,
+                provider=config["provider"],
+                model=config["model"],
+                data_class=data_class,
+                region=region or None,
+            )
             logger.info(
                 "ai.provider_redaction_applied tenant=%s provider=%s",
                 tenant_id,
                 config["provider"],
+            )
+        if not egress_decision.allowed:
+            raise ValidationError(
+                f"AI provider blocked by data-egress policy: {egress_decision.reason}"
             )
 
         started = time.perf_counter()
@@ -647,20 +665,20 @@ class AIGateway:
         config = await resolve_model_config(session, tenant_id, "embedding")
 
         # §43: data-egress policy on the embedding path too — embeddings
-        # carry customer text to a provider, so the same gate applies.
-        from app.modules.ai.policy import AIProviderPolicyService
+        # carry customer text to a provider, so the same gate applies (same
+        # Classify → Redact → Apply order as chat).
+        from app.modules.ai.policy import AIProviderPolicyService, classify_data
 
+        region = str((config.get("extra") or {}).get("region") or "")
+        data_class = classify_data(texts)
         egress_decision = await AIProviderPolicyService.evaluate(
             session,
             tenant_id,
             provider=config["provider"],
             model=config["model"],
-            data_class="internal",
+            data_class=data_class,
+            region=region or None,
         )
-        if not egress_decision.allowed:
-            raise ValidationError(
-                f"AI embedding provider blocked by data-egress policy: {egress_decision.reason}"
-            )
         if egress_decision.redact_required:
             # §43: redact PII in embedding texts too — embeddings carry
             # customer text to a provider, so the same gate applies.
@@ -668,6 +686,19 @@ class AIGateway:
                 _redact_pii([{"role": "user", "content": t}])[0]["content"]
                 for t in texts
             ]
+            data_class = classify_data(texts)
+            egress_decision = await AIProviderPolicyService.evaluate(
+                session,
+                tenant_id,
+                provider=config["provider"],
+                model=config["model"],
+                data_class=data_class,
+                region=region or None,
+            )
+        if not egress_decision.allowed:
+            raise ValidationError(
+                f"AI embedding provider blocked by data-egress policy: {egress_decision.reason}"
+            )
 
         started = time.perf_counter()
         status = "ok"

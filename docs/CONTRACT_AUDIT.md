@@ -151,7 +151,7 @@ that calls `build_error_body` (constructing a `DomainError`), and delete or wire
 |---|---|---|
 | `core/db.py:103 get_session` | **0** | A duplicate of `identity/deps.py:83 get_db` (`DbSession`) that does **not** call `bind_tenant`. Adopting it silently drops the tenant GUC — the exact failure golden rule 4 exists to prevent. A landmine, not a live bug. |
 | `automation/service.py:104 WorkflowService.execute_for_event` | **0** | The `Workflow.trigger_event` column and the ACTIVE-workflow dispatch exist, but nothing routes a bus event into them, so an "active" workflow never fires. Feature absent; no wrong data. |
-| `ai/knowledge.py:98 add_memory`, `:122 search_memory` | **0** | The `Memory` table is never written or read, while `privacy/service.py:63-70` DELETEs from `memories` for §172. The deletion step is decoration. |
+| `ai/knowledge.py add_memory`, `search_memory` | **3** (was 0) | Wired: `ai/runtime.py` writes an `agent_inferred` summary on run finalization and recalls customer memories into context; `ai/router.py` `/ai/memories*` staff-entered creation + review surface (§158). `privacy/service.py` DELETE-from-`memories` step is now real erasure of live data. |
 | `ai/gateway.py:143 expire_stale_reservations` | **0** | `RECURRING_JOBS` (`scheduler_worker.py:42-56`) sweeps inventory reservations but not `AIBudgetReservation`, so a crashed run's row stays `active` forever. Bounded: `_reserved_spend` (`gateway.py:127-140`) already filters `expires_at > now()`, so the cap is not actually held — the row is just never cleaned. |
 | `core/circuit_breaker.py:208-218 breaker_states/open_breakers/reset_breakers` | **0** (diagnostics) | `platform/router.py` health does not surface breaker state. Diagnostics gap only. |
 

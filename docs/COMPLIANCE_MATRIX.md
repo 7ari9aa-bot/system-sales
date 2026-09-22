@@ -59,13 +59,13 @@ Consequences, stated honestly:
 | §27–29 | Identity resolution + merge + Customer 360 | 🟡 | `backend/app/modules/customers/service.py:607` `merge`; `customers/timeline.py`; `router.py` `/customers/{id}/360` — resolution is exact-string, no E.164 |
 | §30–31 | WhatsApp policy state + Template entity | ✅ | `backend/app/modules/conversations/policy.py`; `conversations/templates.py` + `templates_router` |
 | §32 | Marketing consent | ✅ | `backend/app/core/consent.py`; enforced at send in `modules/conversations/service.py:16` |
-| §33–35 | Media pipeline + Attachment + STT | 🟡 | `backend/app/modules/conversations/media.py:60` (fetch/scan/store); **no STT/transcription anywhere** |
-| §36 | Voice | ⬜ | `grep -rn "voice" backend/app --include=*.py` returns only the substring inside "invoice" |
-| §37–38 | AI architecture + memory scoping | 🟡 | `backend/app/modules/ai/runtime.py` is wired, but `ai/knowledge.py:98 add_memory` has **zero callers** |
+| §33–35 | Media pipeline + Attachment + STT | 🟡 | `backend/app/modules/conversations/media.py:60` (fetch/scan/store); STT/TTS service exists (`modules/conversations/voice.py` — VoiceService, provider Protocol, Attachment `transcription_status`) but has **zero callers on the inbound path** — wiring is open (T5) |
+| §36 | Voice | 🟡 | `modules/conversations/voice.py` (spec §35-36 module: budget-gated transcribe/synthesize, best-effort failure rule) — capability built, delivery pipeline not wired to it yet (T5) |
+| §37–38 | AI architecture + memory scoping | ✅ | Context builder `modules/ai/runtime.py` (agent instructions → §132 untrusted knowledge turn → **memories as their own untrusted user turn** → history → customer message); memory write on run finalization `runtime.py` (`agent_inferred`, confidence 0.6, guardrail-gated), recall `knowledge.search_memory` scoped tenant+customer with §158 status/retention filters; ADR-036 provenance annotation via `runtime._memory_line` |
 | §39–40 | RAG + freshness | ✅ | `backend/app/modules/ai/knowledge.py`; HNSW index in `migrations/versions/b8c9d0e1f2a3_ai_embedding_ann_indexes.py:50` |
 | §41 | AI output guardrails | ✅ | `backend/app/core/guardrails.py`; `modules/ai/guardrails.py`; invoked `modules/ai/runtime.py:372` |
 | §42 | AI budget governance (reserve/settle) | ✅ | `backend/app/modules/ai/gateway.py:283` `reserve_budget`, `:163` `settle_reservation`; `tests/gate/test_gate.py:146` |
-| §43 | AI provider data governance | 🟡 | `backend/app/modules/ai/policy.py:152` `AIProviderPolicyService` + router — but `evaluate()` has **no caller on the egress path** (`grep -rn "\.evaluate(" app/modules/ai/*.py` → guardrail only) |
+| §43 | AI provider data governance | ✅ | `modules/ai/policy.py` `classify_data` (§43 Classify step: PII-bearing payload ⇒ `restricted`) + `decide()` ladder (deny → model allow-list → **data residency**, fail-closed on unknown region → clearance) wired on BOTH egress paths: `gateway.chat` and `gateway.embed` (Classify → redact where required → re-classify → apply policy → send, `gateway.py` §43 blocks); `pii_redaction_required` masks via `_redact_pii` before HTTP; residency/retention columns in migration `f6c9e3a1b5d8_*`; tests `tests/test_ai_provider_egress.py` (send-path blocked-before-call, redaction on the wire, residency fail-closed) |
 | §44 | AI trace (correlation, cost, policy) | ✅ | `backend/app/modules/ai/trace.py`; routes `modules/ai/router.py:230,235,243` |
 | §45 | SearchPort + FTS | ✅ | `backend/app/core/search.py`; route `modules/operations/router.py:117` |
 | §46 | Business hours + SLA | ✅ | `backend/app/modules/operations/sla.py` (`BusinessClock`) |
@@ -135,7 +135,7 @@ Consequences, stated honestly:
 | §155 | Canonical message content model | ✅ | `backend/app/modules/conversations/models.py:142,146,150,154` (content_type, reply_to, edited, provider_metadata) |
 | §156 | Conversation lifecycle states | ✅ | `backend/app/modules/conversations/models.py:34,76` |
 | §157 | Knowledge visibility | ✅ | `backend/app/modules/ai/knowledge.py:72,92`; migration `c5c6fc1ae836_*` |
-| §158 | Memory governance | 🟡 | Fields exist (`modules/ai/models.py:115,133,138,153`) but `add_memory` is never called → nothing is governed |
+| §158 | Memory governance | ✅ | Provenance complete on the row (`modules/ai/models.py` Memory: source, actor_id, verified_at, confidence, status active/invalidated, invalidated_at, expires_at — migration `e5b8d2f0a1c3_*`); recall filters invalidated + expired (`knowledge.search_memory`); staff surface: list/edit/invalidate/delete + staff-entered creation with actor stamp (`modules/ai/router.py` `/ai/memories*`, `settings:write` gated); unverified claims marked in AI context (`runtime._memory_line`, ADR-036); tests `test_memory_governance.py`, `test_memory_review_api.py`, `test_memory_context.py` |
 | §159 | Public customer plane | 🟡 | Only webchat ingest is public (`modules/conversations/router.py:234`); no end-customer order/status plane |
 | §160 | Platform admin plane | ⬜ | `modules/platform/router.py` is tenant-scoped (flags/metrics/saved-views/health); no admin plane |
 | §161 | *(no topic recoverable)* | ❓ | `grep -rn "§161\b" docs/ .workbuddy-ai/memory/` → nothing |

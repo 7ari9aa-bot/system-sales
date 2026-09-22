@@ -3,6 +3,11 @@
 Spec date: 2026-09-18. Status legend: ✅ compliant · 🟡 partial · ❌ missing ·
 📝 diverged (ADR needed). Work is organized in waves (§123 order preserved).
 
+> **This table is the 2026-09-18 gap snapshot, not live status.** Rows updated to
+> 2026-09-23 below are the ones re-verified against the code during Wave 3; every
+> other row still shows its snapshot value. `docs/COMPLIANCE_MATRIX.md` is the
+> live, per-point status record and is the authority for current state.
+
 ## Compliance snapshot
 
 | Spec § | Topic | Status | Notes / Wave |
@@ -24,14 +29,14 @@ Spec date: 2026-09-18. Status legend: ✅ compliant · 🟡 partial · ❌ missi
 | 27–29 | Identity resolution + merge + Customer 360 | ❌ | W2: merge candidates/events, merged_into, 360 API |
 | 30–31 | WhatsApp policy state + Template entity | 🟡 | 24h check in worker; move to domain policy + template tables → W2 |
 | 32 | Marketing consent | ❌ | W2: consent entity (purpose/channel-scoped) |
-| 33–35 | Media pipeline + Attachment + STT | ❌ | W2: attachment model + ingest pipeline (scan/transcode later) |
-| 36 | Voice | ❌ | Phase 8 — deferred deliberately |
-| 37–38 | AI architecture + memory scoping | 🟡 | Runtime exists; explicit context builder + memory scopes → W3 |
-| 39–40 | RAG + freshness | 🟡 | pgvector done; document versioning + re-index → W3 |
-| 41 | AI output guardrails | ❌ | W3: guardrail chain before send |
-| 42 | AI budget governance (reserve/settle, thresholds) | 🟡 | Constant cap; per-tenant budgets + alerts → W3 |
-| 43 | AI provider data governance | ❌ | W3: per-tenant provider policy table |
-| 44 | AI trace (correlation, cost, policy decisions) | 🟡 | agent_runs exist; correlation_id + policy log → W3 |
+| 33–35 | Media pipeline + Attachment + STT | 🟡 | 2026-09-23: `conversations/media.py` fetch/scan/store + `Attachment` live on the inbound path; STT service built (`conversations/voice.py`) with **zero inbound callers** → delivery wiring open (Wave 3 T5) |
+| 36 | Voice | 🟡 | 2026-09-23: `conversations/voice.py` (budget-gated transcribe/synthesize, provider Protocol) built; not yet reached from ingestion |
+| 37–38 | AI architecture + memory scoping | ✅ | 2026-09-23: `ai/runtime.py` context builder (instructions → §132 untrusted knowledge turn → memories as their own untrusted user turn → history → message); recall/write scoped tenant+customer with §158 status + expiry filters; ADR-036 provenance annotation |
+| 39–40 | RAG + freshness | ✅ | 2026-09-23: `ai/knowledge.py` + HNSW index (`b8c9d0e1f2a3`) |
+| 41 | AI output guardrails | ✅ | 2026-09-23: `core/guardrails.py` + `ai/guardrails.py` chain enforced inside `ai/runtime.py` before the answer is returned (allow/block/handover verdict recorded on the run) |
+| 42 | AI budget governance (reserve/settle, thresholds) | ✅ | 2026-09-23: `ai/gateway.py` `reserve_budget`/`settle_reservation` + per-tenant `AIBudget` thresholds with alert + fallback/block on exceed |
+| 43 | AI provider data governance | ✅ | 2026-09-23: `ai/policy.py` `classify_data` + `decide()` ladder (deny → model allow-list → data residency, fail-closed on unknown region → clearance) applied on both `gateway.chat` and `gateway.embed`, redaction re-applied before send; ADR-049; `tests/test_ai_provider_egress.py` |
+| 44 | AI trace (correlation, cost, policy decisions) | ✅ | 2026-09-23: `ai/trace.py` + read routes in `ai/router.py` |
 | 45 | SearchPort + FTS | ❌ | W4: PostgreSQL FTS behind SearchPort |
 | 46 | Business hours + SLA | ❌ | W4 |
 | 47 | Money amount_minor | 📝 | ADR-001: keep Numeric(14,2) Decimal (exact); amount_minor adapter at payment edges |

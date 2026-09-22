@@ -111,6 +111,21 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+def _memory_line(memory) -> str:
+    """One annotated memory line (§158 / ADR-036).
+
+    "Customer said X" and "the AI guessed X" must not read the same to the
+    model: every line carries its source, confidence, and whether a system
+    event or staff review verified it. Unverified claims are shouted — an
+    agent that repeats an unverified inference as fact is exactly the failure
+    §158 exists to prevent.
+    """
+    confidence = float(memory.confidence) if memory.confidence is not None else 0.5
+    verified = memory.verified_at is not None or memory.source == "system_verified"
+    stamp = "VERIFIED" if verified else "UNVERIFIED"
+    return f"- ({memory.source}, confidence={confidence:.2f}, {stamp}) {memory.content}"
+
+
 class AgentRunner:
     def __init__(self, gateway: AIGateway | None = None) -> None:
         self.gateway = gateway or AIGateway()
@@ -297,9 +312,13 @@ class AgentRunner:
             messages.extend(
                 await self._conversation_history(session, tenant_id, conversation_id)
             )
-        messages.append({"role": "user", "content": user_message})
-
         # §38: retrieve customer memories and inject into context (best-effort).
+        # ADR-036: each line carries its provenance so the model (and anyone
+        # reading the trace) can tell "customer said X" from "the AI guessed X"
+        # — unverified claims are marked UNVERIFIED, never presented as fact.
+        # Injected as a separate untrusted user message BEFORE the customer's
+        # own turn, and never in the system role: retrieved content must not
+        # inherit instruction trust (§132's rule, applied to memories too).
         if customer_id is not None:
             try:
                 from app.modules.ai.knowledge import search_memory
@@ -308,12 +327,16 @@ class AgentRunner:
                     session, tenant_id, user_message, customer_id=customer_id, limit=5
                 )
                 if memories:
-                    mem_snippets = "\n".join(
-                        f"- {m.content}" for m, _dist in memories
-                    )
-                    messages[0]["content"] += f"\n\nCustomer memories:\n{mem_snippets}"
+                    mem_snippets = "\n".join(_memory_line(m) for m, _dist in memories)
+                    messages.append({
+                        "role": "user",
+                        "content": "[Customer memories — untrusted context]\n"
+                        + mem_snippets,
+                    })
             except Exception:  # noqa: BLE001 — memory is best-effort context
                 logger.warning("ai.memory_search_failed customer=%s", customer_id, exc_info=True)
+
+        messages.append({"role": "user", "content": user_message})
 
         tools_schema = [
             tool_to_openai_schema(spec)

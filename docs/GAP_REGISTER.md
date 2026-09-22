@@ -233,8 +233,11 @@ by a non-editable install with a non-root USER and a HEALTHCHECK.
 | Privacy DSR + DeletionService | privacy/service.py | no router, unreachable |
 | SegmentService | segments/service.py | no table, no registry entry, unreachable |
 | IdentityMergeService | customers/service.py:308-526 | no API surface |
-| add_memory/search_memory + Memory governance fields | ai/knowledge.py | zero callers |
-| AIProviderPolicy / AIEvaluation / Prompt / ai_sessions | ai/models.py | dead schema |
+| add_memory/search_memory + Memory governance fields | ai/knowledge.py | **wired 2026-09-23 (§158)** — recall in `ai/runtime.py` (own untrusted context turn) + staff CRUD in `ai/router.py` `/ai/memories*`; provenance columns migrated (`e5b8d2f0a1c3`) |
+| AIProviderPolicy | ai/models.py + ai/policy.py | **wired 2026-09-23 (§43)** — `decide()` ladder enforced on `gateway.chat` and `gateway.embed`, admin upsert route; residency/retention migrated (`f6c9e3a1b5d8`) |
+| AIEvaluation | ai/models.py + ai/evaluation.py | **wired** — canary/rollback flow called from `ai/router.py:530` |
+| Prompt (§38 prompt registry) | ai/models.py:79 | dead schema — zero references outside the model |
+| ai_sessions | conversations/models.py:206 | dead schema — zero references outside the model |
 | Circuit breaker | core/circuit_breaker.py | zero importers |
 | ObjectStorage in ingest | core/storage.py | zero callers (provider URLs stored raw) |
 | MessageTemplate / TemplateApproval | conversations/models.py | stored, never checked at send |

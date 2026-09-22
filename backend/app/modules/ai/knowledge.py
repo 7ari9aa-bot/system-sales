@@ -11,7 +11,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ValidationError
@@ -30,6 +30,22 @@ async def _embed(
 ) -> list[list[float]]:
     gateway = AIGateway()
     return await gateway.embed(session, tenant_id, texts=texts)
+
+
+async def embed_text(
+    session: AsyncSession, tenant_id: uuid.UUID, text: str
+) -> list[float] | None:
+    """Embed one text, or None when no embedding model is configured.
+
+    Governance writes (staff memories, §158) store a vector so recall can find
+    the row, but the write must not fail when AI is not wired up — same rule
+    as ``ingest_knowledge``.
+    """
+    try:
+        vectors = await _embed(session, tenant_id, [text])
+    except ValidationError:
+        return None
+    return vectors[0]
 
 
 async def ingest_knowledge(
@@ -131,6 +147,8 @@ async def add_memory(
     source: str = "customer_stated",
     confidence: float = 0.5,
     verified_at: datetime | None = None,
+    actor_id: uuid.UUID | None = None,
+    expires_at: datetime | None = None,
 ) -> Memory:
     """Persist a customer/conversation memory with governed provenance (§158).
 
@@ -142,6 +160,9 @@ async def add_memory(
 
     ``confidence`` (0.0–1.0) reflects how trustworthy the memory is.
     ``verified_at`` is set when the memory is confirmed by a system event.
+    ``actor_id`` records who wrote the claim (§158: staff-entered memories
+    must be attributable). ``expires_at`` enforces retention (§38): recall
+    stops surfacing the row once the deadline passes.
     """
     memory = Memory(
         tenant_id=tenant_id,
@@ -153,6 +174,8 @@ async def add_memory(
         source=source,
         confidence=confidence,
         verified_at=verified_at,
+        actor_id=actor_id,
+        expires_at=expires_at,
     )
     session.add(memory)
     await session.flush()
@@ -167,7 +190,14 @@ async def search_memory(
     customer_id: uuid.UUID | None = None,
     limit: int = 5,
 ) -> list[tuple[Memory, float]]:
-    """Semantic search over memories, optionally scoped to one customer."""
+    """Semantic search over memories, optionally scoped to one customer.
+
+    §158 governance filters: invalidated rows never come back (staff took
+    them out of service), and expired rows never come back (§38 retention —
+    a memory past ``expires_at`` is dead even though the row is still stored
+    for audit). NULL status/expires stay recallable, so pre-governance rows
+    keep working unchanged.
+    """
     vectors = await _embed(session, tenant_id, [query])
     distance = Memory.embedding.cosine_distance(vectors[0])
     stmt = (
@@ -175,6 +205,8 @@ async def search_memory(
         .where(
             Memory.tenant_id == tenant_id,
             Memory.embedding.is_not(None),
+            Memory.status == "active",
+            (Memory.expires_at.is_(None)) | (Memory.expires_at > func.now()),
         )
         .order_by(distance)
         .limit(limit)
