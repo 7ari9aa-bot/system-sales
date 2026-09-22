@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import SessionLocal, bind_scope, bind_tenant
 from app.core.errors import NotFoundError, PermissionDeniedError
 from app.core.security import decode_token
-from app.core.tenancy import set_current_tenant
+from app.core.tenancy import set_current_scope, set_current_tenant
 from app.modules.identity.models import (
     Location,
     Permission,
@@ -322,6 +322,10 @@ async def get_tenant_ctx(
         location_id=location_hdr,
     )
     await bind_scope(session, scope_workspace_id, scope_location_id)
+    # §151 Q4: publish the resolved scope for the request task — mixin rows and
+    # outbox envelopes stamp from it. A contextvars .set() here is visible to
+    # the endpoint (same task) and invisible to other requests (per-task copy).
+    set_current_scope(scope_workspace_id, scope_location_id)
     return TenantContext(
         session=session,
         user=user,

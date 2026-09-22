@@ -19,7 +19,17 @@ from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.core.tenancy import current_scope
+
 MONEY = Numeric(14, 2)
+
+
+def _current_workspace_id() -> uuid.UUID | None:
+    return current_scope()[0]
+
+
+def _current_location_id() -> uuid.UUID | None:
+    return current_scope()[1]
 
 # AI spend needs sub-cent precision: a single model call costs a fraction of a
 # cent, so Numeric(14,2) rounded every row to 0.00, the monthly total summed to
@@ -66,6 +76,10 @@ class WorkspaceScopeMixin:
     Declared with real FKs so every tenant-scoped table can optionally pin a
     row to a workspace and/or location; NULL keeps the row tenant-wide.
     ondelete SET NULL keeps the rows alive when a hierarchy node is removed.
+
+    §151 Q4: the INSERT default reads the request-scoped current_scope() —
+    a mutation inside a scoped request stamps its rows automatically, while
+    unscoped writers (workers, jobs) keep the NULL = tenant-wide semantics.
     """
 
     workspace_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -73,12 +87,14 @@ class WorkspaceScopeMixin:
         ForeignKey("workspaces.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
+        default=_current_workspace_id,
     )
     location_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("locations.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
+        default=_current_location_id,
     )
 
 

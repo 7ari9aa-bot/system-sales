@@ -218,6 +218,13 @@ async def test_get_tenant_ctx_resolves_headers_into_ctx_and_gucs(
     assert ctx.location_id == loc.id
     assert await _guc(db, "app.workspace_id") == str(ws.id)
     assert await _guc(db, "app.location_id") == str(loc.id)
+    # §151 Q4: the resolved scope is also published to the request context —
+    # WorkspaceScopeMixin inserts and outbox envelopes stamp from it there.
+    from app.core.tenancy import current_scope, reset_current_scope, set_current_scope
+
+    assert current_scope() == (ws.id, loc.id)
+    # Restore the unscoped default so no sibling test inherits this scope.
+    reset_current_scope(set_current_scope(None, None))
 
 
 async def test_get_tenant_ctx_refuses_unganted_location_header(

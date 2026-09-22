@@ -22,6 +22,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events.schemas import build_envelope, serialize
+from app.core.tenancy import current_scope
 from app.modules.platform.models import OutboxEvent
 
 
@@ -66,11 +67,19 @@ async def add_outbox_event(
     - meta: the §19 envelope routing keys PLUS user meta. Always carries
       tenant_id (the relay is cross-tenant, and the SSE gateway fails CLOSED
       without it); the §19 scope claims (workspace_id / location_id) ride the
-      same way, optional until a mutation resolves sub-tenant scope (§151).
+      same way — §151 Q4: when the caller omits them they are read from the
+      request-scoped current_scope(), so an event staged inside a scoped
+      mutation carries that mutation's scope (unscoped writers stay NULL).
       Envelope v2 lineage (correlation_id / causation_id / producer /
       schema_version / aggregate_version) rides inside meta too —
       the outbox_events table columns are frozen, so no migration is needed.
     """
+    if workspace_id is None or location_id is None:
+        scope_ws, scope_loc = current_scope()
+        if workspace_id is None:
+            workspace_id = scope_ws
+        if location_id is None:
+            location_id = scope_loc
     envelope = build_envelope(
         event_type,
         tenant_id=tenant_id,

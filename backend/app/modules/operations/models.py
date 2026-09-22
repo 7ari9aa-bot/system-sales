@@ -19,10 +19,10 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
 from app.core.ids import uuid7
-from app.core.model_kit import TenantMixin, TimestampMixin
+from app.core.model_kit import TenantMixin, TimestampMixin, WorkspaceScopeMixin
 
 
-class Task(TenantMixin, TimestampMixin, Base):
+class Task(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     """Spec §83: independent task entity — sources: human|ai|automation|system."""
 
     __tablename__ = "tasks"
@@ -50,7 +50,7 @@ class Task(TenantMixin, TimestampMixin, Base):
     )
 
 
-class SLAPolicy(TenantMixin, TimestampMixin, Base):
+class SLAPolicy(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     """Spec §46: first-response/resolution targets, business-hours aware."""
 
     __tablename__ = "sla_policies"
@@ -71,7 +71,7 @@ class SLAPolicy(TenantMixin, TimestampMixin, Base):
     )
 
 
-class BusinessCalendar(TenantMixin, TimestampMixin, Base):
+class BusinessCalendar(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     """Spec §46: business hours + holidays per tenant/workspace/location.
 
     hours: JSONB — {"mon": [["09:00","17:00"]], "sun": null, ...} (null = closed)
@@ -94,7 +94,7 @@ class BusinessCalendar(TenantMixin, TimestampMixin, Base):
     )
 
 
-class SLAEvent(TenantMixin, TimestampMixin, Base):
+class SLAEvent(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     """SLA clock events for conversations — breach detection by worker."""
 
     __tablename__ = "sla_events"

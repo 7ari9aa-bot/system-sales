@@ -128,7 +128,7 @@ Consequences, stated honestly:
 | §148 | *(no topic recoverable)* | ❓ | `grep -rn "§148\b" docs/ .workbuddy-ai/memory/` → nothing |
 | §149 | Realtime cursor resume | ✅ | `backend/app/modules/realtime/router.py:211` `_build_cursor` (clamped) |
 | §150 | Entities: Workflow/Journey/Review/ApiKey/SavedView/Mention/Transcript | 🟡 | `automation/models.py` Workflow; `platform/models.py` SavedView — **Review/ApiKey/Mention/Transcript absent** |
-| §151 | Workspace/Location hierarchy | 🟡 | `modules/identity/models.py:181` Workspace; migration `48528b41d6db_*` — retrofit of existing tables deferred (ADR-005) |
+| §151 | Workspace/Location hierarchy | ✅ | Q1 FORCE RLS + Q2 GUC binding (`core/db.py` `bind_scope`, `identity/deps.py` `resolve_scope`) + Q3 hierarchy API + Q4 scope stamping (`WorkspaceScopeMixin` defaults from `tenancy.current_scope()`, envelope auto-fill in `core/events/writer.py`); ADR-048; migrations `48528b41d6db_*` (71 tables) + `d4a7c1e9f0b5_*` (operations/automation) |
 | §152 | Outbox vs EventLog (durable replay history) | ✅ | `backend/app/core/events/outbox.py:87,177` `_EVENT_LOG_SQL` + `_write_event_log` |
 | §153 | `aggregate_version` populated | 🟡 | Column + plumbing exist (`core/events/writer.py:51`, `outbox.py:197`) but **no writer passes it** → stays NULL |
 | §154 | ScheduledJob durable scheduler | ✅ | `backend/app/workers/scheduler_worker.py`; in `POOLS` (`workers/run.py:31`); migration `d5e6f7a8b9c0_*` |

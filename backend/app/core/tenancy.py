@@ -22,6 +22,16 @@ from uuid import UUID, uuid4
 
 _current_tenant: ContextVar[UUID | None] = ContextVar("current_tenant", default=None)
 
+# §151 Q4: the request-scoped hierarchy below the tenant. get_tenant_ctx sets
+# it AFTER resolve_scope() has validated the scope fail-closed; INSERTs of
+# WorkspaceScopeMixin rows and outbox envelopes read it, so every mutation in
+# a scoped request stamps its scope without threading two ids per call site.
+# Default (None, None) = tenant-wide, the pre-§151 semantics — an unscoped
+# writer (worker, scheduled job) never inherits someone else's scope.
+_current_scope: ContextVar[tuple[UUID | None, UUID | None]] = ContextVar(
+    "current_scope", default=(None, None)
+)
+
 # §144: per-tenant concurrency budgets. A tenant can hold at most N concurrent
 # in-flight requests; excess requests are rejected with 429. The default is
 # generous; lower it for noisy tenants via the plan configuration.
@@ -117,6 +127,25 @@ def reset_current_tenant() -> None:
 
 def new_tenant_id() -> UUID:
     return uuid4()
+
+
+def set_current_scope(
+    workspace_id: UUID | str | None, location_id: UUID | str | None
+):
+    """Bind the §151 scope for this context; returns a reset token."""
+
+    def _uuid(value: UUID | str | None) -> UUID | None:
+        return None if value is None else UUID(str(value))
+
+    return _current_scope.set((_uuid(workspace_id), _uuid(location_id)))
+
+
+def current_scope() -> tuple[UUID | None, UUID | None]:
+    return _current_scope.get()
+
+
+def reset_current_scope(token) -> None:
+    _current_scope.reset(token)
 
 
 @asynccontextmanager

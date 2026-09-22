@@ -25,10 +25,15 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
 from app.core.ids import uuid7
-from app.core.model_kit import TenantMixin, TimestampMixin, VersionMixin
+from app.core.model_kit import (
+    TenantMixin,
+    TimestampMixin,
+    VersionMixin,
+    WorkspaceScopeMixin,
+)
 
 
-class Workflow(TenantMixin, TimestampMixin, VersionMixin, Base):
+class Workflow(TenantMixin, TimestampMixin, VersionMixin, WorkspaceScopeMixin, Base):
     """§17: ``version`` (row CAS) is distinct from ``current_version`` — the
     latter is the definition-snapshot number, the former gates concurrent
     writes to the row itself."""
@@ -80,7 +85,7 @@ class WorkflowVersion(TimestampMixin, Base):
     )
 
 
-class WorkflowExecution(TenantMixin, Base):
+class WorkflowExecution(TenantMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "workflow_executions"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid7)
@@ -111,7 +116,7 @@ class WorkflowExecution(TenantMixin, Base):
     )
 
 
-class WorkflowFailure(TenantMixin, Base):
+class WorkflowFailure(TenantMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "workflow_failures"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid7)
