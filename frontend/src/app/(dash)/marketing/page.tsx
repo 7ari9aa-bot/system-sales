@@ -2,8 +2,9 @@
 
 import * as React from "react";
 import { Megaphone, Plus } from "lucide-react";
-import { useCampaigns, useCreateCampaign, useMarketingSummary, type Campaign } from "@/lib/queries";
+import { useCampaigns, useCreateCampaign, useMarketingSummary, useTenantCurrency, type Campaign, type CampaignBudgetRoas } from "@/lib/queries";
 import { t } from "@/lib/t";
+import { formatMoney } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +37,14 @@ export default function MarketingPage() {
   const campaignsQuery = useCampaigns();
   const summaryQuery = useMarketingSummary();
   const createCampaign = useCreateCampaign();
+  const currencyQuery = useTenantCurrency();
+  // §47: `orders_summary` ships the tenant's ISO code with its money, so the
+  // collected figures are labelled by the response itself. Campaign budgets and
+  // attributed credit are the same tenant currency; the tenant read is the
+  // fallback while the summary is still loading.
+  const tenantCurrency = currencyQuery.data?.currency ?? null;
+  const money = summaryQuery.data?.orders_summary;
+  const currency = money?.currency || tenantCurrency;
 
   const campaigns = campaignsQuery.data ?? [];
   const summary = summaryQuery.data;
@@ -88,20 +97,46 @@ export default function MarketingPage() {
         </div>
       ) : (
         <>
-          {summary && (
+          {money && (
+            // ADR-053: collected money is gross, refunded and net — three named
+            // figures, never one card called "الإيرادات". Attribution lives in
+            // the campaign table below and is labelled as credit.
             <div className="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <Card>
+              <Card data-testid="mk-gross-revenue">
                 <CardContent className="p-5">
                   <div className="text-[26px] font-bold leading-tight" dir="ltr">
-                    {Number(summary.orders_summary.revenue).toFixed(0)}
+                    {formatMoney(money.gross_revenue, currency)}
                   </div>
-                  <div className="mt-0.5 text-[13px] text-muted-foreground">{t.revenue30}</div>
+                  <div className="mt-0.5 text-[13px] text-muted-foreground">
+                    {t.grossRevenue30}
+                  </div>
+                </CardContent>
+              </Card>
+              <Card data-testid="mk-net-revenue">
+                <CardContent className="p-5">
+                  <div className="text-[26px] font-bold leading-tight" dir="ltr">
+                    {formatMoney(money.net_revenue, currency)}
+                  </div>
+                  <div className="mt-0.5 text-[13px] text-muted-foreground">{t.netRevenue30}</div>
+                  {money.refund_excess > 0 && (
+                    <div className="mt-1 text-[11px] text-muted-foreground">
+                      {t.refundExcessNote(formatMoney(money.refund_excess, currency))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+              <Card data-testid="mk-refunded">
+                <CardContent className="p-5">
+                  <div className="text-[26px] font-bold leading-tight" dir="ltr">
+                    {formatMoney(money.refunded_amount, currency)}
+                  </div>
+                  <div className="mt-0.5 text-[13px] text-muted-foreground">{t.refunded30}</div>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="p-5">
                   <div className="text-[26px] font-bold leading-tight" dir="ltr">
-                    {summary.orders_summary.orders_count}
+                    {money.orders_count}
                   </div>
                   <div className="mt-0.5 text-[13px] text-muted-foreground">{t.orders30}</div>
                 </CardContent>
@@ -144,7 +179,7 @@ export default function MarketingPage() {
                           <TableCell>
                             <Badge variant="outline">{c.provider}</Badge>
                           </TableCell>
-                          <TableCell dir="ltr">{c.budget ? Number(c.budget).toFixed(0) : "—"}</TableCell>
+                          <TableCell dir="ltr">{formatMoney(c.budget, currency)}</TableCell>
                           <TableCell>
                             <Badge variant={c.status === "active" ? "success" : "default"}>{c.status}</Badge>
                           </TableCell>
@@ -156,40 +191,93 @@ export default function MarketingPage() {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card data-testid="campaign-return">
               <CardHeader>
-                <CardTitle>{t.roas}</CardTitle>
+                {/* §167: the ratio this table can produce today is return on the
+                    PLANNED budget. Calling the card "ROAS" would promise a
+                    spend-based number the backend has no feed for. */}
+                <CardTitle>{t.campaignReturn}</CardTitle>
               </CardHeader>
               <CardContent className="p-0 pb-2">
-                {(summary?.campaign_roas ?? []).length === 0 ? (
+                {(summary?.campaign_budget_roas ?? []).length === 0 ? (
                   <EmptyState title={t.noRoasData} />
                 ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>{t.campaigns}</TableHead>
-                        <TableHead>{t.spend}</TableHead>
-                        <TableHead>{t.revenue}</TableHead>
-                        <TableHead>ROAS</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {(summary?.campaign_roas ?? []).map((r) => (
-                        <TableRow key={r.campaign_id}>
-                          <TableCell className="font-semibold">{r.name}</TableCell>
-                          <TableCell dir="ltr">{Number(r.spend).toFixed(0)}</TableCell>
-                          <TableCell dir="ltr">{Number(r.revenue).toFixed(0)}</TableCell>
-                          <TableCell dir="ltr">
-                            {r.roas === null ? (
-                              "—"
-                            ) : (
-                              <Badge variant={r.roas >= 1 ? "success" : "danger"}>{r.roas.toFixed(2)}×</Badge>
-                            )}
-                          </TableCell>
+                  <>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>{t.campaigns}</TableHead>
+                          <TableHead>{t.plannedBudgetCol}</TableHead>
+                          <TableHead>{t.actualSpendCol}</TableHead>
+                          <TableHead>{t.attributedRevenue}</TableHead>
+                          <TableHead>{t.returnRatioCol}</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {(summary?.campaign_budget_roas ?? []).map((r: CampaignBudgetRoas) => {
+                          // §167: the backend already divided the revenue by ONE
+                          // specific denominator — pick the matching number and
+                          // the matching label. Never show `budget_roas` under a
+                          // `ROAS` header, and never show `null` as 0 or NaN:
+                          // an absent spend feed is its own stated state.
+                          const isSpendBasis = r.basis === "actual_spend";
+                          const ratio = isSpendBasis ? r.spend_roas : r.budget_roas;
+                          const ratioLabel = isSpendBasis ? t.spendRoasLabel : t.budgetRoasLabel;
+                          return (
+                            <TableRow key={r.campaign_id}>
+                              <TableCell className="font-semibold">{r.name}</TableCell>
+                              <TableCell dir="ltr">
+                                {r.planned_budget === null ? (
+                                  <span
+                                    data-testid="no-planned-budget"
+                                    className="text-[12px] text-muted-foreground"
+                                  >
+                                    {t.noPlannedBudget}
+                                  </span>
+                                ) : (
+                                  formatMoney(r.planned_budget, currency)
+                                )}
+                              </TableCell>
+                              <TableCell dir="ltr">
+                                {r.actual_spend === null ? (
+                                  <span
+                                    data-testid="no-spend-feed"
+                                    className="text-[12px] text-muted-foreground"
+                                  >
+                                    {t.noSpendFeed}
+                                  </span>
+                                ) : (
+                                  formatMoney(r.actual_spend, currency)
+                                )}
+                              </TableCell>
+                              <TableCell dir="ltr" data-testid="attributed-credit">
+                                {formatMoney(r.revenue, currency)}
+                              </TableCell>
+                              <TableCell dir="ltr">
+                                {ratio === null ? (
+                                  <span className="text-[12px] text-muted-foreground">
+                                    {isSpendBasis ? t.noSpendFeed : t.noPlannedBudget}
+                                  </span>
+                                ) : (
+                                  <div className="flex flex-col items-start gap-0.5">
+                                    <Badge variant={ratio >= 1 ? "success" : "danger"}>
+                                      {ratio.toFixed(2)}×
+                                    </Badge>
+                                    <span className="text-[11px] text-muted-foreground">
+                                      {ratioLabel}
+                                    </span>
+                                  </div>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                    <p className="px-4 pt-3 text-[11px] text-muted-foreground">
+                      {t.attributedCreditHint}
+                    </p>
+                  </>
                 )}
               </CardContent>
             </Card>

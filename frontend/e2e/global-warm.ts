@@ -12,6 +12,7 @@ const ROUTES = [
   "/dashboard",
   "/inbox",
   "/orders",
+  "/marketing",
   "/notifications",
   "/my-work",
 ];

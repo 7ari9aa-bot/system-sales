@@ -3,7 +3,7 @@
 import * as React from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Plus, ShoppingCart, Trash2 } from "lucide-react";
-import { useCancelOrder, useCreateOrder, useCustomers, useOrders, useProducts, type Order } from "@/lib/queries";
+import { useCancelOrder, useCreateOrder, useCustomers, useOrders, useProducts, useTenantCurrency, type Order } from "@/lib/queries";
 import { t } from "@/lib/t";
 import { formatDate, formatMoney } from "@/lib/utils";
 import { toast } from "@/components/ui/toast";
@@ -48,6 +48,12 @@ export default function OrdersPage() {
   const customersQuery = useCustomers();
   const createOrder = useCreateOrder();
   const cancelOrder = useCancelOrder();
+  // §47: the currency is READ from the tenant, not assumed. The list below
+  // already carries its own per-row `currency` (the server stamped it at
+  // creation), but the dialog's estimate needs the tenant code so a merchant
+  // can see what the digits MEAN before submitting.
+  const currencyQuery = useTenantCurrency();
+  const tenantCurrency = currencyQuery.data?.currency ?? null;
 
   const orders = ordersQuery.data ?? [];
   const customers = customersQuery.data ?? [];
@@ -285,7 +291,15 @@ export default function OrdersPage() {
           </div>
 
           <DialogFooter className="items-center justify-between gap-3 sm:justify-between">
-            <strong dir="ltr">{formatMoney(total)}</strong>
+            <span className="flex items-center gap-2 text-[12px] text-muted-foreground">
+              {/* §47: the number next to «إنشاء الطلب» is a PRE-SUBMIT SUBTOTAL
+                  ESTIMATE, not a grand total. `discount_total`, `shipping_total`
+                  and `tax_total` have no inputs on this form, so the server's
+                  own `grand_total` is the only authoritative figure — the
+                  merchant sees that in the list after the create. */}
+              <span>الإجمالي الفرعي (تقديري)</span>
+              <strong dir="ltr">{formatMoney(total, tenantCurrency)}</strong>
+            </span>
             <Button
               onClick={submit}
               disabled={createOrder.isPending || !customerId || total === 0}

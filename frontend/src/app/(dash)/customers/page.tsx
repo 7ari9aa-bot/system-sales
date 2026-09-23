@@ -4,8 +4,9 @@ import * as React from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Users, ChevronLeft } from "lucide-react";
-import { useCustomers, useSavedViews, type Customer } from "@/lib/queries";
+import { useCustomers, useSavedViews, useTenantCurrency, type Customer } from "@/lib/queries";
 import { t } from "@/lib/t";
+import { formatMoney } from "@/lib/utils";
 import { DataTable } from "@/components/data-table";
 import { EmptyState, ErrorState, PageHeader } from "@/components/ui/states";
 import { CustomerDrawer } from "@/components/customer-drawer";
@@ -22,6 +23,11 @@ export default function CustomersPage() {
   const urlQuery = searchParams.get("q") ?? "";
   const customersQuery = useCustomers();
   const customers = customersQuery.data ?? [];
+  // §47: the currency code is READ, never assumed — a customer's lifetime
+  // value has no currency without it, and the old hard-coded "ج.م" label was
+  // a bug for every tenant that trades in anything else.
+  const currencyQuery = useTenantCurrency();
+  const currency = currencyQuery.data?.currency ?? null;
 
   // §95 — العرض المحفوظ يحمل فلاتره؛ عند تفعيله نقود بها حالة الجدول
   const viewsQuery = useSavedViews("customers");
@@ -115,7 +121,7 @@ export default function CustomersPage() {
         header: t.totalSpent,
         cell: ({ row }) => (
           <span dir="ltr" className="font-semibold">
-            {Number(row.original.lifetime_value).toFixed(2)} ج.م
+            {formatMoney(row.original.lifetime_value, currency)}
           </span>
         ),
       },
@@ -129,7 +135,7 @@ export default function CustomersPage() {
         ),
       },
     ],
-    [],
+    [currency],
   );
 
   if (customersQuery.isError) {

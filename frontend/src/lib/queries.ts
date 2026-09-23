@@ -13,6 +13,7 @@ import {
   type QueryClient,
   type QueryKey,
 } from "@tanstack/react-query";
+import { useRef } from "react";
 import { api, getTokens, newIdempotencyKey } from "@/lib/api";
 import { authPost, type AuthResult } from "@/lib/auth-api";
 import { t } from "@/lib/t";
@@ -25,15 +26,77 @@ export type Page<T> = { items: T[]; next_cursor: string | null };
 
 export type Me = { id: string; email: string; tenants?: { id: string }[] };
 
+/** Money for one window, every figure named for its family
+ *  (`marketing.analytics.orders_summary` -> `analytics.service.revenue_summary`).
+ *
+ *  ADR-053/gap M5: this type has NO `revenue` and NO `aov` key on purpose. The
+ *  old single `revenue` was gross of partial refunds yet dropped whole refunded
+ *  orders, so two screens showed two different "revenues". A screen must now
+ *  say which family it means — gross (before refunds) or net (after) — and the
+ *  two must not be merged back into one word in the UI.
+ *
+ *  `net_revenue` is `gross_revenue - refunded_amount` floored at zero; whatever
+ *  could not be subtracted in this window is `refund_excess` rather than
+ *  vanished money, so a day that refunded more than it collected still adds up.
+ *  `currency` is the tenant's ISO code (§47): money rendered from this row
+ *  needs no literal. */
+export type MoneySummary = {
+  orders_count: number;
+  gross_revenue: number;
+  refunded_amount: number;
+  net_revenue: number;
+  refund_excess: number;
+  gross_aov: number;
+  net_aov: number;
+  currency: string;
+  timezone: string;
+};
+
+/** One merchant-day bucket (`marketing.analytics.daily_orders`). The day label
+ *  is the MERCHANT's day in `timezone`, never UTC midnight (gap M10), and the
+ *  money arrives in the same gross/net families as `MoneySummary`. `orders` is
+ *  that day's order count. */
+export type DailyOrderRow = {
+  day: string;
+  orders: number;
+  gross_revenue: number;
+  refunded_amount: number;
+  net_revenue: number;
+  refund_excess: number;
+};
+
+/** Last-touch ATTRIBUTED credit per source
+ *  (`SUM(attributions.credited_value) WHERE model='last_touch'`).
+ *
+ *  The wire key is `revenue` and it is NOT collected money: it can count an
+ *  order that was later refunded and miss money collected with no tracked
+ *  touchpoint. Anything rendering it must label it attributed (§167). */
+export type AttributedBySource = { source: string; revenue: number; conversions: number };
+
+/** Same attributed-credit caveat as `AttributedBySource`. Touchpoints with no
+ *  campaign group under `campaign_id: null` and the name `"unlinked"`. */
+export type AttributedByCampaign = {
+  campaign_id: string | null;
+  campaign_name: string;
+  revenue: number;
+  conversions: number;
+};
+
 export type DashboardData = {
-  orders: { orders_count: number; revenue: number; aov: number };
+  orders: MoneySummary;
   ai_orders_30d: number;
   conversations: { open: number; unread: number };
   customers: number;
   products_active: number;
-  low_stock: number;
-  daily_orders: { day: string; orders: number; revenue: number }[];
-  revenue_by_source: { source: string; revenue: number; conversions: number }[];
+  /** Two bands, because a sold-out shelf is not "low stock" (gap M7):
+   *  `low_stock_count` is 1..`low_stock_threshold` units still on the shelf,
+   *  `out_of_stock_count` is zero-or-below. The old single `low_stock` folded
+   *  them together, which made the alert mostly noise. */
+  low_stock_count: number;
+  out_of_stock_count: number;
+  low_stock_threshold: number;
+  daily_orders: DailyOrderRow[];
+  revenue_by_source: AttributedBySource[];
 };
 
 export type Conversation = {
@@ -213,12 +276,41 @@ export type Movement = {
 
 export type Campaign = { id: string; name: string; provider: string; status: string; budget: string | null };
 
-export type MarketingSummary = {
-  orders_summary: { orders_count: number; revenue: number; aov: number };
-  revenue_by_source: { source: string; revenue: number; conversions: number }[];
-  revenue_by_campaign: { campaign_id: string; campaign_name: string; revenue: number; conversions: number }[];
-  campaign_roas: { campaign_id: string; name: string; spend: number; revenue: number; roas: number | null }[];
+/** The basis a marketing return ratio was divided by. §167: a metric names its
+ *  own source. Today only `planned_budget` is real — no burned-spend feed exists
+ *  (see `marketing.analytics.campaign_actual_spend`), so `actual_spend` and
+ *  `spend_roas` are always `null` until that seam fills. */
+export type RoasBasis = "planned_budget" | "actual_spend";
+
+/** One row of the dashboard's campaign return table. The ratio to display and
+ *  the label to give it are BOTH chosen by `basis` — a `budget_roas` is not a
+ *  ROAS, and the UI must never show it as one.
+ *
+ *  `revenue` here is last-touch ATTRIBUTED credit (see `AttributedByCampaign`),
+ *  not collected money, and `actual_spend`/`spend_roas` are legitimately `null`
+ *  because no burned-spend feed exists (`campaign_actual_spend` is the seam).
+ *  A null must render as "no spend feed", never as 0 or NaN. */
+export type CampaignBudgetRoas = {
+  campaign_id: string;
+  name: string;
+  revenue: number;
+  planned_budget: number | null;
+  actual_spend: number | null;
+  basis: RoasBasis;
+  budget_roas: number | null;
+  spend_roas: number | null;
 };
+
+export type MarketingSummary = {
+  orders_summary: MoneySummary;
+  revenue_by_source: AttributedBySource[];
+  revenue_by_campaign: AttributedByCampaign[];
+  campaign_budget_roas: CampaignBudgetRoas[];
+};
+
+/** §47/§166 — the currency a tenant trades in. Read via GET so the UI never
+ *  hardcodes a symbol; the write surface is audited PUT /tenants/{id}/currency. */
+export type TenantCurrency = { tenant_id: string; currency: string };
 
 export type KnowledgeItem = { id: string; title: string; status: string; created_at: string };
 export type Agent = { id: string; name: string; model: string | null; is_active: boolean };
@@ -311,6 +403,7 @@ export const qk = {
   movements: ["inventory", "movements"] as QueryKey,
   campaigns: ["marketing", "campaigns"] as QueryKey,
   marketingSummary: ["analytics", "summary"] as QueryKey,
+  tenantCurrency: (id: string) => ["tenants", id, "currency"] as QueryKey,
   knowledge: ["ai", "knowledge"] as QueryKey,
   agents: ["ai", "agents"] as QueryKey,
   usage: ["ai", "usage"] as QueryKey,
@@ -532,6 +625,22 @@ export function useMarketingSummary() {
   return useQuery({
     queryKey: qk.marketingSummary,
     queryFn: () => api<MarketingSummary>("/analytics/summary"),
+  });
+}
+
+/** §47 — which currency this tenant trades in, so the UI never hardcodes a
+ *  symbol. Reads the tenant from the cached `/auth/me`; pass an explicit id to
+ *  override. A failing read yields `undefined`, and formatMoney then renders
+ *  the amount without a code — never a guessed one. */
+export function useTenantCurrency(tenantId?: string | null) {
+  const me = useMe();
+  const id = tenantId ?? me.data?.tenants?.[0]?.id ?? null;
+  return useQuery<TenantCurrency>({
+    queryKey: qk.tenantCurrency(id ?? ""),
+    queryFn: () => api<TenantCurrency>(`/tenants/${id}/currency`),
+    enabled: !!id,
+    staleTime: 300_000,
+    retry: false,
   });
 }
 
@@ -809,12 +918,50 @@ export function useSendMessage(conversationId: string) {
   });
 }
 
+/** §47 money components — optional Decimal strings the client MAY state. When
+ *  a field is absent from the UI it must not be sent at all (the backend
+ *  defaults it to zero); inventing a value here would corrupt the total.
+ *  The idempotency key is generated ONCE per user intent: the first submit
+ *  assigns it, a failed submit reuses the same key on retry so a network
+ *  hiccup cannot double-charge, and only a successful create clears it for
+ *  the next order. */
+export type CreateOrderInput = {
+  customer_id: string;
+  items: { variant_id: string; quantity: number }[];
+  channel: string;
+  discount_total?: string;
+  shipping_total?: string;
+  tax_total?: string;
+};
+
+export type CreateOrderResult = {
+  id: string;
+  number: string;
+  status: string;
+  subtotal: string;
+  discount_total: string;
+  shipping_total: string;
+  tax_total: string;
+  grand_total: string;
+  currency: string;
+};
+
 export function useCreateOrder() {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: { customer_id: string; items: { variant_id: string; quantity: number }[]; channel: string }) =>
-      api<{ id: string; number: string }>("/orders", { method: "POST", body, idempotencyKey: newIdempotencyKey() }),
+  // Held across mutationFn retries so one user intent maps to one key.
+  const keyRef = useRef<string | null>(null);
+  return useMutation<CreateOrderResult, Error, CreateOrderInput>({
+    mutationFn: (body) => {
+      if (!keyRef.current) keyRef.current = newIdempotencyKey();
+      return api<CreateOrderResult>("/orders", {
+        method: "POST",
+        body,
+        idempotencyKey: keyRef.current,
+      });
+    },
     onSuccess: (created) => {
+      // The intent succeeded — the next click is a NEW order and needs a NEW key.
+      keyRef.current = null;
       toast({ title: `${t.orderCreated} ${created.number}`, description: t.orderCreatedHint, variant: "success" });
       qc.invalidateQueries({ queryKey: qk.orders });
       qc.invalidateQueries({ queryKey: qk.dashboard });

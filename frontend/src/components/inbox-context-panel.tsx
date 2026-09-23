@@ -38,7 +38,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useCustomer, useCustomer360, type CustomerTimelineEntry } from "@/lib/queries";
+import { useCustomer, useCustomer360, useTenantCurrency, type CustomerTimelineEntry } from "@/lib/queries";
 import { formatMoney } from "@/lib/utils";
 import { t } from "@/lib/t";
 import { cn } from "@/lib/utils";
@@ -97,6 +97,10 @@ function CustomerTab({
 }) {
   const customerQuery = useCustomer(customerId);
   const customer = customerQuery.data;
+  // §47: no hard-coded currency. The lifetime value is a Decimal string from
+  // the backend; the currency comes from the tenant read, not from a literal.
+  const currencyQuery = useTenantCurrency();
+  const currency = currencyQuery.data?.currency ?? null;
 
   if (customerQuery.isLoading) {
     return (
@@ -147,10 +151,7 @@ function CustomerTab({
       <div className="rounded-lg border border-border bg-muted/40 p-2.5">
         <span className="text-muted-foreground">{t.c360LifetimeValue}</span>
         <div className="mt-1 text-base font-bold text-foreground" dir="ltr">
-          {Number(customer?.lifetime_value || 0).toLocaleString("en-US", {
-            minimumFractionDigits: 2,
-          })}{" "}
-          <span className="text-xs font-normal">ج.م</span>
+          {formatMoney(customer?.lifetime_value, currency)}
         </div>
       </div>
 

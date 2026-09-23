@@ -273,7 +273,10 @@ function Customer360Content() {
   }
 
   const { customer, payments, stats } = record;
-  const currency = payments.currency || "EGP";
+  // §47: the code is the one the response carries. A missing code renders the
+  // amount bare — guessing "EGP" here would label money with a currency the
+  // tenant may not trade in.
+  const currency = payments.currency || null;
 
   return (
     <div>

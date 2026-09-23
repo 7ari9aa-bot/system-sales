@@ -173,13 +173,46 @@ const ar = {
   roas: "العائد على الإنفاق (ROAS)",
   spend: "الإنفاق",
   revenue: "الإيراد",
+  /** ADR-053: شاشات الفلوس ما بقاش فيها رقم اسمه "الإيرادات" بس. الإجمالي
+   *  (قبل الاسترداد) والصافي (بعده) رقمين مختلفين، واللازم يوضح أيهم. */
+  grossRevenue30: "إجمالي الإيرادات (30 يوم)",
+  netRevenue30: "صافي الإيرادات (30 يوم)",
+  refunded30: "المسترد (30 يوم)",
+  grossShort: "الإجمالي",
+  netShort: "الصافي",
+  refundedShort: "المسترد",
+  grossAov: "متوسط قيمة الطلب (إجمالي)",
+  netAov: "متوسط قيمة الطلب (صافٍ)",
+  /** الصافي مقفول عند صفر: لو المرتجعات أكبر من المحصَّل في الفترة، الفرق
+   *  بيظهر كـ refund_excess بدل ما يختفي — لازم الشاشة تقول كده. */
+  refundExcessNote: (amount: string) =>
+    `المرتجعات تجاوزت المحصَّل في الفترة: ${amount} ما اتخصمش من الصافي ده.`,
+  /** §167: `revenue_by_source`/`revenue_by_campaign` هم قيمة الإسناد باللمسة
+   *  الأخيرة، مش فلوس اتقبضت — تسميتهم "منسوب" مش اختيارية. */
+  attributedRevenue: "إيراد منسوب",
+  attributedCreditHint:
+    "الإيراد المنسوب = قيمة التحويلات المسندة باللمسة الأخيرة، وهو مش بالضرورة مال متحصيل.",
+  campaignReturn: "عائد كل حملة",
+  noSpendFeed: "لا يوجد مصدر صرف",
+  noPlannedBudget: "لا ميزانية مخططة",
+  /** الأساس اللي اتقسمت عليه النسبة: planned_budget النهارده، أو الصرف الفعلي
+   *  لما يبقى له مصدر. */
+  basisPlannedBudget: "على الميزانية المخططة",
+  basisActualSpend: "على الصرف الفعلي",
   noCampaigns: "لا توجد حملات بعد",
-  noCampaignsHint: "أنشئ أول حملة لتتبع الإيراد والعائد لكل منصة.",
+  noCampaignsHint: "أنشئ أول حملة لتتبع الإيراد المنسوب والعائد لكل منصة.",
   noRoasData: "لا توجد بيانات عائد بعد",
+  /** §167: a metric must carry its own denominator. The dashboard shows the
+   *  ratio the backend actually produced — the label has to match. */
+  budgetRoasLabel: "العائد على الميزانية المخططة",
+  spendRoasLabel: "العائد على الإنفاق (ROAS)",
+  returnRatioCol: "العائد (نسبة)",
+  plannedBudgetCol: "الميزانية المخططة",
+  actualSpendCol: "الصرف الفعلي",
   revenue30: "إيرادات 30 يوم",
   orders30: "الطلبات (30 يوم)",
-  revenueBySource: "الإيرادات حسب المصدر",
-  dailyRevenue: "الإيرادات اليومية (14 يوم)",
+  revenueBySource: "إيراد منسوب حسب المصدر",
+  dailyNetRevenue: "صافي الإيرادات اليومية (14 يوم)",
   noSourceData: "لا توجد تحويلات مرتبطة بمصادر",
   // ai
   knowledge: "قاعدة المعرفة",
@@ -316,6 +349,11 @@ const ar = {
   selectRow: "تحديد الصف",
   selectAll: "تحديد الكل",
   lowStockAlert: (n: number) => `عندك ${n} صنف مخزونه على وشك النفاد — راجع صفحة المخزون.`,
+  /** M7: رف فاضي مش "مخزون منخفض". الشريطين اتفصلوا عشان التنبيه يفضل قابل
+   *  للتنفيذ، والصنف اللي خلص ليه كلمة لوحده. */
+  outOfStockAlert: (n: number) => `عندك ${n} صنف خلص من المخزون — راجع صفحة المخزون.`,
+  soldOutCount: (n: number) => `${n} صنف نفد من المخزون`,
+  lowStockThresholdNote: (n: number) => `الحد: ${n} وحدة أو أقل`,
   lowStock: "مخزون منخفض",
   lowStockHint: "راجع المخزون قبل النفاد",
   openConversations: "محادثات مفتوحة",
@@ -591,13 +629,42 @@ const en = {
   roas: "Return on ad spend (ROAS)",
   spend: "Spend",
   revenue: "Revenue",
+  /** ADR-053: money screens no longer show one number called "revenue" —
+   *  gross (before refunds) and net (after) are different figures, and the
+   *  label has to say which one it is. */
+  grossRevenue30: "Gross revenue (30 days)",
+  netRevenue30: "Net revenue (30 days)",
+  refunded30: "Refunded (30 days)",
+  grossShort: "Gross",
+  netShort: "Net",
+  refundedShort: "Refunded",
+  grossAov: "Average order value (gross)",
+  netAov: "Average order value (net)",
+  /** Net is floored at zero: when refunds beat collections in the window the
+   *  remainder ships as refund_excess instead of vanishing, and the screen
+   *  has to say so. */
+  refundExcessNote: (amount: string) =>
+    `Refunds exceeded collections in this window: ${amount} was not subtracted from this net.`,
+  /** §167: revenue_by_source / revenue_by_campaign are last-touch attributed
+   *  credit, not collected money — calling them "attributed" is mandatory. */
+  attributedRevenue: "Attributed revenue",
+  attributedCreditHint:
+    "Attributed revenue is the conversion value credited to the last touchpoint; it is not necessarily money collected.",
+  campaignReturn: "Return per campaign",
+  noSpendFeed: "No spend feed",
+  noPlannedBudget: "No planned budget",
   noCampaigns: "No campaigns yet",
-  noCampaignsHint: "Create your first campaign to track revenue and return per channel.",
+  noCampaignsHint: "Create your first campaign to track attributed revenue and return per channel.",
   noRoasData: "No ROAS data yet",
+  budgetRoasLabel: "Return on planned budget",
+  spendRoasLabel: "Return on ad spend (ROAS)",
+  returnRatioCol: "Return (ratio)",
+  plannedBudgetCol: "Planned budget",
+  actualSpendCol: "Actual spend",
   revenue30: "30-day revenue",
   orders30: "Orders (30 days)",
-  revenueBySource: "Revenue by source",
-  dailyRevenue: "Daily revenue (14 days)",
+  revenueBySource: "Attributed revenue by source",
+  dailyNetRevenue: "Daily net revenue (14 days)",
   noSourceData: "No conversions linked to sources",
   // ai
   knowledge: "Knowledge base",
@@ -734,6 +801,11 @@ const en = {
   selectRow: "Select row",
   selectAll: "Select all",
   lowStockAlert: (n: number) => `You have ${n} item(s) running low — check the inventory page.`,
+  /** M7: an empty shelf is not "low stock". The two bands split so the alert
+   *  stays actionable and a sold-out item gets its own words. */
+  outOfStockAlert: (n: number) => `You have ${n} item(s) sold out — check the inventory page.`,
+  soldOutCount: (n: number) => `${n} item(s) sold out`,
+  lowStockThresholdNote: (n: number) => `Threshold: ${n} unit(s) or fewer`,
   lowStock: "Low stock",
   lowStockHint: "Review stock before it runs out",
   openConversations: "Open conversations",
