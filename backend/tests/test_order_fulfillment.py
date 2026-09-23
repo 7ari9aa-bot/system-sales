@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.catalog.service import CatalogService
 from app.modules.customers.service import CustomerService
-from app.modules.errors import ConflictError, NotFoundError
+from app.modules.errors import ConflictError, NotFoundError, ValidationError
 from app.modules.inventory.models import Warehouse
 from app.modules.inventory.service import InventoryService
 from app.modules.orders.models import Order, OrderStatusHistory, Shipment
@@ -274,7 +274,9 @@ async def test_shipment_status_machine_rejects_an_illegal_jump(
     assert SHIPMENT_TRANSITIONS["pending"] == {"picked_up"}
     with pytest.raises(ConflictError):
         await OrderService.set_shipment_status(db, tenant_id, shipment.id, "delivered")
-    with pytest.raises(ConflictError):
+    # A status that is not in the vocabulary at all is a malformed request, not
+    # a disagreement with the current state.
+    with pytest.raises(ValidationError):
         await OrderService.set_shipment_status(db, tenant_id, shipment.id, "lost")
     await db.flush()
 
