@@ -20,7 +20,6 @@ amount the customer paid, in the only currency this tenant moves.
 
 from __future__ import annotations
 
-import json
 import pathlib
 import uuid
 from decimal import Decimal
@@ -33,6 +32,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 
+from app.core.events.schemas import deserialize
 from app.modules.catalog.service import CatalogService
 from app.modules.customers.service import CustomerService
 from app.modules.errors import ConflictError, ValidationError
@@ -67,14 +67,15 @@ def _request(path: str = "/api/v1/orders") -> Request:
 async def _stocked_variant(
     db: AsyncSession, tenant_id: uuid.UUID, *, price: str = "40.00", stock: int = 50
 ) -> tuple[object, Warehouse]:
+    product = await CatalogService.create_product(
+        db, tenant_id, title="Priced", slug=f"c-{uuid.uuid4().hex[:10]}"
+    )
+    # M4: only an active product sells, and this fixture is checkout's happy path.
+    await CatalogService.update_product(db, tenant_id, product.id, status="active")
     variant = await CatalogService.add_variant(
         db,
         tenant_id,
-        (
-            await CatalogService.create_product(
-                db, tenant_id, title="Priced", slug=f"c-{uuid.uuid4().hex[:10]}"
-            )
-        ).id,
+        product.id,
         price=price,
     )
     warehouse = Warehouse(
@@ -497,18 +498,22 @@ async def test_the_outbox_event_carries_the_currency_that_was_stored(
     )
     await db.flush()
 
-    payload = (
+    row = (
         await db.execute(
             sa.text(
-                "SELECT payload FROM outbox_events WHERE aggregate_id = :oid "
+                "SELECT payload, meta FROM outbox_events WHERE aggregate_id = :oid "
                 "AND payload->>'event_type' = 'order.created'"
             ),
             {"oid": str(order.id)},
         )
     ).scalar_one()
-    body = json.loads(payload) if isinstance(payload, str) else payload
+    # Read it the way a consumer does: money crosses the JSONB boundary tagged
+    # with its type, so the assertion is against the decoded envelope, not the
+    # raw column.
+    envelope = deserialize({"payload": row.payload, "meta": row.meta})
+    body = envelope.payload
     assert body["currency"] == "SAR"
-    assert Decimal(str(body["grand_total"])) == Decimal("40.00")
+    assert body["grand_total"] == Decimal("40.00")
 
 
 # ============================ the tenant says what it trades in ============

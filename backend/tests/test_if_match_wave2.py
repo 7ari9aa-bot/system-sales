@@ -50,6 +50,11 @@ class _FakeResult:
     def scalar_one_or_none(self) -> int | None:
         return self._version
 
+    def scalar_one(self) -> int:
+        # The derived money read sums payments and refunds; against this double
+        # nothing has moved, which is the honest "no money yet" answer.
+        return 0
+
 
 class _FakeSession:
     """Enough of AsyncSession for apply_versioned_update (+ service inserts).

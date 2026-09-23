@@ -23,6 +23,11 @@ cost real money:
   dropped out of the order's settled balance and the same amount could then be
   captured a SECOND time: a double charge, with the provider holding the first
   capture the whole time.
+* ``lifetime_value`` — nothing on the order path ever wrote
+  ``customers.lifetime_value``, so every segment built on it matched nobody.
+  The number is money that ARRIVED (so an authorization is not in it, and
+  neither is an unpaid order), and it is floored: an over-refunded ledger reads
+  as zero, never as a negative customer.
 
 The module reaches for one thing outside the standard library — the ISO 4217
 table in ``app.core.currency``, which is itself data and arithmetic with no
@@ -39,16 +44,20 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from app.core.currency import exponent_of
 
 __all__ = [
+    "COLLECTED_PAYMENT_STATUSES",
     "MONEY_QUANTUM",
     "REFUNDED_PAYMENT_STATUSES",
+    "REFUND_STATES",
     "SETTLED_PAYMENT_STATUSES",
     "amount_minor",
     "compute_totals",
     "from_amount_minor",
+    "lifetime_value",
     "net_collected",
     "order_balance",
     "positive_money",
     "reconciliation_refusal",
+    "refund_state",
     "to_money",
 ]
 
@@ -79,6 +88,18 @@ SETTLED_PAYMENT_STATUSES = (
 # row in the same transaction. A payment in one of these states with no refund
 # row is a ledger that disagrees with itself.
 REFUNDED_PAYMENT_STATUSES = ("refunded", "partially_refunded")
+
+# Statuses that mean money ARRIVED at the merchant — the gross side of a
+# customer's lifetime value. ``SETTLED_PAYMENT_STATUSES`` minus ``authorized``:
+# an authorization is still the provider's promise, and promising is not
+# paying. ``refunded`` stays on the gross side for the same reason as above —
+# its refund rows are what subtract it.
+COLLECTED_PAYMENT_STATUSES = ("captured", "partially_refunded", "refunded")
+
+# A refund is a MONEY position, not a lifecycle step, so it is DERIVED from the
+# ledger instead of stored as an ``orders.status`` word (see ``refund_state``).
+# The vocabulary is closed so a read model never invents a fourth answer.
+REFUND_STATES = frozenset({"none", "partial", "full"})
 
 
 def to_money(
@@ -124,6 +145,46 @@ def net_collected(settled_gross: object, refunded: object) -> Decimal:
     is what ``platform.metrics.net_revenue`` computes.
     """
     return to_money(settled_gross, "settled") - to_money(refunded, "refunded")
+
+
+def refund_state(settled_gross: object, refunded: object) -> str:
+    """Whether the order gave its money back: ``none`` / ``partial`` / ``full``.
+
+    Derived, deliberately, rather than stored as an ``orders.status`` word.
+    ``status`` answers "where is this order in its life" — the axis
+    ``TRANSITIONS`` and every status reader in the module walk — and giving
+    money back does not move the goods: a partially refunded order is still
+    ``shipped``, and ``shipped -> partial_refunded -> shipped`` is not a
+    lifecycle. The payment rows and ``refunds`` rows already hold the truth, so
+    a stored flag would be a second owner of one fact, wrong the moment a
+    refund is rejected or a row is corrected by hand.
+
+    ``refunded`` must be the same non-rejected total ``net_collected`` runs on.
+    ``refunded <= 0`` answers FIRST: an unpaid order holds nothing, but it gave
+    nothing back either, so the naive "net is zero, therefore full" reads every
+    draft as fully refunded. A net at or below zero is ``full`` — money given
+    back past the total is fully given back, never a negative order.
+    """
+    returned = to_money(refunded, "refunded")
+    if returned <= 0:
+        return "none"
+    if net_collected(settled_gross, returned) <= 0:
+        return "full"
+    return "partial"
+
+
+def lifetime_value(collected_gross: object, refunded: object) -> Decimal:
+    """A customer's worth: money that arrived, minus what went back, not below
+    zero.
+
+    ``net_collected`` on the customer's own ledger, floored. The floor is the
+    rule and not decoration: ``customers.lifetime_value`` feeds segment
+    arithmetic (``segments.service`` compares it directly), and a ledger that
+    has given back more than it holds — a refund row written before the
+    over-refund cap, a manual correction — would otherwise turn the customer
+    into a negative number that every report then averages in.
+    """
+    return max(net_collected(collected_gross, refunded), Decimal("0.00"))
 
 
 def order_balance(

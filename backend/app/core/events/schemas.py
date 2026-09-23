@@ -139,6 +139,7 @@ DOMAIN_EVENT_TYPES: tuple[str, ...] = (
     "order.cancelled",
     "order.created",
     "order.refunded",
+    "order.shipping_updated",
     "order.status_changed",
     # §69: master-key rotation emits this through the outbox (durable audit of
     # a security-relevant event — see app.core.secrets.rotate_master_key).

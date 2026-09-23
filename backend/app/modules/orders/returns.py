@@ -31,7 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.saga import Saga, SagaManager, SagaStatus, SagaStepHandler
 from app.modules.errors import ConflictError, ValidationError
 from app.modules.orders.models import Order, OrderItem, OrderStatusHistory
-from app.modules.orders.service import OrderService
+from app.modules.orders.service import _RESERVATION_TTL, OrderService, _now
 
 #: The saga type registered on :class:`app.core.saga.SagaManager`.
 RETURN_SAGA_TYPE = "order_return"
@@ -179,6 +179,18 @@ class RestockReturnedLines(SagaStepHandler):
                 uuid.UUID(line["variant_id"]),
                 warehouse_id,
                 int(line["quantity"]),
+            )
+            # And the durable §140 row goes back with it. `execute` cancelled it,
+            # so a hold with no row behind it reads as "this order never held
+            # anything" to the retry — which would restock units never sold.
+            await InventoryService.create_reservation(
+                session,
+                tenant_id,
+                variant_id=uuid.UUID(line["variant_id"]),
+                warehouse_id=warehouse_id,
+                order_id=saga.aggregate_id,
+                quantity=int(line["quantity"]),
+                expires_at=_now() + _RESERVATION_TTL,
             )
         return {"reversed": True}
 

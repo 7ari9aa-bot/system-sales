@@ -278,6 +278,10 @@ async def _seed_checkout(db: AsyncSession, tenant_id: uuid.UUID):
     product = await CatalogService.create_product(
         db, tenant_id, title="Idem Widget", slug=f"iw-{uuid.uuid4().hex[:10]}"
     )
+    # §M4: checkout refuses a draft product (and `draft` is the default), so the
+    # fixture publishes it — the retry contract below is about the idempotency
+    # store, not about sellability.
+    await CatalogService.update_product(db, tenant_id, product.id, status="active")
     variant = await CatalogService.add_variant(
         db, tenant_id, product.id, sku=f"IWG-{uuid.uuid4().hex[:6].upper()}", price="25.50"
     )

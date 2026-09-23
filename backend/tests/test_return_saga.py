@@ -52,15 +52,15 @@ _PATH = ["confirmed", "processing", "shipped", "delivered"]
 async def _stocked_variant(
     db: AsyncSession, tenant_id: uuid.UUID, *, stock: int = 10
 ) -> tuple[object, Warehouse]:
+    product = await CatalogService.create_product(
+        db, tenant_id, title="Returnable", slug=f"r-{uuid.uuid4().hex[:10]}"
+    )
+    # §M4: only an `active` product sells and `draft` is the default status, so
+    # the fixture publishes it — this file is about the return saga, not about
+    # what checkout refuses (that is test_checkout_rules.py).
+    await CatalogService.update_product(db, tenant_id, product.id, status="active")
     variant = await CatalogService.add_variant(
-        db,
-        tenant_id,
-        (
-            await CatalogService.create_product(
-                db, tenant_id, title="Returnable", slug=f"r-{uuid.uuid4().hex[:10]}"
-            )
-        ).id,
-        price="40.00",
+        db, tenant_id, product.id, price="40.00"
     )
     warehouse = Warehouse(
         tenant_id=tenant_id,
@@ -480,6 +480,54 @@ async def test_when_the_close_step_fails_the_restock_is_undone(
         await db.execute(select(Saga).where(Saga.aggregate_id == order.id))
     ).scalar_one()
     assert saga.status == SagaStatus.FAILED.value
+
+
+# ------------------------------------- compensation of a released (COD) hold ----
+
+
+async def test_an_undone_release_restores_the_reservation_it_released(
+    db, tenant_ctx, monkeypatch
+) -> None:
+    """A re-held balance with no ACTIVE row is a lie the retry can act on.
+
+    Compensation re-reserves the units, but the failed step cancelled the
+    durable §140 row — so a retry reads "this order never held anything" and
+    puts units on the shelf that were never taken off it.
+    """
+    from app.modules.orders.returns import ReturnsService
+
+    tenant_id = tenant_ctx.tenant_id
+    order, variant, warehouse = await _order_at(db, tenant_id, "shipped", paid=False)
+
+    async def refuse(*args, **kwargs):
+        raise RuntimeError("the order row refused")
+
+    monkeypatch.setattr(OrderService, "_transition", refuse)
+    with pytest.raises(RuntimeError):
+        await ReturnsService.process_return(db, tenant_id, order.id)
+    monkeypatch.undo()
+
+    held = await _balance(db, tenant_id, variant, warehouse)
+    assert (held.on_hand, held.reserved) == (10, 3)
+    rows = (
+        (
+            await db.execute(
+                select(InventoryReservation).where(
+                    InventoryReservation.order_id == order.id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert sorted(r.status for r in rows) == ["ACTIVE", "CANCELLED"]
+
+    # The retry now starts from the position the first attempt started from:
+    # the hold is released, and nothing is ever added to the shelf.
+    await ReturnsService.process_return(db, tenant_id, order.id)
+    final = await _balance(db, tenant_id, variant, warehouse)
+    assert (final.on_hand, final.reserved) == (10, 0)
+    assert [m.reason for m in await _movements(db, order.id)] == []
 
 
 # ------------------------------------------------------------ the trigger ----

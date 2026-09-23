@@ -46,6 +46,10 @@ async def _customer_variant_stock(db: AsyncSession, tenant_id: uuid.UUID, stock:
     product = await CatalogService.create_product(
         db, tenant_id, title="Widget", slug=f"w-{uuid.uuid4().hex[:10]}"
     )
+    # §M4: only an `active` product sells, so the seeded cart is a sellable one.
+    # The product row is not an aggregate this test observes — the order and
+    # customer versions it asserts are untouched by publishing a product.
+    await CatalogService.update_product(db, tenant_id, product.id, status="active")
     variant = await CatalogService.add_variant(
         db, tenant_id, product.id, sku=f"WGT-{uuid.uuid4().hex[:6].upper()}", price="25.50"
     )

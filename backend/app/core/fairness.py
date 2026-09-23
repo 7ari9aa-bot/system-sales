@@ -109,6 +109,7 @@ DOMAIN_PRIORITIES: dict[str, EventPriority] = {
     "order.status_changed": EventPriority.CRITICAL_SYSTEM,
     "order.cancelled": EventPriority.CRITICAL_SYSTEM,
     "order.refunded": EventPriority.CRITICAL_SYSTEM,
+    "order.shipping_updated": EventPriority.CRITICAL_SYSTEM,
     "privacy.customer_deleted": EventPriority.CRITICAL_SYSTEM,
     "privacy.customer_purge_required": EventPriority.CRITICAL_SYSTEM,
     "platform.secret_rotated": EventPriority.CRITICAL_SYSTEM,

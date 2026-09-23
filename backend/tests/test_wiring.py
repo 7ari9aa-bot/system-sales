@@ -67,6 +67,10 @@ async def _customer_and_variant(
     product = await CatalogService.create_product(
         db, tenant_id, title="Wiring Widget", slug=f"ww-{uuid.uuid4().hex[:10]}"
     )
+    # §M4: `draft` is create_product's default and checkout sells only an
+    # `active` product; these tests pin the reservation wiring, so the fixture
+    # supplies goods that are actually on sale.
+    await CatalogService.update_product(db, tenant_id, product.id, status="active")
     variant = await CatalogService.add_variant(
         db, tenant_id, product.id, sku=f"WWG-{uuid.uuid4().hex[:6].upper()}", price="25.50"
     )

@@ -11,13 +11,14 @@ without a database; this module only supplies the aggregates they run on.
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, select, tuple_
+from sqlalchemy import func, select, text, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,12 +34,14 @@ from app.modules.orders.models import (
     Shipment,
 )
 from app.modules.orders.money import (
+    COLLECTED_PAYMENT_STATUSES,
     SETTLED_PAYMENT_STATUSES,
     compute_totals,
     net_collected,
     order_balance,
     positive_money,
     reconciliation_refusal,
+    refund_state,
     to_money,
 )
 
@@ -59,6 +62,13 @@ TRANSITIONS: dict[str, set[str]] = {
 }
 
 _CANCELLABLE_STATUSES = {"pending", "confirmed"}
+#: An order's shipping details are correctable until the parcel leaves; after
+#: `shipped` the address on the row is history, and the next leg is a shipment.
+_SHIPPING_EDITABLE_STATUSES = {"pending", "confirmed", "processing"}
+#: The catalog vocabulary is draft | active | archived (`catalog/models.py`),
+#: and only one of those is an offer to the customer (§M4): `draft` is a
+#: merchant's note pad and `archived` is a withdrawal.
+SELLABLE_PRODUCT_STATUSES = frozenset({"active"})
 _PAYMENT_METHODS = {"cash", "card", "wallet", "bank_transfer", "cod", "manual"}
 _PAYMENT_PROVIDER_STATUSES = {
     "pending": "pending",
@@ -146,6 +156,80 @@ def _positive_int(value: object, field: str = "quantity") -> int:
     return number
 
 
+def like_pattern(fragment: str) -> str:
+    """A contains-match whose LIKE metacharacters are the caller's data.
+
+    ``%`` and ``_`` are typed into a search box the same way as a letter, so
+    they match literally instead of widening the search.
+    """
+    escaped = fragment.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
+def to_utc_bound(value: datetime) -> datetime:
+    """An unqualified timestamp from a query string is UTC, never local time."""
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+
+
+def sellable_refusal(product_status: str | None) -> str | None:
+    """Why this line cannot be sold, or None when it can (§M4).
+
+    Lives apart from the query so checkout and its tests read the same rule.
+    """
+    if product_status in SELLABLE_PRODUCT_STATUSES:
+        return None
+    return (
+        f"this line is not on sale: its product is "
+        f"{product_status or 'missing'}, and only an active product may be "
+        "ordered"
+    )
+
+
+async def _audit_shipping(
+    session: AsyncSession,
+    tenant_id: UUID,
+    order_id: UUID,
+    *,
+    actor_user_id: UUID | None,
+    before: dict,
+    after: dict,
+) -> None:
+    """One append-only audit_logs row for a shipping correction.
+
+    Written as SQL rather than through ``platform.service.AuditService``: an
+    ``orders -> platform`` edge is one the module-boundary ratchet cannot pay
+    for, and this is the same parameter-bound INSERT that writer makes, with
+    §66 lineage read from the request context instead of an argument.
+    """
+    from app.core.context import (
+        actor_kind_contextvar,
+        correlation_id_contextvar,
+        request_id_contextvar,
+    )
+
+    await session.execute(
+        text(
+            "INSERT INTO audit_logs (id, tenant_id, actor_user_id, action, "
+            "resource_type, resource_id, before, after, source, request_id, "
+            "correlation_id) VALUES (:id, :tenant_id, :actor_user_id, "
+            "'order.shipping_updated', 'order', :resource_id, "
+            "CAST(:before AS jsonb), CAST(:after AS jsonb), :source, "
+            ":request_id, :correlation_id)"
+        ),
+        {
+            "id": uuid4(),
+            "tenant_id": tenant_id,
+            "actor_user_id": actor_user_id,
+            "resource_id": str(order_id),
+            "before": json.dumps(before),
+            "after": json.dumps(after),
+            "source": actor_kind_contextvar.get() or "human",
+            "request_id": request_id_contextvar.get(),
+            "correlation_id": correlation_id_contextvar.get(),
+        },
+    )
+
+
 class OrderService:
     """All order business rules; static methods taking (session, tenant_id)."""
 
@@ -202,6 +286,9 @@ class OrderService:
         *,
         status: str | None = None,
         customer_id: UUID | None = None,
+        number: str | None = None,
+        created_from: datetime | None = None,
+        created_to: datetime | None = None,
         limit: int = 50,
         offset: int = 0,
         before_created_at: datetime | None = None,
@@ -216,6 +303,17 @@ class OrderService:
             # pull a tenant-wide page and filter client-side, which silently
             # reports "no orders" for anyone outside that page.
             stmt = stmt.where(Order.customer_id == customer_id)
+        if number is not None:
+            # Staff search by the printed number, which they type from memory:
+            # a fragment, any case. Escape character kept in sync with
+            # `like_pattern`, which is what makes a typed '%' literal.
+            stmt = stmt.where(Order.number.ilike(like_pattern(number), escape="\\"))
+        if created_from is not None:
+            # Both bounds inclusive — a one-day report asks for the same day
+            # twice and expects that day's orders.
+            stmt = stmt.where(Order.created_at >= to_utc_bound(created_from))
+        if created_to is not None:
+            stmt = stmt.where(Order.created_at <= to_utc_bound(created_to))
         if before_created_at is not None and before_id is not None:
             stmt = stmt.where(
                 tuple_(Order.created_at, Order.id)
@@ -227,6 +325,93 @@ class OrderService:
             .offset(offset)
         )
         return list((await session.execute(stmt)).scalars().all())
+
+    @staticmethod
+    async def list_payments(
+        session: AsyncSession,
+        tenant_id: UUID,
+        order_id: UUID,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[OrderPayment]:
+        """The money side of one order, oldest first — a capture timeline.
+
+        The order is resolved first so a foreign order id is a 404 rather than
+        an empty list: "no payments" and "not your order" are different facts.
+        """
+        await OrderService.get(session, tenant_id, order_id, with_items=False)
+        rows = (
+            await session.execute(
+                select(OrderPayment)
+                .where(
+                    OrderPayment.tenant_id == tenant_id,
+                    OrderPayment.order_id == order_id,
+                )
+                .order_by(OrderPayment.created_at.asc(), OrderPayment.id.asc())
+                .limit(limit)
+                .offset(offset)
+            )
+        ).scalars().all()
+        return list(rows)
+
+    @staticmethod
+    async def list_status_history(
+        session: AsyncSession,
+        tenant_id: UUID,
+        order_id: UUID,
+        *,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> list[OrderStatusHistory]:
+        """Every transition this order has been through, oldest first.
+
+        Ties inside one transaction fall back to the row id, which is why the
+        ordering is by (created_at, id) and not by id alone.
+        """
+        await OrderService.get(session, tenant_id, order_id, with_items=False)
+        rows = (
+            await session.execute(
+                select(OrderStatusHistory)
+                .where(
+                    OrderStatusHistory.tenant_id == tenant_id,
+                    OrderStatusHistory.order_id == order_id,
+                )
+                .order_by(
+                    OrderStatusHistory.created_at.asc(), OrderStatusHistory.id.asc()
+                )
+                .limit(limit)
+                .offset(offset)
+            )
+        ).scalars().all()
+        return list(rows)
+
+    @staticmethod
+    async def refund_position(
+        session: AsyncSession, tenant_id: UUID, order_id: UUID
+    ) -> dict[str, Any]:
+        """The order's DERIVED refund position, beside its lifecycle status.
+
+        Not a status: money going back is a second axis, and the only honest
+        source for it is the ledger itself — a stored flag would be wrong the
+        moment a refund is rejected (see ``orders.money.refund_state``). The
+        totals come from ``_settled_and_refunded``, the same pair ``cancel_order``
+        and the lifetime-value write already read, so no second arithmetic on
+        refunds exists.
+        """
+        order = await OrderService.get(session, tenant_id, order_id, with_items=False)
+        settled, refunded = await OrderService._settled_and_refunded(
+            session, tenant_id, order
+        )
+        return {
+            "order_id": str(order.id),
+            "order_status": order.status,
+            "currency": order.currency,
+            "refund_state": refund_state(settled, refunded),
+            "gross_settled": settled,
+            "refunded": refunded,
+            "net_collected": net_collected(settled, refunded),
+        }
 
     # ---------------------------------------------------------- create ----
 
@@ -273,18 +458,12 @@ class OrderService:
             )
         currency = tenant_currency
 
+        # M2: a tombstoned or merged-away customer never reaches this line —
+        # ``CustomerService.get`` refuses both. The block flag is checkout's own
+        # rule, so it is the only state still checked here.
         customer = await CustomerService.get(session, tenant_id, customer_id)
-        # Blocked (fraud/abuse), tombstoned (privacy deletion) or merged-away
-        # customers must never place orders — the last two would attach live
-        # orders to a ghost record.
-        if getattr(customer, "is_blocked", False):
+        if customer.is_blocked:
             raise ConflictError("customer is blocked and cannot place orders")
-        if getattr(customer, "deleted_at", None) is not None:
-            raise ConflictError("customer is deleted")
-        if getattr(customer, "merged_into_customer_id", None) is not None:
-            raise ConflictError(
-                "customer has been merged — resolve the canonical customer first"
-            )
 
         warehouse = (
             await InventoryService.get_warehouse(session, tenant_id, warehouse_id)
@@ -312,6 +491,22 @@ class OrderService:
                 session, tenant_id, variant, currency=currency, quantity=quantity
             )
             prepared.append((variant, quantity, to_money(unit_price, "unit_price")))
+
+        # A variant being active is not the whole question: the product above
+        # it decides whether anything is being offered at all (§M4). Checked on
+        # the batch this function already needs for the line snapshots, and
+        # BEFORE the reserve loop, so a refused cart holds nobody's stock.
+        product_ids = {variant.product_id for variant, _q, _p in prepared}
+        products = await CatalogService.get_products_by_ids(
+            session, tenant_id, list(product_ids)
+        )
+        for variant, _quantity, _price in prepared:
+            product = products.get(variant.product_id)
+            refusal = sellable_refusal(None if product is None else product.status)
+            if refusal is not None:
+                raise ConflictError(
+                    f"{refusal} (variant {variant.sku or variant.id})"
+                )
 
         # Reserve first — insufficient stock aborts the whole order.
         for variant, quantity, _price in prepared:
@@ -369,10 +564,6 @@ class OrderService:
             )
 
         # Line snapshots (title/sku frozen at purchase time).
-        product_ids = {variant.product_id for variant, _q, _p in prepared}
-        products = await CatalogService.get_products_by_ids(
-            session, tenant_id, list(product_ids)
-        )
         for variant, quantity, price in prepared:
             product = products.get(variant.product_id)
             session.add(
@@ -727,6 +918,10 @@ class OrderService:
             await OrderService._transition(
                 session, tenant_id, order, "confirmed", note=f"paid via {method}"
             )
+        # Money arrived, so the customer's worth is recomputed from the rows.
+        await OrderService._recompute_lifetime_value(
+            session, tenant_id, order.customer_id
+        )
         return payment
 
     @staticmethod
@@ -744,7 +939,7 @@ class OrderService:
         Provider adapters perform the lookup and pass only the observed status
         here. A captured result applies reservation/order effects exactly once,
         and a captured payment is never downgraded by a later report — see
-        ``money.resolve_payment_status``.
+        ``money.reconciliation_refusal``.
         """
         status = _PAYMENT_PROVIDER_STATUSES.get(provider_status.lower())
         if status is None:
@@ -797,6 +992,13 @@ class OrderService:
                     session, tenant_id, order, "confirmed", note="payment reconciled"
                 )
         await session.flush()
+        # A resolved provider report moved real money (an unknown intent that
+        # turned out captured is a capture), so the customer's worth is
+        # recomputed — derived, so a no-op when the status change collected
+        # nothing.
+        await OrderService._recompute_lifetime_value(
+            session, tenant_id, order.customer_id
+        )
         return payment
 
     @staticmethod
@@ -920,6 +1122,13 @@ class OrderService:
             await OrderService._transition(
                 session, tenant_id, order, "refunded", note="fully refunded"
             )
+
+        # Money went back, so the same derived write lowers the customer's
+        # worth — on the order's CURRENT owner, which is what keeps a refund
+        # from being charged to whoever held the order when it was paid.
+        await OrderService._recompute_lifetime_value(
+            session, tenant_id, order.customer_id
+        )
 
         await add_outbox_event(
             session,
@@ -1098,6 +1307,107 @@ class OrderService:
         await session.flush()
         return shipment
 
+    # ------------------------------------------------------ shipping edit ----
+
+    @staticmethod
+    async def update_shipping(
+        session: AsyncSession,
+        tenant_id: UUID,
+        order_id: UUID,
+        *,
+        shipping_address: dict | None = None,
+        shipping_method: str | None = None,
+        by_user_id: UUID | None = None,
+        expected_version: str | None = None,  # §17 If-Match
+    ) -> Order:
+        """Correct where/how an OPEN order ships; an address is replaced whole.
+
+        This is not a status move, so it does not go through ``_transition`` —
+        nothing here claims the parcel went anywhere. What it does claim (the
+        customer is reachable somewhere else now) is bounded by the row lock,
+        the version CAS, the audit row and the ``order.shipping_updated`` event
+        staged beside them.
+        """
+        if shipping_address is None and shipping_method is None:
+            raise ValidationError(
+                "nothing to change: pass shipping_address and/or shipping_method"
+            )
+        order = await OrderService.get(
+            session, tenant_id, order_id, with_items=False, for_update=True
+        )
+        # §17: fast-fail a stale If-Match before writing the audit trail.
+        if expected_version is not None:
+            require_version(expected_version, order.version)
+        if order.status not in _SHIPPING_EDITABLE_STATUSES:
+            raise ConflictError(
+                f"cannot change the shipping on a {order.status} order — it has "
+                "already left; a new parcel is a new shipment record"
+            )
+
+        before = {
+            "shipping_address": order.shipping_address,
+            "shipping_method": (order.extra or {}).get("shipping_method"),
+        }
+        values: dict = {}
+        if shipping_address is not None and shipping_address != order.shipping_address:
+            values["shipping_address"] = shipping_address
+        if shipping_method is not None and shipping_method != before["shipping_method"]:
+            # orders has no shipping_method column and adding one is a
+            # migration, not a side effect of a correction endpoint; `extra`
+            # is this row's own extension JSONB and already carries the
+            # warehouse id the same way.
+            values["extra"] = {
+                **(order.extra or {}),
+                "shipping_method": shipping_method,
+            }
+        if not values:
+            # A PATCH that changes nothing must claim nothing changed: no
+            # version bump, no audit row, and no outbox event saying the
+            # address moved. This route has no Idempotency-Key, so the retry-
+            # safe answer has to come from the mutation itself.
+            return order
+        # ONE statement, version in the WHERE clause: two staff correcting the
+        # same typo cannot both think they won.
+        await apply_versioned_update(session, order, expected_version, values)
+
+        await _audit_shipping(
+            session,
+            tenant_id,
+            order.id,
+            actor_user_id=by_user_id,
+            before=before,
+            after={
+                "shipping_address": order.shipping_address,
+                "shipping_method": (order.extra or {}).get("shipping_method"),
+            },
+        )
+        # The address a live order is going to is a fact downstream consumers
+        # re-print labels and route couriers from, so it goes on the bus in the
+        # same transaction as the row (§19). The previous address rides along:
+        # a consumer must be able to tell where it WAS going from where it is
+        # going without replaying the whole stream.
+        await add_outbox_event(
+            session,
+            aggregate_type="order",
+            aggregate_id=order.id,
+            event_type="order.shipping_updated",
+            tenant_id=tenant_id,
+            payload={
+                "order_id": str(order.id),
+                "number": order.number,
+                "status": order.status,
+                "shipping_address": order.shipping_address,
+                "previous_shipping_address": before["shipping_address"],
+                "shipping_method": (order.extra or {}).get("shipping_method"),
+                "changed_by_user_id": (
+                    str(by_user_id) if by_user_id is not None else None
+                ),
+            },
+            # §153: the order row's real post-mutation version — never a literal.
+            aggregate_version=order.version,
+        )
+        return order
+
     # -------------------------------------------------------- helpers ----
 
     @staticmethod
@@ -1145,6 +1455,65 @@ class OrderService:
         order.process_state = new_state
         await session.flush()
         return order
+
+    @staticmethod
+    async def _recompute_lifetime_value(
+        session: AsyncSession, tenant_id: UUID, customer_id: UUID
+    ) -> None:
+        """Rewrite ``customers.lifetime_value`` from the rows that earned it.
+
+        One statement, derived from the ledger rather than nudged by this
+        transaction's amount: an increment is a guess about every past write,
+        and it goes stale the moment an order changes hands (the identity
+        merge's ``UPDATE orders SET customer_id``), so a customer would keep
+        carrying money that now belongs to somebody else. ``GREATEST(…, 0)`` is
+        ``money.lifetime_value``'s floor spelled in SQL — the same rule, because
+        the arithmetic happens here and not in Python.
+
+        Raw SQL for the same reason as ``_audit_shipping``: importing
+        ``customers.models`` from ``orders`` is a module-boundary edge the
+        ratchet has no room for, and the status vocabulary stays in
+        ``orders.money`` (§47).
+        """
+        collected_binds = ", ".join(
+            f":collected_{i}" for i in range(len(COLLECTED_PAYMENT_STATUSES))
+        )
+        params: dict[str, object] = {
+            "t": tenant_id,
+            "cid": customer_id,
+            # A REJECTED refund asserts no money went back; every other state
+            # (pending / approved / processed) is money the merchant has given
+            # up — same rule as `_settled_and_refunded`.
+            "rejected": "rejected",
+        }
+        params.update(
+            {
+                f"collected_{i}": status
+                for i, status in enumerate(COLLECTED_PAYMENT_STATUSES)
+            }
+        )
+        await session.execute(
+            text(
+                "UPDATE customers AS c "
+                "SET lifetime_value = GREATEST("
+                "  COALESCE((SELECT SUM(p.amount) FROM order_payments p "
+                "            JOIN orders o ON o.id = p.order_id "
+                "            WHERE o.customer_id = c.id "
+                "              AND o.tenant_id = :t AND p.tenant_id = :t "
+                f"              AND p.status IN ({collected_binds})), 0) "
+                " - COALESCE((SELECT SUM(r.amount) FROM refunds r "
+                "            JOIN order_payments p ON p.id = r.payment_id "
+                "            JOIN orders o ON o.id = p.order_id "
+                "            WHERE o.customer_id = c.id "
+                "              AND o.tenant_id = :t AND p.tenant_id = :t "
+                "              AND r.tenant_id = :t AND r.status <> :rejected"
+                "), 0) "
+                ", 0), "
+                "    updated_at = now() "
+                "WHERE c.tenant_id = :t AND c.id = :cid"
+            ),
+            params,
+        )
 
     async def _settled_and_refunded(
         session: AsyncSession, tenant_id: UUID, order: Order

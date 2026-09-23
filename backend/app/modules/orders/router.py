@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Query, Response
@@ -11,7 +12,7 @@ from pydantic import BaseModel, Field
 from app.core.idempotency import IfMatch, apply_etag  # §17
 from app.core.pagination import decode_cursor, page_slice
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
-from app.modules.orders.models import Shipment
+from app.modules.orders.models import OrderPayment, OrderStatusHistory, Shipment
 from app.modules.orders.returns import ReturnsService
 from app.modules.orders.service import OrderService
 
@@ -33,6 +34,11 @@ async def list_orders(
     ctx: TenantCtxDep,
     status: str | None = None,
     customer_id: uuid.UUID | None = None,
+    # M8: the three things staff actually search orders by. Each narrows the
+    # tenant-scoped page the endpoint already returns — never widens it.
+    number: str | None = Query(default=None, max_length=63),
+    created_from: datetime | None = None,
+    created_to: datetime | None = None,
     cursor: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
 ):
@@ -42,6 +48,9 @@ async def list_orders(
         ctx.tenant_id,
         status=status,
         customer_id=customer_id,
+        number=number,
+        created_from=created_from,
+        created_to=created_to,
         limit=limit + 1,
         before_created_at=before_created_at,
         before_id=before_id,
@@ -69,6 +78,10 @@ async def list_orders(
 async def get_order(ctx: TenantCtxDep, order_id: uuid.UUID, response: Response):
     order = await OrderService.get(ctx.session, ctx.tenant_id, order_id)
     items = getattr(order, "items", [])
+    # A refund is read from the ledger, never from `status`: the two axes are
+    # reported side by side so a screen can say "completed, 25 of it given back"
+    # without the money overwriting where the parcel is.
+    position = await OrderService.refund_position(ctx.session, ctx.tenant_id, order_id)
     # §17: advertise the CAS token the status route's If-Match expects.
     apply_etag(response, order.version)
     return {
@@ -78,6 +91,9 @@ async def get_order(ctx: TenantCtxDep, order_id: uuid.UUID, response: Response):
         "version": order.version,
         "grand_total": str(order.grand_total),
         "currency": order.currency,
+        "refund_state": position["refund_state"],
+        "refunded_total": str(position["refunded"]),
+        "net_collected": str(position["net_collected"]),
         "items": [
             {
                 "id": str(item.id),
@@ -146,6 +162,50 @@ class PaymentCreateRequest(BaseModel):
 class RefundCreateRequest(BaseModel):
     amount: Decimal = Field(gt=0)
     reason: str | None = Field(default=None, max_length=512)
+
+
+def _payment_out(payment: OrderPayment) -> dict:
+    return {
+        "id": str(payment.id),
+        "order_id": str(payment.order_id),
+        "method": payment.method,
+        "status": payment.status,
+        # Money leaves as a string of the Decimal it is stored as (§47).
+        "amount": str(payment.amount),
+        "currency": payment.currency,
+        "provider": payment.provider,
+        "provider_ref": payment.provider_ref,
+        "paid_at": payment.paid_at.isoformat() if payment.paid_at else None,
+        "created_at": payment.created_at.isoformat(),
+    }
+
+
+def _history_out(entry: OrderStatusHistory) -> dict:
+    return {
+        "id": str(entry.id),
+        "order_id": str(entry.order_id),
+        "from_status": entry.from_status,
+        "to_status": entry.to_status,
+        "changed_by_user_id": (
+            str(entry.changed_by_user_id) if entry.changed_by_user_id else None
+        ),
+        "note": entry.note,
+        "created_at": entry.created_at.isoformat(),
+    }
+
+
+@router.get("/orders/{order_id}/payments")
+async def list_order_payments(ctx: TenantCtxDep, order_id: uuid.UUID):
+    """The payments written against one order, oldest capture first."""
+    rows = await OrderService.list_payments(ctx.session, ctx.tenant_id, order_id)
+    return [_payment_out(p) for p in rows]
+
+
+@router.get("/orders/{order_id}/status-history")
+async def list_order_status_history(ctx: TenantCtxDep, order_id: uuid.UUID):
+    """The order's timeline: every transition the status path recorded."""
+    rows = await OrderService.list_status_history(ctx.session, ctx.tenant_id, order_id)
+    return [_history_out(h) for h in rows]
 
 
 @router.post("/orders/{order_id}/payments", status_code=201)
@@ -265,11 +325,46 @@ def _shipment_out(shipment: Shipment) -> dict:
     }
 
 
+class ShippingUpdateRequest(BaseModel):
+    shipping_address: dict | None = None
+    shipping_method: str | None = Field(default=None, max_length=31)
+
+
 @router.get("/orders/{order_id}/shipments")
 async def list_shipments(ctx: TenantCtxDep, order_id: uuid.UUID):
     await OrderService.get(ctx.session, ctx.tenant_id, order_id, with_items=False)
     rows = await OrderService.list_shipments(ctx.session, ctx.tenant_id, order_id)
     return [_shipment_out(s) for s in rows]
+
+
+@router.patch("/orders/{order_id}/shipping")
+async def update_shipping(
+    order_id: uuid.UUID,
+    body: ShippingUpdateRequest,
+    response: Response,
+    ctx: TenantContext = Depends(require_permission("orders:write")),
+    if_match: IfMatch = None,  # §17 — the row has a version, so it can be lost
+):
+    """Correct where an open order is going. Not a status move: the order has
+    not left, and saying so is what the audit row and the version are for."""
+    order = await OrderService.update_shipping(
+        ctx.session,
+        ctx.tenant_id,
+        order_id,
+        shipping_address=body.shipping_address,
+        shipping_method=body.shipping_method,
+        by_user_id=ctx.user.id,
+        expected_version=if_match,
+    )
+    apply_etag(response, order.version)
+    return {
+        "id": str(order.id),
+        "number": order.number,
+        "status": order.status,
+        "version": order.version,
+        "shipping_address": order.shipping_address,
+        "shipping_method": (order.extra or {}).get("shipping_method"),
+    }
 
 
 @router.post("/orders/{order_id}/shipments", status_code=201)

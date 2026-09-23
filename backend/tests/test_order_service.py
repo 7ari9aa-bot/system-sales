@@ -46,6 +46,11 @@ async def _customer_and_variant(
     product = await CatalogService.create_product(
         db, tenant_id, title="Widget", slug=f"w-{uuid.uuid4().hex[:10]}"
     )
+    # §M4: checkout sells an `active` product and nothing else, and `draft` is
+    # create_product's default. These tests are about money and stock, so the
+    # fixture publishes the goods; the draft/archived refusals are pinned in
+    # test_checkout_rules.py.
+    await CatalogService.update_product(db, tenant_id, product.id, status="active")
     variant = await CatalogService.add_variant(
         db, tenant_id, product.id, sku=f"WGT-{uuid.uuid4().hex[:6].upper()}", price="25.50"
     )
@@ -154,6 +159,8 @@ async def test_create_order_bootstraps_main_warehouse(db: AsyncSession, tenant_c
     product = await CatalogService.create_product(
         db, tenant_id, title="Gadget", slug=f"g-{uuid.uuid4().hex[:10]}"
     )
+    # Sellable (§M4): this test checks out, and only an active product sells.
+    await CatalogService.update_product(db, tenant_id, product.id, status="active")
     variant = await CatalogService.add_variant(db, tenant_id, product.id, price="5.00")
 
     # No warehouse exists yet — the service bootstraps "Main" (race-safe).

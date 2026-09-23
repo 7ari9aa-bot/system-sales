@@ -54,15 +54,15 @@ async def _order(
         f"wa-{uuid.uuid4().hex[:10]}",
         name="Buyer",
     )
+    product = await CatalogService.create_product(
+        db, tenant_id, title="F", slug=f"f-{uuid.uuid4().hex[:10]}"
+    )
+    # §M4: checkout refuses a draft product, and `draft` is the column default —
+    # this fixture's whole job is to hand back an order that got placed, so it
+    # publishes the product first.
+    await CatalogService.update_product(db, tenant_id, product.id, status="active")
     variant = await CatalogService.add_variant(
-        db,
-        tenant_id,
-        (
-            await CatalogService.create_product(
-                db, tenant_id, title="F", slug=f"f-{uuid.uuid4().hex[:10]}"
-            )
-        ).id,
-        price="40.00",
+        db, tenant_id, product.id, price="40.00"
     )
     await InventoryService.move(
         db,

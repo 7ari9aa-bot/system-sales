@@ -259,6 +259,9 @@ async def _order_with_stock(
     product = await CatalogService.create_product(
         db, tenant_id, title="Widget", slug=f"w-{uuid.uuid4().hex[:10]}"
     )
+    # §M4: `draft` is create_product's default and checkout sells only an
+    # `active` product — publish it so this money fixture reaches the till.
+    await CatalogService.update_product(db, tenant_id, product.id, status="active")
     variant = await CatalogService.add_variant(
         db,
         tenant_id,
