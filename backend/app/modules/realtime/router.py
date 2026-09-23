@@ -221,7 +221,13 @@ async def _build_cursor(cursor: str | None, streams: list[str]) -> dict[str, str
     if cursor:
         try:
             ms, seq = cursor.rsplit("-", 1)
-            next_id = f"{ms}-{int(seq) + 1}"
+            int(seq)  # reject a malformed cursor the same way as before
+            # XREAD is ALREADY exclusive of the id it is given — the client's
+            # cursor IS the last id it saw, so it is passed through unchanged.
+            # Bumping the sequence here skipped the very next entry whenever
+            # the two shared a millisecond (a burst is several events per ms),
+            # so every reconnect silently dropped events (§149).
+            next_id = cursor
             # Compare numerically on the ms component — "9" < "10" lexically.
             if int(ms) < floor_ms:
                 next_id = floor_id

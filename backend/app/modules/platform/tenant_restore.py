@@ -334,8 +334,15 @@ class TenantRestoreService:
         intentionally deleted with a deletion_reason. The UPDATEs re-filter
         on ``deleted_at IS NOT NULL``, so a row revived between validate and
         execute is a harmless no-op rather than a double restore.
+
+        The job row is read ``FOR UPDATE``: the status guard below and the
+        ``status = 'completed'`` write at the end are one decision, and
+        without the lock they are not atomic. §176 gate 17
+        (``tests/gate/test_gate_tenant_restore.py``).
         """
-        job = await TenantRestoreService._get_job(session, tenant_id, job_id)
+        job = await TenantRestoreService._get_job(
+            session, tenant_id, job_id, for_update=True
+        )
         if job.status != TenantRestoreStatus.RESTORING.value:
             raise ValidationError(
                 "restore job has not passed validation",
@@ -426,15 +433,29 @@ class TenantRestoreService:
         session: AsyncSession,
         tenant_id: uuid.UUID,
         job_id: uuid.UUID,
+        *,
+        for_update: bool = False,
     ) -> TenantRestoreJob:
-        job = (
-            await session.execute(
-                select(TenantRestoreJob).where(
-                    TenantRestoreJob.tenant_id == tenant_id,
-                    TenantRestoreJob.id == job_id,
-                )
-            )
-        ).scalar_one_or_none()
+        """Read one job of this tenant, optionally locking its row.
+
+        ``for_update`` exists for the ONE path where a guard and a state
+        transition must be atomic: ``execute_restore`` decides on
+        ``status == 'restoring'`` and later writes ``status = 'completed'``.
+        Read without the lock, two concurrent Execute calls — a double click,
+        or a client retry on a slow restore — both pass the guard, both emit
+        ``tenant.restore.completed`` and both write an audit row, and the
+        loser reports ``restored: 0, failed: N`` for work that did happen
+        (§177.6: every side effect idempotent). With the lock the second
+        caller waits, re-reads ``completed`` under READ COMMITTED, and is
+        refused.
+        """
+        stmt = select(TenantRestoreJob).where(
+            TenantRestoreJob.tenant_id == tenant_id,
+            TenantRestoreJob.id == job_id,
+        )
+        if for_update:
+            stmt = stmt.with_for_update()
+        job = (await session.execute(stmt)).scalar_one_or_none()
         if job is None:
             raise NotFoundError("tenant restore job not found")
         return job

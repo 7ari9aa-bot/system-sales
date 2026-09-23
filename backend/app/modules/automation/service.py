@@ -207,7 +207,19 @@ class WorkflowService:
         except Exception as exc:  # noqa: BLE001 — failures are recorded
             execution.status = "failed"
             execution.error = str(exc)[:500]
-            session.add(WorkflowFailure(execution_id=execution.id, error=str(exc)[:500]))
+            # `tenant_id` is NOT NULL (and this table is FORCE RLS), so omitting
+            # it made the FAILURE path itself raise IntegrityError on flush —
+            # every workflow outage became the 5xx the router docstring promises
+            # it is not, and the rollback took the execution row with it. Nothing
+            # else in the suite ever ran this branch.
+            # §176 gate 12: tests/gate/test_gate_n8n_outage.py
+            session.add(
+                WorkflowFailure(
+                    tenant_id=tenant_id,
+                    execution_id=execution.id,
+                    error=str(exc)[:500],
+                )
+            )
         execution.finished_at = datetime.now(UTC)
         await session.flush()
         return execution
