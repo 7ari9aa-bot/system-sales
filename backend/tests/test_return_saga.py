@@ -115,9 +115,15 @@ async def _order_at(
             db, tenant_id, order.id, method="cash", amount=Decimal("120.00")
         )
     for step in _PATH:
-        if _RANK[step] > _RANK[order.status]:
-            await OrderService.change_status(db, tenant_id, order.id, step)
-    return order, variant, warehouse
+        if _RANK[step] > _RANK[status]:
+            break
+        await OrderService.change_status(db, tenant_id, order.id, step)
+    # Stop the helper lying to the tests below it: a walk that ends somewhere
+    # else than asked makes every later assertion fail for a reason that has
+    # nothing to do with the return process.
+    walked = (await db.execute(select(Order).where(Order.id == order.id))).scalar_one()
+    assert walked.status == status, f"the walk ended at {walked.status}"
+    return walked, variant, warehouse
 
 
 async def _balance(db: AsyncSession, tenant_id, variant, warehouse):
@@ -410,7 +416,10 @@ async def test_returning_an_unpaid_order_releases_the_hold(db, tenant_ctx) -> No
 
     after = await _balance(db, tenant_id, variant, warehouse)
     assert (after.on_hand, after.reserved) == (10, 0)
-    assert [m.reason for m in await _movements(db, order.id)] == ["purchase"]
+    # Nothing was ever taken off the shelf, so the return must record no
+    # order-referenced movement at all. (`_movements` is order-scoped; the
+    # `purchase` intake that stocked the warehouse belongs to no order.)
+    assert [m.reason for m in await _movements(db, order.id)] == []
     reservations = list(
         (
             await db.execute(
@@ -449,9 +458,12 @@ async def test_when_the_close_step_fails_the_restock_is_undone(
 
     after = await _balance(db, tenant_id, variant, warehouse)
     assert after.on_hand == 7
+    # _movements is order-scoped, so the warehouse's inbound `purchase` row is
+    # not in this list. What must be here is the capture's `out/sale`, the
+    # restock's `in/return`, and the compensation that takes them out again.
     assert sorted(
         (m.direction, m.reason) for m in await _movements(db, order.id)
-    ) == [("in", "purchase"), ("in", "return"), ("out", "return_reversal"), ("out", "sale")]
+    ) == [("in", "return"), ("out", "return_reversal"), ("out", "sale")]
     fresh = (await db.execute(select(Order).where(Order.id == order.id))).scalar_one()
     assert fresh.status == "shipped"
     saga = (
@@ -507,7 +519,7 @@ async def test_an_unshipped_order_cannot_be_returned(db, tenant_ctx) -> None:
         await ReturnsService.process_return(db, tenant_id, order.id)
 
     assert (await _balance(db, tenant_id, variant, warehouse)).on_hand == 7
-    assert [m.reason for m in await _movements(db, order.id)] == ["purchase", "sale"]
+    assert [m.reason for m in await _movements(db, order.id)] == ["sale"]
     fresh = (await db.execute(select(Order).where(Order.id == order.id))).scalar_one()
     assert fresh.status == "processing"
     assert (
