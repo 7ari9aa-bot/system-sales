@@ -88,6 +88,11 @@ async def test_first_and_last_touch_attribution(db: AsyncSession, tenant_ctx):
     assert float(by_model["last_touch"].weight) == 1.0
     assert float(by_model["first_touch"].credited_value) == 200
     assert float(by_model["last_touch"].credited_value) == 200
+    # ...which is TWO VIEWS of one 200 order, not 400 of revenue: each model is
+    # complete on its own, so a rollup filters to one (§167).
+    for model in sorted({r.model for r in rows}):
+        same_model = [r for r in rows if r.model == model]
+        assert sum(float(r.credited_value) for r in same_model) == pytest.approx(200.0)
     await db.flush()
 
 

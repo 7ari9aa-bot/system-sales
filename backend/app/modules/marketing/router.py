@@ -9,6 +9,8 @@ services never commit.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
@@ -59,6 +61,16 @@ class LeadRequest(BaseModel):
 
 class LeadStatusRequest(BaseModel):
     status: str = Field(pattern="^(new|contacted|qualified|converted|lost)$")
+
+
+class ConversionRequest(BaseModel):
+    customer_id: uuid.UUID | None = None
+    order_id: uuid.UUID | None = None
+    type: str = Field(default="purchase", pattern="^(purchase|signup|lead|custom)$")
+    # Decimal, and the NUMERIC(14,2) shape stated explicitly: this is money.
+    value: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
+    occurred_at: datetime | None = None
+
 
 
 # --------------------------------------------------------- campaigns ----
@@ -175,12 +187,77 @@ async def update_lead_status(lead_id: uuid.UUID, ctx: WriteCtx, body: LeadStatus
     return {"id": str(lead.id), "status": lead.status}
 
 
+# ------------------------------------------------------ conversions ----
+
+
+@router.post("/marketing/conversions", status_code=201)
+async def record_conversion(ctx: WriteCtx, body: ConversionRequest):
+    """Record one conversion. A replay of the same order/type is a 409.
+
+    The database owns that guarantee (uq_conversions_tenant_order_type), so two
+    concurrent retries cannot both book the money.
+    """
+    conversion = await MarketingService.record_conversion(
+        ctx.session,
+        ctx.tenant_id,
+        customer_id=body.customer_id,
+        order_id=body.order_id,
+        type=body.type,
+        value=body.value,
+        occurred_at=body.occurred_at,
+    )
+    return {
+        "id": str(conversion.id),
+        "order_id": str(conversion.order_id) if conversion.order_id else None,
+        "customer_id": str(conversion.customer_id) if conversion.customer_id else None,
+        "type": conversion.type,
+        "value": float(conversion.value) if conversion.value is not None else None,
+        "currency": conversion.currency,
+        "occurred_at": conversion.occurred_at.isoformat() if conversion.occurred_at else None,
+    }
+
+
+@router.get("/marketing/campaigns/{campaign_id}/conversions")
+async def list_campaign_conversions(
+    campaign_id: uuid.UUID,
+    ctx: TenantCtxDep,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+):
+    """Conversions this campaign's touchpoints took part in.
+
+    ``attribution_models`` names which VIEW credits the campaign — the models are
+    alternative readings of the same order, so the rows are not additive.
+    """
+    rows = await MarketingService.list_campaign_conversions(
+        ctx.session, ctx.tenant_id, campaign_id, limit=limit, offset=offset
+    )
+    return {
+        "items": [
+            {
+                "id": str(c.id),
+                "order_id": str(c.order_id) if c.order_id else None,
+                "customer_id": str(c.customer_id) if c.customer_id else None,
+                "type": c.type,
+                "value": float(c.value) if c.value is not None else None,
+                "currency": c.currency,
+                "occurred_at": c.occurred_at.isoformat() if c.occurred_at else None,
+                "attribution_models": models,
+            }
+            for c, models in rows
+        ],
+        "count": len(rows),
+    }
+
+
 # --------------------------------------------------------- analytics ----
 
 
 @analytics_router.get("/summary")
 async def analytics_summary(ctx: TenantCtxDep, days: int = 30):
     return {
+        # Money for the window comes from the canonical read model: gross and net
+        # are separate keys here, never one figure called "revenue".
         "orders_summary": await analytics.orders_summary(ctx.session, ctx.tenant_id, days=days),
         "revenue_by_source": await analytics.revenue_by_source(
             ctx.session, ctx.tenant_id, days=days
@@ -188,20 +265,40 @@ async def analytics_summary(ctx: TenantCtxDep, days: int = 30):
         "revenue_by_campaign": await analytics.revenue_by_campaign(
             ctx.session, ctx.tenant_id, days=days
         ),
-        "campaign_roas": await analytics.campaign_roas(ctx.session, ctx.tenant_id, days=days),
+        # Named for its denominator: campaigns.budget is a PLAN, and this schema
+        # records no burned spend, so there is no return-on-spend figure to give.
+        "campaign_budget_roas": await analytics.campaign_budget_roas(
+            ctx.session, ctx.tenant_id, days=days
+        ),
     }
 
 
+
 @analytics_router.get("/daily-orders")
-async def analytics_daily_orders(ctx: TenantCtxDep, days: int = 30):
-    return await analytics.daily_orders(ctx.session, ctx.tenant_id, days=days)
+async def analytics_daily_orders(
+    ctx: TenantCtxDep,
+    days: int = 30,
+    timezone: str | None = Query(
+        default=None,
+        description=(
+            "IANA zone the merchant counts days in — the day label is local to "
+            "it. Defaults to the deployment's ANALYTICS_TIMEZONE (UTC)."
+        ),
+    ),
+):
+    """Daily buckets on the MERCHANT's day, with gross/net money named apart."""
+    return await analytics.daily_orders(
+        ctx.session, ctx.tenant_id, days=days, timezone=timezone
+    )
 
 
 @analytics_router.get("/dashboard")
-async def dashboard(ctx: TenantCtxDep, days: int = 14):
+async def dashboard(ctx: TenantCtxDep, days: int = 14, timezone: str | None = None):
     """One-call aggregate powering the dashboard home screen."""
     summary = await analytics.dashboard_summary(ctx.session, ctx.tenant_id)
-    summary["daily_orders"] = await analytics.daily_orders(ctx.session, ctx.tenant_id, days=days)
+    summary["daily_orders"] = await analytics.daily_orders(
+        ctx.session, ctx.tenant_id, days=days, timezone=timezone
+    )
     summary["revenue_by_source"] = await analytics.revenue_by_source(ctx.session, ctx.tenant_id)
     return summary
 
@@ -359,6 +456,9 @@ async def get_attribution(
         )
         return {
             "conversion_id": str(conversion_id),
+            # Two models crediting one conversion are two readings of the same
+            # money — a consumer must pick one, never add these up.
+            "views_are_alternative": True,
             "touchpoints": [
                 {
                     "touchpoint_id": str(r.touchpoint_id),

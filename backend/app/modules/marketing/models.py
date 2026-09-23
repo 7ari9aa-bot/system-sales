@@ -175,6 +175,14 @@ class Conversion(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
 
     __table_args__ = (
         Index("ix_conversions_tenant_customer", "tenant_id", "customer_id"),
+        # M5: an order converts once per conversion type. A replayed order event or
+        # a retried webhook must not book the same money twice — and the guard has
+        # to live here, because a SELECT-then-INSERT check races. ``order_id``
+        # NULL rows stay unlimited: Postgres treats NULLs as distinct, so
+        # anonymous (non-order) conversions are unaffected.
+        UniqueConstraint(
+            "tenant_id", "order_id", "type", name="uq_conversions_tenant_order_type"
+        ),
     )
 
 
@@ -199,4 +207,14 @@ class Attribution(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Ba
 
     __table_args__ = (
         Index("ix_attributions_tenant_conversion", "tenant_id", "conversion_id"),
+        # One credit row per (conversion, model, touchpoint). Recomputing a model
+        # must not stack a second full credit on the same touchpoint — that is the
+        # difference between "two views of the money" and "twice the money".
+        UniqueConstraint(
+            "tenant_id",
+            "conversion_id",
+            "model",
+            "touchpoint_id",
+            name="uq_attributions_credit",
+        ),
     )

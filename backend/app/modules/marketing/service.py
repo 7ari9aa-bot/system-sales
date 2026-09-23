@@ -4,10 +4,15 @@ attribution, leads.
 Rules owned here:
 - Enum-like values (campaign provider, conversion type, lead status) are
   validated in the service, never at the DB.
-- ``record_conversion`` runs first/last-touch attribution: every conversion is
-  credited to both the earliest and the latest touchpoint of its customer that
-  happened before the conversion (weight 1.0 each, credited_value = value).
-  A conversion with no touchpoints stands alone.
+- ``record_conversion`` is deduped by the database on
+  ``(tenant_id, order_id, type)``: an order converts once per type. A replayed
+  event raises ``ConflictError`` (a 409 at the edge); pass ``idempotent=True`` to
+  get the already-recorded conversion back instead.
+- ``_attribute`` writes first-touch AND last-touch, each crediting the full
+  conversion value. Those are two VIEWS of one order, not twice its worth: every
+  money rollup filters on a single model (analytics quotes ``last_touch``), and
+  ``AttributionService.attribution_report`` is the only sanctioned way to present
+  more than one model.
 - Touchpoints get a client-side ``created_at`` on insert: ``now()`` as a
   server default is transaction-scoped in Postgres, so touchpoints captured in
   the same transaction (backfills, lead forms) would otherwise tie and make
@@ -19,12 +24,14 @@ Rules owned here:
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import select, tuple_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import NotFoundError, ValidationError
+from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.modules.marketing.models import Attribution, Campaign, Conversion, Lead, Touchpoint
 
 _ALLOWED_PROVIDERS = {"facebook", "google", "tiktok", "snapchat", "manual"}
@@ -158,10 +165,18 @@ class MarketingService:
         customer_id: UUID | None = None,
         order_id: UUID | None = None,
         type: str = "purchase",  # noqa: A002 - API parity with the model column
-        value: float | None = None,
+        value: Decimal | float | None = None,
         currency: str | None = None,
         occurred_at: datetime | None = None,
+        idempotent: bool = False,
     ) -> Conversion:
+        """Record one conversion; the DB decides whether it is a new one.
+
+        ``(tenant_id, order_id, type)`` is unique, so a replayed order event
+        cannot double-count. Default is a refusal (``ConflictError`` -> 409);
+        a caller that retries on purpose passes ``idempotent=True`` and gets the
+        row that already exists.
+        """
         if type not in _ALLOWED_CONVERSION_TYPES:
             raise ValidationError(
                 f"type must be one of {sorted(_ALLOWED_CONVERSION_TYPES)}",
@@ -172,6 +187,13 @@ class MarketingService:
         # a conversion recorded against its orders is in that currency.
         from app.core.tenancy import resolve_tenant_currency
 
+        if order_id is not None and idempotent:
+            existing = await MarketingService._find_conversion(
+                session, tenant_id, order_id=order_id, type=type
+            )
+            if existing is not None:
+                return existing
+
         conversion = Conversion(
             tenant_id=tenant_id,
             customer_id=customer_id,
@@ -181,10 +203,105 @@ class MarketingService:
             currency=(currency or await resolve_tenant_currency(session, tenant_id)).upper(),
             occurred_at=occurred_at or _now(),
         )
-        session.add(conversion)
-        await session.flush()
+        try:
+            async with session.begin_nested():
+                session.add(conversion)
+                await session.flush()
+        except IntegrityError:
+            # The unique key on (tenant, order, type) fired: either a replay this
+            # caller should have marked idempotent, or a genuine double-count.
+            existing = (
+                await MarketingService._find_conversion(
+                    session, tenant_id, order_id=order_id, type=type
+                )
+                if order_id is not None
+                else None
+            )
+            if existing is not None and idempotent:
+                return existing
+            raise ConflictError(
+                f"conversion already recorded for order {order_id} ({type})",
+                details={"order_id": str(order_id), "type": type},
+            ) from None
         await MarketingService._attribute(session, tenant_id, conversion)
         return conversion
+
+    @staticmethod
+    async def _find_conversion(
+        session: AsyncSession, tenant_id: UUID, *, order_id: UUID, type: str
+    ) -> Conversion | None:
+        return (
+            await session.execute(
+                select(Conversion).where(
+                    Conversion.tenant_id == tenant_id,
+                    Conversion.order_id == order_id,
+                    Conversion.type == type,
+                )
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
+    async def list_campaign_conversions(
+        session: AsyncSession,
+        tenant_id: UUID,
+        campaign_id: UUID,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[tuple[Conversion, list[str]]]:
+        """Conversions this campaign touched, with the models that credit it.
+
+        Reachability only — a campaign is credited through its touchpoints, so
+        the walk is conversion -> attribution -> touchpoint -> campaign.
+        ``attribution_models`` names WHICH view credits it, because the models
+        are alternative views and listing them together is not a sum.
+        """
+        await MarketingService.get_campaign(session, tenant_id, campaign_id)
+
+        conversions = list(
+            (
+                await session.execute(
+                    select(Conversion)
+                    .join(Attribution, Attribution.conversion_id == Conversion.id)
+                    .join(Touchpoint, Touchpoint.id == Attribution.touchpoint_id)
+                    .where(
+                        Conversion.tenant_id == tenant_id,
+                        Attribution.tenant_id == tenant_id,
+                        Touchpoint.tenant_id == tenant_id,
+                        Touchpoint.campaign_id == campaign_id,
+                    )
+                    .distinct()
+                    .order_by(Conversion.created_at.desc(), Conversion.id.desc())
+                    .limit(limit)
+                    .offset(offset)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if not conversions:
+            return []
+
+        credit_rows = (
+            await session.execute(
+                select(Attribution.conversion_id, Attribution.model)
+                .join(Touchpoint, Touchpoint.id == Attribution.touchpoint_id)
+                .where(
+                    Attribution.tenant_id == tenant_id,
+                    Touchpoint.tenant_id == tenant_id,
+                    Touchpoint.campaign_id == campaign_id,
+                    Attribution.conversion_id.in_([c.id for c in conversions]),
+                )
+                .distinct()
+            )
+        ).all()
+        models_by_conversion: dict[UUID, list[str]] = {}
+        for conversion_id, model in credit_rows:
+            models_by_conversion.setdefault(conversion_id, []).append(model)
+
+        return [
+            (c, sorted(models_by_conversion.get(c.id, []))) for c in conversions
+        ]
 
     @staticmethod
     async def _attribute(
@@ -194,8 +311,10 @@ class MarketingService:
 
         Uses the customer's touchpoints that happened before the conversion,
         ordered by created_at (earliest = first touch, latest = last touch).
-        Each gets weight 1.0 and credited_value = conversion.value. Without a
-        customer or touchpoints, no attribution rows are created.
+        Each gets weight 1.0 and credited_value = conversion.value, i.e. TWO
+        VIEWS OF THE SAME MONEY — a reader filters to one model, it never adds
+        the two. Without a customer or touchpoints, no attribution rows are
+        created.
         """
         if conversion.customer_id is None:
             return []
@@ -219,14 +338,16 @@ class MarketingService:
         if not touchpoints:
             return []
 
-        credited = float(conversion.value) if conversion.value is not None else None
+        # Decimal, not float: this is the money figure every ROAS/revenue number
+        # downstream divides by.
+        credited = None if conversion.value is None else Decimal(str(conversion.value))
         rows = [
             Attribution(
                 tenant_id=tenant_id,
                 conversion_id=conversion.id,
                 touchpoint_id=touchpoints[0].id,  # earliest
                 model="first_touch",
-                weight=1.0,
+                weight=Decimal("1"),
                 credited_value=credited,
             ),
             Attribution(
@@ -234,13 +355,14 @@ class MarketingService:
                 conversion_id=conversion.id,
                 touchpoint_id=touchpoints[-1].id,  # latest
                 model="last_touch",
-                weight=1.0,
+                weight=Decimal("1"),
                 credited_value=credited,
             ),
         ]
         session.add_all(rows)
         await session.flush()
         return rows
+
 
     # ------------------------------------------------------------ leads ----
 

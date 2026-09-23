@@ -1,22 +1,32 @@
-"""Spec §82 + §175 — Attribution service.
+"""§167 + §175 — Attribution service.
 
-Computes first-touch, last-touch, and multi-touch attribution for
-conversions, crediting touchpoints according to the selected model.
+Attribution MODELS are alternative views over the same money, not addends. A
+single conversion credited 100.00 under first_touch and 100.00 under last_touch is
+100.00 of revenue seen twice, and §167 ("METRIC DEFINITIONS") forbids a metric
+having more than one number per surface: exactly one figure in a report is
+canonical, every other model is a labelled alternative view that a consumer may
+not add to it. The multi-touch models (linear / time_decay / position_based)
+partition the value instead, and this module guarantees the partition sums to the
+conversion value EXACTLY — in Decimal, with the rounding residual placed on the
+last row so pence are neither invented nor lost.
 
 The Attribution model already exists in marketing/models.py; this service
-provides the business logic to compute and store attribution records.
+computes and stores those rows and shapes the report.
 """
 
 from __future__ import annotations
 
+import math
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import NotFoundError
+from app.core.errors import ConflictError, NotFoundError
 from app.modules.marketing.models import (
     Attribution,
     Conversion,
@@ -28,9 +38,22 @@ _ATTRIBUTION_MODELS = frozenset({
     "first_touch", "last_touch", "linear", "time_decay", "position_based",
 })
 
+#: The one model a money figure is quoted from (analytics revenue uses it too).
+CANONICAL_MODEL = "last_touch"
+
+#: Each of these credits the WHOLE value of a conversion — two of them are the
+#: same money, never twice the money.
+FULL_CREDIT_MODELS = frozenset({"first_touch", "last_touch"})
+
+#: These split the value; their shares sum to 1.
+VALUE_PARTITION_MODELS = _ATTRIBUTION_MODELS - FULL_CREDIT_MODELS
+
+_CENT = Decimal("0.01")
+_WEIGHT_SCALE = Decimal("0.0001")
+
 
 class AttributionService:
-    """Compute and store attribution for conversions (§82, §175).
+    """Compute and store attribution for conversions (§167, §175).
 
     The service is called after a conversion is recorded. It finds all
     touchpoints for the customer before the conversion, applies the
@@ -43,7 +66,7 @@ class AttributionService:
         tenant_id: uuid.UUID,
         conversion_id: uuid.UUID,
         *,
-        model: str = "last_touch",
+        model: str = CANONICAL_MODEL,
     ) -> list[Attribution]:
         if model not in _ATTRIBUTION_MODELS:
             raise ValueError(
@@ -62,16 +85,18 @@ class AttributionService:
             raise NotFoundError("conversion not found")
 
         # Get all touchpoints before the conversion
-        touchpoints = (
-            await session.execute(
-                select(Touchpoint)
-                .where(
-                    Touchpoint.tenant_id == tenant_id,
-                    Touchpoint.customer_id == conversion.customer_id,
+        touchpoints = list(
+            (
+                await session.execute(
+                    select(Touchpoint)
+                    .where(
+                        Touchpoint.tenant_id == tenant_id,
+                        Touchpoint.customer_id == conversion.customer_id,
+                    )
+                    .order_by(Touchpoint.created_at.asc())
                 )
-                .order_by(Touchpoint.created_at.asc())
-            )
-        ).scalars().all()
+            ).scalars().all()
+        )
 
         if not touchpoints:
             return []
@@ -86,29 +111,52 @@ class AttributionService:
         if not touchpoints:
             return []
 
-        weights = AttributionService._compute_weights(
-            touchpoints, model
+        already_credited = set(
+            (
+                await session.execute(
+                    select(Attribution.touchpoint_id).where(
+                        Attribution.tenant_id == tenant_id,
+                        Attribution.conversion_id == conversion.id,
+                        Attribution.model == model,
+                    )
+                )
+            ).scalars().all()
+        )
+
+        weights = AttributionService.compute_weights(len(touchpoints), model)
+        credited_parts = AttributionService.split_credited_value(
+            conversion.value or Decimal("0.00"), weights
         )
 
         results: list[Attribution] = []
-        conversion_value = conversion.value or Decimal("0")
-
-        for tp, weight in zip(touchpoints, weights, strict=False):
-            credited = (conversion_value * Decimal(str(weight))).quantize(
-                Decimal("0.01")
-            )
+        for tp, weight, credited in zip(touchpoints, weights, credited_parts, strict=False):
+            if tp.id in already_credited:
+                continue
+            if weight == 0 and credited == 0:
+                continue  # a view that credits nothing adds no row
             attr = Attribution(
                 tenant_id=tenant_id,
                 conversion_id=conversion.id,
                 touchpoint_id=tp.id,
                 model=model,
-                weight=weight,
+                weight=Decimal(str(weight)).quantize(_WEIGHT_SCALE),
                 credited_value=credited,
             )
             session.add(attr)
             results.append(attr)
 
-        await session.flush()
+        if not results:
+            return []
+
+        try:
+            async with session.begin_nested():
+                await session.flush()
+        except IntegrityError:
+            # Lost the (conversion, model, touchpoint) race — the other writer
+            # credited the same money, so there is nothing to add.
+            raise ConflictError(
+                f"attribution for conversion {conversion_id} under {model} is being computed"
+            ) from None
         return results
 
     @staticmethod
@@ -126,14 +174,13 @@ class AttributionService:
             await session.execute(
                 select(
                     Attribution.model,
-                    func.count(Attribution.id).label("conversions"),
-                    func.coalesce(
-                        func.sum(Attribution.credited_value), 0
-                    ).label("credited_revenue"),
+                    func.count(func.distinct(Attribution.conversion_id)).label("conversions"),
+                    func.coalesce(func.sum(Attribution.credited_value), 0).label("credited"),
                 )
                 .join(Touchpoint, Attribution.touchpoint_id == Touchpoint.id)
                 .where(
                     Attribution.tenant_id == tenant_id,
+                    Touchpoint.tenant_id == tenant_id,
                     Touchpoint.campaign_id == campaign_id,
                     Attribution.created_at >= since,
                 )
@@ -141,25 +188,83 @@ class AttributionService:
             )
         ).all()
 
+        return AttributionService.attribution_report(
+            campaign_id=campaign_id,
+            days=days,
+            model_rows=[(r.model, int(r.conversions), Decimal(str(r.credited))) for r in rows],
+        )
+
+    @staticmethod
+    def attribution_report(
+        *,
+        campaign_id: uuid.UUID,
+        days: int,
+        model_rows: Sequence[tuple[str, int, Decimal]],
+    ) -> dict:
+        """Shape per-model figures so they cannot be added together (§167).
+
+        The only unlabelled money figure is the canonical one. Everything else
+        sits under ``alternative_views`` carrying ``never_sum_with_other_views``,
+        so a rollup can quote one Revenue number without a reader having to know
+        which models exist.
+        """
+        ordered = sorted(model_rows, key=lambda row: row[0])
+        by_model = {model: (conversions, credited) for model, conversions, credited in ordered}
+        canonical = CANONICAL_MODEL if CANONICAL_MODEL in by_model else (
+            ordered[0][0] if ordered else None
+        )
+        conversions, credited = by_model.get(canonical, (0, Decimal("0.00")))
+
         return {
             "campaign_id": str(campaign_id),
             "days": days,
-            "by_model": [
+            "canonical_model": canonical,
+            "revenue": float(credited),
+            "conversions": conversions,
+            "views_are_alternative": True,
+            "alternative_views": [
                 {
-                    "model": r.model,
-                    "conversions": r.conversions,
-                    "credited_revenue": float(r.credited_revenue),
+                    "model": model,
+                    "conversions": view_conversions,
+                    "credited_revenue": float(view_credited),
+                    "credits_full_value_of_each_conversion": model in FULL_CREDIT_MODELS,
+                    "never_sum_with_other_views": True,
                 }
-                for r in rows
+                for model, view_conversions, view_credited in ordered
             ],
         }
 
     @staticmethod
-    def _compute_weights(
-        touchpoints: list, model: str
-    ) -> list[float]:
-        """Compute attribution weights for touchpoints under a model."""
-        n = len(touchpoints)
+    def split_credited_value(value: Decimal, weights: Sequence[float]) -> list[Decimal]:
+        """Partition ``value`` across ``weights`` so the parts sum to exactly it.
+
+        Float weights are only ever a share of one whole, so the money itself is
+        computed in Decimal and the rounding residual lands on the last row — the
+        alternative is a penny silently appearing or disappearing per row.
+        """
+        if not weights:
+            return []
+        amount = Decimal(str(value))
+        total = sum((Decimal(str(w)) for w in weights), Decimal("0"))
+        if total <= 0:
+            raise ValueError("attribution weights must sum above zero")
+        parts = [
+            (amount * Decimal(str(w)) / total).quantize(_CENT, rounding=ROUND_HALF_UP)
+            for w in weights[:-1]
+        ]
+        parts.append(amount - sum(parts, Decimal("0.00")))
+        return parts
+
+    @staticmethod
+    def compute_weights(count: int, model: str) -> list[float]:
+        """Attribution weights for ``count`` touchpoints under one model.
+
+        Every model returns shares summing to 1: the value is moved around, never
+        multiplied.
+        """
+        if count <= 0:
+            return []
+        n = count
 
         if model == "first_touch":
             weights = [0.0] * n
@@ -178,7 +283,6 @@ class AttributionService:
         if model == "time_decay":
             # More recent touchpoints get higher weight
             # Exponential decay: weight[i] = exp(-lambda * (n - 1 - i))
-            import math
             decay = 0.5
             raw = [math.exp(-decay * (n - 1 - i)) for i in range(n)]
             total = sum(raw)

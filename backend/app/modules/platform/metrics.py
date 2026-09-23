@@ -8,9 +8,15 @@ never disagree about what "revenue" or "AOV" means.
 The decisions this registry makes explicit — the reason it exists:
 
 * ``revenue`` is **gross captured** money and does **not** subtract refunds;
-  ``net_revenue`` is ``revenue - refunded_amount``. They are separate names so
+  ``net_revenue`` is ``revenue - refunded_amount``, FLOORED AT ZERO — a window
+  cannot have negative revenue, so whatever could not be subtracted comes out as
+  ``refund_excess`` rather than disappearing. They are separate names so
   a caller cannot pick "revenue" and silently get a refund-adjusted figure (or
   the reverse). ``refund_treatment`` states which is which on every row.
+* A ratio names its own denominator. ``roas`` is the case in point: this schema
+  records a PLANNED ``campaigns.budget`` and no burned spend at all, so the
+  figure marketing publishes is a return on the plan (``basis='planned_budget'``)
+  and ``spend_roas`` stays null until a real spend feed exists.
 * The day boundary is the **merchant's timezone**, never UTC. Bucketing by UTC
   silently shifts the merchant's calendar day (a 23:30 sale in a UTC+2 market
   lands on the *next* UTC day), so every metric declares ``timezone_rule``.
@@ -136,11 +142,20 @@ METRIC_DEFINITIONS: tuple[MetricSpec, ...] = (
     MetricSpec(
         name="net_revenue",
         definition=(
-            "Refund-adjusted revenue: revenue - refunded_amount over the same window. "
-            "This is the ONLY money metric that subtracts refunds; `revenue` is gross."
+            "Refund-adjusted revenue: revenue - refunded_amount over the same "
+            "window, FLOORED AT ZERO — a window's revenue is never negative, so "
+            "when the refunds leaving it exceed what it collected the figure is "
+            "0.00 and the un-subtractable remainder is reported as "
+            "refund_excess instead of vanishing. This is the ONLY money metric "
+            "that subtracts refunds; `revenue` is gross."
         ),
         source="order_payments, refunds",
-        filters={"revenue": "revenue", "minus": "refunded_amount"},
+        filters={
+            "revenue": "revenue",
+            "minus": "refunded_amount",
+            "floor": "zero",
+            "remainder": "refund_excess",
+        },
         timezone_rule=TZ_MERCHANT,
         currency_rule=CURRENCY_PRESENTMENT,
         refund_treatment=REFUND_SUBTRACTED,
@@ -203,14 +218,23 @@ METRIC_DEFINITIONS: tuple[MetricSpec, ...] = (
     MetricSpec(
         name="roas",
         definition=(
-            "Return on ad spend: attributed purchase value (SUM(conversions.value) for "
-            "type='purchase') divided by ad spend in the same window. Ad spend is the "
-            "sum of campaigns.budget / ad_sets.budget — this schema has no per-day "
-            "spend column, so a consumer must state which budget figure it used. "
-            "Refunds are not subtracted (ROAS is a gross acquisition ratio)."
+            "Return on a PLAN, because true ROAS is not computable in this "
+            "schema: the numerator is last-touch attributed purchase value "
+            "(attributions.credited_value for model='last_touch') and the "
+            "denominator is campaigns.budget — money PLANNED, not BURNED. No "
+            "spend feed exists, so marketing reports basis='planned_budget' and "
+            "leaves spend_roas null; burned spend can only arrive through "
+            "campaign_actual_spend(), which then flips the basis. A consumer "
+            "must say which budget figure it used. Refunds are not subtracted "
+            "(it is a gross acquisition ratio)."
         ),
-        source="conversions, touchpoints, campaigns",
-        filters={"conversion_type": "purchase", "spend_source": "campaigns.budget"},
+        source="attributions, conversions, touchpoints, campaigns",
+        filters={
+            "conversion_type": "purchase",
+            "attribution_model": "last_touch",
+            "planned_budget_source": "campaigns.budget",
+            "actual_spend_source": "none_in_schema",
+        },
         timezone_rule=TZ_MERCHANT,
         currency_rule=CURRENCY_PRESENTMENT,
         refund_treatment=REFUND_NONE,
