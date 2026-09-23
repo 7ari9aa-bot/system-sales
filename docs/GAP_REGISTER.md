@@ -238,6 +238,7 @@ by a non-editable install with a non-root USER and a HEALTHCHECK.
 | AIEvaluation | ai/models.py + ai/evaluation.py | **wired** — canary/rollback flow called from `ai/router.py:530` |
 | Prompt (§38 prompt registry) | ai/models.py:79 | dead schema — zero references outside the model |
 | ai_sessions | conversations/models.py:206 | dead schema — zero references outside the model |
+| voice STT/TTS | conversations/voice.py | **STT wired 2026-09-23 (§35)** — `transcribe_inbound_voice` (`workers/message_worker.py`) under the conversation lease, budget reserved before the provider call, transcript persisted on `attachments.transcript_text`; **TTS still dead** — `synthesize`/`OpenAITTSProvider`/`get_default_tts_provider` have no caller (auto voice reply is an open product decision). Related delivery gap: `MessageWorker._deliver_one` never passes `media_type`, so an outbound audio message would deliver as `image` |
 | Circuit breaker | core/circuit_breaker.py | zero importers |
 | ObjectStorage in ingest | core/storage.py | zero callers (provider URLs stored raw) |
 | MessageTemplate / TemplateApproval | conversations/models.py | stored, never checked at send |

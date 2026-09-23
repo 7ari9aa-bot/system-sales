@@ -29,8 +29,8 @@ Spec date: 2026-09-18. Status legend: ✅ compliant · 🟡 partial · ❌ missi
 | 27–29 | Identity resolution + merge + Customer 360 | ❌ | W2: merge candidates/events, merged_into, 360 API |
 | 30–31 | WhatsApp policy state + Template entity | 🟡 | 24h check in worker; move to domain policy + template tables → W2 |
 | 32 | Marketing consent | ❌ | W2: consent entity (purpose/channel-scoped) |
-| 33–35 | Media pipeline + Attachment + STT | 🟡 | 2026-09-23: `conversations/media.py` fetch/scan/store + `Attachment` live on the inbound path; STT service built (`conversations/voice.py`) with **zero inbound callers** → delivery wiring open (Wave 3 T5) |
-| 36 | Voice | 🟡 | 2026-09-23: `conversations/voice.py` (budget-gated transcribe/synthesize, provider Protocol) built; not yet reached from ingestion |
+| 33–35 | Media pipeline + Attachment + STT | ✅ | 2026-09-23: full inbound path closed — `conversations/media.py` queues durable audio as `pending`; `workers/message_worker.py` `transcribe_inbound_voice` (budget reserved BEFORE the provider call, §42 settle + spend booked) runs under the conversation lease before the reply; transcript persisted `attachments.transcript_text` (`a7d0f4b2c6e9`); agent context renders voice turns via `ConversationService.audio_transcripts`; 11 DB tests green on CI |
+| 36 | Voice | 🟡 | 2026-09-23: STT side done (see 33-35; failures are best-effort, never raise into the worker). Remaining, documented in GAP_REGISTER: TTS has no caller (no auto voice reply yet) and outbound delivery never passes `media_type` |
 | 37–38 | AI architecture + memory scoping | ✅ | 2026-09-23: `ai/runtime.py` context builder (instructions → §132 untrusted knowledge turn → memories as their own untrusted user turn → history → message); recall/write scoped tenant+customer with §158 status + expiry filters; ADR-036 provenance annotation |
 | 39–40 | RAG + freshness | ✅ | 2026-09-23: `ai/knowledge.py` + HNSW index (`b8c9d0e1f2a3`) |
 | 41 | AI output guardrails | ✅ | 2026-09-23: `core/guardrails.py` + `ai/guardrails.py` chain enforced inside `ai/runtime.py` before the answer is returned (allow/block/handover verdict recorded on the run) |
