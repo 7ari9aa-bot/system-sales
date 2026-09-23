@@ -9,7 +9,7 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,6 +17,7 @@ from app.modules.catalog.models import (
     Brand,
     Category,
     Product,
+    ProductImage,
     ProductPrice,
     ProductVariant,
 )
@@ -357,6 +358,60 @@ class CatalogService:
         session.add(category)
         await session.flush()
         return category
+
+    # --------------------------------------------------------------- images ----
+
+    @staticmethod
+    async def add_image(
+        session: AsyncSession,
+        tenant_id: UUID,
+        product_id: UUID,
+        *,
+        url: str,
+        alt: str | None = None,
+    ) -> ProductImage:
+        """Append one gallery image, positioned after the product's last one.
+
+        The position is derived, not supplied: two merchandisers posting in a row
+        must not both count the same slot.
+        """
+        await CatalogService.get_product(session, tenant_id, product_id)
+        highest = (
+            await session.execute(
+                select(func.max(ProductImage.position)).where(
+                    ProductImage.tenant_id == tenant_id,
+                    ProductImage.product_id == product_id,
+                )
+            )
+        ).scalar()
+        image = ProductImage(
+            tenant_id=tenant_id,
+            product_id=product_id,
+            url=url,
+            alt=alt,
+            position=0 if highest is None else highest + 1,
+        )
+        session.add(image)
+        await session.flush()
+        return image
+
+    @staticmethod
+    async def list_images(
+        session: AsyncSession, tenant_id: UUID, product_id: UUID
+    ) -> list[ProductImage]:
+        """The product's gallery in display order."""
+        await CatalogService.get_product(session, tenant_id, product_id)
+        rows = (
+            await session.execute(
+                select(ProductImage)
+                .where(
+                    ProductImage.tenant_id == tenant_id,
+                    ProductImage.product_id == product_id,
+                )
+                .order_by(ProductImage.position.asc(), ProductImage.id.asc())
+            )
+        ).scalars().all()
+        return list(rows)
 
     @staticmethod
     async def list_brands(

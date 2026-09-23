@@ -190,24 +190,25 @@ class InventoryService:
     async def list_movements(
         session: AsyncSession,
         tenant_id: UUID,
-        variant_id: UUID,
+        variant_id: UUID | None = None,
         *,
         limit: int = 50,
         offset: int = 0,
     ) -> list[InventoryMovement]:
-        """Ledger for a variant, newest first."""
-        stmt = (
-            select(InventoryMovement)
-            .where(
-                InventoryMovement.tenant_id == tenant_id,
-                InventoryMovement.variant_id == variant_id,
-            )
-            .order_by(
-                InventoryMovement.created_at.desc(), InventoryMovement.id.desc()
-            )
-            .limit(limit)
-            .offset(offset)
+        """Ledger, newest first — one variant, or the whole tenant's when None.
+
+        `None` is "no filter", not `== NULL`: the route's optional variant filter
+        arrives as None, and comparing a column to NULL matches no row, which
+        made the unfiltered ledger always empty.
+        """
+        stmt = select(InventoryMovement).where(
+            InventoryMovement.tenant_id == tenant_id
         )
+        if variant_id is not None:
+            stmt = stmt.where(InventoryMovement.variant_id == variant_id)
+        stmt = stmt.order_by(
+            InventoryMovement.created_at.desc(), InventoryMovement.id.desc()
+        ).limit(limit).offset(offset)
         return list((await session.execute(stmt)).scalars().all())
 
     # --------------------------------------------------------- transfers ----

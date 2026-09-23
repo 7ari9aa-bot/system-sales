@@ -82,6 +82,36 @@ class UpdateVariantRequest(BaseModel):
     is_active: bool | None = None
 
 
+class SetPriceRequest(BaseModel):
+    unit_price: Decimal = Field(gt=0)
+    currency: str = Field(default="EGP", pattern="^[A-Za-z]{3}$")
+    min_quantity: int = Field(default=1, ge=1)
+
+
+class CreateBrandRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+
+
+class CreateCategoryRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    parent_id: UUID | None = None
+
+
+class AddImageRequest(BaseModel):
+    url: str = Field(min_length=1, max_length=2048)
+    alt: str | None = Field(default=None, max_length=255)
+
+
+def _image_out(image) -> dict:
+    return {
+        "id": str(image.id),
+        "product_id": str(image.product_id),
+        "url": image.url,
+        "alt": image.alt,
+        "position": image.position,
+    }
+
+
 @router.get("/products")
 async def list_products(ctx: TenantCtxDep, limit: int = 100, offset: int = 0):
     products = await CatalogService.list_products(
@@ -168,6 +198,33 @@ async def add_product_variant(product_id: UUID, body: AddVariantRequest, ctx: Wr
     return _variant_out(variant)
 
 
+@router.post("/variants/{variant_id}/prices", status_code=201)
+async def set_variant_price(variant_id: UUID, body: SetPriceRequest, ctx: WriteCtx):
+    """One quantity tier for one variant (`PATCH /variants/{id}` is the base price).
+
+    The tier rows are what a wholesale price list means: same variant, different
+    price from N units up, in a named currency.
+    """
+    try:
+        row = await CatalogService.set_variant_price(
+            ctx.session,
+            ctx.tenant_id,
+            variant_id,
+            body.unit_price,
+            currency=body.currency,
+            min_quantity=body.min_quantity,
+        )
+    except ValueError as exc:
+        raise ValidationError(str(exc)) from exc
+    return {
+        "id": str(row.id),
+        "variant_id": str(row.variant_id),
+        "currency": row.currency,
+        "unit_price": str(row.unit_price),
+        "min_quantity": row.min_quantity,
+    }
+
+
 @router.patch("/variants/{variant_id}")
 async def update_variant(variant_id: UUID, body: UpdateVariantRequest, ctx: WriteCtx):
     fields = body.model_dump(exclude_unset=True)
@@ -175,6 +232,32 @@ async def update_variant(variant_id: UUID, body: UpdateVariantRequest, ctx: Writ
         ctx.session, ctx.tenant_id, variant_id, **fields
     )
     return _variant_out(variant)
+
+
+@router.post("/products/{product_id}/images", status_code=201)
+async def add_product_image(product_id: UUID, body: AddImageRequest, ctx: WriteCtx):
+    image = await CatalogService.add_image(
+        ctx.session, ctx.tenant_id, product_id, url=body.url, alt=body.alt
+    )
+    return _image_out(image)
+
+
+@router.get("/products/{product_id}/images")
+async def list_product_images(ctx: TenantCtxDep, product_id: UUID):
+    rows = await CatalogService.list_images(ctx.session, ctx.tenant_id, product_id)
+    return [_image_out(i) for i in rows]
+
+
+@router.post("/categories", status_code=201)
+async def create_category(ctx: WriteCtx, body: CreateCategoryRequest):
+    category = await CatalogService.create_category(
+        ctx.session, ctx.tenant_id, name=body.name, parent_id=body.parent_id
+    )
+    return {
+        "id": str(category.id),
+        "name": category.name,
+        "parent_id": str(category.parent_id) if category.parent_id else None,
+    }
 
 
 @router.get("/categories")
@@ -190,6 +273,12 @@ async def list_categories(ctx: TenantCtxDep, limit: int = 200, offset: int = 0):
         }
         for c in rows
     ]
+
+
+@router.post("/brands", status_code=201)
+async def create_brand(ctx: WriteCtx, body: CreateBrandRequest):
+    brand = await CatalogService.create_brand(ctx.session, ctx.tenant_id, name=body.name)
+    return {"id": str(brand.id), "name": brand.name}
 
 
 @router.get("/brands")
