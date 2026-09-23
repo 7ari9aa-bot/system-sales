@@ -237,14 +237,20 @@ def test_the_backfill_revision_sits_on_the_current_head() -> None:
 
 async def _legacy(
     db: AsyncSession, tenant_id: uuid.UUID, *, phone: str | None, email: str | None = None
-) -> Customer:
-    """Insert a row the way the OLD code did — raw, never through the service."""
+) -> uuid.UUID:
+    """Insert a row the way the OLD code did — raw, never through the service.
+
+    The id comes back rather than the instance: every migration drive expires
+    the identity map so a later SELECT sees its raw UPDATE, and reading an
+    attribute off an expired instance lazy-loads — which has no greenlet
+    outside the async driver.
+    """
     customer = Customer(
         id=uuid.uuid4(), tenant_id=tenant_id, name="Legacy", phone=phone, email=email
     )
     db.add(customer)
     await db.flush()
-    return customer
+    return customer.id
 
 
 async def _stored(db: AsyncSession, customer_id: uuid.UUID) -> tuple[str | None, dict]:
@@ -258,14 +264,14 @@ async def _stored(db: AsyncSession, customer_id: uuid.UUID) -> tuple[str | None,
 
 async def test_upgrade_rewrites_reversible_values_in_place(db: AsyncSession, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
-    phone_row = await _legacy(
+    phone_id = await _legacy(
         db, tenant_id, phone="01001234567", email="  Ali.Hassan@EXAMPLE.com "
     )
-    spaced = await _legacy(db, tenant_id, phone="+20 999 888 7766")
+    spaced_id = await _legacy(db, tenant_id, phone="+20 999 888 7766")
 
     await _drive(db, "upgrade")
 
-    assert await _stored(db, phone_row.id) == (
+    assert await _stored(db, phone_id) == (
         EGYPT,
         {
             "data_quality": {
@@ -277,7 +283,7 @@ async def test_upgrade_rewrites_reversible_values_in_place(db: AsyncSession, ten
             }
         },
     )
-    stored_spaced, _ = await _stored(db, spaced.id)
+    stored_spaced, _ = await _stored(db, spaced_id)
     assert stored_spaced == "+209998887766"
 
 
@@ -285,14 +291,18 @@ async def test_upgrade_leaves_canonical_and_unparseable_values_untouched(
     db: AsyncSession, tenant_ctx
 ):
     tenant_id = tenant_ctx.tenant_id
-    canonical = await _legacy(db, tenant_id, phone=IRAQI_MOBILE)
-    garbage = await _legacy(db, tenant_id, phone="call me maybe")
-    empty = await _legacy(db, tenant_id, phone=None)
+    canonical_id = await _legacy(db, tenant_id, phone=IRAQI_MOBILE)
+    garbage_id = await _legacy(db, tenant_id, phone="call me maybe")
+    empty_id = await _legacy(db, tenant_id, phone=None)
 
     await _drive(db, "upgrade")
 
-    for row, expected in ((canonical, IRAQI_MOBILE), (garbage, "call me maybe"), (empty, None)):
-        stored, extra = await _stored(db, row.id)
+    for row_id, expected in (
+        (canonical_id, IRAQI_MOBILE),
+        (garbage_id, "call me maybe"),
+        (empty_id, None),
+    ):
+        stored, extra = await _stored(db, row_id)
         assert stored == expected
         assert FLAG_PATH[1] not in (extra.get("data_quality") or {}), (
             "nothing was fixed, so nothing may be marked"
@@ -303,11 +313,11 @@ async def test_upgrade_marks_a_fabricated_phone_for_review_without_rewriting_it(
     db: AsyncSession, tenant_ctx
 ):
     tenant_id = tenant_ctx.tenant_id
-    row = await _legacy(db, tenant_id, phone=FABRICATED)
+    row_id = await _legacy(db, tenant_id, phone=FABRICATED)
 
     await _drive(db, "upgrade")
 
-    stored, extra = await _stored(db, row.id)
+    stored, extra = await _stored(db, row_id)
     assert stored == FABRICATED, "an irreversible corruption must never be guessed at"
     assert extra["data_quality"]["m12_contact_backfill"] == {
         "phone_status": "needs_review",
@@ -322,7 +332,7 @@ async def test_a_marked_row_is_queryable_by_its_mark(db: AsyncSession, tenant_ct
     from sqlalchemy import func
 
     tenant_id = tenant_ctx.tenant_id
-    row = await _legacy(db, tenant_id, phone=FABRICATED)
+    row_id = await _legacy(db, tenant_id, phone=FABRICATED)
     await _legacy(db, tenant_id, phone=IRAQI_MOBILE)
     await _drive(db, "upgrade")
 
@@ -334,7 +344,7 @@ async def test_a_marked_row_is_queryable_by_its_mark(db: AsyncSession, tenant_ct
             )
         )
     ).scalars().all()
-    assert marked == [row.id], "only the row the migration marked comes back"
+    assert marked == [row_id], "only the row the migration marked comes back"
 
 
 async def test_upgrade_skips_and_reports_a_collision_instead_of_writing_it(
@@ -343,16 +353,16 @@ async def test_upgrade_skips_and_reports_a_collision_instead_of_writing_it(
     """Both spellings canonicalize to one value: rewriting the second would
     violate uq_customers_tenant_phone, so neither moves and both are marked."""
     tenant_id = tenant_ctx.tenant_id
-    holder = await _legacy(db, tenant_id, phone=EGYPT)
-    mover = await _legacy(db, tenant_id, phone="00201001234567")
+    holder_id = await _legacy(db, tenant_id, phone=EGYPT)
+    mover_id = await _legacy(db, tenant_id, phone="00201001234567")
 
     await _drive(db, "upgrade")
 
-    assert (await _stored(db, holder.id))[0] == EGYPT
-    assert (await _stored(db, mover.id))[0] == "00201001234567"
-    flag = (await _stored(db, mover.id))[1]["data_quality"]["m12_contact_backfill"]
+    assert (await _stored(db, holder_id))[0] == EGYPT
+    assert (await _stored(db, mover_id))[0] == "00201001234567"
+    flag = (await _stored(db, mover_id))[1]["data_quality"]["m12_contact_backfill"]
     assert flag["phone_collision"]["canonical"] == EGYPT
-    assert flag["phone_collision"]["peer_customer_ids"] == [str(holder.id)]
+    assert flag["phone_collision"]["peer_customer_ids"] == [str(holder_id)]
 
 
 async def test_upgrade_is_idempotent(db: AsyncSession, tenant_ctx):
@@ -381,28 +391,28 @@ async def test_upgrade_is_idempotent(db: AsyncSession, tenant_ctx):
 async def test_downgrade_restores_every_value_it_changed(db: AsyncSession, tenant_ctx):
     """A data rewrite that cannot be undone is not a data migration."""
     tenant_id = tenant_ctx.tenant_id
-    fixed = await _legacy(db, tenant_id, phone="0100-555-7788", email="A@Example.com")
-    flagged = await _legacy(db, tenant_id, phone=FABRICATED)
-    mover = await _legacy(db, tenant_id, phone="01001234567")
-    holder = await _legacy(db, tenant_id, phone=EGYPT)  # the clash partner of `mover`
+    fixed_id = await _legacy(db, tenant_id, phone="0100-555-7788", email="A@Example.com")
+    flagged_id = await _legacy(db, tenant_id, phone=FABRICATED)
+    mover_id = await _legacy(db, tenant_id, phone="01001234567")
+    holder_id = await _legacy(db, tenant_id, phone=EGYPT)  # the clash partner of `mover`
 
     await _drive(db, "upgrade")
-    assert (await _stored(db, fixed.id))[0] == "+201005557788"
+    assert (await _stored(db, fixed_id))[0] == "+201005557788"
 
     await _drive(db, "downgrade")
 
-    for row, previous in (
-        (fixed, "0100-555-7788"),
-        (flagged, FABRICATED),
-        (mover, "01001234567"),
-        (holder, EGYPT),
+    for row_id, previous in (
+        (fixed_id, "0100-555-7788"),
+        (flagged_id, FABRICATED),
+        (mover_id, "01001234567"),
+        (holder_id, EGYPT),
     ):
-        stored, stored_extra = await _stored(db, row.id)
+        stored, stored_extra = await _stored(db, row_id)
         assert stored == previous
         # Downgrade removes the marks too — including the ones recording work it
         # deliberately did not do, which upgrade will put back.
-        assert stored_extra == {}, f"residue left on {row.id}"
-    assert await db.scalar(select(Customer.email).where(Customer.id == fixed.id)) == (
+        assert stored_extra == {}, f"residue left on {row_id}"
+    assert await db.scalar(select(Customer.email).where(Customer.id == fixed_id)) == (
         "A@Example.com"
     )
 
@@ -411,27 +421,27 @@ async def test_the_report_lists_every_marked_row_for_the_tenant(
     db: AsyncSession, tenant_ctx
 ):
     tenant_id = tenant_ctx.tenant_id
-    corrupted = await _legacy(db, tenant_id, phone=FABRICATED)
-    clash_a = await _legacy(db, tenant_id, phone=EGYPT)
-    clash_b = await _legacy(db, tenant_id, phone="201001234567")
-    clean = await _legacy(db, tenant_id, phone=IRAQI_MOBILE)
+    corrupted_id = await _legacy(db, tenant_id, phone=FABRICATED)
+    clash_a_id = await _legacy(db, tenant_id, phone=EGYPT)
+    clash_b_id = await _legacy(db, tenant_id, phone="201001234567")
+    clean_id = await _legacy(db, tenant_id, phone=IRAQI_MOBILE)
     await _drive(db, "upgrade")
 
     items = await CustomerService.contact_data_quality_report(db, tenant_id)
 
     assert {i["customer_id"] for i in items} == {
-        str(corrupted.id),
-        str(clash_a.id),
-        str(clash_b.id),
+        str(corrupted_id),
+        str(clash_a_id),
+        str(clash_b_id),
     }
     by_id = {i["customer_id"]: i for i in items}
-    assert by_id[str(corrupted.id)]["issues"] == ["phone_legacy_default_country"]
-    assert by_id[str(corrupted.id)]["suspected_phone"] == EGYPT
-    assert by_id[str(clash_b.id)]["issues"] == ["phone_canonical_collision"]
-    assert by_id[str(clash_b.id)]["canonical_phone"] == EGYPT
-    assert by_id[str(clash_b.id)]["peer_customer_ids"] == [str(clash_a.id)]
-    assert by_id[str(clash_a.id)]["phone_state"] == STATE_CANONICAL
-    assert str(clean.id) not in by_id
+    assert by_id[str(corrupted_id)]["issues"] == ["phone_legacy_default_country"]
+    assert by_id[str(corrupted_id)]["suspected_phone"] == EGYPT
+    assert by_id[str(clash_b_id)]["issues"] == ["phone_canonical_collision"]
+    assert by_id[str(clash_b_id)]["canonical_phone"] == EGYPT
+    assert by_id[str(clash_b_id)]["peer_customer_ids"] == [str(clash_a_id)]
+    assert by_id[str(clash_a_id)]["phone_state"] == STATE_CANONICAL
+    assert str(clean_id) not in by_id
 
 
 async def test_the_report_is_scoped_to_the_caller_tenant(db: AsyncSession, tenant_ctx):
@@ -488,10 +498,10 @@ async def test_the_if_match_patch_branch_stores_a_canonical_phone(
 
     tenant_id = tenant_ctx.tenant_id
     # A legacy row: stored raw, because the old code stored whatever was typed.
-    row = await _legacy(db, tenant_id, phone="0100-123-4567")
+    row_id = await _legacy(db, tenant_id, phone="0100-123-4567")
     # Read the token as a column: touching row.version after a flush would
     # lazy-load, and there is no greenlet here to do it in.
-    version = await db.scalar(select(Customer.version).where(Customer.id == row.id))
+    version = await db.scalar(select(Customer.version).where(Customer.id == row_id))
     ctx = SimpleNamespace(
         session=db,
         tenant_id=tenant_id,
@@ -500,14 +510,14 @@ async def test_the_if_match_patch_branch_stores_a_canonical_phone(
     )
 
     await update_customer(
-        row.id,
+        row_id,
         CustomerUpdate(phone="00201001234567", email=" SAMEH@Example.COM "),
         ctx,  # type: ignore[arg-type]
         Response(),
         f'"{version}"',
     )
 
-    assert await db.scalar(select(Customer.phone).where(Customer.id == row.id)) == EGYPT
-    assert await db.scalar(select(Customer.email).where(Customer.id == row.id)) == (
+    assert await db.scalar(select(Customer.phone).where(Customer.id == row_id)) == EGYPT
+    assert await db.scalar(select(Customer.email).where(Customer.id == row_id)) == (
         "sameh@example.com"
     )
