@@ -85,6 +85,26 @@ async def test_move_in_out_and_adjust(db: AsyncSession, tenant_ctx):
     await db.flush()
 
 
+async def test_list_movements_without_a_variant_is_the_tenant_ledger(
+    db: AsyncSession, tenant_ctx
+):
+    """The route's `variant_id` is an OPTIONAL filter, so the service must be
+    able to say "no filter". It compared `variant_id == NULL` instead, which
+    matches no row — the ledger endpoint returned [] on its default call.
+    """
+    tenant_id = tenant_ctx.tenant_id
+    wh = await _warehouse(db, tenant_id)
+    first = await _stocked_variant(db, tenant_id, wh.id, qty=10)
+    second = await _stocked_variant(db, tenant_id, wh.id, qty=4)
+
+    rows = await InventoryService.list_movements(db, tenant_id, None)
+    assert len(rows) == 2
+    assert {r.variant_id for r in rows} == {first.id, second.id}
+
+    scoped = await InventoryService.list_movements(db, tenant_id, first.id)
+    assert [r.variant_id for r in scoped] == [first.id]
+
+
 async def test_move_rejects_bad_input(db: AsyncSession, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     wh = await _warehouse(db, tenant_id)
