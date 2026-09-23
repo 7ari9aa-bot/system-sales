@@ -249,9 +249,11 @@ class VoiceService:
                 language=attachment.language,
             )
 
-        if attachment.transcription_status == "pending":
-            # Another worker is already transcribing — don't race it
-            return TranscriptResult(text="", language=attachment.language)
+        # NOTE: "pending" here means QUEUED by ingest, not "another worker is
+        # mid-flight" — that race is prevented one layer up (conversation lease
+        # + the ProcessedEvent inbox in the worker), so this is the normal
+        # do-the-work state. Bailing on it would leave every real voice note
+        # pending forever.
 
         # Check the attachment is audio
         mime = (attachment.mime_type or "").lower()
