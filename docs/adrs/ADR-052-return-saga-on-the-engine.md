@@ -1,14 +1,16 @@
 # ADR-052 — The goods-return process runs on the saga engine
 
 Date: 2026-09-23. Wave 4 / task W4-T2b. Evidence: `backend/tests/test_return_saga.py`
-(16 cases; the 14 DB-backed ones verified on CI Postgres), commits `e1cf231` (RED) →
-the implementation commit on `w4-t2b-return-saga`. Supersedes ADR-051 decision 2 and
-closes the item ADR-051 left open.
+(16 cases; the 14 DB-backed ones verified on CI Postgres). Commits: `e1cf231` (RED,
+CI run 35857364838 = 16 failed / 1238 passed) → `5bd4512` (implementation) →
+`394b79a` + `19c9229` (the fixture bugs CI's Postgres exposed). Supersedes ADR-051
+decision 2 and closes the item ADR-051 left open.
 
 ## Context
 
-`app/core/saga.py` (291 lines) and the migrated `sagas` table had no caller of any
-kind, and were baselined as dead in `test_no_dead_core_modules.py`. Two readings were
+`app/core/saga.py` (291 lines before this task's two fixes) and the migrated `sagas`
+table had no caller of any kind, and were baselined as dead in
+`test_no_dead_core_modules.py`. Two readings were
 on the table: retire the engine — §139 accepts "a Process Manager/Saga **or** a clear
 state machine", and ADR-051 had just delivered the state machine — or give it the one
 process that genuinely needs it.
@@ -83,6 +85,14 @@ An engine nobody runs is an engine nobody has tested. Two were wrong on first us
   `test_model_and_migration_agree_on_timestamp_timezone` caught it the moment the
   column started being written; the comparison against `created_at` would have raised
   at runtime.
+- **A paid order is not where the create call left it, and the test fixture assumed it
+  was.** `create_order` returns a `pending` row, but `add_payment` confirms a pending
+  order as part of capturing (ADR-051's saga wiring, `service.py:675`) — and because
+  SQLAlchemy's identity map hands back the same instance the caller already holds, the
+  order object had quietly moved before the fixture's first step. Its walk then asked
+  for `confirmed -> confirmed`, which no machine allows. CI Postgres was the first
+  place that ran; locally the case skips. The helper now reads the row's live status
+  and asserts at the end that it landed where it claimed.
 
 ## Deliberate limits
 
