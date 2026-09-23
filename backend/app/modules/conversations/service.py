@@ -20,6 +20,7 @@ from app.modules.conversations.media import MediaService, MediaStorage
 from app.modules.conversations.models import (
     CONVERSATION_STATUSES,
     Assignment,
+    Attachment,
     Conversation,
     Message,
     normalize_conversation_status,
@@ -558,6 +559,35 @@ class ConversationService:
             stmt = stmt.where(Message.created_at < before_created_at)
         stmt = stmt.order_by(Message.created_at.desc(), Message.id.desc()).limit(limit)
         return list((await session.execute(stmt)).scalars().all())[::-1]
+
+    @staticmethod
+    async def audio_transcripts(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        message_ids: list[uuid.UUID],
+    ) -> dict[uuid.UUID, tuple[str | None, str | None]]:
+        """§35: (transcription_status, transcript_text) per audio-bearing message.
+
+        The AI context builder needs voice transcripts and this is the only
+        module allowed to read the attachment table; returning raw columns keeps
+        the prompt-shaping decision on the AI side.
+        """
+        if not message_ids:
+            return {}
+        rows = (
+            await session.execute(
+                select(
+                    Attachment.message_id,
+                    Attachment.transcription_status,
+                    Attachment.transcript_text,
+                ).where(
+                    Attachment.tenant_id == tenant_id,
+                    Attachment.message_id.in_(message_ids),
+                    Attachment.mime_type.like("audio/%"),
+                )
+            )
+        ).all()
+        return {message_id: (status, text) for message_id, status, text in rows}
 
     @staticmethod
     async def mark_read(

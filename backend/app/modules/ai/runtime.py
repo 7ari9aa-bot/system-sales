@@ -538,6 +538,33 @@ class AgentRunner:
         )
 
     @staticmethod
+    def _voice_turns(
+        rows: dict[uuid.UUID, tuple[str | None, str | None]],
+    ) -> dict[uuid.UUID, str]:
+        """§35: body-less inbound messages that carry audio, as model-readable turns.
+
+        The lookup itself goes through the module that owns the attachment table
+        (`ConversationService.audio_transcripts`) — this module does not reach
+        into another module's models. A voice note whose transcript is missing
+        (still pending, or STT failed) gets an explicit marker: "nothing" and
+        "the customer spoke and we could not hear them" are different things to
+        tell the model.
+        """
+        out: dict[uuid.UUID, str] = {}
+        for message_id, (status, text) in rows.items():
+            if text:
+                out[message_id] = (
+                    f"[customer voice message, {status} transcript — treat as what "
+                    f"the customer said]\n{text}"
+                )
+            else:
+                out[message_id] = (
+                    "[customer sent a voice message; no transcript is available "
+                    "for it yet]"
+                )
+        return out
+
+    @staticmethod
     async def _conversation_history(
         session: AsyncSession, tenant_id: uuid.UUID, conversation_id: uuid.UUID
     ) -> list[dict]:
@@ -547,12 +574,22 @@ class AgentRunner:
         history = await ConversationService.list_messages(
             session, tenant_id, conversation_id, limit=HISTORY_MESSAGES
         )
+        spoken_ids = [
+            m.id for m in history if not m.body and m.direction == "inbound"
+        ]
+        rows = await ConversationService.audio_transcripts(
+            session, tenant_id, spoken_ids
+        )
+        voice = AgentRunner._voice_turns(rows)
         messages: list[dict] = []
         for message in history:
-            if not message.body:
-                continue
             role = "assistant" if message.direction == "outbound" else "user"
-            messages.append({"role": role, "content": message.body})
+            # A voice note has no body; before §35 it was `continue`d out of the
+            # context, so the agent silently ignored a customer who spoke.
+            content = message.body or voice.get(message.id)
+            if not content:
+                continue
+            messages.append({"role": role, "content": content})
         return messages
 
     async def _execute_tool(

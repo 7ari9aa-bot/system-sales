@@ -18,7 +18,7 @@ This module provides the VoiceService with:
 Design rules (§36):
 - STT is ALWAYS behind the AI budget gate — transcription costs money.
 - The transcript is stored on the Attachment row (transcription_status +
-  transcript_id), not as a separate message — it is metadata on the voice
+  transcript_text), not as a separate message — it is metadata on the voice
   message, not a message itself.
 - TTS output is an Attachment on the OUTBOUND message, linked to the text
   message that generated it.
@@ -36,6 +36,7 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Protocol
 
 from sqlalchemy import select
@@ -45,6 +46,9 @@ from app.core.errors import NotFoundError, ValidationError
 from app.modules.conversations.models import Attachment
 
 logger = logging.getLogger(__name__)
+
+# A voice note with no reported duration is estimated at a minute.
+_STT_FALLBACK_SECONDS = 60
 
 
 class STTProvider(Protocol):
@@ -240,12 +244,8 @@ class VoiceService:
 
         # Idempotent: already transcribed
         if attachment.transcription_status == "completed":
-            # The transcript text is stored on the attachment's message
-            # body (as a prefix) or in a dedicated column. For now, we
-            # return a placeholder — the transcript_id links to the
-            # actual transcript row if one exists.
             return TranscriptResult(
-                text=getattr(attachment, "transcript_text", "") or "",
+                text=attachment.transcript_text or "",
                 language=attachment.language,
             )
 
@@ -294,11 +294,7 @@ class VoiceService:
 
             attachment.transcription_status = "completed"
             attachment.language = language or VoiceService.DEFAULT_LANGUAGE
-            # Store the transcript text on the attachment for retrieval
-            # (the transcript_id would link to a dedicated row in a
-            # future transcripts table)
-            if hasattr(attachment, "transcript_text"):
-                attachment.transcript_text = text
+            attachment.transcript_text = text
             await session.flush()
 
             return TranscriptResult(
@@ -362,10 +358,25 @@ class VoiceService:
             return None
 
 
+def stt_cost_estimate(attachment: Attachment) -> Decimal:
+    """§36: what this transcription is expected to cost, for the budget gate.
+
+    Whisper is billed per minute of audio, so the attachment's own duration is
+    the estimate. A missing duration is charged as a full minute — over-estimating
+    holds budget, which is the safe direction for a cap.
+    """
+    from app.core.config import get_settings
+
+    rate = Decimal(str(get_settings().ai_stt_cost_per_minute))
+    seconds = attachment.duration or _STT_FALLBACK_SECONDS
+    return (rate * Decimal(seconds) / Decimal(60)).quantize(Decimal("0.0001"))
+
+
 __all__ = [
     "STTProvider",
     "TTSProvider",
     "TranscriptResult",
     "SynthesisResult",
     "VoiceService",
+    "stt_cost_estimate",
 ]

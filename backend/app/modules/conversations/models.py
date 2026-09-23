@@ -294,6 +294,10 @@ class Attachment(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Bas
     # audio: spec §35
     transcription_status: Mapped[str | None] = mapped_column(String(15))
     transcript_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    # §35: the transcript text itself. `transcript_id` is a pointer for a future
+    # transcripts table; until that table exists the text has to live here or
+    # the transcription is paid for and lost.
+    transcript_text: Mapped[str | None] = mapped_column(Text)
     language: Mapped[str | None] = mapped_column(String(15))
 
     __table_args__ = (

@@ -40,20 +40,28 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy import update as sa_update
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import SessionLocal, bind_tenant
-from app.core.errors import ValidationError
+from app.core.errors import RateLimitExceededError, ValidationError
 from app.core.events.bus import Event
 from app.core.events.schemas import EventEnvelope, deserialize_event
 from app.core.lease import ConversationBusy, conversation_lease
+from app.modules.ai.gateway import (
+    AIBudgetFallbackRequested,
+    reserve_budget,
+    settle_reservation,
+)
+from app.modules.ai.usage import record_usage
 from app.modules.conversations.gateway.base import (
     ChannelAdapter,
     OutboundMessage,
     ProviderCredentials,
 )
 from app.modules.conversations.gateway.registry import get_adapter
-from app.modules.conversations.models import Conversation, Message
+from app.modules.conversations.models import Attachment, Conversation, Message
 from app.modules.conversations.policy import MessagingPolicyService
+from app.modules.conversations.voice import STTProvider, VoiceService, stt_cost_estimate
 from app.modules.customers.models import CustomerIdentity
 from app.modules.platform.models import DeliveryAttempt, Integration, ProcessedEvent
 from app.workers.base import (
@@ -67,6 +75,73 @@ logger = logging.getLogger(__name__)
 
 _UNKNOWN_REASON = "unknown delivery state — requires reconciliation"
 _STUCK_SENDING_REASON = "stuck in sending — requires reconciliation"
+
+
+async def transcribe_inbound_voice(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    message_id: uuid.UUID,
+    stt_provider: STTProvider | None = None,
+    language: str | None = None,
+) -> str | None:
+    """§35: transcribe the pending audio attachment on an inbound message.
+
+    Lives in the worker layer, not in `conversations`: it is the one place that
+    has to see both the attachment table and the AI budget gate, and
+    `conversations -> ai` closes a module import cycle (§36 rule set below is
+    otherwise unchanged).
+
+    - Nothing pending (text message, image, already transcribed) returns without
+      touching the provider — the idempotency is the status column.
+    - Budget is RESERVED before the call, never checked-and-hoped: transcription
+      costs money, and a preflight lets concurrent voice notes overshoot the cap.
+    - A block is not an error. The customer's note is already stored and stays
+      delivered; raising here would retry and dead-letter a healthy ingest.
+    """
+    attachment = (
+        await session.execute(
+            select(Attachment).where(
+                Attachment.tenant_id == tenant_id,
+                Attachment.message_id == message_id,
+                Attachment.transcription_status == "pending",
+            )
+        )
+    ).scalar_one_or_none()
+    if attachment is None:
+        return None
+
+    cost = stt_cost_estimate(attachment)
+    try:
+        reservation_id = await reserve_budget(session, tenant_id, estimated_cost=cost)
+    except (RateLimitExceededError, AIBudgetFallbackRequested) as exc:
+        attachment.transcription_status = "failed"
+        await session.flush()
+        logger.warning(
+            "voice.stt_budget_blocked tenant=%s attachment=%s reason=%s",
+            tenant_id,
+            attachment.id,
+            exc,
+        )
+        return None
+
+    try:
+        result = await VoiceService.transcribe(
+            session,
+            tenant_id,
+            attachment_id=attachment.id,
+            stt_provider=stt_provider,
+            language=language,
+        )
+    finally:
+        await settle_reservation(session, reservation_id)
+
+    if result.text:
+        # §42: booked whether or not the provider answered, so the cap sees the
+        # money a failed call may still have consumed.
+        await record_usage(session, tenant_id, cost=float(cost))
+        return result.text
+    return None
 
 
 @dataclass(slots=True)
@@ -139,6 +214,13 @@ class MessageWorker(StreamWorker):
                         return
                     # §126: one state-mutating processor per conversation.
                     async with conversation_lease(session, uuid.UUID(conversation_id)):
+                        # §35: transcribe the voice note BEFORE answering it. The
+                        # reply is built from conversation history, so a
+                        # transcript that lands after the answer is one nobody
+                        # read — and the customer spoke into silence.
+                        await transcribe_inbound_voice(
+                            session, tenant_id, message_id=envelope.aggregate_id
+                        )
                         await maybe_auto_reply(
                             session, tenant_id, uuid.UUID(conversation_id)
                         )

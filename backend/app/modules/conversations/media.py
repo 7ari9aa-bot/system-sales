@@ -303,6 +303,11 @@ class MediaService:
             # "scanned"; the deferred transcoder moves processing to "ready".
             attachment.scan_status = "stored"
             attachment.processing_status = "pending"
+            if mime.startswith("audio/"):
+                # §35: a durable audio object IS a transcription job. This is the
+                # only thing that ever queues one — VoiceService has no other
+                # trigger, and without this a voice note is never transcribed.
+                attachment.transcription_status = "pending"
         else:
             # S3 is not configured, so the object was NOT persisted durably and
             # only the expiring provider URL remains. That contradicts §33-34

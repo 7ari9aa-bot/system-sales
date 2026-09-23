@@ -75,6 +75,11 @@ class Settings(BaseSettings):
     # without a deploy; the default preserves the previous hard-coded constant.
     ai_monthly_budget_cap_default: float = 50.0
 
+    # §36: USD per minute of audio for inbound voice transcription. Whisper is
+    # billed per minute, so this is what the budget gate reserves before the
+    # provider call. Operator-tunable for the same reason as the cap above.
+    ai_stt_cost_per_minute: float = 0.01
+
     # Circuit breaker (§47) applied to every external dependency — AI provider,
     # WhatsApp/Telegram, object storage. Tunable so an operator can loosen the
     # threshold without a deploy; the defaults match CircuitBreaker's own.
