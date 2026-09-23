@@ -10,11 +10,15 @@ this module is for the platform-wide canonical numbers.
 Money never leaves here unlabelled: gross and net are different keys, and the
 currency is read from the tenant (§47). Daily buckets are taken in the merchant's
 zone, not at UTC midnight (gap M10).
+
+``GET /overview`` is the screen-shaped aggregate: it composes the same readers
+into one payload for the analytics page — no route here owns a query, and no
+figure is computed twice.
 """
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Annotated
 
@@ -34,10 +38,48 @@ SettingsCtx = Annotated[TenantContext, Depends(require_permission("settings:writ
 # amount is denominated in.
 _MONEY_METRICS = frozenset({"revenue", "net_revenue", "refunded_amount", "aov"})
 
+# Every key a read model can return whose value is money. Named per family so
+# a gross figure cannot be serialised under a net name, and — the reason this is
+# one set rather than a set per route — the averages are money too. FastAPI's
+# default encoder resolves a bare ``Decimal`` by casting it to ``float``, so
+# "leave it as a Decimal and the framework will cope" is how a cent goes
+# missing (ADR-001): every one of these becomes a string on the wire.
+_MONEY_FIELDS = frozenset(
+    {
+        "gross_revenue",
+        "net_revenue",
+        "refunded_amount",
+        "refund_excess",
+        "gross_aov",
+        "net_aov",
+    }
+)
+
 
 def _as_json(value: Decimal | float | int) -> str | int:
     """Money stays a string on the wire — a float would round-trip a cent away."""
     return value if isinstance(value, int) else str(value)
+
+
+def _money_json(row: dict) -> dict:
+    """Stringify the money fields of one read model, leave the rest alone."""
+    return {
+        key: (str(value) if key in _MONEY_FIELDS and isinstance(value, Decimal) else value)
+        for key, value in row.items()
+    }
+
+
+def _window(
+    days: int, since: datetime | None, until: datetime
+) -> tuple[datetime, datetime]:
+    """The one ``[since, until)`` every figure in a payload shares.
+
+    ``since`` wins when given; otherwise the trailing ``days``. A summary and a
+    daily series computed on two different windows cannot be reconciled by
+    whoever reads them side by side, so this resolves once and callers reuse it.
+    """
+    start = until - timedelta(days=days) if since is None else since
+    return start, until
 
 
 @router.get("/metrics/definitions")
@@ -109,11 +151,7 @@ async def revenue_summary(
     summary = await analytics_service.revenue_summary(
         ctx.session, ctx.tenant_id, since=since, until=until, timezone=timezone
     )
-    money = {"gross_revenue", "net_revenue", "refunded_amount", "refund_excess"}
-    return {
-        key: (str(value) if key in money and isinstance(value, Decimal) else value)
-        for key, value in summary.items()
-    }
+    return _money_json(summary)
 
 
 @router.get("/daily-series")
@@ -171,5 +209,83 @@ async def stock_health(
         ctx.session, ctx.tenant_id, low_stock_threshold=low_stock_threshold
     )
     return health
+
+
+@router.get("/overview")
+async def analytics_overview(
+    ctx: TenantCtxDep,
+    days: int = Query(
+        default=30,
+        ge=1,
+        le=365,
+        description="Trailing window in days; ignored when `since` is given",
+    ),
+    since: datetime | None = Query(
+        default=None, description="ISO 8601 start (inclusive). Overrides `days`."
+    ),
+    until: datetime = Query(
+        default_factory=lambda: datetime.now(UTC),
+        description="ISO 8601 end (exclusive)",
+    ),
+    timezone: str | None = Query(
+        default=None,
+        description=(
+            "IANA zone the merchant counts days in — the day label is local to "
+            "it. Defaults to the deployment's ANALYTICS_TIMEZONE."
+        ),
+    ),
+    low_stock_threshold: int = Query(
+        default=analytics_service.LOW_STOCK_THRESHOLD,
+        ge=0,
+        description="Available units at which a variant counts as low",
+    ),
+) -> dict:
+    """One call for the analytics screen: money, orders, AOV, days, stock.
+
+    The screen used to fetch a path this server never published, so every visit
+    landed on its error state — and ``as any`` on the response kept the type
+    checker from noticing. What it returns is a composition, not a computation:
+    every figure comes from a reader in ``analytics/service.py``, the module
+    that owns metric SQL since Wave-4 M11. This route adds no query of its own.
+
+    Shape honesty, in the words the registry uses (§167/ADR-053):
+
+    * ``gross_revenue`` is collected money, ``net_revenue`` is what survives the
+      refunds that LEFT in the same window, and ``refund_excess`` is the part
+      that could not be subtracted because net is floored at zero. No key is
+      ever named plain ``revenue``.
+    * ``gross_aov``/``net_aov`` say which numerator they used.
+    * ``daily_series`` buckets on the MERCHANT's day (gap M10) over the same
+      window as the summary, so the bars add up to the cards beside them.
+    * ``currency`` is the tenant's (§47) and ``timezone`` is the zone the buckets
+      were labelled in; money crosses as strings, counts as integers.
+    * ``stock`` separates an empty shelf from a nearly-empty one (gap M7).
+
+    There is deliberately no top-products key: no canonical reader computes one,
+    and an invented field is how a screen ends up trusting a number that does
+    not exist.
+    """
+    zone = resolve_timezone(timezone)  # fail closed before the first query
+    start, end = _window(days, since, until)
+    summary = _money_json(
+        await analytics_service.revenue_summary(
+            ctx.session, ctx.tenant_id, since=start, until=end, timezone=zone
+        )
+    )
+    series = await analytics_service.daily_revenue_series(
+        ctx.session, ctx.tenant_id, since=start, until=end, timezone=zone
+    )
+    stock = await analytics_service.stock_health(
+        ctx.session, ctx.tenant_id, low_stock_threshold=low_stock_threshold
+    )
+    summary.update(
+        {
+            "since": start.isoformat(),
+            "until": end.isoformat(),
+            "daily_series": [_money_json(row) for row in series],
+            "stock": stock,
+        }
+    )
+    return summary
 
 
