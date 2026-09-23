@@ -276,7 +276,12 @@ async def test_the_refund_endpoint_creates_exactly_one_row_per_refund(
     payment = await OrderService.add_payment(
         db, tenant_id, order.id, method="cash", amount="40.00"
     )
-    app = _build_app(store=SessionStore(db), tenant_id=tenant_id, session=db)
+    app = _build_app(
+        store=SessionStore(db),
+        tenant_id=tenant_id,
+        session=db,
+        user_id=tenant_ctx.user.id,
+    )
     url = f"/api/v1/orders/{order.id}/payments/{payment.id}/refunds"
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -311,7 +316,12 @@ async def test_a_double_submit_of_one_refund_intent_creates_one_row(
     payment = await OrderService.add_payment(
         db, tenant_id, order.id, method="cash", amount="40.00"
     )
-    app = _build_app(store=SessionStore(db), tenant_id=tenant_id, session=db)
+    app = _build_app(
+        store=SessionStore(db),
+        tenant_id=tenant_id,
+        session=db,
+        user_id=tenant_ctx.user.id,
+    )
     url = f"/api/v1/orders/{order.id}/payments/{payment.id}/refunds"
     key = f"refund-{uuid.uuid4().hex}"
     body = {"amount": "15.00", "reason": "damaged on arrival"}

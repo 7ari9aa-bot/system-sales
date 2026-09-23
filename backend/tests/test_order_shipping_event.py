@@ -182,7 +182,12 @@ async def test_the_shipping_patch_stages_exactly_one_event(
     tenant_id = tenant_ctx.tenant_id
     order = await _order(db, tenant_id, address={"city": "Cairo", "street": "Tahrir 9"})
     before_version = await _stored_version(db, order.id)
-    app = _build_app(store=SessionStore(db), tenant_id=tenant_id, session=db)
+    app = _build_app(
+        store=SessionStore(db),
+        tenant_id=tenant_id,
+        session=db,
+        user_id=tenant_ctx.user.id,
+    )
 
     response = await _patch(
         app,
@@ -232,7 +237,12 @@ async def test_the_event_rebuilds_through_the_consumer_read_half(
     """
     tenant_id = tenant_ctx.tenant_id
     order = await _order(db, tenant_id)
-    app = _build_app(store=SessionStore(db), tenant_id=tenant_id, session=db)
+    app = _build_app(
+        store=SessionStore(db),
+        tenant_id=tenant_id,
+        session=db,
+        user_id=tenant_ctx.user.id,
+    )
 
     await _patch(app, order.id, {"shipping_address": _NEW_ADDRESS})
     await db.flush()
@@ -261,7 +271,12 @@ async def test_a_second_identical_patch_stages_no_duplicate_event(
     """
     tenant_id = tenant_ctx.tenant_id
     order = await _order(db, tenant_id, address={"city": "Cairo"})
-    app = _build_app(store=SessionStore(db), tenant_id=tenant_id, session=db)
+    app = _build_app(
+        store=SessionStore(db),
+        tenant_id=tenant_id,
+        session=db,
+        user_id=tenant_ctx.user.id,
+    )
     body = {"shipping_address": _NEW_ADDRESS, "shipping_method": "courier"}
 
     first = await _patch(app, order.id, body)
@@ -285,7 +300,12 @@ async def test_a_real_change_after_a_no_op_still_publishes(
     """The no-op guard must not swallow the change that follows it."""
     tenant_id = tenant_ctx.tenant_id
     order = await _order(db, tenant_id, address={"city": "Cairo"})
-    app = _build_app(store=SessionStore(db), tenant_id=tenant_id, session=db)
+    app = _build_app(
+        store=SessionStore(db),
+        tenant_id=tenant_id,
+        session=db,
+        user_id=tenant_ctx.user.id,
+    )
 
     await _patch(app, order.id, {"shipping_address": _NEW_ADDRESS})
     await db.flush()
@@ -312,7 +332,12 @@ async def test_an_event_is_staged_for_a_method_only_change(
     change the fulfilment side cares about (courier vs. own rider)."""
     tenant_id = tenant_ctx.tenant_id
     order = await _order(db, tenant_id)
-    app = _build_app(store=SessionStore(db), tenant_id=tenant_id, session=db)
+    app = _build_app(
+        store=SessionStore(db),
+        tenant_id=tenant_id,
+        session=db,
+        user_id=tenant_ctx.user.id,
+    )
 
     response = await _patch(app, order.id, {"shipping_method": "own_rider"})
     assert response.status_code == 200, response.text

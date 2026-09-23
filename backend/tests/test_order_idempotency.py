@@ -144,12 +144,22 @@ class SessionStore:
         await IdempotencyService.release(self._session, scope=scope, key=key)
 
 
-def _build_app(*, store: Any, tenant_id: uuid.UUID, session: Any) -> FastAPI:
+def _build_app(
+    *,
+    store: Any,
+    tenant_id: uuid.UUID,
+    session: Any,
+    user_id: uuid.UUID | None = None,
+) -> FastAPI:
     """The real orders router behind the real idempotency middleware.
 
     Auth is replaced by a pre-built ``TenantContext`` so the test can focus on
     the idempotency wiring; the route, its path and the middleware are the
     production ones.
+
+    ``user_id`` is for a test whose route writes an ``audit_logs`` row: that
+    column has a real FK to ``users``, so the actor must be a seeded user, not
+    the throwaway uuid a middleware test is free to invent.
     """
     app = FastAPI()
 
@@ -163,7 +173,9 @@ def _build_app(*, store: Any, tenant_id: uuid.UUID, session: Any) -> FastAPI:
     async def _ctx() -> TenantContext:
         return TenantContext(
             session=session,
-            user=AuthedUser(id=uuid.uuid4(), tenant_id=tenant_id, role_code="owner"),
+            user=AuthedUser(
+                id=user_id or uuid.uuid4(), tenant_id=tenant_id, role_code="owner"
+            ),
             tenant_id=tenant_id,
             role_code="owner",
             permission_codes={"orders:write"},
