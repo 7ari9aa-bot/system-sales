@@ -84,7 +84,8 @@ class InventoryMovement(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMix
     # allowed: in | out | adjust
     direction: Mapped[str] = mapped_column(String(15))
     quantity: Mapped[int] = mapped_column(Integer)
-    # allowed: purchase | sale | return | transfer_in | transfer_out | adjustment | damage
+    # allowed: purchase | sale | return | return_reversal | transfer_in |
+    # transfer_out | adjustment | damage
     reason: Mapped[str] = mapped_column(String(63))
     reference_type: Mapped[str | None] = mapped_column(String(31), nullable=True)
     # polymorphic reference (e.g. order/transfer id) — intentionally no FK

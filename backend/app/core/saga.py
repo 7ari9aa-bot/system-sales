@@ -21,7 +21,7 @@ import uuid
 from datetime import UTC, datetime
 from enum import StrEnum
 
-from sqlalchemy import Index, Integer, String, Text, select
+from sqlalchemy import DateTime, Index, Integer, String, Text, select
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
@@ -80,7 +80,12 @@ class Saga(TenantMixin, TimestampMixin, Base):
     # Saga context: variables passed between steps
     context: Mapped[dict] = mapped_column(JSONB, server_default="{}")
     last_error: Mapped[str | None] = mapped_column(Text)
-    completed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    # The migration created this TIMESTAMP WITH TIME ZONE; a naive column here
+    # meant the first real write (this module had no caller) would subtract an
+    # aware `completed_at` from naive `created_at` and raise at runtime.
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     __table_args__ = (
         Index("ix_sagas_tenant_status", "tenant_id", "status"),
@@ -250,12 +255,17 @@ class SagaManager:
         saga: Saga,
     ) -> None:
         """Run compensation for all completed steps in reverse order."""
-        completed = [
-            r for r in saga.step_results
+        # JSONB is not mutation-tracked: editing a nested dict in place leaves
+        # the column clean, so the row would still claim every step completed
+        # after its undo had run. Work on a copy and write the list back.
+        results = [dict(r) for r in saga.step_results]
+        completed_steps = [
+            r["step"]
+            for r in results
             if r.get("status") == SagaStepStatus.COMPLETED.value
         ]
-        for record in reversed(completed):
-            step_index = record["step"]
+        by_step = {r["step"]: r for r in results}
+        for step_index in reversed(completed_steps):
             handler = SagaManager._handlers.get(
                 (saga.saga_type, step_index)
             )
@@ -265,15 +275,16 @@ class SagaManager:
                 await handler.compensate(
                     session, tenant_id, saga, saga.context
                 )
-                record["status"] = SagaStepStatus.COMPENSATED.value
+                by_step[step_index]["status"] = SagaStepStatus.COMPENSATED.value
             except Exception as exc:
                 logger.error(
                     "saga %s step %d compensation failed: %s",
                     saga.id, step_index, exc,
                 )
-                record["status"] = SagaStepStatus.FAILED.value
-                record["compensation_error"] = str(exc)
+                by_step[step_index]["status"] = SagaStepStatus.FAILED.value
+                by_step[step_index]["compensation_error"] = str(exc)
 
+        saga.step_results = results
         saga.status = SagaStatus.FAILED.value
         saga.completed_at = datetime.now(UTC)
         await session.flush()

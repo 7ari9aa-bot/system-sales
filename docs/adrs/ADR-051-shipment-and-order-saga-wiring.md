@@ -51,6 +51,10 @@ in_transit -> delivered|returned|failed`, terminals with no exit) and, on
 money/stock claim this task has no evidence for. The merchant's next real step
 (refund, re-ship) stays explicit.
 
+**Superseded by ADR-052**, which supplies the evidence this paragraph refused to
+invent — the goods are physically back, so a return restocks them (derived from the
+§140 reservation state) and closes the order, as a saga rather than as a label.
+
 ### 3. The saga advances as a side effect, and side effects never fail their host
 
 `_advance`-style leniency is split from the strict command:
@@ -94,8 +98,7 @@ and only `fulfilled`/`cancelled` are terminals.
   ASGI stack rather than by introspecting FastAPI's route tree — which turned out to
   nest included routers (`_IncludedRouter`) instead of flattening them, so a
   `app.routes` walk finds nothing under `/api/v1`.
-- Still open, deliberately: `app/core/saga.py` and the migrated `sagas` table remain
-  unwired (§139's generic orchestrator). With the order saga now on the order row,
-  running the same process through both would recreate the two-sources-of-truth
-  problem this ADR exists to avoid; the retire-or-use call is tracked as W4-T2b, and
-  §139 stays 🟡 in the matrix until it is made.
+- Left open at the time, and since closed: `app/core/saga.py` and the migrated
+  `sagas` table were still unwired. ADR-052 gave them a caller — the goods-return
+  process — which is compensation work the order row's own machine cannot do, so the
+  two-sources-of-truth concern that kept them apart did not apply.

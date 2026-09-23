@@ -74,6 +74,9 @@ WIRED_CORE_MODULES: tuple[str, ...] = (
     "app.core.ratelimit",
     "app.core.redis",
     "app.core.search",
+    # §139: the return process (orders/returns.py) drives this engine, so the
+    # orchestrator now has a runtime caller (ADR-052).
+    "app.core.saga",
     "app.core.security",
     "app.core.storage",
     # §68/G-06 wave: identity/deps.py now publishes the ambient tenant via
@@ -92,10 +95,6 @@ KNOWN_DEAD_CORE_MODULES: dict[str, str] = {
     "app.core.partitioning": (
         "Zero non-test importers. §56 partition-maintenance helpers are not "
         "run by any worker or script in the source roots."
-    ),
-    "app.core.saga": (
-        "Zero non-test importers. §139 saga orchestrator has no runtime "
-        "caller; workflows/automation is the live execution path."
     ),
     "app.core.search_indexer": (
         "Zero non-test importers. §45 external-search indexer; search runs "
@@ -222,5 +221,5 @@ def test_detector_distinguishes_wired_from_dead() -> None:
     wired/dead split above is known to be a real measurement.
     """
     assert importers_of("app.core.circuit_breaker"), "detector found no importer for a wired module"
-    assert importers_of("app.core.saga") == set(), "detector found importers for a dead module"
+    assert importers_of("app.core.money") == set(), "detector found importers for a dead module"
     assert importers_of("app.core.not_a_real_module") == set(), "detector matches anything"

@@ -49,9 +49,12 @@ TRANSITIONS: dict[str, set[str]] = {
     "pending": {"confirmed", "cancelled"},
     "confirmed": {"processing", "cancelled"},
     "processing": {"shipped", "cancelled"},
-    "shipped": {"delivered"},
-    "delivered": {"completed"},
+    "shipped": {"delivered", "returned"},
+    "delivered": {"completed", "returned"},
     "completed": {"refunded"},
+    # Reachable only through the return process, which restocks first
+    # (`orders/returns.py`, ADR-052) — `change_status` refuses it by hand.
+    "returned": {"refunded"},
 }
 
 _CANCELLABLE_STATUSES = {"pending", "confirmed"}
@@ -76,7 +79,14 @@ _RESERVATION_TTL = timedelta(minutes=15)
 
 # §139: order saga state machine — the cross-service fulfillment saga.
 # created -> paid -> stock_reserved -> fulfilled (terminal) or cancelled.
-ORDER_PROCESS_STATES = ("created", "paid", "stock_reserved", "fulfilled", "cancelled")
+ORDER_PROCESS_STATES = (
+    "created",
+    "paid",
+    "stock_reserved",
+    "fulfilled",
+    "cancelled",
+    "returned",
+)
 # `stock_reserved` and `paid` are reached in EITHER order, because checkout
 # reserves stock before any money exists (COD is the common case here) while a
 # card payment settles after the parcel is picked. A machine that only allowed
@@ -85,8 +95,9 @@ _PROCESS_TRANSITIONS: dict[str, set[str]] = {
     "created": {"paid", "stock_reserved", "cancelled"},
     "paid": {"stock_reserved", "fulfilled", "cancelled"},
     "stock_reserved": {"paid", "fulfilled", "cancelled"},
-    "fulfilled": set(),  # terminal
+    "fulfilled": {"returned"},
     "cancelled": set(),  # terminal
+    "returned": set(),  # terminal
 }
 
 #: The saga state each order status implies, for the moves made as a SIDE
@@ -95,6 +106,7 @@ _SAGA_ON_STATUS: dict[str, str] = {
     "cancelled": "cancelled",
     "delivered": "fulfilled",
     "completed": "fulfilled",
+    "returned": "returned",
 }
 
 SHIPMENT_TRANSITIONS: dict[str, set[str]] = {
@@ -451,6 +463,16 @@ class OrderService:
         if to_status not in allowed:
             raise ConflictError(
                 f"illegal transition {order.status} -> {to_status}"
+            )
+        if to_status == "returned":
+            # "returned" is a STOCK claim, not a label: the goods are back in the
+            # warehouse. Running it by hand would close the order while the
+            # ledger still says the units were sold, so the return process
+            # (`orders/returns.py`, ADR-052) owns this transition — it restocks
+            # first and only then moves the order.
+            raise ConflictError(
+                f"order {order_id} cannot be marked returned directly: return "
+                "the shipment, which restocks the goods and closes the order"
             )
         if to_status == "cancelled":
             await OrderService._release_order_stock(session, tenant_id, order)
@@ -1005,6 +1027,21 @@ class OrderService:
                     by_user_id=by_user_id,
                     note="carrier delivery confirmed",
                 )
+        elif new_status in ("returned", "failed"):
+            # The carrier says the goods are back, so the return process runs:
+            # restock what left, then close the order (ADR-052, which supersedes
+            # ADR-051's choice to leave this status inert).
+            from app.modules.orders.returns import ReturnsService
+
+            await ReturnsService.process_return(
+                session,
+                tenant_id,
+                order.id,
+                reason=(
+                    "delivery_failed" if new_status == "failed" else "customer_return"
+                ),
+                by_user_id=by_user_id,
+            )
         await session.flush()
         return shipment
 

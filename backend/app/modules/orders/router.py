@@ -11,6 +11,7 @@ from app.core.idempotency import IfMatch, apply_etag  # §17
 from app.core.pagination import decode_cursor, page_slice
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
 from app.modules.orders.models import Shipment
+from app.modules.orders.returns import ReturnsService
 from app.modules.orders.service import OrderService
 
 router = APIRouter(tags=["orders"])
@@ -201,6 +202,35 @@ async def cancel_order(
         ctx.session, ctx.tenant_id, order_id, by_user_id=ctx.user.id
     )
     return {"ok": True}
+
+
+class ReturnRequest(BaseModel):
+    reason: str = Field(default="customer_return", max_length=31)
+
+
+@router.post("/orders/{order_id}/return")
+async def return_order(
+    order_id: uuid.UUID,
+    body: ReturnRequest,
+    ctx: TenantContext = Depends(require_permission("orders:write")),
+):
+    """Return a parcel: restock what left the warehouse, then close the order.
+
+    The two steps run as a saga (ADR-052), so a failure halfway leaves the
+    stock exactly where it was and a `failed` saga row saying what happened —
+    never goods back on the shelf under an order that still claims they sold.
+    Money is NOT touched here: a refund stays an approved action on a payment.
+    """
+    saga = await ReturnsService.process_return(
+        ctx.session, ctx.tenant_id, order_id, reason=body.reason, by_user_id=ctx.user.id
+    )
+    order = await OrderService.get(ctx.session, ctx.tenant_id, order_id, with_items=False)
+    return {
+        "ok": True,
+        "saga_id": str(saga.id),
+        "saga_status": saga.status,
+        "order_status": order.status,
+    }
 
 
 class ShipmentCreateRequest(BaseModel):
