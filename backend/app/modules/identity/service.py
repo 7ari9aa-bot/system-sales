@@ -17,6 +17,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from functools import lru_cache
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import sqlalchemy as sa
 from sqlalchemy import select
@@ -655,8 +656,39 @@ class TenantService:
         return user, invitation
 
 
+#: ``tenants.timezone`` is ``VARCHAR(64)`` with a shape CHECK (migration
+#: e3b7d2a9c4f1). Bound the same way here, so an owner gets a 400 that explains
+#: itself rather than a 500 from the constraint.
+_TIMEZONE_MAX_LEN = 64
+_TIMEZONE_SHAPE = re.compile(r"[A-Za-z][A-Za-z0-9_/+-]*(?:/[A-Za-z0-9_+-]+)*")
+
+
+def timezone_refusal(value: str | None) -> str | None:
+    """Why this is not a zone the tenant may count its days in, or ``None``.
+
+    The §47 currency precedent, with ``zoneinfo`` in place of the ISO table: a
+    name the runtime cannot resolve is refused, never stored and never rounded
+    down to "close enough". The database check only bounds the SHAPE (tzdata
+    lives in Python, not in Postgres), so this function is where resolvability
+    is actually asserted — and `analytics.timekit.resolve_timezone` re-checks it
+    on every read, so a stored name that ever stops resolving fails closed
+    instead of silently bucketing a Cairo shop in UTC.
+    """
+    name = (value or "").strip()
+    if not name:
+        return "a timezone is required (an IANA name such as 'Africa/Cairo')"
+    if len(name) > _TIMEZONE_MAX_LEN or not _TIMEZONE_SHAPE.fullmatch(name):
+        return f"'{name}' is not shaped like an IANA timezone name (e.g. 'Africa/Cairo')"
+    try:
+        ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError) as exc:
+        return f"'{name}' is not a timezone this system can resolve: {exc}"
+    return None
+
+
 class TenantSettingsService:
-    """§47 — the commercial settings of a tenant: today, the one currency it trades in.
+    """§47 — the commercial settings of a tenant: the one currency it trades in,
+    and (§47/M10 remainder) the one timezone it counts its days in.
 
     Everything else in the money path *compares against* ``tenants.currency`` —
     checkout stamps it, a price tier must be quoted in it, a payment in another
@@ -668,6 +700,12 @@ class TenantSettingsService:
     * and once the tenant has traded in another currency it cannot move, because
       orders keep the currency they were sold in and every money aggregate
       would quietly become a sum of two currencies.
+
+    ``timezone`` is the same decision one axis over: analytics buckets a
+    calendar DAY (§55/gap M10), and until §47/M10 remainder the only answer was
+    the deployment's ``ANALYTICS_TIMEZONE``, so every merchant on the planet
+    shared a midnight. It is validated the same way — refused, not converted —
+    and audited the same way.
     """
 
     @staticmethod
@@ -723,6 +761,57 @@ class TenantSettingsService:
             tenant.id,
             before={"currency": previous},
             after={"currency": code},
+        )
+        await session.flush()
+        return tenant
+
+    @staticmethod
+    async def set_timezone(
+        session,
+        tenant_id: uuid.UUID,
+        timezone: str | None,
+        *,
+        actor_user_id: uuid.UUID | None = None,
+    ) -> Tenant:
+        """§47/M10 remainder: declare the calendar day this merchant counts in.
+
+        The rule is §47's, applied to the clock: one zone per tenant, on the
+        tenant's own row, refused rather than converted. Unlike the currency
+        there is nothing to become inconsistent with — a day label re-derives
+        from the instants on every read, so moving the zone re-reads history
+        instead of falsifying it — which is why no "you already traded" guard
+        exists here. An empty value clears the column, and clearing is honest:
+        NULL means "the deployment zone", which is what every tenant had before
+        this column existed.
+
+        Nothing guesses a value for a tenant that never chose one; that guess is
+        exactly what a merchant would read as their own numbers.
+        """
+        zone = (timezone or "").strip()
+        if zone:
+            refusal = timezone_refusal(zone)
+            if refusal is not None:
+                raise ValidationError(refusal)
+
+        tenant = (
+            await session.execute(select(Tenant).where(Tenant.id == tenant_id))
+        ).scalar_one_or_none()
+        if tenant is None:
+            raise NotFoundError("tenant not found")
+        previous = tenant.timezone
+        if (previous or "") == zone:
+            return tenant
+
+        tenant.timezone = zone or None
+        await _record_audit(
+            session,
+            tenant.id,
+            actor_user_id,
+            "tenant.timezone_changed",
+            "tenant",
+            tenant.id,
+            before={"timezone": previous},
+            after={"timezone": zone or None},
         )
         await session.flush()
         return tenant

@@ -88,6 +88,10 @@ def _summary() -> dict[str, Any]:
     return {
         "currency": "EGP",
         "timezone": "Africa/Cairo",
+        # The zone alone is not enough: the reader has to say which layer of
+        # caller -> tenants.timezone -> ANALYTICS_TIMEZONE -> UTC answered
+        # (§47/M10 remainder). See tests/test_tenant_timezone.py.
+        "timezone_source": "tenant",
         "since": SINCE.isoformat(),
         "until": UNTIL.isoformat(),
         "gross_revenue": Decimal("100.00"),
@@ -210,6 +214,7 @@ async def test_overview_delegates_every_figure_to_a_canonical_reader(
         "until",
         "currency",
         "timezone",
+        "timezone_source",
         "gross_revenue",
         "refunded_amount",
         "net_revenue",
@@ -224,6 +229,7 @@ async def test_overview_delegates_every_figure_to_a_canonical_reader(
     assert payload["orders_count"] == 3
     assert payload["currency"] == "EGP"
     assert payload["timezone"] == "Africa/Cairo"
+    assert payload["timezone_source"] == "tenant"
     assert payload["stock"] == _stock()
     assert payload["daily_series"][0]["day"] == "2026-03-14"
     assert payload["daily_series"][0]["orders_count"] == 2

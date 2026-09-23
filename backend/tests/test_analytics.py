@@ -90,23 +90,33 @@ async def analytics_seed(db: AsyncSession, tenant_ctx):
 
 
 async def test_orders_summary(db: AsyncSession, analytics_seed):
-    """M7/§55: the summary names each money family instead of one "revenue"."""
+    """M7/§55: the summary names each money family instead of one "revenue".
+
+    ADR-001/§47 adds the shape: every one of those families is an amount, so each
+    arrives as a Decimal STRING and is compared here in Decimal — a tolerance
+    check could not tell 150.00 from 150.
+    """
     summary = await analytics.orders_summary(db, analytics_seed["tenant_id"])
     assert summary["orders_count"] == 2
-    assert summary["gross_revenue"] == pytest.approx(150.0)
-    assert summary["refunded_amount"] == pytest.approx(0.0)
-    assert summary["net_revenue"] == pytest.approx(150.0)
-    assert summary["gross_aov"] == pytest.approx(75.0)
-    assert summary["net_aov"] == pytest.approx(75.0)
-    assert summary["refund_excess"] == pytest.approx(0.0)
+    for key in ("gross_revenue", "refunded_amount", "net_revenue", "refund_excess"):
+        assert isinstance(summary[key], str), key
+    assert Decimal(summary["gross_revenue"]) == Decimal("150.00")
+    assert Decimal(summary["refunded_amount"]) == Decimal("0.00")
+    assert Decimal(summary["net_revenue"]) == Decimal("150.00")
+    assert Decimal(summary["gross_aov"]) == Decimal("75.00")
+    assert Decimal(summary["net_aov"]) == Decimal("75.00")
+    assert Decimal(summary["refund_excess"]) == Decimal("0.00")
 
 
 async def test_revenue_by_source(db: AsyncSession, analytics_seed):
     rows = await analytics.revenue_by_source(db, analytics_seed["tenant_id"])
     facebook = [row for row in rows if row["source"] == "facebook"]
     assert len(facebook) == 1
-    assert facebook[0]["revenue"] == pytest.approx(150.0)
+    # Attributed credit is an amount: string on the wire, exact in Decimal.
+    assert isinstance(facebook[0]["revenue"], str)
+    assert Decimal(facebook[0]["revenue"]) == Decimal("150.00")
     assert facebook[0]["conversions"] == 1
+    assert isinstance(facebook[0]["conversions"], int)
 
 
 async def test_revenue_by_campaign(db: AsyncSession, analytics_seed):
@@ -114,7 +124,8 @@ async def test_revenue_by_campaign(db: AsyncSession, analytics_seed):
     target = [row for row in rows if row["campaign_id"] == analytics_seed["campaign"].id]
     assert len(target) == 1
     assert target[0]["campaign_name"] == "Ramadan Sale"
-    assert target[0]["revenue"] == pytest.approx(150.0)
+    assert isinstance(target[0]["revenue"], str)
+    assert Decimal(target[0]["revenue"]) == Decimal("150.00")
     assert target[0]["conversions"] == 1
 
 
@@ -129,11 +140,15 @@ async def test_campaign_roas_names_its_own_denominator(db: AsyncSession, analyti
     assert len(target) == 1
     row = target[0]
     assert row["name"] == "Ramadan Sale"
-    assert row["revenue"] == pytest.approx(150.0)
-    assert row["planned_budget"] == pytest.approx(100.0)
+    # Amounts are Decimal strings, the ratio beside them is a number.
+    assert Decimal(row["revenue"]) == Decimal("150.00")
+    assert Decimal(row["planned_budget"]) == Decimal("100.00")
+    assert isinstance(row["revenue"], str)
+    assert isinstance(row["budget_roas"], float)
     assert row["budget_roas"] == pytest.approx(1.5)
     assert row["basis"] == analytics.BASIS_PLANNED_BUDGET
-    # No spend feed exists in this schema, so the honest answer is "none".
+    # No spend feed exists in this schema, so the honest answer is "none" — and
+    # 0.00 would be the lie this pins shut.
     assert row["actual_spend"] is None
     assert row["spend_roas"] is None
 
@@ -148,6 +163,7 @@ async def test_a_spend_feed_is_the_only_thing_that_can_produce_spend_roas():
     )
     assert row["basis"] == analytics.BASIS_PLANNED_BUDGET
     assert row["spend_roas"] is None
+    assert row["actual_spend"] is None
     burned = analytics.roas_row(
         campaign_id=None,
         name="c",
@@ -156,6 +172,7 @@ async def test_a_spend_feed_is_the_only_thing_that_can_produce_spend_roas():
         actual_spend=Decimal("50.00"),
     )
     assert burned["basis"] == analytics.BASIS_ACTUAL_SPEND
+    assert Decimal(burned["actual_spend"]) == Decimal("50.00")
     assert burned["budget_roas"] == pytest.approx(1.5)
     assert burned["spend_roas"] == pytest.approx(3.0)
 
@@ -164,6 +181,8 @@ async def test_daily_orders(db: AsyncSession, analytics_seed):
     rows = await analytics.daily_orders(db, analytics_seed["tenant_id"])
     assert len(rows) == 1  # both orders placed "now" land on the same day
     assert rows[0]["orders"] == 2
-    assert rows[0]["gross_revenue"] == pytest.approx(150.0)
-    assert rows[0]["net_revenue"] == pytest.approx(150.0)
-    assert rows[0]["refunded_amount"] == pytest.approx(0.0)
+    for key in ("gross_revenue", "refunded_amount", "net_revenue", "refund_excess"):
+        assert isinstance(rows[0][key], str), key
+    assert Decimal(rows[0]["gross_revenue"]) == Decimal("150.00")
+    assert Decimal(rows[0]["net_revenue"]) == Decimal("150.00")
+    assert Decimal(rows[0]["refunded_amount"]) == Decimal("0.00")

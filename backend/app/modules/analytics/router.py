@@ -166,18 +166,26 @@ async def daily_series(
         default=None,
         description=(
             "IANA zone the merchant counts days in. The day LABEL is local to "
-            "this zone; since/until remain instants. Defaults to the "
-            "deployment's ANALYTICS_TIMEZONE."
+            "this zone; since/until remain instants. Omit it and the tenant's "
+            "declared zone is used, then the deployment's ANALYTICS_TIMEZONE."
         ),
     ),
 ) -> dict:
     """The merchant's daily revenue series — bucketed in the merchant's day."""
-    zone = resolve_timezone(timezone)
+    resolve_timezone(timezone)  # reject a bad zone before the tenant lookup
+    # ONE resolution for both the SQL and this label. The router cannot see
+    # ``tenants.timezone``, so resolving the chain here and the service
+    # resolving it again produced two answers to one question: Cairo buckets
+    # under a deployment-zone label.
+    zone = await analytics_service.resolve_report_timezone(
+        ctx.session, ctx.tenant_id, timezone
+    )
     rows = await analytics_service.daily_revenue_series(
         ctx.session, ctx.tenant_id, since=since, until=until, timezone=zone
     )
     return {
-        "timezone": zone,
+        "timezone": str(zone),
+        "timezone_source": zone.source,
         "since": since.isoformat(),
         "until": until.isoformat(),
         "currency": await resolve_tenant_currency(ctx.session, ctx.tenant_id),

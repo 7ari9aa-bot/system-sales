@@ -365,6 +365,12 @@ class TenantCurrencyRequest(BaseModel):
     currency: str = Field(min_length=3, max_length=3)
 
 
+class TenantTimezoneRequest(BaseModel):
+    #: An empty string clears the setting (back to the deployment zone), which
+    #: is why the field is optional rather than required-and-non-empty.
+    timezone: str | None = Field(default=None, max_length=64)
+
+
 @tenants_router.put("/{tenant_id}/currency")
 async def set_tenant_currency(
     tenant_id: uuid.UUID,
@@ -400,6 +406,50 @@ async def get_tenant_currency(
         raise PermissionDeniedError("tenant mismatch")
     tenant = await service.TenantLifecycleService.get(ctx.session, tenant_id)
     return {"tenant_id": str(tenant.id), "currency": tenant.currency}
+
+
+@tenants_router.put("/{tenant_id}/timezone")
+async def set_tenant_timezone(
+    tenant_id: uuid.UUID,
+    body: TenantTimezoneRequest,
+    ctx: TenantContext = Depends(require_permission("settings:write")),
+):
+    """§47/M10 remainder: declare the calendar day this merchant counts in.
+
+    The sibling of ``PUT /tenants/{id}/currency``, with the same posture: an
+    IANA name this runtime cannot resolve is refused (400) rather than stored,
+    and the change is audited through the same lineage. What the zone changes is
+    the LABEL on a day bucket, never an instant — analytics re-derives every
+    bucket from ``timestamptz`` on read, so moving it re-reads history rather
+    than rewriting it.
+    """
+    if ctx.tenant_id != tenant_id:
+        raise PermissionDeniedError("tenant mismatch")
+    tenant = await service.TenantSettingsService.set_timezone(
+        ctx.session, tenant_id, body.timezone, actor_user_id=ctx.user.id
+    )
+    return {"tenant_id": str(tenant.id), "timezone": tenant.timezone}
+
+
+@tenants_router.get("/{tenant_id}/timezone")
+async def get_tenant_timezone(
+    tenant_id: uuid.UUID,
+    ctx: TenantContext = Depends(require_permission("settings:read")),
+):
+    """§47/M10 remainder read: which zone this tenant declared, NULL if none.
+
+    ``timezone: null`` is the tenant's own answer — "no opinion, use the
+    deployment's" — not a missing one. The EFFECTIVE zone belongs to the reader
+    that used it, and every analytics response already carries it as
+    ``timezone`` beside ``timezone_source`` (``param`` / ``tenant`` /
+    ``deployment`` / ``fallback``), because the only honest answer to "which zone
+    were these numbers bucketed in" is the one made by the code that bucketed
+    them.
+    """
+    if ctx.tenant_id != tenant_id:
+        raise PermissionDeniedError("tenant mismatch")
+    tenant = await service.TenantLifecycleService.get(ctx.session, tenant_id)
+    return {"tenant_id": str(tenant.id), "timezone": tenant.timezone}
 
 
 @tenants_router.post("/{tenant_id}/offboarding/export")

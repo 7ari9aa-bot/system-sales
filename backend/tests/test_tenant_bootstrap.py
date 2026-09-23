@@ -169,6 +169,7 @@ async def test_registering_a_tenant_that_already_has_defaults_is_safe(
         "sla_policy": False,
         "subscription": False,
         "budget_policy": False,
+        "metric_definitions": False,
     }
 
     calendars = (

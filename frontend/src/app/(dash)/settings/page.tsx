@@ -27,6 +27,7 @@ import {
 import { EmptyState, PageHeader } from "@/components/ui/states";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { MerchantDayCard } from "./merchant-day";
 
 export default function SettingsPage() {
   const [email, setEmail] = React.useState("");
@@ -99,6 +100,7 @@ export default function SettingsPage() {
           <TabsList>
             <TabsTrigger value="team">{t.team}</TabsTrigger>
             <TabsTrigger value="integrations">{t.integrations}</TabsTrigger>
+            <TabsTrigger value="store">المتجر</TabsTrigger>
           </TabsList>
 
           {/* team + invitations */}
@@ -253,6 +255,12 @@ export default function SettingsPage() {
                 )}
               </CardContent>
             </Card>
+          </TabsContent>
+          {/* §47/M10 remainder — the merchant's own DAY, beside its money.
+              Reads the declared zone from the server (never assumes one) and
+              writes it through the audited PUT. */}
+          <TabsContent value="store">
+            <MerchantDayCard />
           </TabsContent>
         </Tabs>
       )}

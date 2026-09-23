@@ -66,6 +66,16 @@ class Tenant(TimestampMixin, Base):
     currency: Mapped[str] = mapped_column(
         String(3), default="EGP", server_default="EGP"
     )
+    # §47/M10 remainder: the ONE zone this tenant counts its DAYS in, the same
+    # move `currency` made for money. Analytics buckets a calendar day (gap
+    # M10), and until now the zone could only come from one deployment-wide
+    # setting — a Cairo shop and a Dubai shop shared a "day". NULL is not a
+    # missing value, it is an answer: "no opinion, use the deployment zone",
+    # which is what every row written before this column existed means. The
+    # value is validated against the IANA database at the write boundary
+    # (TenantSettingsService.set_timezone); the DB check bounds the SHAPE only,
+    # because resolvability needs tzdata, which lives in Python, not here.
+    timezone: Mapped[str | None] = mapped_column(String(64))
 
 
 class User(TimestampMixin, Base):

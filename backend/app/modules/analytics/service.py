@@ -1,4 +1,4 @@
-"""Spec §55-57 — analytics read models, partition-ready tables, archiving.
+"""Spec §55-57 — analytics read models, partition-ready tables.
 
 This module provides the QUERIES that compute the canonical metrics defined
 in platform/metrics.py. The metric registry pins WHAT a metric means; this
@@ -11,15 +11,19 @@ Design rules (from the spec):
   messages, conversations) are designed to be range-partitioned by created_at
   in a future migration. The queries here do not assume partitioning is
   already in place — they work on plain tables today.
-- Archiving: an archive helper moves cold rows older than a threshold to
-  *_archive tables (which do not exist yet; the helper creates them
-  if needed via raw SQL, so the archive path is testable without a migration).
+- Cold data (§55-57): the read tables here are *partition-ready* only. Actual
+  retention/archiving is an OPEN gap pending a DBA-approved range-partition
+  migration — there is intentionally no runtime archive helper (see the note at
+  the foot of this module).
 - Tenant-scoped: every query carries tenant_id (RLS enforces it too, but
   the explicit filter keeps the query plan tenant-pinned).
 - Money is labelled: `revenue` is GROSS and `net_revenue` is the refund-adjusted
   figure; anything that reports both (revenue_summary, daily_revenue_series)
   uses the ``gross_``/``net_`` prefixes so a caller cannot read one as the other.
 - A calendar bucket is the MERCHANT's day, never UTC midnight — see timekit.py.
+  Which day the merchant lives in is now the tenant's own setting
+  (``tenants.timezone``, §47/M10 remainder); `resolve_report_timezone` is the
+  one place that answers, and every reader that names a zone names its source.
 """
 
 from __future__ import annotations
@@ -34,7 +38,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.tenancy import resolve_tenant_currency
-from app.modules.analytics.timekit import resolve_timezone
+from app.modules.analytics.timekit import ResolvedTimezone, resolve_timezone
 from app.modules.platform.metrics import MetricRegistry
 
 # The shape a status word is allowed to have. ``_status_sql`` pastes its tokens
@@ -235,6 +239,47 @@ async def aov(
     return _aov(gross, count)
 
 
+async def tenant_timezone(session: AsyncSession, tenant_id: uuid.UUID) -> str | None:
+    """``tenants.timezone`` — the zone this merchant counts its days in, or None.
+
+    None is the answer an undeclared tenant gives, and it means "no opinion":
+    the reader falls to the deployment zone (see `timekit.resolve_timezone`).
+    Existing rows were deliberately left NULL by the migration, so shipping
+    this column moves nobody's day buckets.
+
+    Read with raw SQL rather than an import of `identity.models` for the same
+    reason `core.tenancy.resolve_tenant_currency` reaches for the row behind a
+    function-scope import — analytics has no business coupling to another
+    module's tables to ask one question (§8), and this module already speaks
+    SQL to every other table it reads.
+    """
+    row = (
+        await session.execute(
+            text('SELECT "timezone" FROM tenants WHERE id = :tenant_id'),
+            {"tenant_id": str(tenant_id)},
+        )
+    ).first()
+    return row[0] if row is not None else None
+
+
+async def resolve_report_timezone(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    caller_timezone: str | None = None,
+) -> ResolvedTimezone:
+    """The zone THIS read model buckets in: caller -> tenant -> deployment -> UTC.
+
+    One function on purpose. Every reader that labels a day goes through it, so
+    the order cannot drift between endpoints, and the returned value carries the
+    layer that answered (`source`) — which is what a response reports beside the
+    zone itself. A caller zone forwarded from `resolve_timezone` keeps its own
+    provenance, so a deployment default never masks the tenant's column.
+    """
+    return resolve_timezone(
+        caller_timezone, tenant_timezone=await tenant_timezone(session, tenant_id)
+    )
+
+
 async def revenue_summary(
     session: AsyncSession,
     tenant_id: uuid.UUID,
@@ -248,14 +293,21 @@ async def revenue_summary(
     A caller must not be able to ask for "revenue" and get an unspecified
     number: gross/net are separate keys, the refund that could not be subtracted
     is ``refund_excess``, and the currency is the tenant's, never a literal.
+
+    Same honesty applies to the calendar: ``timezone`` is the zone the buckets
+    would be labelled in and ``timezone_source`` says whether that is the
+    caller's ask, the tenant's own column (§47/M10 remainder), the deployment's
+    configuration, or the UTC fallback.
     """
     gross = await revenue(session, tenant_id, since=since, until=until)
     refunded = await refunded_amount(session, tenant_id, since=since, until=until)
     net, excess = net_of(gross, refunded)
     count = await orders_count(session, tenant_id, since=since, until=until)
+    zone = await resolve_report_timezone(session, tenant_id, timezone)
     return {
         "currency": await resolve_tenant_currency(session, tenant_id),
-        "timezone": resolve_timezone(timezone),
+        "timezone": str(zone),
+        "timezone_source": zone.source,
         "since": since.isoformat(),
         "until": until.isoformat(),
         "gross_revenue": gross,
@@ -294,8 +346,13 @@ async def daily_revenue_series(
     ``AT TIME ZONE`` — the same rule `timekit.merchant_day` implements in Python.
     A UTC-midnight bucket silently moves a late-evening sale into the next day,
     which is what made the daily series disagree with the summary.
+
+    "Merchant-local" is resolved per tenant here, not per deployment: the
+    caller's zone wins, else ``tenants.timezone`` (§47/M10 remainder), else the
+    configured zone. Every bucket below is computed with the ONE zone the
+    summary would report, so a series and a card cannot disagree.
     """
-    zone = resolve_timezone(timezone)
+    zone = str(await resolve_report_timezone(session, tenant_id, timezone))
     common = {"tenant_id": str(tenant_id), "since": since, "until": until, "tz": zone}
 
     gross = await _sum_by_bucket(
@@ -539,39 +596,22 @@ async def compute_metric(
     return await handler(session, tenant_id, since=since, until=until)
 
 
-async def archive_old_rows(
-    session: AsyncSession,
-    tenant_id: uuid.UUID,
-    *,
-    table_name: str,
-    cutoff: datetime,
-) -> int:
-    """§57: move rows older than cutoff to a *_archive table.
-
-    Creates the archive table if it does not exist (same schema + columns).
-    Returns the number of rows moved.
-    """
-    archive_table = f"{table_name}_archive"
-
-    # Create the archive table if it doesn't exist (idempotent).
-    await session.execute(
-        text(f"CREATE TABLE IF NOT EXISTS {archive_table} (LIKE {table_name} INCLUDING ALL)")
-    )
-
-    # Move rows: INSERT into archive, DELETE from source, in one transaction.
-    result = await session.execute(
-        text(
-            f"""
-            WITH moved AS (
-                DELETE FROM {table_name}
-                 WHERE tenant_id = :tenant_id
-                   AND created_at < :cutoff
-             RETURNING *
-            )
-            INSERT INTO {archive_table}
-            SELECT * FROM moved
-            """
-        ),
-        {"tenant_id": str(tenant_id), "cutoff": cutoff},
-    )
-    return result.rowcount or 0
+# §55-57 RETENTION IS OPEN — deliberately, not by omission.
+#
+# A previous `archive_old_rows()` helper lived at the end of this module. It had
+# ZERO callers and ZERO tests: retention was dead code behind a comment, which is
+# the exact recurring defect this repo is being swept for. It has been deleted
+# rather than wired, because wiring it would have been wrong:
+#
+#   * it built its target with raw `CREATE TABLE ... (LIKE ... INCLUDING ALL)` and
+#     `SELECT *` at RUNTIME, so any column added to a source table would silently
+#     mis-file into a stale archive shape;
+#   * it interpolated `table_name` straight into DDL/DML (an injection surface the
+#     moment a caller ever passes anything user-controlled);
+#   * real cold-data handling here is *range partitioning by created_at* (§55-57),
+#     which is a DBA-approved migration against the partitioned tables — not a
+#     sweep a read-side CQRS module owns.
+#
+# The honest smaller answer is to delete the dead path and leave §55-57 open
+# until an approved partition/archive migration exists. Do not re-add a helper
+# until that migration is the one doing the moving.
