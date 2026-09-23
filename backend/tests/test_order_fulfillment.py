@@ -315,8 +315,8 @@ async def test_list_shipments_returns_the_order_s_own_rows(
 
 
 _MOUNTED = [
-    ("/orders/{order_id}/shipments", ["get", "post"]),
-    ("/shipments/{shipment_id}/status", ["post"]),
+    ("/api/v1/orders/{order_id}/shipments", ["get", "post"]),
+    ("/api/v1/shipments/{shipment_id}/status", ["post"]),
 ]
 
 
@@ -329,3 +329,50 @@ def test_shipment_routes_are_mounted(path: str, methods: list[str]):
     assert path in paths, f"{path} is not mounted"
     for method in methods:
         assert method in paths[path], f"{method.upper()} {path} is missing"
+
+
+@pytest.mark.parametrize(
+    "path,payload",
+    [
+        ("/api/v1/orders/{order_id}/shipments", {"carrier": "Aramex"}),
+        ("/api/v1/shipments/{shipment_id}/status", {"status": "picked_up"}),
+    ],
+)
+async def test_shipment_writes_require_the_write_permission(
+    db: AsyncSession, tenant_ctx, path: str, payload: dict
+):
+    """403 through the real stack — a write route without the gate moves stock
+    for anyone who can reach the port."""
+    from httpx import ASGITransport, AsyncClient
+
+    from app.main import create_app
+    from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+
+    ctx = TenantContext(
+        session=db,
+        user=AuthedUser(
+            id=tenant_ctx.user.id,
+            tenant_id=tenant_ctx.tenant_id,
+            role_code="owner",
+        ),
+        tenant_id=tenant_ctx.tenant_id,
+        role_code="owner",
+        permission_codes=set(),  # no orders:write
+    )
+
+    async def _fake_ctx() -> TenantContext:
+        return ctx
+
+    app = create_app()
+    app.dependency_overrides[get_tenant_ctx] = _fake_ctx
+    transport = ASGITransport(app=app)
+    order_id = uuid.uuid4()
+    shipment_id = uuid.uuid4()
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+    ) as client:
+        response = await client.post(
+            path.format(order_id=order_id, shipment_id=shipment_id), json=payload
+        )
+        assert response.status_code == 403, response.text

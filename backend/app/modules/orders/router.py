@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from app.core.idempotency import IfMatch, apply_etag  # §17
 from app.core.pagination import decode_cursor, page_slice
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
+from app.modules.orders.models import Shipment
 from app.modules.orders.service import OrderService
 
 router = APIRouter(tags=["orders"])
@@ -200,6 +201,76 @@ async def cancel_order(
         ctx.session, ctx.tenant_id, order_id, by_user_id=ctx.user.id
     )
     return {"ok": True}
+
+
+class ShipmentCreateRequest(BaseModel):
+    carrier: str | None = Field(default=None, max_length=63)
+    tracking_number: str | None = Field(default=None, max_length=127)
+    label_url: str | None = None
+    note: str | None = Field(default=None, max_length=512)
+
+
+class ShipmentStatusRequest(BaseModel):
+    status: str = Field(min_length=1, max_length=15)
+
+
+def _shipment_out(shipment: Shipment) -> dict:
+    return {
+        "id": str(shipment.id),
+        "order_id": str(shipment.order_id),
+        "carrier": shipment.carrier,
+        "tracking_number": shipment.tracking_number,
+        "status": shipment.status,
+        "shipped_at": shipment.shipped_at.isoformat() if shipment.shipped_at else None,
+        "delivered_at": (
+            shipment.delivered_at.isoformat() if shipment.delivered_at else None
+        ),
+        "label_url": shipment.label_url,
+    }
+
+
+@router.get("/orders/{order_id}/shipments")
+async def list_shipments(ctx: TenantCtxDep, order_id: uuid.UUID):
+    await OrderService.get(ctx.session, ctx.tenant_id, order_id, with_items=False)
+    rows = await OrderService.list_shipments(ctx.session, ctx.tenant_id, order_id)
+    return [_shipment_out(s) for s in rows]
+
+
+@router.post("/orders/{order_id}/shipments", status_code=201)
+async def create_shipment(
+    order_id: uuid.UUID,
+    body: ShipmentCreateRequest,
+    ctx: TenantContext = Depends(require_permission("orders:write")),
+):
+    """Record the carrier + tracking number, and move the order to `shipped`."""
+    shipment = await OrderService.create_shipment(
+        ctx.session,
+        ctx.tenant_id,
+        order_id,
+        carrier=body.carrier,
+        tracking_number=body.tracking_number,
+        label_url=body.label_url,
+        note=body.note,
+        by_user_id=ctx.user.id,
+    )
+    return _shipment_out(shipment)
+
+
+@router.post("/shipments/{shipment_id}/status")
+async def set_shipment_status(
+    shipment_id: uuid.UUID,
+    body: ShipmentStatusRequest,
+    ctx: TenantContext = Depends(require_permission("orders:write")),
+):
+    """A carrier scan. `delivered` also moves the order shipped -> delivered."""
+    shipment = await OrderService.set_shipment_status(
+        ctx.session,
+        ctx.tenant_id,
+        shipment_id,
+        body.status,
+        by_user_id=ctx.user.id,
+    )
+    return _shipment_out(shipment)
 
 
 class OrderItemRequest(BaseModel):

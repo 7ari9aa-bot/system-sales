@@ -11,6 +11,7 @@ without a database; this module only supplies the aggregates they run on.
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -29,6 +30,7 @@ from app.modules.orders.models import (
     OrderPayment,
     OrderStatusHistory,
     Refund,
+    Shipment,
 )
 from app.modules.orders.money import (
     SETTLED_PAYMENT_STATUSES,
@@ -38,6 +40,8 @@ from app.modules.orders.money import (
     reconciliation_refusal,
     to_money,
 )
+
+logger = logging.getLogger(__name__)
 
 # pending -> confirmed -> processing -> shipped -> delivered -> completed -> refunded
 # (cancelled is reachable from every open state)
@@ -73,12 +77,33 @@ _RESERVATION_TTL = timedelta(minutes=15)
 # §139: order saga state machine — the cross-service fulfillment saga.
 # created -> paid -> stock_reserved -> fulfilled (terminal) or cancelled.
 ORDER_PROCESS_STATES = ("created", "paid", "stock_reserved", "fulfilled", "cancelled")
+# `stock_reserved` and `paid` are reached in EITHER order, because checkout
+# reserves stock before any money exists (COD is the common case here) while a
+# card payment settles after the parcel is picked. A machine that only allowed
+# created -> paid -> stock_reserved could not describe a real order.
 _PROCESS_TRANSITIONS: dict[str, set[str]] = {
-    "created": {"paid", "cancelled"},
-    "paid": {"stock_reserved", "cancelled"},
-    "stock_reserved": {"fulfilled", "cancelled"},
+    "created": {"paid", "stock_reserved", "cancelled"},
+    "paid": {"stock_reserved", "fulfilled", "cancelled"},
+    "stock_reserved": {"paid", "fulfilled", "cancelled"},
     "fulfilled": set(),  # terminal
     "cancelled": set(),  # terminal
+}
+
+#: The saga state each order status implies, for the moves made as a SIDE
+#: EFFECT of a status change. Statuses absent here leave the saga alone.
+_SAGA_ON_STATUS: dict[str, str] = {
+    "cancelled": "cancelled",
+    "delivered": "fulfilled",
+    "completed": "fulfilled",
+}
+
+SHIPMENT_TRANSITIONS: dict[str, set[str]] = {
+    "pending": {"picked_up"},
+    "picked_up": {"in_transit"},
+    "in_transit": {"delivered", "returned", "failed"},
+    "delivered": set(),  # terminal
+    "returned": set(),  # terminal
+    "failed": set(),  # terminal
 }
 
 
@@ -259,6 +284,10 @@ class OrderService:
             tenant_id,
             customer_id=customer_id,
             status="pending",
+            # §139: the row is born with its stock already held (the reserve
+            # loop above aborted the whole order if it could not), so recording
+            # "created" here would be a claim the reservations contradict.
+            process_state="stock_reserved",
             currency="EGP",
             subtotal=subtotal,
             discount_total=Decimal("0"),
@@ -474,10 +503,18 @@ class OrderService:
         # §17: atomic compare-and-swap when If-Match is present; a stale version
         # matches no row and apply_versioned_update raises ConflictError (409).
         values: dict = {"status": to_status}
+        # §139: the saga moves with the statuses that imply it, in the SAME
+        # statement — a second UPDATE for the same row would bypass the CAS.
+        saga_target = _SAGA_ON_STATUS.get(to_status)
+        apply_saga = saga_target is not None and OrderService._saga_move(order, saga_target)
+        if apply_saga:
+            values["process_state"] = saga_target
         if expected_version is not None:
             await apply_versioned_update(session, order, expected_version, values)
         else:
             order.status = to_status
+            if apply_saga:
+                order.process_state = saga_target
         session.add(
             OrderStatusHistory(
                 tenant_id=tenant_id,
@@ -606,6 +643,11 @@ class OrderService:
         from app.modules.inventory.service import InventoryReservationService as _IRS2
         await _IRS2.convert(session, tenant_id, order.id)
 
+        # §139: money really arrived, so the saga says so.
+        if OrderService._saga_move(order, "paid"):
+            order.process_state = "paid"
+            await session.flush()
+
         if order.status == "pending":
             await OrderService._transition(
                 session, tenant_id, order, "confirmed", note=f"paid via {method}"
@@ -673,6 +715,8 @@ class OrderService:
             payment.paid_at = payment.paid_at or _now()
             from app.modules.inventory.service import InventoryReservationService as _IRS3
             await _IRS3.convert(session, tenant_id, order.id)
+            if OrderService._saga_move(order, "paid"):
+                order.process_state = "paid"
             if order.status == "pending":
                 await OrderService._transition(
                     session, tenant_id, order, "confirmed", note="payment reconciled"
@@ -823,9 +867,169 @@ class OrderService:
         )
         return refund
 
+    # ------------------------------------------------------------ shipments ----
+
+    @staticmethod
+    async def create_shipment(
+        session: AsyncSession,
+        tenant_id: UUID,
+        order_id: UUID,
+        *,
+        carrier: str | None = None,
+        tracking_number: str | None = None,
+        label_url: str | None = None,
+        by_user_id: UUID | None = None,
+        note: str | None = None,
+    ) -> Shipment:
+        """Record the parcel AND move the order, through the one status path.
+
+        Shipping is exactly the step ``TRANSITIONS`` already guards, so it is
+        not re-implemented here: an order that reads `shipped` must have the
+        history row and the outbox event that says so, or the tracking record
+        and the order status would be two facts allowed to disagree.
+        """
+        order = await OrderService.get(
+            session, tenant_id, order_id, with_items=False, for_update=True
+        )
+        if order.status != "processing":
+            raise ConflictError(
+                f"cannot ship an order in status '{order.status}' — it must be "
+                "'processing' first"
+            )
+        await OrderService._transition(
+            session,
+            tenant_id,
+            order,
+            "shipped",
+            by_user_id=by_user_id,
+            note=note or "shipment recorded",
+            event_type="order.shipped",
+        )
+        shipment = Shipment(
+            tenant_id=tenant_id,
+            order_id=order.id,
+            carrier=carrier,
+            tracking_number=tracking_number,
+            label_url=label_url,
+            status="pending",
+            shipped_at=_now(),
+        )
+        session.add(shipment)
+        await session.flush()
+        return shipment
+
+    @staticmethod
+    async def get_shipment(
+        session: AsyncSession, tenant_id: UUID, shipment_id: UUID
+    ) -> Shipment:
+        shipment = (
+            await session.execute(
+                select(Shipment).where(
+                    Shipment.id == shipment_id,
+                    Shipment.tenant_id == tenant_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if shipment is None:
+            raise NotFoundError(f"shipment {shipment_id} not found")
+        return shipment
+
+    @staticmethod
+    async def list_shipments(
+        session: AsyncSession,
+        tenant_id: UUID,
+        order_id: UUID,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[Shipment]:
+        rows = (
+            await session.execute(
+                select(Shipment)
+                .where(
+                    Shipment.tenant_id == tenant_id,
+                    Shipment.order_id == order_id,
+                )
+                .order_by(Shipment.created_at.asc(), Shipment.id.asc())
+                .limit(limit)
+                .offset(offset)
+            )
+        ).scalars().all()
+        return list(rows)
+
+    @staticmethod
+    async def set_shipment_status(
+        session: AsyncSession,
+        tenant_id: UUID,
+        shipment_id: UUID,
+        new_status: str,
+        *,
+        by_user_id: UUID | None = None,
+    ) -> Shipment:
+        """Move a parcel along SHIPMENT_TRANSITIONS; delivery moves the order.
+
+        A carrier scan that says "delivered" is the evidence the order's own
+        `shipped -> delivered` step was always waiting for, so the two are not
+        left to be updated by hand in two places.
+        """
+        if new_status not in SHIPMENT_TRANSITIONS:
+            raise ValidationError(f"unknown shipment status: {new_status!r}")
+
+        # Lock in the project's global order (order rows first), even though the
+        # caller named the shipment: this path writes the order too.
+        observed = await OrderService.get_shipment(session, tenant_id, shipment_id)
+        order = await OrderService.get(
+            session, tenant_id, observed.order_id, with_items=False, for_update=True
+        )
+        shipment = (
+            await session.execute(
+                select(Shipment)
+                .where(Shipment.id == shipment_id, Shipment.tenant_id == tenant_id)
+                .with_for_update()
+            )
+        ).scalar_one()
+
+        allowed = SHIPMENT_TRANSITIONS.get(shipment.status, set())
+        if new_status not in allowed:
+            raise ConflictError(
+                f"illegal shipment transition {shipment.status} -> {new_status}"
+            )
+        shipment.status = new_status
+        if new_status == "delivered":
+            shipment.delivered_at = shipment.delivered_at or _now()
+            if order.status == "shipped":
+                await OrderService._transition(
+                    session,
+                    tenant_id,
+                    order,
+                    "delivered",
+                    by_user_id=by_user_id,
+                    note="carrier delivery confirmed",
+                )
+        await session.flush()
+        return shipment
+
     # -------------------------------------------------------- helpers ----
 
     @staticmethod
+    def _saga_move(order: Order, new_state: str) -> bool:
+        """Decide a saga move made as bookkeeping for something that happened.
+
+        This is NOT the human-command path (`transition_process_state` below
+        keeps raising for an illegal one). A capture that arrives second, or a
+        delivery after a refund, must not fail the business operation that
+        already succeeded — the only honest answer to "illegal from here" inside
+        a side effect is to leave the state alone and say so.
+        """
+        current = order.process_state or "created"
+        if new_state in _PROCESS_TRANSITIONS.get(current, set()):
+            return True
+        logger.info(
+            "order.process_state left alone",
+            extra={"order_id": str(order.id), "from": current, "attempted": new_state},
+        )
+        return False
+
     # ------------------------------------------- §139 saga state ----
 
     @staticmethod
