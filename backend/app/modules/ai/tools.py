@@ -288,6 +288,10 @@ async def _create_order(
         raise DomainError("no customer bound to this conversation")
     # Lazy import on purpose: the tool stays registered even if the orders
     # module has not landed yet (and tests can monkeypatch this import site).
+    # Checkout's rules — product sellability included (§M4) — belong to
+    # OrderService and are deliberately NOT re-checked here: a second, weaker
+    # copy is how a draft product gets sold in chat and refused on the
+    # dashboard.
     try:
         OrderService = _order_service()
     except ImportError as exc:
@@ -304,7 +308,8 @@ async def _create_order(
         "order_id": str(order.id),
         "number": order.number,
         "status": order.status,
-        "grand_total": float(order.grand_total),
+        # Decimal as a string: the same amount the order row holds (§47).
+        "grand_total": _money(order.grand_total),
     }
 
 

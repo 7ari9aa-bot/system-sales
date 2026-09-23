@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
+from app.core.contact_norm import normalize_email, normalize_phone
 from app.core.errors import NotFoundError, ValidationError
 from app.core.idempotency import (
     IfMatch,
@@ -30,6 +31,10 @@ router = APIRouter(tags=["customers"])
 platform_router = APIRouter(tags=["platform"])
 
 WriteCtx = Annotated[TenantContext, Depends(require_permission("customers:write"))]
+
+# The contact report renames a phone before it reports it, and §146 redacts by
+# FIELD NAME — so the renamed ones have to be listed alongside PII_FIELDS.
+_EXTRA_PHONE_FIELDS = frozenset({"legacy_raw", "suspected_phone", "canonical_phone"})
 
 
 def _customer_summary(customer, *, permission_codes: set[str] | None = None) -> dict:
@@ -75,6 +80,36 @@ async def list_customers(
         ],
         "next_cursor": next_cursor,
     }
+
+
+@router.get("/customers/contact-data-issues")
+async def list_contact_data_issues(
+    ctx: WriteCtx,
+    limit: int = Query(default=200, ge=1, le=500),
+):
+    """M12: the rows the contact backfill could not fix on its own.
+
+    Registered BEFORE ``/customers/{customer_id}`` — a literal path under that
+    route name would otherwise be swallowed by the UUID parameter (422).
+    Gated on ``customers:write``, not a read: this is a work queue for the
+    person who can act on it, and it lists raw phone numbers.
+    """
+    from app.core.field_auth import PII_FIELDS, redact_fields
+
+    items = await CustomerService.contact_data_quality_report(
+        ctx.session, ctx.tenant_id, limit=limit
+    )
+    # §146: every one of these columns is a phone number, including the ones
+    # the backfill renamed — the PII set alone would leave them readable.
+    redacted = [
+        redact_fields(
+            item,
+            permission_codes=ctx.permission_codes,
+            fields_to_redact=PII_FIELDS | _EXTRA_PHONE_FIELDS,
+        )
+        for item in items
+    ]
+    return {"items": redacted, "count": len(redacted)}
 
 
 @router.get("/customers/{customer_id}")
@@ -159,6 +194,26 @@ class CustomerUpdate(BaseModel):
     extra: dict | None = None
 
 
+def _canonicalize_contact_fields(fields: dict) -> dict:
+    """M12: the ``If-Match`` branch must store canonical contacts too.
+
+    That branch writes through ``apply_versioned_update`` — plain column values,
+    straight into one UPDATE — so it skipped the normalization the service does,
+    and a local spelling typed into a drawer still recreated the duplicate M12
+    exists to remove. ``phone`` is a uniqueness key, so an unparseable value
+    raises here exactly as it does in the service
+    (``ContactNormalizationError`` is the project's own 400).
+
+    Only this branch: the service re-reads the RAW typing to match legacy rows
+    that still hold it, so canonicalizing before that call would blind it.
+    """
+    if fields.get("phone") is not None:
+        fields["phone"] = normalize_phone(fields["phone"])
+    if fields.get("email") is not None:
+        fields["email"] = normalize_email(fields["email"])
+    return fields
+
+
 @router.patch("/customers/{customer_id}")
 async def update_customer(
     customer_id: UUID,
@@ -181,7 +236,11 @@ async def update_customer(
         # version matches no row and apply_versioned_update raises ConflictError
         # (409), leaving the row untouched.
         customer = await CustomerService.get(ctx.session, ctx.tenant_id, customer_id)
-        await apply_versioned_update(ctx.session, customer, if_match, fields)
+        # M12: this branch is the one write path that bypasses the service, so
+        # the contact fields are canonicalized here before they hit the columns.
+        await apply_versioned_update(
+            ctx.session, customer, if_match, _canonicalize_contact_fields(fields)
+        )
     # The version AFTER the write, so a client can chain its next edit.
     apply_etag(response, customer.version)
     return _customer_summary(customer, permission_codes=ctx.permission_codes)

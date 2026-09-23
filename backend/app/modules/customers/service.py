@@ -9,11 +9,19 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import delete, or_, select, tuple_
+from sqlalchemy import delete, func, or_, select, tuple_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.contact_norm import (
+    ContactNormalizationError,
+    classify_stored_phone,
+    email_candidates,
+    normalize_email,
+    normalize_phone,
+    phone_candidates,
+)
 from app.modules.customers.models import (
     Address,
     Customer,
@@ -26,75 +34,26 @@ from app.modules.customers.models import (
 from app.modules.errors import ConflictError, NotFoundError, ValidationError
 
 _RESOLVE_ATTEMPTS = 2
+# The extra key migration d5a1c7e94b02 leaves its contact findings under.
+_BACKFILL_KEY = "m12_contact_backfill"
 
 
-# ---------------------------------------------------------------------------
-# §27-29 — E.164 phone normalization for identity resolution
-# ---------------------------------------------------------------------------
-# Customer identity resolution used to be exact-string: a customer with
-# phone "+9647701234567" would NOT match a message from "07701234567" or
-# "0770 123 4567". The §27-29 spec requires E.164 normalization so that
-# the same human is resolved regardless of how the phone was entered.
-#
-# E.164 format: a leading "+" followed by 8-15 digits, no spaces, no
-# dashes, no leading zeros beyond the country code. This function does a
-# best-effort normalization — it strips formatting and adds a default
-# country code if the number is a local format (no "+" prefix).
-#
-# The spec notes this is NOT a full phone parsing library — it is a
-# normalization that handles the 90% case. Unknown formats fall through
-# to exact-string matching (the old behavior), so no existing resolution
-# breaks.
+def _canonical_or_raw(raw: str | None, normalize) -> str | None:
+    """Canonical form when we are confident, otherwise the value as it came in.
 
-# Default country code for local numbers without a "+" prefix. Set to
-# Iraq (964) as the deployment default; a per-tenant override would be a
-# future task (§27 mentions this as a tenant configuration field).
-_DEFAULT_COUNTRY_CODE = "964"
-
-
-def normalize_phone_e164(raw: str | None) -> str | None:
-    """Normalize a phone string to E.164.
-
-    Returns None if the input is empty/None.
-    Returns the normalized E.164 string if the input is parseable.
-    Returns the original string (stripped) if it cannot be normalized —
-    so the caller falls through to exact-string matching.
-
-    Examples:
-        "+9647701234567"  -> "+9647701234567"
-        "07701234567"     -> "+9647701234567"  (default country code)
-        "0770 123 4567"   -> "+9647701234567"  (spaces stripped)
-        "+964 770 123 4567" -> "+9647701234567"
-        "abc"             -> "abc"            (unparseable, passthrough)
+    Deliberately tolerant because this is the channel/webhook entry: raising a
+    400 there makes the provider retry the delivery forever. An unparseable
+    value is stored UNCHANGED — never as a fabricated ``+…`` — and then matches
+    as itself, exactly as before the normalization layer. The human write path
+    (`update_customer`) is strict instead, because there a typo is the caller's
+    to fix.
     """
     if not raw or not raw.strip():
         return None
-
-    # Strip whitespace, dashes, dots, parentheses
-    stripped = raw.strip()
-    cleaned = stripped
-    for ch in (" ", "-", ".", "(", ")"):
-        cleaned = cleaned.replace(ch, "")
-
-    if not cleaned:
-        return None
-
-    # Already in E.164 format: "+" + digits only
-    if cleaned.startswith("+"):
-        digits = cleaned[1:]
-        if digits.isdigit() and 8 <= len(digits) <= 15:
-            return f"+{digits}"
-        return stripped  # unparseable — passthrough
-
-    # Local format: add default country code
-    if cleaned.isdigit():
-        # Strip leading 0 (trunk prefix) if present
-        if cleaned.startswith("0"):
-            cleaned = cleaned[1:]
-        if 7 <= len(cleaned) <= 14:
-            return f"+{_DEFAULT_COUNTRY_CODE}{cleaned}"
-
-    return stripped  # unparseable — passthrough
+    try:
+        return normalize(raw)
+    except ContactNormalizationError:
+        return raw.strip()
 
 
 def _now() -> datetime:
@@ -107,9 +66,11 @@ class CustomerService:
     # ------------------------------------------------------------- lookup ----
 
     @staticmethod
-    async def get(session: AsyncSession, tenant_id: UUID, customer_id: UUID) -> Customer:
-        """Fetch a customer scoped to the tenant (NotFoundError otherwise)."""
-        customer = (
+    async def _fetch(
+        session: AsyncSession, tenant_id: UUID, customer_id: UUID
+    ) -> Customer | None:
+        """The raw row, dead or alive. Internal: callers use ``get``."""
+        return (
             await session.execute(
                 select(Customer).where(
                     Customer.id == customer_id,
@@ -117,6 +78,41 @@ class CustomerService:
                 )
             )
         ).scalar_one_or_none()
+
+    @staticmethod
+    async def get(session: AsyncSession, tenant_id: UUID, customer_id: UUID) -> Customer:
+        """Fetch a LIVE customer scoped to the tenant.
+
+        M2: a tombstone and a merged-away redirector are not customers. Checkout
+        carried its own guard for them since Wave 0; every other caller had to
+        remember it. Refusing here is what removes that rule from the callers —
+        the two states fail differently on purpose (a deletion is gone, a merge
+        points somewhere).
+        """
+        customer = await CustomerService._fetch(session, tenant_id, customer_id)
+        if customer is None:
+            raise NotFoundError(f"customer {customer_id} not found")
+        if customer.deleted_at is not None:
+            raise NotFoundError(f"customer {customer_id} not found (archived)")
+        if customer.merged_into_customer_id is not None:
+            raise ConflictError(
+                f"customer {customer_id} has been merged — resolve the canonical "
+                "customer first",
+                details={"merged_into_customer_id": str(customer.merged_into_customer_id)},
+            )
+        return customer
+
+    @staticmethod
+    async def get_for_erasure(
+        session: AsyncSession, tenant_id: UUID, customer_id: UUID
+    ) -> Customer:
+        """§172: the eraser sees the rows ``get`` refuses.
+
+        A merged-away and an already-tombstoned row are exactly what a
+        data-subject request is about, and ``get``'s refusal would park the
+        request open forever.
+        """
+        customer = await CustomerService._fetch(session, tenant_id, customer_id)
         if customer is None:
             raise NotFoundError(f"customer {customer_id} not found")
         return customer
@@ -165,14 +161,17 @@ class CustomerService:
             Customer.deleted_at.is_(None),
         )
         if search:
-            pattern = f"%{search.strip()}%"
-            stmt = stmt.where(
-                or_(
-                    Customer.name.ilike(pattern),
-                    Customer.phone.ilike(pattern),
-                    Customer.email.ilike(pattern),
-                )
-            )
+            term = search.strip()
+            # M12: contact values are stored canonical, so a search typed in a
+            # local spelling must be canonicalized too — otherwise the row
+            # exists and the merchant is told it does not.
+            patterns = {f"%{term}%"}
+            patterns |= {f"%{v}%" for v in phone_candidates(term)}
+            patterns |= {f"%{v}%" for v in email_candidates(term)}
+            clauses = []
+            for column in (Customer.name, Customer.phone, Customer.email):
+                clauses.extend(column.ilike(pattern) for pattern in patterns)
+            stmt = stmt.where(or_(*clauses))
         if tag:
             stmt = stmt.where(
                 select(customer_tags.c.customer_id)
@@ -195,6 +194,63 @@ class CustomerService:
         stmt = stmt.limit(limit).offset(offset)
         return list((await session.execute(stmt)).scalars().all())
 
+    @staticmethod
+    async def contact_data_quality_report(
+        session: AsyncSession, tenant_id: UUID, *, limit: int = 200
+    ) -> list[dict]:
+        """Rows the M12 backfill could NOT fix, read straight off its marks.
+
+        Migration ``d5a1c7e94b02`` writes two kinds of mark into
+        ``customers.extra -> data_quality -> m12_contact_backfill``: a phone
+        whose ``+964`` may be the old Iraq default rather than a country code,
+        and a pair that would collide on ``uq_customers_tenant_phone``. Both
+        need a person — one to say what the number really was, one to decide
+        which customer survives — and until now neither was readable anywhere.
+        This is the queue behind ``GET /customers/contact-data-issues``.
+
+        Deliberate: the queue comes from the MARKS, not a live re-scan — a row
+        the backfill merely rewrote carries a mark with nothing to act on, and
+        is dropped here. ``phone_state`` IS re-classified per row, which is what
+        makes a human-corrected row visibly corrected instead of quietly wrong.
+        """
+        mark = func.jsonb_extract_path(Customer.extra, "data_quality", _BACKFILL_KEY)
+        rows = (
+            await session.execute(
+                select(
+                    Customer.id, Customer.name, Customer.phone, Customer.email, Customer.extra
+                )
+                .where(Customer.tenant_id == tenant_id, mark.isnot(None))
+                .order_by(Customer.id.asc())
+                .limit(limit)
+            )
+        ).all()
+        items: list[dict] = []
+        for row in rows:
+            flag = ((row.extra or {}).get("data_quality") or {}).get(_BACKFILL_KEY) or {}
+            collision = flag.get("phone_collision") or {}
+            issues: list[str] = []
+            if flag.get("phone_status") == "needs_review":
+                issues.append("phone_legacy_default_country")
+            if collision:
+                issues.append("phone_canonical_collision")
+            if not issues:
+                continue
+            items.append(
+                {
+                    "customer_id": str(row.id),
+                    "name": row.name,
+                    "phone": row.phone,
+                    "email": row.email,
+                    "phone_state": classify_stored_phone(row.phone),
+                    "issues": issues,
+                    "legacy_raw": flag.get("legacy_raw"),
+                    "suspected_phone": flag.get("suspected_phone"),
+                    "canonical_phone": collision.get("canonical"),
+                    "peer_customer_ids": collision.get("peer_customer_ids") or [],
+                }
+            )
+        return items
+
     # ------------------------------------------------------------- crud ----
 
     @staticmethod
@@ -209,17 +265,26 @@ class CustomerService:
         if "name" in fields and fields["name"] is None:
             raise ValidationError("name must not be null")
 
+        # M12: canonicalize BEFORE the session is touched. The phone column is a
+        # uniqueness key, so a value this layer cannot canonicalize must never
+        # reach it — and the canonical form is what gets stored.
+        typed_phone = fields.get("phone")
+        if typed_phone is not None:
+            fields["phone"] = normalize_phone(typed_phone)
+        if fields.get("email") is not None:
+            fields["email"] = normalize_email(fields["email"])
+
         customer = await CustomerService.get(session, tenant_id, customer_id)
-        if customer.deleted_at is not None:
-            raise ConflictError("customer is archived")
 
         new_phone = fields.get("phone")
         if new_phone is not None and new_phone != customer.phone:
+            # Match the canonical value AND the raw spelling, because rows
+            # written before this layer still hold whatever was typed.
             duplicate = (
                 await session.execute(
                     select(Customer.id).where(
                         Customer.tenant_id == tenant_id,
-                        Customer.phone == new_phone,
+                        Customer.phone.in_(phone_candidates(typed_phone)),
                         Customer.id != customer_id,
                         Customer.deleted_at.is_(None),
                     )
@@ -239,8 +304,6 @@ class CustomerService:
     ) -> Customer:
         """Toggle the ``is_blocked`` flag (blocked customers cannot transact)."""
         customer = await CustomerService.get(session, tenant_id, customer_id)
-        if customer.deleted_at is not None:
-            raise ConflictError("customer is archived")
         customer.is_blocked = blocked
         await session.flush()
         return customer
@@ -255,9 +318,9 @@ class CustomerService:
         reason: str | None = None,
     ) -> Customer:
         """Soft-delete via the §143 tombstone columns (never a hard delete)."""
+        # get() refuses an already-deleted row, so the tombstone cannot be
+        # stamped twice from here.
         customer = await CustomerService.get(session, tenant_id, customer_id)
-        if customer.deleted_at is not None:
-            raise ConflictError("customer already archived")
         customer.deleted_at = _now()
         customer.deleted_by = deleted_by
         customer.deletion_reason = reason
@@ -275,17 +338,23 @@ class CustomerService:
         *,
         name: str | None = None,
         phone: str | None = None,
+        email: str | None = None,
     ) -> Customer:
         """Resolve a channel handle to a customer, creating the cheapest match.
 
         1. an existing (tenant, channel, external_id) identity wins — the
            customer's last_seen_at is touched;
-        2. else a customer holding the same phone adopts the new identity;
+        2. else a customer holding the same phone/email adopts the new identity;
         3. else a fresh customer + identity pair is created.
 
         Retries once on unique violations so concurrent webhook deliveries
         converge on the same customer instead of failing.
         """
+        # M12: resolve AND store on the canonical form, so one human writing one
+        # handle three ways is still one customer.
+        canonical_phone = _canonical_or_raw(phone, normalize_phone)
+        canonical_email = _canonical_or_raw(email, normalize_email)
+
         for _attempt in range(_RESOLVE_ATTEMPTS):
             customer = await CustomerService._resolve_by_identity(
                 session, tenant_id, channel, external_id
@@ -294,16 +363,22 @@ class CustomerService:
                 CustomerService._touch(customer, name)
                 return customer
 
+            # The ORIGINAL spellings go in, not the canonical ones: the resolver
+            # tries canonical first and then the typed form, which is what a row
+            # written before this layer still holds.
             phone_customer = await CustomerService._resolve_by_phone(
                 session, tenant_id, phone
             )
-            if phone_customer is not None:
+            contact_customer = phone_customer or await CustomerService._resolve_by_email(
+                session, tenant_id, email
+            )
+            if contact_customer is not None:
                 try:
                     async with session.begin_nested():
                         session.add(
                             CustomerIdentity(
                                 tenant_id=tenant_id,
-                                customer_id=phone_customer.id,
+                                customer_id=contact_customer.id,
                                 channel=channel,
                                 external_id=external_id,
                             )
@@ -311,15 +386,16 @@ class CustomerService:
                         await session.flush()
                 except IntegrityError:
                     continue  # identity appeared concurrently — re-resolve
-                CustomerService._touch(phone_customer, name)
-                return phone_customer
+                CustomerService._touch(contact_customer, name)
+                return contact_customer
 
             try:
                 async with session.begin_nested():
                     customer = Customer(
                         tenant_id=tenant_id,
-                        name=name or phone or "",
-                        phone=normalize_phone_e164(phone) or phone,
+                        name=name or canonical_phone or "",
+                        phone=canonical_phone,
+                        email=canonical_email,
                     )
                     session.add(customer)
                     await session.flush()
@@ -356,7 +432,34 @@ class CustomerService:
         ).scalar_one_or_none()
         if identity is None:
             return None
+        # get() raises for a tombstone: an erased person is never resurrected by
+        # the next inbound message on their old handle.
         return await CustomerService.get(session, tenant_id, identity.customer_id)
+
+    @staticmethod
+    async def _resolve_live_by_contact(
+        session: AsyncSession, tenant_id: UUID, column, candidates: list[str]
+    ) -> Customer | None:
+        """First live customer holding one of ``candidates``, canonical first.
+
+        One-at-a-time rather than IN(...): legacy rows can hold two spellings of
+        the same handle, and the canonical one must win. A dead row never adopts
+        a new identity (M2 again — this query does not go through get()).
+        """
+        for candidate in candidates:
+            customer = (
+                await session.execute(
+                    select(Customer).where(
+                        Customer.tenant_id == tenant_id,
+                        column == candidate,
+                        Customer.deleted_at.is_(None),
+                        Customer.merged_into_customer_id.is_(None),
+                    )
+                )
+            ).scalar_one_or_none()
+            if customer is not None:
+                return customer
+        return None
 
     @staticmethod
     async def _resolve_by_phone(
@@ -364,27 +467,19 @@ class CustomerService:
     ) -> Customer | None:
         if not phone:
             return None
-        # §27-29: normalize to E.164 before matching so "+9647701234567"
-        # and "07701234567" resolve to the same customer. If the phone
-        # is unparseable, the normalizer returns the original string, so
-        # the query falls through to exact-string match (the old behavior).
-        normalized = normalize_phone_e164(phone)
-        if normalized is None:
+        return await CustomerService._resolve_live_by_contact(
+            session, tenant_id, Customer.phone, phone_candidates(phone)
+        )
+
+    @staticmethod
+    async def _resolve_by_email(
+        session: AsyncSession, tenant_id: UUID, email: str | None
+    ) -> Customer | None:
+        if not email:
             return None
-        # Try the normalized form first, then the original as fallback
-        # (in case the stored value was not normalized).
-        for candidate in (normalized, phone):
-            result = (
-                await session.execute(
-                    select(Customer).where(
-                        Customer.tenant_id == tenant_id,
-                        Customer.phone == candidate,
-                    )
-                )
-            ).scalar_one_or_none()
-            if result is not None:
-                return result
-        return None
+        return await CustomerService._resolve_live_by_contact(
+            session, tenant_id, Customer.email, email_candidates(email)
+        )
 
     @staticmethod
     def _touch(customer: Customer, name: str | None) -> None:
@@ -791,7 +886,10 @@ class IdentityMergeService:
             },
         )
 
-        # Consolidated lifetime value on the canonical record.
+        # Consolidated lifetime value on the canonical record. Both sides are
+        # DERIVED figures (the order money path rewrites them from the ledger
+        # rows, §M6) and the remap above moved those rows to the canonical
+        # customer, so the sum is what a restripe of that row would derive.
         await session.execute(
             text(
                 "UPDATE customers c1 SET lifetime_value = c1.lifetime_value + c2.lifetime_value "

@@ -36,7 +36,7 @@ class DeletionService:
         from app.modules.customers.service import CustomerService
         from app.modules.platform.service import AuditService
 
-        customer = await CustomerService.get(session, tenant_id, customer_id)
+        customer = await CustomerService.get_for_erasure(session, tenant_id, customer_id)
         if customer.deleted_at is not None:
             raise ValidationError("customer already deleted")
 

@@ -43,6 +43,10 @@ class Customer(TenantMixin, TimestampMixin, WorkspaceScopeMixin, VersionMixin, B
     locale: Mapped[str | None] = mapped_column(String(15))
     is_blocked: Mapped[bool] = mapped_column(Boolean, server_default="false")
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # DERIVED, never hand-set: the order money path rewrites this from the
+    # customer's captured payments minus refunds, floored at zero (§M6). A
+    # segment on ``lifetime_value`` reads exactly this column, so any other
+    # writer makes every LTV cohort a guess.
     lifetime_value: Mapped[float] = mapped_column(MONEY, server_default="0")
     extra: Mapped[dict] = mapped_column(JSONB, server_default="{}")
     # §28 identity merge: canonical redirect when this customer was merged away

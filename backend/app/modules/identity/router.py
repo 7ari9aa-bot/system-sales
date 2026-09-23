@@ -384,6 +384,24 @@ async def set_tenant_currency(
     return {"tenant_id": str(tenant.id), "currency": tenant.currency}
 
 
+@tenants_router.get("/{tenant_id}/currency")
+async def get_tenant_currency(
+    tenant_id: uuid.UUID,
+    ctx: TenantContext = Depends(require_permission("settings:read")),
+):
+    """§47 read: which currency this tenant trades in.
+
+    The PUT has always been here; the money a screen renders has a currency, so
+    a client must be able to ASK for it rather than assume one. The lifecycle
+    service already loads the same tenant row, so this reuses that read rather
+    than adding a second one.
+    """
+    if ctx.tenant_id != tenant_id:
+        raise PermissionDeniedError("tenant mismatch")
+    tenant = await service.TenantLifecycleService.get(ctx.session, tenant_id)
+    return {"tenant_id": str(tenant.id), "currency": tenant.currency}
+
+
 @tenants_router.post("/{tenant_id}/offboarding/export")
 async def export_tenant_data(
     tenant_id: uuid.UUID,

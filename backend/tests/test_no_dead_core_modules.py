@@ -55,6 +55,8 @@ WIRED_CORE_MODULES: tuple[str, ...] = (
     "app.core.circuit_breaker",
     "app.core.config",
     "app.core.consent",
+    # M12: customer create/identity-resolution canonicalize through it.
+    "app.core.contact_norm",
     "app.core.db",
     "app.core.errors",
     "app.core.events.bus",

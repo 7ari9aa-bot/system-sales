@@ -257,3 +257,31 @@ async def test_identity_merge_full_flow(db, tenant_ctx):
         raise AssertionError("self-candidate must be rejected")
     except ConflictError:
         pass
+
+
+async def test_a_tombstoned_phone_never_adopts_a_new_channel_identity(
+    db: AsyncSession, tenant_ctx
+):
+    """§143: contact resolution skips dead rows, so an erased customer's phone
+    cannot quietly become the handle for a new live record."""
+    from app.core.errors import ConflictError
+    from app.modules.customers.models import Customer
+
+    tenant_id = tenant_ctx.tenant_id
+    phone = "+201000000009"
+    gone = await CustomerService.get_or_create_by_identity(
+        db, tenant_id, "whatsapp", f"wa-{uuid.uuid4().hex[:10]}", name="Gone", phone=phone
+    )
+    await CustomerService.archive(db, tenant_id, gone.id, reason="privacy")
+
+    with pytest.raises(ConflictError):
+        await CustomerService.get_or_create_by_identity(
+            db, tenant_id, "instagram", f"ig-{uuid.uuid4().hex[:10]}", phone=phone
+        )
+
+    rows = (
+        await db.execute(
+            select(Customer).where(Customer.tenant_id == tenant_id, Customer.phone == phone)
+        )
+    ).scalars().all()
+    assert [c.id for c in rows] == [gone.id]
