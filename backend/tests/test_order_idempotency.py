@@ -185,6 +185,9 @@ def _counting_create_order(created: list[uuid.UUID]):
         channel: str | None = None,
         shipping_address: dict | None = None,
         warehouse_id: uuid.UUID | None = None,
+        # This stand-in is about the MIDDLEWARE, not the money: it takes what the
+        # route passes so a new service kwarg cannot make these three tests red.
+        **_kwargs: Any,
     ) -> Any:
         order_id = uuid.uuid4()
         created.append(order_id)
@@ -192,6 +195,10 @@ def _counting_create_order(created: list[uuid.UUID]):
             id=order_id,
             number=f"ORD-TEST-{len(created):04d}",
             status="pending",
+            subtotal="50.00",
+            discount_total="0.00",
+            shipping_total="0.00",
+            tax_total="0.00",
             grand_total="50.00",
             currency="EGP",
         )

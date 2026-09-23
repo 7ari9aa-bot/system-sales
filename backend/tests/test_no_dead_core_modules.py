@@ -88,10 +88,9 @@ WIRED_CORE_MODULES: tuple[str, ...] = (
 # than deleted: a deletion is the owner's call, and a wrong deletion is
 # unrecoverable. See the triage report for what would wire each one.
 KNOWN_DEAD_CORE_MODULES: dict[str, str] = {
-    "app.core.money": (
-        "Zero non-test importers. §47 money value object; monetary math is "
-        "done with Decimal/NUMERIC in the commerce modules instead."
-    ),
+    # `app.core.money` is NOT here: it was deleted, not rewired (ADR-053). A
+    # minor-unit value object nothing imported, whose shape contradicted the
+    # NUMERIC(14,2) every money column actually uses.
     "app.core.partitioning": (
         "Zero non-test importers. §56 partition-maintenance helpers are not "
         "run by any worker or script in the source roots."
@@ -221,5 +220,7 @@ def test_detector_distinguishes_wired_from_dead() -> None:
     wired/dead split above is known to be a real measurement.
     """
     assert importers_of("app.core.circuit_breaker"), "detector found no importer for a wired module"
-    assert importers_of("app.core.money") == set(), "detector found importers for a dead module"
+    assert importers_of("app.core.partitioning") == set(), (
+        "detector found importers for a dead module"
+    )
     assert importers_of("app.core.not_a_real_module") == set(), "detector matches anything"

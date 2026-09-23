@@ -352,6 +352,40 @@ async def test_the_invoice_total_is_the_quantized_ai_cost(db: AsyncSession, tena
     assert _feature_totals(invoice) == {"ai_tokens": "1200"}
 
 
+async def test_the_invoice_is_stamped_in_the_currency_its_cost_was_computed_in(
+    db: AsyncSession, tenant_ctx
+) -> None:
+    """§47's label rule cuts BOTH ways: a money row carries the currency its own
+    numbers are in.
+
+    An `Invoice` here is the PLATFORM's bill to the tenant, and the only money
+    this path computes is `ai_cost` — a USD figure (every AI cap and per-minute
+    price in `core/config.py` is USD). `tenants.currency` is what the tenant's
+    CUSTOMERS pay in and says nothing about what the tenant owes here. So this
+    row must not take the tenant's trading currency, any more than it should
+    have kept the old hard-coded "EGP".
+    """
+    await db.execute(
+        text("UPDATE tenants SET currency = 'SAR' WHERE id = :t"),
+        {"t": tenant_ctx.tenant_id},
+    )
+    await _record_ai_usage(
+        db,
+        tenant_ctx.tenant_id,
+        tokens_in=700,
+        tokens_out=500,
+        cost="0.00500000",
+        on=PERIOD_START,
+    )
+
+    invoice = await BillingSnapshotService.close_period(
+        db, tenant_ctx.tenant_id, period_start=PERIOD_START, period_end=PERIOD_END
+    )
+
+    assert invoice.currency == "USD"
+    assert invoice.total == Decimal("0.01")
+
+
 # ------------------------------------------------ immutability (§54) -------
 
 
