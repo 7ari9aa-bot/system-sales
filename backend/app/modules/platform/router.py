@@ -19,6 +19,7 @@ from sqlalchemy import and_, func, or_, select, text
 from app.core.errors import NotFoundError, PermissionDeniedError, ValidationError
 from app.core.redis import get_redis
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
+from app.modules.platform.dr import DRService
 from app.modules.platform.flags import FeatureFlagService
 from app.modules.platform.metrics import MetricRegistry
 from app.modules.platform.models import (
@@ -481,6 +482,27 @@ async def _integrations_subsystem(ctx: TenantContext) -> dict:
     return subsystem("integrations", worst, detail) | {"integrations": entries}
 
 
+async def _dr_subsystem(ctx: TenantContext) -> dict:
+    """§70 → §103: disaster-recovery readiness as one subsystem row.
+
+    The DR policy and its restore-test history are infra metadata, not tenant
+    data, so they belong on the same health surface as the outbox and DLQ. A
+    restore test that is overdue (or has never run) is ``degraded`` — not
+    ``down``: the system is running fine today, it is a recovery-capability
+    warning. Details carry only the recorded status and whether the test is
+    overdue; no timings or runbook strings leave here.
+    """
+    try:
+        health = await DRService.check_dr_health(ctx.session)
+    except Exception as exc:  # noqa: BLE001 — a health check must never raise
+        return subsystem("dr", "degraded", f"unknown ({type(exc).__name__})")
+    if health.get("healthy"):
+        return subsystem("dr", "healthy", "restore test passed and is not overdue")
+    if health.get("restore_test_overdue"):
+        return subsystem("dr", "degraded", "restore test overdue")
+    return subsystem("dr", "degraded", "last restore test did not pass")
+
+
 @router.get("/health")
 async def health(ctx: TenantCtxDep) -> dict:
     """§103: per-subsystem status for the UI health indicator.
@@ -496,6 +518,7 @@ async def health(ctx: TenantCtxDep) -> dict:
         await _outbox_subsystem(ctx),
         await _dlq_subsystem(),
         await _integrations_subsystem(ctx),
+        await _dr_subsystem(ctx),
     ]
     return build_health_response(subsystems)
 

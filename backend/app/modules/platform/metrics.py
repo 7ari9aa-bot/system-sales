@@ -29,15 +29,22 @@ The decisions this registry makes explicit — the reason it exists:
 
 ``seed_definitions`` materializes the registry into ``metric_definitions`` per
 tenant so a tenant can see and version the definitions it is being measured
-against.
+against. The TABLE is the tenant-visible AUDIT COPY of the in-code registry, not
+a second source of truth: the registry is regenerated from code and pushed to
+rows, so a row that disagrees with its ``(name, version)`` spec is a BUG and
+seeding CONVERGES it (updates it) rather than skipping it. ``version`` is part of
+the row's identity — re-versioning a metric writes a NEW row and leaves the prior
+version as history — but every row is always an exact mirror of the spec it names.
 """
 
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, ClassVar
 
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -263,19 +270,92 @@ class MetricRegistry:
         return [spec.name for spec in METRIC_DEFINITIONS]
 
 
-async def seed_definitions(session: AsyncSession, tenant_id: uuid.UUID) -> int:
-    """Insert any canonical definitions missing for ``tenant_id`` (idempotent).
+# Columns a row must carry identically to its registry spec for the row to be
+# "in sync". ``(name, version)`` is the row's IDENTITY, not a synced field, and
+# ``tenant_id`` is its scope — neither belongs in the UPDATE set.
+_SYNCED_FIELDS: tuple[str, ...] = (
+    "definition",
+    "source",
+    "filters",
+    "timezone_rule",
+    "currency_rule",
+    "refund_treatment",
+)
 
-    Existing rows are never overwritten: a tenant may have pinned a definition,
-    and the unique key is ``(tenant_id, name, version)``. Returns the number of
-    rows actually inserted (0 on a repeat call).
+
+def build_seed_statement(rows: Sequence[Mapping[str, Any]]) -> Any:
+    """The converging upsert that pushes registry rows into ``metric_definitions``.
+
+    ``ON CONFLICT (tenant_id, name, version) DO UPDATE`` — NOT ``DO NOTHING``.
+    The conflict target is the table's unique key (see ``uq_metric_defs`` in
+    migration 8a1f6fb95fc6): ``(name, version)`` is the identity of a definition,
+    so a re-versioned metric (a bumped ``version``) matches no existing row and
+    lands as a NEW row, leaving the prior version as audit history. A row that
+    shares the key but disagrees in any synced field is rewritten to match the
+    registry. Kept separate from ``seed_definitions`` so the conflict clause is
+    assertable without a database.
     """
-    rows = [{**spec.as_dict(), "tenant_id": tenant_id} for spec in METRIC_DEFINITIONS]
-    stmt = (
-        pg_insert(MetricDefinition)
-        .values(rows)
-        .on_conflict_do_nothing(index_elements=["tenant_id", "name", "version"])
-        .returning(MetricDefinition.id)
+    stmt = pg_insert(MetricDefinition).values(list(rows))
+    excluded = stmt.excluded
+    return stmt.on_conflict_do_update(
+        index_elements=["tenant_id", "name", "version"],
+        set_={
+            **{field: getattr(excluded, field) for field in _SYNCED_FIELDS},
+            "updated_at": func.now(),
+        },
     )
-    result = await session.execute(stmt)
-    return len(result.scalars().all())
+
+
+def missing_or_drifted(
+    existing: Mapping[tuple[str, int], Mapping[str, Any]],
+    specs: Sequence[MetricSpec] = METRIC_DEFINITIONS,
+) -> list[MetricSpec]:
+    """Registry specs that are absent from, or disagree with, the tenant's rows.
+
+    ``existing`` maps a row's identity ``(name, version)`` to its synced column
+    values. A spec is returned when it has no row yet (missing) or when any
+    synced field differs (drifted) — i.e. whenever the row is not an exact mirror
+    of the registry. Pure: no I/O, so the "a changed definition must reach an
+    existing tenant" rule is testable without PostgreSQL.
+    """
+    out: list[MetricSpec] = []
+    for spec in specs:
+        row = existing.get((spec.name, spec.version))
+        if row is None or any(row[field] != getattr(spec, field) for field in _SYNCED_FIELDS):
+            out.append(spec)
+    return out
+
+
+async def seed_definitions(session: AsyncSession, tenant_id: uuid.UUID) -> int:
+    """Materialize / converge the canonical registry for ``tenant_id``.
+
+    The in-code registry is the authority and this table is its tenant-visible
+    audit copy, so this is a push, not an insert-only first-wins seed: a
+    definition whose text / source / filters / rules changed is UPDATED on the
+    existing tenant's row rather than silently skipped. In-sync rows are left
+    untouched (their ``updated_at`` only moves when a row actually changes).
+    Idempotent — a fully converged tenant returns 0. Must run with the tenant
+    GUC bound (the table is tenant-scoped and RLS applies).
+
+    Returns the number of rows written (inserted or converged).
+    """
+    existing_rows = (
+        await session.execute(
+            select(
+                MetricDefinition.name,
+                MetricDefinition.version,
+                *[getattr(MetricDefinition, field) for field in _SYNCED_FIELDS],
+            ).where(MetricDefinition.tenant_id == tenant_id)
+        )
+    ).all()
+    existing = {
+        (r.name, r.version): {field: getattr(r, field) for field in _SYNCED_FIELDS}
+        for r in existing_rows
+    }
+    to_write = missing_or_drifted(existing)
+    if not to_write:
+        return 0
+
+    rows = [{**spec.as_dict(), "tenant_id": tenant_id} for spec in to_write]
+    await session.execute(build_seed_statement(rows))
+    return len(to_write)

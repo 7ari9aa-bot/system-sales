@@ -32,6 +32,11 @@ class EmailAdapter(ChannelAdapter):
     Outbound: sends via the ESP's REST API.
     """
 
+    # ``name`` is what the gateway registry keys on (get_adapter(channel));
+    # ``channel`` is the value stamped on the normalized message. The protocol
+    # requires ``name``, and its absence is why this adapter was never
+    # registered — see tests/test_no_dead_modules.py.
+    name = "email"
     channel = "email"
 
     def __init__(
@@ -153,3 +158,6 @@ class EmailAdapter(ChannelAdapter):
         if self._provider == "mailgun":
             return f"https://api.mailgun.net/v3/{self._from_email.split('@')[1]}/messages"
         raise ExternalProviderError(f"unknown email provider: {self._provider}")
+
+
+email_adapter = EmailAdapter()

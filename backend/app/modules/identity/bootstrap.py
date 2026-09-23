@@ -15,13 +15,16 @@ depending on an operator to remember — which is exactly what did not happen.
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from decimal import Decimal
 
-from sqlalchemy import select
 from sqlalchemy import text as sa_text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.ids import uuid7
+from app.core.tenancy import current_scope
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +45,7 @@ DEFAULT_HOURS: dict = {
 }
 
 DEFAULT_CALENDAR_NAME = "Default calendar"
+DEFAULT_CALENDAR_TIMEZONE = "Africa/Cairo"
 DEFAULT_SLA_POLICY_NAME = "Default SLA"
 DEFAULT_FIRST_RESPONSE_MINUTES = 60
 DEFAULT_RESOLUTION_MINUTES = 1440
@@ -76,61 +80,75 @@ async def seed_tenant_defaults(
     policy are pure additions with no such side effect, so a backfill can safely
     do those and leave the commercial decision to a human.
     """
-    from app.modules.operations.models import BusinessCalendar, SLAPolicy
-
     created = {
         "calendar": False,
         "sla_policy": False,
         "subscription": False,
         "budget_policy": False,
+        "metric_definitions": False,
     }
 
     # --- business calendar -------------------------------------------------
-    existing_calendar = (
-        await session.execute(
-            select(BusinessCalendar).where(
-                BusinessCalendar.tenant_id == tenant_id,
-                BusinessCalendar.is_default.is_(True),
-            )
-        )
-    ).scalar_one_or_none()
-    if existing_calendar is None:
-        session.add(
-            BusinessCalendar(
-                tenant_id=tenant_id,
-                name=DEFAULT_CALENDAR_NAME,
-                timezone="Africa/Cairo",
-                hours=DEFAULT_HOURS,
-                holidays=[],
-                is_default=True,
-            )
-        )
-        await session.flush()
-        created["calendar"] = True
+    #
+    # INSERTED with SQL rather than `operations.models`, for the same reason the
+    # AI budget policy below is SQL and the same reason
+    # `OrderService._audit_shipping` is: `operations` imports `identity.deps`, so
+    # importing its models here held an identity -> operations edge — and with it
+    # the edge that keeps the 11-module cyclic component from splitting — alive
+    # for two default rows. `INSERT … SELECT … WHERE NOT EXISTS` is the same
+    # idempotent guard this function already applied, in one statement, and it
+    # closes the check-then-insert race the two-step version had.
+    #
+    # workspace_id / location_id are bound from current_scope() because that is
+    # exactly what WorkspaceScopeMixin's column default reads (§151); leaving
+    # them out would seed a tenant-wide row where the ORM wrote a scoped one.
+    workspace_id, location_id = current_scope()
+    inserted_calendar = await session.execute(
+        sa_text(
+            "INSERT INTO business_calendars "
+            "(id, tenant_id, workspace_id, location_id, name, timezone, hours, "
+            "holidays, is_default) "
+            "SELECT :id, :tenant_id, :workspace_id, :location_id, :name, "
+            ":timezone, CAST(:hours AS jsonb), CAST(:holidays AS jsonb), true "
+            "WHERE NOT EXISTS (SELECT 1 FROM business_calendars "
+            "  WHERE tenant_id = :tenant_id AND is_default IS TRUE)"
+        ),
+        {
+            "id": str(uuid7()),
+            "tenant_id": str(tenant_id),
+            "workspace_id": str(workspace_id) if workspace_id else None,
+            "location_id": str(location_id) if location_id else None,
+            "name": DEFAULT_CALENDAR_NAME,
+            "timezone": DEFAULT_CALENDAR_TIMEZONE,
+            "hours": json.dumps(DEFAULT_HOURS),
+            "holidays": json.dumps([]),
+        },
+    )
+    created["calendar"] = bool(inserted_calendar.rowcount)
 
     # --- SLA policy --------------------------------------------------------
-    existing_policy = (
-        await session.execute(
-            select(SLAPolicy).where(
-                SLAPolicy.tenant_id == tenant_id,
-                SLAPolicy.is_default.is_(True),
-            )
-        )
-    ).scalar_one_or_none()
-    if existing_policy is None:
-        session.add(
-            SLAPolicy(
-                tenant_id=tenant_id,
-                name=DEFAULT_SLA_POLICY_NAME,
-                first_response_minutes=DEFAULT_FIRST_RESPONSE_MINUTES,
-                resolution_minutes=DEFAULT_RESOLUTION_MINUTES,
-                applies_to_channel=None,  # all channels
-                is_default=True,
-                status="active",
-            )
-        )
-        await session.flush()
-        created["sla_policy"] = True
+    inserted_policy = await session.execute(
+        sa_text(
+            "INSERT INTO sla_policies "
+            "(id, tenant_id, workspace_id, location_id, name, "
+            "first_response_minutes, resolution_minutes, applies_to_channel, "
+            "is_default, status) "
+            "SELECT :id, :tenant_id, :workspace_id, :location_id, :name, "
+            ":first_response_minutes, :resolution_minutes, NULL, true, 'active' "
+            "WHERE NOT EXISTS (SELECT 1 FROM sla_policies "
+            "  WHERE tenant_id = :tenant_id AND is_default IS TRUE)"
+        ),
+        {
+            "id": str(uuid7()),
+            "tenant_id": str(tenant_id),
+            "workspace_id": str(workspace_id) if workspace_id else None,
+            "location_id": str(location_id) if location_id else None,
+            "name": DEFAULT_SLA_POLICY_NAME,
+            "first_response_minutes": DEFAULT_FIRST_RESPONSE_MINUTES,
+            "resolution_minutes": DEFAULT_RESOLUTION_MINUTES,
+        },
+    )
+    created["sla_policy"] = bool(inserted_policy.rowcount)
 
     # --- subscription (which materialises the plan's entitlements) ---------
     #
@@ -138,19 +156,16 @@ async def seed_tenant_defaults(
     # (provision.py not run), not a bug in registration, and registration must
     # never fail because seeding could not complete. It IS reported in the
     # returned summary rather than swallowed.
-    from app.modules.billing.models import Plan, Subscription
+    #
+    # Asked of BillingService rather than read off `billing.models`: which
+    # subscription rows count as "already provisioned" is billing's own status
+    # vocabulary, and identity has no business re-implementing it against
+    # plans/subscriptions columns it does not own.
     from app.modules.billing.service import BillingService
 
-    existing_subscription = (
-        await session.execute(
-            select(Subscription).where(Subscription.tenant_id == tenant_id)
-        )
-    ).scalars().first()
-    if include_subscription and existing_subscription is None:
-        plan = (
-            await session.execute(select(Plan).where(Plan.code == DEFAULT_PLAN_CODE))
-        ).scalar_one_or_none()
-        if plan is None:
+    already_subscribed = await BillingService.has_any_subscription(session, tenant_id)
+    if include_subscription and not already_subscribed:
+        if not await BillingService.plan_exists(session, DEFAULT_PLAN_CODE):
             logger.warning(
                 "tenant.seed_skipped_subscription tenant=%s reason=plan_missing code=%s",
                 tenant_id,
@@ -193,6 +208,23 @@ async def seed_tenant_defaults(
         },
     )
     created["budget_policy"] = bool(inserted.rowcount)
+
+    # --- canonical metric definitions (§167) --------------------------------
+    #
+    # The in-code MetricRegistry is the single source of truth; metric_definitions
+    # is its tenant-visible audit copy. Without this call the table mirrored
+    # NOTHING (seed_definitions had no caller), so every tenant measured itself
+    # against a registry it could never see. Pushed here so a tenant's rows exist
+    # and equal the registry from the moment it is provisioned. seed_definitions
+    # CONVERGES on change, so re-running this on an existing tenant repairs any
+    # drifted row and never clobbers an in-sync one.
+    #
+    # Function-scope import: identity -> platform is a cycle edge already present
+    # (deps/models), and pulling metrics in at module scope would couple identity
+    # to platform at load time for zero benefit.
+    from app.modules.platform.metrics import seed_definitions
+
+    created["metric_definitions"] = (await seed_definitions(session, tenant_id)) > 0
 
     logger.info("tenant.seeded tenant=%s created=%s", tenant_id, created)
     return created
