@@ -129,6 +129,32 @@ class BillingService:
         ).scalar_one_or_none()
 
     @staticmethod
+    async def has_any_subscription(session: AsyncSession, tenant_id: uuid.UUID) -> bool:
+        """Does this tenant have a subscription row in ANY state?
+
+        Deliberately wider than ``get_subscription``: that one filters to the
+        live statuses (trialing / active / past_due) because callers want the
+        contract a tenant is running under, whereas a provisioning seed must not
+        bind a second one to a tenant whose subscription was cancelled. Only
+        ``billing`` may make that call — it is its own status vocabulary.
+        """
+        return (
+            await session.execute(
+                select(Subscription.id).where(Subscription.tenant_id == tenant_id).limit(1)
+            )
+        ).scalar_one_or_none() is not None
+
+    @staticmethod
+    async def plan_exists(session: AsyncSession, plan_code: str) -> bool:
+        """Is this a real plan code? Lets a caller probe before ``start_trial``,
+        which refuses (NotFoundError) rather than guess a plan."""
+        return (
+            await session.execute(
+                select(Plan.id).where(Plan.code == plan_code).limit(1)
+            )
+        ).scalar_one_or_none() is not None
+
+    @staticmethod
     async def check_entitlement(
         session: AsyncSession, tenant_id: uuid.UUID, feature: str, *, requested: int = 1
     ) -> bool:
@@ -160,16 +186,16 @@ class BillingService:
     async def used_this_period(session: AsyncSession, tenant_id: uuid.UUID, feature: str) -> int:
         derived = _DERIVED_USAGE.get(feature)
         if derived == "tenant_users":
-            # Lazy import: identity.models is imported by the same routers that
-            # import this module.
-            from app.modules.identity.models import TenantUser
-
+            # One COUNT(*) over identity's seat table. Importing
+            # `identity.models` for it keeps a billing -> identity coupling (and
+            # the billing <-> identity cycle) alive for a single number, so read
+            # the row the way `OrderService._recompute_lifetime_value` reads
+            # customers: one parameter-bound statement, no model import.
             return int(
                 (
                     await session.execute(
-                        select(func.count())
-                        .select_from(TenantUser)
-                        .where(TenantUser.tenant_id == tenant_id)
+                        text("SELECT COUNT(*) FROM tenant_users WHERE tenant_id = :tenant_id"),
+                        {"tenant_id": tenant_id},
                     )
                 ).scalar_one()
                 or 0
@@ -273,12 +299,18 @@ class EntitlementService:
         is what you want.
         """
         from app.core.errors import RateLimitExceededError
-        from app.modules.identity.models import Tenant
 
-        tenant = (
-            await session.execute(select(Tenant).where(Tenant.id == tenant_id))
+        # The one fact needed from identity is whether the tenant is switched
+        # on. Reading `Tenant` for it means importing another domain's mapped
+        # class inside the hot authorization path, so the flag is selected
+        # directly — same single-value statement as the seat count above.
+        is_active = (
+            await session.execute(
+                text("SELECT is_active FROM tenants WHERE id = :tenant_id"),
+                {"tenant_id": tenant_id},
+            )
         ).scalar_one_or_none()
-        if tenant is None or not tenant.is_active:
+        if not is_active:
             return False
 
         if capability in (

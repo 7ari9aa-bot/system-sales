@@ -6,8 +6,9 @@ coupling modules further. There is now a ratchet.
 
 Three rules, in increasing strictness:
 
-1. **No new import CYCLE between modules.** Eight exist today and are listed
-   below; any ninth fails. Cycles are the reason this codebase is full of
+1. **No new import CYCLE between modules.** Cycles are counted as strongly
+   connected components, and two of them are baselined below; a third, or a
+   bigger one, fails. Cycles are the reason this codebase is full of
    function-scope imports like `from app.modules.identity.models import Tenant`
    inside a method — the cycle has to be broken *somewhere*, and a lazy import
    is the cheapest place. They also make a module impossible to load in
@@ -37,6 +38,7 @@ from __future__ import annotations
 import ast
 import collections
 import pathlib
+import random
 
 import pytest
 
@@ -96,29 +98,85 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # bypassed it. Any other seam (raw model write, read-model copy) re-opens
 # the bug this edge closes. Function-scope import, and platform -> identity
 # already exists at module scope (deps/models), so no new cycle forms.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 104
+# 104 -> 97 on 2026-09-23: the pay-back wave-3 asked for instead of another
+# ceiling raise. Seven edges DELETED, no new dependency invented, nothing moved
+# into app.core to hide it:
+#   1-2. customers/timeline.py `_orders` / `_payments` read `orders`,
+#        `order_payments` and `refunds` with parameter-bound SQL instead of
+#        importing `orders.models` — the CUSTOMER 360 projection is a read model
+#        and `OrderService._recompute_lifetime_value` is the precedent for
+#        reading another domain's rows this way. Takes `customers -> orders` out
+#        of the graph entirely.
+#   3.   customers/timeline.py `_tasks` likewise for `operations.models.Task`.
+#   4.   billing.used_this_period("tenant_users") counts seats with one SQL
+#        COUNT over `tenant_users` rather than importing `identity.models`.
+#   5.   EntitlementService.can needs one boolean off `tenants`; it selects
+#        `is_active` instead of importing `identity.models.Tenant`.
+#   6.   identity.bootstrap's subscription probe asks BillingService
+#        (has_any_subscription / plan_exists) instead of importing
+#        `billing.models` — which-subscription-states-count is billing's own
+#        vocabulary, so this is the preferred fix, not a workaround.
+#   7.   identity.bootstrap seeds the default calendar and SLA policy with
+#        INSERT … SELECT … WHERE NOT EXISTS instead of importing
+#        `operations.models`, same as the ai_budget_policies row beside it, and
+#        it gains the atomicity that two-step check-then-insert never had.
+# Edge 7 is also what broke the blob: see BASELINE_CYCLIC_SCCS.
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 97
 BASELINE_MODULE_SCOPE_SERVICE_IMPORTS = 5
 
-# Cycles are identified by the SET of modules involved, so the same loop
-# discovered from a different entry point counts once.
+# Cycles are identified by their STRONGLY CONNECTED COMPONENT — the set of
+# modules that can each reach each other — not by one path between them.
 #
-# 8 -> 9 on 2026-09-21: the §8 fix replaced model imports with service
-# imports. One new cycle appeared: ai -> billing -> identity -> operations
-# (the ai module now reaches billing.service, which reaches identity.service,
-# which reaches operations.models). This is a transitive cycle through
-# existing modules — no new module enters the graph. The fix is to extract
-# a read-model (§137) for the billing→identity edge.
-BASELINE_CYCLES: frozenset[frozenset[str]] = frozenset(
+# Why the shape changed on 2026-09-23. This baseline used to list nine cycles
+# found by a depth-first walk that stopped at the first route back to a node it
+# had already seen. Measured with a complete enumeration (Johnson), the graph at
+# `f7b4ef6` did not hold nine cycles: it held thirty-odd, because 11 of the 17
+# modules sat in a single strongly connected blob — `ai, billing, catalog,
+# conversations, customers, identity, inventory, notifications, operations,
+# orders, platform`. The nine entries were whatever that one traversal happened
+# to print, so the rule was not "no new cycle" but "no cycle shaped like the
+# nine I already wrote down": a NEW edge inside the blob could pass, and DELETING
+# an edge — the thing the ratchet exists to encourage — reshuffled the traversal
+# and failed the test for an improvement. Wave-4 hit exactly that: dropping the
+# `customers -> orders` edge split the blob, and the old test called it nine
+# regressions.
+#
+# An SCC baseline has neither hole. It is monotone under edge deletion by
+# construction (deleting an edge can only shrink or split a component), and it
+# cannot be walked into by adding an edge between two modules that already reach
+# each other — a merge is a bigger component, and a bigger component is the
+# failure.
+#
+# 2026-09-23, measured with Tarjan over the current graph (98 cross-module
+# edges). One component, eleven modules: almost the whole commerce side of the
+# monolith reaches around itself. That is the honest shape of the debt, and it
+# is now the ceiling — a twelfth module entering it, or a second component
+# appearing between two modules nobody baselined together, both fail. Splitting
+# it is the improvement this rule is waiting for; when an agent's read-model work
+# breaks the blob in two, `_cyclic_sccs` reports two smaller components,
+# `test_module_cycles_only_get_resolved` goes red on purpose, and the baseline
+# comes down with it.
+#
+# 2026-09-23, later the same day — it split. Deleting the last
+# identity -> operations import (edge 7 above) took `identity` out of the commerce
+# side's back-reach, so the eleven-module blob is now two components, seven and
+# three modules, and `notifications` is out of every cycle. `identity` can still
+# only be reasoned about together with `billing` and `platform`; that pair is the
+# next thing to pay down, and this is the floor it has to beat.
+BASELINE_CYCLIC_SCCS: frozenset[frozenset[str]] = frozenset(
     [
-        frozenset(["billing", "identity"]),
-        frozenset(["catalog", "inventory"]),
-        frozenset(["conversations", "customers"]),
-        frozenset(["customers", "orders"]),
-        frozenset(["identity", "operations"]),
-        frozenset(["inventory", "orders"]),
-        frozenset(["catalog", "inventory", "orders"]),
-        frozenset(["identity", "operations", "platform"]),
-        frozenset(["ai", "billing", "identity", "operations"]),
+        frozenset(
+            {
+                "ai",
+                "catalog",
+                "conversations",
+                "customers",
+                "inventory",
+                "operations",
+                "orders",
+            }
+        ),
+        frozenset({"billing", "identity", "platform"}),
     ]
 )
 
@@ -174,38 +232,79 @@ def _cross_module_imports() -> list[tuple[str, str, str, bool]]:
     return found
 
 
-def _cycles() -> set[frozenset[str]]:
+def _cyclic_sccs() -> set[frozenset[str]]:
+    """Every strongly connected component with more than one module in it."""
     graph: dict[str, set[str]] = collections.defaultdict(set)
     for source, target, _kind, _scope in _cross_module_imports():
         graph[source].add(target)
+        graph.setdefault(target, set())
+    return _sccs_of(graph)
 
-    found: set[frozenset[str]] = set()
-    seen: set[str] = set()
 
-    def walk(node: str, stack: list[str]) -> None:
-        if node in stack:
-            found.add(frozenset(stack[stack.index(node) :]))
-            return
-        if node in seen:
-            return
-        seen.add(node)
-        for nxt in sorted(graph.get(node, ())):
-            walk(nxt, stack + [node])
+def _sccs_of(graph: dict[str, set[str]]) -> set[frozenset[str]]:
+    """Tarjan's algorithm, run over a caller-supplied graph.
 
-    for start in sorted(graph):
-        walk(start, [])
-    return found
+    Split out so the detector itself can be tested against a graph whose answer
+    is known by hand. Unlike the DFS this replaces, the result does not depend on
+    the order modules happen to be visited in, and it is monotone under edge
+    deletion — which is what makes it a usable ratchet: the only way for a
+    component to get bigger is to add an edge.
+    """
+
+    index: dict[str, int] = {}
+    low: dict[str, int] = {}
+    stack: list[str] = []
+    on_stack: set[str] = set()
+    components: list[list[str]] = []
+
+    def visit(node: str) -> None:
+        # Recursion, not an explicit stack: the graph is one node per module
+        # (17 today), so depth is bounded by that and the body stays legible.
+        index[node] = low[node] = len(index)
+        stack.append(node)
+        on_stack.add(node)
+        for nxt in sorted(graph[node]):
+            if nxt not in index:
+                visit(nxt)
+                low[node] = min(low[node], low[nxt])
+            elif nxt in on_stack:
+                low[node] = min(low[node], index[nxt])
+        if low[node] == index[node]:
+            comp = []
+            while True:
+                z = stack.pop()
+                on_stack.discard(z)
+                comp.append(z)
+                if z == node:
+                    break
+            components.append(comp)
+
+    for module in sorted(graph):
+        if module not in index:
+            visit(module)
+
+    return {
+        frozenset(comp)
+        for comp in components
+        if len(comp) > 1 or comp[0] in graph[comp[0]]
+    }
 
 
 # ------------------------------------------------------------ the rules ---
 
 
 def test_no_new_module_import_cycles() -> None:
-    """A ninth cycle means two modules can no longer be reasoned about alone."""
-    current = _cycles()
+    """No component may be bigger than the baseline, and no new one may appear.
+
+    A merged or grown component means two modules that used to be reasoned about
+    separately now cannot be. A brand-new component between two modules nobody
+    baselined together is the same failure in miniature.
+    """
+    current = _cyclic_sccs()
     new = sorted(
-        (" -> ".join(sorted(c)) for c in current - BASELINE_CYCLES),
-        key=str,
+        " -> ".join(sorted(c))
+        for c in current
+        if not any(c <= base for base in BASELINE_CYCLIC_SCCS)
     )
     assert not new, (
         "new import cycle(s) between modules: "
@@ -216,15 +315,19 @@ def test_no_new_module_import_cycles() -> None:
 
 
 def test_module_cycles_only_get_resolved() -> None:
-    """If a cycle was removed, tighten the baseline so it cannot come back."""
-    current = _cycles()
-    fixed = sorted((" -> ".join(sorted(c)) for c in BASELINE_CYCLES - current), key=str)
+    """If a component shrank or split, tighten the baseline so it cannot return."""
+    current = _cyclic_sccs()
+    fixed = sorted(
+        " -> ".join(sorted(base))
+        for base in BASELINE_CYCLIC_SCCS
+        if not any(base <= cur for cur in current)
+    )
     if fixed:
         pytest.fail(
-            "good news — these cycles no longer exist: "
+            "good news — these cyclic components shrank or split: "
             + "; ".join(fixed)
-            + ". Remove them from BASELINE_CYCLES in this file to lock the "
-            "improvement in."
+            + ". Replace them in BASELINE_CYCLIC_SCCS with the smaller "
+            "components that remain, to lock the improvement in."
         )
 
 
@@ -277,4 +380,63 @@ def test_the_parser_actually_sees_the_tree() -> None:
         f"the boundary parser found only {len(found)} cross-module imports — "
         "it is probably broken, which would make every other rule vacuous"
     )
-    assert _cycles(), "cycle detection returned nothing — the graph walk is broken"
+    assert _cyclic_sccs(), "cycle detection returned nothing — the graph walk is broken"
+
+
+def test_the_cycle_detector_measures_cycles_not_traversal_order() -> None:
+    """The detector is the rule, so the detector gets tested.
+
+    Three properties the replaced DFS did not have, each checked on a graph whose
+    answer is known by hand:
+
+    * it finds a cycle no matter which module the walk starts from — the old
+      detector marked nodes globally `seen` and so reported a different cycle set
+      depending on visit order, which is how deleting an edge came to read as
+      adding one;
+    * it separates the two directions of change: adding an edge merges
+      components (a regression this file must fail on), deleting one can only
+      shrink or split them (an improvement `_cyclic_sccs` must stay silent on);
+    * it does not invent a cycle where the graph is a plain chain.
+    """
+    chain = {"a": {"b"}, "b": {"c"}, "c": set()}
+    assert _sccs_of({k: set(v) for k, v in chain.items()}) == set()
+
+    loop = {"a": {"b"}, "b": {"c"}, "c": {"a"}}
+    assert _sccs_of({k: set(v) for k, v in loop.items()}) == {frozenset({"a", "b", "c"})}
+
+    # Two disjoint loops plus a bridge: merging them with one new edge is exactly
+    # the regression `test_no_new_module_import_cycles` has to catch.
+    # Two disjoint loops. One edge between them is not enough to merge them —
+    # that only makes them reachable in sequence — so the bridge here runs both
+    # ways, which is what puts every module on a single loop. This is exactly the
+    # regression `test_no_new_module_import_cycles` has to catch.
+    separate = {"a": {"b"}, "b": {"a"}, "c": {"d"}, "d": {"c"}}
+    before = _sccs_of({k: set(v) for k, v in separate.items()})
+    assert before == {frozenset({"a", "b"}), frozenset({"c", "d"})}
+    one_way = {k: set(v) for k, v in separate.items()}
+    one_way["b"] = {"a", "c"}
+    assert _sccs_of(one_way) == before, (
+        "a one-way bridge merged two loops that cannot reach each other back"
+    )
+
+    merged = {k: set(v) for k, v in separate.items()}
+    merged["b"] = {"a", "c"}
+    merged["d"] = {"c", "a"}
+    assert _sccs_of(merged) == {frozenset({"a", "b", "c", "d"})}, (
+        "adding a two-way bridge did not merge the components"
+    )
+
+    # And the deletion half: cutting the bridge back returns the two components,
+    # so an improvement can never be reported as a new cycle.
+    merged["b"] = {"a"}
+    merged["d"] = {"c"}
+    assert _sccs_of(merged) == before
+
+    # Order-independence, which is the property the DFS lacked. The same graph
+    # written in three different key orders must report the same components; the
+    # replaced detector kept a global `seen` set, so its answer moved with the
+    # visit order and a deleted edge could surface a "new" cycle.
+    keys = list(merged)
+    for _ in range(8):
+        shuffled = {k: set(merged[k]) for k in random.sample(keys, len(keys))}
+        assert _sccs_of(shuffled) == before, "the detector's answer moved with key order"

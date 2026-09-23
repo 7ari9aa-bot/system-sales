@@ -168,6 +168,18 @@ async def ensure_recurring_jobs() -> None:
             async with session.begin():
                 await bind_tenant(session, tenant_id)
                 for job_type, (_interval, payload) in RECURRING_JOBS.items():
+                    # Insert-if-absent is the right key because a recurring sweep
+                    # has exactly ONE logical occurrence per (job_type, tenant):
+                    # there is no schedule table of future rows, the row IS the
+                    # schedule and `_reschedule_recurring` re-arms THIS row in
+                    # place after each run. So the row is made unique by its
+                    # stable idempotency_key (`recurring:{job_type}:{tenant_id}`),
+                    # backed by the uq_scheduled_jobs_idem UNIQUE constraint — a
+                    # duplicate `(job_type, tenant)` pair is meaningless, there can
+                    # only ever be one next-run. ON CONFLICT DO NOTHING on that key
+                    # therefore makes this idempotent across boots and replicas:
+                    # a restart never multiplies the sweep, and two workers racing
+                    # at boot converge on a single row.
                     stmt = (
                         pg_insert(ScheduledJob)
                         .values(

@@ -7,6 +7,14 @@ This is a READ-ONLY projection: it never writes, never mutates a domain
 entity, and every query is tenant-scoped. It exists because the record page
 otherwise needs 5 round trips and the browser would have to merge and sort
 timelines client-side, which cannot page correctly.
+
+The orders/tasks/conversation rows are read with parameter-bound SQL rather
+than by importing ``orders.models`` / ``operations.models``: this is exactly
+the cross-module read-model the boundary ratchet exists to route around, and
+it is the same answer ``OrderService._recompute_lifetime_value`` gives in the
+other direction — a projection reads columns, it does not couple to another
+domain's mapped classes. Every statement stays tenant-filtered twice over
+(``WHERE tenant_id`` plus the RLS policy on the bound GUC).
 """
 
 from __future__ import annotations
@@ -16,7 +24,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.customers.models import CustomerEvent
@@ -41,6 +49,17 @@ def _dec(value: Any) -> Decimal:
     if isinstance(value, Decimal):
         return value
     return Decimal(str(value))
+
+
+def _bind_in(params: dict[str, object], prefix: str, values: tuple[str, ...]) -> str:
+    """Register ``values`` in ``params`` and return their bind list.
+
+    ``:prefix_0, :prefix_1, …`` — so an ``IN``/``NOT IN`` list is built from the
+    module's own status vocabulary without ever interpolating a string into SQL.
+    """
+    names = [f"{prefix}_{i}" for i in range(len(values))]
+    params.update(dict(zip(names, values, strict=True)))
+    return ", ".join(f":{name}" for name in names)
 
 
 def _iso(value: datetime | None) -> str | None:
@@ -163,16 +182,19 @@ class Customer360Service:
     async def _orders(
         session: AsyncSession, tenant_id: UUID, customer_id: UUID, limit: int
     ) -> list[dict]:
-        from app.modules.orders.models import Order
-
         rows = (
             await session.execute(
-                select(Order)
-                .where(Order.tenant_id == tenant_id, Order.customer_id == customer_id)
-                .order_by(Order.created_at.desc(), Order.id.desc())
-                .limit(limit)
+                text(
+                    "SELECT id, number, status, currency, grand_total, channel, "
+                    "placed_at, created_at "
+                    "FROM orders "
+                    "WHERE tenant_id = :tenant_id AND customer_id = :customer_id "
+                    "ORDER BY created_at DESC, id DESC "
+                    "LIMIT :limit"
+                ),
+                {"tenant_id": tenant_id, "customer_id": customer_id, "limit": limit},
             )
-        ).scalars().all()
+        ).all()
         return [
             {
                 "id": str(o.id),
@@ -213,20 +235,21 @@ class Customer360Service:
     async def _tasks(
         session: AsyncSession, tenant_id: UUID, customer_id: UUID, limit: int
     ) -> list[dict]:
-        from app.modules.operations.models import Task
-
         rows = (
             await session.execute(
-                select(Task)
-                .where(
-                    Task.tenant_id == tenant_id,
-                    Task.related_entity_type == "customer",
-                    Task.related_entity_id == customer_id,
-                )
-                .order_by(Task.created_at.desc(), Task.id.desc())
-                .limit(limit)
+                text(
+                    "SELECT id, title, status, priority, source, assignee_user_id, "
+                    "due_date, created_at "
+                    "FROM tasks "
+                    "WHERE tenant_id = :tenant_id "
+                    "AND related_entity_type = 'customer' "
+                    "AND related_entity_id = :customer_id "
+                    "ORDER BY created_at DESC, id DESC "
+                    "LIMIT :limit"
+                ),
+                {"tenant_id": tenant_id, "customer_id": customer_id, "limit": limit},
             )
-        ).scalars().all()
+        ).all()
         return [
             {
                 "id": str(t.id),
@@ -249,60 +272,69 @@ class Customer360Service:
 
         Payments hang off orders (no direct customer FK), so both aggregates
         join through the customer's orders.
+
+        The status vocabularies stay the module constants above and are passed
+        as binds, so this projection cannot drift from the words the domains
+        actually write.
         """
-        from app.modules.orders.models import Order, OrderPayment, Refund
+        binds: dict[str, object] = {"tenant_id": tenant_id, "customer_id": customer_id}
+        non_committed = _bind_in(binds, "nc", _NON_COMMITTED_ORDER_STATUSES)
+        settled = _bind_in(binds, "st", _SETTLED_PAYMENT_STATUSES)
 
-        committed = func.coalesce(
-            func.sum(Order.grand_total).filter(
-                Order.status.notin_(_NON_COMMITTED_ORDER_STATUSES)
-            ),
-            Decimal("0"),
-        )
-        currency = func.min(Order.currency)
-        orders_total, currency_code = (
+        money_row = (
             await session.execute(
-                select(committed, currency).where(
-                    Order.tenant_id == tenant_id, Order.customer_id == customer_id
-                )
+                text(
+                    "SELECT COALESCE("
+                    "SUM(grand_total) FILTER (WHERE status NOT IN ("
+                    f"{non_committed}"
+                    ")), 0) AS committed_total, "
+                    "MIN(currency) AS currency "
+                    "FROM orders "
+                    "WHERE tenant_id = :tenant_id AND customer_id = :customer_id"
+                ),
+                binds,
             )
         ).one()
 
-        settled = func.coalesce(
-            func.sum(OrderPayment.amount).filter(
-                OrderPayment.status.in_(_SETTLED_PAYMENT_STATUSES)
-            ),
-            Decimal("0"),
-        )
-        paid_total, payment_count = (
+        paid_row = (
             await session.execute(
-                select(settled, func.count(OrderPayment.id))
-                .join(Order, Order.id == OrderPayment.order_id)
-                .where(
-                    OrderPayment.tenant_id == tenant_id,
-                    Order.tenant_id == tenant_id,
-                    Order.customer_id == customer_id,
-                )
+                text(
+                    "SELECT COALESCE("
+                    "SUM(p.amount) FILTER (WHERE p.status IN ("
+                    f"{settled}"
+                    ")), 0) AS paid_total, "
+                    "COUNT(p.id) AS payment_count "
+                    "FROM order_payments AS p "
+                    "JOIN orders AS o ON o.id = p.order_id "
+                    "WHERE p.tenant_id = :tenant_id "
+                    "AND o.tenant_id = :tenant_id "
+                    "AND o.customer_id = :customer_id"
+                ),
+                binds,
             )
         ).one()
 
-        refunded = func.coalesce(
-            func.sum(Refund.amount).filter(Refund.status == "processed"),
-            Decimal("0"),
-        )
         refunded_total = (
             await session.execute(
-                select(refunded)
-                .select_from(Refund)
-                .join(OrderPayment, OrderPayment.id == Refund.payment_id)
-                .join(Order, Order.id == OrderPayment.order_id)
-                .where(
-                    Refund.tenant_id == tenant_id,
-                    OrderPayment.tenant_id == tenant_id,
-                    Order.tenant_id == tenant_id,
-                    Order.customer_id == customer_id,
-                )
+                text(
+                    "SELECT COALESCE("
+                    "SUM(r.amount) FILTER (WHERE r.status = 'processed'), 0) "
+                    "FROM refunds AS r "
+                    "JOIN order_payments AS p ON p.id = r.payment_id "
+                    "JOIN orders AS o ON o.id = p.order_id "
+                    "WHERE r.tenant_id = :tenant_id "
+                    "AND p.tenant_id = :tenant_id "
+                    "AND o.tenant_id = :tenant_id "
+                    "AND o.customer_id = :customer_id"
+                ),
+                binds,
             )
         ).scalar_one()
+
+        orders_total = money_row.committed_total
+        currency_code = money_row.currency
+        paid_total = paid_row.paid_total
+        payment_count = paid_row.payment_count
 
         committed_total = _dec(orders_total)
         collected = _dec(paid_total)
