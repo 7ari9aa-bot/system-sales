@@ -14,8 +14,10 @@ had already settled, and each divergence was a merchant-visible bug:
 
 The fix is delegation, so these tests pin the DELEGATION and the field NAMES
 rather than a re-derivation of the SQL. Money maths is asserted to happen in the
-canonical read model: marketing only casts to float for the wire, and the
-currency label is the tenant's, echoed from the read model, never a literal.
+canonical read model: marketing only formats money for the wire, as a Decimal
+STRING (ADR-001/§47 — the same shape ``orders/router.py`` ships for
+``grand_total``), and the currency label is the tenant's, echoed from the read
+model, never a literal.
 
 Pure cases run with no database at all. DB cases seed payments/refunds at
 explicit instants and skip locally when ``DATABASE_URL_APP_ADMIN`` is unset.
@@ -30,17 +32,32 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.main import create_app
 from app.modules.analytics import service as analytics_service
 from app.modules.customers.service import CustomerService
 from app.modules.marketing import analytics
+from app.modules.marketing import router as marketing_router
 from app.modules.orders.models import Order, OrderPayment, Refund
 from app.modules.platform.metrics import MetricRegistry
 
 TENANT = uuid.UUID("11111111-1111-1111-1111-111111111111")
+
+#: The AMOUNT keys each marketing read model emits. ADR-001/§47: these cross the
+#: JSON boundary as Decimal strings, because a client that parses money as a
+#: float64 cannot add a column of them up and still trust the cents. Counts
+#: (``orders_count``, ``conversions``), ratios (``budget_roas``) and labels
+#: (``currency``, ``day``) are not amounts and keep their own types.
+_MONEY_KEYS_SUMMARY = (
+    "gross_revenue",
+    "refunded_amount",
+    "net_revenue",
+    "refund_excess",
+    "gross_aov",
+    "net_aov",
+)
+_MONEY_KEYS_DAILY = ("gross_revenue", "refunded_amount", "net_revenue", "refund_excess")
 
 
 # --------------------------------------------------------------------------
@@ -131,11 +148,49 @@ async def test_daily_orders_delegates_to_the_merchant_day_series(monkeypatch) ->
     assert rows[0]["day"] == "2026-03-15"
     # The count keeps its name; the money never leaves as a bare "revenue".
     assert rows[0]["orders"] == 3
-    assert rows[0]["gross_revenue"] == 70.0
-    assert isinstance(rows[0]["gross_revenue"], float)
-    assert rows[0]["net_revenue"] == 50.0
-    assert rows[0]["refunded_amount"] == 20.0
+    assert isinstance(rows[0]["orders"], int)
+    # Money is a Decimal string on the wire (ADR-001) — never a float64 a client
+    # has to trust its JSON parser to reproduce.
+    assert rows[0]["gross_revenue"] == "70.00"
+    assert all(isinstance(rows[0][k], str) for k in _MONEY_KEYS_DAILY), rows[0]
+    assert Decimal(rows[0]["gross_revenue"]) == Decimal("70.00")
+    assert Decimal(rows[0]["net_revenue"]) == Decimal("50.00")
+    assert Decimal(rows[0]["refunded_amount"]) == Decimal("20.00")
+    assert Decimal(rows[0]["refund_excess"]) == Decimal("0.00")
     assert "revenue" not in rows[0]
+
+
+async def test_a_day_that_refunded_more_than_it_collected_ships_both_halves(
+    monkeypatch,
+) -> None:
+    """The floored-away money is a string too, so the day still adds up.
+
+    gross - refunded would be -10.00, net is floored to 0.00 and the 10.00 that
+    could not be subtracted travels as ``refund_excess``; all three are amounts,
+    so all three are Decimal strings.
+    """
+
+    async def fake(session, tenant_id, *, since, until, timezone=None):
+        return [
+            {
+                "day": "2026-03-15",
+                "gross_revenue": Decimal("70.00"),
+                "refunded_amount": Decimal("80.00"),
+                "net_revenue": Decimal("0.00"),
+                "refund_excess": Decimal("10.00"),
+                "orders_count": 3,
+            }
+        ]
+
+    monkeypatch.setattr(analytics_service, "daily_revenue_series", fake)
+    row = (await analytics.daily_orders(_NoSqlSession(), TENANT, days=30))[0]
+
+    assert row["net_revenue"] == "0.00"
+    assert row["refund_excess"] == "10.00"
+    assert (
+        Decimal(row["gross_revenue"]) - Decimal(row["refunded_amount"])
+        == Decimal(row["net_revenue"]) - Decimal(row["refund_excess"])
+    )
 
 
 async def test_daily_orders_forwards_the_callers_zone(monkeypatch) -> None:
@@ -228,12 +283,21 @@ async def test_orders_summary_never_labels_a_number_plain_revenue(monkeypatch) -
     for key in ("revenue", "aov"):
         assert key not in summary, f"{key} is ambiguous — say gross or net"
     assert summary["orders_count"] == 2
-    assert summary["gross_revenue"] == 100.0
-    assert summary["net_revenue"] == 60.0
-    assert summary["refunded_amount"] == 40.0
-    assert summary["refund_excess"] == 0.0
-    assert summary["gross_aov"] == 50.0
-    assert summary["net_aov"] == 30.0
+    assert isinstance(summary["orders_count"], int), "a count is not money"
+    for key in _MONEY_KEYS_SUMMARY:
+        assert isinstance(summary[key], str), f"{key} is an amount: it ships as a string"
+        assert Decimal(summary[key]) == Decimal(summary[key])
+    assert Decimal(summary["gross_revenue"]) == Decimal("100.00")
+    assert Decimal(summary["net_revenue"]) == Decimal("60.00")
+    assert Decimal(summary["refunded_amount"]) == Decimal("40.00")
+    assert Decimal(summary["refund_excess"]) == Decimal("0.00")
+    assert Decimal(summary["gross_aov"]) == Decimal("50.00")
+    assert Decimal(summary["net_aov"]) == Decimal("30.00")
+    # gross - refunded and net + excess describe the same window: the money the
+    # window could not subtract is on the wire, not dropped.
+    assert Decimal(summary["gross_revenue"]) - Decimal(summary["refunded_amount"]) == (
+        Decimal(summary["net_revenue"]) - Decimal(summary["refund_excess"])
+    )
     assert all(
         not isinstance(v, Decimal) for v in summary.values()
     ), "marketing's contract is Decimal-free JSON"
@@ -286,7 +350,8 @@ async def test_dashboard_orders_block_is_the_same_named_pair(monkeypatch) -> Non
     monkeypatch.setattr(analytics_service, "stock_health", health)
     summary = await analytics.dashboard_summary(_ZeroCountsSession(), TENANT)
 
-    assert summary["orders"]["gross_revenue"] == 10.0
+    assert summary["orders"]["gross_revenue"] == "10.00"
+    assert isinstance(summary["orders"]["gross_revenue"], str)
     assert "revenue" not in summary["orders"]
 
 
@@ -324,6 +389,32 @@ def test_marketing_holds_no_second_copy_of_the_day_or_stock_rule() -> None:
     assert "date_trunc" not in code, "day bucketing belongs to the canonical read model"
     assert "InventoryBalance" not in code, "stock bands belong to stock_health()"
     assert "grand_total" not in code, "order money is payment-based, not order-based"
+
+
+def test_money_is_never_cast_to_float_in_the_read_models() -> None:
+    """ADR-001: the only float leaving marketing is a RATIO.
+
+    A ``float(`` anywhere else in this module is an amount reaching a client as a
+    float64 again — the failure the Decimal-string wire removes. ``_ratio`` is the
+    one exemption, and a ROAS is a ratio, not money.
+    """
+    tree = ast.parse(pathlib.Path(analytics.__file__).read_text(encoding="utf-8"))
+    offenders: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) or node.name == "_ratio":
+            continue
+        for call in ast.walk(node):
+            if isinstance(call, ast.Call) and getattr(call.func, "id", None) == "float":
+                offenders.append(f"{node.name}():line {call.lineno}")
+    assert not offenders, "amount cast to float for the wire: " + ", ".join(offenders)
+
+
+def test_the_marketing_router_emits_no_amount_as_a_float() -> None:
+    """The route layer is half the contract: campaign budget, conversion value and
+    credited attribution all cross there too.
+    """
+    source = pathlib.Path(marketing_router.__file__).read_text(encoding="utf-8")
+    assert "float(" not in source, "the router casts an amount back to float"
 
 
 # --------------------------------------------------------------------------
@@ -424,7 +515,7 @@ async def test_daily_orders_buckets_a_late_utc_sale_into_the_merchant_day(
     assert {r["day"] for r in local_rows} == {dubai_day}
     assert dubai_day != utc_day
     assert local_rows[0]["orders"] == 1
-    assert local_rows[0]["gross_revenue"] == pytest.approx(70.0)
+    assert Decimal(local_rows[0]["gross_revenue"]) == Decimal("70.00")
 
 
 async def test_orders_summary_agrees_with_the_analytics_dashboard(
@@ -441,11 +532,16 @@ async def test_orders_summary_agrees_with_the_analytics_dashboard(
         db, tid, since=now - timedelta(days=30), until=now
     )
 
-    assert marketing["gross_revenue"] == pytest.approx(100.0)
-    assert marketing["net_revenue"] == pytest.approx(60.0)
-    assert marketing["refunded_amount"] == pytest.approx(40.0)
-    assert marketing["gross_revenue"] == pytest.approx(float(canonical["gross_revenue"]))
-    assert marketing["net_revenue"] == pytest.approx(float(canonical["net_revenue"]))
+    # Two screens, ONE number, compared exactly: the wire string re-reads as the
+    # Decimal the canonical read model returned, so gross cannot differ from the
+    # dashboard by even a rounding step. (The float wire this replaces could only
+    # ever be compared with a tolerance.)
+    assert Decimal(marketing["gross_revenue"]) == canonical["gross_revenue"]
+    assert Decimal(marketing["net_revenue"]) == canonical["net_revenue"]
+    assert Decimal(marketing["refunded_amount"]) == canonical["refunded_amount"]
+    assert Decimal(marketing["gross_revenue"]) == Decimal("100.00")
+    assert Decimal(marketing["net_revenue"]) == Decimal("60.00")
+    assert Decimal(marketing["refunded_amount"]) == Decimal("40.00")
     assert marketing["currency"] == canonical["currency"]
     assert marketing["orders_count"] == 1
 
@@ -464,9 +560,9 @@ async def test_an_order_refunded_wholesale_still_shows_its_captured_money(
     await _refunded(db, tid, payment, amount="120.00", at=now - timedelta(hours=3))
 
     summary = await analytics.orders_summary(db, tid, days=30)
-    assert summary["gross_revenue"] == pytest.approx(120.0)
-    assert summary["net_revenue"] == pytest.approx(0.0)
-    assert summary["refunded_amount"] == pytest.approx(120.0)
+    assert Decimal(summary["gross_revenue"]) == Decimal("120.00")
+    assert Decimal(summary["net_revenue"]) == Decimal("0.00")
+    assert Decimal(summary["refunded_amount"]) == Decimal("120.00")
 
 
 async def test_dashboard_separates_an_empty_shelf_from_a_low_one(

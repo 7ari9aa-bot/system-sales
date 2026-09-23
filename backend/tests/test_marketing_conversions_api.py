@@ -240,7 +240,8 @@ async def test_a_campaign_lists_its_conversions_and_another_tenant_sees_none(
     assert listed.status_code == 200, listed.text
     items = listed.json()["items"]
     assert [i["id"] for i in items] == [str(in_scope.id)]
-    assert items[0]["value"] == pytest.approx(300.0)
+    # An amount crosses as a Decimal string (ADR-001/§47), not a float64.
+    assert items[0]["value"] == "300.00"
     assert items[0]["currency"]  # every money figure names its currency
     # The row says which VIEWs of this conversion credit the campaign.
     assert items[0]["attribution_models"] == ["first_touch"]

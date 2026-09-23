@@ -1,13 +1,21 @@
 """MARKETING analytics — read-only aggregate queries.
 
-Every function returns plain dicts (JSON-ready, Decimal-free) and filters
+Every function returns plain dicts ready for the JSON boundary and filters
 ``tenant_id`` explicitly (RLS protects too, but never rely on it alone).
 Attribution figures (revenue by source/campaign, ROAS) come from last-touch
 attributions. Order money, daily buckets and stock bands are NOT computed here:
 they delegate to ``app/modules/analytics/service.py``, which owns the canonical
 read models (§167 — the same number must not be computed twice).
 
-Money maths is done in Decimal inside that service and only cast at the edge.
+Money maths is done in Decimal inside that service; only the FORMATTING happens
+here. **An AMOUNT crosses the boundary as a Decimal string** (``"150.00"``) and a
+**RATIO as a number** (``budget_roas=1.5``) — ADR-001's consequence, §47's one
+currency per tenant, and the same wire shape ``orders/router.py`` already ships
+for ``grand_total``. A client that parses money as a float64 cannot add a column
+of it up and still trust the cents, so the boundary gives it a string and leaves
+the arithmetic in Decimal. ``wire_money`` is the only place that formatting
+happens; ``_ratio`` is the only place a ``float`` still leaves.
+
 Ratios (ROAS) are labelled with the denominator that produced them — see
 ``roas_row``.
 """
@@ -34,6 +42,11 @@ BASIS_ACTUAL_SPEND = "actual_spend"
 _UNLINKED_NAME = "unlinked"
 _PLACEHOLDER_NAMES = {_UNLINKED_NAME, "غير مرتبط"}
 
+#: Money scale — every amount column here is NUMERIC(14,2), so the wire string
+#: always carries its two decimals. Mirrors ``analytics.service.MONEY_SCALE``;
+#: a second name for the same column shape, not a second rule.
+_CENT = Decimal("0.01")
+
 
 def _cutoff(days: int) -> datetime:
     return datetime.now(UTC) - timedelta(days=days)
@@ -50,9 +63,15 @@ def _money(value: object) -> Decimal:
     return Decimal(str(value if value is not None else 0))
 
 
-def _wire(value: Decimal) -> float:
-    """Money crosses to JSON as a bare cast — no arithmetic happens in float."""
-    return float(value)
+def wire_money(value: object) -> str:
+    """THE money-to-wire rule: an amount leaves as a Decimal STRING (ADR-001).
+
+    Quantised to the money scale first, so ``Decimal("150")`` ships as "150.00"
+    and a client can see the figure is money rather than a count. No arithmetic
+    happens in float anywhere on this path — and ``_ratio`` is the only function
+    in this module still allowed to return one, because a ROAS is a ratio.
+    """
+    return str(_money(value).quantize(_CENT))
 
 
 def _window(days: int) -> tuple[datetime, datetime]:
@@ -105,7 +124,7 @@ async def revenue_by_source(
     return [
         {
             "source": row.source,
-            "revenue": float(row.revenue),
+            "revenue": wire_money(row.revenue),
             "conversions": int(row.conversions),
         }
         for row in rows
@@ -117,8 +136,8 @@ async def _revenue_by_campaign_decimals(
 ) -> list[tuple[UUID | None, str, Decimal, int]]:
     """(campaign_id, name, revenue, conversions) with revenue as Decimal.
 
-    Money leaves this helper as Decimal and as float only at the JSON edge, so
-    ROAS never divides a float.
+    Money leaves this helper as Decimal and becomes a wire string only at the
+    JSON edge, so ROAS always divides the Decimal, never a float.
     """
     occurred_at = func.coalesce(Conversion.occurred_at, Conversion.created_at)
     stmt = (
@@ -169,7 +188,7 @@ async def revenue_by_campaign(
         {
             "campaign_id": campaign_id,
             "campaign_name": name,
-            "revenue": float(revenue),
+            "revenue": wire_money(revenue),
             "conversions": conversions,
         }
         for campaign_id, name, revenue, conversions in rows
@@ -193,12 +212,12 @@ async def orders_summary(
     ).revenue_summary(session, tenant_id, since=since, until=until, timezone=timezone)
     return {
         "orders_count": summary["orders_count"],
-        "gross_revenue": _wire(summary["gross_revenue"]),
-        "refunded_amount": _wire(summary["refunded_amount"]),
-        "net_revenue": _wire(summary["net_revenue"]),
-        "refund_excess": _wire(summary["refund_excess"]),
-        "gross_aov": _wire(summary["gross_aov"]),
-        "net_aov": _wire(summary["net_aov"]),
+        "gross_revenue": wire_money(summary["gross_revenue"]),
+        "refunded_amount": wire_money(summary["refunded_amount"]),
+        "net_revenue": wire_money(summary["net_revenue"]),
+        "refund_excess": wire_money(summary["refund_excess"]),
+        "gross_aov": wire_money(summary["gross_aov"]),
+        "net_aov": wire_money(summary["net_aov"]),
         "currency": summary["currency"],
         "timezone": summary["timezone"],
     }
@@ -224,10 +243,10 @@ async def daily_orders(
         {
             "day": row["day"],
             "orders": row["orders_count"],
-            "gross_revenue": _wire(row["gross_revenue"]),
-            "refunded_amount": _wire(row["refunded_amount"]),
-            "net_revenue": _wire(row["net_revenue"]),
-            "refund_excess": _wire(row["refund_excess"]),
+            "gross_revenue": wire_money(row["gross_revenue"]),
+            "refunded_amount": wire_money(row["refunded_amount"]),
+            "net_revenue": wire_money(row["net_revenue"]),
+            "refund_excess": wire_money(row["refund_excess"]),
         }
         for row in rows
     ]
@@ -238,6 +257,10 @@ def _ratio(numerator: Decimal, denominator: Decimal | None) -> float | None:
 
     0.0 is not an acceptable substitute for None here — it reads as "returned
     nothing", when the truth is "there is no denominator to divide by".
+
+    This is the module's one sanctioned float: a ratio is a dimensionless share,
+    not an amount, so it loses no cents by being a number — and a client has to
+    be able to sort and threshold it. Money goes through ``wire_money``.
     """
     if denominator is None or denominator <= 0:
         return None
@@ -258,14 +281,19 @@ def roas_row(
     PLANNED, and this schema records no burned spend, so the honest figure is
     ``budget_roas`` and ``basis`` says so. ``spend_roas`` stays None until
     :func:`campaign_actual_spend` can produce a number.
+
+    The row mixes the two wire types on purpose, and the split is the rule:
+    ``revenue``/``planned_budget``/``actual_spend`` are amounts and ship as
+    Decimal strings, ``budget_roas``/``spend_roas`` are ratios and ship as
+    numbers (or ``None`` — an absent spend feed is not 0.00).
     """
     basis = BASIS_ACTUAL_SPEND if actual_spend is not None else BASIS_PLANNED_BUDGET
     return {
         "campaign_id": campaign_id,
         "name": name,
-        "revenue": float(revenue),
-        "planned_budget": None if planned_budget is None else float(planned_budget),
-        "actual_spend": None if actual_spend is None else float(actual_spend),
+        "revenue": wire_money(revenue),
+        "planned_budget": None if planned_budget is None else wire_money(planned_budget),
+        "actual_spend": None if actual_spend is None else wire_money(actual_spend),
         "basis": basis,
         "budget_roas": _ratio(revenue, planned_budget),
         "spend_roas": _ratio(revenue, actual_spend),
@@ -324,7 +352,11 @@ async def campaign_budget_roas(
 
 
 async def dashboard_summary(session: AsyncSession, tenant_id: UUID) -> dict:
-    """One-call aggregate for the dashboard home screen."""
+    """One-call aggregate for the dashboard home screen.
+
+    The ``orders`` block is :func:`orders_summary`, so it carries the money
+    strings with it; every other key here is a count, and counts stay numbers.
+    """
 
     from app.modules.catalog.models import Product
     from app.modules.conversations.models import Conversation

@@ -9,6 +9,11 @@ budget is what was planned, spend is what was burned.
 These tests pin the honest shape: every ratio says which denominator produced it,
 a zero or missing denominator yields ``None`` rather than 0.0 or a crash, and the
 single seam through which real spend would ever enter is named and empty.
+
+ADR-001/§47 adds a second contract here: an AMOUNT crosses the JSON boundary as a
+Decimal STRING (``"150.00"``, the shape ``orders.router`` already uses for
+``grand_total``), while a RATIO stays a number. A ROAS row carries both kinds, so
+it is where the line between them is easiest to pin.
 """
 
 from __future__ import annotations
@@ -44,8 +49,14 @@ def test_a_budget_denominator_is_labelled_as_a_plan_and_never_called_spend() -> 
     )
 
     assert row["basis"] == "planned_budget"
-    assert row["planned_budget"] == pytest.approx(100.0)
+    # An amount, so a Decimal string (ADR-001). Comparing through Decimal is
+    # strictly stronger than the old ``== pytest.approx(100.0)``: it pins the
+    # exact cents and the money scale, not a float within a tolerance.
+    assert Decimal(row["planned_budget"]) == Decimal("100.00")
+    assert Decimal(row["revenue"]) == Decimal("150.00")
+    # A ratio, so still a number a client can sort and compare.
     assert row["budget_roas"] == pytest.approx(1.5)
+    assert isinstance(row["budget_roas"], float)
     # Nothing here pretends to have been burned.
     assert row["actual_spend"] is None
     assert row["spend_roas"] is None
@@ -75,7 +86,8 @@ def test_real_spend_supplied_to_the_seam_takes_over_the_ratio_and_the_label() ->
     )
 
     assert row["basis"] == "actual_spend"
-    assert row["actual_spend"] == pytest.approx(60.0)
+    # Money is the string; the two ratios beside it are numbers.
+    assert Decimal(row["actual_spend"]) == Decimal("60.00")
     assert row["spend_roas"] == pytest.approx(2.5)
     # The plan figure stays visible next to it — it is a different number.
     assert row["budget_roas"] == pytest.approx(1.5)
@@ -90,6 +102,59 @@ def test_a_zero_spend_denominator_is_also_guarded() -> None:
         actual_spend=Decimal("0.00"),
     )
     assert row["spend_roas"] is None
+
+
+def test_amounts_cross_the_wire_as_decimal_strings_and_ratios_stay_numbers() -> None:
+    """ADR-001/§47: money is a string on the wire, everywhere, in every read model.
+
+    ``budget_roas``/``spend_roas`` are RATIOS, so they are numbers a client can
+    sort by; ``revenue``/``planned_budget``/``actual_spend`` are AMOUNTS, so they
+    are Decimal strings a client can hold and add up without its JSON parser ever
+    putting them through float64. This is the same rule ``orders/router.py``
+    already ships for ``grand_total``; the Wave-4 read models were the exception.
+    """
+    sources = {
+        "revenue": Decimal("150.00"),
+        "planned_budget": Decimal("100.00"),
+        "actual_spend": Decimal("60.00"),
+    }
+    row = analytics.roas_row(campaign_id=_ID, name="Ramadan Sale", **sources)
+
+    for key, amount in sources.items():
+        assert isinstance(row[key], str), key
+        # Lossless round trip: the string re-reads as the exact Decimal that
+        # produced it, at the money scale it arrived on.
+        assert Decimal(row[key]) == amount, key
+    assert row["revenue"] == "150.00"
+    # The money SCALE travels too — a float wire collapses 150.00 to 150.0 and a
+    # client can no longer tell a money figure from a count.
+    assert row["planned_budget"] == "100.00"
+    assert row["actual_spend"] == "60.00"
+    for key in ("budget_roas", "spend_roas"):
+        assert isinstance(row[key], float), key
+    # A ratio is not money and must not become a string by the money rule.
+    assert row["budget_roas"] == pytest.approx(1.5)
+    assert row["spend_roas"] == pytest.approx(2.5)
+
+
+def test_a_max_scale_amount_survives_the_wire_to_a_decimal_client() -> None:
+    """NUMERIC(14,2) lets a merchant hold 999,999,999,999.99.
+
+    A float64 on the wire puts that figure within rounding distance of the next
+    cent the moment the client does arithmetic on it (summing campaign rows into
+    a total is the whole point of the summary screen). A string leaves the
+    arithmetic in Decimal, where a cent of a 12-figure amount is still a cent.
+    """
+    row = analytics.roas_row(
+        campaign_id=_ID,
+        name="Wholesale",
+        revenue=Decimal("999999999999.99"),
+        planned_budget=Decimal("999999999999.98"),
+    )
+
+    assert row["revenue"] == "999999999999.99"
+    assert Decimal(row["revenue"]) == Decimal("999999999999.99")
+    assert Decimal(row["revenue"]) - Decimal(row["planned_budget"]) == Decimal("0.01")
 
 
 # ---------------------------------------------------------------------------
@@ -130,8 +195,8 @@ async def test_campaign_budget_roas_reports_the_plan_basis_end_to_end(
     row = next(r for r in rows if r["campaign_id"] == campaign.id)
 
     assert row["basis"] == "planned_budget"
-    assert row["planned_budget"] == pytest.approx(100.0)
-    assert row["revenue"] == pytest.approx(150.0)
+    assert Decimal(row["planned_budget"]) == Decimal("100.00")
+    assert Decimal(row["revenue"]) == Decimal("150.00")
     assert row["budget_roas"] == pytest.approx(1.5)
     assert row["actual_spend"] is None
     assert row["spend_roas"] is None
@@ -181,3 +246,12 @@ async def test_the_summary_route_says_budget_roas_and_not_roas(
     row = next(r for r in rows if r["campaign_id"] == str(campaign.id))
     assert row["basis"] == "planned_budget"
     assert row["budget_roas"] == pytest.approx(0.5)
+    # The same rule shapes every row the route emits: amounts are Decimal strings,
+    # so what the client parsed is what the read model computed.
+    assert Decimal(row["revenue"]) == Decimal("100.00")
+    assert Decimal(row["planned_budget"]) == Decimal("200.00")
+    assert row["actual_spend"] is None
+    money_keys = ("gross_revenue", "refunded_amount", "net_revenue", "refund_excess")
+    wire = body["orders_summary"]
+    for key in money_keys:
+        assert isinstance(wire[key], str), key

@@ -4,6 +4,11 @@ analytics summary.
 Reads use plain TenantCtxDep; writes require the ``marketing:write``
 permission. All routes run inside the request transaction owned by get_db —
 services never commit.
+
+Money in a response leaves as a Decimal STRING (ADR-001/§47, the same shape
+``orders/router.py`` ships for ``grand_total``) so no client can lose a cent to a
+float64; ratios (``budget_roas``) and counts (``conversions``) are not money and
+stay numbers, and an amount that does not exist stays ``null`` rather than 0.00.
 """
 
 from __future__ import annotations
@@ -30,12 +35,23 @@ analytics_router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 WriteCtx = Annotated[TenantContext, Depends(require_permission("marketing:write"))]
 
+#: ADR-001/§47 — an AMOUNT leaves as a Decimal string, the same helper the read
+#: models use, so this module has exactly one money-to-wire rule. A ratio
+#: (``budget_roas``) and a count (``conversions``) are not money and are never
+#: passed through it.
+_wire_money = analytics.wire_money
+
 
 class CampaignRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     provider: str = Field(default="manual", max_length=31)
     external_id: str | None = None
     objective: str | None = None
+    # THE WRITE SIDE IS STILL A NUMBER, on purpose and on record: ADR-001's
+    # string rule is about money leaving the system, a planned budget is a
+    # merchant's typing rounded into NUMERIC(14,2) by the column, and
+    # ``useCreateCampaign`` still posts a number. Making the request Decimal too
+    # is a separate contract change — see the report, not a silent half-step.
     budget: float | None = Field(default=None, ge=0)
 
 
@@ -102,7 +118,8 @@ async def list_campaigns(
                 "external_id": c.external_id,
                 "objective": c.objective,
                 "status": c.status,
-                "budget": float(c.budget) if c.budget is not None else None,
+                # None stays None: an unbudgeted campaign is not a 0.00 one.
+                "budget": None if c.budget is None else _wire_money(c.budget),
                 "created_at": c.created_at.isoformat(),
             }
             for c in page
@@ -131,7 +148,7 @@ async def create_campaign(ctx: WriteCtx, body: CampaignRequest):
         "name": campaign.name,
         "provider": campaign.provider,
         "status": campaign.status,
-        "budget": float(campaign.budget) if campaign.budget is not None else None,
+        "budget": None if campaign.budget is None else _wire_money(campaign.budget),
     }
 
 
@@ -211,7 +228,9 @@ async def record_conversion(ctx: WriteCtx, body: ConversionRequest):
         "order_id": str(conversion.order_id) if conversion.order_id else None,
         "customer_id": str(conversion.customer_id) if conversion.customer_id else None,
         "type": conversion.type,
-        "value": float(conversion.value) if conversion.value is not None else None,
+        # A conversion with no recorded value has no money to report — null,
+        # never the "0.00" that would read as a zero-value purchase.
+        "value": None if conversion.value is None else _wire_money(conversion.value),
         "currency": conversion.currency,
         "occurred_at": conversion.occurred_at.isoformat() if conversion.occurred_at else None,
     }
@@ -239,7 +258,7 @@ async def list_campaign_conversions(
                 "order_id": str(c.order_id) if c.order_id else None,
                 "customer_id": str(c.customer_id) if c.customer_id else None,
                 "type": c.type,
-                "value": float(c.value) if c.value is not None else None,
+                "value": None if c.value is None else _wire_money(c.value),
                 "currency": c.currency,
                 "occurred_at": c.occurred_at.isoformat() if c.occurred_at else None,
                 "attribution_models": models,
@@ -463,8 +482,12 @@ async def get_attribution(
                 {
                     "touchpoint_id": str(r.touchpoint_id),
                     "model": r.model,
+                    # A share of the whole, not money: stays a number.
                     "weight": r.weight,
-                    "credited_value": float(r.credited_value),
+                    # The credit itself is an amount, so it is a Decimal string —
+                    # two views of one conversion stay 200.00 of money, not a
+                    # float64 a consumer re-adds and calls revenue.
+                    "credited_value": _wire_money(r.credited_value),
                 }
                 for r in records
             ],
