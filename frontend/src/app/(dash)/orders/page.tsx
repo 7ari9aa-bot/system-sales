@@ -2,28 +2,17 @@
 
 import * as React from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Plus, ShoppingCart, Trash2 } from "lucide-react";
-import { useCancelOrder, useCreateOrder, useCustomers, useOrders, useProducts, useTenantCurrency, type Order } from "@/lib/queries";
+import { Plus, ShoppingCart } from "lucide-react";
+import { useCustomers, useOrders, type Order } from "@/lib/queries";
 import { t } from "@/lib/t";
 import { formatDate, formatMoney } from "@/lib/utils";
-import { toast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/input";
-import { Select } from "@/components/ui/input";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { EmptyState, ErrorState, PageHeader } from "@/components/ui/states";
 import { DataTable } from "@/components/data-table";
 import { SavedViewsSelector } from "@/components/saved-views-selector";
+import { CreateOrderDialog } from "@/components/orders/create-order-dialog";
 
 const STATUS_VARIANT: Record<string, "warning" | "primary" | "success" | "danger" | "default"> = {
   pending: "warning",
@@ -36,27 +25,16 @@ const STATUS_VARIANT: Record<string, "warning" | "primary" | "success" | "danger
   refunded: "danger",
 };
 
-type Line = { variant_id: string; quantity: number };
-
 export default function OrdersPage() {
   const [open, setOpen] = React.useState(false);
-  const [customerId, setCustomerId] = React.useState("");
-  const [lines, setLines] = React.useState<Line[]>([{ variant_id: "", quantity: 1 }]);
 
   const ordersQuery = useOrders();
-  const productsQuery = useProducts();
   const customersQuery = useCustomers();
-  const createOrder = useCreateOrder();
-  const cancelOrder = useCancelOrder();
-  // §47: the currency is READ from the tenant, not assumed. The list below
-  // already carries its own per-row `currency` (the server stamped it at
-  // creation), but the dialog's estimate needs the tenant code so a merchant
-  // can see what the digits MEAN before submitting.
-  const currencyQuery = useTenantCurrency();
-  const tenantCurrency = currencyQuery.data?.currency ?? null;
 
   const orders = ordersQuery.data ?? [];
-  const customers = customersQuery.data ?? [];
+  // Memoised so the `columns` memo below has a stable dependency: `?? []` made
+  // a fresh array on every render, which re-created the whole table definition.
+  const customers = React.useMemo(() => customersQuery.data ?? [], [customersQuery.data]);
 
   // فتح النموذج من قائمة "إنشاء" في الشريط العلوي (?new=1) أو من لوحة الأوامر
   React.useEffect(() => {
@@ -64,23 +42,6 @@ export default function OrdersPage() {
       setOpen(true);
     }
   }, []);
-
-  const allVariants = React.useMemo(
-    () =>
-      (productsQuery.data ?? []).flatMap((p) =>
-        (p.variants ?? []).map((v) => ({
-          ...v,
-          label: `${p.title}${v.title ? ` — ${v.title}` : ""}${v.sku ? ` (${v.sku})` : ""}`,
-          price: Number(v.price),
-        })),
-      ),
-    [productsQuery.data],
-  );
-
-  const total = lines.reduce((sum, line) => {
-    const variant = allVariants.find((v) => v.id === line.variant_id);
-    return sum + (variant ? variant.price * line.quantity : 0);
-  }, 0);
 
   const columns = React.useMemo<ColumnDef<Order, unknown>[]>(
     () => [
@@ -136,38 +97,6 @@ export default function OrdersPage() {
     [customers],
   );
 
-  function submit() {
-    const items = lines
-      .filter((l) => l.variant_id)
-      .map((l) => ({ variant_id: l.variant_id, quantity: l.quantity }));
-    if (!customerId || items.length === 0) return;
-    const payload = { customer_id: customerId, items, channel: "dashboard" as const };
-    createOrder.mutate(payload, {
-      onSuccess: (order) => {
-        setOpen(false);
-        setLines([{ variant_id: "", quantity: 1 }]);
-        setCustomerId("");
-        // §104: undo action — the toast offers a way to cancel the order
-        // immediately if the user made a mistake, without navigating to
-        // the order detail page.
-        toast({
-          title: t.orderCreated,
-          description: `#${order.number}`,
-          variant: "success",
-          action: {
-            label: t.undo,
-            onClick: () => {
-              // Cancel the just-created order. The API keys lifecycle actions
-              // by order id, not the human-facing number; success/error
-              // toasts + list invalidation live in useCancelOrder.
-              cancelOrder.mutate(order.id);
-            },
-          },
-        });
-      },
-    });
-  }
-
   return (
     <div>
       <PageHeader
@@ -218,98 +147,12 @@ export default function OrdersPage() {
         />
       )}
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
-            <DialogTitle>{t.createOrder}</DialogTitle>
-            <DialogDescription>اختر العميل والأصناف — سيُسجَّل الطلب فورًا.</DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="o-customer">{t.customer}</Label>
-              <Select id="o-customer" value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
-                <option value="">{t.chooseCustomer}</option>
-                {customers.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} {c.phone ? `(${c.phone})` : ""}
-                  </option>
-                ))}
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>{t.lineItems}</Label>
-              {lines.map((line, index) => (
-                <div key={index} className="flex items-end gap-2">
-                  <div className="flex-1">
-                    <Select
-                      aria-label={`${t.products} ${index + 1}`}
-                      value={line.variant_id}
-                      onChange={(e) =>
-                        setLines(lines.map((l, i) => (i === index ? { ...l, variant_id: e.target.value } : l)))
-                      }
-                    >
-                      <option value="">{t.chooseProduct}</option>
-                      {allVariants.map((v) => (
-                        <option key={v.id} value={v.id}>
-                          {v.label} — {v.price.toFixed(2)}
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
-                  <Input
-                    type="number"
-                    dir="ltr"
-                    min={1}
-                    aria-label={t.quantity}
-                    className="w-20"
-                    value={line.quantity}
-                    onChange={(e) =>
-                      setLines(
-                        lines.map((l, i) =>
-                          i === index ? { ...l, quantity: Math.max(1, Number(e.target.value) || 1) } : l,
-                        ),
-                      )
-                    }
-                  />
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label="حذف السطر"
-                    onClick={() => setLines(lines.filter((_, i) => i !== index))}
-                    disabled={lines.length === 1}
-                  >
-                    <Trash2 aria-hidden="true" className="text-danger" />
-                  </Button>
-                </div>
-              ))}
-              <Button variant="outline" size="sm" onClick={() => setLines([...lines, { variant_id: "", quantity: 1 }])}>
-                {t.addLine}
-              </Button>
-            </div>
-          </div>
-
-          <DialogFooter className="items-center justify-between gap-3 sm:justify-between">
-            <span className="flex items-center gap-2 text-[12px] text-muted-foreground">
-              {/* §47: the number next to «إنشاء الطلب» is a PRE-SUBMIT SUBTOTAL
-                  ESTIMATE, not a grand total. `discount_total`, `shipping_total`
-                  and `tax_total` have no inputs on this form, so the server's
-                  own `grand_total` is the only authoritative figure — the
-                  merchant sees that in the list after the create. */}
-              <span>الإجمالي الفرعي (تقديري)</span>
-              <strong dir="ltr">{formatMoney(total, tenantCurrency)}</strong>
-            </span>
-            <Button
-              onClick={submit}
-              disabled={createOrder.isPending || !customerId || total === 0}
-              data-testid="submit-order"
-            >
-              {t.createOrder}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* The create form: line items, the money terms the server has always
+          accepted (`discount_total` / `shipping_total` / `tax_total`), the total
+          computed the way `money.py:compute_totals` computes it, and the single
+          Idempotency-Key this dialog open owns. It lives in its own component so
+          the table above stays about reading. */}
+      <CreateOrderDialog open={open} onOpenChange={setOpen} customers={customers} />
     </div>
   );
 }

@@ -35,6 +35,18 @@ export function formatMoney(value: number | string | null | undefined, currency?
   return `${neg ? "-" : ""}${grouped}.${cents}${code ? ` ${code}` : ""}`;
 }
 
+/** Put a money string through float ONLY to draw or order it.
+ *
+ *  A bar height or a sort key is geometry, not cents: rounding it to the nearest
+ *  pixel changes no figure a merchant reads, and `formatMoney` still renders the
+ *  untouched string beside it. Never use this to add, subtract or total money —
+ *  that arithmetic lives in the backend's Decimal read models (ADR-001).
+ */
+export function scaleOf(value: number | string | null | undefined): number {
+  const n = typeof value === "number" ? value : Number(String(value ?? "").trim());
+  return Number.isFinite(n) ? n : 0;
+}
+
 function finiteOrDash(n: number): string {
   if (!Number.isFinite(n)) return "—";
   // Numbers here come from JSON, so at most 17 sig digits; `toFixed` would

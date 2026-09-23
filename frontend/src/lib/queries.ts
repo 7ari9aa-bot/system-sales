@@ -39,30 +39,94 @@ export type Me = { id: string; email: string; tenants?: { id: string }[] };
  *  could not be subtracted in this window is `refund_excess` rather than
  *  vanished money, so a day that refunded more than it collected still adds up.
  *  `currency` is the tenant's ISO code (§47): money rendered from this row
- *  needs no literal. */
+ *  needs no literal.
+ *
+ *  MONEY IS A STRING (ADR-001). The read model quantises each amount to the
+ *  NUMERIC(14,2) scale and serialises it with `str()`, so `"150.00"` reaches the
+ *  browser as text and `formatMoney` renders it without ever putting it through
+ *  float64. `orders_count` is a count, not money, and stays a number. */
 export type MoneySummary = {
   orders_count: number;
-  gross_revenue: number;
-  refunded_amount: number;
-  net_revenue: number;
-  refund_excess: number;
-  gross_aov: number;
-  net_aov: number;
+  gross_revenue: string;
+  refunded_amount: string;
+  net_revenue: string;
+  refund_excess: string;
+  gross_aov: string;
+  net_aov: string;
   currency: string;
   timezone: string;
 };
 
 /** One merchant-day bucket (`marketing.analytics.daily_orders`). The day label
  *  is the MERCHANT's day in `timezone`, never UTC midnight (gap M10), and the
- *  money arrives in the same gross/net families as `MoneySummary`. `orders` is
- *  that day's order count. */
+ *  money arrives in the same gross/net families as `MoneySummary` — as strings
+ *  (ADR-001). `orders` is that day's order count, a number. */
 export type DailyOrderRow = {
   day: string;
   orders: number;
-  gross_revenue: number;
-  refunded_amount: number;
-  net_revenue: number;
-  refund_excess: number;
+  gross_revenue: string;
+  refunded_amount: string;
+  net_revenue: string;
+  refund_excess: string;
+};
+
+/** One merchant-day bucket of `GET /analytics/overview`
+ *  (`analytics.service.daily_revenue_series`). Same merchant-day rule as
+ *  `DailyOrderRow` (gap M10), but the money is a STRING (see
+ *  `AnalyticsOverview`) and the count keeps the backend's own name. */
+export type OverviewDailyRow = {
+  /** The MERCHANT's calendar day (`date`, not an instant). */
+  day: string;
+  orders_count: number;
+  gross_revenue: string;
+  refunded_amount: string;
+  net_revenue: string;
+  refund_excess: string;
+};
+
+/** Replenishment bands from `analytics.service.stock_health`: an empty shelf is
+ *  `out_of_stock_count`, never folded into "low stock" again (gap M7). */
+export type StockHealth = {
+  low_stock_threshold: number;
+  low_stock_count: number;
+  out_of_stock_count: number;
+  healthy_count: number;
+};
+
+/** `GET /analytics/overview` — the analytics screen's single call, built by
+ *  `analytics.router.analytics_overview` out of the canonical readers in
+ *  `analytics/service.py`. The screen used to fetch this path while the server
+ *  published no such route, so it 404-ed into its error state on every visit;
+ *  `as any` on the response is what kept the type checker from noticing.
+ *
+ *  MONEY IS A STRING HERE, not a number. The route stringifies each `Decimal`
+ *  on purpose — FastAPI's default encoder casts a bare Decimal to float, which
+ *  is how a cent goes missing (ADR-001). `formatMoney` renders these without
+ *  coercing them; do not do arithmetic on them in the browser (a bar height is
+ *  geometry, not money).
+ *
+ *  Every amount names its own family (ADR-053): `gross_revenue` is money
+ *  collected, `net_revenue` is what survives the refunds that LEFT in this same
+ *  window (floored at zero — the remainder that could not be subtracted is
+ *  `refund_excess`), and `gross_aov`/`net_aov` say which numerator they divide.
+ *  `currency` is the tenant's (§47) and `timezone` is the zone the buckets were
+ *  labelled in, so the series and the cards are the same window in the same
+ *  day. There is no `revenue`, no `conversion_rate`, no `top_products`: the
+ *  server computes no such figures and a UI must not pretend otherwise. */
+export type AnalyticsOverview = {
+  since: string;
+  until: string;
+  currency: string;
+  timezone: string;
+  orders_count: number;
+  gross_revenue: string;
+  refunded_amount: string;
+  net_revenue: string;
+  refund_excess: string;
+  gross_aov: string;
+  net_aov: string;
+  daily_series: OverviewDailyRow[];
+  stock: StockHealth;
 };
 
 /** Last-touch ATTRIBUTED credit per source
@@ -70,15 +134,18 @@ export type DailyOrderRow = {
  *
  *  The wire key is `revenue` and it is NOT collected money: it can count an
  *  order that was later refunded and miss money collected with no tracked
- *  touchpoint. Anything rendering it must label it attributed (§167). */
-export type AttributedBySource = { source: string; revenue: number; conversions: number };
+ *  touchpoint. Anything rendering it must label it attributed (§167).
+ *
+ *  It IS money-shaped, though: an amount, so a Decimal string (ADR-001), while
+ *  `conversions` stays a count and therefore a number. */
+export type AttributedBySource = { source: string; revenue: string; conversions: number };
 
 /** Same attributed-credit caveat as `AttributedBySource`. Touchpoints with no
  *  campaign group under `campaign_id: null` and the name `"unlinked"`. */
 export type AttributedByCampaign = {
   campaign_id: string | null;
   campaign_name: string;
-  revenue: number;
+  revenue: string;
   conversions: number;
 };
 
@@ -403,6 +470,7 @@ export const qk = {
   movements: ["inventory", "movements"] as QueryKey,
   campaigns: ["marketing", "campaigns"] as QueryKey,
   marketingSummary: ["analytics", "summary"] as QueryKey,
+  analyticsOverview: (days: number) => ["analytics", "overview", days] as QueryKey,
   tenantCurrency: (id: string) => ["tenants", id, "currency"] as QueryKey,
   knowledge: ["ai", "knowledge"] as QueryKey,
   agents: ["ai", "agents"] as QueryKey,
@@ -437,6 +505,20 @@ export function useDashboard() {
     queryKey: qk.dashboard,
     queryFn: () => api<DashboardData>("/analytics/dashboard"),
     refetchInterval: 20_000, // نفس سلوك التحديث التلقائي القديم
+  });
+}
+
+/** The analytics screen's window, in days. `GET /analytics/overview` computes
+ *  every figure — money, orders, AOV, the daily series and stock — on this one
+ *  window, and the card labels name 30 days, so the request and the caption are
+ *  stated together rather than drifting apart. */
+export const ANALYTICS_OVERVIEW_DAYS = 30;
+
+export function useAnalyticsOverview(days: number = ANALYTICS_OVERVIEW_DAYS) {
+  return useQuery({
+    queryKey: qk.analyticsOverview(days),
+    queryFn: () => api<AnalyticsOverview>(`/analytics/overview?days=${days}`),
+    staleTime: 60_000,
   });
 }
 

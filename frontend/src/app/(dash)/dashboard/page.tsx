@@ -4,7 +4,7 @@ import Link from "next/link";
 import { ArrowUpRight, CircleCheck, TriangleAlert } from "lucide-react";
 import { useDashboard, useTenantCurrency, type DailyOrderRow } from "@/lib/queries";
 import { t } from "@/lib/t";
-import { formatMoney, formatNumber } from "@/lib/utils";
+import { formatMoney, formatNumber, scaleOf } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -39,33 +39,61 @@ function Stat({
  *  The tooltip keeps gross and refunded on screen so a short bar is never read
  *  as a bad sales day when it was a refund day. A day whose refunds beat its
  *  collections shows a zero bar plus its `refund_excess` in the tooltip: net is
- *  floored at zero, and the unsent-able remainder would otherwise vanish. */
-function BarChart({ data, currency }: { data: DailyOrderRow[]; currency: string | null }) {
-  const max = Math.max(1, ...data.map((d) => d.net_revenue));
+ *  floored at zero, and the unsent-able remainder would otherwise vanish.
+ *
+ *  `timezone` is the zone the server bucketed these rows in: for a tenant that
+ *  declared one it is the tenant's own day (§47/M10 remainder), and saying so
+ *  under the chart is what keeps "daily" from meaning somebody's midnight. */
+function BarChart({
+  data,
+  currency,
+  timezone,
+}: {
+  data: DailyOrderRow[];
+  currency: string | null;
+  timezone: string | null;
+}) {
+  // `net_revenue` is a Decimal string (ADR-001); `scaleOf` reads it as geometry
+  // for the bar height while every printed figure below stays the string itself.
+  const heights = data.map((d) => scaleOf(d.net_revenue));
+  const max = Math.max(1, ...heights);
   if (data.length === 0) return <EmptyState title="لا توجد بيانات بعد" className="py-8" />;
   return (
     <div className="flex h-40 items-end gap-1 pt-2" data-testid="daily-net-chart">
-      {data.map((d) => (
+      {data.map((d, i) => (
         <div
           key={d.day}
           className="flex-1 text-center"
           title={
-            `${d.day} — ${t.grossShort}: ${formatMoney(d.gross_revenue, currency)} · ` +
+            `${d.day}${timezone ? ` (${timezone})` : ""} — ${t.grossShort}: ` +
+            `${formatMoney(d.gross_revenue, currency)} · ` +
             `${t.refundedShort}: ${formatMoney(d.refunded_amount, currency)} · ` +
             `${t.netShort}: ${formatMoney(d.net_revenue, currency)}` +
-            (d.refund_excess > 0 ? ` · ${t.refundExcessNote(formatMoney(d.refund_excess, currency))}` : "")
+            (scaleOf(d.refund_excess) > 0
+              ? ` · ${t.refundExcessNote(formatMoney(d.refund_excess, currency))}`
+              : "")
           }
         >
           <div
             data-testid={`daily-bar-${d.day}`}
             className="mx-auto w-full max-w-6 rounded-md bg-primary/85 transition-all duration-300 ease-smooth"
-            style={{ height: `${Math.max(4, (d.net_revenue / max) * 110)}px` }}
+            style={{ height: `${Math.max(4, (heights[i] / max) * 110)}px` }}
           />
-          <div className="mt-1 text-[10px] text-muted-foreground">{new Date(d.day).getDate()}</div>
+          <div className="mt-1 text-[10px] text-muted-foreground">{dayOfMonth(d.day)}</div>
         </div>
       ))}
     </div>
   );
+}
+
+/** The caption is the MERCHANT's calendar day and the server has already worked
+ *  it out, so it is read out of the label digit for digit. `new Date("2026-03-15")`
+ *  would parse a date-only string as UTC midnight and print it in the
+ *  VISITOR's zone — a browser west of Greenwich labels every bar one day early,
+ *  which is the M10 bug with a different hat. */
+function dayOfMonth(day: string): string {
+  const parts = day.split("T")[0].split("-");
+  return parts.length === 3 ? parts[2] : day;
 }
 
 export default function DashboardPage() {
@@ -85,8 +113,10 @@ export default function DashboardPage() {
   const currency = money.currency || tenantCurrency;
   const lowStock = data.low_stock_count;
   const soldOut = data.out_of_stock_count;
-  const sources = [...data.revenue_by_source].sort((a, b) => b.revenue - a.revenue).slice(0, 5);
-  const maxSource = Math.max(1, ...sources.map((s) => s.revenue));
+  const sources = [...data.revenue_by_source]
+    .sort((a, b) => scaleOf(b.revenue) - scaleOf(a.revenue))
+    .slice(0, 5);
+  const maxSource = Math.max(1, ...sources.map((s) => scaleOf(s.revenue)));
 
   return (
     <div>
@@ -198,7 +228,7 @@ export default function DashboardPage() {
       {/* Net is floored at zero upstream: a window that refunded more than it
           collected would otherwise read as a clean zero and the difference
           would vanish from the screen. `refund_excess` is that remainder. */}
-      {money.refund_excess > 0 && (
+      {scaleOf(money.refund_excess) > 0 && (
         <Card className="mt-4 border-s-4 border-s-warning" data-testid="refund-excess-note">
           <CardContent className="flex items-center gap-3 p-4">
             <TriangleAlert aria-hidden="true" className="size-5 shrink-0 text-warning" />
@@ -242,9 +272,15 @@ export default function DashboardPage() {
         <Card>
           <CardHeader>
             <CardTitle>{t.dailyNetRevenue}</CardTitle>
+            {/* Gap M10 + §47/M10 remainder: the day a bar stands for is the
+                MERCHANT's, in the zone the read model says it used — the
+                tenant's own when it declared one, the deployment's otherwise. */}
+            <span className="text-xs text-muted-foreground" dir="ltr" data-testid="daily-timezone">
+              {money.timezone}
+            </span>
           </CardHeader>
           <CardContent>
-            <BarChart data={data.daily_orders} currency={currency} />
+            <BarChart data={data.daily_orders} currency={currency} timezone={money.timezone} />
           </CardContent>
         </Card>
 
@@ -273,7 +309,7 @@ export default function DashboardPage() {
                     <div className="mt-1 h-2 rounded-full bg-muted">
                       <div
                         className="h-2 rounded-full bg-success transition-all duration-300 ease-smooth"
-                        style={{ width: `${(s.revenue / maxSource) * 100}%` }}
+                        style={{ width: `${(scaleOf(s.revenue) / maxSource) * 100}%` }}
                       />
                     </div>
                   </div>

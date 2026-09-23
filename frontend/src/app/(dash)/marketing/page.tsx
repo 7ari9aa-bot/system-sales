@@ -4,7 +4,7 @@ import * as React from "react";
 import { Megaphone, Plus } from "lucide-react";
 import { useCampaigns, useCreateCampaign, useMarketingSummary, useTenantCurrency, type Campaign, type CampaignBudgetRoas } from "@/lib/queries";
 import { t } from "@/lib/t";
-import { formatMoney } from "@/lib/utils";
+import { formatMoney, scaleOf } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -118,7 +118,7 @@ export default function MarketingPage() {
                     {formatMoney(money.net_revenue, currency)}
                   </div>
                   <div className="mt-0.5 text-[13px] text-muted-foreground">{t.netRevenue30}</div>
-                  {money.refund_excess > 0 && (
+                  {scaleOf(money.refund_excess) > 0 && (
                     <div className="mt-1 text-[11px] text-muted-foreground">
                       {t.refundExcessNote(formatMoney(money.refund_excess, currency))}
                     </div>
