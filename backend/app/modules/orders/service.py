@@ -903,7 +903,6 @@ class OrderService:
             "shipped",
             by_user_id=by_user_id,
             note=note or "shipment recorded",
-            event_type="order.shipped",
         )
         shipment = Shipment(
             tenant_id=tenant_id,

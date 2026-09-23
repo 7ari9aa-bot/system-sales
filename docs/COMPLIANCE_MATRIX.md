@@ -116,7 +116,7 @@ Consequences, stated honestly:
 | §136 | *(no topic recoverable)* | ❓ | `grep -rn "§136\b" docs/ .workbuddy-ai/memory/` → nothing |
 | §137 | InboxQuery read model | ⬜ | `GAP_REGISTER.md:245` calls it absent; no such module exists |
 | §138 | *(no topic recoverable)* | ❓ | `grep -rn "§138\b" docs/ .workbuddy-ai/memory/` → nothing |
-| §139 | Saga (order→payment→fulfillment) | 🟡 | `backend/app/modules/orders/service.py` is a state machine; `IMPLEMENTATION_AUDIT.md:38` admits saga is deferred |
+| §139 | Saga (order→payment→fulfillment) | 🟡 | Order saga is wired and moves on the real paths: checkout born `stock_reserved`, capture → `paid`, delivered/completed → `fulfilled`, cancel → `cancelled`, shipments created through `TRANSITIONS` (`orders/service.py`, ADR-051, `tests/test_order_fulfillment.py` 17 cases, 14 on CI Postgres). Open: the generic `core/saga.py` + `sagas` table stays unwired (baselined dead in `test_no_dead_core_modules.py:96`) — retire-or-use is task W4-T2b |
 | §140 | Inventory Reservation as durable entity | ✅ | `backend/app/modules/inventory/service.py`; migration `d0d649ee05cb_inventory_reservations_table.py` |
 | §141 | Payment UNKNOWN state | ✅ | `backend/app/modules/orders/models.py:141` lists `unknown` |
 | §142 | UUIDv7 / inbound dedupe | 🟡 | `backend/app/core/ids.py` `uuid7` used by new models; `platform/models.py:366` `InboundMessageDedupe` is **declared but never written** |

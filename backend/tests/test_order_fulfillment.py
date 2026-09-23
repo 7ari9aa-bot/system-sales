@@ -145,10 +145,12 @@ async def test_delivery_advances_the_saga_to_fulfilled(
 ):
     tenant_id = tenant_ctx.tenant_id
     order = await _order(db, tenant_id)
+    # The capture itself confirms the pending order, so the next step is the
+    # one a merchant takes after that: processing.
     await OrderService.add_payment(
         db, tenant_id, order.id, method="cash", amount=Decimal("40.00")
     )
-    await _to_processing(db, tenant_id, order)
+    await OrderService.change_status(db, tenant_id, order.id, "processing")
     await OrderService.change_status(db, tenant_id, order.id, "shipped")
     await OrderService.change_status(db, tenant_id, order.id, "delivered")
     await db.flush()
@@ -168,13 +170,17 @@ async def test_cancel_sets_the_saga_cancelled(db: AsyncSession, tenant_ctx):
 
 
 async def test_explicit_saga_command_stays_strict(db: AsyncSession, tenant_ctx):
-    """A human driving the saga directly gets a refusal; the side effect does not."""
+    """A human driving the saga directly gets a refusal; the side effect does not.
+
+    Checkout already put this order at `stock_reserved`, so the illegal move is
+    the backwards one — a saga never re-opens.
+    """
     tenant_id = tenant_ctx.tenant_id
     order = await _order(db, tenant_id)
 
     with pytest.raises(ConflictError):
         await OrderService.transition_process_state(
-            db, tenant_id, order.id, "fulfilled"
+            db, tenant_id, order.id, "created"
         )
     await db.flush()
 

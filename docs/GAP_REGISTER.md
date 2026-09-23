@@ -157,8 +157,8 @@ by a non-editable install with a non-root USER and a HEALTHCHECK.
 - M5 ROAS uses `campaign.budget` as spend; attribution double-books full value on first+last touch; conversions unreachable (no endpoint, no dedupe) (`marketing/analytics.py:164-202`, `marketing/service.py:218-235`).
 - M6 `lifetime_value` never updated by any order path → segments on LTV always empty.
 - M7 No discount/shipping/tax engine; `grand_total = subtotal` always; currency hardcoded EGP; `ProductPrice` tiers write-only (`orders/service.py:203-221`).
-- M8 Order API missing: customer/number/date filters, payments list, status history, shipping update, shipments; `Shipment`/`ProductImage` dead tables.
-- M9 `GET /inventory/movements` without variant returns [] (IS NULL on NOT NULL); movement `reason` free-text; no ledger rows for reserve/release (`inventory/router.py:39-42`).
+- M8 Order API missing: customer/number/date filters, payments list, status history, shipping update. ~~shipments; `Shipment`/`ProductImage` dead tables~~ — closed in W4-T1/T2: `POST/GET /orders/{id}/shipments` + `POST /shipments/{id}/status` (one write path that moves the order through `TRANSITIONS`, ADR-051) and `POST/GET /products/{id}/images`; `tests/test_order_fulfillment.py`, `tests/test_catalog_admin_surface.py`.
+- M9 ~~`GET /inventory/movements` without variant returns [] (IS NULL on NOT NULL)~~ — fixed in W4-T1 (`None` now means "no filter", `tests/test_inventory_service.py`); still open: movement `reason` is free-text, and reserve/release write no ledger row (`inventory/router.py:39-42`).
 - M10 Daily analytics bucket in UTC (merchant day shifted); `low_stock` counts zeroed balances (noise) (`analytics.py:136-152,251-260`).
 - M11 `POST /orders` has no idempotency (double-click = two orders + double stock hold).
 - M12 Phone/email identity resolution is exact-string, no E.164 normalization → duplicate customers.
@@ -244,7 +244,7 @@ by a non-editable install with a non-root USER and a HEALTHCHECK.
 | MessageTemplate / TemplateApproval | conversations/models.py | stored, never checked at send |
 | Consents | privacy/models.py | never enforced in messaging |
 | SLAPolicy / BusinessCalendar / SLAEvent | operations/models.py | no clock, no writer, no worker |
-| Shipment / ProductImage / ProductPrice / invoices lines | orders, catalog | dead or write-only |
+| ProductPrice / invoices lines | catalog, billing | write-only (tier fields now writable via `POST /variants/{id}/prices`; still no reader in pricing logic) |
 | FeatureFlag / MetricDefinition / SecretReference | platform/models.py | dead tables |
 | InboxQuery read model (§137) | — | absent (joins in write service) |
 | Outbox `not_before` scheduling | workers/base.py docstring | unimplemented |
