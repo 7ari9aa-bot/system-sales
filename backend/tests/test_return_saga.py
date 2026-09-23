@@ -114,16 +114,24 @@ async def _order_at(
         await OrderService.add_payment(
             db, tenant_id, order.id, method="cash", amount=Decimal("120.00")
         )
+    # Read the live status from the DB rather than trusting the object: a
+    # captured payment moves a `pending` order to `confirmed` by itself, and
+    # `_transition` writes through a compare-and-swap UPDATE.
+    at = _RANK[
+        (
+            await db.execute(select(Order.status).where(Order.id == order.id))
+        ).scalar_one()
+    ]
     for step in _PATH:
-        if _RANK[step] > _RANK[status]:
-            break
+        if not at < _RANK[step] <= _RANK[status]:
+            continue
         await OrderService.change_status(db, tenant_id, order.id, step)
     # Stop the helper lying to the tests below it: a walk that ends somewhere
     # else than asked makes every later assertion fail for a reason that has
     # nothing to do with the return process.
-    walked = (await db.execute(select(Order).where(Order.id == order.id))).scalar_one()
-    assert walked.status == status, f"the walk ended at {walked.status}"
-    return walked, variant, warehouse
+    await db.refresh(order)
+    assert order.status == status, f"the walk ended at {order.status}"
+    return order, variant, warehouse
 
 
 async def _balance(db: AsyncSession, tenant_id, variant, warehouse):
