@@ -4,6 +4,11 @@ inventory_movements is the append-only ledger; inventory_balances holds the
 current position and is always mutated under SELECT ... FOR UPDATE so
 concurrent checkouts serialize. Every method takes the caller's session and
 tenant and NEVER commits.
+
+The promise both tables keep is `on_hand == Σ signed physical movements` (and
+`reserved == Σ hold - Σ release`). Every writer therefore either moves the
+column and the row by the SAME quantity, or refuses — a `max(0, …)` on one side
+only is what turns a transient drift into a permanently unreconcilable ledger.
 """
 
 from __future__ import annotations
@@ -116,6 +121,65 @@ def check_movement_shape(direction: str, reason: str) -> None:
             f"'hold|release' take {sorted(AVAILABILITY_MOVEMENT_REASONS)}",
             details={"direction": direction, "reason": reason},
         )
+
+
+def check_physical_settlement(
+    *,
+    on_hand: int,
+    quantity: int,
+    variant_id: UUID,
+    warehouse_id: UUID,
+    context: str | None = None,
+) -> int:
+    """The `out` quantity a settling event may book, or a loud refusal.
+
+    A balance that has drifted below what a reservation holds — someone
+    hand-corrected the row, a stocktake counted part of the shelf, a race moved
+    the same units twice — is a real and recurring state in this system. The
+    question is what the LEDGER does about it, because `inventory_movements` is
+    the only reason `on_hand` is auditable: the invariant the whole module
+    exists to keep is
+
+        on_hand == Σ signed physical movements
+
+    This refuses (raising the module's existing `InsufficientStockError`, the
+    same one `move(direction="out")` and `reserve()` raise for this exact
+    condition) rather than the two alternatives:
+
+    * clamp the ROW to the applied delta: the sums would keep agreeing, but a
+      2-unit `out`/sale would be booked against a 3-unit order line, and the
+      order's reservations would still flip to CONVERTED — the short-ship would
+      be invisible, and unrecoverable, because returns restock the LINE
+      quantity. Absorbing a drift here therefore grows stock out of nothing on
+      the way back. (A clamped column plus a clamped row is also still a lie
+      about what left the warehouse; it just balances.)
+    * clamp and append a COMPENSATING row: honest, but the schema has no
+      zero-delta movement — every row's `quantity` moves a balance, so a
+      compensation either double-counts the sale or re-breaks the sum. And the
+      drift already has a first-class, self-documenting writer:
+      `move(direction="adjust")`, which carries the absolute count and its own
+      `balance_after`. Fixing the position through that keeps the audit trail
+      in the ledger instead of in a side channel.
+
+    Refusal is the module's own established rule, so it is also the consistent
+    one: the identical sale was a 409 through `POST /inventory/movements` and a
+    silent rewrite of history through payment capture. And it is safe for money
+    — `convert()` runs inside `add_payment`/`reconcile_payment`, neither of
+    which commits (this module never commits), so the rejection rolls the
+    capture back whole: no payment is recorded against stock that is not there,
+    the operator restocks or adjusts, and the same capture then settles.
+
+    Returns the quantity unchanged when the position covers it, so the caller
+    books the value it checked instead of re-deriving it.
+    """
+    if quantity > on_hand:
+        raise InsufficientStockError(
+            f"cannot settle {quantity} of variant {variant_id} in warehouse "
+            f"{warehouse_id}: on_hand={on_hand}, sale={quantity}, "
+            f"shortfall={quantity - on_hand}"
+            + (f" ({context})" if context else "")
+        )
+    return quantity
 
 
 class InventoryService:
@@ -837,6 +901,14 @@ class InventoryReservationService:
         hold but never decremented on_hand — the movement said "goods left"
         while the stock stayed, so the same unit could be sold again.
 
+        A capture that the shelf cannot cover — a reservation larger than
+        `on_hand` because the position drifted after the hold — is REFUSED with
+        `InsufficientStockError` before any row or column moves, so the whole
+        payment capture rolls back and the ledger keeps reconciling. It used to
+        clamp the column to zero and book the full sale, which hid the drift and
+        broke the sum. Restock or adjust the position through `move()` (which
+        records why) and the same capture settles.
+
         NOTE: this treats a captured payment as the moment stock moves. If
         fulfilment should instead move stock (payment captured but goods still
         in the warehouse), revert this to flip the row only and move the
@@ -859,13 +931,29 @@ class InventoryReservationService:
             balance = await InventoryService._locked_balance(
                 session, tenant_id, reservation.variant_id, reservation.warehouse_id
             )
+            # Settle the physical half against what the shelf ACTUALLY holds,
+            # and check it before anything is mutated: a position that drifted
+            # below the hold is a refusal (`InsufficientStockError`, i.e. a 409),
+            # not a `max(0, …)` clamp. The clamp used to zero the column while
+            # appending the full quantity, so the row and the column disagreed
+            # by the shortfall and `on_hand == Σ movements` broke silently —
+            # the drift the clamp hid became a ledger that could never be
+            # reconciled. See `check_physical_settlement` for why neither
+            # clamping the row nor a compensating row was chosen.
+            sold = check_physical_settlement(
+                on_hand=balance.on_hand,
+                quantity=reservation.quantity,
+                variant_id=reservation.variant_id,
+                warehouse_id=reservation.warehouse_id,
+                context=f"converting reservation {reservation.id} for order {order_id}",
+            )
             # The hold and the sale are two separate facts and both are
             # recorded: the units stop being held (`release` row, availability
             # only) and they leave the warehouse (`out`/sale row, on_hand). Only
             # the second one moves stock, so capture cannot double-count.
             freed = min(balance.reserved, reservation.quantity)
             balance.reserved -= freed
-            balance.on_hand = max(0, balance.on_hand - reservation.quantity)
+            balance.on_hand -= sold
             if freed:
                 await InventoryService._append_release(
                     session,
@@ -878,13 +966,15 @@ class InventoryReservationService:
                 )
             # The physical half goes through `_append` too — it is the single
             # writer of the ledger, and every row must pass the shape check.
+            # `sold` is the checked delta, so the row and the column it explains
+            # can never disagree.
             await InventoryService._append(
                 session,
                 tenant_id,
                 reservation.variant_id,
                 reservation.warehouse_id,
                 direction="out",
-                quantity=reservation.quantity,
+                quantity=sold,
                 reason="sale",
                 balance_after=balance.on_hand,
                 reference_type="order",
