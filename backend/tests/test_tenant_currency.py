@@ -506,7 +506,7 @@ async def test_the_outbox_event_carries_the_currency_that_was_stored(
             ),
             {"oid": str(order.id)},
         )
-    ).scalar_one()
+    ).one()
     # Read it the way a consumer does: money crosses the JSONB boundary tagged
     # with its type, so the assertion is against the decoded envelope, not the
     # raw column.

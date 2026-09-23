@@ -198,9 +198,11 @@ async def test_reuploaded_csv_updates_the_row_it_already_owns(
     await CSVImportService.import_products(
         db, tenant_id, raw_csv=_PRODUCTS_CSV, product_service=None
     )
-    renamed = _PRODUCTS_CSV.replace("Koshari Bowl", "Koshari Bowl, large").replace(
-        "19.99", "17.50"
-    )
+    # Quoted, because the new title carries a comma: an unquoted one shifts
+    # every column right and the row fails on "price" for the wrong reason.
+    renamed = _PRODUCTS_CSV.replace(
+        "Koshari Bowl", '"Koshari Bowl, large"'
+    ).replace("19.99", "17.50")
 
     report = await CSVImportService.import_products(
         db, tenant_id, raw_csv=renamed, product_service=None
