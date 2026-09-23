@@ -150,18 +150,122 @@ by a non-editable install with a non-root USER and a HEALTHCHECK.
 - R16 Realtime cursor applied identically to all streams (replay/loss after reconnect) (`realtime/router.py:105-115`); `conversation.events` has no producer.
 
 ### Commerce correctness
-- M1 No payments/refunds/cancel API (see C10); `reconcile_payment` can downgrade captured→failed and forge refunds without Refund rows (`orders/service.py:527-542`).
-- M2 ~~Blocked/merged/tombstoned customers can order~~ — checkout refuses all three since Wave 0 (`orders/service.py:276-291`, `tests/test_order_service.py`). Still open: `CustomerService.get` (`customers/service.py:110-122`) returns a deleted or merged row, so every *other* caller has to remember the guard the order path gets for free.
-- M3 Refunded money still counted as revenue (order stays `completed`; no partial_refunded status) (`analytics.py:22,127`).
-- M4 Blocked/product-status unchecked at checkout (draft/archived sellable; AI too) (`orders/service.py:193`, `ai/tools.py:80-88`).
-- M5 ROAS uses `campaign.budget` as spend; attribution double-books full value on first+last touch; conversions unreachable (no endpoint, no dedupe) (`marketing/analytics.py:164-202`, `marketing/service.py:218-235`).
-- M6 `lifetime_value` never updated by any order path → segments on LTV always empty.
-- M7 ~~No discount/shipping/tax engine; `grand_total = subtotal` always; currency hardcoded EGP; `ProductPrice` tiers write-only~~ — closed in W4-T3 (ADR-053): `tenants.currency` + `orders/money.compute_totals` (`grand_total = subtotal − discount + shipping + tax`, components accepted on `POST /orders`), the ladder read at checkout via `CatalogService.price_for` (highest applicable tier, order's currency), and every money write path takes the tenant's currency or is refused (`core/currency.py` = the ISO exponent table; `amount_minor`/`from_amount_minor` at the provider boundary; `PUT /api/v1/tenants/{id}/currency`, audited). `core/money.py` deleted. `tests/test_tenant_currency.py`. Still open in this line: nothing on the backend — the frontend does not send the components (Wave 5), and §47's cross-currency rate reporting is unmet *by design* (one currency per tenant).
-- M8 Order API missing: customer/number/date filters, payments list, status history, shipping update. ~~shipments; `Shipment`/`ProductImage` dead tables~~ — closed in W4-T1/T2: `POST/GET /orders/{id}/shipments` + `POST /shipments/{id}/status` (one write path that moves the order through `TRANSITIONS`, ADR-051) and `POST/GET /products/{id}/images`; `tests/test_order_fulfillment.py`, `tests/test_catalog_admin_surface.py`. ~~a returned parcel went nowhere~~ — closed in W4-T2b: `returned`/`failed` now run the `order_return` saga (restock per reservation state → close the order, with the undo each step is owed) and `POST /orders/{id}/return` is the staff entry (ADR-052, `tests/test_return_saga.py`).
-- M9 ~~`GET /inventory/movements` without variant returns [] (IS NULL on NOT NULL)~~ — fixed in W4-T1 (`None` now means "no filter", `tests/test_inventory_service.py`); still open: movement `reason` is free-text, and reserve/release write no ledger row (`inventory/router.py:39-42`).
-- M10 Daily analytics bucket in UTC (merchant day shifted); `low_stock` counts zeroed balances (noise) (`analytics.py:136-152,251-260`).
-- M11 ~~`POST /orders` has no idempotency~~ — `/api/v1/orders` is on `IDEMPOTENT_PATHS` (`core/idempotency.py:115-120`) and `tests/test_order_idempotency.py` proves replay-once / reuse-with-a-different-body-409. What is left is the other half of the pair: **no client sends the header** (frontend gap, §165/Wave 5), so the guard is available and unused.
-- M12 Phone/email identity resolution is exact-string, no E.164 normalization → duplicate customers.
+Wave 4 (2026-09-23/24) worked this list end to end. Case counts below are
+`pytest --collect-only` counts for the named file; the DB-backed half of each
+skips locally without `DATABASE_URL_APP_ADMIN` (`tests/conftest.py:52`), so a
+local count is not a claim that the database cases ran.
+- M1 ~~No payments/refunds/cancel API (see C10); `reconcile_payment` can downgrade captured→failed and forge refunds without Refund rows (`orders/service.py:527-542`)~~ — closed in W4: `POST /orders/{id}/payments`, `POST /orders/{id}/payments/{payment_id}/refunds`, `POST /orders/{id}/cancel` (`orders/router.py:211,236,260`), and `Refund(` is now constructed in exactly one place in `app/` (`orders/service.py:1102`, inside `register_refund`) — the refund ledger, not a status word, is the source of truth (ADR-054). `tests/test_order_refund_ledger.py` (8), `tests/test_partial_refund_status.py` (14).
+- M2 ~~Blocked/merged/tombstoned customers can order~~ — checkout refused all three since Wave 0 (`orders/service.py:276-291`); closed in W4 for everyone else: `CustomerService.get` (`customers/service.py:82-103`) raises NotFound on a `deleted_at` row and Conflict — carrying `merged_into_customer_id` — on a merged one, so every caller inherits the guard the order path used to hand-roll; `get_by_identity` refuses tombstones through that same door (`435-437`) and `_resolve_live_by_contact` drops dead rows before matching (`439-462`). The one deliberate reader of a tombstone is `get_for_erasure()` (`105-118`), and its only caller is the erasure pipeline (`privacy/service.py:39`). `tests/test_customer_identity_resolution.py` (25), `tests/test_privacy_erasure.py` (2).
+- M3 ~~Refunded money still counted as revenue (order stays `completed`; no partial_refunded status)~~ — closed in W4 (ADR-054), and `partial_refunded` was deliberately NOT added: refund state is derived from the ledger (`orders/money.py:150` `refund_state()` → `none|partial|full`, `REFUND_STATES` at `102`), reported on `GET /orders/{id}` (`router.py:94`) and stored nowhere. Revenue reads net: `analytics/service.py::net_of()` (`92-105`, floored at zero with the overshoot surfaced as `refund_excess`), and the status filters behind `revenue`/`net_revenue`/`refunded_amount`/`aov` are rendered from `MetricRegistry`'s own definitions (`_status_sql`, `45-62`) instead of a second hand-written WHERE clause. `tests/test_analytics_correctness.py` (26), `tests/test_order_refund_ledger.py` (8).
+- M4 ~~Blocked/product-status unchecked at checkout (draft/archived sellable; AI too)~~ — closed in W4 on the sell path: `SELLABLE_PRODUCT_STATUSES = frozenset({"active"})` (`orders/service.py:71`) is enforced by `sellable_refusal()` (`174`) before a single unit is reserved (`create_order`, `499-510`), and the AI order tool calls the same `OrderService.create_order` (`ai/tools.py:300`), so a draft product cannot be bought from chat either. Still open in this line: the AI *browse* tool filters `ProductVariant.is_active` but not `Product.status` (`ai/tools.py:170-184`), so an unlisted product stays enumerable — unsellable, but visible. `tests/test_checkout_rules.py` (6).
+- M5 ~~ROAS uses `campaign.budget` as spend; attribution double-books full value on first+last touch; conversions unreachable (no endpoint, no dedupe)~~ — closed in W4: `POST /marketing/conversions` (`marketing/router.py:193`) and `GET /marketing/campaigns/{id}/conversions` (`220`), deduped by the database rather than by code — `record_conversion` takes a savepoint and maps `IntegrityError` to either `ConflictError` or the existing row flagged `idempotent=True` (`marketing/service.py:161-227`, keys `uq_conversions_tenant_order_type` + `uq_attributions_credit`, migration `c9f2a6b1d4e8`). ROAS now names its own denominator (`BASIS_PLANNED_BUDGET` / `BASIS_ACTUAL_SPEND`, `marketing/analytics.py:30-31`), `campaign_actual_spend()` returns `{}` on purpose because no provider-cost ingest exists (`275-286`), `_ratio()` answers `None` on an empty denominator instead of dividing by zero (`242-244`), and first+last touch are documented as two VIEWS of one order with rollups filtering to one model (`marketing/service.py:7-15`). Still open: the actual-spend basis stays empty until a cost feed lands, and the ROAS row crosses to JSON through `float()` (`_wire()`, `marketing/analytics.py:53-55`). `tests/test_marketing_conversions_api.py` (7), `tests/test_roas.py` (7), `tests/test_marketing_read_models.py` (15).
+- M6 ~~`lifetime_value` never updated by any order path → segments on LTV always empty~~ — closed in W4: `_recompute_lifetime_value()` (`orders/service.py:1460-1517`) is one derived SQL UPDATE off the payment/refund ledger, floored with `GREATEST(…,0)` and written in raw SQL so `orders` never imports `customers`; every money event calls it — `add_payment` (`922`), `reconcile_payment` (`999`), `register_refund` (`1129`). `tests/test_customer_lifetime_value.py` (17).
+- M7 ~~No discount/shipping/tax engine; `grand_total = subtotal` always; currency hardcoded EGP; `ProductPrice` tiers write-only~~ — closed in W4-T3 (ADR-053): `tenants.currency` + `orders/money.compute_totals` (`grand_total = subtotal − discount + shipping + tax`, components accepted on `POST /orders`), the ladder read at checkout via `CatalogService.price_for` (highest applicable tier, order's currency), and every money write path takes the tenant's currency or is refused (`core/currency.py` = the ISO exponent table; `amount_minor`/`from_amount_minor` at the provider boundary; `PUT /api/v1/tenants/{id}/currency`, audited). `core/money.py` deleted. `tests/test_tenant_currency.py`. Still open in this line: only §47's cross-currency rate reporting, and that is unmet *by design* (one currency per tenant). The frontend half closed with the order dialog — `discount_total`/`shipping_total`/`tax_total` are typed in the money field and sent as 2-decimal strings, parsed on BigInt minor units so the estimate on screen is not float math (`frontend/src/components/orders/`, `frontend/e2e/order-money.spec.ts`).
+- M8 ~~Order API missing: customer/number/date filters, payments list, status history, shipping update.~~ ~~shipments; `Shipment`/`ProductImage` dead tables~~ — closed in W4-T1/T2: `POST/GET /orders/{id}/shipments` + `POST /shipments/{id}/status` (one write path that moves the order through `TRANSITIONS`, ADR-051) and `POST/GET /products/{id}/images`; `tests/test_order_fulfillment.py`, `tests/test_catalog_admin_surface.py`. ~~a returned parcel went nowhere~~ — closed in W4-T2b: `returned`/`failed` now run the `order_return` saga (restock per reservation state → close the order, with the undo each step is owed) and `POST /orders/{id}/return` is the staff entry (ADR-052, `tests/test_return_saga.py`). ~~customer/number/date filters, payments list, status history, shipping update~~ — the rest of the row closed in W4: `GET /orders` takes `customer_id`/`number`/`created_from`/`created_to` (`orders/router.py:37-55`), `GET /orders/{id}/payments` (`197`) and `/status-history` (`204`) answer, `GET /orders/{id}` returns the money position with an ETag (`77-108`), and `PATCH /orders/{order_id}/shipping` (`340-367`, `orders:write`, If-Match) is a versioned write that audits AND publishes — see ADR-055, which exists because the first version of it only audited. `tests/test_order_reads.py` (22), `tests/test_order_shipping_event.py` (8).
+- M9 ~~`GET /inventory/movements` without variant returns [] (IS NULL on NOT NULL)~~ — fixed in W4-T1 (`None` now means "no filter", `tests/test_inventory_service.py`); ~~still open: movement `reason` is free-text, and reserve/release write no ledger row~~ — closed in W4: the reason vocabulary is two frozen sets (`inventory/service.py:44-62`, physical vs availability-affecting) with direction and reference checked before any session is touched (`check_movement_shape()`, `93-118`), `move()` refuses `hold`/`release` (`150-154`) and the router refuses an availability reason on `POST` while `?reason=` is pattern-matched so a typo is a 422 instead of a silent empty 200. Reservations are ledger-backed now: `reserve()` writes a `hold`/`reservation` row and links it (`227-268`, `InventoryReservation.hold_movement_id`, `inventory/models.py:150`, migration `c4f7a9b1d3e5`), `release()` records only what it actually frees and writes nothing when that is zero (`270-304`), `convert()` writes the paired `release` + `out`/`sale` (`829-890`), and `GET /inventory/movements?reservation_id=` walks the pair. Known limit, stated in the code: a release is attributed FIFO to the holds it frees and writes one reference row, so one release covering two holds names only one. `tests/test_inventory_movement_contract.py` (35), `tests/test_inventory_reservation_ledger.py` (12).
+- M10 ~~Daily analytics bucket in UTC (merchant day shifted); `low_stock` counts zeroed balances (noise)~~ — closed in W4: buckets are cut on the merchant's calendar day, not UTC (`AT TIME ZONE CAST(:tz AS text)` over `paid_at`/`COALESCE(processed_at, created_at)`/placed-at, `analytics/service.py:283-362`, timezone resolved once in `analytics/timekit.py`), the revenue summary reports which timezone it bucketed by (`revenue_summary`, `238-268`), and the two stock bands are disjoint: `out_of_stock` is `available <= 0`, `low_stock` is `1..threshold` (`stock_health`, `365-403`). `tests/test_analytics_correctness.py` (26), `tests/test_marketing_read_models.py` (15). Still open: nothing on the zone — §47/M10 remainder gave each tenant its own `tenants.timezone` (migration `e3b7d2a9c4f1`, resolution order caller → tenant → deployment → UTC, reported as `timezone_source`), which is what this line said needed approving.
+- M11 ~~`POST /orders` has no idempotency~~ — `/api/v1/orders` is on `IDEMPOTENT_PATHS` (`core/idempotency.py:115-120`) and `tests/test_order_idempotency.py` proves replay-once / reuse-with-a-different-body-409. What was left is the other half of the pair — **no client sent the header** — and it closed with the order dialog: one key per dialog OPEN, re-sent unchanged on a retry and across a 401→refresh, cleared on success, and NEVER re-minted after a 409 (a new key can create the order twice). `frontend/e2e/order-money.spec.ts` drives it in a browser; `ApiError` keeps the status so a 409 and a 400 can be told apart at all.
+- M12 ~~Phone/email identity resolution is exact-string, no E.164 normalization → duplicate customers~~ — closed in W4 (ADR-056): one stdlib-only normalizer owns the rules (`core/contact_norm.py`: Egypt `+20` default with the legacy `+964` fabrication named as its own state, five phone states, `phone_candidates`/`email_candidates`, `legacy_fabrication`, `classify_stored_phone`, `find_canonical_collisions`), matching at write time goes through the candidates (`customers/service.py:268-287`, `_resolve_live_by_contact` `439-462`) so a stored local format still finds its customer, and tombstoned/merged rows are refused rather than matched (`82-103`). Existing rows were touched by a data-only migration (`d5a1c7e94b02`) that **marks** what it cannot safely rewrite under `extra → data_quality → m12_contact_backfill` and leaves `updated_at`, `version` and `customer_identities.external_id` alone; `GET /customers/contact-data-issues` (`customers/router.py:85-110`, `customers:write`, PII-redacted) reads the marks back. `tests/test_contact_backfill.py` (28), `tests/test_customer_identity_resolution.py` (25). Still open: the quarantine is not self-healing — a `+964` fabrication and a canonical collision need a human `PATCH /customers/{id}` or `POST /customers/merge`.
+
+### Wave 4 close-out — read from code, then overtaken by the same wave (2026-09-24)
+This list was written by reading finished code rather than the plan, which is the
+only way to write one. Wave 4 then kept going, so each line below is now marked
+with what actually stands.
+
+Closed by the work that landed after this list was written:
+- ~~**`metric_definitions` is never seeded.**~~ — `seed_definitions` is now a
+  CONVERGE (`ON CONFLICT DO UPDATE` over the fields the registry owns, so a
+  bumped definition reaches a live tenant instead of being skipped forever), is
+  called from tenant bootstrap, and has
+  `scripts/backfill_metric_definitions.py` for tenants that already exist.
+  `tests/test_metric_definitions_seed.py` holds it. The in-code `MetricRegistry`
+  remains the authority; the table is its tenant-visible audit copy.
+- ~~**No per-tenant timezone.**~~ — migration `e3b7d2a9c4f1` adds
+  `tenants.timezone` (nullable, no backfill: NULL is the tenant's own answer,
+  "no opinion"), `timekit.resolve_timezone` walks caller → tenant → deployment →
+  UTC and reports which layer answered, and `PUT/GET
+  /tenants/{id}/timezone` refuses an unresolvable zone the way §47 refuses an
+  unknown currency. `tests/test_tenant_timezone.py`.
+- ~~**The reservation expiry sweep has no job.**~~ — `RECURRING_JOBS` carries
+  `expire_reservations` and `ensure_recurring_jobs` seeds it from
+  `SchedulerWorker.run`; `tests/test_reservation_expiry_sweep_wired.py` pins the
+  call path statically AND drives the claim loop end to end, because a handler
+  that nothing schedules is this repo's oldest failure mode.
+- ~~**`archive_old_rows` is dead.**~~ — deleted, with the reason recorded in
+  `analytics/service.py`: wiring retention needs a partition DDL that does not
+  exist, so a partial wire would delete rows on a schedule nobody chose. The
+  §55–57 retention gap stays open below.
+- ~~`float()` at the marketing wire~~ — closed: `analytics.wire_money()` returns
+  a cent-quantised string and every money figure on the marketing read models
+  crosses as text (`None` stays `None`, not `"0.00"`). `CampaignRequest.budget`
+  still accepts a number on the write side by design, and `_ratio()` is a ratio.
+
+Still open, unchanged since it was written:
+- **The catalog CSV importer has no caller.** `catalog/external/csv_import.py:116-124` raises `NotImplementedError` because `CustomerService.create_from_import` exists nowhere in `app/`, and `csv_import` itself has zero importers outside its own module. The gap moved from "wrong" to "loud": nothing silently mis-imports, nothing imports at all.
+- **`float()` survives at the AI tool edge.** `ai/tools.py:193,224` (`float(variant.price)`, pinned by `tests/test_ai_runtime.py:139` asserting `25.5`). Order and marketing money cross as `str(Decimal)`; this one surface does not.
+- **M12's quarantine awaits an operator.** See the M12 line above: the migration reports, it does not resolve.
+- **§55–57 retention has no partition DDL**, so the daily series grows unbounded and `archive_old_rows` was removed rather than wired (above).
+
+### Three more defects review found in the same reading
+Found by reading finished work against the behaviour it claims — none of them by
+a red test that already existed. Each now has one.
+
+1. **`GET /analytics/daily-series` labelled the wrong zone.** The route resolved
+   the timezone chain itself — before it had looked at `tenants.timezone` — and
+   printed that answer as the response's `timezone`, while the service re-resolved
+   correctly and cut the buckets in the tenant's zone. A Cairo shop got Cairo
+   days under a deployment label. Fixed by resolving once through
+   `resolve_report_timezone` and reporting `timezone_source` like every other
+   reader; watched RED (`America/New_York != Africa/Cairo`).
+2. **`tryRefresh` asked for `/api/v1/api/v1/auth/refresh`.** The client had three
+   copies of the base-URL rule; the two that appended the prefix unconditionally
+   were wrong under the same-origin deployment `vercel.json` rewrites describe. A
+   404 there reads as "session gone", so the first expired token logged the user
+   out — and the logout ping and the SSE default (`http://localhost:8000`) had
+   the same class of defect. `apiUrl()` is the only builder now, and
+   `frontend/scripts/check-request-urls.mjs` loads the real compiled module and
+   calls it under both shapes rather than trusting a grep.
+3. **A workflow failure raised a 5xx, and a double restore double-reported.**
+   `WorkflowService` wrote its `WorkflowFailure` row without `tenant_id`, which
+   is NOT NULL under FORCE RLS — the failure path itself rolled back the
+   execution the router docstring promised was never a 5xx.
+   `TenantRestoreService.execute_restore` read its job without `FOR UPDATE`, so
+   two concurrent Executes both passed the `restoring` guard, both emitted
+   `tenant.restore.completed`, and the loser reported `restored: 0` for work that
+   had happened. Both are §176 gate scenarios now
+   (`test_gate_n8n_outage.py`, `test_gate_tenant_restore.py`).
+
+### The two defects review found in Wave 4, and what each left behind
+Both were found by reading the finished wave against the code it was meant to
+complete, not by a red test. Each now has a regression test that names it.
+
+1. **The return saga's compensation restored the shelf but not the §140 row.**
+   `execute` released an unpaid order's hold *and* cancelled its durable
+   `InventoryReservation` (`orders/returns.py:139-141`); `compensate` put the
+   hold back with `InventoryService.reserve()` — quantity, warehouse and
+   balance all correct, and no reservation row behind it. A retried return then
+   read that order as never having held anything, and restocked units it had
+   never sold. Fixed by recreating the durable row inside the same compensation
+   (`returns.py:172-195`, `create_reservation` under `_RESERVATION_TTL`), so the
+   undo gives back exactly what `execute` took. Regression:
+   `tests/test_return_saga.py::test_an_undone_release_restores_the_reservation_it_released`
+   (`:488`); its sibling `test_when_the_close_step_fails_the_restock_is_undone`
+   (`:450`) holds the other half of the pair. Recorded in ADR-052.
+2. **`PATCH /orders/{id}/shipping` was silent.** The route wrote the row and an
+   `audit_logs` line and published nothing. The reason the omission stayed
+   invisible is the interesting part: `order.shipping_updated` was not in
+   `core/events/schemas.py`'s `DOMAIN_EVENT_TYPES`, so `build_envelope` would
+   have refused the write — but no call site ever reached the refusal, because
+   no call site existed. Fixed on both sides: the event type is declared
+   (`schemas.py:142`), `update_shipping` stages it in the same transaction as
+   the versioned update carrying the row's real `aggregate_version`
+   (`orders/service.py:1310-1409`), and it is charged `CRITICAL_SYSTEM` (rank 3)
+   so a tenant flooding its own stream cannot delay a corrected address
+   (`core/fairness.py:68,112`). A no-op patch returns the order unchanged and
+   bumps nothing — no version, no audit row, no event. Regression:
+   `tests/test_order_shipping_event.py` (8 cases, 5 DB-backed), with
+   `tests/test_event_aggregate_version.py` holding the version rule. Recorded in
+   ADR-055.
 
 ### AI safety
 - A1 Knowledge content concatenated verbatim into the system prompt, unbounded, threshold-less, no chunking, no dedupe, no delete endpoints; ingestion fails hard on provider error (row rolls back) (`ai/hooks.py:88-93`, `knowledge.py:34-95`).
