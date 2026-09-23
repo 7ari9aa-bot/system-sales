@@ -920,7 +920,7 @@ class OrderService:
             )
         # Money arrived, so the customer's worth is recomputed from the rows.
         await OrderService._recompute_lifetime_value(
-            session, tenant_id, order.customer_id
+            session, tenant_id, order.id
         )
         return payment
 
@@ -997,7 +997,7 @@ class OrderService:
         # recomputed — derived, so a no-op when the status change collected
         # nothing.
         await OrderService._recompute_lifetime_value(
-            session, tenant_id, order.customer_id
+            session, tenant_id, order.id
         )
         return payment
 
@@ -1127,7 +1127,7 @@ class OrderService:
         # worth — on the order's CURRENT owner, which is what keeps a refund
         # from being charged to whoever held the order when it was paid.
         await OrderService._recompute_lifetime_value(
-            session, tenant_id, order.customer_id
+            session, tenant_id, order.id
         )
 
         await add_outbox_event(
@@ -1458,17 +1458,20 @@ class OrderService:
 
     @staticmethod
     async def _recompute_lifetime_value(
-        session: AsyncSession, tenant_id: UUID, customer_id: UUID
+        session: AsyncSession, tenant_id: UUID, order_id: UUID
     ) -> None:
-        """Rewrite ``customers.lifetime_value`` from the rows that earned it.
+        """Rewrite the order's CURRENT owner's ``lifetime_value`` from the rows.
 
         One statement, derived from the ledger rather than nudged by this
         transaction's amount: an increment is a guess about every past write,
         and it goes stale the moment an order changes hands (the identity
         merge's ``UPDATE orders SET customer_id``), so a customer would keep
-        carrying money that now belongs to somebody else. ``GREATEST(…, 0)`` is
-        ``money.lifetime_value``'s floor spelled in SQL — the same rule, because
-        the arithmetic happens here and not in Python.
+        carrying money that now belongs to somebody else. The customer the
+        write lands on is read from the ``orders`` row for the same reason —
+        a caller's loaded instance still names the OLD owner after such an
+        out-of-band remap, and then the money moves to the wrong person.
+        ``GREATEST(…, 0)`` is ``money.lifetime_value``'s floor spelled in SQL —
+        the same rule, because the arithmetic happens here and not in Python.
 
         Raw SQL for the same reason as ``_audit_shipping``: importing
         ``customers.models`` from ``orders`` is a module-boundary edge the
@@ -1480,7 +1483,7 @@ class OrderService:
         )
         params: dict[str, object] = {
             "t": tenant_id,
-            "cid": customer_id,
+            "oid": order_id,
             # A REJECTED refund asserts no money went back; every other state
             # (pending / approved / processed) is money the merchant has given
             # up — same rule as `_settled_and_refunded`.
@@ -1510,7 +1513,9 @@ class OrderService:
                 "), 0) "
                 ", 0), "
                 "    updated_at = now() "
-                "WHERE c.tenant_id = :t AND c.id = :cid"
+                "FROM orders AS src "
+                "WHERE src.id = :oid AND src.tenant_id = :t "
+                "  AND c.tenant_id = :t AND c.id = src.customer_id"
             ),
             params,
         )

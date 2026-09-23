@@ -186,6 +186,33 @@ async def test_the_restripe_sql_is_one_well_formed_statement() -> None:
     )
 
 
+async def test_the_restripe_names_its_customer_from_the_order_row_not_the_caller() -> None:
+    """A caller's ``order.customer_id`` is a memory, and memories go stale.
+
+    The remap the derived write exists for is an out-of-band
+    ``UPDATE orders SET customer_id``; a session that already loaded the order
+    still names the OLD owner on its instance. Binding the write to a
+    caller-supplied ``:cid`` then moves the money to the person who no longer
+    has the order — which is the identity-merge bug this whole file pins.
+    """
+    captured: dict[str, object] = {}
+
+    class _Recorder:
+        async def execute(self, statement, parameters=None):  # noqa: ANN001
+            captured["sql"] = str(statement)
+            captured["params"] = dict(parameters or {})
+
+    await OrderService._recompute_lifetime_value(_Recorder(), uuid.uuid4(), uuid.uuid4())
+
+    sql = str(captured["sql"])
+    binds = set(re.findall(r":([a-z_][a-z0-9_]*)", sql))
+    assert "cid" not in binds, f"the target came from the caller: {sorted(binds)}"
+    assert "oid" in binds, sql
+    assert "from orders" in sql.lower(), (
+        "nothing resolves the order's current owner inside the statement"
+    )
+
+
 def test_the_write_reaches_customers_without_a_new_module_edge() -> None:
     """``orders`` must not start importing ``customers`` tables for this.
 
