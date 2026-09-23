@@ -26,10 +26,17 @@
  */
 
 import { useEffect, useRef, useCallback } from "react";
-import { getTokens } from "@/lib/api";
+import { apiUrl, getTokens } from "@/lib/api";
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-const SSE_URL = `${API}/api/v1/realtime/events`;
+/** The stream endpoint, resolved by the ONE url rule in the app.
+ *
+ *  This used to read `NEXT_PUBLIC_API_URL` itself with a `http://localhost:8000`
+ *  fallback — a third copy of the base rule, and the only one whose default was
+ *  an absolute origin. Deployed without the variable set (which is how the
+ *  same-origin Vercel rewrite is meant to work), every browser then opened its
+ *  event stream against the developer's machine: realtime silently dead in
+ *  production while every REST call kept working through `/api/v1`. */
+const SSE_URL = apiUrl("/realtime/events");
 
 export interface RealtimeEvent {
   stream: string;

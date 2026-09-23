@@ -31,7 +31,7 @@ import { LayoutDashboard,
   Moon,
   Languages,
 } from "lucide-react";
-import { API_BASE_URL, API_PREFIX, getTokens, setTokens } from "@/lib/api";
+import { apiUrl, getTokens, setTokens } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { t } from "@/lib/t";
 import { getLang, getTheme, applyTheme, toggleTheme, setLang, type Lang } from "@/lib/i18n";
@@ -258,7 +258,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
     // أبلغ السيرفر أولًا (fire-and-forget) قبل مسح التوكنات محليًا
     const tokens = getTokens();
     if (tokens?.refresh_token) {
-      void fetch(`${API_BASE_URL}${API_PREFIX}/auth/logout`, {
+      void fetch(apiUrl("/auth/logout"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ refresh_token: tokens.refresh_token }),
