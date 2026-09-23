@@ -282,17 +282,30 @@ class CatalogService:
         tenant_id: UUID,
         variant_id: UUID,
         unit_price: object,
-        currency: str = "EGP",
+        currency: str | None = None,
         min_quantity: int = 1,
     ) -> ProductPrice:
-        """Write the price tier row (append-only table, tier upserted)."""
+        """Write the price tier row (append-only table, tier upserted).
+
+        §47: the currency defaults to the tenant's, and anything else is
+        refused. A tier in a currency this tenant does not trade in can never
+        be sold — it is not a price, it is a future wrong invoice.
+        """
+        from app.core.tenancy import resolve_tenant_currency
+
         variant = await CatalogService.get_variant(
             session, tenant_id, variant_id, include_inactive=True
         )
         amount = _positive_decimal(unit_price, "unit_price")
         if min_quantity < 1:
             raise ValueError("min_quantity must be >= 1")
-        currency = (currency or "EGP").upper()
+        tenant_currency = await resolve_tenant_currency(session, tenant_id)
+        currency = (currency or tenant_currency).upper()
+        if currency != tenant_currency:
+            raise ConflictError(
+                f"this tenant prices in {tenant_currency}; a {currency} tier "
+                "could never be sold"
+            )
 
         row = (
             await session.execute(
@@ -317,6 +330,46 @@ class CatalogService:
             row.unit_price = amount
         await session.flush()
         return row
+
+    # ---------------------------------------------------- price ladder ------
+
+    @staticmethod
+    async def price_for(
+        session: AsyncSession,
+        tenant_id: UUID,
+        variant: ProductVariant,
+        *,
+        currency: str,
+        quantity: int,
+    ) -> Decimal:
+        """The unit price THIS order pays: the deepest tier the quantity earns.
+
+        Two rules the table enforced by itself but nobody asked before §47:
+
+        * a tier counts only in the order's currency, so a legacy row left over
+          from another shop cannot price this tenant's line;
+        * the highest ``min_quantity`` at or below the quantity wins, which is
+          what a quantity ladder means.
+
+        With no applicable tier the variant's own price is the answer — the
+        ladder is an override, not a prerequisite. Takes the variant the caller
+        already loaded: checkout needs its title and SKU for the snapshot
+        anyway, and a price lookup should not re-query for it.
+        """
+        tier = (
+            await session.execute(
+                select(ProductPrice.unit_price)
+                .where(
+                    ProductPrice.tenant_id == tenant_id,
+                    ProductPrice.variant_id == variant.id,
+                    ProductPrice.currency == currency.upper(),
+                    ProductPrice.min_quantity <= quantity,
+                )
+                .order_by(ProductPrice.min_quantity.desc(), ProductPrice.id)
+                .limit(1)
+            )
+        ).scalars().first()
+        return variant.price if tier is None else tier
 
     # ------------------------------------------------- brands/categories ----
 

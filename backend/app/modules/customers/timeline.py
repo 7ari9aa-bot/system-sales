@@ -309,8 +309,16 @@ class Customer360Service:
         returned = _dec(refunded_total)
         net_collected = collected - returned
 
+        if currency_code is None:
+            # No orders yet: the tenant's own currency is the only honest label
+            # for a row of zeros (§47 — it was a hard-coded "EGP" before, so a
+            # SAR shop's empty money card read as Egyptian).
+            from app.core.tenancy import resolve_tenant_currency
+
+            currency_code = await resolve_tenant_currency(session, tenant_id)
+
         return {
-            "currency": currency_code or "EGP",
+            "currency": currency_code,
             "orders_total": str(committed_total),
             "paid_total": str(collected),
             "refunded_total": str(returned),

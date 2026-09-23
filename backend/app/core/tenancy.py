@@ -20,6 +20,8 @@ from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from uuid import UUID, uuid4
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 _current_tenant: ContextVar[UUID | None] = ContextVar("current_tenant", default=None)
 
 # §151 Q4: the request-scoped hierarchy below the tenant. get_tenant_ctx sets
@@ -127,6 +129,37 @@ def reset_current_tenant() -> None:
 
 def new_tenant_id() -> UUID:
     return uuid4()
+
+
+# --------------------------------------------------------------------- money --
+#
+# §47: a tenant trades in ONE currency, stored on its own row. A request that is
+# already authenticated reads it off `TenantContext` for free (identity/deps.py
+# selects it beside the lifecycle state); this is the path for the callers that
+# have no request — the AI tool runtime, a worker, a script.
+#
+# It reaches for the Tenant row with a function-scope import for the same reason
+# `app.core.mfa` does: the alternative is every commerce module importing
+# `identity` to ask one question, and `tests/test_module_boundaries.py` counts
+# each of those.
+
+#: The currency the schema's server_defaults backfill, and the one every row
+#: written before §47 was implemented asserted.
+DEFAULT_CURRENCY = "EGP"
+
+
+async def resolve_tenant_currency(session: AsyncSession, tenant_id: UUID) -> str:
+    """The currency this tenant trades in (``DEFAULT_CURRENCY`` if unset)."""
+    from sqlalchemy import select
+
+    from app.modules.identity.models import Tenant
+
+    code = (
+        await session.execute(
+            select(Tenant.currency).where(Tenant.id == tenant_id)
+        )
+    ).scalar_one_or_none()
+    return (code or DEFAULT_CURRENCY).upper()
 
 
 def set_current_scope(

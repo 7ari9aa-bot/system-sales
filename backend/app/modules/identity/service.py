@@ -22,6 +22,7 @@ import sqlalchemy as sa
 from sqlalchemy import select
 
 from app.core.config import get_settings
+from app.core.currency import storage_refusal
 from app.core.db import bind_tenant
 from app.core.errors import ConflictError, NotFoundError, PermissionDeniedError, ValidationError
 from app.core.model_kit import AppendOnlyCreatedAtMixin  # noqa: F401  (convention anchor)
@@ -46,6 +47,37 @@ from app.modules.identity.models import (
 from app.modules.identity.schemas import TokenPair
 
 logger = logging.getLogger(__name__)
+
+
+async def _record_audit(
+    session,
+    tenant_id: uuid.UUID | None,
+    actor_user_id: uuid.UUID | None,
+    action: str,
+    resource_type: str,
+    resource_id: object,
+    *,
+    before: dict | None = None,
+    after: dict | None = None,
+) -> None:
+    """Write this module's audit rows through one call.
+
+    The single cross-module import is deliberate: identity reaches into
+    `platform` once here instead of once per call site, and
+    `tests/test_module_boundaries.py` ratchets that count.
+    """
+    from app.modules.platform.service import AuditService
+
+    await AuditService.write(
+        session,
+        tenant_id,
+        actor_user_id,
+        action=action,
+        resource_type=resource_type,
+        resource_id=str(resource_id),
+        before=before,
+        after=after,
+    )
 
 
 async def _record_security_event(
@@ -482,15 +514,8 @@ class AuthService:
 
     @staticmethod
     async def _audit(session, actor_user_id, action, resource_type, resource_id, tenant_id=None):
-        from app.modules.platform.service import AuditService
-
-        await AuditService.write(
-            session,
-            tenant_id,
-            actor_user_id,
-            action=action,
-            resource_type=resource_type,
-            resource_id=str(resource_id),
+        await _record_audit(
+            session, tenant_id, actor_user_id, action, resource_type, resource_id
         )
 
 
@@ -628,6 +653,79 @@ class TenantService:
         invitation.status = "accepted"
         invitation.accepted_at = _now()
         return user, invitation
+
+
+class TenantSettingsService:
+    """§47 — the commercial settings of a tenant: today, the one currency it trades in.
+
+    Everything else in the money path *compares against* ``tenants.currency`` —
+    checkout stamps it, a price tier must be quoted in it, a payment in another
+    currency is refused. That makes this column the single answer to "what is
+    money here", so setting it is validated rather than trusted:
+
+    * the code has to be one this system knows how to quote (``core.currency``),
+    * it has to fit the two decimal places every MONEY column actually stores,
+    * and once the tenant has traded in another currency it cannot move, because
+      orders keep the currency they were sold in and every money aggregate
+      would quietly become a sum of two currencies.
+    """
+
+    @staticmethod
+    async def set_currency(
+        session,
+        tenant_id: uuid.UUID,
+        currency: str,
+        *,
+        actor_user_id: uuid.UUID | None = None,
+    ) -> Tenant:
+        code = (currency or "").strip().upper()
+        refusal = storage_refusal(code)
+        if refusal is not None:
+            raise ValidationError(refusal)
+
+        tenant = (
+            await session.execute(select(Tenant).where(Tenant.id == tenant_id))
+        ).scalar_one_or_none()
+        if tenant is None:
+            raise NotFoundError("tenant not found")
+        previous = (tenant.currency or "").upper()
+        if previous == code:
+            return tenant
+
+        # "Already traded" means an order in a currency that is not the new one.
+        # A raw read rather than an import of the orders model: `orders` depends
+        # on `identity`, so the reverse edge would be a module cycle, and this
+        # is one EXISTS over one column (same trade customers/service.py makes
+        # when it reads orders for a customer's money).
+        traded = (
+            await session.execute(
+                sa.text(
+                    "SELECT 1 FROM orders WHERE tenant_id = :tid "
+                    "AND currency <> :code LIMIT 1"
+                ),
+                {"tid": tenant_id, "code": code},
+            )
+        ).first()
+        if traded is not None:
+            raise ConflictError(
+                f"this tenant has already traded in {previous}: orders keep the "
+                f"currency they were sold in, so the default cannot move to {code} "
+                "out from under them"
+            )
+
+        tenant.currency = code
+        await _record_audit(
+            session,
+            tenant.id,
+            actor_user_id,
+            "tenant.currency_changed",
+            "tenant",
+            tenant.id,
+            before={"currency": previous},
+            after={"currency": code},
+        )
+        await session.flush()
+        return tenant
 
 
 class UserService:
@@ -882,14 +980,13 @@ class TenantLifecycleService:
         # Every transition leaves an audit row naming actor, from, to and why —
         # a lifecycle change with no trail is the failure this feature exists
         # to prevent.
-        from app.modules.platform.service import AuditService
-        await AuditService.write(
+        await _record_audit(
             session,
             tenant.id,
             actor_user_id,
-            action="tenant.lifecycle_changed",
-            resource_type="tenant",
-            resource_id=str(tenant.id),
+            "tenant.lifecycle_changed",
+            "tenant",
+            tenant.id,
             before={"lifecycle_state": current, "is_active": was_active},
             after={
                 "lifecycle_state": target,

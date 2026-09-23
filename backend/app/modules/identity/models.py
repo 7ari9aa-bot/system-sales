@@ -59,6 +59,13 @@ class Tenant(TimestampMixin, Base):
     # Why the tenant is in its current (usually restrictive) state — without it
     # a suspended tenant is indistinguishable from a billing mistake.
     status_reason: Mapped[str | None] = mapped_column(String(255))
+    # §47: the ONE currency this tenant trades in. Every money column in the
+    # system is NUMERIC(14,2), so this is restricted to a two-decimal currency
+    # (see TenantService.set_currency) — an amount stored here is always the
+    # amount the customer paid, never a converted one.
+    currency: Mapped[str] = mapped_column(
+        String(3), default="EGP", server_default="EGP"
+    )
 
 
 class User(TimestampMixin, Base):

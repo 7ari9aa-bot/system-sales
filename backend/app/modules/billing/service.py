@@ -16,6 +16,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.currency import PLATFORM_BILLING_CURRENCY
 from app.core.errors import (
     ConflictError,
     NotFoundError,
@@ -712,6 +713,10 @@ class BillingSnapshotService:
         # no per-unit price catalogue in this system (Plan.price is the flat
         # recurring fee), so metered quantity cannot be turned into money here.
         money = _quantize_money(usage.ai_cost)
+        # §47: this row is the PLATFORM's bill to the tenant, so it carries the
+        # currency the figure above is estimated in — not a literal, and not the
+        # tenant's own trading currency, which is what its customers pay it.
+        invoice_currency = PLATFORM_BILLING_CURRENCY
 
         invoice = Invoice(
             tenant_id=tenant_id,
@@ -721,7 +726,7 @@ class BillingSnapshotService:
             subtotal=money,
             tax=Decimal("0.00"),
             total=money,
-            currency="EGP",
+            currency=invoice_currency,
             issued_at=datetime.now(UTC),
             period_start=period_start,
             period_end=period_end,

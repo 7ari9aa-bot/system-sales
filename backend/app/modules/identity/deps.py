@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import SessionLocal, bind_scope, bind_tenant
 from app.core.errors import NotFoundError, PermissionDeniedError
 from app.core.security import decode_token
-from app.core.tenancy import set_current_scope, set_current_tenant
+from app.core.tenancy import DEFAULT_CURRENCY, set_current_scope, set_current_tenant
 from app.modules.identity.models import (
     Location,
     Permission,
@@ -150,6 +150,11 @@ class TenantContext:
     tenant_id: uuid.UUID
     role_code: str | None
     permission_codes: set[str]
+    # §47: the currency this tenant trades in, read with the lifecycle state on
+    # the same SELECT. Every money write on this request path stamps it, so a
+    # price tier or an invoice line in another currency is a refusal rather
+    # than a conversion — and no caller has to guess a literal.
+    currency: str = DEFAULT_CURRENCY
     # §151 — resolved hierarchy scope for this request (None = tenant-wide).
     # Validated fail-closed by resolve_scope() before they are ever populated.
     workspace_id: uuid.UUID | None = None
@@ -274,13 +279,21 @@ async def get_tenant_ctx(
     # GUC so a blocked tenant never gets a queryable context. Before this,
     # nothing on the request path read the state at all: a suspended tenant
     # kept full API access indefinitely.
-    lifecycle_state = (
+    #
+    # The currency (§47) rides the SAME SELECT: it is a property of the same
+    # row, the request needs it for every money write, and reading it here is
+    # what keeps `orders`/`billing`/`catalog` from importing `identity` to ask —
+    # an edge the module-boundary ratchet counts.
+    tenant_row = (
         await session.execute(
-            sa.select(Tenant.lifecycle_state).where(Tenant.id == tenant_id)
+            sa.select(Tenant.lifecycle_state, Tenant.currency).where(
+                Tenant.id == tenant_id
+            )
         )
-    ).scalar_one_or_none()
-    if lifecycle_state is None:
+    ).first()
+    if tenant_row is None:
         raise PermissionDeniedError("tenant not found")
+    lifecycle_state, tenant_currency = tenant_row
     if not tenant_may_use_api(lifecycle_state) and not _tenant_recovery_path(
         request.url.path
     ):
@@ -332,6 +345,7 @@ async def get_tenant_ctx(
         tenant_id=tenant_id,
         role_code=role_code,
         permission_codes=perms,
+        currency=tenant_currency,
         workspace_id=scope_workspace_id,
         location_id=scope_location_id,
     )

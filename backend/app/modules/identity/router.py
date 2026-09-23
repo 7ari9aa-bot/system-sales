@@ -361,6 +361,29 @@ async def get_tenant_lifecycle(
     return _lifecycle_out(tenant)
 
 
+class TenantCurrencyRequest(BaseModel):
+    currency: str = Field(min_length=3, max_length=3)
+
+
+@tenants_router.put("/{tenant_id}/currency")
+async def set_tenant_currency(
+    tenant_id: uuid.UUID,
+    body: TenantCurrencyRequest,
+    ctx: TenantContext = Depends(require_permission("settings:write")),
+):
+    """§47: declare the one currency this tenant trades in.
+
+    Refused rather than converted when the code is unknown, cannot be stored, or
+    would mix with money already booked — see ``TenantSettingsService``.
+    """
+    if ctx.tenant_id != tenant_id:
+        raise PermissionDeniedError("tenant mismatch")
+    tenant = await service.TenantSettingsService.set_currency(
+        ctx.session, tenant_id, body.currency, actor_user_id=ctx.user.id
+    )
+    return {"tenant_id": str(tenant.id), "currency": tenant.currency}
+
+
 @tenants_router.post("/{tenant_id}/offboarding/export")
 async def export_tenant_data(
     tenant_id: uuid.UUID,

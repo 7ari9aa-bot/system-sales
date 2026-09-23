@@ -84,7 +84,9 @@ class UpdateVariantRequest(BaseModel):
 
 class SetPriceRequest(BaseModel):
     unit_price: Decimal = Field(gt=0)
-    currency: str = Field(default="EGP", pattern="^[A-Za-z]{3}$")
+    # Absent = the tenant's own currency (§47). A named one is validated against
+    # it, so the default can never silently price a shop in another money.
+    currency: str | None = Field(default=None, pattern="^[A-Za-z]{3}$")
     min_quantity: int = Field(default=1, ge=1)
 
 

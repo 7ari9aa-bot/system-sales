@@ -159,7 +159,7 @@ class MarketingService:
         order_id: UUID | None = None,
         type: str = "purchase",  # noqa: A002 - API parity with the model column
         value: float | None = None,
-        currency: str = "EGP",
+        currency: str | None = None,
         occurred_at: datetime | None = None,
     ) -> Conversion:
         if type not in _ALLOWED_CONVERSION_TYPES:
@@ -167,13 +167,18 @@ class MarketingService:
                 f"type must be one of {sorted(_ALLOWED_CONVERSION_TYPES)}",
                 details={"type": type},
             )
+        # §47: ROAS divides conversions by ad spend, so the money column has to
+        # say what it is denominated in. The tenant trades in one currency, and
+        # a conversion recorded against its orders is in that currency.
+        from app.core.tenancy import resolve_tenant_currency
+
         conversion = Conversion(
             tenant_id=tenant_id,
             customer_id=customer_id,
             order_id=order_id,
             type=type,
             value=value,
-            currency=currency,
+            currency=(currency or await resolve_tenant_currency(session, tenant_id)).upper(),
             occurred_at=occurred_at or _now(),
         )
         session.add(conversion)

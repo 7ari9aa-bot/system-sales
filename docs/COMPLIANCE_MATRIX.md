@@ -69,7 +69,7 @@ Consequences, stated honestly:
 | §44 | AI trace (correlation, cost, policy) | ✅ | `backend/app/modules/ai/trace.py`; routes `modules/ai/router.py:230,235,243` |
 | §45 | SearchPort + FTS | ✅ | `backend/app/core/search.py`; route `modules/operations/router.py:117` |
 | §46 | Business hours + SLA | ✅ | `backend/app/modules/operations/sla.py` (`BusinessClock`) |
-| §47 | Money `amount_minor` | ⬜ | `grep -rn "amount_minor\|to_minor\|from_minor" backend/app` → **nothing**. `docs/adr/ADR-001-to-004.md:4` claims an adapter lives in `model_kit.py`; it does not |
+| §47 | Money: currency belongs to the tenant | ✅ | `tenants.currency` (migration `b8e1c4d5a7f2`) read onto `TenantContext` and via `core/tenancy.resolve_tenant_currency`; a foreign currency is a refusal at checkout, payment, price-tier write and conversion, and the platform's own invoice is labeled with the currency its cost is computed in (`core/currency.PLATFORM_BILLING_CURRENCY`) rather than the old `"EGP"` literal (ADR-053). `orders/money.compute_totals` gives `grand_total = subtotal − discount + shipping + tax` (was a copy of subtotal); `ProductPrice` ladder read at checkout via `CatalogService.price_for`; minor units at the provider boundary via `money.amount_minor`/`from_amount_minor`, scale-aware (`core/currency.py` = the ISO exponent table; a 3-decimal currency is refused as a tenant default because MONEY columns are `NUMERIC(14,2)`). Owner surface `PUT /api/v1/tenants/{id}/currency`, audited. `core/money.py` deleted. Tests `tests/test_tenant_currency.py` (21 cases) + `tests/test_billing_metering.py`, DB-backed ones on CI Postgres |
 | §48–50 | Tenant lifecycle + on/offboarding | ✅ | `backend/app/modules/identity/models.py` lifecycle; `identity/service.py` `STATE_POLICIES`; deferral at `workers/base.py:61` |
 | §51–52 | Privacy domain + retention | 🟡 | `backend/app/modules/privacy/service.py`; `workers/retention_worker.py:68` — wired to a job type, completeness unverified |
 | §53–54 | Billing metering + immutable snapshots | ✅ | `backend/app/modules/billing/service.py:394` `BillingSnapshotService`; immutability migration `e7a8b9c0d1e2_*`; `tests/test_invoice_immutability.py` |
@@ -238,7 +238,7 @@ rows = [l for l in pathlib.Path('docs/COMPLIANCE_MATRIX.md').read_bytes().decode
 c = collections.Counter(l.split('|')[3].strip() for l in rows)
 print(len(rows), dict(c))
 "
-# observed: 113 {'✅': 54, '🟡': 34, '⬜': 13, '❓': 12}
+# observed (2026-09-23, after §47/W4-T3): 113 {'✅': 63, '🟡': 27, '⬜': 11, '❓': 12}
 ```
 
 (Do not use Git Bash `grep` for the emoji cells: on this machine it fails to match the 🟡 glyph
@@ -255,6 +255,7 @@ Three spot-checks that anyone can re-run and get the same answer:
    `grep -rn "from app.core.events.schemas import" backend/app backend/tests --include=*.py`
    → matches only under `backend/tests/`; nothing under `backend/app/`.
 
-3. **§47 money is not implemented, and the ADR says it is.**
-   `grep -rn "amount_minor\|to_minor\|from_minor" backend/app --include=*.py`
-   → no output; yet `docs/adr/ADR-001-to-004.md:4` states the adapter lives in `app/core/model_kit.py`.
+3. **§47 money lives on the tenant row (it did not before ADR-053).**
+   `grep -rn "resolve_tenant_currency\|compute_totals\|price_for" backend/app --include=*.py`
+   → checkout, payments, invoices, conversions, the customer money card and the tier ladder all
+   read the tenant's currency; no money path asserts `"EGP"` any more (`grep -rn 'currency = "EGP"' backend/app` is empty apart from the model `server_default`s).

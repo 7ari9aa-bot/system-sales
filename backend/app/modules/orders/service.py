@@ -34,6 +34,7 @@ from app.modules.orders.models import (
 )
 from app.modules.orders.money import (
     SETTLED_PAYMENT_STATUSES,
+    compute_totals,
     net_collected,
     order_balance,
     positive_money,
@@ -239,8 +240,13 @@ class OrderService:
         channel: str | None = None,
         shipping_address: dict | None = None,
         warehouse_id: UUID | None = None,
+        currency: str | None = None,
+        discount_total: object = None,
+        shipping_total: object = None,
+        tax_total: object = None,
         # §8: function-scope imports — avoids module-scope service coupling.
     ) -> Order:
+        from app.core.tenancy import resolve_tenant_currency
         from app.modules.catalog.service import CatalogService
         from app.modules.customers.service import CustomerService
         from app.modules.inventory.service import (
@@ -255,6 +261,17 @@ class OrderService:
         """
         if not items:
             raise ValidationError("order must contain at least one item")
+
+        # §47: the order is priced in the tenant's currency and in no other. An
+        # HTTP caller already holds it on its context; the AI tool runtime and
+        # any worker without one reads the tenant row.
+        tenant_currency = await resolve_tenant_currency(session, tenant_id)
+        if currency is not None and currency.upper() != tenant_currency:
+            raise ConflictError(
+                f"this tenant trades in {tenant_currency}; a {currency.upper()} "
+                "order would be money no rate has agreed on"
+            )
+        currency = tenant_currency
 
         customer = await CustomerService.get(session, tenant_id, customer_id)
         # Blocked (fraud/abuse), tombstoned (privacy deletion) or merged-away
@@ -278,6 +295,11 @@ class OrderService:
         # The price is CAPTURED here, once, and everything downstream — the
         # line totals, the order total, the outbox payload — reads that
         # snapshot. Nothing recomputes a total from the (mutable) variant price.
+        #
+        # §47: the snapshot comes from the tenant's PRICE LADDER in the order's
+        # currency, not from the bare variant price. A merchant who publishes
+        # "6 units at 85" is quoting that tier, and a USD tier sitting on an EGP
+        # shop is a different shop — it prices nothing here.
         prepared: list[tuple[Any, int, Decimal]] = []
         for item in items:
             try:
@@ -286,7 +308,10 @@ class OrderService:
                 raise ValueError("each item needs a valid variant_id") from exc
             variant = await CatalogService.get_variant(session, tenant_id, variant_id)
             quantity = _positive_int(item.get("quantity"))
-            prepared.append((variant, quantity, to_money(variant.price, "unit_price")))
+            unit_price = await CatalogService.price_for(
+                session, tenant_id, variant, currency=currency, quantity=quantity
+            )
+            prepared.append((variant, quantity, to_money(unit_price, "unit_price")))
 
         # Reserve first — insufficient stock aborts the whole order.
         for variant, quantity, _price in prepared:
@@ -298,6 +323,19 @@ class OrderService:
             sum((price * quantity for _v, quantity, price in prepared), Decimal("0")),
             "subtotal",
         )
+        # §47/the money gap: checkout used to write `grand_total = subtotal` and
+        # leave the three components at zero, so a discount or a shipping charge
+        # could be stated to the customer and never collected. The components
+        # now add up to what the order is worth, or the call is refused.
+        try:
+            totals = compute_totals(
+                subtotal=subtotal,
+                discount=discount_total,
+                shipping=shipping_total,
+                tax=tax_total,
+            )
+        except ValueError as exc:
+            raise ValidationError(str(exc)) from exc
 
         order = await OrderService._insert_order(
             session,
@@ -308,12 +346,8 @@ class OrderService:
             # loop above aborted the whole order if it could not), so recording
             # "created" here would be a claim the reservations contradict.
             process_state="stock_reserved",
-            currency="EGP",
-            subtotal=subtotal,
-            discount_total=Decimal("0"),
-            shipping_total=Decimal("0"),
-            tax_total=Decimal("0"),
-            grand_total=subtotal,
+            currency=currency,
+            **totals,
             channel=channel,
             shipping_address=shipping_address,
             placed_at=_now(),
@@ -622,6 +656,7 @@ class OrderService:
         method: str,
         amount: object,
         provider: str | None = None,
+        currency: str | None = None,
     ) -> OrderPayment:
         """Capture a payment; a paid pending order becomes confirmed.
 
@@ -629,6 +664,11 @@ class OrderService:
         timeout paths (result lost mid-flight) map to status "unknown" in the
         Stage payments adapter and are reconciled there — never retried
         blindly (§141).
+
+        §47: a payment stated in a currency other than the order's is refused.
+        Nothing converts, because this tenant has one currency and the order
+        already names it — so a mismatch is a mistake or a different order, and
+        never a rate to apply.
         """
         if method not in _PAYMENT_METHODS:
             raise ValidationError(
@@ -637,6 +677,11 @@ class OrderService:
         order = await OrderService.get(
             session, tenant_id, order_id, with_items=False, for_update=True
         )
+        if currency is not None and currency.upper() != order.currency:
+            raise ConflictError(
+                f"order {order.number} is payable in {order.currency}, not "
+                f"{currency.upper()} — the amount received is not the amount owed"
+            )
         if order.status in ("cancelled", "refunded"):
             raise ConflictError(f"cannot pay a {order.status} order")
         captured = positive_money(amount)

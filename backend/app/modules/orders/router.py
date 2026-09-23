@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel, Field
@@ -134,12 +135,16 @@ async def reconcile_payment(
 
 class PaymentCreateRequest(BaseModel):
     method: str = Field(min_length=1, max_length=31)
-    amount: float = Field(gt=0)
+    amount: Decimal = Field(gt=0)
     provider: str | None = Field(default=None, max_length=63)
+    # §47: optional, and only ever to state the obvious. A currency other than
+    # the order's is refused rather than converted, so passing it can only
+    # catch a mistake — never settle one.
+    currency: str | None = Field(default=None, pattern="^[A-Za-z]{3}$")
 
 
 class RefundCreateRequest(BaseModel):
-    amount: float = Field(gt=0)
+    amount: Decimal = Field(gt=0)
     reason: str | None = Field(default=None, max_length=512)
 
 
@@ -158,6 +163,7 @@ async def create_payment(
         method=body.method,
         amount=body.amount,
         provider=body.provider,
+        currency=body.currency,
     )
     return {
         "id": str(payment.id),
@@ -313,6 +319,12 @@ class CreateOrderRequest(BaseModel):
     items: list[OrderItemRequest] = Field(min_length=1)
     channel: str = "dashboard"
     shipping_address: dict | None = None
+    # §47: the money components of the order. Each is optional (absent = zero),
+    # and `grand_total` is computed from them rather than copied from the
+    # subtotal, so what the merchant states is what the customer is charged.
+    discount_total: Decimal | None = Field(default=None, ge=0)
+    shipping_total: Decimal | None = Field(default=None, ge=0)
+    tax_total: Decimal | None = Field(default=None, ge=0)
 
 
 @router.post("/orders", status_code=201)
@@ -328,11 +340,19 @@ async def create_order(
         [{"variant_id": i.variant_id, "quantity": i.quantity} for i in body.items],
         channel=body.channel,
         shipping_address=body.shipping_address,
+        currency=ctx.currency,
+        discount_total=body.discount_total,
+        shipping_total=body.shipping_total,
+        tax_total=body.tax_total,
     )
     return {
         "id": str(order.id),
         "number": order.number,
         "status": order.status,
+        "subtotal": str(order.subtotal),
+        "discount_total": str(order.discount_total),
+        "shipping_total": str(order.shipping_total),
+        "tax_total": str(order.tax_total),
         "grand_total": str(order.grand_total),
         "currency": order.currency,
     }

@@ -24,21 +24,26 @@ cost real money:
   captured a SECOND time: a double charge, with the provider holding the first
   capture the whole time.
 
-The module imports NOTHING but the standard library on purpose: it stays a pure
-rule set, and it adds no cross-module edge (``tests/test_module_boundaries.py``
-ratchets those). The caller owns the transaction AND the error type — these
-functions return a reason, they never raise a domain error.
+The module reaches for one thing outside the standard library — the ISO 4217
+table in ``app.core.currency``, which is itself data and arithmetic with no
+session and no domain import — so it stays a pure rule set, and it adds no
+cross-module edge (``tests/test_module_boundaries.py`` ratchets those). The
+caller owns the transaction AND the error type — these functions return a
+reason, they never raise a domain error.
 """
 
 from __future__ import annotations
 
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
+from app.core.currency import exponent_of
+
 __all__ = [
     "MONEY_QUANTUM",
     "REFUNDED_PAYMENT_STATUSES",
     "SETTLED_PAYMENT_STATUSES",
     "amount_minor",
+    "compute_totals",
     "from_amount_minor",
     "net_collected",
     "order_balance",
@@ -76,11 +81,17 @@ SETTLED_PAYMENT_STATUSES = (
 REFUNDED_PAYMENT_STATUSES = ("refunded", "partially_refunded")
 
 
-def to_money(value: object, field: str = "amount") -> Decimal:
-    """Coerce ``value`` to a 2-place ``Decimal``, rounding as Postgres will.
+def to_money(
+    value: object, field: str = "amount", quantum: Decimal = MONEY_QUANTUM
+) -> Decimal:
+    """Coerce ``value`` to a ``Decimal`` at the currency's scale, rounding as
+    Postgres will.
 
     Quantizing here (not at the column) is the point: every comparison the
     service makes must be about the value that is actually going to be stored.
+    ``quantum`` defaults to the two places every MONEY column in this schema
+    has; a caller converting to a currency's MINOR units passes that
+    currency's own scale instead (§47).
     """
     try:
         amount = Decimal(str(value))
@@ -91,7 +102,7 @@ def to_money(value: object, field: str = "amount") -> Decimal:
     # than leaking a driver-level error out of the service.
     if not amount.is_finite():
         raise ValueError(f"{field} must be a finite number")
-    return amount.quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
+    return amount.quantize(quantum, rounding=ROUND_HALF_UP)
 
 
 def positive_money(value: object, field: str = "amount") -> Decimal:
@@ -128,6 +139,54 @@ def order_balance(
     return to_money(grand_total, "grand_total") - net_collected(
         settled_gross, refunded
     )
+
+
+def compute_totals(
+    *,
+    subtotal: object,
+    discount: object = None,
+    shipping: object = None,
+    tax: object = None,
+) -> dict[str, Decimal]:
+    """The money an order actually charges, from the four components.
+
+    ``grand_total = subtotal - discount + shipping + tax``, every term quantized
+    first so the sum is the sum of what the columns will hold.
+
+    This exists because checkout used to write ``grand_total = subtotal`` and
+    leave the other three at zero, so a merchant who discounted an order still
+    collected full price and one who charged shipping invoiced it nowhere.
+    """
+    sub = to_money(subtotal, "subtotal")
+    parts = {
+        "subtotal": sub,
+        "discount_total": (
+            Decimal("0.00") if discount is None else to_money(discount, "discount_total")
+        ),
+        "shipping_total": (
+            Decimal("0.00") if shipping is None else to_money(shipping, "shipping_total")
+        ),
+        "tax_total": Decimal("0.00") if tax is None else to_money(tax, "tax_total"),
+    }
+    for field in ("discount_total", "shipping_total", "tax_total"):
+        if parts[field] < 0:
+            raise ValueError(f"{field} must not be negative")
+
+    grand = (
+        parts["subtotal"]
+        - parts["discount_total"]
+        + parts["shipping_total"]
+        + parts["tax_total"]
+    )
+    if grand < 0:
+        raise ValueError(
+            f"discount_total {parts['discount_total']} exceeds the order total "
+            f"{parts['subtotal'] + parts['shipping_total'] + parts['tax_total']} "
+            "— a negative total is a refund, and a refund is a money movement "
+            "with a row of its own"
+        )
+    parts["grand_total"] = grand
+    return parts
 
 
 def reconciliation_refusal(current: str, observed: str) -> str | None:
@@ -171,24 +230,25 @@ def reconciliation_refusal(current: str, observed: str) -> str | None:
 # provider boundary is mandatory: a ``Decimal("19.99")`` must become
 # ``1999`` (cents) for USD, or ``19990`` (fils) for IQD.
 #
-# Most currencies have 2 decimal places (100 minor per major). A few have
-# 3 (BHD, IQD, JOD, KWD, OMR) or 0 (JPY). The caller must pass the
-# currency's exponent so the function is correct for every currency.
-
-
-# ISO 4217 exponent lookup — the number of digits after the decimal point.
-# Most currencies: 2 (100 minor per major). A few: 3 (BHD, IQD, JOD, KWD,
-# OMR) or 0 (JPY, KRW). This table covers the ones this system uses.
-_CURRENCY_EXPONENTS: dict[str, int] = {
-    "USD": 2, "EUR": 2, "GBP": 2, "SAR": 2, "AED": 2, "EGP": 2,
-    "IQD": 3, "BHD": 3, "JOD": 3, "KWD": 3, "OMR": 3,
-    "JPY": 0, "KRW": 0,
-}
+# The exponent table lives in ``app.core.currency`` beside the rule that a
+# three-decimal currency cannot be this tenant's default, so the two halves of
+# "how is this currency quoted" cannot drift apart. The import is stdlib-only
+# data: this module still reaches for no session and no domain service.
 
 
 def _exponent_for(currency: str) -> int:
-    """Get the decimal exponent for a currency (default 2)."""
-    return _CURRENCY_EXPONENTS.get(currency.upper(), 2)
+    """This currency's minor-unit scale.
+
+    ``or`` would be wrong here: a zero-exponent currency (JPY, KRW) is quoted in
+    whole units, and ``0 or 2`` reads that as cents.
+    """
+    exponent = exponent_of(currency)
+    return 2 if exponent is None else exponent
+
+
+def _quantum_for(currency: str) -> Decimal:
+    """The smallest unit the currency is quoted in: 0.01, 0.001, or 1."""
+    return Decimal(1).scaleb(-_exponent_for(currency))
 
 
 def amount_minor(value: object, currency: str) -> int:
@@ -196,14 +256,17 @@ def amount_minor(value: object, currency: str) -> int:
 
     Examples:
         amount_minor(Decimal("19.99"), "USD") -> 1999
-        amount_minor(Decimal("19.990"), "IQD") -> 19990
+        amount_minor(Decimal("19.995"), "IQD") -> 19995
         amount_minor(Decimal("1000"), "JPY") -> 1000
+
+    Quantized to the CURRENCY's own scale, not to ``MONEY_QUANTUM``: a
+    three-decimal currency is quoted in thirds of a fil, and rounding it to
+    two places here loses a whole minor unit on the way to the provider.
 
     Raises ValueError if the value is not finite.
     """
-    amount = to_money(value)
+    amount = to_money(value, "amount", _quantum_for(currency))
     exp = _exponent_for(currency)
-    # Scale to minor units: multiply by 10^exp, then truncate to int
     scaled = amount * (Decimal(10) ** exp)
     return int(scaled.to_integral_value(rounding=ROUND_HALF_UP))
 
@@ -213,9 +276,12 @@ def from_amount_minor(minor: int, currency: str) -> Decimal:
 
     Inverse of ``amount_minor``:
         from_amount_minor(1999, "USD") -> Decimal("19.99")
-        from_amount_minor(19990, "IQD") -> Decimal("19.990")
+        from_amount_minor(19995, "IQD") -> Decimal("19.995")
         from_amount_minor(1000, "JPY") -> Decimal("1000")
+
+    The quantum is the currency's, so a three-decimal amount survives the round
+    trip instead of being flattened to two places by ``MONEY_QUANTUM``.
     """
     exp = _exponent_for(currency)
     result = Decimal(minor) / (Decimal(10) ** exp)
-    return result.quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
+    return result.quantize(_quantum_for(currency), rounding=ROUND_HALF_UP)

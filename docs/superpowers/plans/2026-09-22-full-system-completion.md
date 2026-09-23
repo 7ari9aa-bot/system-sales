@@ -62,7 +62,7 @@ Plan: `docs/superpowers/plans/2026-09-22-wave-0-live-bugs.md`
 - [ ] §161 external commerce wired: router + worker + tests for SourceOfTruthPolicy/CSV/Shopify adapter (or remove if superseded — zero-deferral says wire).
 - [ ] §55/§56/§57 analytics: read models/consumers or documented pre-aggregation; PARTITION BY on hot tables (messages/audit/ai_usage/webhook_events); archiving worker scheduled.
 - [ ] §45 search: tsvector/trigram + GIN + indexer consumer replacing ILIKE.
-- [ ] §47 money: amount_minor storage + exchange rate/timestamp persistence (or ADR justifying Numeric(14,2) major-unit).
+- [x] §47 money: closed by W4-T3 with the ADR branch — `tenants.currency` per tenant (ADR-053), `NUMERIC(14,2)` kept and justified there, minor units derived at the provider boundary (`orders/money.amount_minor`, scale-aware), foreign-currency writes refused, `grand_total` computed from discount/shipping/tax, price ladder read at checkout. Cross-currency exchange-rate persistence is unmet by design (one currency per tenant ⇒ no pair to report).
 - [ ] §166 notifications: wire digest/aggregation/quiet-hours (after W0.3), NotificationDelivery entity, email/push dispatcher, SLA-escalation chain.
 - [ ] §167 metric definitions: business_hours_rule/aggregation attrs, conversion_rate/roas handlers, seed_definitions wired, marketing uses registry.
 - [ ] §81/§150 missing entities: ApprovalStep/ApprovalDecision, InvoiceLine, ApiKey, Transcript, OutboundMessage, BusinessHours/Holiday tables, Mention, Favorite, Review, DeletionJob, Queue/Incident/SystemEvent (per spec's canonical list).
