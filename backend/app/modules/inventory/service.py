@@ -11,12 +11,12 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.errors import ConflictError, NotFoundError
+from app.modules.errors import ConflictError, NotFoundError, ValidationError
 from app.modules.inventory.models import (
     InventoryBalance,
     InventoryMovement,
@@ -27,6 +27,52 @@ from app.modules.inventory.models import (
 from app.modules.orders.errors import InsufficientStockError
 
 _DIRECTIONS = {"in", "out", "adjust"}
+# Availability directions: they change `reserved`, never `on_hand`, and are
+# written only by reserve()/release() below — hence their absence from
+# _DIRECTIONS and from the route's direction pattern.
+_AVAILABILITY_DIRECTIONS = {"hold", "release"}
+
+# The ledger's reason vocabulary — a CLOSED set (M9). It was free text, so
+# "what happened to this stock" could not be grouped, filtered or reconciled.
+# Enumerated from the writers that exist:
+#   purchase / adjustment  restock intake and the manual stocktake route
+#   sale                   InventoryReservationService.convert
+#   return / return_reversal   orders/returns (the order_return saga, ADR-052)
+#   transfer_in / transfer_out complete_transfer
+#   damage   documented shrinkage (models.py)
+#   reservation / reservation_release  the hold pair (this module)
+PHYSICAL_MOVEMENT_REASONS: frozenset[str] = frozenset(
+    {
+        "purchase",
+        "sale",
+        "return",
+        "return_reversal",
+        "transfer_in",
+        "transfer_out",
+        "adjustment",
+        "damage",
+    }
+)
+AVAILABILITY_MOVEMENT_REASONS: frozenset[str] = frozenset(
+    {"reservation", "reservation_release"}
+)
+MOVEMENT_REASONS: frozenset[str] = (
+    PHYSICAL_MOVEMENT_REASONS | AVAILABILITY_MOVEMENT_REASONS
+)
+#: `reference_type` of a durable reservation, so a release names what it freed.
+RESERVATION_REFERENCE = "inventory_reservation"
+
+#: Patterns for the request models: a whitelist the API document can show.
+MOVEMENT_DIRECTION_PATTERN = "^(?:" + "|".join(sorted(_DIRECTIONS)) + ")$"
+MOVEMENT_REASON_PATTERN = (
+    "^(?:" + "|".join(sorted(PHYSICAL_MOVEMENT_REASONS)) + ")$"
+)
+#: The read filter may name ANY reason — the hold rows are what an auditor
+#: reconciling on_hand against available has to be able to ask for.
+MOVEMENT_REASON_FILTER_PATTERN = (
+    "^(?:" + "|".join(sorted(MOVEMENT_REASONS)) + ")$"
+)
+
 _TRANSFER_STATUSES = {"draft", "in_transit"}
 
 
@@ -42,6 +88,34 @@ def _positive_int(quantity: object, field: str = "quantity") -> int:
     if value <= 0:
         raise ValueError(f"{field} must be greater than zero")
     return value
+
+
+def check_movement_shape(direction: str, reason: str) -> None:
+    """Reject a reason/direction pair the ledger cannot be read back.
+
+    Runs BEFORE any session access, so junk input is a 400 rather than a query
+    that happens to fail later. A physical reason must ride a physical direction
+    and an availability reason must ride `hold`/`release`: mixing them is how a
+    hold would read as goods leaving the warehouse. An unknown direction stays a
+    ValueError, which is what `move` has always raised for it.
+    """
+    if reason not in MOVEMENT_REASONS:
+        raise ValidationError(
+            f"reason must be one of {sorted(MOVEMENT_REASONS)}",
+            details={"reason": reason},
+        )
+    if direction not in _DIRECTIONS | _AVAILABILITY_DIRECTIONS:
+        raise ValueError(
+            f"direction must be one of {sorted(_DIRECTIONS | _AVAILABILITY_DIRECTIONS)}"
+        )
+    physical = direction in _DIRECTIONS
+    if physical == (reason in AVAILABILITY_MOVEMENT_REASONS):
+        raise ValidationError(
+            f"direction {direction!r} does not pair with reason {reason!r}: "
+            f"'in|out|adjust' take {sorted(PHYSICAL_MOVEMENT_REASONS)}, "
+            f"'hold|release' take {sorted(AVAILABILITY_MOVEMENT_REASONS)}",
+            details={"direction": direction, "reason": reason},
+        )
 
 
 class InventoryService:
@@ -67,9 +141,17 @@ class InventoryService:
         - in:     on_hand += quantity
         - out:    on_hand -= quantity (InsufficientStockError below zero)
         - adjust: on_hand = quantity (absolute count, e.g. stocktake)
+
+        The `hold`/`release` availability rows are NOT written here: a hold that
+        did not move `reserved` would be a ledger lie, so they come from
+        reserve()/release() only.
         """
-        if direction not in _DIRECTIONS:
-            raise ValueError(f"direction must be one of {sorted(_DIRECTIONS)}")
+        check_movement_shape(direction, reason)
+        if direction in _AVAILABILITY_DIRECTIONS:
+            raise ValidationError(
+                f"direction {direction!r} is a reservation row: write it with "
+                "reserve()/release(), which moves the balance as well"
+            )
         quantity = _positive_int(quantity)
 
         await InventoryService._get_variant(session, tenant_id, variant_id)
@@ -91,6 +173,40 @@ class InventoryService:
             new_on_hand = quantity
 
         balance.on_hand = new_on_hand
+        return await InventoryService._append(
+            session,
+            tenant_id,
+            variant_id,
+            warehouse_id,
+            direction=direction,
+            quantity=quantity,
+            reason=reason,
+            balance_after=new_on_hand,
+            reference_type=reference_type,
+            reference_id=reference_id,
+        )
+
+    @staticmethod
+    async def _append(
+        session: AsyncSession,
+        tenant_id: UUID,
+        variant_id: UUID,
+        warehouse_id: UUID,
+        *,
+        direction: str,
+        quantity: int,
+        reason: str,
+        balance_after: int,
+        reference_type: str | None = None,
+        reference_id: UUID | None = None,
+    ) -> InventoryMovement:
+        """Append one ledger row (the single writer of the append-only ledger).
+
+        `balance_after` is ALWAYS the on-hand position, including on the
+        availability rows — a hold changes `reserved`, not `on_hand`, so an
+        unchanged figure there is the truth, not a missing update.
+        """
+        check_movement_shape(direction, reason)
         movement = InventoryMovement(
             tenant_id=tenant_id,
             variant_id=variant_id,
@@ -100,7 +216,7 @@ class InventoryService:
             reason=reason,
             reference_type=reference_type,
             reference_id=reference_id,
-            balance_after=new_on_hand,
+            balance_after=balance_after,
         )
         session.add(movement)
         await session.flush()
@@ -116,7 +232,11 @@ class InventoryService:
         warehouse_id: UUID,
         quantity: int,
     ) -> InventoryBalance:
-        """Hold stock for an order: on_hand - reserved must cover quantity."""
+        """Hold stock for an order: on_hand - reserved must cover quantity.
+
+        The hold is an accounting event and writes a ledger row (M9): without
+        one, nothing explained the gap between on_hand and available.
+        """
         quantity = _positive_int(quantity)
         await InventoryService._get_variant(session, tenant_id, variant_id)
         await InventoryService._get_warehouse(session, tenant_id, warehouse_id)
@@ -132,6 +252,18 @@ class InventoryService:
                 f"reserved={balance.reserved}, available={available}"
             )
         balance.reserved += quantity
+        # No reservation id yet: OrderService creates the durable row after the
+        # order exists, and links it back (create_reservation.hold_movement_id).
+        await InventoryService._append(
+            session,
+            tenant_id,
+            variant_id,
+            warehouse_id,
+            direction="hold",
+            quantity=quantity,
+            reason="reservation",
+            balance_after=balance.on_hand,
+        )
         await session.flush()
         return balance
 
@@ -143,7 +275,12 @@ class InventoryService:
         warehouse_id: UUID,
         quantity: int,
     ) -> InventoryBalance:
-        """Give reserved stock back; never drops reserved below zero."""
+        """Give reserved stock back; never drops reserved below zero.
+
+        The ledger row states what was ACTUALLY freed, not what was asked: a
+        redundant release (nothing left held) records nothing, so the sum of a
+        reservation's releases can never exceed its hold.
+        """
         quantity = _positive_int(quantity)
         await InventoryService._get_variant(session, tenant_id, variant_id)
         await InventoryService._get_warehouse(session, tenant_id, warehouse_id)
@@ -151,9 +288,119 @@ class InventoryService:
             session, tenant_id, variant_id, warehouse_id
         )
 
-        balance.reserved = max(0, balance.reserved - quantity)
+        freed = min(quantity, balance.reserved)
+        if freed == 0:
+            return balance
+        balance.reserved -= freed
+        await InventoryService._append_release(
+            session,
+            tenant_id,
+            variant_id,
+            warehouse_id,
+            quantity=freed,
+            balance_after=balance.on_hand,
+        )
         await session.flush()
         return balance
+
+    @staticmethod
+    async def _append_release(
+        session: AsyncSession,
+        tenant_id: UUID,
+        variant_id: UUID,
+        warehouse_id: UUID,
+        *,
+        quantity: int,
+        balance_after: int,
+        reservation: InventoryReservation | None = None,
+    ) -> InventoryMovement:
+        """Append the `release` row for `quantity` units of held stock.
+
+        Attributes it to the reservation it freed when one can be named, so
+        'what reserved this, and was it released' is answerable from the ledger.
+        """
+        target = reservation or await InventoryService._pair_release_with_reservation(
+            session, tenant_id, variant_id, warehouse_id
+        )
+        return await InventoryService._append(
+            session,
+            tenant_id,
+            variant_id,
+            warehouse_id,
+            direction="release",
+            quantity=quantity,
+            reason="reservation_release",
+            balance_after=balance_after,
+            reference_type=RESERVATION_REFERENCE if target else None,
+            reference_id=target.id if target else None,
+        )
+
+    @staticmethod
+    async def _pair_release_with_reservation(
+        session: AsyncSession,
+        tenant_id: UUID,
+        variant_id: UUID,
+        warehouse_id: UUID,
+    ) -> InventoryReservation | None:
+        """The ACTIVE reservation this release belongs to, oldest first.
+
+        The balance holds an aggregate number and callers (OrderService,
+        ReturnsService) release per line without naming a reservation, so the
+        best available attribution is FIFO over the reservations still held for
+        this (variant, warehouse), skipping any whose recorded releases already
+        cover its quantity. The caller holds the balance row FOR UPDATE, which
+        serialises this against every other hold/release on the same position.
+
+        Known limit: one release row carries one reference, so a release larger
+        than the oldest reservation's remaining hold is attributed whole to it,
+        not split. Every caller today releases per reservation line (exact
+        quantity), which is the case the pairing is built for.
+        """
+        candidates = list(
+            (
+                await session.execute(
+                    select(InventoryReservation)
+                    .where(
+                        InventoryReservation.tenant_id == tenant_id,
+                        InventoryReservation.variant_id == variant_id,
+                        InventoryReservation.warehouse_id == warehouse_id,
+                        InventoryReservation.status == "ACTIVE",
+                    )
+                    .order_by(
+                        InventoryReservation.created_at.asc(),
+                        InventoryReservation.id.asc(),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if not candidates:
+            return None
+        released = dict(
+            (
+                await session.execute(
+                    select(
+                        InventoryMovement.reference_id,
+                        func.sum(InventoryMovement.quantity),
+                    )
+                    .where(
+                        InventoryMovement.tenant_id == tenant_id,
+                        InventoryMovement.reason == "reservation_release",
+                        InventoryMovement.reference_type == RESERVATION_REFERENCE,
+                        InventoryMovement.reference_id.in_(
+                            [r.id for r in candidates]
+                        ),
+                    )
+                    .group_by(InventoryMovement.reference_id)
+                )
+            ).all()
+        )
+        for reservation in candidates:
+            if int(released.get(reservation.id) or 0) < reservation.quantity:
+                return reservation
+        return None
+
 
     # ----------------------------------------------------------- balance ----
 
@@ -192,6 +439,8 @@ class InventoryService:
         tenant_id: UUID,
         variant_id: UUID | None = None,
         *,
+        reason: str | None = None,
+        reservation_id: UUID | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[InventoryMovement]:
@@ -200,12 +449,44 @@ class InventoryService:
         `None` is "no filter", not `== NULL`: the route's optional variant filter
         arrives as None, and comparing a column to NULL matches no row, which
         made the unfiltered ledger always empty.
+
+        `reservation_id` answers "what reserved this, and was it released": it
+        returns the hold row (linked from the reservation row's
+        `hold_movement_id`, since the hold is written before the durable row
+        exists) plus every release row that names the reservation.
         """
         stmt = select(InventoryMovement).where(
             InventoryMovement.tenant_id == tenant_id
         )
         if variant_id is not None:
             stmt = stmt.where(InventoryMovement.variant_id == variant_id)
+        if reason is not None:
+            if reason not in MOVEMENT_REASONS:
+                raise ValidationError(
+                    f"reason must be one of {sorted(MOVEMENT_REASONS)}",
+                    details={"reason": reason},
+                )
+            stmt = stmt.where(InventoryMovement.reason == reason)
+        if reservation_id is not None:
+            hold_movement_id = (
+                await session.execute(
+                    select(InventoryReservation.hold_movement_id).where(
+                        InventoryReservation.tenant_id == tenant_id,
+                        InventoryReservation.id == reservation_id,
+                    )
+                )
+            ).scalar_one_or_none()
+            # BOTH halves of the polymorphic pair, not the type alone: OR-ing on
+            # `reference_type` would leak every other reservation's releases.
+            linked = [
+                and_(
+                    InventoryMovement.reference_type == RESERVATION_REFERENCE,
+                    InventoryMovement.reference_id == reservation_id,
+                )
+            ]
+            if hold_movement_id is not None:
+                linked.append(InventoryMovement.id == hold_movement_id)
+            stmt = stmt.where(or_(*linked))
         stmt = stmt.order_by(
             InventoryMovement.created_at.desc(), InventoryMovement.id.desc()
         ).limit(limit).offset(offset)
@@ -475,21 +756,64 @@ class InventoryService:
     ) -> None:
         """Create a durable reservation row (§140) — cross-module safe (§8).
 
-        Orders calls this instead of touching InventoryReservation directly.
+        Orders calls this instead of touching InventoryReservation directly. The
+        balance hold was already taken by InventoryService.reserve (which needed
+        to abort the order on insufficient stock, before this row or the order
+        existed), so this links the durable row back to that ledger row.
         """
         from app.modules.inventory.models import InventoryReservation
 
-        session.add(
-            InventoryReservation(
-                tenant_id=tenant_id,
-                variant_id=variant_id,
-                warehouse_id=warehouse_id,
-                order_id=order_id,
-                quantity=quantity,
-                status="ACTIVE",
-                expires_at=expires_at,
+        reservation = InventoryReservation(
+            tenant_id=tenant_id,
+            variant_id=variant_id,
+            warehouse_id=warehouse_id,
+            order_id=order_id,
+            quantity=quantity,
+            status="ACTIVE",
+            expires_at=expires_at,
+        )
+        session.add(reservation)
+        reservation.hold_movement_id = await InventoryService._unclaimed_hold(
+            session, tenant_id, variant_id, warehouse_id, quantity
+        )
+        await session.flush()
+
+    @staticmethod
+    async def _unclaimed_hold(
+        session: AsyncSession,
+        tenant_id: UUID,
+        variant_id: UUID,
+        warehouse_id: UUID,
+        quantity: int,
+    ) -> UUID | None:
+        """The oldest `hold` row not yet owned by a reservation, or None.
+
+        Oldest-first because the caller holds and then registers lines in the
+        same order, so the pairing is stable; None is tolerated (a hold written
+        before this ledger existed simply stays unlinked).
+        """
+        claimed = (
+            select(InventoryReservation.hold_movement_id)
+            .where(
+                InventoryReservation.tenant_id == tenant_id,
+                InventoryReservation.hold_movement_id.is_not(None),
             )
         )
+        return (
+            await session.execute(
+                select(InventoryMovement.id)
+                .where(
+                    InventoryMovement.tenant_id == tenant_id,
+                    InventoryMovement.variant_id == variant_id,
+                    InventoryMovement.warehouse_id == warehouse_id,
+                    InventoryMovement.reason == "reservation",
+                    InventoryMovement.quantity == quantity,
+                    ~InventoryMovement.id.in_(claimed),
+                )
+                .order_by(InventoryMovement.created_at.asc(), InventoryMovement.id.asc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
 
 
 class InventoryReservationService:
@@ -535,20 +859,37 @@ class InventoryReservationService:
             balance = await InventoryService._locked_balance(
                 session, tenant_id, reservation.variant_id, reservation.warehouse_id
             )
-            balance.reserved = max(0, balance.reserved - reservation.quantity)
+            # The hold and the sale are two separate facts and both are
+            # recorded: the units stop being held (`release` row, availability
+            # only) and they leave the warehouse (`out`/sale row, on_hand). Only
+            # the second one moves stock, so capture cannot double-count.
+            freed = min(balance.reserved, reservation.quantity)
+            balance.reserved -= freed
             balance.on_hand = max(0, balance.on_hand - reservation.quantity)
-            movement = InventoryMovement(
-                tenant_id=tenant_id,
-                variant_id=reservation.variant_id,
-                warehouse_id=reservation.warehouse_id,
+            if freed:
+                await InventoryService._append_release(
+                    session,
+                    tenant_id,
+                    reservation.variant_id,
+                    reservation.warehouse_id,
+                    quantity=freed,
+                    balance_after=balance.on_hand,
+                    reservation=reservation,
+                )
+            # The physical half goes through `_append` too — it is the single
+            # writer of the ledger, and every row must pass the shape check.
+            await InventoryService._append(
+                session,
+                tenant_id,
+                reservation.variant_id,
+                reservation.warehouse_id,
                 direction="out",
                 quantity=reservation.quantity,
                 reason="sale",
+                balance_after=balance.on_hand,
                 reference_type="order",
                 reference_id=order_id,
-                balance_after=balance.on_hand,
             )
-            session.add(movement)
             reservation.status = "CONVERTED"
             reservation.converted_at = _now()
         return len(reservations)
@@ -597,7 +938,20 @@ class InventoryReservationService:
             balance = await InventoryService._locked_balance(
                 session, tenant_id, reservation.variant_id, reservation.warehouse_id
             )
-            balance.reserved = max(0, balance.reserved - reservation.quantity)
+            freed = min(balance.reserved, reservation.quantity)
+            balance.reserved -= freed
+            if freed:
+                # The sweep released real availability, so it is a ledger event
+                # too — named to the reservation it expired.
+                await InventoryService._append_release(
+                    session,
+                    tenant_id,
+                    reservation.variant_id,
+                    reservation.warehouse_id,
+                    quantity=freed,
+                    balance_after=balance.on_hand,
+                    reservation=reservation,
+                )
             reservation.status = "EXPIRED"
             reservation.cancelled_at = _now()
         return len(reservations)

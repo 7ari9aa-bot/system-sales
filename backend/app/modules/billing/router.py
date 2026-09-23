@@ -78,7 +78,13 @@ class UsageRequest(BaseModel):
 
 
 @billing_router.post("/usage", status_code=201)
-async def record_usage(ctx: TenantCtxDep, body: UsageRequest):
+async def record_usage(
+    body: UsageRequest,
+    ctx: TenantContext = Depends(require_permission("billing:write")),
+):
+    """Append one metering row — a billing write, so a `staff` account (which the
+    seeded role matrix gives no `billing:*` code) cannot mint usage against its
+    own invoice. Internal callers use `BillingService.record_usage` directly."""
     await BillingService.record_usage(
         ctx.session, ctx.tenant_id, feature=body.feature, quantity=body.quantity
     )

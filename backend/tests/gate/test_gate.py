@@ -638,7 +638,7 @@ async def test_gate_inventory_oversell(db, tenant_ctx):
     warehouse = await InventoryService.get_default_warehouse(db, tenant_ctx.tenant_id)
     await InventoryService.move(
         db, tenant_ctx.tenant_id, variant.id, warehouse.id,
-        direction="in", quantity=5, reason="gate seed",
+        direction="in", quantity=5, reason="purchase",
     )
     # Reserve 3 (ok)
     await InventoryService.reserve(

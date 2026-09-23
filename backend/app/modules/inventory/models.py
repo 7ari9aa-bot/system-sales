@@ -81,15 +81,22 @@ class InventoryMovement(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMix
     warehouse_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("warehouses.id", ondelete="CASCADE")
     )
-    # allowed: in | out | adjust
+    # allowed: in | out | adjust | hold | release
+    #   in/out/adjust change `on_hand`; hold/release change `reserved` only.
     direction: Mapped[str] = mapped_column(String(15))
     quantity: Mapped[int] = mapped_column(Integer)
+    # CLOSED vocabulary (M9), enforced by InventoryService.check_movement_shape
+    # and by the request model — free text here made the ledger unreadable.
     # allowed: purchase | sale | return | return_reversal | transfer_in |
-    # transfer_out | adjustment | damage
+    # transfer_out | adjustment | damage | reservation | reservation_release
     reason: Mapped[str] = mapped_column(String(63))
     reference_type: Mapped[str | None] = mapped_column(String(31), nullable=True)
-    # polymorphic reference (e.g. order/transfer id) — intentionally no FK
+    # polymorphic reference (e.g. order/transfer/reservation id) —
+    # intentionally no FK: it points at rows of several kinds, including
+    # `inventory_reservations` for a `reservation_release` row.
     reference_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    # Always the on-hand position after this row — unchanged on a hold/release
+    # row, which moves availability, not stock.
     balance_after: Mapped[int] = mapped_column(Integer)
 
     __table_args__ = (
@@ -135,6 +142,14 @@ class InventoryReservation(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdM
         UUID(as_uuid=True), ForeignKey("orders.id", ondelete="SET NULL")
     )
     quantity: Mapped[int] = mapped_column(Integer, server_default="0")
+    # The ledger row that took this hold (direction 'hold'). No FK on purpose:
+    # the ledger is append-only and this is a pointer from the mutable side to
+    # it, so that a hold written before the reservation row existed (Orders
+    # reserves, then inserts the order, then registers the line) is still
+    # reachable from `GET /inventory/movements?reservation_id=...`.
+    hold_movement_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
     # allowed: ACTIVE | EXPIRED | CONVERTED | CANCELLED
     status: Mapped[str] = mapped_column(String(15), server_default="ACTIVE")
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
