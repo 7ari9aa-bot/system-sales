@@ -70,7 +70,10 @@ path once the merchant holds nothing.
 
 `RETURNABLE_STATUSES = {shipped, delivered}`; a second attempt 409s, and the refusal
 happens **before** the saga row is created, so a wrong click leaves no half-process
-behind. `returned` closes the saga machine (`fulfilled -> returned`, terminal).
+behind. `returned` closes the saga machine, and it is reachable from `paid` and
+`stock_reserved` as well as `fulfilled` — which parcel comes back before any money
+exists (COD) and which after it is the *status* machine's business, but the saga
+column has to be able to say "returned" either way.
 
 ## The defects the first caller found
 
@@ -93,6 +96,15 @@ An engine nobody runs is an engine nobody has tested. Two were wrong on first us
   for `confirmed -> confirmed`, which no machine allows. CI Postgres was the first
   place that ran; locally the case skips. The helper now reads the row's live status
   and asserts at the end that it landed where it claimed.
+- **The saga machine could not say `returned` about an order that was never
+  fulfilled.** ADR-051 wired `_SAGA_ON_STATUS["returned"]` but left `returned`
+  reachable only from `fulfilled`, and a returned parcel is usually not fulfilled —
+  CI's first green-shipping run produced `status=returned, process_state=paid` on the
+  same row, which is the exact two-facts-disagreeing defect this task set out to close.
+  The lenient `_saga_move` refused the illegal move silently instead of failing the
+  transition, so nothing raised; the column just stayed wrong. `paid` and
+  `stock_reserved` now reach `returned` too
+  (`test_returned_is_a_state_both_machines_know`).
 
 ## Deliberate limits
 

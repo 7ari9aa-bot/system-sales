@@ -424,6 +424,8 @@ async def test_returning_an_unpaid_order_releases_the_hold(db, tenant_ctx) -> No
 
     after = await _balance(db, tenant_id, variant, warehouse)
     assert (after.on_hand, after.reserved) == (10, 0)
+    fresh = (await db.execute(select(Order).where(Order.id == order.id))).scalar_one()
+    assert fresh.process_state == "returned"  # it was `stock_reserved`: never paid
     # Nothing was ever taken off the shelf, so the return must record no
     # order-referenced movement at all. (`_movements` is order-scoped; the
     # `purchase` intake that stocked the warehouse belongs to no order.)
@@ -541,9 +543,22 @@ async def test_an_unshipped_order_cannot_be_returned(db, tenant_ctx) -> None:
 def test_returned_is_a_state_both_machines_know() -> None:
     """The status machine and the saga machine must both admit `returned`, or an
     order says two different things about the same event.
+
+    The saga half is the one CI caught: a paid order returns from `paid`, and a
+    cash-on-delivery order that never settled returns from `stock_reserved`, so
+    both must reach the terminal state. Only `delivered`/`completed` fulfil it.
     """
     assert "returned" in TRANSITIONS["shipped"]
     assert "returned" in TRANSITIONS["delivered"]
+
+    from app.modules.orders.service import _PROCESS_TRANSITIONS
+
+    for state in ("paid", "stock_reserved", "fulfilled"):
+        assert "returned" in _PROCESS_TRANSITIONS[state], (
+            f"an order at process_state={state!r} would be returned while its "
+            "saga column still names the money"
+        )
+    assert _PROCESS_TRANSITIONS["returned"] == set()
 
 
 def test_return_route_is_mounted() -> None:

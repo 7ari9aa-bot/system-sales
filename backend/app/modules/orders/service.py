@@ -78,7 +78,8 @@ _NUMBER_ATTEMPTS = 2
 _RESERVATION_TTL = timedelta(minutes=15)
 
 # §139: order saga state machine — the cross-service fulfillment saga.
-# created -> paid -> stock_reserved -> fulfilled (terminal) or cancelled.
+# created -> (paid and stock_reserved, in either order) -> fulfilled, and then
+# either cancelled or returned.
 ORDER_PROCESS_STATES = (
     "created",
     "paid",
@@ -91,10 +92,17 @@ ORDER_PROCESS_STATES = (
 # reserves stock before any money exists (COD is the common case here) while a
 # card payment settles after the parcel is picked. A machine that only allowed
 # created -> paid -> stock_reserved could not describe a real order.
+#
+# `returned` is reachable from all three of the non-terminal states, not just
+# from `fulfilled`: the parcel can come back before the money exists (a COD
+# order that never settled) or after it (a card order). It is the ORDER STATUS
+# machine that decides whether a return is allowed (only from shipped /
+# delivered); this machine only has to be able to say so, or the saga column
+# would keep naming the money on a row whose goods are back on the shelf.
 _PROCESS_TRANSITIONS: dict[str, set[str]] = {
     "created": {"paid", "stock_reserved", "cancelled"},
-    "paid": {"stock_reserved", "fulfilled", "cancelled"},
-    "stock_reserved": {"paid", "fulfilled", "cancelled"},
+    "paid": {"stock_reserved", "fulfilled", "cancelled", "returned"},
+    "stock_reserved": {"paid", "fulfilled", "cancelled", "returned"},
     "fulfilled": {"returned"},
     "cancelled": set(),  # terminal
     "returned": set(),  # terminal
