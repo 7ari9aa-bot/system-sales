@@ -21,16 +21,22 @@
  *     fields absent is the 400 the service raises itself ("nothing to change"),
  *     which is refused here instead.
  *
- *  The stored address is not on `GET /orders/{id}`, so the box starts empty and
- *  says so: a merchant correcting a typo re-states the address they can read in
- *  the customer's record. Guessing a partial one would be the worse failure.
+ *  The box opens PREFILLED from `GET /orders/{id}` — the destination is now on
+ *  the detail read, under the same names this PATCH accepts, precisely so the
+ *  merchant correcting one line sees every line the whole replacement would
+ *  overwrite (closing the read-surface gap ADR-055 recorded). "Touched" is
+ *  measured against that prefill: re-submitting the stored method verbatim, or
+ *  an address that parses back equal to the stored object, is not a change and
+ *  stays out of the body. Without `pii:read` the server answers the address as
+ *  `null` (§146) and the box opens empty — the same guard the customer surfaces
+ *  ride, with the same consequence: what cannot be read cannot be restated.
  */
 
 import * as React from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { RotateCw } from "lucide-react";
 import { apiWithMeta, type ApiResponse } from "@/lib/api";
-import { invalidateOrderReads, qk } from "@/lib/queries";
+import { invalidateOrderReads, qk, useOrderDetail } from "@/lib/queries";
 import { toast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
@@ -43,7 +49,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ot } from "./labels";
-import { buildShippingPayload, classifyWriteError, type ShippingError, type ShippingPatch, type WriteRefusal } from "./order-ops";
+import {
+  buildShippingPayload,
+  classifyWriteError,
+  renderAddressJson,
+  type ShippingError,
+  type ShippingPatch,
+  type WriteRefusal,
+} from "./order-ops";
 import { RefusalNotice } from "./order-write-ui";
 
 /** `router.update_shipping` — and the new version the NEXT write must send. */
@@ -75,13 +88,25 @@ export function ShippingDialog({
   /** The version the detail read answered with — the token this write claims. */
   version: number;
 }) {
-  const [method, setMethod] = React.useState("");
-  const [address, setAddress] = React.useState("");
+  /** The merchant's draft, or `null` while untouched: an untouched field SHOWS
+   *  and SUBMITS as the stored value, which is the whole point of prefilling —
+   *  "what you see" and "what the row holds" are the same text until edited. */
+  const [method, setMethod] = React.useState<string | null>(null);
+  const [address, setAddress] = React.useState<string | null>(null);
   const [refusal, setRefusal] = React.useState<WriteRefusal | null>(null);
   /** A lost conditional write, held separately from the dialog's draft: the form
    *  keeps what the merchant typed while the record underneath it is re-read. */
   const [stale, setStale] = React.useState<string | null>(null);
   const queryClient = useQueryClient();
+
+  // The destination this dialog may overwrite, from the shared detail read
+  // (the page already fetched it; after a write this is what the invalidation
+  // re-fetches, so a reopen prefills from the row the server agrees with).
+  const detail = useOrderDetail(orderId);
+  const storedMethod = detail.data?.shipping_method ?? "";
+  const storedAddress = detail.data?.shipping_address ?? null;
+  const methodValue = method ?? storedMethod;
+  const addressValue = address ?? renderAddressJson(storedAddress);
 
   // A new open is a new read of the row: nothing carried over from a lost race.
   React.useEffect(() => {
@@ -90,7 +115,10 @@ export function ShippingDialog({
     setRefusal(null);
   }, [open]);
 
-  const built = buildShippingPayload({ method, address });
+  const built = buildShippingPayload(
+    { method: methodValue, address: addressValue },
+    { method: storedMethod, address: storedAddress },
+  );
   const showError = built.error !== null;
 
   const patch = useMutation<ApiResponse<ShippingResponse>, Error, ShippingPatch>({
@@ -101,8 +129,10 @@ export function ShippingDialog({
         ifMatch: version,
       }),
     onSuccess: (res) => {
-      setMethod("");
-      setAddress("");
+      // Drop the draft, not the record: the fields fall back to the re-read's
+      // stored values, so what shows after a save is what the row now holds.
+      setMethod(null);
+      setAddress(null);
       setRefusal(null);
       setStale(null);
       onOpenChange(false);
@@ -163,7 +193,7 @@ export function ShippingDialog({
               autoComplete="off"
               aria-describedby="shipping-method-hint"
               aria-invalid={built.error === "method_too_long"}
-              value={method}
+              value={methodValue}
               onChange={(e) => setMethod(e.target.value)}
             />
             <p id="shipping-method-hint" className="mt-1 text-[11px] text-muted-foreground">
@@ -181,7 +211,7 @@ export function ShippingDialog({
               autoComplete="off"
               aria-describedby="shipping-address-hint"
               aria-invalid={built.error === "invalid_json" || built.error === "not_an_object"}
-              value={address}
+              value={addressValue}
               onChange={(e) => setAddress(e.target.value)}
             />
             <p id="shipping-address-hint" className="mt-1 text-[11px] text-muted-foreground">

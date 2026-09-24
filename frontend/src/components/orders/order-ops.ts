@@ -183,6 +183,37 @@ export type ShippingError = "nothing_to_change" | "invalid_json" | "not_an_objec
 
 export type ShippingDraft = { method: string; address: string };
 
+/** The destination the dialog opened with, read from `GET /orders/{id}` under
+ *  the same names the PATCH accepts. "Touched" is measured against it: a field
+ *  the merchant re-submits verbatim is not a change, and the body must not
+ *  claim one (ADR-055 §3: a write that changes nothing claims nothing). */
+export type ShippingBaseline = {
+  method?: string | null;
+  address?: Record<string, unknown> | null;
+};
+
+/** Key-order-insensitive comparison for JSON the merchant re-typed. Only ever
+ *  runs on parse output (plain JSON values), so no replacer/edge beyond
+ *  objects, arrays and primitives is reachable here. */
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== "object") return String(JSON.stringify(value));
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  const entries = Object.keys(value)
+    .sort()
+    .map((k) => `${JSON.stringify(k)}:${canonicalJson((value as Record<string, unknown>)[k])}`);
+  return `{${entries.join(",")}}`;
+}
+
+/** The stored address as the JSON text the field edits — the WHOLE object the
+ *  replace-semantics write must carry, shown line by line rather than hidden
+ *  behind an empty box. `null` (nothing stored, or §146 redaction) renders as
+ *  the empty string, which the draft rules below already mean "untouched". */
+export function renderAddressJson(
+  address: Record<string, unknown> | null | undefined,
+): string {
+  return address ? JSON.stringify(address) : "";
+}
+
 /** The address the merchant edited, parsed as the WHOLE object it is:
  *  `update_shipping` REPLACES `shipping_address` rather than merging into it, so
  *  a partial send would delete the parts the form never showed. */
@@ -205,9 +236,16 @@ export function parseAddressJson(
   return { ok: true, value: parsed as Record<string, unknown> };
 }
 
-/** Only the fields touched go out, for the same reason the create dialog sends
- *  only typed money: the body decides what the row becomes. */
-export function buildShippingPayload(draft: ShippingDraft): {
+/** Only the fields the merchant TOUCHED go out, for the same reason the create
+ *  dialog sends only typed money: the body decides what the row becomes. With
+ *  the dialog now prefilled from the detail read, "touched" means DIFFERENT
+ *  from the baseline — re-submitting the stored method or an equivalent address
+ *  stays out of the body, and a blank method still means "leave it" (the route
+ *  cannot express clearing one: absent and null are the same request to it). */
+export function buildShippingPayload(
+  draft: ShippingDraft,
+  baseline?: ShippingBaseline,
+): {
   body: ShippingPatch;
   error: ShippingError | null;
 } {
@@ -215,7 +253,7 @@ export function buildShippingPayload(draft: ShippingDraft): {
   if (method.length > SHIPPING_METHOD_MAX) return { body: {}, error: "method_too_long" };
 
   const body: ShippingPatch = {};
-  if (method !== "") body.shipping_method = method;
+  if (method !== "" && method !== (baseline?.method ?? "")) body.shipping_method = method;
 
   const text = draft.address.trim();
   if (text !== "") {
@@ -223,7 +261,10 @@ export function buildShippingPayload(draft: ShippingDraft): {
     if (!parsed.ok) {
       return { body: {}, error: parsed.error === "empty" ? "nothing_to_change" : parsed.error };
     }
-    body.shipping_address = parsed.value;
+    const unchanged =
+      baseline !== undefined &&
+      canonicalJson(parsed.value) === canonicalJson(baseline.address ?? null);
+    if (!unchanged) body.shipping_address = parsed.value;
   }
 
   if (body.shipping_method === undefined && body.shipping_address === undefined) {

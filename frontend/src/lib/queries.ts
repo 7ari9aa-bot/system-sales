@@ -328,7 +328,8 @@ export type Order = {
   created_at: string;
 };
 
-/** `router.get_order` — the money position and the CAS token, in one read.
+/** `router.get_order` — the money position, the destination and the CAS token,
+ *  in one read.
  *
  *  §47: every amount here is a `str(Decimal)`, rendered through `formatMoney`
  *  and never re-parsed as a number. `refund_state` is the DERIVED money axis
@@ -338,9 +339,15 @@ export type Order = {
  *  `ETag` header carries, and the value `PATCH /shipping` must send back as
  *  `If-Match`.
  *
- *  It deliberately carries NO `customer_id`, `shipping_address` or
- *  `shipping_method` — the record page resolves the customer from the cached
- *  `/orders` list and the shipping dialog shows what its own PATCH echoed. */
+ *  `shipping_address` and `shipping_method` answer under the SAME names the
+ *  PATCH accepts, because the write REPLACES the address whole (ADR-055 §5):
+ *  the correction dialog must show every line its own submit would delete.
+ *  The method is read server-side out of `orders.extra` (ADR-055 §4), and the
+ *  address is `null` without `pii:read` (§146) — the guard the customer
+ *  surfaces already apply, on the one key this row renames it to.
+ *
+ *  It deliberately carries NO `customer_id` — the record page resolves the
+ *  customer from the cached `/orders` list. */
 export type OrderDetail = {
   id: string;
   number: string;
@@ -351,6 +358,8 @@ export type OrderDetail = {
   refund_state: string;
   refunded_total: string;
   net_collected: string;
+  shipping_address: Record<string, unknown> | null;
+  shipping_method: string | null;
   items: {
     id: string;
     title: string | null;
@@ -629,17 +638,25 @@ function withCursor(path: string, limit: number, cursor: string | null, extra: R
  *
  *  Wiring honesty per view (backend contract as of today):
  *  - `all`                     → GET /conversations with no filter (server).
+ *    The endpoint is now served by the §137 `InboxQuery` read model
+ *    (`backend/app/modules/conversations/inbox.py`) in ONE statement; the wire
+ *    shape these pages read is unchanged.
  *  - `waiting-customer`        → server filter `status=waiting_customer` (§156).
  *  - `waiting-team`            → server filter `status=waiting_human` (§156).
  *  - `ai`                      → server filter `status=waiting_ai` (§156).
  *  - `my` / `unassigned`       → client filter on `assignee_user_id`, which the
- *    payload already carries. The server cannot answer these yet: GET
- *    /conversations has no assignee param, and the richer GET /inbox read
- *    model references sla columns that are not in the schema, so it cannot be
- *    adopted as the list source.
+ *    payload already carries, so the views keep sharing the unfiltered `all`
+ *    cache and switching between them never refetches. The server CAN answer
+ *    these now — GET /inbox is the same read model with `assignee_user_id` /
+ *    `unassigned` / `channel` predicates — so moving them is a cache-design
+ *    choice (per-view pages stop being free to switch), not a missing backend.
+ *    Note the cost of staying client-side: each view filters only the pages it
+ *    has loaded, so a `my` list is complete only after the user pages to the end.
  *  - `sla-risk`                → client join with GET /sla/risk (§46), the
  *    endpoint the backend documents as "the query behind the inbox SLA risk
- *    view". Filtering happens in the browser over the loaded pages.
+ *    view". Filtering happens in the browser over the loaded pages. GET /inbox
+ *    carries `sla_status` / `sla_deadline_at` per row, so the same view needs
+ *    no second request if the list is ever moved onto that endpoint.
  *  - `priority` `vip` `ai-handover` `mentioned` `team` `custom`
  *                              → no backend field/endpoint exists; rendered
  *    disabled (قريبًا), never faked. */

@@ -15,6 +15,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta, timezone
 from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import select, text
@@ -460,6 +461,273 @@ async def test_a_foreign_tenant_cannot_touch_an_order_s_shipping(
             db, uuid.uuid4(), order.id, shipping_method="courier"
         )
     await db.flush()
+
+
+# ----------------------------------------- the detail read's destination ----
+#
+# ADR-055 §5 makes the shipping PATCH a WHOLE replacement of `shipping_address`,
+# so the correction dialog cannot show the lines its own submit would delete
+# unless the detail read answers them. Until now `GET /orders/{id}` carried
+# neither the stored address nor the method that lives in `extra` — the gap
+# ADR-055's Consequences section recorded here. These tests are written DB-free
+# against the response builder (the idiom of `test_ai_usage_totals.py`: stub
+# the row, assert the wire shape) so the contract fails loudly even where no
+# Postgres is reachable; the route-level proof below that builder DOES need the
+# database and skips locally.
+
+_DETAIL_POSITION = {
+    "refund_state": "none",
+    "refunded": Decimal("0.00"),
+    "net_collected": Decimal("40.00"),
+}
+
+#: A tenant id for the DB-free route-shape cases below — no row is ever looked
+#: up under it, and the services those cases call are stubbed.
+TENANT_FOR_READ = uuid.UUID("33333333-3333-3333-3333-333333333333")
+
+
+def _detail_order(**over):
+    """The `Order` attributes `get_order` reads, without a session under it."""
+    base = {
+        "id": uuid.uuid4(),
+        "number": "ORD-20260924-1",
+        "status": "pending",
+        "version": 1,
+        "grand_total": Decimal("40.00"),
+        "currency": "EGP",
+        "items": [],
+        "shipping_address": {"city": "Cairo", "street": "Tahrir 9"},
+        # `extra` is the row's own extension JSONB: it carries the warehouse id
+        # beside the method ADR-055 §4 put there. Neither belongs on the wire.
+        "extra": {"warehouse_id": str(uuid.uuid4()), "shipping_method": "courier"},
+    }
+    base.update(over)
+    return SimpleNamespace(**base)
+
+
+def _detail_out(**over) -> dict:
+    from app.modules.orders.router import _order_detail_out
+
+    return _order_detail_out(
+        _detail_order(**over), _DETAIL_POSITION, permission_codes={"pii:read"}
+    )
+
+
+def test_the_detail_read_carries_where_the_parcel_is_going():
+    """The staffer correcting one line must be able to SEE the lines replaced."""
+    payload = _detail_out()
+    assert payload["shipping_address"] == {"city": "Cairo", "street": "Tahrir 9"}
+    assert payload["shipping_method"] == "courier"
+    # The method is read OUT of `extra`, and the extension bag itself stays
+    # off the wire: the response states the one key it means to state.
+    assert "extra" not in payload
+
+
+def test_the_detail_read_names_the_fields_the_shipping_patch_accepts():
+    """What a screen reads is what the same screen can write back.
+
+    `update_shipping` REPLACES the address (ADR-055 §5), so a prefill under any
+    other name would either be dropped by the PATCH or invent a second
+    vocabulary for the same value.
+    """
+    from app.modules.orders.router import ShippingUpdateRequest
+
+    payload = _detail_out()
+    write_fields = set(ShippingUpdateRequest.model_fields)
+    assert {"shipping_address", "shipping_method"} <= set(payload)
+    assert write_fields == {"shipping_address", "shipping_method"}
+
+
+def test_an_order_that_never_had_a_destination_reads_null_not_missing():
+    """Null is stated, not absent: the dialog distinguishes "nothing stored"
+    from "the server forgot to answer", and money is untouched either way."""
+    payload = _detail_out(shipping_address=None, extra={"warehouse_id": "w-1"})
+    assert payload["shipping_address"] is None
+    assert payload["shipping_method"] is None
+    assert payload["grand_total"] == "40.00"
+
+
+def test_the_address_on_the_detail_read_follows_the_pii_guard():
+    """§146: the customers surfaces redact address PII without `pii:read`
+    (`customers/router.py::_redact_issue_item`); the order detail rides the
+    same guard rather than inventing a second one. The method is routing,
+    not PII, and the money position is never redacted."""
+    from app.modules.orders.router import _order_detail_out
+
+    payload = _order_detail_out(
+        _detail_order(), _DETAIL_POSITION, permission_codes=set()
+    )
+    assert payload["shipping_address"] is None
+    assert payload["shipping_method"] == "courier"
+    assert payload["net_collected"] == "40.00"
+
+
+async def test_the_detail_route_answers_the_address_a_correction_stored(
+    db: AsyncSession, tenant_ctx
+):
+    """DB-backed (CI-only locally): `update_shipping` writes the address to the
+    column and the method into `extra`; the SAME route a screen reads must show
+    both, under the names its PATCH sends back."""
+    from fastapi import Response
+
+    from app.core.idempotency import etag_for
+    from app.modules.identity.deps import AuthedUser, TenantContext
+    from app.modules.orders.router import get_order
+
+    tenant_id = tenant_ctx.tenant_id
+    order = await _order(db, tenant_id)
+    await OrderService.update_shipping(
+        db,
+        tenant_id,
+        order.id,
+        shipping_address={"city": "Alexandria", "street": "Rami 12"},
+        shipping_method="courier",
+        by_user_id=tenant_ctx.user.id,
+    )
+
+    ctx = TenantContext(
+        session=db,
+        user=AuthedUser(
+            id=tenant_ctx.user.id,
+            tenant_id=tenant_id,
+            role_code="owner",
+        ),
+        tenant_id=tenant_id,
+        role_code="owner",
+        permission_codes={"pii:read"},
+    )
+    response = Response()
+    payload = await get_order(ctx, order.id, response)
+
+    assert payload["shipping_address"] == {"city": "Alexandria", "street": "Rami 12"}
+    assert payload["shipping_method"] == "courier"
+    # The dialog's If-Match token still rides beside the prefill: the read that
+    # shows the destination is the same read that arms the conditional write.
+    assert response.headers["ETag"] == etag_for(payload["version"])
+    await db.flush()
+
+
+async def test_the_detail_route_hides_the_address_without_pii_read(
+    db: AsyncSession, tenant_ctx
+):
+    """DB-backed (CI-only): the guard is on the route, not only the builder."""
+    from fastapi import Response
+
+    from app.modules.identity.deps import AuthedUser, TenantContext
+    from app.modules.orders.router import get_order
+
+    tenant_id = tenant_ctx.tenant_id
+    order = await _order(db, tenant_id)
+    await OrderService.update_shipping(
+        db,
+        tenant_id,
+        order.id,
+        shipping_address={"city": "Giza"},
+        by_user_id=tenant_ctx.user.id,
+    )
+
+    ctx = TenantContext(
+        session=db,
+        user=AuthedUser(
+            id=tenant_ctx.user.id, tenant_id=tenant_id, role_code="owner"
+        ),
+        tenant_id=tenant_id,
+        role_code="owner",
+        permission_codes=set(),  # an owner-less staffer role without pii:read
+    )
+    payload = await get_order(ctx, order.id, Response())
+    assert payload["shipping_address"] is None
+    await db.flush()
+
+
+async def test_the_shipping_write_does_not_echo_back_what_the_read_withholds(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """The §146 guard must cover the write's own response, not only the GET.
+
+    Found in review of the read half. `staff` holds `orders:write` and NOT
+    `pii:read` (`scripts/provision.py`), so a staffer denied the address on
+    `GET /orders/{id}` could read it by PATCHing something they ARE allowed to
+    change — a method — and reading the address out of the echo. `redact_fields`
+    on one route and a raw dict literal on the route beside it is not a guard.
+
+    DB-free: the service call is stubbed to return the row the write would have
+    produced, so this pins the ROUTE's answer shape, and the ETag/version the
+    conditional-write contract advertises stays intact either way.
+    """
+    from fastapi import Response
+
+    from app.modules.identity.deps import AuthedUser, TenantContext
+    from app.modules.orders import router as orders_router
+    from app.modules.orders.router import ShippingUpdateRequest
+
+    row = _detail_order(shipping_address={"city": "Giza", "street": "Nile 4"})
+
+    async def _fake_write(*_args, **_kwargs):
+        return row
+
+    monkeypatch.setattr(OrderService, "update_shipping", staticmethod(_fake_write))
+
+    ctx = TenantContext(
+        session=None,  # the stubbed service never touches it
+        user=AuthedUser(id=uuid.uuid4(), tenant_id=TENANT_FOR_READ, role_code="staff"),
+        tenant_id=TENANT_FOR_READ,
+        role_code="staff",
+        permission_codes={"orders:write"},  # exactly what `staff` holds
+    )
+    response = Response()
+    payload = await orders_router.update_shipping(
+        row.id,
+        ShippingUpdateRequest(shipping_method="courier"),
+        response,
+        ctx,
+    )
+
+    assert payload["shipping_address"] is None, (
+        "the write echoed an address the same caller cannot read: "
+        f"{payload['shipping_address']!r}"
+    )
+    # What the write is actually about stays — the staffer must see the change
+    # land, and the new CAS token must ride back for the next conditional write.
+    assert payload["shipping_method"] == "courier"
+    assert payload["version"] == row.version
+    assert "ETag" in response.headers
+
+
+async def test_the_shipping_write_echoes_the_address_to_a_pii_reader(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """The positive half, so the fix is a guard and not a blanket removal: the
+    dialog that just submitted a corrected address must see it come back."""
+    from fastapi import Response
+
+    from app.modules.identity.deps import AuthedUser, TenantContext
+    from app.modules.orders import router as orders_router
+    from app.modules.orders.router import ShippingUpdateRequest
+
+    address = {"city": "Alexandria", "street": "Rami 12"}
+    row = _detail_order(shipping_address=address)
+
+    async def _fake_write(*_args, **_kwargs):
+        return row
+
+    monkeypatch.setattr(OrderService, "update_shipping", staticmethod(_fake_write))
+
+    ctx = TenantContext(
+        session=None,
+        user=AuthedUser(id=uuid.uuid4(), tenant_id=TENANT_FOR_READ, role_code="manager"),
+        tenant_id=TENANT_FOR_READ,
+        role_code="manager",
+        permission_codes={"orders:write", "pii:read"},
+    )
+    payload = await orders_router.update_shipping(
+        row.id,
+        ShippingUpdateRequest(shipping_address=address),
+        Response(),
+        ctx,
+    )
+
+    assert payload["shipping_address"] == address
 
 
 async def test_the_shipping_write_requires_the_write_permission(

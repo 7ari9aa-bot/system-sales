@@ -9,6 +9,7 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel, Field
 
+from app.core.field_auth import PII_FIELDS, redact_fields
 from app.core.idempotency import IfMatch, apply_etag  # §17
 from app.core.pagination import decode_cursor, page_slice
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
@@ -74,17 +75,45 @@ async def list_orders(
     }
 
 
-@router.get("/orders/{order_id}")
-async def get_order(ctx: TenantCtxDep, order_id: uuid.UUID, response: Response):
-    order = await OrderService.get(ctx.session, ctx.tenant_id, order_id)
+# A shipping address is the customer's `address` (PII_FIELDS) under the order
+# row's own column name; the correction endpoint has renamed it, not revoked
+# it. §146 and the idiom of `customers/router.py::_redact_issue_item`.
+_ORDER_PII_FIELDS = PII_FIELDS | {"shipping_address"}
+
+
+def _redact_order_pii(payload: dict, permission_codes: set[str]) -> dict:
+    """Apply the §146 field guard to one order payload.
+
+    Shared by the read AND the write echo on purpose. `staff` holds
+    `orders:write` without `pii:read` (`scripts/provision.py`), so a guard on
+    `GET /orders/{id}` alone is not a guard: the same caller reads the denied
+    address back out of the PATCH response beside it, having changed nothing but
+    a shipping method. One seam, both routes.
+    """
+    if "pii:read" in permission_codes:
+        return payload
+    # An explicit set redacts UNCONDITIONALLY (see `_redact_issue_item`), hence
+    # the guard above: a `pii:read` holder must see the address they are there
+    # to correct. Money and the method are routing facts, not PII, and stay.
+    return redact_fields(
+        payload,
+        permission_codes=permission_codes,
+        fields_to_redact=_ORDER_PII_FIELDS,
+    )
+
+
+def _order_detail_out(order, position: dict, *, permission_codes: set[str]) -> dict:
+    """One order, read the way the correction screens read it (§146-guarded).
+
+    `shipping_address` and `shipping_method` are stated under the EXACT names
+    `ShippingUpdateRequest` accepts: `update_shipping` REPLACES the address
+    whole (ADR-055 §5), so a dialog can only show what its own submit would
+    overwrite if the read speaks the write's vocabulary. The method lives in
+    `extra` (ADR-055 §4 — no column, no migration from a correction route);
+    the extension bag itself stays off the wire.
+    """
     items = getattr(order, "items", [])
-    # A refund is read from the ledger, never from `status`: the two axes are
-    # reported side by side so a screen can say "completed, 25 of it given back"
-    # without the money overwriting where the parcel is.
-    position = await OrderService.refund_position(ctx.session, ctx.tenant_id, order_id)
-    # §17: advertise the CAS token the status route's If-Match expects.
-    apply_etag(response, order.version)
-    return {
+    payload = {
         "id": str(order.id),
         "number": order.number,
         "status": order.status,
@@ -94,6 +123,8 @@ async def get_order(ctx: TenantCtxDep, order_id: uuid.UUID, response: Response):
         "refund_state": position["refund_state"],
         "refunded_total": str(position["refunded"]),
         "net_collected": str(position["net_collected"]),
+        "shipping_address": order.shipping_address,
+        "shipping_method": (order.extra or {}).get("shipping_method"),
         "items": [
             {
                 "id": str(item.id),
@@ -106,6 +137,19 @@ async def get_order(ctx: TenantCtxDep, order_id: uuid.UUID, response: Response):
             for item in items
         ],
     }
+    return _redact_order_pii(payload, permission_codes)
+
+
+@router.get("/orders/{order_id}")
+async def get_order(ctx: TenantCtxDep, order_id: uuid.UUID, response: Response):
+    order = await OrderService.get(ctx.session, ctx.tenant_id, order_id)
+    # A refund is read from the ledger, never from `status`: the two axes are
+    # reported side by side so a screen can say "completed, 25 of it given back"
+    # without the money overwriting where the parcel is.
+    position = await OrderService.refund_position(ctx.session, ctx.tenant_id, order_id)
+    # §17: advertise the CAS token the status route's If-Match expects.
+    apply_etag(response, order.version)
+    return _order_detail_out(order, position, permission_codes=ctx.permission_codes)
 
 
 @router.post("/orders/{order_id}/status")
@@ -357,14 +401,17 @@ async def update_shipping(
         expected_version=if_match,
     )
     apply_etag(response, order.version)
-    return {
-        "id": str(order.id),
-        "number": order.number,
-        "status": order.status,
-        "version": order.version,
-        "shipping_address": order.shipping_address,
-        "shipping_method": (order.extra or {}).get("shipping_method"),
-    }
+    return _redact_order_pii(
+        {
+            "id": str(order.id),
+            "number": order.number,
+            "status": order.status,
+            "version": order.version,
+            "shipping_address": order.shipping_address,
+            "shipping_method": (order.extra or {}).get("shipping_method"),
+        },
+        ctx.permission_codes,
+    )
 
 
 @router.post("/orders/{order_id}/shipments", status_code=201)

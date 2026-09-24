@@ -11,6 +11,7 @@ import {
   classifyWriteError,
   parseAddressJson,
   refundCapMinor,
+  renderAddressJson,
 } from "../src/components/orders/order-ops";
 import { parseMoney, priceMinor, renderMinor, STORAGE_SCALE } from "../src/components/orders/money";
 
@@ -18,10 +19,10 @@ import { parseMoney, priceMinor, renderMinor, STORAGE_SCALE } from "../src/compo
  *
  * CI-ONLY PROOF. This sandbox cannot bind a TCP port, so no browser ever ran
  * these specs here — the same caveat `order-money.spec.ts` states. What IS
- * verifiable without a runner is the pure module the dialogs import: the eight
- * cases at the top never touch `page`, so they run in Playwright's node worker
- * and pin the money and request rules the UI is built on. The rest of the file
- * is browser-only and pins the wiring.
+ * verifiable without a runner is the pure module the dialogs import: the node
+ * worker cases at the top never touch `page`, so they run in Playwright's node
+ * worker and pin the money and request rules the UI is built on. The rest of
+ * the file is browser-only and pins the wiring.
  *
  * Every mocked response is transcribed from
  * `backend/app/modules/orders/router.py` — field names, shapes and codes
@@ -29,6 +30,7 @@ import { parseMoney, priceMinor, renderMinor, STORAGE_SCALE } from "../src/compo
  * nothing:
  *
  *   GET   /orders/{id}                                 money position + ETag
+ *                                                      + shipping destination
  *   GET   /orders/{id}/payments                        [_payment_out]
  *   GET   /orders/{id}/status-history                  [_history_out]
  *   POST  /orders/{id}/payments/{pid}/refunds {amount, reason} -> 201
@@ -45,7 +47,10 @@ import { parseMoney, priceMinor, renderMinor, STORAGE_SCALE } from "../src/compo
 
 /* ------------------------------------------------------------------ fixtures */
 
-/** `router.get_order`. Money is `str(Decimal)`; `version` is the ETag body. */
+/** `router.get_order`. Money is `str(Decimal)`; `version` is the ETag body.
+ *  `shipping_address`/`shipping_method` are the destination the detail read
+ *  now answers beside the money (ADR-055's read-surface gap, closed): null
+ *  here means the order never had one — the shape `create_order` stores. */
 const ORDER_PROCESSING = {
   id: "o1",
   number: "ORD-1001",
@@ -56,9 +61,19 @@ const ORDER_PROCESSING = {
   refund_state: "none",
   refunded_total: "0.00",
   net_collected: "250.00",
+  shipping_address: null as Record<string, unknown> | null,
+  shipping_method: null as string | null,
   items: [
     { id: "li-1", title: "Coffee Beans", sku: "CB-250", quantity: 2, unit_price: "120.00", total: "240.00" },
   ],
+};
+
+/** The same order AFTER a correction stored a destination: what the shipping
+ *  dialog must open with, because its own PATCH would replace it whole. */
+const ORDER_WITH_DESTINATION = {
+  ...ORDER_PROCESSING,
+  shipping_address: { city: "Cairo", street: "Tahrir 9" },
+  shipping_method: "courier",
 };
 
 /** A parcel that left: the goods axis is the live one, the lifecycle says so. */
@@ -331,7 +346,14 @@ async function mockOrderApi(page: Page, answers: Answers = {}): Promise<Sent[]> 
       record(route);
       const outcome = outcomeOf(answers.shipping, sent.filter((s) => s.method === "PATCH").length);
       if (outcome !== "ok") return failOr(route, outcome, () => SHIPPING_SAVED);
-      state.detail = { ...state.detail, version: SHIPPING_SAVED.version };
+      // The row keeps the destination the PATCH stored, not just its version:
+      // a dialog re-opened after a save must prefill from what landed.
+      state.detail = {
+        ...state.detail,
+        version: SHIPPING_SAVED.version,
+        shipping_address: SHIPPING_SAVED.shipping_address,
+        shipping_method: SHIPPING_SAVED.shipping_method,
+      };
       return json(route, SHIPPING_SAVED);
     }
     return json(route, {});
@@ -437,6 +459,35 @@ test("a shipping PATCH sends only what was touched, never a half-parsed object",
   expect(buildShippingPayload({ method: "", address: "[1,2]" }).error).toBe("not_an_object");
   expect(buildShippingPayload({ method: "x".repeat(32), address: "" }).error).toBe("method_too_long");
   expect(parseAddressJson("null").ok).toBe(false);
+});
+
+test("a prefilled shipping form sends only what DIFFERS from the stored destination", () => {
+  const baseline = { method: "courier", address: { city: "Cairo", street: "Tahrir 9" } };
+  // Untouched prefill is not a change: neither field rides the body.
+  const untouched = buildShippingPayload(
+    { method: "courier", address: renderAddressJson(baseline.address) },
+    baseline,
+  );
+  expect(untouched.error).toBe("nothing_to_change");
+  expect(untouched.body).toEqual({});
+  // Re-typing the same object in a different key order is still untouched —
+  // `canonicalJson` compares content, because the server compares content too.
+  expect(
+    buildShippingPayload({ method: "", address: '{"street":"Tahrir 9","city":"Cairo"}' }, baseline).body,
+  ).toEqual({});
+  // One touched field goes out; the other stays out even though the box shows it.
+  expect(
+    JSON.stringify(buildShippingPayload({ method: "pickup", address: "" }, baseline).body),
+  ).toBe('{"shipping_method":"pickup"}');
+  // The blank method means "leave it" (the route cannot express clearing one),
+  // and the address field carries the WHOLE replacement, deleted lines included.
+  expect(
+    buildShippingPayload({ method: "", address: '{"city":"Cairo"}' }, baseline).body,
+  ).toEqual({ shipping_address: { city: "Cairo" } });
+  // With no baseline the rules the dialog shipped before still hold.
+  expect(buildShippingPayload({ method: "courier", address: "" }).body).toEqual({
+    shipping_method: "courier",
+  });
 });
 
 test("a refused write keeps the server's own words and its status class", () => {
@@ -834,12 +885,41 @@ test("an untouched shipping form cannot be submitted — the server refuses an e
   const sent = await mockOrderApi(page);
   await gotoOrder(page);
   await page.getByTestId("shipping-btn").click();
-  await expect(page.getByTestId("shipping-error")).toContainText("nothing to change");
+  // Case-sensitive match: the English label opens with a capital, and a
+  // lowercase probe here would silently assert nothing.
+  await expect(page.getByTestId("shipping-error")).toContainText("Nothing to change");
   await expect(page.getByTestId("submit-shipping")).toBeDisabled();
   await page.getByTestId("shipping-address").fill("{oops}");
   await expect(page.getByTestId("shipping-error")).toContainText("not valid JSON");
   await expect(page.getByTestId("submit-shipping")).toBeDisabled();
   expect(sent.filter((s) => s.method === "PATCH")).toHaveLength(0);
+});
+
+test("the shipping dialog opens prefilled, and only the touched line is submitted", async ({ page }) => {
+  const sent = await mockOrderApi(page, { detail: ORDER_WITH_DESTINATION });
+  await gotoOrder(page);
+  await page.getByTestId("shipping-btn").click();
+  await expect(page.getByTestId("shipping-dialog")).toBeVisible();
+
+  // The gap ADR-055 closed: a whole-replacement write must show every line its
+  // submit would delete. The stored destination is IN the boxes, not behind them.
+  await expect(page.getByTestId("shipping-method")).toHaveValue("courier");
+  const prefilled = await page.getByTestId("shipping-address").inputValue();
+  expect(JSON.parse(prefilled)).toEqual({ city: "Cairo", street: "Tahrir 9" });
+  // Prefilled is not touched: the submit still refuses to claim a change.
+  await expect(page.getByTestId("submit-shipping")).toBeDisabled();
+  expect(sent.filter((s) => s.method === "PATCH")).toHaveLength(0);
+
+  // Correct one line — drop the street — and the body carries the WHOLE new
+  // address (replace semantics) and nothing else: not the method, not the
+  // stored object re-sent under another key.
+  await page.getByTestId("shipping-address").fill('{"city":"Cairo"}');
+  await expect(page.getByTestId("submit-shipping")).toBeEnabled();
+  await page.getByTestId("submit-shipping").click();
+  const patched = sent.filter((s) => s.method === "PATCH");
+  expect(patched).toHaveLength(1);
+  expect(JSON.parse(patched[0].body)).toEqual({ shipping_address: { city: "Cairo" } });
+  expect(patched[0].ifMatch).toBe("3");
 });
 
 test("a shipping write that lands updates the version the next write must send", async ({ page }) => {
@@ -851,6 +931,12 @@ test("a shipping write that lands updates the version the next write must send",
   await expect(page.getByText("Shipping updated", { exact: true })).toBeVisible();
 
   await page.getByTestId("shipping-btn").click();
+  // The write landed, so the re-read's destination is now the prefill: what the
+  // row holds after the save is what the next correction opens showing.
+  await expect(page.getByTestId("shipping-method")).toHaveValue("courier");
+  expect(
+    JSON.parse(await page.getByTestId("shipping-address").inputValue()),
+  ).toEqual({ city: "Cairo" });
   await page.getByTestId("shipping-method").fill("pickup");
   await page.getByTestId("submit-shipping").click();
   const patched = sent.filter((s) => s.method === "PATCH");
@@ -858,4 +944,7 @@ test("a shipping write that lands updates the version the next write must send",
   expect(patched[0].ifMatch).toBe("3");
   // The saved version, not the one the screen first read.
   expect(patched[1].ifMatch).toBe("4");
+  // And the untouched prefilled address stays out of this body — the next read
+  // would still show `{city: "Cairo"}` because this PATCH never claims it.
+  expect(JSON.parse(patched[1].body)).toEqual({ shipping_method: "pickup" });
 });
