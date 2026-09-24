@@ -27,6 +27,7 @@ from app.modules.ai.gateway import (
     AIGateway,
     estimate_cost,
 )
+from app.modules.ai.guardrails import default_guardrail, screen_inbound
 from app.modules.ai.models import Agent, AgentRun, AgentTool, ToolCall
 from app.modules.ai.providers import ToolCallRequest
 from app.modules.ai.tools import tool_to_openai_schema  # noqa: E402
@@ -57,6 +58,10 @@ logger = logging.getLogger(__name__)
 MAX_ITERATIONS = 5
 HISTORY_MESSAGES = 10
 DEFAULT_SYSTEM_PROMPT = "You are a helpful sales assistant."
+# Outbound rows whose send did not land: "failed" is terminal and "unknown" is
+# a result that went missing mid-flight (conversations/models.py:172). Neither
+# is a turn the customer read.
+_UNDELIVERED_OUTBOUND_STATUSES = frozenset({"failed", "unknown"})
 ALIASES = frozenset({"fast", "strong", "cheap", "embedding", "fallback"})
 DEFAULT_RUN_LIMITS = {
     "max_steps": MAX_ITERATIONS,
@@ -293,6 +298,24 @@ class AgentRunner:
         system_prompt: str | None,
         knowledge_context: str | None = None,  # §132
     ) -> AgentRunResult:
+        # §41 input side: what the model is ABOUT to be shown is judged before
+        # it is shown. The output chain cannot cover this — it only ever sees
+        # what came back — and screening here means every caller of the runner
+        # is covered, not just the auto-reply hook.
+        inbound = screen_inbound(user_message)
+        if inbound.decision != "allow":
+            logger.warning(
+                "ai.inbound_guardrail_%s run=%s reason=%s",
+                inbound.decision,
+                run.id,
+                inbound.reason,
+            )
+            return AgentRunResult(
+                content=None,
+                guardrail_decision=inbound.decision,
+                guardrail_reason=inbound.reason,
+            )
+
         messages: list[dict] = [
             {
                 "role": "system",
@@ -310,7 +333,12 @@ class AgentRunner:
             })
         if conversation_id is not None:
             messages.extend(
-                await self._conversation_history(session, tenant_id, conversation_id)
+                await self._conversation_history(
+                    session,
+                    tenant_id,
+                    conversation_id,
+                    current_message=user_message,
+                )
             )
         # §38: retrieve customer memories and inject into context (best-effort).
         # ADR-036: each line carries its provenance so the model (and anyone
@@ -516,9 +544,10 @@ class AgentRunner:
         # caller that forgets to inspect the verdict still cannot send it.
         decision, reason = "allow", None
         if content:
-            from app.modules.ai.guardrails import default_guardrail
-
-            verdict = default_guardrail().evaluate(
+            # `require_tool_evidence` is on because this is the only place the
+            # run's tool results exist: a price or a stock level the model
+            # invented, with nothing behind it, is handed over rather than sent.
+            verdict = default_guardrail(require_tool_evidence=True).evaluate(
                 content, {"tool_results": tool_calls_made}
             )
             decision, reason = verdict.decision, verdict.reason
@@ -565,8 +594,79 @@ class AgentRunner:
         return out
 
     @staticmethod
+    def _media_marker(message) -> str | None:
+        """A body-less row still says something: which kind of thing was sent.
+
+        §35 gave voice notes a turn of their own; every other medium (image,
+        file, video, location) was `continue`d away, so a customer who sent a
+        price list as a picture looked like a customer who had said nothing.
+        Naming the kind is all the model can honestly be given — this runtime
+        does not see inside attachments.
+        """
+        kind = (message.content_type or "").strip().lower()
+        if kind in ("", "text"):
+            # Rows written before §155 carry no canonical kind, only media_type.
+            kind = (message.media_type or "").strip().lower()
+        if kind in ("", "text"):
+            kind = "attachment" if message.media_url else ""
+        if not kind:
+            return None
+        speaker = "the assistant" if message.direction == "outbound" else "the customer"
+        return f"[{speaker} sent {kind}; its contents are not available to me]"
+
+    @staticmethod
+    def _provider_turns(
+        history,
+        *,
+        voice: dict[uuid.UUID, str],
+        current_message: str | None = None,
+    ) -> list[dict]:
+        """Map `messages` rows to provider turns — who actually said what.
+
+        `direction` alone cannot answer that, and mapping on it replayed lies:
+
+        * an outbound row whose send ``failed`` (or is still ``unknown``) never
+          reached the customer, so it is not something the assistant said;
+        * a ``system`` row is a platform notice — assignment, a broadcast, a
+          tombstone — authored by neither side of the conversation;
+        * the newest inbound row IS the message being answered, which the loop
+          appends itself. Without this the prompt carried it twice and the
+          model read an echo of its own question as a second customer.
+        """
+        turns: list[dict] = []
+        for message in history:
+            outbound = message.direction == "outbound"
+            if outbound and (
+                message.sender_type == "system"
+                or (message.status or "") in _UNDELIVERED_OUTBOUND_STATUSES
+            ):
+                continue
+            content = (
+                message.body
+                or voice.get(message.id)
+                or AgentRunner._media_marker(message)
+            )
+            if not content:
+                continue
+            turns.append(
+                {"role": "assistant" if outbound else "user", "content": content}
+            )
+        if (
+            current_message is not None
+            and turns
+            and turns[-1]["role"] == "user"
+            and turns[-1]["content"].strip() == current_message.strip()
+        ):
+            turns.pop()
+        return turns
+
+    @staticmethod
     async def _conversation_history(
-        session: AsyncSession, tenant_id: uuid.UUID, conversation_id: uuid.UUID
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        *,
+        current_message: str | None = None,
     ) -> list[dict]:
         # Lazy import: conversations module owns the message table.
         from app.modules.conversations.service import ConversationService
@@ -581,16 +681,9 @@ class AgentRunner:
             session, tenant_id, spoken_ids
         )
         voice = AgentRunner._voice_turns(rows)
-        messages: list[dict] = []
-        for message in history:
-            role = "assistant" if message.direction == "outbound" else "user"
-            # A voice note has no body; before §35 it was `continue`d out of the
-            # context, so the agent silently ignored a customer who spoke.
-            content = message.body or voice.get(message.id)
-            if not content:
-                continue
-            messages.append({"role": role, "content": content})
-        return messages
+        return AgentRunner._provider_turns(
+            history, voice=voice, current_message=current_message
+        )
 
     async def _execute_tool(
         self,
