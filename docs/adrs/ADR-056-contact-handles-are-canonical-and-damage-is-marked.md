@@ -1,6 +1,11 @@
 # ADR-056 — A contact handle is canonicalized on write, and a damaged one is marked, not rewritten
 
-Date: 2026-09-24. Wave 4 / gaps M2 and M12. Evidence: `backend/app/core/contact_norm.py` (280 lines),
+- **Status:** Accepted
+- **Date:** 2026-09-24
+- **Spec:** §27–29 (identity resolution + merge + Customer 360)
+- **Related:** ADR-028 (entity ownership), `docs/COMPLIANCE_MATRIX.md` §27–29
+
+Wave 4 / gaps M2 and M12. Evidence: `backend/app/core/contact_norm.py` (280 lines),
 migration `d5a1c7e94b02_m12_contact_backfill.py`, `backend/tests/test_contact_backfill.py` (28),
 `backend/tests/test_customer_identity_resolution.py` (25), `backend/tests/test_csv_import.py`;
 operator half `backend/tests/test_contact_quarantine_surface.py` (17).

@@ -1,6 +1,11 @@
 # ADR-057 — An approval is decided once, honoured once, and a partial queue says so
 
-Date: 2026-09-24. Wave 5 / §135 approvals surface.
+- **Status:** Accepted
+- **Date:** 2026-09-24
+- **Spec:** §135 (approval workflow: durable, resumable) · §19 (event contract)
+- **Related:** ADR-019 (approval workflow), ADR-023 (dedupe strategy), `docs/COMPLIANCE_MATRIX.md` §135
+
+Wave 5 / §135 approvals surface.
 Evidence: `backend/app/modules/ai/approvals.py` (`decide` 102-145, `find_granted` 148-201,
 `list_for_tenant` 212-236), `backend/tests/gate/test_gate_approval_double_grant.py` (3, needs a
 database), `backend/tests/test_approvals_queue_read.py` (5; 2 run anywhere),

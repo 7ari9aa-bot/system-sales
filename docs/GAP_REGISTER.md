@@ -335,6 +335,52 @@ complete, not by a red test. Each now has a regression test that names it.
    `tests/test_event_aggregate_version.py` holding the version rule. Recorded in
    ADR-055.
 
+### Measured open hazard (2026-09-24): the ADR-058 claim holds a pooled connection across the whole effect
+Not a defect that fired — a capacity invariant nobody stated. Measured from code, no
+fix applied, and the fix is an owner decision (§7) because it moves production
+connection counts.
+
+`StreamWorker._process_event` (`workers/base.py:258`) opens the inbox claim
+transaction through `_claim_inbox` (`:313-349`: `SessionLocal()` + `BEGIN` +
+`pg_try_advisory_xact_lock`) and returns with it **open**; `_close_inbox` runs only in
+the caller's `finally` (`:304-308`), after `handle()` has completed. ADR-058 chose that
+shape on purpose —
+the commit that writes the `processed_events` marker is the commit that releases the
+lock, so there is no window for a concurrent redelivery to re-run the effect. The cost
+is that the claim connection is checked out for the entire duration of the effect, and
+**every** handler opens its own session while that happens
+(`message_worker.py:204,260,289`, `campaign_worker.py:154`, `job_runner.py:342,348,356`):
+**two connections per in-flight event, minimum**.
+
+The arithmetic, on what the code actually does today: `app/workers/run.py:64-74` runs
+the outbox relay plus every pool in `POOLS` (messages, notifications, webhooks,
+campaigns, scheduler, jobs = 6) as `asyncio.gather` tasks **in one process**, on the
+one process-wide engine — which `app/core/db.py:52-56` builds with **no pool
+parameters**, so it carries SQLAlchemy's defaults: `pool_size=5`, `max_overflow=10`,
+15 connections, `pool_timeout=30`. Each worker consumes one event at a time
+(`run()` awaits `_process` in its loop), so six busy pools hold 6 claims + 6 handler
+sessions = **12**; the relay in the same process opens a session per claimed row
+(`core/events/outbox.py:477`) for **13**; and one event being retried takes the pool to
+**14 against 15**, because `_republish_after` opens its own `SessionLocal()`
+(`workers/base.py:508`) to stage the retry while the claim transaction that owns the
+attempt is still open. It fits. By one unit.
+
+Three changes each break it silently, and none of them looks database-related from its
+diff: any handler that nests a second `SessionLocal()` of its own (the retry staging
+path above already does, and the arithmetic is one unit from the ceiling), a second
+pool added to `POOLS`, or any per-pool concurrency to raise throughput. Then the pool
+is fully checked out by claim transactions that each wait on a connection their own
+handler needs — the holder cannot release, the waiter cannot start, and 30 seconds
+later every affected event fails with `TimeoutError` from the pool, not from Postgres.
+
+The two honest resolutions, both owner-sized: state the pool from config with the
+invariant in the comment (`pool_size + max_overflow ≥ 2 × (len(POOLS) + 1) +
+headroom`), which is a knob change and needs the real `max_connections` of the Supabase
+pooler; or bound concurrent claims with a process-wide semaphore sized from the pool,
+which costs throughput but no configuration. A test can pin either: the count of
+`POOLS`, the engine's pool limits, and the two-connections-per-event shape are all
+readable without a database.
+
 ### AI safety
 - A1 Knowledge content concatenated verbatim into the system prompt, unbounded, threshold-less, no chunking, no dedupe, no delete endpoints; ingestion fails hard on provider error (row rolls back) (`ai/hooks.py:88-93`, `knowledge.py:34-95`).
 - A2 Guardrails: 4 literal markers only; `margin` regex false positives; tool-evidence check unreachable; guardrail lives in hooks, not AgentRunner (any future caller bypasses it); no input-side guardrail (`guardrails.py:19-97`).

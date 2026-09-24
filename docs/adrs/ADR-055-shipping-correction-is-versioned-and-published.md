@@ -1,6 +1,11 @@
 # ADR-055 — Correcting where an order is going is a versioned write that publishes
 
-Date: 2026-09-24. Wave 4 / gap M8, Wave 5 / the order record. Evidence:
+- **Status:** Accepted
+- **Date:** 2026-09-24
+- **Spec:** §17 (optimistic locking) · §18–19 (same-transaction outbox + event contract) · §144 (tenant fairness tiers)
+- **Related:** ADR-029 (event log vs outbox), `docs/COMPLIANCE_MATRIX.md` §17, §18–19, §144
+
+Wave 4 / gap M8, Wave 5 / the order record. Evidence:
 `backend/tests/test_order_shipping_event.py` (8), `backend/tests/test_order_reads.py` (22),
 `backend/tests/test_if_match_wave2.py`; on the client, `frontend/e2e/order-ops.spec.ts`.
 Commits: `18ab160` (the event, the tier) → `504a985` (the screen and its discipline). Closes the

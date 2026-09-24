@@ -1,6 +1,11 @@
 # ADR-054 — A refund is a ledger row, so refund state is derived and never stored
 
-Date: 2026-09-24. Wave 4 / gaps M1, M3, M6. Evidence: `backend/tests/test_order_refund_ledger.py`
+- **Status:** Accepted
+- **Date:** 2026-09-24
+- **Spec:** §78 (API contracts: `POST /orders/{id}/refund`) · §139 (order lifecycle)
+- **Related:** ADR-053 (one currency per tenant), ADR-022 (sagas), `docs/COMPLIANCE_MATRIX.md` §47, §139
+
+Wave 4 / gaps M1, M3, M6. Evidence: `backend/tests/test_order_refund_ledger.py`
 (8), `backend/tests/test_partial_refund_status.py` (14), `backend/tests/test_order_reads.py` (22).
 Commits: `18ab160` (ledger, derivation, reads) → `e6ce77a` (CI's Postgres: the actor writing a
 refund row has to be a real user) → `504a985` (the screen that finally calls it). Closes gap M1 and

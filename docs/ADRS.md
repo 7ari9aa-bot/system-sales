@@ -152,25 +152,27 @@ ranges): `017, 018, 020, 021, 027, 028, 030–038, 040`.
 
 ---
 
-## 4. Status caveats (findings, not edits)
+## 4. Status caveats
 
-Nothing below was changed. Each is a case where a file says `Accepted` while the claim it makes could
-not be confirmed from the repo's own evidence, so they are listed for separate verification.
+Each row below was a case where a file said `Accepted` while the claim could not be confirmed from
+the repo's own evidence. They have since been re-measured against `backend/app`; the verdict column
+records what the code actually does today, and `docs/COMPLIANCE_MATRIX.md` carries the same finding
+in the row it belongs to.
 
-| ADR | Status | What could not be confirmed |
+| ADR | Status | Finding, then verdict (2026-09-24) |
 |---|---|---|
-| ADR-024 | Accepted | `**Spec:** §144` — `docs/COMPLIANCE_MATRIX.md` marks §144 ⬜ missing. |
-| ADR-026 | Accepted | `**Spec:** §146-147, §160` — matrix marks §146 ⬜, §147 ⬜, §160 ⬜. |
-| ADR-040 | Accepted | `**Spec:** §164` — matrix marks §164 ⬜. |
-| ADR-042 | Accepted | `**Spec:** §166` — matrix marks §166 ⬜. |
-| ADR-044 | Accepted | `**Spec:** §168` — matrix marks §168 ⬜ (grep for "SLO" in `backend/app` → no matches). |
-| ADR-021 | Accepted | `**Spec:** §137` — matrix marks §137 ⬜. |
-| ADR-045 | Accepted | `**Spec:** §169` — matrix marks §169 ⬜; the `AIEvaluation` model is recorded as declared with zero callers. |
-| ADR-015 / ADR-058 | Accepted / undeclared | `ADR-015`'s "marker and effect in the same transaction" is contradicted by `ADR-058`'s account of what the code did; `ADR-058` is the live claim but declares no status. |
-| ADR-051 … ADR-058 | not declared | Eight files carry no `**Status:**` line and no `**Spec:**` line; their dates and wave provenance come from a prose header. |
-| ADR-013 | Accepted | Its `**Spec:** §125` target is genuine (`docs/spec/ARCHITECTURE_PATCH_125-177.txt:11` "§125 — TENANT CONTEXT FOR ALL EXECUTION MODES"), but `docs/COMPLIANCE_MATRIX.md:105` records §125 as ❓ "no requirement text recoverable". The matrix row, not the ADR, is the stale claim. |
-| §117 row | — | `docs/COMPLIANCE_MATRIX.md:100` states `docs/adr/` holds "5 files, ADR-001…041"; the five files hold 25 decisions, not 41. Not edited here (out of scope for this task). |
-| `docs/adr/ADR-005-to-012.md:18` | — | Cross-references "(ADR-042)" for an SSE nonce; under the rule in §1 that token resolves to `docs/adrs/ADR-042-notifications.md`, which decides something else. Body left unedited. |
+| ADR-024 | Accepted | Was: matrix marked §144 ⬜. **Resolved — §144 is implemented and charged on the consumption path** (`core/fairness.py:68,112,142`; `workers/base.py:252`; `campaign_worker.py:41`; `ai/gateway.py:544`). The ADR was right; the matrix row was the stale claim. |
+| ADR-026 | Accepted | Was: matrix marked §146 ⬜, §147 ⬜, §160 ⬜. **Resolved on all three** — MFA/TOTP is wired into the login path (`identity/service.py:339-341`), break-glass is a service and a route (`core/break_glass.py`, `platform/router.py:995`), and the §160 plane exists and is gated on the global claim (`platform/router.py:625,656,698,995`). §146's **SSO half stays open**: only a Redis subject-link at `core/mfa.py:441`, no IdP handshake. |
+| ADR-040 | Accepted | `**Spec:** §164` — matrix still marks §164 ⬜ (tenant-scoped restore is an ops procedure, and nothing in `backend/app` performs it). **Open; the ADR describes a design, not a built path.** |
+| ADR-042 | Accepted | Was: matrix marked §166 ⬜. **Resolved — §166 has both halves** (`NotificationService.digest` at `service.py:222`, route `GET /notifications/digest`), with one honest remainder: `notifications/digest.py`'s `NotificationDigest` table has no production importer. |
+| ADR-044 | Accepted | `**Spec:** §168` — matrix still marks §168 ⬜ (grep "SLO" in `backend/app` → no matches). **Open.** |
+| ADR-021 | Accepted | Was: matrix marked §137 ⬜ "no such module exists". **Resolved — `InboxQuery` exists and is the route the inbox calls** (`conversations/router.py:149`). |
+| ADR-045 | Accepted | Was: matrix marked §169 ⬜, "0 callers". **Half-resolved** — `AIEvaluationService` is called from `ai/router.py:552,566,578`, so it is no longer dead; the row stays 🟡 because nothing records an evaluation from a real run, and no test names `/evaluations`. |
+| ADR-015 / ADR-058 | Accepted / both declared | Was: ADR-058 declared nothing while contradicting ADR-015's account. **Resolved — `ADR-058` now states `**Status:** Accepted — corrects ADR-015's "marker and effect in the same transaction" account`**, so a reader cannot mistake the older description for current behaviour. |
+| ADR-051 … ADR-058 | all declared | **Resolved** — all eight files now carry `**Status:**`, `**Date:**`, `**Spec:**` and `**Related:**`, with the supersession chain stated where it exists (ADR-052 supersedes ADR-051 decision 2; ADR-058 corrects ADR-015). Spec anchors were taken from `docs/spec/` + the matrix rows, not from the prose. |
+| ADR-013 | Accepted | Was: matrix recorded §125 as ❓ "no requirement text recoverable". **Resolved — the row was the stale claim on both counts**: the requirement text is at `docs/spec/ARCHITECTURE_PATCH_125-177.txt:11`, and the rule is implemented on every named execution mode. |
+| §117 row | — | **Resolved** — the matrix row no longer says `docs/adr/` holds "5 files, ADR-001…041"; it now counts decisions (25 bundled, numbered within `ADR-001`…`ADR-041`, 13 colliding) and names both homes. |
+| `docs/adr/ADR-005-to-012.md:18` | — | Unchanged: cross-references "(ADR-042)" for an SSE nonce, which under §1's rule resolves to `docs/adrs/ADR-042-notifications.md` — a different decision. A bundled upstream file; the body is left as written and the collision is documented here instead. |
 
 ---
 

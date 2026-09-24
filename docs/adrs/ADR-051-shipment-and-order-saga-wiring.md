@@ -1,6 +1,11 @@
 # ADR-051 — Shipments and the order saga move through the paths that already guard them
 
-Date: 2026-09-23. Wave 4 / task W4-T2. Evidence: `backend/tests/test_order_fulfillment.py`
+- **Status:** Accepted — decision 2 superseded by ADR-052
+- **Date:** 2026-09-23
+- **Spec:** §139 (saga: order → payment → fulfillment)
+- **Related:** ADR-022 (sagas), ADR-052, `docs/COMPLIANCE_MATRIX.md` §139
+
+Wave 4 / task W4-T2. Evidence: `backend/tests/test_order_fulfillment.py`
 (16 cases; the 14 DB-backed ones verified on CI Postgres), commits `568c456` (RED: 14
 failures, 1222 passing otherwise) → `7abcccf` + this fix on `w4-t2-shipment-saga`.
 

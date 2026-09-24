@@ -1,6 +1,11 @@
 # ADR-058 — The consumer inbox is claimed before the effect, not checked beside it
 
-Date: 2026-09-24. Wave 5 / worker reliability.
+- **Status:** Accepted — corrects ADR-015's "marker and effect in the same transaction" account
+- **Date:** 2026-09-24
+- **Spec:** §127 (consumer idempotency via the ProcessedEvent inbox) · §20–21 (streams, reclaim)
+- **Related:** ADR-015 (consumer idempotency), ADR-023 (dedupe strategy), `docs/COMPLIANCE_MATRIX.md` §127
+
+Wave 5 / worker reliability.
 Evidence: `backend/app/workers/base.py` (`_process_event`, `_claim_inbox`,
 `_close_inbox`, `_run_with_lineage`), `backend/app/core/lease.py`,
 `backend/tests/gate/test_gate_inbox_dedupe.py` (8: 4 run anywhere, 4 need a

@@ -1,6 +1,11 @@
 # ADR-053 — A tenant trades in one currency, so a second currency is a refusal
 
-Date: 2026-09-23. Wave 4 / task W4-T3. Evidence: `backend/tests/test_tenant_currency.py`
+- **Status:** Accepted
+- **Date:** 2026-09-23
+- **Spec:** §47 (money: currency belongs to the tenant) · §78 (order API)
+- **Related:** ADR-054 (refund ledger), `docs/COMPLIANCE_MATRIX.md` §47
+
+Wave 4 / task W4-T3. Evidence: `backend/tests/test_tenant_currency.py`
 (21 cases; the DB-backed ones run on CI Postgres). Closes GAP M7 and the §47 row of
 `docs/COMPLIANCE_MATRIX.md`.
 

@@ -1,6 +1,11 @@
 # ADR-052 — The goods-return process runs on the saga engine
 
-Date: 2026-09-23. Wave 4 / task W4-T2b. Evidence: `backend/tests/test_return_saga.py`
+- **Status:** Accepted — supersedes ADR-051 decision 2
+- **Date:** 2026-09-23
+- **Spec:** §139 (saga: order → payment → fulfillment, compensation half)
+- **Related:** ADR-022 (sagas), ADR-051, `docs/COMPLIANCE_MATRIX.md` §139
+
+Wave 4 / task W4-T2b. Evidence: `backend/tests/test_return_saga.py`
 (16 cases; the 14 DB-backed ones verified on CI Postgres). Commits: `e1cf231` (RED,
 CI run 35857364838 = 16 failed / 1238 passed) → `5bd4512` (implementation) →
 `394b79a` + `19c9229` (the fixture bugs CI's Postgres exposed). Supersedes ADR-051
