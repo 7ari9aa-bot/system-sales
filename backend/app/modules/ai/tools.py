@@ -189,7 +189,12 @@ async def _search_products(
     # assistant only when its product's status is one checkout would sell —
     # the same frozen vocabulary, imported from orders, not re-typed here.
     _, sellable_statuses = _order_deps()
-    pattern = f"%{query}%"
+    # A7: a LIKE term is data, not a pattern. Escape the metacharacters the
+    # caller supplies (% widens to match-everything, _ to any one char, \ is the
+    # escape char) before wrapping in the wildcards WE choose, and declare the
+    # escape to ilike so the backslashes are honoured rather than literal.
+    escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    pattern = f"%{escaped}%"
     stmt = (
         select(ProductVariant, Product.title)
         .join(Product, Product.id == ProductVariant.product_id)
@@ -198,9 +203,9 @@ async def _search_products(
             ProductVariant.is_active.is_(True),
             Product.status.in_(sellable_statuses),
             or_(
-                ProductVariant.title.ilike(pattern),
-                ProductVariant.sku.ilike(pattern),
-                Product.title.ilike(pattern),
+                ProductVariant.title.ilike(pattern, escape="\\"),
+                ProductVariant.sku.ilike(pattern, escape="\\"),
+                Product.title.ilike(pattern, escape="\\"),
             ),
         )
         .order_by(Product.title.asc(), ProductVariant.id.asc())

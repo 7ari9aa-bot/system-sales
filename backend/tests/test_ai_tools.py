@@ -390,3 +390,92 @@ async def test_add_tag_without_a_binding_is_refused(db: AsyncSession, tenant_ctx
     spec = get_tool("add_tag")
     with pytest.raises(DomainError):
         await spec.handler(db, tenant_ctx.tenant_id, tag="vip", context=None)
+
+
+# --------------------------------------------- LIKE escaping (A7, DB-free) --
+
+
+class _CapturingSession:
+    """Records the statement ``_search_products`` builds; returns no rows.
+
+    DB-free: the handler only calls ``.all()`` on the result, so nothing here
+    touches a database. The captured statement compiles offline, which is what
+    lets a local run assert the bound LIKE pattern's shape.
+    """
+
+    def __init__(self) -> None:
+        self.statement = None
+
+    async def execute(self, statement, params=None):  # noqa: ANN001, ARG002
+        self.statement = statement
+        return _NoRows()
+
+
+class _NoRows:
+    def all(self) -> list:
+        return []
+
+    def first(self):  # noqa: ANN201
+        return None
+
+
+def _search_patterns(query: str) -> tuple[str, list[str]]:
+    """Compile ``_search_products``'s SELECT for ``query`` offline.
+
+    Returns (rendered SQL, every string bound param) so a test can assert the
+    LIKE pattern reaches the driver escaped, and that the statement declares an
+    ESCAPE clause (without it a backslash is literal text, not an escape).
+    """
+    import asyncio
+
+    from sqlalchemy.dialects import postgresql
+
+    from app.modules.ai.tools import _search_products
+
+    session = _CapturingSession()
+    asyncio.run(_search_products(session, uuid.uuid4(), query=query, limit=5))
+    compiled = session.statement.compile(dialect=postgresql.dialect())
+    params = [v for v in compiled.params.values() if isinstance(v, str)]
+    return str(compiled), params
+
+
+@pytest.mark.parametrize(
+    ("query", "expected_core"),
+    [
+        ("widget", "widget"),  # no metacharacter: passes through verbatim
+        ("100%", r"100\%"),  # '%' widened a LIKE to match-everything
+        ("a_b", r"a\_b"),  # '_' matched any single character
+        (r"back\slash", r"back\\slash"),  # the escape char itself must double
+        ("%_%", r"\%\_\%"),
+    ],
+)
+def test_search_products_escapes_like_wildcards(
+    query: str, expected_core: str
+) -> None:
+    """A7: a search term must narrow, never widen — escape LIKE metacharacters.
+
+    The handler wraps the (escaped) term in the wildcards IT chooses, so a
+    caller-supplied '%' cannot turn "search for one thing" into "dump the whole
+    catalog", and a '%' or '_' is matched literally.
+    """
+    sql, params = _search_patterns(query)
+    assert "ESCAPE" in sql.upper(), f"no ESCAPE clause, backslash is literal:\n{sql}"
+
+    expected_pattern = f"%{expected_core}%"
+    assert expected_pattern in params, (
+        f"expected escaped pattern {expected_pattern!r}, got {params!r}"
+    )
+    # The unescaped pattern is the vulnerability: it must never be bound.
+    if expected_pattern != f"%{query}%":
+        assert f"%{query}%" not in params, f"raw wildcard leaked into {params!r}"
+
+
+def test_search_products_percent_query_does_not_match_everything() -> None:
+    """The concrete A7 attack: query='%' must not become a match-all pattern.
+
+    Unescaped, the pattern was '%%%' (matches every row). Escaped, it is
+    '%\\%%' — rows whose title/sku literally contain a percent sign.
+    """
+    _, params = _search_patterns("%")
+    assert "%%%" not in params, f"match-all pattern bound: {params!r}"
+    assert r"%\%%" in params, params
