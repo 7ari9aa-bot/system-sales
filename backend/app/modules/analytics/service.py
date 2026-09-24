@@ -31,12 +31,13 @@ from __future__ import annotations
 import re
 import uuid
 from collections.abc import Sequence
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.errors import ValidationError
 from app.core.tenancy import resolve_tenant_currency
 from app.modules.analytics.timekit import ResolvedTimezone, resolve_timezone
 from app.modules.platform.metrics import MetricRegistry
@@ -44,6 +45,42 @@ from app.modules.platform.metrics import MetricRegistry
 # The shape a status word is allowed to have. ``_status_sql`` pastes its tokens
 # into a statement, so this is the seam that keeps a filter a filter.
 _STATUS_WORD = re.compile(r"^[a-z][a-z_]*$")
+
+
+# ======================================================= the window policy ===
+#
+# A window is a set of INSTANTS. ``placed_at`` is ``timestamptz``, and a
+# timestamp handed to Postgres WITHOUT an offset is not an instant: the server
+# has to read it in some zone, and the zone it reads it in is the connection's
+# own. One request URL would then answer two different questions depending on
+# deployment settings — invisible in the response, because the DAY LABELS are
+# merchant-local (timekit.py) and a "July 1" window that starts three hours
+# early still prints July 1.
+#
+# The policy, stated once here and echoed by the router's Query descriptions:
+# a window value must carry a UTC offset. Naive values are refused, never
+# guessed at — §47's rule for the currency and timekit's rule for the zone,
+# applied to the interval between them. An accepted value is normalised to UTC,
+# so the ``since``/``until`` a response reports are the exact text of the bind.
+
+
+def bind_instant(value: datetime, name: str) -> datetime:
+    """One window edge, proven to be an instant and rendered in UTC."""
+    if value.tzinfo is None or value.tzinfo.utcoffset(value) is None:
+        raise ValidationError(
+            f"{name} must be an ISO 8601 instant carrying a UTC offset. A naive "
+            f"value like '2026-09-01T00:00:00' names a wall clock, and Postgres "
+            f"would read it in the connection's own timezone, not yours. Send "
+            f"'2026-09-01T00:00:00Z' for UTC or '2026-09-01T00:00:00+03:00' for "
+            f"an offset you mean.",
+            details={name: value.isoformat(), "required": "UTC offset"},
+        )
+    return value.astimezone(UTC)
+
+
+def bind_window(since: datetime, until: datetime) -> tuple[datetime, datetime]:
+    """The ``[since, until)`` every reader binds with, or the refusal it owes."""
+    return bind_instant(since, "since"), bind_instant(until, "until")
 
 
 def _status_sql(values: Sequence[str]) -> str:
@@ -117,6 +154,7 @@ async def revenue(
     until: datetime,
 ) -> Decimal:
     """§55: gross captured payment amount in the window (refunds NOT subtracted)."""
+    since, until = bind_window(since, until)
     result = await session.execute(
         text(
             f"""
@@ -162,6 +200,7 @@ async def orders_count(
     until: datetime,
 ) -> int:
     """§55: count of orders placed in the window (draft/cancelled excluded)."""
+    since, until = bind_window(since, until)
     result = await session.execute(
         text(
             f"""
@@ -191,6 +230,7 @@ async def refunded_amount(
     refund with no ``processed_at`` yet is bucketed on ``created_at`` instead, so
     it lands in SOME window rather than vanishing from the ledger entirely.
     """
+    since, until = bind_window(since, until)
     result = await session.execute(
         text(
             f"""
@@ -299,6 +339,9 @@ async def revenue_summary(
     caller's ask, the tenant's own column (§47/M10 remainder), the deployment's
     configuration, or the UTC fallback.
     """
+    # Bound FIRST: the `since`/`until` below are the summary's own echo, so they
+    # have to be the text of the bind rather than whatever the caller typed.
+    since, until = bind_window(since, until)
     gross = await revenue(session, tenant_id, since=since, until=until)
     refunded = await refunded_amount(session, tenant_id, since=since, until=until)
     net, excess = net_of(gross, refunded)
@@ -352,6 +395,9 @@ async def daily_revenue_series(
     configured zone. Every bucket below is computed with the ONE zone the
     summary would report, so a series and a card cannot disagree.
     """
+    # Bound before ANY query: the refusal has to happen while the window is still
+    # a parameter, not after a zone lookup has already spent a round trip.
+    since, until = bind_window(since, until)
     zone = str(await resolve_report_timezone(session, tenant_id, timezone))
     common = {"tenant_id": str(tenant_id), "since": since, "until": until, "tz": zone}
 
@@ -468,6 +514,7 @@ async def first_response_time_avg(
     until: datetime,
 ) -> float:
     """§55: average seconds from first inbound to first outbound reply."""
+    since, until = bind_window(since, until)
     result = await session.execute(
         text(
             """
@@ -500,6 +547,7 @@ async def resolution_time_avg(
     until: datetime,
 ) -> float:
     """§55: average seconds from first inbound to conversation closed."""
+    since, until = bind_window(since, until)
     result = await session.execute(
         text(
             """
@@ -533,6 +581,7 @@ async def ai_resolution_rate(
     until: datetime,
 ) -> float:
     """§55: share of closed conversations resolved by AI (no human agent message)."""
+    since, until = bind_window(since, until)
     result = await session.execute(
         text(
             """
@@ -596,22 +645,39 @@ async def compute_metric(
     return await handler(session, tenant_id, since=since, until=until)
 
 
-# §55-57 RETENTION IS OPEN — deliberately, not by omission.
+# §55-57 — what landed here, and what this module still refuses to do.
 #
 # A previous `archive_old_rows()` helper lived at the end of this module. It had
 # ZERO callers and ZERO tests: retention was dead code behind a comment, which is
-# the exact recurring defect this repo is being swept for. It has been deleted
-# rather than wired, because wiring it would have been wrong:
+# the exact recurring defect this repo is being swept for. It was deleted rather
+# than wired, because wiring it would have been wrong:
 #
 #   * it built its target with raw `CREATE TABLE ... (LIKE ... INCLUDING ALL)` and
 #     `SELECT *` at RUNTIME, so any column added to a source table would silently
 #     mis-file into a stale archive shape;
 #   * it interpolated `table_name` straight into DDL/DML (an injection surface the
 #     moment a caller ever passes anything user-controlled);
-#   * real cold-data handling here is *range partitioning by created_at* (§55-57),
-#     which is a DBA-approved migration against the partitioned tables — not a
-#     sweep a read-side CQRS module owns.
+#   * it was a row-at-a-time DELETE over tables §56 says are cold by MONTH, so it
+#     would have fought the partition layout instead of using it;
+#   * and real cold-data handling here is *range partitioning by period_date*
+#     (§55-57), which is DDL a migration owns — never a sweep a read-side CQRS
+#     module owns.
 #
-# The honest smaller answer is to delete the dead path and leave §55-57 open
-# until an approved partition/archive migration exists. Do not re-add a helper
-# until that migration is the one doing the moving.
+# What §56/§57 now actually are (f7a2c9d4e8b1):
+#
+#   * `public.ai_usage` is a monthly RANGE partition on `period_date` with a
+#     DEFAULT partition, created by the migration and kept ahead of writes by the
+#     recurring `partition.ensure_months` job;
+#   * the partition DDL is callable from the runtime role only through the
+#     allowlisted SECURITY DEFINER functions in that migration, driven by
+#     `app/core/partitioning.py` (which also records the four §56 candidates it
+#     deliberately does NOT partition, and why);
+#   * retention is a CHOSEN per-tenant policy — `app/modules/analytics/retention.py`,
+#     default 390 days from `docs/PII_DATA_MAP.md`, executed by the recurring
+#     `retention.purge_partitions` job as a partition-shaped DETACH/DROP, and only
+#     once EVERY active tenant has chosen (a month is shared by all tenants, so a
+#     silent default can never delete anything).
+#
+# Still open, in one place: no permissioned HTTP route calls `choose_policy` yet,
+# so no tenant can answer the question from the product. See the "What is
+# deliberately NOT enforced" section of `retention.py`. This module stays read-only.
