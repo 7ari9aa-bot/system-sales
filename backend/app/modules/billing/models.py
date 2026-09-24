@@ -130,11 +130,22 @@ class Invoice(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
       ``paid_at``, ``provider_ref``) are meant to be written.
     * ``period_start IS NOT NULL`` — the FROZEN snapshot `close_period` wrote for
       that period. Spec §53–54 makes it immutable, and that is enforced by the
-      DATABASE (a BEFORE UPDATE OR DELETE trigger created in migration
-      ``e7a8b9c0d1e2``), not by convention: a direct SQL client must be refused
-      too. The trigger allows the mutation only while the owning tenant is being
-      torn down, because the FK cascades from ``tenants``/``subscriptions``
-      delete and null these rows as a side effect of offboarding.
+      DATABASE, not by convention: a direct SQL client must be refused too. Three
+      rules, because there are three ways to change a row's contents:
+
+      - a second snapshot for the same period: ``uq_invoices_tenant_period``.
+      - editing or deleting the row that exists: the BEFORE UPDATE OR DELETE row
+        trigger of migration ``e7a8b9c0d1e2``.
+      - erasing the whole table at once, which no row trigger ever sees:
+        migration ``a9b0c1d2e3f4`` adds a BEFORE TRUNCATE statement trigger that
+        always raises, and takes the TRUNCATE privilege away from the app role
+        (``REVOKE``, mirrored in scripts/provision.py after its blanket grant).
+
+      The UPDATE/DELETE guard lets a mutation through only while the owning
+      tenant is being torn down, because the FK cascades from
+      ``tenants``/``subscriptions`` delete and null these rows as a side effect
+      of offboarding. Truncation is never a cascade, so the TRUNCATE guard has
+      no escape hatch — offboarding deletes, it does not empty the table.
     """
 
     __tablename__ = "invoices"
@@ -188,9 +199,10 @@ class Invoice(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
         #
         # This constraint is NOT what makes a closed invoice immutable — it only
         # stops a SECOND snapshot for the same period. Editing the row that is
-        # already frozen is refused by the BEFORE UPDATE OR DELETE trigger in
-        # migration `e7a8b9c0d1e2`; both halves are needed, and neither is
-        # enforced by application code alone.
+        # already frozen is refused by the BEFORE UPDATE OR DELETE trigger of
+        # migration `e7a8b9c0d1e2`, and emptying the table in one statement by
+        # the BEFORE TRUNCATE guard of `a9b0c1d2e3f4`. Every half is needed, and
+        # none of them is enforced by application code alone.
         UniqueConstraint(
             "tenant_id",
             "period_start",

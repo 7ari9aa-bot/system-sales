@@ -478,7 +478,18 @@ class BillingSnapshotService:
     recompute with corrected data" — which is precisely the recompute path
     immutability exists to forbid. There is deliberately NO ``recompute_period``.
 
-    Nothing in this class ever UPDATEs a snapshot row.
+    Nothing in this class ever UPDATEs a snapshot row, and it no longer has to
+    be the one that decides: the row guard of migration ``e7a8b9c0d1e2`` and the
+    TRUNCATE guard of ``a9b0c1d2e3f4`` refuse the write in the database itself.
+
+    **Correction has no column, deliberately.** `Invoice` carries no
+    ``superseded_by``/``version``/``reversal_of`` — a frozen period is the last
+    word, not a link in a chain, so the honest correction path is a *new* row for
+    a *later* period (which ``find_overlapping_snapshot`` still has to accept).
+    A wrong August therefore stays wrong inside `invoices`: the fix is the
+    documented re-run for the next period plus whatever the merchant issues
+    outside the table. Adding a column here would be inventing a capability the
+    spec does not ask for, and the overlap rule would refuse it anyway.
     """
 
     @staticmethod

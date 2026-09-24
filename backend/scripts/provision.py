@@ -190,6 +190,25 @@ CHANNEL_TENANT_FN_REVOKE = (
     "REVOKE ALL ON FUNCTION public.resolve_channel_tenant(text, text) FROM PUBLIC;"
 )
 
+#: Spec §53–54 — statements that must run AFTER the blanket grant below.
+#:
+#: `setup_app_role` grants `ALL PRIVILEGES ON ALL TABLES` to the runtime role,
+#: and on a table that includes TRUNCATE. `TRUNCATE invoices` is the one
+#: statement that erases every frozen billing period at once without firing the
+#: row triggers that refuse UPDATE and DELETE (row triggers never fire for
+#: TRUNCATE), so the grant hands the app role a bypass of the immutability rule.
+#:
+#: The revoke therefore lives here as well as in migration a9b0c1d2e3f4: CI runs
+#: `alembic upgrade head` and THEN `provision.py`, so a revoke that only the
+#: migration made is granted straight back before a single test executes.
+#: `tests/test_snapshot_truncate_freeze.py` pins that this copy is the same
+#: statement and that it runs after the blanket grant — the convergence rule
+#: `test_migrations.py::test_resolver_sql_matches_between_migration_and_provision`
+#: already applies to the channel resolver.
+PRIVILEGE_REFREEZE: tuple[str, ...] = (
+    "REVOKE TRUNCATE ON public.invoices FROM sales_app",
+)
+
 
 ROLES = [
     ("owner", "Owner", "Full access to the tenant"),
@@ -269,7 +288,20 @@ async def setup_app_role(conn: asyncpg.Connection, password: str) -> None:
     ]
     for stmt in grants:
         await conn.execute(stmt)
-    print("app role: sales_app ready (no bypassrls, full table grants)")
+    # ...and the blanket "ALL PRIVILEGES" it just handed out includes TRUNCATE,
+    # which is the statement the §53–54 snapshot rules cannot allow. Re-freeze
+    # after the grant — the order is the whole point; see PRIVILEGE_REFREEZE.
+    for stmt in PRIVILEGE_REFREEZE:
+        try:
+            await conn.execute(stmt)
+        except asyncpg.exceptions.UndefinedTableError:
+            # Provisioned ahead of the migrations on a fresh database. Nothing
+            # is lost: migration a9b0c1d2e3f4 issues the identical revoke.
+            print(f"privilege re-freeze skipped (table not migrated yet): {stmt}")
+    print(
+        "app role: sales_app ready (no bypassrls, full table grants EXCEPT the "
+        "§53–54 TRUNCATE freeze on invoices)"
+    )
 
 
 async def seed(conn: asyncpg.Connection) -> None:
