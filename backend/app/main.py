@@ -31,6 +31,7 @@ from app.core.errors import (
     build_error_envelope,
     correlation_id_contextvar,
     request_id_contextvar,
+    retryable_for_status,
 )
 from app.core.idempotency import IdempotencyMiddleware
 from app.core.middleware import (
@@ -324,7 +325,7 @@ def _exception_handlers(app: FastAPI) -> None:
         body = build_error_envelope(
             _HTTP_ERROR_CODES.get(exc.status_code, f"http_{exc.status_code}"),
             _field_error_message(detail),
-            retryable=exc.status_code >= 500,
+            retryable=retryable_for_status(exc.status_code),
             request_id=request_id_contextvar.get(),
         )
         # ``detail`` kept verbatim for the same reason as above: it is what a

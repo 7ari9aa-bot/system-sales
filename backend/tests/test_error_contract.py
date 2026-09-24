@@ -34,7 +34,10 @@ before the handler body, and the 500 is a route this file adds.
 
 from __future__ import annotations
 
+import ast
+import json
 import uuid
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -43,7 +46,7 @@ from fastapi import FastAPI, HTTPException
 from httpx import ASGITransport, AsyncClient
 
 from app.core import middleware as mw
-from app.core.errors import DomainError
+from app.core.errors import DomainError, request_id_contextvar
 from app.core.middleware import RateLimitMiddleware
 from app.core.security import create_access_token
 from app.main import _exception_handlers, _RequestIDMiddleware, create_app
@@ -491,3 +494,119 @@ async def test_untrusted_request_id_is_replaced_in_both_copies() -> None:
     assert body_id and body_id != untrusted
     assert response.headers["x-request-id"] == body_id
 
+
+
+# ---------------------------------------------------------------------------
+# P5's class guard — the envelope has exactly one writer
+# ---------------------------------------------------------------------------
+
+#: The four keys of the v2 contract. A dict that builds any two of them under
+#: an ``error`` key is an envelope, whoever wrote it.
+_CONTRACT_KEYS = {"code", "message", "retryable", "request_id"}
+
+
+def _handbuilt_envelopes(source: str) -> list[int]:
+    """Lines where ``source`` assembles an error envelope out of literals.
+
+    Two of the four contract keys under an ``error`` key is an envelope: one key
+    alone is a domain payload, and a value that is not a dict literal (a call, a
+    variable, a subscript) is a module passing the helper's result along.
+    """
+    offenders: list[int] = []
+    for node in ast.walk(ast.parse(source)):
+        if not isinstance(node, ast.Dict):
+            continue
+        for key, value in zip(node.keys, node.values, strict=False):
+            if not (isinstance(key, ast.Constant) and key.value == "error"):
+                continue
+            if not isinstance(value, ast.Dict):
+                continue
+            inner = {k.value for k in value.keys if isinstance(k, ast.Constant)}
+            if len(inner & _CONTRACT_KEYS) >= 2:
+                offenders.append(node.lineno)
+    return offenders
+
+
+def test_the_envelope_writer_guard_bites_and_does_not_cry_wolf() -> None:
+    """The sweep must catch a hand-assembled envelope and ignore everything else.
+
+    A guard that has only ever been run against clean source proves nothing —
+    it may be matching nothing at all. So it is run against source that has the
+    defect, and against the shapes that merely look like one.
+    """
+    handbuilt = """
+async def handler(exc):
+    return JSONResponse(
+        status_code=400,
+        content={"error": {"code": "bad", "message": str(exc), "retryable": False}},
+    )
+"""
+    # Line 5 is the `content=` line; the literal is the only envelope in the file.
+    assert _handbuilt_envelopes(handbuilt) == [5], _handbuilt_envelopes(handbuilt)
+
+    # Reading the envelope is not writing one, and neither is a near-miss key.
+    for innocent in (
+        'def read(body):\n    return body["error"]["code"]\n',
+        'def wrap(msg):\n    return {"error": {"detail": msg}}\n',
+        'def other():\n    return {"errors": ["a", "b"]}\n',
+        'def passthrough(body):\n    return {"error": body}\n',
+        'def ok():\n    return {"items": [{"code": "x", "message": "y"}]}\n',
+    ):
+        assert _handbuilt_envelopes(innocent) == [], innocent
+
+
+def test_only_core_errors_writes_the_envelope() -> None:
+    """No module outside ``core/errors.py`` hand-assembles the contract body.
+
+    P5 was four shapes because four places each wrote their own ``{"error": …}``
+    and none of them had to agree. ``build_error_envelope`` is now the single
+    writer and everything else calls through it — this sweep is what keeps that
+    from drifting back, and it is a tripwire by design: it passes on arrival,
+    and the guard above is what proves it can bite.
+    """
+    app_dir = Path(__file__).resolve().parents[1] / "app"
+    offenders: list[str] = []
+    for path in sorted(app_dir.rglob("*.py")):
+        if path.relative_to(app_dir) == Path("core/errors.py"):
+            continue
+        offenders.extend(
+            f"{path.relative_to(app_dir.parent)}: line {n} writes its own envelope"
+            for n in _handbuilt_envelopes(path.read_text(encoding="utf-8"))
+        )
+    assert not offenders, (
+        "the v2 envelope has one writer, app/core/errors.py::build_error_envelope;"
+        " call it instead of hand-assembling a fifth shape:\n" + "\n".join(offenders)
+    )
+
+
+async def test_idempotency_replies_answer_in_the_contract() -> None:
+    """The fifth writer the sweep found, pinned at the byte level.
+
+    ``IdempotencyMiddleware`` answers a conflict and a store outage by writing
+    an ASGI ``http.response.start`` itself — no ``JSONResponse``, no handler
+    layer — so it assembled the envelope out of literals and could drift from
+    the contract without any of the route-level tests noticing.
+    """
+    from app.core.idempotency import _emit_error
+
+    sent: list[dict] = []
+
+    async def capture(message: dict) -> None:
+        sent.append(message)
+
+    request_id_contextvar.set("req-idem")
+    await _emit_error(capture, 409, "conflict", "key reused with a different body")
+    await _emit_error(capture, 503, "idempotency_unavailable", "store unavailable")
+
+    start, body = sent[0], sent[1]
+    assert start["status"] == 409
+    assert (b"content-type", b"application/json") in start["headers"]
+    payload = json.loads(body["body"])
+    error = _envelope(payload, retryable=False)
+    assert error["code"] == "conflict"
+    assert error["request_id"] == "req-idem"
+    # retryable is the status's rule, not a caller's guess: 409 no, 503 yes.
+    assert sent[2]["status"] == 503
+    assert _envelope(json.loads(sent[3]["body"]), retryable=True)["code"] == (
+        "idempotency_unavailable"
+    )

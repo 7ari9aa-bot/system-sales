@@ -95,7 +95,9 @@ from app.core.db import SessionLocal
 from app.core.errors import (
     ConflictError,
     ValidationError,
+    build_error_envelope,
     request_id_contextvar,
+    retryable_for_status,
 )
 from app.core.observability import get_logger
 from app.core.security import decode_token
@@ -459,14 +461,12 @@ async def _emit_error(
     message: str,
 ) -> None:
     body = json.dumps(
-        {
-            "error": {
-                "code": code,
-                "message": message,
-                "retryable": status >= 500,
-                "request_id": request_id_contextvar.get(),
-            }
-        }
+        build_error_envelope(
+            code,
+            message,
+            retryable=retryable_for_status(status),
+            request_id=request_id_contextvar.get(),
+        )
     ).encode()
     await send(
         {

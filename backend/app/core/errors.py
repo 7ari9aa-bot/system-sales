@@ -132,6 +132,15 @@ class PayloadTooLargeError(DomainError):
     default_message = "Request body too large"
 
 
+def retryable_for_status(status: int) -> bool:
+    """Whether an HTTP status is one the client may send again.
+
+    The rule the envelope needs and that no caller should re-derive: a 5xx is
+    the server's fault and worth a retry, a 4xx is the client's and is not.
+    """
+    return status >= 500
+
+
 def build_error_envelope(
     code: str,
     message: str,
