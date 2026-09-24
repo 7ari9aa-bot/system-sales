@@ -13,6 +13,7 @@ import logging
 
 import httpx
 
+from app.core.circuit_breaker import PROVIDER_EMAIL, get_breaker
 from app.core.errors import ExternalProviderError
 from app.modules.conversations.gateway.base import (
     ChannelAdapter,
@@ -120,12 +121,24 @@ class EmailAdapter(ChannelAdapter):
         )
 
     async def send(
-        self, message: OutboundMessage, credentials: ProviderCredentials
+        self,
+        credentials: ProviderCredentials,
+        message: OutboundMessage,
+        _client: httpx.AsyncClient | None = None,
     ) -> StatusUpdate:
-        """Send an outbound email via the ESP."""
+        """Send an outbound email via the ESP.
+
+        _client is an injection point for tests (MockTransport). The argument
+        order matches the ChannelAdapter protocol (credentials first); it used to
+        be (message, credentials), which meant the outbound worker — the only
+        caller — passed them backwards.
+        """
+        api_key = credentials.get("api_key")
+        if not api_key:
+            raise ExternalProviderError("email integration missing api_key")
         url = self._get_send_url()
         headers = {
-            "Authorization": f"Bearer {credentials.api_key}",
+            "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
         payload = {
@@ -139,18 +152,31 @@ class EmailAdapter(ChannelAdapter):
             ],
         }
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.post(url, headers=headers, json=payload)
+        async def _post() -> StatusUpdate:
+            """Send and classify — entirely inside the breaker.
 
-        if resp.status_code in (200, 201, 202):
-            return StatusUpdate(
-                message_id=message.message_id,
-                provider_message_id=resp.headers.get("X-Message-Id"),
-                status="sent",
+            The status check must live inside ``breaker.call()``: a rejecting ESP
+            is a provider FAILURE, and raising it outside would record a SUCCESS
+            and never open the breaker.
+            """
+            if _client is not None:
+                resp = await _client.post(url, headers=headers, json=payload)
+            else:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    resp = await client.post(url, headers=headers, json=payload)
+            if resp.status_code in (200, 201, 202):
+                return StatusUpdate(
+                    channel_message_id=resp.headers.get("X-Message-Id"),
+                    status="sent",
+                )
+            raise ExternalProviderError(
+                f"email send failed: HTTP {resp.status_code} — {resp.text[:200]}"
             )
-        raise ExternalProviderError(
-            f"email send failed: HTTP {resp.status_code} — {resp.text[:200]}"
-        )
+
+        # §47/G-13: the outbound call goes through the process-wide
+        # `provider.email` breaker, so a dead ESP is backed off instead of
+        # hammered on every send and worker retry.
+        return await get_breaker(PROVIDER_EMAIL).call(_post)
 
     def _get_send_url(self) -> str:
         if self._provider == "sendgrid":

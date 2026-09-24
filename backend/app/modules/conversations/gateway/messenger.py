@@ -13,6 +13,7 @@ from typing import Any
 
 import httpx
 
+from app.core.circuit_breaker import PROVIDER_MESSENGER, get_breaker
 from app.core.config import get_settings
 from app.core.errors import ExternalProviderError
 from app.modules.conversations.gateway.base import (
@@ -21,6 +22,7 @@ from app.modules.conversations.gateway.base import (
     OutboundMessage,
     ProviderCredentials,
     StatusUpdate,
+    parse_provider_body,
 )
 
 logger = logging.getLogger(__name__)
@@ -147,12 +149,21 @@ class MessengerAdapter(ChannelAdapter):
         )]
 
     async def send(
-        self, credentials: ProviderCredentials, message: OutboundMessage
+        self,
+        credentials: ProviderCredentials,
+        message: OutboundMessage,
+        _client: httpx.AsyncClient | None = None,
     ) -> str:
-        """Send an outbound Messenger message via Graph API."""
+        """Send an outbound Messenger message via Graph API.
+
+        _client is an injection point for tests (MockTransport).
+        """
+        token = credentials.get("api_key")
+        if not token:
+            raise ExternalProviderError("messenger integration missing api_key")
         url = f"{self._base}/me/messages"
         headers = {
-            "Authorization": f"Bearer {credentials.api_key}",
+            "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
         }
         payload: dict[str, Any] = {
@@ -170,15 +181,29 @@ class MessengerAdapter(ChannelAdapter):
                 }
             }
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.post(url, headers=headers, json=payload)
-
-        data = resp.json()
-        if resp.status_code in (200, 201):
+        async def _post() -> str:
+            """Post and return the provider message id — entirely inside the breaker."""
+            if _client is not None:
+                resp = await _client.post(url, headers=headers, json=payload)
+            else:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    resp = await client.post(url, headers=headers, json=payload)
+            # A provider that REJECTS the send is a provider FAILURE, so it must
+            # be raised INSIDE the breaker — checking the status outside would
+            # record a rejecting provider as a SUCCESS and never open the breaker.
+            data = parse_provider_body(resp, "messenger send")
+            if resp.status_code not in (200, 201):
+                raise ExternalProviderError(
+                    f"messenger send failed: HTTP {resp.status_code} — {str(data)[:200]}"
+                )
             return str(data.get("message_id", ""))
-        raise ExternalProviderError(
-            f"messenger send failed: HTTP {resp.status_code} — {data}"
-        )
+
+        # §47/G-13: the outbound call goes through the process-wide
+        # `provider.messenger` breaker, so a dead provider is backed off instead
+        # of hammered on every send and worker retry. An OPEN breaker raises
+        # CircuitOpenError; deciding whether that retries or fails is the caller's
+        # job, not the adapter's.
+        return await get_breaker(PROVIDER_MESSENGER).call(_post)
 
 
 messenger_adapter = MessengerAdapter()

@@ -226,4 +226,7 @@ def reset_breakers() -> None:
 PROVIDER_AI = "provider.ai"
 PROVIDER_WHATSAPP = "provider.whatsapp"
 PROVIDER_TELEGRAM = "provider.telegram"
+PROVIDER_MESSENGER = "provider.messenger"
+PROVIDER_INSTAGRAM = "provider.instagram"
+PROVIDER_EMAIL = "provider.email"
 STORAGE_OBJECTS = "storage.objects"
