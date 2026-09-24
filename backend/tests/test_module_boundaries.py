@@ -132,7 +132,18 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # of the graph at once (99 -> 94) and lets `orders` delegate too, so the INSERT
 # exists once. The drop from 97 is the debt the CSV feature owed and this
 # refactor pays off — not a ceiling lifted to hide it.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 94
+#
+# 94 -> 92 on 2026-09-24, the §137 inbox read model. One edge is this change's:
+# `conversations/service.py` no longer imports `customers.service`, because the
+# inbox list left the write service for `conversations/inbox.py`, which joins
+# `customers` with parameter-bound SQL exactly as `customers/timeline.py` joins
+# `orders` (edge 1 above). The other was already gone and the ceiling simply
+# had not been lowered to meet it. Module-scope service imports stay at 5 — the
+# one this deletes is function-scope — and the SCC pair is unchanged, so both
+# hard rules hold. `customers -> conversations.inbox` (the 360 now reads the
+# same read model instead of calling `list_inbox`) is a re-point of the existing
+# `customers -> conversations.service` edge, not a new coupling.
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 92
 BASELINE_MODULE_SCOPE_SERVICE_IMPORTS = 5
 
 # Cycles are identified by their STRONGLY CONNECTED COMPONENT — the set of

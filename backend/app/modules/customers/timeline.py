@@ -213,20 +213,24 @@ class Customer360Service:
     async def _conversations(
         session: AsyncSession, tenant_id: UUID, customer_id: UUID, limit: int
     ) -> list[dict]:
-        from app.modules.conversations.service import ConversationService
+        # §137: the inbox read model is the one place a conversation list is
+        # assembled. It used to be ``ConversationService.list_inbox`` — a write
+        # service doing this join — which also meant this projection paid two
+        # statements for a page and could never see a message preview.
+        from app.modules.conversations.inbox import InboxQuery
 
-        rows = await ConversationService.list_inbox(
+        rows = await InboxQuery.page(
             session, tenant_id, customer_id=customer_id, limit=limit
         )
         return [
             {
-                "id": str(c.id),
-                "channel": c.channel,
-                "status": c.status,
-                "unread_count": c.unread_count,
-                "assignee_user_id": str(c.assignee_user_id) if c.assignee_user_id else None,
-                "last_message_at": _iso(c.last_message_at),
-                "created_at": _iso(c.created_at),
+                "id": c["id"],
+                "channel": c["channel"],
+                "status": c["status"],
+                "unread_count": c["unread_count"],
+                "assignee_user_id": c["assignee_user_id"],
+                "last_message_at": c["last_message_at"],
+                "created_at": c["created_at"],
             }
             for c in rows
         ]

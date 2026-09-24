@@ -7,16 +7,18 @@ import json
 import logging
 import time
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.core.errors import ConflictError, NotFoundError, PermissionDeniedError, ValidationError
+from app.core.field_auth import PII_FIELDS, redact_fields
 from app.core.pagination import decode_cursor, encode_cursor
 from app.modules.conversations.gateway.ingest import IngestService
 from app.modules.conversations.gateway.registry import get_adapter
+from app.modules.conversations.inbox import InboxQuery, decode_keyset, encode_keyset
 from app.modules.conversations.service import ConversationService
 from app.modules.conversations.templates import TemplateInput, TemplateService
 from app.modules.identity.deps import (
@@ -52,6 +54,46 @@ class AssignRequest(BaseModel):
     user_id: uuid.UUID | None = None
 
 
+# §146 on the inbox surface. The read model ships the customer's phone under
+# ``customer_phone``, which is NOT the bare ``phone`` key ``PII_FIELDS`` names —
+# so ``redact_fields``' default set would walk past it and leak the number. The
+# explicit set is applied only when the caller lacks ``pii:read``, because
+# ``redact_fields`` with ``fields_to_redact`` redacts UNCONDITIONALLY; the same
+# shape ``customers/router.py:_redact_issue_item`` settled on for the same trap.
+_INBOX_PII_FIELDS = PII_FIELDS | frozenset({"customer_phone"})
+
+
+def _redact_inbox_item(item: dict, *, permission_codes: set[str]) -> dict:
+    """One inbox row as the caller is allowed to see it (§146)."""
+    if "pii:read" in permission_codes:
+        return dict(item)
+    return redact_fields(
+        item, permission_codes=permission_codes, fields_to_redact=_INBOX_PII_FIELDS
+    )
+
+
+def _inbox_page(items: list[dict], limit: int) -> tuple[list[dict], str | None]:
+    """Split a ``limit + 1`` fetch into ``(page, next_cursor)``.
+
+    The cursor is the page's own SORT KEY, not ``created_at``: the read model
+    orders by ``last_message_at DESC NULLS LAST``, and paging on any other
+    column skips or repeats rows the moment the two disagree — which they do on
+    every active conversation. ``None`` is load-bearing for the never-messaged
+    tail; see ``inbox.encode_keyset``.
+    """
+    if len(items) <= limit:
+        return items, None
+    boundary = items[limit - 1]
+    # The row's own sort key, NULL included. Falling back to ``created_at``
+    # here would hand ``InboxQuery.page`` a DATED cursor for a tail row, which
+    # re-admits every dated row that sorts above it — the duplication this
+    # whole branch exists to avoid, arriving one page in.
+    at = boundary["last_message_at"]
+    return items[:limit], encode_keyset(
+        datetime.fromisoformat(at) if at else None, uuid.UUID(boundary["id"])
+    )
+
+
 @router.get("/conversations")
 async def list_conversations(
     ctx: TenantCtxDep,
@@ -60,35 +102,39 @@ async def list_conversations(
     cursor: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
 ):
-    before_created_at, before_id = decode_cursor(cursor) if cursor else (None, None)
-    rows = await ConversationService.list_inbox(
+    """The conversation list, served by the §137 inbox read model.
+
+    Wire shape is unchanged; the read behind it is one statement instead of
+    two, and it no longer runs out of the write service.
+    """
+    before_at, before_id = decode_keyset(cursor) if cursor else (None, None)
+    rows = await InboxQuery.page(
         ctx.session,
         ctx.tenant_id,
         status=status,
         customer_id=customer_id,
         limit=limit + 1,
-        before_created_at=before_created_at,
+        before_at=before_at,
         before_id=before_id,
     )
-    page = rows[:limit]
-    next_cursor = None
-    if len(rows) > limit:  # full page → cursor at the page's oldest boundary
-        boundary = page[-1]
-        next_cursor = encode_cursor(boundary.created_at, boundary.id)
+    page, next_cursor = _inbox_page(rows, limit)
     return {
         "items": [
             {
-                "id": str(c.id),
-                "customer_id": str(c.customer_id),
-                "customer_name": getattr(c, "customer_name", None),
-                "customer_phone": getattr(c, "customer_phone", None),
-                "channel": c.channel,
-                "status": c.status,
-                "unread_count": c.unread_count,
-                "assignee_user_id": str(c.assignee_user_id) if c.assignee_user_id else None,
-                "last_message_at": c.last_message_at.isoformat() if c.last_message_at else None,
+                key: _redact_inbox_item(item, permission_codes=ctx.permission_codes)[key]
+                for key in (
+                    "id",
+                    "customer_id",
+                    "customer_name",
+                    "customer_phone",
+                    "channel",
+                    "status",
+                    "unread_count",
+                    "assignee_user_id",
+                    "last_message_at",
+                )
             }
-            for c in page
+            for item in page
         ],
         "next_cursor": next_cursor,
     }
@@ -99,35 +145,38 @@ async def inbox_query(
     ctx: TenantCtxDep,
     status: str | None = None,
     assignee_user_id: uuid.UUID | None = None,
+    unassigned: bool = False,
+    channel: str | None = None,
+    customer_id: uuid.UUID | None = None,
     cursor: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
 ):
-    """§137: inbox read model — conversations with preview, unread, SLA.
+    """§137 ``InboxQuery``: the whole inbox page in one read.
 
-    A dedicated query that returns everything the inbox list needs in one
-    round-trip: last message preview, unread count, SLA status, and the
-    customer's name/phone. This is the read side of CQRS; it never writes.
+    Conversation + customer + last message + assignment + unread + SLA clock,
+    with §99's views (``my`` / ``unassigned`` / status slices) expressed as SQL
+    predicates. Before this endpoint had a read model of its own it answered
+    none of the last-message or SLA columns and the browser joined ``/sla/risk``
+    into it; the filters it does have now are why "My Inbox" can page correctly.
     """
-    before_created_at, before_id = decode_cursor(cursor) if cursor else (None, None)
-    items = await ConversationService.inbox_query(
+    before_at, before_id = decode_keyset(cursor) if cursor else (None, None)
+    rows = await InboxQuery.page(
         ctx.session,
         ctx.tenant_id,
         status=status,
         assignee_user_id=assignee_user_id,
+        unassigned=unassigned,
+        channel=channel,
+        customer_id=customer_id,
         limit=limit + 1,
-        before_created_at=before_created_at,
+        before_at=before_at,
         before_id=before_id,
     )
-    page = items[:limit]
-    next_cursor = None
-    if len(items) > limit and page:
-        # Encode cursor from the last item's created_at + id
-        last = page[-1]
-        next_cursor = encode_cursor(
-            datetime.fromisoformat(last["created_at"]) if last["created_at"] else datetime.now(UTC),
-            uuid.UUID(last["id"]),
-        )
-    return {"items": page, "next_cursor": next_cursor}
+    page, next_cursor = _inbox_page(rows, limit)
+    return {
+        "items": [_redact_inbox_item(i, permission_codes=ctx.permission_codes) for i in page],
+        "next_cursor": next_cursor,
+    }
 
 
 @router.get("/conversations/{conversation_id}/messages")
