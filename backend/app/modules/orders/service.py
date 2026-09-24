@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.audit import write_audit_row
 from app.core.events.writer import add_outbox_event
 from app.core.idempotency import apply_versioned_update, require_version  # §17
+from app.core.sql import LIKE_ESCAPE, like_pattern
 from app.modules.errors import ConflictError, NotFoundError, ValidationError
 from app.modules.orders.models import (
     Order,
@@ -156,16 +157,6 @@ def _positive_int(value: object, field: str = "quantity") -> int:
     return number
 
 
-def like_pattern(fragment: str) -> str:
-    """A contains-match whose LIKE metacharacters are the caller's data.
-
-    ``%`` and ``_`` are typed into a search box the same way as a letter, so
-    they match literally instead of widening the search.
-    """
-    escaped = fragment.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    return f"%{escaped}%"
-
-
 def to_utc_bound(value: datetime) -> datetime:
     """An unqualified timestamp from a query string is UTC, never local time."""
     return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
@@ -287,9 +278,11 @@ class OrderService:
             stmt = stmt.where(Order.customer_id == customer_id)
         if number is not None:
             # Staff search by the printed number, which they type from memory:
-            # a fragment, any case. Escape character kept in sync with
-            # `like_pattern`, which is what makes a typed '%' literal.
-            stmt = stmt.where(Order.number.ilike(like_pattern(number), escape="\\"))
+            # a fragment, any case. `like_pattern` and `LIKE_ESCAPE` are a pair —
+            # the backslashes only work because the statement names them.
+            stmt = stmt.where(
+                Order.number.ilike(like_pattern(number), escape=LIKE_ESCAPE)
+            )
         if created_from is not None:
             # Both bounds inclusive — a one-day report asks for the same day
             # twice and expects that day's orders.

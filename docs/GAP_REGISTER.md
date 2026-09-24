@@ -240,6 +240,21 @@ Closed since the register was written (each had a red test first):
   survive). Two `float()` calls remain in those files and neither is money: `gateway.py:486` is a
   percentage of a budget computed from Decimals first, and `router.py:188` is a memory
   `confidence` — the §47 rule keeps ratios and counts as numbers.
+- ~~**A7's unescaped LIKE.**~~ — every contains-match now comes from one function,
+  `core/sql.py::like_pattern`, and each statement declares the escape character it depends
+  on: `escape=LIKE_ESCAPE` on the ORM side (`orders`, `customers`, `ai/tools`) and
+  `ESCAPE '\'` inside the SQL text (`core/search`, the `segments` DSL — an escaped pattern
+  without the clause matches literal backslashes and returns nothing). The gate is
+  `tests/test_like_patterns_are_escaped.py`: four site tests that read the pattern actually
+  bound to the driver, plus two AST guards over all of `app/` — no `%`-wrapped f-string
+  outside the helper, no `ilike`/`like` with a computed term and no `escape=`.
+  **The correction, named:** `3526018` closed this gap and stated "this was the last site
+  of its class", on the strength of a grep for `ilike(f"`. That grep could not see the four
+  real shapes, all of which build the pattern a line before the call — `customers/service.py`
+  in a set comprehension, `core/search.py` and `segments/service.py` into bound params, and
+  `ai/tools.py` into `pattern` itself. The class is closed by the guard, not by the grep.
+  The same audit found a second defect in `core/search.py`: it doubled every apostrophe
+  before binding, so `O'Neil` searched for `O''Neil` and the customer did not appear.
 
 ### The three live defects review found in Wave 5's parallel lanes (2026-09-24)
 Landed work from four concurrent agents, read against what it claims. None of
@@ -388,7 +403,7 @@ readable without a database.
 - A4 Budget: agent_id dropped (per-agent budgets unreachable); warn/fallback unimplemented; no reserve/settle; input tokens uncosted; embeddings unmetered; cost rounds to $0.00 (Numeric(14,2)) → cap unenforceable (`gateway.py:97-137`, `model_kit.py:22`).
 - A5 Platform-key fallback silently bills the deployment for tenant traffic; keys plaintext in JSONB; `AIProviderPolicy` dead → conversation PII egress ungoverned (`gateway.py:71-80`).
 - A6 Auto-reply ignores conversation state: talks over humans in `waiting_human`/`closed`/pending-handover; agent = oldest-active tenant-wide (`hooks.py:63-105`).
-- A7 Read-only tools not customer-scoped + unescaped LIKE + no per-conversation tool budget → competitor can enumerate catalog/stock via chatbot (`ai/tools.py:86-181`).
+- A7 Read-only tools not customer-scoped + ~~unescaped LIKE~~ + no per-conversation tool budget (`ai/tools.py`). Read as it stands: `_get_customer` and `_get_order` resolve through `_bound_customer_id`, so a chat cannot read a neighbouring customer's order, and the browse tool refuses what checkout would refuse (`b85cf84`, `3526018`). `_get_variant_price` and `_check_stock` answer for any variant id in the tenant, sellable or not — enumerable by id, no longer by search now that `like_pattern` cannot be widened (`tests/test_like_patterns_are_escaped.py`). The remaining clause is a per-conversation tool budget: nothing counts how many tool calls one chat may spend.
 - A8 Model/agent params unvalidated (temperature ≤ 9.99, max_output_tokens negative → permanent provider 400s); provider `usage` trusted blindly (malformed usage discards a billed completion); retry re-sends identical payload without idempotency (double-billing) (`providers.py:121-134`, `runtime.py:266`).
 - A9 `ai_sessions`, `Prompt`, `AIEvaluation`, memory governance — all dead; e2e_ai_test verdict hardcoded PASS.
 - A10 Staff knowledge search locked to `customer_facing` (staff_only/internal unreachable); no ivfflat/HNSW index (exact scan) (VERIFIED no index anywhere).

@@ -28,6 +28,7 @@ from app.core.db import Base, bind_tenant
 from app.core.errors import ValidationError
 from app.core.ids import uuid7
 from app.core.model_kit import TenantMixin, TimestampMixin
+from app.core.sql import like_pattern
 
 _ALLOWED_FIELDS = {
     "orders_count",
@@ -148,8 +149,10 @@ def _compile_where(node: dict, params: dict) -> str:
             marks.append(f":{item_key}")
         return f"({field_sql} IN ({', '.join(marks)}))"
     if op == "contains":
-        params[key] = f"%{value}%"
-        return f"({field_sql} ILIKE :{key})"
+        # A rule's value arrives from JSON and the validator checks it exists,
+        # not that it is text; `contains 5` means the substring "5".
+        params[key] = like_pattern(str(value))
+        return f"({field_sql} ILIKE :{key} ESCAPE '\\')"
     return f"({field_sql} {ops[op]} :{key})"
 
 

@@ -23,6 +23,7 @@ from app.core.contact_norm import (
     normalize_phone,
     phone_candidates,
 )
+from app.core.sql import LIKE_ESCAPE, like_pattern
 from app.modules.customers.models import (
     Address,
     Customer,
@@ -206,12 +207,14 @@ class CustomerService:
             # M12: contact values are stored canonical, so a search typed in a
             # local spelling must be canonicalized too — otherwise the row
             # exists and the merchant is told it does not.
-            patterns = {f"%{term}%"}
-            patterns |= {f"%{v}%" for v in phone_candidates(term)}
-            patterns |= {f"%{v}%" for v in email_candidates(term)}
+            patterns = {like_pattern(term)}
+            patterns |= {like_pattern(v) for v in phone_candidates(term)}
+            patterns |= {like_pattern(v) for v in email_candidates(term)}
             clauses = []
             for column in (Customer.name, Customer.phone, Customer.email):
-                clauses.extend(column.ilike(pattern) for pattern in patterns)
+                clauses.extend(
+                    column.ilike(pattern, escape=LIKE_ESCAPE) for pattern in patterns
+                )
             stmt = stmt.where(or_(*clauses))
         if tag:
             stmt = stmt.where(

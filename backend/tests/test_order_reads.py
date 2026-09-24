@@ -127,12 +127,6 @@ def test_the_order_list_advertises_the_staff_filters():
     assert {"status", "customer_id", "number", "created_from", "created_to"} <= params
 
 
-def test_the_number_filter_escapes_like_wildcards():
-    from app.modules.orders.service import like_pattern
-
-    assert like_pattern("100%_off") == "%100\\%\\_off%"
-
-
 def test_a_naive_date_bound_is_read_as_utc():
     """The column is timestamptz; a bound without an offset is UTC, not local."""
     from app.modules.orders.service import to_utc_bound

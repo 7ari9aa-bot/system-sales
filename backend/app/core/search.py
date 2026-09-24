@@ -14,6 +14,8 @@ from typing import Protocol
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.sql import like_pattern
+
 
 @dataclass
 class SearchHit:
@@ -46,19 +48,27 @@ class SearchPort(Protocol):
 
 
 class PostgresSearch:
-    """PG full-text search over customers/products with trigram fallback.
+    """The §45 adapter that ships: a contains-match over the live tables.
 
-    Every query is tenant-scoped (RLS + explicit filter). Weights: name match
-    beats email/phone. Plaintext query is escaped — no tsquery injection.
+    Tenant-scoped twice over — the RLS GUC and an explicit `tenant_id` filter —
+    and the caller's term is data, never a pattern (`like_pattern` escapes the
+    `%`/`_` it types and each statement declares the escape character).
+
+    This is NOT full-text search, whatever the name suggests: no tsvector, no
+    trigram index, no relevance ranking — customers come back alphabetical and
+    products in heap order. The FTS half of §45 is an open gap, not this class.
     """
 
     async def search(
         self, session: AsyncSession, tenant_id: uuid.UUID, query: str, *,
         entity_types: list[str] | None = None, limit: int = 20,
     ) -> list[SearchHit]:
-        safe = query.strip().replace("'", "''")
-        if not safe:
+        term = query.strip()
+        if not term:
             return []
+        # The pattern is a bound parameter, so it carries the caller's apostrophes
+        # as text; the wildcards are ours, and ESCAPE makes theirs literal.
+        pattern = like_pattern(term)
         wanted = set(entity_types or ("customer", "product"))
         hits: list[SearchHit] = []
 
@@ -68,10 +78,11 @@ class PostgresSearch:
                     text(
                         "SELECT id, name, email, phone FROM customers "
                         "WHERE tenant_id = :t AND deleted_at IS NULL AND ("
-                        "name ILIKE :q OR email ILIKE :q OR phone ILIKE :q) "
+                        r"name ILIKE :q ESCAPE '\' OR email ILIKE :q ESCAPE '\'"
+                        r" OR phone ILIKE :q ESCAPE '\') "
                         "ORDER BY name LIMIT :limit"
                     ),
-                    {"t": tenant_id, "q": f"%{safe}%", "limit": limit},
+                    {"t": tenant_id, "q": pattern, "limit": limit},
                 )
             ).all()
             for r in rows:
@@ -88,9 +99,9 @@ class PostgresSearch:
                     text(
                         "SELECT p.id, p.title, p.status FROM products p "
                         "WHERE p.tenant_id = :t AND p.status = 'active' "
-                        "AND p.title ILIKE :q LIMIT :limit"
+                        r"AND p.title ILIKE :q ESCAPE '\' LIMIT :limit"
                     ),
-                    {"t": tenant_id, "q": f"%{safe}%", "limit": limit},
+                    {"t": tenant_id, "q": pattern, "limit": limit},
                 )
             ).all()
             for r in rows:

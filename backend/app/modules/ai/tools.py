@@ -19,6 +19,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import DomainError, NotFoundError, ValidationError
+from app.core.sql import LIKE_ESCAPE, like_pattern
 from app.modules.catalog.models import Product, ProductVariant
 from app.modules.inventory.models import InventoryBalance
 
@@ -189,12 +190,10 @@ async def _search_products(
     # assistant only when its product's status is one checkout would sell —
     # the same frozen vocabulary, imported from orders, not re-typed here.
     _, sellable_statuses = _order_deps()
-    # A7: a LIKE term is data, not a pattern. Escape the metacharacters the
-    # caller supplies (% widens to match-everything, _ to any one char, \ is the
-    # escape char) before wrapping in the wildcards WE choose, and declare the
-    # escape to ilike so the backslashes are honoured rather than literal.
-    escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    pattern = f"%{escaped}%"
+    # A7: a LIKE term is data, not a pattern — `like_pattern` escapes the `%` and
+    # `_` the caller typed, and the escape character is declared so the
+    # backslashes are honoured rather than treated as literal text.
+    pattern = like_pattern(query)
     stmt = (
         select(ProductVariant, Product.title)
         .join(Product, Product.id == ProductVariant.product_id)
@@ -203,9 +202,9 @@ async def _search_products(
             ProductVariant.is_active.is_(True),
             Product.status.in_(sellable_statuses),
             or_(
-                ProductVariant.title.ilike(pattern, escape="\\"),
-                ProductVariant.sku.ilike(pattern, escape="\\"),
-                Product.title.ilike(pattern, escape="\\"),
+                ProductVariant.title.ilike(pattern, escape=LIKE_ESCAPE),
+                ProductVariant.sku.ilike(pattern, escape=LIKE_ESCAPE),
+                Product.title.ilike(pattern, escape=LIKE_ESCAPE),
             ),
         )
         .order_by(Product.title.asc(), ProductVariant.id.asc())
