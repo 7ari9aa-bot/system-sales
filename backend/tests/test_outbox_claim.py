@@ -14,6 +14,17 @@ durably ``publishing`` **and unlocked** while the same relay was still about to
 publish it. A second relay's reclaim reset those rows to ``pending``, claimed
 them, and published them a second time — concurrently.
 
+P-01 (the follow-up this file now also pins): that same reclaim reset the
+STATUS but not ``attempts``, while ``_CLAIM_ONE_SQL`` only takes
+``attempts < worker_max_attempts`` and increments it. A relay killed while it
+held a committed claim (pod restart mid-deploy, OOM) therefore cost the row one
+attempt every time its lease expired, and after five deaths the row sat durably
+``pending`` at the cap — unclaimable, invisible to the failed-row reclaim (wrong
+status), never marked ``failed``, never logged. An event lost silently, which is
+the one outcome the module docstring rules out. The tests below pin the
+invariant: **no reclaim may leave a committed row ``pending`` with
+``attempts >= max_attempts``**, and a row freed by a reclaim stays publishable.
+
 Concurrent double publication is exactly the case the consumer-side dedupe does
 NOT cover: the dedupe is a read-then-act (``workers/base.py`` SELECTs the
 ``processed_events`` marker, runs ``handle()``, and only then inserts the
@@ -31,12 +42,18 @@ it can never steal from a live relay at any age. The lease duration moves to
 DB-gated cases below need a real PostgreSQL and skip locally without
 ``DATABASE_URL_APP_ADMIN``; they are proven in CI. The two-connection race
 follows ``tests/test_job_runner.py::test_two_connections_cannot_claim_the_same_job``.
+The P-01 guards run in BOTH venues: the reclaim statements are pinned from
+their SQL text and from the relay driven with a fake session, so the invariant
+is checkable without a database, and the same states are replayed against real
+rows in CI.
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextvars
+import logging
+import re
 import uuid
 from typing import Any
 
@@ -89,6 +106,116 @@ class RecordingBus:
 # --------------------------------------------------------------- DB-free -----
 
 
+class _FakeResult:
+    """Just enough of a SQLAlchemy Result for the relay's statements."""
+
+    def __init__(self, rows: list[Any] | None = None) -> None:
+        self._rows = list(rows or [])
+
+    def scalars(self) -> _FakeResult:
+        return self
+
+    def all(self) -> list[Any]:
+        return list(self._rows)
+
+    def mappings(self) -> _FakeResult:
+        return self
+
+    def first(self) -> Any:
+        # Nothing left to claim: ends the drain loop after one pass.
+        return None
+
+
+class _RecordingSession:
+    """Records every statement the relay runs, with the parameters it bound."""
+
+    def __init__(self, *, requeued_ids: list[Any] | None = None) -> None:
+        self.calls: list[tuple[str, dict[str, Any]]] = []
+        self._requeued_ids = requeued_ids
+
+    async def execute(self, statement, parameters=None):  # noqa: ANN001
+        sql = str(statement)
+        self.calls.append((sql, dict(parameters or {})))
+        is_publishing_reclaim = "status = 'publishing'" in sql and "attempts + 1" not in sql
+        return _FakeResult(self._requeued_ids if is_publishing_reclaim else [])
+
+    async def commit(self) -> None:
+        return None
+
+    async def rollback(self) -> None:
+        return None
+
+
+class _SessionContext:
+    def __init__(self, session: _RecordingSession) -> None:
+        self._session = session
+
+    async def __aenter__(self) -> _RecordingSession:
+        return self._session
+
+    async def __aexit__(self, *exc: object) -> bool:
+        return False
+
+
+def _settings_stub(**overrides: Any) -> Any:
+    class _Settings:
+        outbox_lease_seconds = overrides.get("outbox_lease_seconds", 7.5)
+        outbox_failed_requeue_seconds = overrides.get("outbox_failed_requeue_seconds", 12.5)
+        worker_max_attempts = overrides.get("worker_max_attempts", MAX_ATTEMPTS)
+
+    return _Settings()
+
+
+def _reclaim_statements() -> dict[str, Any]:
+    """Every statement the relay uses to free a committed, unowned row."""
+    from app.core.events import outbox as outbox_module
+
+    return {
+        "stranded/publishing reclaim": outbox_module._RECLAIM_STRANDED_SQL,
+        "failed reclaim": outbox_module._RECLAIM_FAILED_SQL,
+    }
+
+
+def test_no_reclaim_requeues_a_row_without_resetting_its_attempt_budget():
+    """P-01 guard: a row a reclaim frees must stay claimable by the claim.
+
+    ``_CLAIM_ONE_SQL`` selects only ``status = 'pending' AND attempts <
+    :max_attempts``. So any statement that writes a row back to 'pending' while
+    leaving ``attempts`` at the cap makes the row permanently invisible — not
+    'failed' (nothing raised), not claimable, not logged. That is exactly how a
+    crash came to mean "lost" instead of "re-publish". Every reclaim's SET
+    clause must therefore zero the counter it is not entitled to keep.
+    """
+    offenders = []
+    for name, statement in _reclaim_statements().items():
+        sql = " ".join(str(statement).split())
+        assert "status = 'pending'" in sql, f"{name} no longer re-queues anything"
+        set_clause = re.search(r"\bSET\b(.*?)\bWHERE\b", sql, re.IGNORECASE | re.DOTALL)
+        assert set_clause, f"{name} has no parseable SET clause: {sql}"
+        if "attempts = 0" not in set_clause.group(1):
+            offenders.append(f"{name}: SET{set_clause.group(1)}")
+    assert not offenders, (
+        "a reclaim re-queued rows to 'pending' without resetting attempts, "
+        f"which strands them at the claim cap: {offenders}"
+    )
+
+
+def test_the_reclaim_also_covers_a_row_already_pending_at_the_cap():
+    """P-01: rows the OLD code stranded must not stay stranded after the fix.
+
+    The pre-fix reclaim committed ``status='pending'`` with the burnt counter,
+    and a mixed-version deploy still produces that state while an old relay is
+    draining. A row 'pending' at the cap is invisible to every statement in the
+    module, so the reclaim that frees rows has to reach it too — otherwise the
+    already-stranded events stay lost and silent forever.
+    """
+    sql = " ".join(str(_reclaim_statements()["stranded/publishing reclaim"]).split())
+    assert "attempts >= :max_attempts" in sql, (
+        "nothing re-queues a row already stranded in 'pending' at the attempt "
+        "cap, so it is lost silently"
+    )
+
+
 def test_reclaim_binds_the_configured_lease_instead_of_a_hardcoded_interval(
     monkeypatch,
 ):
@@ -99,25 +226,13 @@ def test_reclaim_binds_the_configured_lease_instead_of_a_hardcoded_interval(
     """
     from app.core.events import outbox as outbox_module
 
-    class _Settings:
-        outbox_lease_seconds = 7.5
-        outbox_failed_requeue_seconds = 12.5
-
-    monkeypatch.setattr(outbox_module, "get_settings", lambda: _Settings())
-
-    class _RecordingSession:
-        def __init__(self) -> None:
-            self.calls: list[tuple[str, dict[str, Any]]] = []
-
-        async def execute(self, statement, parameters=None):  # noqa: ANN001
-            self.calls.append((str(statement), dict(parameters or {})))
-            return None
+    monkeypatch.setattr(outbox_module, "get_settings", lambda: _settings_stub())
 
     session = _RecordingSession()
     relay = OutboxRelay(RecordingBus())  # type: ignore[arg-type]
 
     async def _run() -> None:
-        await relay._reclaim_stranded(session)
+        await relay._reclaim_stranded(session, MAX_ATTEMPTS)
 
     asyncio.run(_run())
 
@@ -133,7 +248,62 @@ def test_reclaim_binds_the_configured_lease_instead_of_a_hardcoded_interval(
     )
 
 
+def test_the_drain_threads_one_attempt_cap_into_claim_and_reclaim(monkeypatch):
+    """P-01: the reclaim's cap MUST be the cap the claim enforces.
+
+    Read from two places, the two values can disagree: a row at the claim's cap
+    but below the reclaim's is 'pending', unclaimable and untouched — the exact
+    stranding P-01 is about. ``_drain_once`` already receives the cap, so the
+    reclaim has to take it as an argument rather than re-deriving it.
+    """
+    from app.core.events import outbox as outbox_module
+
+    monkeypatch.setattr(outbox_module, "get_settings", lambda: _settings_stub())
+    session = _RecordingSession()
+    monkeypatch.setattr(outbox_module, "SessionLocal", lambda: _SessionContext(session))
+
+    async def _run() -> int:
+        return await OutboxRelay(RecordingBus())._drain_once(batch=1, max_attempts=3)
+
+    asyncio.run(_run())
+
+    claim = [p for sql, p in session.calls if "attempts + 1" in sql]
+    reclaim = [p for sql, p in session.calls if "lease_seconds" in p]
+    assert claim, f"the drain never ran the claim: {session.calls}"
+    assert reclaim, f"the drain never ran the publishing reclaim: {session.calls}"
+    assert claim[0].get("max_attempts") == 3, claim[0]
+    assert reclaim[0].get("max_attempts") == 3, (
+        f"the reclaim ran with a different cap than the claim: {reclaim[0]}"
+    )
+
+
+def test_a_row_freed_by_the_reclaim_is_logged_for_ops(monkeypatch, caplog):
+    """P-01: resetting the budget means a payload that kills every relay loops.
+
+    Resetting attempts keeps the event alive (correct: a lease expiry is
+    environmental, not the event's fault) but removes the counter that used to
+    end the loop, so the ONLY thing standing between a permanently-crashing
+    payload and a silent forever-retry is a loud, per-row log line the alerting
+    can count.
+    """
+    from app.core.events import outbox as outbox_module
+
+    monkeypatch.setattr(outbox_module, "get_settings", lambda: _settings_stub())
+    row_id = str(uuid.uuid4())
+    session = _RecordingSession(requeued_ids=[row_id])
+    relay = OutboxRelay(RecordingBus())  # type: ignore[arg-type]
+
+    with caplog.at_level(logging.WARNING, logger="app.core.events.outbox"):
+        asyncio.run(relay._reclaim_stranded(session, MAX_ATTEMPTS))
+
+    warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert any(row_id in r.getMessage() for r in warnings), (
+        f"a row freed by the reclaim produced no warning naming it: {caplog.text!r}"
+    )
+
+
 # ---------------------------------------------------------------- DB-gated ---
+
 
 
 @pytest.fixture
@@ -164,11 +334,18 @@ async def relay_env(engine):
             {"id": str(tenant_id), "slug": f"g08-{uuid.uuid4().hex[:10]}"},
         )
 
-    async def stage(count: int, *, age_seconds: int = 0, status: str = "pending") -> list[str]:
+    async def stage(
+        count: int,
+        *,
+        age_seconds: int = 0,
+        status: str = "pending",
+        attempts: int = 0,
+    ) -> list[str]:
         ids: list[str] = []
         for n in range(count):
             values = _row_values(tenant_id=tenant_id, n=n, age_seconds=age_seconds)
             values["status"] = status
+            values["attempts"] = attempts
             ids.append(values["id"])
             made_ids.append(values["id"])
             async with factory() as s, s.begin():
@@ -191,9 +368,10 @@ async def relay_env(engine):
 
 _INSERT_OUTBOX_SQL = text(
     "INSERT INTO outbox_events "
-    "(id, aggregate_type, aggregate_id, stream, payload, meta, status, created_at) "
+    "(id, aggregate_type, aggregate_id, stream, payload, meta, status, attempts, "
+    " created_at) "
     "VALUES (:id, 'order', :agg, 'order.events', "
-    "        CAST(:payload AS jsonb), CAST(:meta AS jsonb), :status, "
+    "        CAST(:payload AS jsonb), CAST(:meta AS jsonb), :status, :attempts, "
     "        now() - make_interval(secs => :age))"
 )
 
@@ -437,3 +615,83 @@ async def test_a_row_published_and_marked_done_is_never_republished(
 
     assert [i for i in bus2.ids() if i == row_id] == [], "a published row was re-published"
     assert (await _statuses(factory, [row_id]))[row_id] == "published"
+
+
+async def test_a_row_whose_lease_expired_at_the_attempt_cap_still_gets_published(
+    engine, relay_env, relay_on_own_connection
+):
+    """P-01 (RED first): five relay deaths must not strand an event for good.
+
+    This is the durable state the pre-fix publishing reclaim produced — a row
+    committed in 'publishing' with ``attempts`` already at the cap (an older
+    deployment's claim, or ops SQL). The reclaim flipped the status and left the
+    counter, and from then on nothing in the module could see the row again:
+    the claim wants ``attempts < max_attempts``, the failed reclaim wants
+    status 'failed', and no counter or log line reported the loss. The event is
+    gone, which the module docstring explicitly rules out.
+    """
+    factory = relay_env["factory"]
+    [stranded] = await relay_env["stage"](
+        1, age_seconds=900, status="publishing", attempts=MAX_ATTEMPTS
+    )
+
+    relay_on_own_connection.set(async_sessionmaker(engine, expire_on_commit=False))
+    bus = RecordingBus()
+    await OutboxRelay(bus)._drain_once(batch=BATCH, max_attempts=MAX_ATTEMPTS)
+
+    assert stranded in bus.ids(), (
+        "a row reclaimed from 'publishing' at the attempt cap was never "
+        "published again: the crash cost the event, exactly as 'lost' looks"
+    )
+    assert (await _statuses(factory, [stranded]))[stranded] == "published"
+
+
+async def test_no_committed_row_is_left_pending_at_the_attempt_cap(
+    engine, relay_env, relay_on_own_connection
+):
+    """P-01 guard, on real rows: a drain must not leave a row unclaimable.
+
+    Every stranded shape a relay can hand back — 'pending' at the cap (what the
+    pre-fix code committed, and what a mixed-version deploy still commits),
+    'publishing' past its lease at the cap, and 'failed' with the budget spent
+    — goes through one drain and must come out published. 'pending' with
+    ``attempts >= max_attempts`` afterwards is the silent-loss state by
+    definition, so the assertion is the invariant itself, not a behavior.
+    """
+    factory = relay_env["factory"]
+    at_cap = await relay_env["stage"](
+        1, age_seconds=900, status="pending", attempts=MAX_ATTEMPTS
+    )
+    publishing_at_cap = await relay_env["stage"](
+        1, age_seconds=900, status="publishing", attempts=MAX_ATTEMPTS
+    )
+    failed_at_cap = await relay_env["stage"](
+        1, age_seconds=900, status="failed", attempts=MAX_ATTEMPTS
+    )
+    ids = at_cap + publishing_at_cap + failed_at_cap
+
+    relay_on_own_connection.set(async_sessionmaker(engine, expire_on_commit=False))
+    bus = RecordingBus()
+    await OutboxRelay(bus)._drain_once(batch=BATCH, max_attempts=MAX_ATTEMPTS)
+
+    async with factory() as s:
+        rows = (
+            await s.execute(
+                text(
+                    "SELECT id::text AS id, status, attempts FROM outbox_events "
+                    "WHERE id = ANY(CAST(:ids AS uuid[]))"
+                ),
+                {"ids": ids},
+            )
+        ).mappings()
+        state = {r.id: (r.status, r.attempts) for r in rows}
+
+    stranded_rows = [i for i, (status, attempts) in state.items()
+                     if status == "pending" and attempts >= MAX_ATTEMPTS]
+    assert not stranded_rows, (
+        f"rows left 'pending' at the cap, invisible to every statement: "
+        f"{ {i: state[i] for i in stranded_rows} }"
+    )
+    assert sorted(i for i in bus.ids() if i in set(ids)) == sorted(ids), (
+        f"a stranded row never reached the stream: {state}"
+    )

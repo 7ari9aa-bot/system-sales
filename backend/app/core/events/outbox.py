@@ -30,8 +30,14 @@ precisely the hole the single-transaction claim closes.
 Rows stranded in 'publishing' by something other than a live relay (an older
 deployment mid-roll, ops SQL) are re-queued after ``settings.outbox_lease_seconds``
 (§128); that scan runs FOR UPDATE SKIP LOCKED, so it can never steal from a
-live relay. Every successfully published event is also appended to event_log
-(§152), the durable replay history: the outbox is only a publication buffer.
+live relay. Re-queueing resets ``attempts`` (P-01): the claim only takes
+``attempts < worker_max_attempts``, so a reclaim that reset the status and kept
+the burnt counter would hand a row back to 'pending' where nothing can ever see
+it again — five relay deaths would read as a lost event, silently, which the
+"never lost" promise above forbids. A lease expiry is environmental, so it costs
+the event nothing; the row is logged at WARNING instead. Every successfully
+published event is also appended to event_log (§152), the durable replay
+history: the outbox is only a publication buffer.
 """
 
 from __future__ import annotations
@@ -53,21 +59,49 @@ from app.core.events.schemas import EventEnvelope, deserialize
 
 logger = logging.getLogger(__name__)
 
-# §128 backstop: a row durably committed in 'publishing' whose lease expired.
+# §128 backstop: a committed row no live relay can be working on, in either of
+# the two shapes that strand it —
+#   * 'publishing' past its lease: the relay that claimed it died before its
+#     claim transaction could commit (pod restart mid-deploy, OOM, the process
+#     recycled while a publish blocked), or an older deployment / ops SQL
+#     committed the claim outright;
+#   * 'pending' with its attempt budget already spent. `_CLAIM_ONE_SQL` below
+#     refuses those (attempts < :max_attempts) and `_RECLAIM_FAILED_SQL` refuses
+#     them (wrong status), so without this arm the row sits there forever:
+#     never published, never 'failed', never logged. That is precisely what the
+#     pre-fix reclaim did — it reset the STATUS but not the counter, so each
+#     lease expiry cost a live event one attempt and five relay deaths silently
+#     destroyed it. A mixed-version deploy still produces the state while an old
+#     relay is draining, and rows stranded before this shipped stay stranded,
+#     so the reclaim revives them too.
+# Both arms reset attempts to 0 for the reason `_RECLAIM_FAILED_SQL` documents:
+# the retry budget applies to PROCESSING, not to the relay being restarted out
+# from under the row — a lease expiry is environmental, and the module's
+# contract is that a crash can only ever mean "re-publish", never "lost".
+# Resetting the budget means a payload that kills the relay on every try loops
+# instead of dying quietly — that is the deliberate trade, and it is why every
+# row freed here is logged at WARNING with its id (see `_reclaim_stranded`): the
+# loop stays loud and countable rather than silent either way.
+# The created_at bound is shared by both arms and keeps the scan on
+# ix_outbox_status_created and off the hot path.
 # FOR UPDATE SKIP LOCKED is the part that makes the reclaim safe: a LIVE relay
 # holds its claimed row locked for the whole publish (see the module docstring),
 # so this scan walks past it at any age instead of re-queueing work that is
 # already being done — which is what used to double-publish a backlog.
-_RECLAIM_PUBLISHING_SQL = sa.text(
+_RECLAIM_STRANDED_SQL = sa.text(
     """
     UPDATE outbox_events
-       SET status = 'pending'
+       SET status = 'pending', attempts = 0
      WHERE id IN (
         SELECT id FROM outbox_events
-         WHERE status = 'publishing'
-           AND created_at < now() - make_interval(secs => :lease_seconds)
+         WHERE created_at < now() - make_interval(secs => :lease_seconds)
+           AND (
+                 status = 'publishing'
+              OR (status = 'pending' AND attempts >= :max_attempts)
+               )
          FOR UPDATE SKIP LOCKED
      )
+    RETURNING id
     """
 )
 
@@ -75,6 +109,20 @@ _RECLAIM_PUBLISHING_SQL = sa.text(
 # environmental failure — poison events dead-letter at the worker, not here).
 # Re-queue them after a cool-down instead of stranding them forever, and
 # reset attempts: the retry budget applies to processing, not to Redis outages.
+# The reset is load-bearing, not tidiness (P-01): any statement that writes
+# 'pending' WITHOUT zeroing attempts can strand the row for good, because the
+# claim below refuses attempts >= :max_attempts and no other statement — and no
+# alert — ever looks at it again. `tests/test_outbox_claim.py` pins that for
+# both reclaim statements.
+# NOTE (P-02, found while fixing P-01 and deliberately NOT fixed here): the
+# cool-down clock is the row's STAGING time — `published_at` is never set on a
+# failed row, so COALESCE lands on created_at — which means the cool-down holds
+# only until the first re-queue. After that the row is older than
+# :failed_requeue_seconds forever, so a bus that stays down is retried once per
+# drain (~poll interval) per row instead of once per cool-down. The fix is to
+# stamp `not_before` (the durable scheduling column the claim already honours)
+# when marking a row failed and let the reclaim wake on it; that changes retry
+# timing under outage and has CI-only coverage, so it needs its own pass.
 _RECLAIM_FAILED_SQL = sa.text(
     """
     UPDATE outbox_events
@@ -95,6 +143,13 @@ _RECLAIM_FAILED_SQL = sa.text(
 # locks across every other row's publish, and if it committed early (as the old
 # batch claim did at its first per-row commit) the remaining rows became
 # durably 'publishing' yet UNLOCKED, i.e. stealable by a second relay.
+# The `attempts < :max_attempts` guard is only safe because the counter is a
+# per-processing-failure budget: this statement increments it inside a
+# transaction that normally commits as 'published' or 'failed', and both
+# reclaims zero it when they re-queue a row (P-01). A row left 'pending' at
+# this cap is invisible to this statement, to the failed reclaim and to every
+# alert — no path may strand one there, which is what the pre-fix publishing
+# reclaim did to a committed claim whose relay then died.
 _CLAIM_ONE_SQL = sa.text(
     """
     UPDATE outbox_events
@@ -184,18 +239,43 @@ class OutboxRelay:
     def stop(self) -> None:
         self._running = False
 
-    async def _reclaim_stranded(self, session: AsyncSession) -> None:
-        """Re-queue rows no live relay can be working on (§128).
+    async def _reclaim_stranded(self, session: AsyncSession, max_attempts: int) -> None:
+        """Re-queue rows no live relay can be working on (§128, P-01).
 
-        Both scans carry their duration from settings — never a literal baked
-        into the SQL — and both run FOR UPDATE SKIP LOCKED, so a row another
-        relay holds locked for its in-flight publish is walked past rather than
-        re-queued out from under it.
+        Every duration carries in from settings, and the attempt cap is the
+        SAME value the caller hands `_claim_one` — never a re-read of settings,
+        because two sources that disagree reopen the stranding: a row at the
+        claim's cap but under the reclaim's is 'pending' and invisible. Both
+        scans run FOR UPDATE SKIP LOCKED, so a row another relay holds locked
+        for its in-flight publish is walked past rather than re-queued out from
+        under it.
+
+        Re-queueing RESETS the attempt budget (see `_RECLAIM_STRANDED_SQL`),
+        which is why this logs: a row freed here was not refused by the bus, it
+        lost the relay that was publishing it, and a payload that kills every
+        relay it touches would otherwise retry forever in total silence. One
+        warning line per row id is what makes that loop countable.
         """
         settings = get_settings()
-        await session.execute(
-            _RECLAIM_PUBLISHING_SQL, {"lease_seconds": settings.outbox_lease_seconds}
+        reclaimed = (
+            (
+                await session.execute(
+                    _RECLAIM_STRANDED_SQL,
+                    {
+                        "lease_seconds": settings.outbox_lease_seconds,
+                        "max_attempts": max_attempts,
+                    },
+                )
+            )
+            .scalars()
+            .all()
         )
+        for row_id in reclaimed:
+            logger.warning(
+                "outbox.relay.stranded_row_requeued id=%s lease_expired_or_"
+                "attempt_budget_spent attempts_reset=0",
+                row_id,
+            )
         await session.execute(
             _RECLAIM_FAILED_SQL,
             {"failed_requeue_seconds": settings.outbox_failed_requeue_seconds},
@@ -221,7 +301,7 @@ class OutboxRelay:
             # stranded rows must not be held across the publishes that follow,
             # and every claim below opens its OWN transaction (committed at the
             # bottom of the loop), so a single connection is enough.
-            await self._reclaim_stranded(session)
+            await self._reclaim_stranded(session, max_attempts)
             await session.commit()
             # One row per claim, at most `batch` rows per drain so a sustained
             # backlog cannot starve the poll loop of its sleep.
