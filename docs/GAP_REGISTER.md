@@ -241,6 +241,39 @@ Closed since the register was written (each had a red test first):
   percentage of a budget computed from Decimals first, and `router.py:188` is a memory
   `confidence` — the §47 rule keeps ratios and counts as numbers.
 
+### The three live defects review found in Wave 5's parallel lanes (2026-09-24)
+Landed work from four concurrent agents, read against what it claims. None of
+these was caught by a test that already existed; each now has one that fails
+without the fix.
+
+1. **A §146 field guard on the read, missing on the write of the same column** (`af5428c`).
+   `GET /orders/{id}` redacts `shipping_address` without `pii:read`; the
+   `PATCH /orders/{id}/shipping` echo returned it raw. `staff` holds
+   `orders:write` and not `pii:read` (`scripts/provision.py:250-261`), so the
+   guard was bypassable by writing the record and reading the response. Both
+   paths now go through `_redact_order_pii`, pinned DB-free in
+   `tests/test_order_reads.py`.
+2. **`Query(...)` used as a Python default is not a value** (`09f89ad`).
+   `async def h(days: int = Query(default=30))` leaves a pydantic `FieldInfo` in
+   the function's `__defaults__`. FastAPI replaces it over HTTP, so the route
+   looked fine forever — while any in-process caller forwarded the declaration
+   object into a SQL bind (`DataError: invalid input for query argument $1`).
+   Analytics had it and CI run 35959902953 proved the cost; measuring the rest of
+   the app found **38 more sites across 9 routers** (ai 8, marketing 6,
+   operations 5, conversations 4, customers 4, platform 4, privacy 3, automation
+   2, orders 2), all now declared `Annotated[type, Query(...)] = <value>`.
+   `tests/test_route_parameter_declarations.py` walks every endpoint reachable
+   from `create_app()` and refuses any parameter whose default is a `FieldInfo`,
+   so the count cannot climb again; `tests/test_analytics_overview.py` calls one
+   converted route with zero arguments as the live proof.
+3. **`GET /platform/admin/tenants/{tenant_id}` answered 500 for every tenant** (`4dcb7a9`). It counted
+   outbox backlog with `OutboxEvent.tenant_id == tenant_id`, a column the model
+   does not have — §19 put tenancy in the event envelope instead, so the
+   attribute lookup raised `AttributeError` inside the request. The predicate now
+   reads `meta->>'tenant_id'` (the same key the relay refuses to publish
+   without), and `tests/test_tenant_health_outbox.py` compiles each statement and
+   rejects any column `outbox_events` lacks, which is the judgement Postgres makes.
+
 ### Three more defects review found in the same reading
 Found by reading finished work against the behaviour it claims — none of them by
 a red test that already existed. Each now has one.
@@ -368,7 +401,7 @@ complete, not by a red test. Each now has a regression test that names it.
 | WebhookEvent ingress | platform/models.py:221 | never written by real ingress |
 | InboundMessageDedupe (§142) | platform/models.py:358 | dead (ingest uses IdempotencyKey) |
 | DeliveryAttempt | platform/models.py:332 | dead |
-| Automation (platform) + Workflow execution | automation/service.py | no dispatcher, no router, not in main.py |
+| Automation (platform) + Workflow execution | automation/service.py | **stale as written; the real gap is narrower and worse** (measured 2026-09-24) — there IS a router and it IS in `main.py` (`automation/router.py`, 8 routes; imported at `main.py:40`, mounted at `:271`), covering CRUD, publish, status, list and `POST /workflows/executions/{id}/run`. What is missing is the **trigger**: `WorkflowService.execute_for_event` (`service.py:132`) is the only code in the repo that inserts a `WorkflowExecution`, and it has zero production callers — its only caller anywhere is `tests/gate/test_gate_n8n_outage.py:76`. So `workflow_executions` stays empty in a running system and the `/run` route can only answer 404. The separate `automations` table (`platform/models.py:278`) is genuinely unread and unwritten — superseded by these `workflows` tables |
 | Privacy DSR + DeletionService | privacy/service.py | no router, unreachable |
 | SegmentService | segments/service.py | no table, no registry entry, unreachable |
 | IdentityMergeService | customers/service.py:308-526 | no API surface |
@@ -385,19 +418,23 @@ complete, not by a red test. Each now has a regression test that names it.
 | SLAPolicy / BusinessCalendar / SLAEvent | operations/models.py | no clock, no writer, no worker |
 | ProductPrice / invoices lines | catalog, billing | write-only (tier fields now writable via `POST /variants/{id}/prices`; still no reader in pricing logic) |
 | FeatureFlag / MetricDefinition / SecretReference | platform/models.py | **measured 2026-09-24: two of three were stale, the third is now closed** — `FeatureFlag` (`GET/POST /platform/flags*`) and `SecretReference` (register/rotate under `settings:write`) were already served by live routes. `metric_definitions` was the real case, and not "dead": WRITE-ONLY (provisioning seed + `scripts/backfill_metric_definitions.py`, read only by the writer's own convergence SELECT), while both endpoints named "definitions" answered from the in-code `MetricRegistry`. Closed by `GET /platform/metrics/definitions` (table-backed, reports `missing`/`drifted`), pinned by `tests/test_contract_reachability.py` §6, which now also baselines every table `app/` never reads |
-| InboxQuery read model (§137) | — | absent (joins in write service) |
+| InboxQuery read model (§137) | conversations/inbox.py:79 | **closed 2026-09-24 (`b337ae5`)** — `InboxQuery.page()` answers `GET /api/v1/inbox` (`router.py:149`, mounted without a `/conversations` prefix) in one statement: conversation + customer + last message + assignment + unread + `sla_status`/`sla_deadline_at`, with §99's `unassigned`/assignee/status/channel/customer views as SQL predicates and a keyset cursor. The write service no longer carries those joins |
 | Outbox `not_before` scheduling | workers/base.py docstring | unimplemented |
 | NotificationPort / PaymentProviderPort / SecretStorePort | — | absent (SMTP stub derefs nonexistent setting) |
 
 ## 5. Missing product/API surface (dashboard cannot run the business)
 
-- Invitations accept; user management (list/patch/deactivate); roles/permissions list.
-- Customer PATCH/block/archive, tags, notes endpoints; customer record page (360 tabs/timeline).
-- Product GET/PATCH/archive, variants management, warehouses list, transfers.
-- Order: payments create, refunds, cancel, customer/number/date filters, payments+history detail, shipping update.
-- Conversation detail/update; Inbox views + context tabs; saved views; My Work; global health.
-- Webchat visitor read surface (staff-only today — visitors can post, never receive).
-- Jobs API (GET/retry/cancel); approvals UI + decide endpoint; platform-admin plane.
+Re-measured 2026-09-24 against the running OpenAPI document (199 paths, 244 path+method operations), not against this list's memory of it. Most of what this section used to call missing has an endpoint now; the honest remainder is short, so each line below names what is still absent and cites the evidence for what is no longer absent.
+
+- **Users and roles.** `GET /users/me` is the only `/users` route — no list, no patch, no deactivate; and no operation anywhere names roles or permissions, so the dashboard cannot show what a role can do or revoke one. (Invitations, by contrast, are whole: accept, list, create, delete, plus the per-tenant variant.)
+- **Inventory transfers.** `GET /warehouses` answers; there is no transfer create/list/move operation, so stock can only be corrected by writing movements directly.
+- **Conversation detail.** `/conversations/{id}` has messages, assign, close and read, but no read of the conversation itself — the drawer re-derives it from the list row.
+- **Webchat visitors still cannot receive.** `POST /webchat/{public_key}/messages` is the only public operation; there is no visitor-side read or stream, which is why the widget is one-way.
+- ~~Order: payments create, refunds, cancel, customer/number/date filters, payments+history detail, shipping update~~ — every one of these is an operation today (`/api/v1/orders` GET+POST, `{id}/payments` GET+POST, `{id}/payments/{id}/refunds`, `{id}/cancel`, `{id}/status-history`, `PATCH {id}/shipping`, and the three M8 filters on the list page; see M8 above for the commits and tests that closed the row).
+- ~~Inbox views; saved views; global health~~ — `GET /api/v1/inbox` is §137's read model (row above), `/api/v1/platform/saved-views` is full CRUD (5 operations), `GET /api/v1/platform/health` answers. `my-work` is a screen with no endpoint of its own; it composes `/api/v1/inbox?assignee_user_id=`, which is a legitimate design, not a gap.
+- ~~Jobs API (GET/retry/cancel); approvals decide endpoint~~ — `/api/v1/jobs` has list/detail/retry/cancel, `POST /api/v1/ai/approvals/{id}/decide` answers. What is still missing here is the **approvals UI**, not the endpoint.
+- ~~platform-admin plane~~ — `/api/v1/platform/admin/tenants` list/detail and `PATCH …/{tenant_id}/status` exist. Note: the detail route answered 500 for every tenant until `4dcb7a9` — it was written against a column `outbox_events` does not have.
+- Customer record page (360 tabs/timeline) — the API side is there (`/customers/{id}/360`, tags, notes); the page's completeness is tracked in §5 of the frontend audit, not here.
 
 ## 6. Spec compliance snapshot
 
