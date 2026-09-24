@@ -357,11 +357,43 @@ async def _message_delivery_compliance(
 async def _outbox_lag_compliance(
     session: AsyncSession, tenant_id: uuid.UUID, since: datetime
 ) -> tuple[int, int]:
-    """§168: outbox lag — seconds since the oldest unrelayed outbox event."""
+    """§168: outbox lag — seconds since the OLDEST un-published outbox event.
+
+    Two constraints the first cut of this query got wrong, in order of how bad
+    each was:
+
+    * the backlog filter is ``status = 'pending'``, not ``relayed_at IS NULL``.
+      There is no ``relayed_at`` column on ``outbox_events`` — ``OutboxEvent``
+      models the relay's progress as ``status`` plus ``published_at`` — so the
+      old statement raised ``UndefinedColumnError`` on every call. The route
+      ``GET /sla/slos/outbox_lag`` answered 500; ``GET /sla/slos/measure``
+      masks per-SLO failures, so it just showed a permanent 0% ``error`` row.
+    * the lag ages the OLDEST row, so ``MIN(created_at)``. ``MAX`` reported the
+      newest un-published event, which is ~0 whenever anything is being staged:
+      a relay wedged behind a hundred-minute backlog read as healthy. This is
+      the SLO about publish lag, and the docstring's "oldest" says so.
+
+    ``status = 'pending'`` is not an arbitrary pick of one real column — it is
+    the definition the rest of the system already uses for "waiting to be
+    published", so the three screens cannot disagree: ``_CLAIM_ONE_SQL`` in
+    ``core/events/outbox.py`` drains exactly those rows, and
+    ``_outbox_subsystem`` in ``modules/platform/router.py`` reports the health
+    page's "oldest pending event is Ns old" from the same predicate. A row in
+    ``publishing`` is a live relay's (its claim transaction holds the lock) and
+    ``failed`` rows are re-queued to ``pending`` by a reclaim, so ``pending``
+    is the durable backlog and the others are transient.
+
+    The metric is deployment-wide and ``outbox_events`` is a system table with
+    no ``tenant_id`` (see ``modules/platform/models.py``), hence no tenant or
+    window predicate: the backlog gauge is "how far behind is the relay right
+    now", and an age bound would hide the very stale rows it exists to find.
+    ``tests/test_slo_outbox_lag.py`` pins the column set against the model
+    class and the MIN semantics.
+    """
     result = await session.execute(
         text(
-            "SELECT EXTRACT(EPOCH FROM (now() - MAX(created_at))) "
-            "FROM outbox_events WHERE relayed_at IS NULL"
+            "SELECT EXTRACT(EPOCH FROM (now() - MIN(created_at))) "
+            "FROM outbox_events WHERE status = 'pending'"
         )
     )
     lag_seconds = float(result.scalar_one() or 0)
