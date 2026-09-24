@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, Query, Request
 from pydantic import BaseModel, Field
@@ -38,6 +39,11 @@ from app.modules.platform.tenant_restore import TenantRestoreJob, TenantRestoreS
 router = APIRouter(prefix="/platform", tags=["platform"])
 
 FEATURE_MAX_LEN = 127  # matches feature_flags.feature String(127)
+
+# Query/header params are declared `Annotated[type, Query(...)] = <value>`, never
+# `name: type = Query(...)` / `= Header(...)` — see the parameter-declaration rule
+# in app/modules/analytics/router.py and the full-app gate in
+# tests/test_route_parameter_declarations.py.
 
 # §160: Platform Admin is a SEPARATE plane from Tenant RBAC.
 # The claim is global (users.is_platform_admin, minted into the JWT at login)
@@ -661,11 +667,16 @@ async def admin_get_tenant(ctx: TenantCtxDep, tenant_id: uuid.UUID):
     if tenant is None:
         raise NotFoundError("tenant not found")
 
-    # Count outbox backlog for this tenant (not the contents — just the depth)
+    # Count outbox backlog for this tenant (not the contents — just the depth).
+    # `outbox_events` is a system table with no tenant column: §19 put tenancy
+    # inside the envelope, so the filter reads meta->>'tenant_id' — the same key
+    # the relay refuses to publish without. A comparison on OutboxEvent.tenant_id
+    # does not even reach SQL; the attribute does not exist. `ix_outbox_status_created`
+    # carries the status half of this predicate; nothing indexes the envelope.
     outbox_pending = (
         await ctx.session.execute(
             select(func.count(OutboxEvent.id)).where(
-                OutboxEvent.tenant_id == tenant_id,
+                OutboxEvent.meta["tenant_id"].as_string() == str(tenant_id),
                 OutboxEvent.status == "pending",
             )
         )
@@ -690,7 +701,7 @@ async def admin_update_tenant_status(
     tenant_id: uuid.UUID,
     status: str,
     reason: str | None = None,
-    x_break_glass_token: str | None = Header(default=None),
+    x_break_glass_token: Annotated[str | None, Header()] = None,
 ):
     """§160/§48: move a tenant's lifecycle state (suspend, reactivate, ...).
 
@@ -866,8 +877,8 @@ async def admin_list_webhook_events(
     ctx: TenantCtxDep,
     status: str | None = None,
     provider: str | None = None,
-    limit: int = Query(default=50, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ):
     """§24 Inspect: the active tenant's ingress ledger — newest first, with
     the full DLQ vocabulary (dead/ignored/resolved included). The raw payload
@@ -1269,7 +1280,7 @@ async def execute_tenant_restore_job(
 async def list_security_events(
     ctx: TenantContext = Depends(require_permission("settings:read")),
     event_type: str | None = None,
-    limit: int = Query(default=50, ge=1, le=200),
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ):
     """§67: this tenant's security trail, newest first. Read-only."""
     from app.core.field_auth import redact_fields
