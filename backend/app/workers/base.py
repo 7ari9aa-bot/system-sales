@@ -17,10 +17,13 @@ between ack and republish can never lose an event.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import os
 import random
 import socket
+from contextlib import suppress
+from typing import Any
 
 from app.core.config import get_settings
 from app.core.context import (
@@ -36,6 +39,25 @@ from app.core.events.schemas import deserialize, deserialize_event
 logger = logging.getLogger(__name__)
 
 MAX_BACKOFF_SECONDS = 60.0
+
+# Outcomes of StreamWorker._claim_inbox (ADR-058).
+_INBOX_CLAIMED = "claimed"  # lock held, no marker: we own the effect
+_INBOX_SEEN = "seen"  # marker committed by an earlier run: ack and skip
+_INBOX_CONTESTED = "contested"  # a live worker holds the claim: stand down
+_INBOX_UNAVAILABLE = "unavailable"  # inbox unreachable: fail open, as before
+
+
+def _inbox_lock_key(consumer_name: str, event_id: str) -> int:
+    """Advisory-lock key for one (consumer, event id) pair.
+
+    Same idiom as app.core.lease — a value that fits Postgres' signed bigint
+    advisory-lock space — but hashed over the PAIR, because the dedupe unit is
+    (consumer_name, event_id): the same event handled by two different pools
+    must not serialize against one key, and two events of one pool must not
+    share a key either.
+    """
+    digest = hashlib.sha256(f"{consumer_name}\x1f{event_id}".encode()).digest()
+    return int.from_bytes(digest[:8], "big") % (2**63 - 1)
 
 
 class RetryableError(Exception):
@@ -152,8 +174,10 @@ class StreamWorker:
         while self._running:
             try:
                 # Reclaim entries stranded by crashed workers (§128-style PEL
-                # takeover) at most once a minute. Idempotent handlers make a
-                # possible double-processing safe.
+                # takeover) at most once a minute. A reclaim that hands a
+                # still-running entry to a second worker is absorbed by the
+                # exclusive inbox claim in _process_event (ADR-058): the
+                # second claimer stands down without acking.
                 now = time.monotonic()
                 if now - last_reclaim > 60:
                     last_reclaim = now
@@ -232,7 +256,6 @@ class StreamWorker:
             logger.debug("worker.metering_failed id=%s", event.id, exc_info=True)
 
     async def _process_event(self, event: Event) -> None:
-        settings = get_settings()
         envelope_meta = self._envelope_meta(event)
         # Dedupe id: prefer the stable outbox row id (survives relay
         # crash-reclaim re-publishes); the bus-generated per-XADD uuid would
@@ -240,47 +263,153 @@ class StreamWorker:
         dedupe_id = str(envelope_meta.get("outbox_id") or event.id)
         attempts = int(envelope_meta.get(ATTEMPTS_META_KEY, 0)) + 1
 
-        # §127: generic consumer idempotency. Every StreamWorker gets a
-        # ProcessedEvent check — not just message_worker. A redelivered event
-        # that was already processed hits the unique constraint and is skipped.
-        # message_worker does its own finer-grained check (per delivery phase),
-        # so it sets _skip_generic_idempotency = True.
+        # §127, hardened per ADR-058: the consumer inbox is a CLAIM, not a
+        # read-then-act. One transaction takes a pg_try_advisory_xact_lock on
+        # (consumer, event id) — the house idiom from app.core.lease — checks
+        # the processed_events marker INSIDE the lock, stays open across
+        # handle(), and writes the marker at the end, so COMMIT publishes
+        # "done" atomically with the lock release. For one event id at most
+        # one worker can be inside the effect: a concurrent redelivery (an
+        # XAUTOCLAIM reclaim racing a slow handler) either finds the lock held
+        # — it stands down WITHOUT acking, leaving the entry in the PEL — or
+        # finds the committed marker and acks past it. A crash or a failed
+        # effect rolls the claim transaction back, so a claim never outlives
+        # its effect and no window loses an event (the old marker-after-effect
+        # order kept that property; it is preserved deliberately).
+        #
+        # Postgres' default READ COMMITTED is load-bearing: a claimer that
+        # arrives after the winner commits sees the marker on its very first
+        # statement. If the inbox itself is unreachable we fail open exactly
+        # as before — handlers may carry their own dedupe (message_worker
+        # does; it sets _skip_generic_idempotency and is excluded here).
+        claim: tuple[Any, Any] | None = None
         if not getattr(self, "_skip_generic_idempotency", False):
-            from sqlalchemy import text as sa_text
-
-            from app.core.db import SessionLocal
-
-            # §127: read-only pre-check — was this event already processed?
-            # The marker itself is written AFTER handle() succeeds (see below):
-            # writing it before the effect (the old order) survived a transient
-            # failure and permanently suppressed the redelivery — a LOST event.
-            try:
-                async with SessionLocal() as idem_session:
-                    seen = (
-                        await idem_session.execute(
-                            sa_text(
-                                "SELECT 1 FROM processed_events "
-                                "WHERE consumer_name = :consumer AND event_id = :eid "
-                                "LIMIT 1"
-                            ),
-                            {"consumer": self.name, "eid": dedupe_id},
-                        )
-                    ).first()
-                if seen:
-                    logger.info(
-                        "worker.idempotent_skip stream=%s consumer=%s id=%s",
-                        self.stream, self.name, dedupe_id,
-                    )
-                    await self._bus.ack(self.stream, self.group, event)
-                    return
-            except Exception:
-                # If the idempotency table is unavailable, fail open —
-                # the handler may have its own dedupe (message_worker does).
-                logger.debug(
-                    "worker.idempotency_check_failed stream=%s id=%s",
-                    self.stream, dedupe_id, exc_info=True,
+            state, session, tx = await self._claim_inbox(dedupe_id)
+            if state == _INBOX_CONTESTED:
+                logger.info(
+                    "worker.inbox_contended stream=%s consumer=%s id=%s",
+                    self.stream, self.name, dedupe_id,
                 )
+                return
+            if state == _INBOX_SEEN:
+                logger.info(
+                    "worker.idempotent_skip stream=%s consumer=%s id=%s",
+                    self.stream, self.name, dedupe_id,
+                )
+                await self._bus.ack(self.stream, self.group, event)
+                return
+            if state == _INBOX_CLAIMED:
+                claim = (session, tx)
 
+        effect_ran = False
+        try:
+            effect_ran = await self._run_with_lineage(event, dedupe_id, attempts)
+        finally:
+            if claim is not None:
+                await self._close_inbox(*claim, dedupe_id, marker=effect_ran)
+        if effect_ran:
+            await self._bus.ack(self.stream, self.group, event)
+
+    async def _claim_inbox(self, dedupe_id: str) -> tuple[str, Any, Any]:
+        """Open the transaction that OWNS this event's inbox claim.
+
+        Returns ``(state, session, tx)``; on _INBOX_CLAIMED the caller owns an
+        open transaction and MUST finish it via _close_inbox(). Every other
+        state leaves nothing open. Exceptions from the inbox itself are
+        swallowed here (fail open, _INBOX_UNAVAILABLE) — a broken dedupe table
+        must not stop the pool, matching the pre-ADR-058 policy.
+        """
+        from sqlalchemy import text as sa_text
+
+        try:
+            session = SessionLocal()
+            tx = await session.begin()
+            locked = (
+                await session.execute(
+                    sa_text("SELECT pg_try_advisory_xact_lock(:key)"),
+                    {"key": _inbox_lock_key(self.name, dedupe_id)},
+                )
+            ).scalar()
+            if not locked:
+                await self._abandon_inbox(session, tx)
+                return _INBOX_CONTESTED, None, None
+            seen = (
+                await session.execute(
+                    sa_text(
+                        "SELECT 1 FROM processed_events "
+                        "WHERE consumer_name = :consumer AND event_id = :eid "
+                        "LIMIT 1"
+                    ),
+                    {"consumer": self.name, "eid": dedupe_id},
+                )
+            ).first()
+            if seen:
+                await self._abandon_inbox(session, tx)
+                return _INBOX_SEEN, None, None
+            return _INBOX_CLAIMED, session, tx
+        except Exception:
+            logger.debug(
+                "worker.idempotency_check_failed stream=%s id=%s",
+                self.stream, dedupe_id, exc_info=True,
+            )
+            with suppress(Exception):
+                await session.close()  # type: ignore[possibly-undefined]
+            return _INBOX_UNAVAILABLE, None, None
+
+    @staticmethod
+    async def _abandon_inbox(session: Any, tx: Any) -> None:
+        """Close a claim transaction that will not carry an effect."""
+        with suppress(Exception):
+            await tx.rollback()
+        with suppress(Exception):
+            await session.close()
+
+    async def _close_inbox(
+        self, session: Any, tx: Any, dedupe_id: str, *, marker: bool
+    ) -> None:
+        """End the claim transaction, atomically with the marker when asked.
+
+        marker=True writes the processed_events row INSIDE the claim
+        transaction, so the COMMIT that releases the lock is the same commit
+        that makes "done" visible — there is no window between the two.
+        marker=False (the effect failed or deferred) commits nothing: the
+        transaction holds no writes, and ending it releases the lock so the
+        staged retry — or a PEL reclaim — can claim the event again.
+        """
+        from sqlalchemy import text as sa_text
+
+        try:
+            if marker:
+                await session.execute(
+                    sa_text(
+                        "INSERT INTO processed_events "
+                        "(id, consumer_name, event_id, status) "
+                        "VALUES (gen_random_uuid(), :consumer, :eid, 'done') "
+                        "ON CONFLICT (consumer_name, event_id) DO NOTHING"
+                    ),
+                    {"consumer": self.name, "eid": dedupe_id},
+                )
+            await tx.commit()
+        except Exception:
+            logger.debug(
+                "worker.idempotency_write_failed stream=%s id=%s",
+                self.stream, dedupe_id, exc_info=True,
+            )
+            with suppress(Exception):
+                await tx.rollback()
+        finally:
+            with suppress(Exception):
+                await session.close()
+
+    async def _run_with_lineage(self, event: Event, dedupe_id: str, attempts: int) -> bool:
+        """Run handle() under the §66/§68 lineage context.
+
+        Returns True when the effect succeeded — only then may the caller mark
+        the event processed and ack it. Every failure path (defer / retry /
+        DLQ) acks inside and returns False WITHOUT a marker, so retries and
+        DLQ replays stay reprocessable.
+        """
+        settings = get_settings()
         # §66: publish the envelope's lineage into request-scoped context for
         # the duration of the handler, so audit rows written while processing
         # carry source="system" and the correlation_id of the event that
@@ -313,7 +442,7 @@ class StreamWorker:
             )
             await self._republish_after(event, event.meta, exc.delay_seconds)
             await self._bus.ack(self.stream, self.group, event)
-            return
+            return False
         except Exception as exc:
             logger.exception(
                 "worker.handle_failed stream=%s id=%s attempt=%s",
@@ -330,11 +459,11 @@ class StreamWorker:
                 )
                 await self._bus.send_to_dlq(self.stream, event, "permanent failure")
                 await self._bus.ack(self.stream, self.group, event)
-                return
+                return False
             if attempts >= settings.worker_max_attempts:
                 await self._bus.send_to_dlq(self.stream, event, "max attempts exceeded")
                 await self._bus.ack(self.stream, self.group, event)
-                return
+                return False
             meta = {**event.meta, ATTEMPTS_META_KEY: attempts}
             base = min(
                 settings.worker_backoff_base_seconds * (2 ** (attempts - 1)),
@@ -343,36 +472,8 @@ class StreamWorker:
             delay = random.uniform(0, base)  # full jitter
             await self._republish_after(event, meta, delay)
             await self._bus.ack(self.stream, self.group, event)
-            return
-        # §127: record the processed marker only after the effect committed.
-        # A crash between the effect and this write replays handle() on
-        # redelivery — handlers are status-guarded and idempotent — whereas a
-        # pre-written marker turned any transient failure into a lost event.
-        # Deferred/permanent-failure paths above return BEFORE this write, so
-        # retries and DLQ replays stay reprocessable.
-        if not getattr(self, "_skip_generic_idempotency", False):
-            from sqlalchemy import text as sa_text
-
-            from app.core.db import SessionLocal
-
-            try:
-                async with SessionLocal() as idem_session:
-                    async with idem_session.begin():
-                        await idem_session.execute(
-                            sa_text(
-                                "INSERT INTO processed_events "
-                                "(id, consumer_name, event_id, status) "
-                                "VALUES (gen_random_uuid(), :consumer, :eid, 'done') "
-                                "ON CONFLICT (consumer_name, event_id) DO NOTHING"
-                            ),
-                            {"consumer": self.name, "eid": dedupe_id},
-                        )
-            except Exception:
-                logger.debug(
-                    "worker.idempotency_write_failed stream=%s id=%s",
-                    self.stream, dedupe_id, exc_info=True,
-                )
-        await self._bus.ack(self.stream, self.group, event)
+            return False
+        return True
 
     async def _republish_after(self, event: Event, meta: dict, delay: float) -> None:
         """Durable retry: stage the event as an outbox row with not_before.
