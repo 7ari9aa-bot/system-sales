@@ -13,7 +13,6 @@ import {
   type QueryClient,
   type QueryKey,
 } from "@tanstack/react-query";
-import { useRef } from "react";
 import { api, getTokens, newIdempotencyKey } from "@/lib/api";
 import { authPost, type AuthResult } from "@/lib/auth-api";
 import { t } from "@/lib/t";
@@ -329,6 +328,67 @@ export type Order = {
   created_at: string;
 };
 
+/** `router.get_order` — the money position and the CAS token, in one read.
+ *
+ *  §47: every amount here is a `str(Decimal)`, rendered through `formatMoney`
+ *  and never re-parsed as a number. `refund_state` is the DERIVED money axis
+ *  (`none` | `partial` | `full`) and lives BESIDE `status`, which is where the
+ *  parcel is: the server reports both so a screen can say "delivered, 25 of it
+ *  given back" without one axis overwriting the other. `version` is the body the
+ *  `ETag` header carries, and the value `PATCH /shipping` must send back as
+ *  `If-Match`.
+ *
+ *  It deliberately carries NO `customer_id`, `shipping_address` or
+ *  `shipping_method` — the record page resolves the customer from the cached
+ *  `/orders` list and the shipping dialog shows what its own PATCH echoed. */
+export type OrderDetail = {
+  id: string;
+  number: string;
+  status: string;
+  version: number;
+  grand_total: string;
+  currency: string;
+  refund_state: string;
+  refunded_total: string;
+  net_collected: string;
+  items: {
+    id: string;
+    title: string | null;
+    sku: string | null;
+    quantity: number;
+    unit_price: string;
+    total: string;
+  }[];
+};
+
+/** `router._payment_out`. `provider`, `provider_ref` and `paid_at` are nullable —
+ *  a pending card intent has no provider reference and no paid time, and each
+ *  renders as an em dash, never as `0` or the text "null". */
+export type OrderPaymentRow = {
+  id: string;
+  order_id: string;
+  method: string;
+  status: string;
+  amount: string;
+  currency: string;
+  provider: string | null;
+  provider_ref: string | null;
+  paid_at: string | null;
+  created_at: string;
+};
+
+/** `router._history_out` — one lifecycle transition. The first entry of an order
+ *  has no `from_status`, no actor and no note. */
+export type OrderStatusEntry = {
+  id: string;
+  order_id: string;
+  from_status: string | null;
+  to_status: string;
+  changed_by_user_id: string | null;
+  note: string | null;
+  created_at: string;
+};
+
 export type Balance = { variant_id: string; warehouse_id: string; on_hand: number; reserved: number };
 
 export type Movement = {
@@ -463,6 +523,12 @@ export const qk = {
   conversations: ["conversations"] as QueryKey,
   messages: (id: string) => ["conversations", id, "messages"] as QueryKey,
   orders: ["orders"] as QueryKey,
+  /** One order's own reads. The detail is the CAS-token carrier, so every write
+   *  that moves money or the lifecycle invalidates it — the next write must
+   *  send the version the server has NOW, not the one the screen first read. */
+  order: (id: string) => ["orders", id] as QueryKey,
+  orderPayments: (id: string) => ["orders", id, "payments"] as QueryKey,
+  orderStatusHistory: (id: string) => ["orders", id, "status-history"] as QueryKey,
   products: ["products"] as QueryKey,
   customers: ["customers"] as QueryKey,
   customer360: (id: string) => ["customer", id, "360"] as QueryKey,
@@ -645,6 +711,55 @@ export function useOrdersPage(
     },
     enabled: opts.enabled ?? true,
   });
+}
+
+/** The order record page's three reads — each one on its own query, so an
+ *  outage on the payment ledger blanks the ledger panel and nothing else
+ *  (§113: every section answers loading / empty / error for itself).
+ *
+ *  `GET /orders/{id}` is tenant-scoped server-side (`TenantCtxDep`), so a detail
+ *  read needs no scope of its own and a wrong id answers 404. `retry: false`
+ *  everywhere: a 404 retried three times is only a slower error state. */
+export function useOrderDetail(id: string | null | undefined) {
+  return useQuery<OrderDetail>({
+    queryKey: qk.order(String(id)),
+    queryFn: () => api<OrderDetail>(`/orders/${id}`),
+    enabled: Boolean(id),
+    retry: false,
+  });
+}
+
+export function useOrderPayments(id: string | null | undefined) {
+  return useQuery<OrderPaymentRow[]>({
+    queryKey: qk.orderPayments(String(id)),
+    queryFn: () => api<OrderPaymentRow[]>(`/orders/${id}/payments`),
+    enabled: Boolean(id),
+    retry: false,
+  });
+}
+
+export function useOrderStatusHistory(id: string | null | undefined) {
+  return useQuery<OrderStatusEntry[]>({
+    queryKey: qk.orderStatusHistory(String(id)),
+    queryFn: () => api<OrderStatusEntry[]>(`/orders/${id}/status-history`),
+    enabled: Boolean(id),
+    retry: false,
+  });
+}
+
+/** What every order write invalidates, in one call.
+ *
+ *  The order's OWN three reads first (the money position and the `version` the
+ *  next conditional write must send both changed), then the list and the
+ *  dashboard that quote the same row. A refund that moved the money but left a
+ *  stale `refunded_total` on screen would be the exact bug this surface exists
+ *  to avoid, so a write that succeeded NEVER leaves a stale read behind. */
+export function invalidateOrderReads(qc: QueryClient, orderId: string) {
+  qc.invalidateQueries({ queryKey: qk.order(orderId) });
+  qc.invalidateQueries({ queryKey: qk.orderPayments(orderId) });
+  qc.invalidateQueries({ queryKey: qk.orderStatusHistory(orderId) });
+  qc.invalidateQueries({ queryKey: qk.orders });
+  qc.invalidateQueries({ queryKey: qk.dashboard });
 }
 
 export function useProducts() {
@@ -1000,57 +1115,17 @@ export function useSendMessage(conversationId: string) {
   });
 }
 
-/** §47 money components — optional Decimal strings the client MAY state. When
- *  a field is absent from the UI it must not be sent at all (the backend
- *  defaults it to zero); inventing a value here would corrupt the total.
- *  The idempotency key is generated ONCE per user intent: the first submit
- *  assigns it, a failed submit reuses the same key on retry so a network
- *  hiccup cannot double-charge, and only a successful create clears it for
- *  the next order. */
-export type CreateOrderInput = {
-  customer_id: string;
-  items: { variant_id: string; quantity: number }[];
-  channel: string;
-  discount_total?: string;
-  shipping_total?: string;
-  tax_total?: string;
-};
-
-export type CreateOrderResult = {
-  id: string;
-  number: string;
-  status: string;
-  subtotal: string;
-  discount_total: string;
-  shipping_total: string;
-  tax_total: string;
-  grand_total: string;
-  currency: string;
-};
-
-export function useCreateOrder() {
-  const qc = useQueryClient();
-  // Held across mutationFn retries so one user intent maps to one key.
-  const keyRef = useRef<string | null>(null);
-  return useMutation<CreateOrderResult, Error, CreateOrderInput>({
-    mutationFn: (body) => {
-      if (!keyRef.current) keyRef.current = newIdempotencyKey();
-      return api<CreateOrderResult>("/orders", {
-        method: "POST",
-        body,
-        idempotencyKey: keyRef.current,
-      });
-    },
-    onSuccess: (created) => {
-      // The intent succeeded — the next click is a NEW order and needs a NEW key.
-      keyRef.current = null;
-      toast({ title: `${t.orderCreated} ${created.number}`, description: t.orderCreatedHint, variant: "success" });
-      qc.invalidateQueries({ queryKey: qk.orders });
-      qc.invalidateQueries({ queryKey: qk.dashboard });
-    },
-    onError: (err) => toast({ title: t.somethingWentWrong, description: errMessage(err), variant: "danger" }),
-  });
-}
+/** §47 money components — the create path lives in
+ *  `src/components/orders/order-request.ts` (`buildCreateOrderPayload` /
+ *  `summarizeOrderMoney`) and `create-order-dialog.tsx` submits it with its own
+ *  `useMutation`, because the Idempotency-Key is scoped to ONE DIALOG OPEN: a
+ *  hook here could not know when a dialog opens, so a key held at this level
+ *  would outlive the intent it belongs to and a second order would ride the first
+ *  order's key. The duplicate `useCreateOrder` that used to live here had no
+ *  caller and one key that could not be reset — retired rather than wired.
+ *  `useOrdersPage` is likewise uncalled; the list screen still reads `useOrders`.
+ *  Left in place on purpose: it is the bounded-page answer for a large tenant,
+ *  and deleting a correct unread hook is not this surface's call. */
 
 /** §104 — undo of a just-created order: cancel it through the real lifecycle
  *  route `POST /orders/{order_id}/cancel`. The backend keys the action by the
@@ -1060,10 +1135,11 @@ export function useCancelOrder() {
   return useMutation({
     mutationFn: (orderId: string) =>
       api<{ ok: boolean }>(`/orders/${orderId}/cancel`, { method: "POST" }),
-    onSuccess: () => {
+    onSuccess: (_data, orderId) => {
       toast({ title: t.orderCancelled, variant: "default" });
-      qc.invalidateQueries({ queryKey: qk.orders });
-      qc.invalidateQueries({ queryKey: qk.dashboard });
+      // The order's own record page (if one is open) has to learn the status and
+      // the version changed, not just the list.
+      invalidateOrderReads(qc, orderId);
     },
     onError: (err) => toast({ title: t.undoFailed, description: errMessage(err), variant: "danger" }),
   });

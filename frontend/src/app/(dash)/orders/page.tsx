@@ -3,6 +3,7 @@
 import * as React from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Plus, ShoppingCart } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useCustomers, useOrders, type Order } from "@/lib/queries";
 import { t } from "@/lib/t";
 import { formatDate, formatMoney } from "@/lib/utils";
@@ -27,6 +28,7 @@ const STATUS_VARIANT: Record<string, "warning" | "primary" | "success" | "danger
 
 export default function OrdersPage() {
   const [open, setOpen] = React.useState(false);
+  const router = useRouter();
 
   const ordersQuery = useOrders();
   const customersQuery = useCustomers();
@@ -130,6 +132,10 @@ export default function OrdersPage() {
           columns={columns}
           data={orders}
           testid="orders-table"
+          // The record page is where an order is operated on — the money
+          // position, the payment ledger and the four writes live there, not on
+          // this table.
+          onRowClick={(order) => router.push(`/orders/${order.id}`)}
           empty={
             <EmptyState
               icon={<ShoppingCart aria-hidden="true" />}
