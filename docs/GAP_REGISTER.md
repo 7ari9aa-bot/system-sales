@@ -255,6 +255,18 @@ Closed since the register was written (each had a red test first):
   `ai/tools.py` into `pattern` itself. The class is closed by the guard, not by the grep.
   The same audit found a second defect in `core/search.py`: it doubled every apostrophe
   before binding, so `O'Neil` searched for `O''Neil` and the customer did not appear.
+  **And the correction to my own evidence block:** `b9ff7fa`'s message quoted "Observed RED
+  (7 tests)" with `term bound unescaped: ['%50%_off%']` at three sites and a guard naming
+  "line 5". Re-running the gate against `b9ff7fa^` in an isolated extract says otherwise: the
+  file collects **9** tests and RED was **5 failed / 4 passed**, the customers site bound
+  the same unescaped pattern three times (one bind per column: name, phone, email — the
+  M12 `phone_candidates`/`email_candidates` spellings of the probe term dedupe to one),
+  the f-string guard named 8 lines
+  in 5 files (`core/search.py:74`+`:93`, `ai/tools.py:197`, `customers/service.py:209-211`,
+  `orders/service.py:166`, `segments/service.py:151`), and `line 5` belonged to the guard's own
+  fixture in a different test, not to production. The 4 that passed in RED did so by design:
+  the orders tripwire and the non-string parity case pin behaviour the pre-fix code already
+  had. "the LIKE gate 10 passed" was the same miscount.
 
 ### The three live defects review found in Wave 5's parallel lanes (2026-09-24)
 Landed work from four concurrent agents, read against what it claims. None of
