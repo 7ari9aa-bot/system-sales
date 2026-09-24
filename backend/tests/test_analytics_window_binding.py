@@ -30,10 +30,14 @@ it cannot resolve (refuse at the boundary, never convert), and the same one
 What is DB-free and what is not
 -------------------------------
 Everything above the SQL bind is pinned here with no database: the 422, the
-message, the OpenAPI statement, and the exact ``datetime`` objects that reach
-the read models. The two tests at the bottom need a real PostgreSQL — they skip
-locally when ``DATABASE_URL_APP_ADMIN`` is unset and run in CI — because they
-are the only ones that can show what a connection does with an unoffset stamp.
+message, the OpenAPI statement, the exact ``datetime`` objects that reach
+the read models, the two-instant claim itself (stated in Python by
+``test_the_same_wall_clock_in_two_zones_names_two_instants``) and the
+``bind_instant`` type refusal that stops a value which is not a datetime at all
+(a ``Query`` declaration, a string, an epoch) from reaching a driver. The three
+tests at the bottom need a real PostgreSQL — they skip locally when
+``DATABASE_URL_APP_ADMIN`` is unset and run in CI — because they are the only
+ones that can show what a connection does with an unoffset stamp.
 
 This file is new rather than a section of ``test_tenant_timezone.py`` because
 that file pins *which zone a day label is cut in*; this pins *which instants a
@@ -51,7 +55,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 import sqlalchemy as sa
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Query
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -476,6 +480,91 @@ async def test_binding_the_window_does_not_re_cut_the_day_label(
     assert seen == [(BOUND_SINCE, BOUND_UNTIL)]
 
 
+# ========================== the claim itself, in Python (DB-free) ==========
+
+
+def test_the_same_wall_clock_in_two_zones_names_two_instants() -> None:
+    """DB-free twin of the seeded proof below — the claim, stated in Python.
+
+    ``2026-09-01T00:00:00`` is a wall clock, not an instant. Attach a zone and it
+    becomes one, and WHICH one depends entirely on the zone: Cairo is +03:00 on
+    that date (summer time since 2023), so it names ``2026-08-31T21:00Z``; a
+    +02:00 zone such as Paris names ``2026-08-31T22:00Z``; UTC itself names
+    ``2026-09-01T00:00Z``. Three hours between the first and the last, for one
+    string — and a naive ``since`` used to leave the choice to whoever happened
+    to own the connection, while ``tenants.timezone`` (which decides the DAY
+    LABELS beside it) was never consulted at all.
+
+    That is also why the fix cannot be "read naive values as UTC": it would move
+    a Cairo merchant's window three hours and print the merchant's own days next
+    to the shifted numbers. `bind_instant` refuses instead, which is what the
+    last assertion pins.
+    """
+    wall_clock = datetime.fromisoformat(NAIVE_SINCE)  # noqa: DTZ001 — no zone yet
+    assert wall_clock.tzinfo is None
+
+    cairo = wall_clock.replace(tzinfo=ZoneInfo("Africa/Cairo"))
+    paris = wall_clock.replace(tzinfo=ZoneInfo("Europe/Paris"))
+    in_utc = wall_clock.replace(tzinfo=UTC)
+    assert cairo.astimezone(UTC) == datetime(2026, 8, 31, 21, 0, tzinfo=UTC)
+    assert paris.astimezone(UTC) == datetime(2026, 8, 31, 22, 0, tzinfo=UTC)
+    assert in_utc == datetime(2026, 9, 1, 0, 0, tzinfo=UTC)
+    assert cairo != paris != in_utc, "one wall clock in three zones is three instants"
+    assert (in_utc - cairo) == timedelta(hours=3)
+
+    # ... and none of the three is reachable by binding the naive spelling.
+    with pytest.raises(ValidationError, match="UTC offset"):
+        analytics_service.bind_instant(wall_clock, "since")
+
+
+# ==================== a window edge must be a datetime, not a declaration ===
+
+#: The object CI run 35959902953 bound: a ``Query`` DECLARATION that survived
+#: because the caller omitted the parameter, in the other case the pydantic
+#: default of one. Neither is a value, and neither may reach a bind.
+_NOT_VALUES = (
+    Query(2),
+    "2026-09-01T00:00:00",
+    1_756_684_800,
+    datetime,
+)
+
+
+@pytest.mark.parametrize("value", _NOT_VALUES)
+def test_bind_instant_refuses_anything_that_is_not_an_instant(value: Any) -> None:
+    """:func:`bind_instant` guards its own type, not just the offset.
+
+    The naive-``datetime`` refusal below (`test_a_reader_refuses_to_bind_a_naive_
+    window`) reaches ``value.utcoffset()``. That is the right question for a
+    datetime and an ``AttributeError`` — an unhandled 500 — for anything else,
+    which is exactly the shape of the CI failure this file exists to kill: a
+    declaration that never became a value travelling as far as a driver. Refusing
+    the TYPE first, in the same seam that refuses the offset, means the answer is
+    a 400 that names the parameter.
+    """
+    with pytest.raises(ValidationError, match="ISO 8601 instant") as exc_info:
+        analytics_service.bind_instant(value, "since")
+
+    assert exc_info.value.details["since"] == repr(value)
+
+
+def test_the_refusal_answers_a_non_datetime_instead_of_raising_inside_the_422() -> None:
+    """The 422 builder reads its own input, so it has to survive a non-datetime.
+
+    ``_bind_edge`` used to render the failing value with ``.isoformat()`` — safe
+    while the only bad input was a naive datetime, an ``AttributeError`` the
+    moment the input was a declaration or a string. A client that sent the wrong
+    KIND of value got a 500 about the refusal, not the refusal.
+    """
+    with pytest.raises(HTTPException) as exc_info:
+        analytics_router._bind_window(None, Query(2))  # noqa: SLF001 — the seam is private
+
+    (failure,) = exc_info.value.detail
+    assert failure["loc"] == ["query", "until"]
+    assert failure["input"] == "Query(2)", failure
+    assert "ISO 8601 instant" in failure["msg"], failure
+
+
 # ============================================ driven over a real database ===
 
 
@@ -488,20 +577,34 @@ async def test_a_stamp_without_an_offset_really_names_two_instants(
     This is exactly what a naive ``since`` used to smuggle into
     ``placed_at >= :since`` — and the merchant could not see it, because the day
     labels beside it were cut in a third zone again.
+
+    The stamp is bound the way the defect bound it: as a zone-less
+    ``timestamp``, so the SERVER decides which instant the wall clock names,
+    under the ``TimeZone`` its session believes it lives in. Two earlier shapes
+    of this test proved nothing: a ``timestamptz`` bind is a Python-side decision
+    (asyncpg encodes an instant and Postgres has nothing left to interpret), and
+    a comparison of two Python strings never reached the database at all. Parsing
+    to a naive ``datetime`` and letting ``::timestamp::timestamptz`` do the zone
+    work is the one formulation where the answer comes from PostgreSQL.
     """
 
-    async def utc_instant(stamp: str, zone: str) -> str:
+    async def utc_instant(wall_clock: str, zone: str) -> str:
         """Where the database puts an unoffset stamp, given the zone it thinks it is in."""
+        naive = datetime.fromisoformat(wall_clock)  # noqa: DTZ001 — the point of it
+        assert naive.tzinfo is None, f"{wall_clock} arrived with a zone already"
+        # `is_local=true` is transaction-scoped, and the fixture's transaction
+        # spans this test: the zone has to be set by its own statement so the
+        # cast below provably runs after it (a target list has no order).
+        await db.execute(sa.text("SELECT set_config('TimeZone', :tz, true)"), {"tz": zone})
         row = (
             await db.execute(
                 sa.text(
-                    "SELECT set_config('TimeZone', :tz, true), "
-                    "((:stamp)::timestamptz AT TIME ZONE 'UTC')::text"
+                    "SELECT ((:stamp::timestamp)::timestamptz AT TIME ZONE 'UTC')::text"
                 ),
-                {"tz": zone, "stamp": stamp},
+                {"stamp": naive},
             )
         ).first()
-        return row[1]
+        return row[0]
 
     dubai = await utc_instant(NAIVE_SINCE, "Asia/Dubai")
     cairo = await utc_instant(NAIVE_SINCE, "Africa/Cairo")

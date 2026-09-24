@@ -24,6 +24,15 @@ What is pinned here (all DB-free unless the test says otherwise)
    forwarded to the readers rather than dropped on the floor (gap M10).
 5. An empty shelf is reported as ``out_of_stock_count``, not folded into
    "low stock" (gap M7).
+6. A route parameter's default is a VALUE, never a ``fastapi.Query`` declaration.
+   ``Query(2)`` is a pydantic ``FieldInfo``: handed to ``stock_health`` it rode
+   into an ``integer`` bind and asyncpg answered
+   ``DataError: invalid input for query argument $1: Query(2)`` — which is what
+   CI run 35959902953 went red on. Handlers are callable in-process (every
+   DB-free case here calls one), so a default that only becomes a value when
+   HTTP passes through is a 500 waiting for the next caller.
+7. ``stock_health`` refuses a declaration as its threshold at the reader, so the
+   guarantee does not depend on every route having learned the lesson.
 
 The seeded end-to-end case at the bottom skips locally when
 ``DATABASE_URL_APP_ADMIN`` is unset and runs in CI.
@@ -32,6 +41,7 @@ The seeded end-to-end case at the bottom skips locally when
 from __future__ import annotations
 
 import ast
+import inspect
 import pathlib
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -40,8 +50,11 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from fastapi import Query
+from pydantic.fields import FieldInfo
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.errors import ValidationError
 from app.main import create_app
 from app.modules.analytics import router as analytics_router
 from app.modules.analytics import service as analytics_service
@@ -72,7 +85,11 @@ MONEY_KEYS = frozenset(
 class _NoSqlSession:
     """A session that refuses to answer: the router must not query at all."""
 
-    async def execute(self, *_args, **_kwargs):
+    def __init__(self) -> None:
+        self.statements: list[str] = []
+
+    async def execute(self, statement, *_args, **_kwargs):  # noqa: ANN001
+        self.statements.append(str(statement))
         raise AssertionError(
             "the analytics ROUTER touched the database — every metric SQL lives "
             "in analytics/service.py (Wave-4 M11)"
@@ -126,29 +143,45 @@ def _stock() -> dict[str, Any]:
     }
 
 
+def _refuse_declarations(where: str, *values: Any) -> None:
+    """Fail here, not in a driver: a parameter DECLARATION is not a value.
+
+    Every recorder below runs this on its own arguments. It is the invariant CI
+    run 35959902953 proved was missing — a ``fastapi.Query`` object is a pydantic
+    ``FieldInfo``, and handed onward it reaches ``text(sql)`` as a bind
+    parameter, where asyncpg answers ``DataError`` and the merchant sees a 500.
+    """
+    for value in values:
+        if isinstance(value, FieldInfo):
+            raise AssertionError(
+                f"{where} was handed {value!r}, a FastAPI parameter declaration "
+                "rather than a value. Route parameters are declared "
+                "`Annotated[type, Query(...)]` with a plain Python default so an "
+                "in-process caller can never receive the declaration itself."
+            )
+
+
 def _stub_readers(monkeypatch: pytest.MonkeyPatch, calls: list[tuple]) -> None:
     """Replace the canonical readers with recorders — the router must ONLY call."""
 
-    async def summary(session, tenant_id, *, since, until, timezone=None):
+    async def summary(session, tenant_id, *, since, until, timezone=None):  # noqa: ANN001
+        _refuse_declarations("revenue_summary", since, until, timezone)
         calls.append(("revenue_summary", tenant_id, since, until, timezone))
         return _summary()
 
-    async def series(session, tenant_id, *, since, until, timezone=None):
+    async def series(session, tenant_id, *, since, until, timezone=None):  # noqa: ANN001
+        _refuse_declarations("daily_revenue_series", since, until, timezone)
         calls.append(("daily_revenue_series", tenant_id, since, until, timezone))
         return _series()
 
-    async def stock(session, tenant_id, *, low_stock_threshold=2):
+    async def stock(session, tenant_id, *, low_stock_threshold=2):  # noqa: ANN001
+        _refuse_declarations("stock_health", low_stock_threshold)
         calls.append(("stock_health", tenant_id, low_stock_threshold))
         return _stock()
 
     monkeypatch.setattr(analytics_service, "revenue_summary", summary)
     monkeypatch.setattr(analytics_service, "daily_revenue_series", series)
     monkeypatch.setattr(analytics_service, "stock_health", stock)
-
-
-def _money_calls(calls: list[tuple]) -> list[tuple]:
-    """The window-shaped readers only — ``stock_health`` takes no window."""
-    return [call for call in calls if len(call) == 5]
 
 
 def _money_calls(calls: list[tuple]) -> list[tuple]:
@@ -179,6 +212,114 @@ def test_overview_publishes_its_window_parameters() -> None:
     params = create_app().openapi()["paths"][OVERVIEW_PATH]["get"]["parameters"]
     names = {p["name"] for p in params}
     assert {"days", "since", "until", "timezone", "low_stock_threshold"} <= names
+
+
+# ----------------------------------------------- the parameter declarations ---
+
+
+def test_route_parameters_default_to_values_not_declarations() -> None:
+    """No ``fastapi.Query`` object may sit in an analytics handler's signature.
+
+    CI run 35959902953: ``analytics_overview`` declared
+    ``low_stock_threshold: int = Query(default=2, ...)``. The seeded case calls
+    that handler in-process and omits the argument, so the parameter held
+    ``Query(2)`` — a pydantic ``FieldInfo``, not an int — the route forwarded it
+    to ``stock_health``, and asyncpg refused to encode it for an ``integer``
+    bind. HTTP hides the defect because the framework fills every defaulted
+    parameter in; the handler is still a plain function, and every DB-free case
+    in this file calls it as one.
+
+    The signature is the whole surface, so the guard reads the signatures:
+    ``Query``/``Body``/``Header`` are ``FieldInfo`` subclasses, ``Depends`` is
+    not, and no parameter of a route in this module may default to one.
+    """
+    offenders: list[str] = []
+    for route in analytics_router.router.routes:
+        endpoint = getattr(route, "endpoint", None)
+        if endpoint is None:
+            continue
+        for name, parameter in inspect.signature(endpoint).parameters.items():
+            if isinstance(parameter.default, FieldInfo):
+                offenders.append(f"{getattr(endpoint, '__name__', endpoint)}({name})")
+    assert offenders == [], (
+        "these analytics route parameters default to a FastAPI declaration, which "
+        f"an in-process caller hands straight into a SQL bind: {offenders}. Declare "
+        "them `Annotated[type, Query(...)] = <value>` instead."
+    )
+
+
+async def test_an_in_process_call_omitting_every_default_binds_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The red call shape, with NOTHING but the context supplied.
+
+    ``days`` has to arrive as the int 30, ``until`` as the instant the request is
+    handled, ``low_stock_threshold`` as ``LOW_STOCK_THRESHOLD``. The recorders in
+    ``_stub_readers`` are the assertion: any one of them being handed a
+    declaration raises before a query can be mis-bound.
+    """
+    calls: list[tuple] = []
+    _stub_readers(monkeypatch, calls)
+
+    payload = await analytics_router.analytics_overview(_ctx())
+
+    thresholds = [call[2] for call in calls if call[0] == "stock_health"]
+    assert thresholds == [analytics_service.LOW_STOCK_THRESHOLD]
+    assert [type(value) for value in thresholds] == [int]
+
+    windows = {
+        (since, until) for _name, _tenant, since, until, _zone in _money_calls(calls)
+    }
+    assert len(windows) == 1, f"one call bound {len(windows)} windows: {windows}"
+    since, until = windows.pop()
+    assert until - since == timedelta(days=30)
+    assert since.tzinfo is not None and until.tzinfo is not None, (
+        f"a defaulted window reached the readers as {since} / {until}"
+    )
+    # The echoed pair is the pair the readers were given — same instants, UTC.
+    assert datetime.fromisoformat(payload["since"]) == since
+    assert datetime.fromisoformat(payload["until"]) == until
+    assert datetime.fromisoformat(payload["until"]).utcoffset() == timedelta(0)
+
+
+async def test_stock_health_refuses_a_declaration_as_its_threshold() -> None:
+    """The reader's own guarantee, so the route is not the only thing holding.
+
+    The twin of ``test_a_reader_refuses_to_bind_a_naive_window`` in
+    ``test_analytics_window_binding.py``: refuse before the bind and answer 400
+    naming the parameter, rather than letting a driver discover that a caller
+    passed a declaration instead of a value.
+    """
+    session = _NoSqlSession()
+
+    with pytest.raises(ValidationError, match="low_stock_threshold"):
+        await analytics_service.stock_health(session, TENANT, low_stock_threshold=Query(2))
+
+    assert session.statements == [], "the declaration reached SQL before the refusal"
+
+
+async def test_stock_health_binds_a_supplied_threshold_as_an_integer() -> None:
+    """The positive half: a real int passes the guard and reaches the bind."""
+    seen: list[dict] = []
+
+    class _RecordingSession:
+        async def execute(self, statement, params=None, *_args, **_kwargs):  # noqa: ANN001
+            seen.append(dict(params or {}))
+
+            class _Result:
+                @staticmethod
+                def one():
+                    return (0, 0, 0)
+
+            return _Result()
+
+    health = await analytics_service.stock_health(
+        _RecordingSession(), TENANT, low_stock_threshold=5
+    )
+
+    assert seen[0]["threshold"] == 5
+    assert type(seen[0]["threshold"]) is int
+    assert health["low_stock_threshold"] == 5
 
 
 # ---------------------------------------------------------- delegation ---
@@ -438,3 +579,8 @@ async def test_overview_reports_seeded_money_in_its_named_families(
     ]
     assert rows == [("2026-03-10", "100.00", "60.00")]
     assert payload["currency"]
+    # The stock band is the argument this case used to die on: the call omits
+    # `low_stock_threshold`, so the route's DEFAULT is what reaches the integer
+    # bind. CI run 35959902953 got `DataError: invalid input for query argument
+    # $1: Query(2)` here; an int is what comes back.
+    assert payload["stock"]["low_stock_threshold"] == analytics_service.LOW_STOCK_THRESHOLD

@@ -66,8 +66,28 @@ _STATUS_WORD = re.compile(r"^[a-z][a-z_]*$")
 # so the ``since``/``until`` a response reports are the exact text of the bind.
 
 
-def bind_instant(value: datetime, name: str) -> datetime:
-    """One window edge, proven to be an instant and rendered in UTC."""
+def bind_instant(value: object, name: str) -> datetime:
+    """One window edge, proven to be an instant and rendered in UTC.
+
+    Two refusals, one posture.
+
+    * A value that is not a ``datetime`` AT ALL is refused first. This is the
+      same guarantee `bind_count` gives the integer parameters, and for the same
+      incident: CI run 35959902953 saw an in-process caller leave a ``Query``
+      declaration in a route signature and hand it down as a window edge. The
+      check below reads ``value.tzinfo``, which a declaration survives and a
+      ``str`` survives too — and an exception raised while BUILDING a refusal is
+      an unhandled 500 with no diagnosis in it.
+    * A NAIVE value is refused because the database would finish the value by
+      consulting its own connection (see the policy above).
+    """
+    if not isinstance(value, datetime):
+        raise ValidationError(
+            f"{name} must be an ISO 8601 instant, not {type(value).__name__}: "
+            f"{value!r}. A route parameter that never became a value is refused "
+            f"here rather than at the driver.",
+            details={name: repr(value), "required": "datetime carrying a UTC offset"},
+        )
     if value.tzinfo is None or value.tzinfo.utcoffset(value) is None:
         raise ValidationError(
             f"{name} must be an ISO 8601 instant carrying a UTC offset. A naive "
@@ -83,6 +103,32 @@ def bind_instant(value: datetime, name: str) -> datetime:
 def bind_window(since: datetime, until: datetime) -> tuple[datetime, datetime]:
     """The ``[since, until)`` every reader binds with, or the refusal it owes."""
     return bind_instant(since, "since"), bind_instant(until, "until")
+
+
+def bind_count(value: object, name: str) -> int:
+    """One integer bind, proven to be an integer before it reaches the wire.
+
+    The twin of `bind_instant` for the non-window parameters, and it exists for
+    the same reason and the same incident: CI run 35959902953 handed
+    ``stock_health``'s ``:threshold`` the value ``Query(2)`` — a
+    ``fastapi.Query`` declaration left in ``analytics/router.py``'s signature
+    because the in-process caller omitted that argument — and asyncpg answered
+    ``TypeError: 'Query' object cannot be interpreted as an integer`` from inside
+    a codec, which is a 500 and no diagnosis. A reader refusing a value the
+    database cannot hold is a 400 that names the parameter instead.
+
+    ``bool`` is rejected deliberately: it IS an ``int`` to Python, and a
+    threshold of ``True`` is a mistake nobody should meet in a report.
+    """
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValidationError(
+            f"{name} must be an integer, not {type(value).__name__}: {value!r}. A "
+            f"route parameter that never became a value (a FastAPI Query "
+            f"declaration, a string, a Decimal) is refused here rather than at "
+            f"the driver.",
+            details={name: repr(value), "required": "int"},
+        )
+    return int(value)
 
 
 def _status_sql(values: Sequence[str]) -> str:
@@ -479,7 +525,12 @@ async def stock_health(
     but zero-or-below is ``out_of_stock_count`` and only 1..threshold is
     ``low_stock_count``. Folding the two together made the number unactionable:
     most of what it reported was already sold out.
+
+    ``threshold`` is bound, not pasted, so it must be an integer before it
+    reaches the driver — see `bind_count` for the incident that proved a route
+    can hand a reader its own parameter declaration.
     """
+    threshold = bind_count(low_stock_threshold, "low_stock_threshold")
     result = await session.execute(
         text(
             """
@@ -494,14 +545,14 @@ async def stock_health(
               ) balances
             """
         ),
-        {"tenant_id": str(tenant_id), "threshold": low_stock_threshold},
+        {"tenant_id": str(tenant_id), "threshold": threshold},
     )
     row = result.one()
     out_of_stock = int(row[0] or 0)
     low = int(row[1] or 0)
     tracked = int(row[2] or 0)
     return {
-        "low_stock_threshold": low_stock_threshold,
+        "low_stock_threshold": threshold,
         "low_stock_count": low,
         "out_of_stock_count": out_of_stock,
         "healthy_count": tracked - low - out_of_stock,

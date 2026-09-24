@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -51,6 +51,39 @@ SettingsCtx = Annotated[TenantContext, Depends(require_permission("settings:writ
 #: from staff. A frontline role must not be the one that authorises a partition DROP.
 AnalyticsReadCtx = Annotated[TenantContext, Depends(require_permission("analytics:read"))]
 AnalyticsWriteCtx = Annotated[TenantContext, Depends(require_permission("analytics:write"))]
+
+# ============================================= the parameter-declaration rule ===
+#
+# Every query parameter below is declared ``name: Annotated[type, Query(...)]``
+# with a PLAIN Python default, and never ``name: type = Query(...)``. The two
+# forms are identical to FastAPI and radically different to Python: the second
+# leaves a ``fastapi.params.Query`` object — a pydantic ``FieldInfo``, which is
+# neither an int nor a datetime — sitting in the handler's OWN signature, and
+# only the HTTP path ever replaces it.
+#
+# CI run 35959902953 is what that costs. The seeded case
+# ``tests/test_analytics_overview.py::test_overview_reports_seeded_money_in_its_named_families``
+# calls ``analytics_overview(...)`` in-process and omits ``low_stock_threshold``,
+# so that parameter still held ``Query(2)`` — the ``Query(default=2)``
+# declaration, unconverted. The route forwarded it untouched to
+# ``analytics_service.stock_health``, which bound it as ``:threshold`` against an
+# ``integer``, and asyncpg answered ``DataError: invalid input for query argument
+# $1: Query(2) ('Query' object cannot be interpreted as an integer)``. Every
+# defaulted parameter on that route had the same defect; the threshold simply
+# reached SQL first. ``days`` would have failed a ``timedelta`` subtraction,
+# ``until`` an attribute lookup, ``timezone`` a zone resolution.
+#
+# A handler whose defaults are declarations instead of values answers correctly
+# over HTTP and 500s for any in-process caller — a test today, a composed read
+# model tomorrow — which is a contract that cannot be trusted from inside the
+# process. Two guards hold the rule, both DB-free:
+#
+#   * ``test_route_parameters_default_to_values_not_declarations`` reads every
+#     route signature in this module;
+#   * ``analytics_service.bind_count`` refuses a non-integer threshold at the
+#     reader, the way ``bind_instant`` refuses a naive window edge, so a
+#     declaration that still reaches a bind is a 400 naming the parameter
+#     rather than a codec's TypeError.
 
 # ======================================================= the window policy ===
 #
@@ -84,8 +117,36 @@ _UNTIL_DOC = (
 )
 
 
+def _bind_edge(value: Any, name: str, failures: list[dict]) -> datetime:
+    """One window edge as a UTC instant, or the 422 failure that says why not.
+
+    The returned ``value`` on the failure path is a placeholder: the caller
+    raises as soon as this list is non-empty, so it never reaches a query. It is
+    there so the seam that reports BOTH bad edges in one response (a client that
+    fixed one and not the other gets told about both) does not have to lie to a
+    type checker about the other one.
+
+    ``value`` is typed loosely on purpose: the 422 must be able to describe a
+    caller that passed something which is not a datetime at all (a string from a
+    hand-rolled client, a route declaration that never became a value), and
+    `datetime.isoformat` would raise on the way to explaining that.
+    """
+    try:
+        return analytics_service.bind_instant(value, name)
+    except ValidationError as exc:
+        failures.append(
+            {
+                "type": "value_error",
+                "loc": ["query", name],
+                "msg": f"Value error, {exc.message}",
+                "input": value.isoformat() if isinstance(value, datetime) else repr(value),
+            }
+        )
+        return value
+
+
 def _bind_window(
-    since: datetime | None, until: datetime
+    since: datetime | None, until: datetime | None
 ) -> tuple[datetime | None, datetime]:
     """Bind the window edges to instants, or answer 422 naming the fix.
 
@@ -97,27 +158,23 @@ def _bind_window(
     in the shape the framework uses for a bad parameter — ``loc`` says WHICH
     one, ``msg`` says what to do about it — so a client that reads a 422
     anywhere else in this API reads this one unchanged.
+
+    An omitted ``until`` is the moment the request is handled, in UTC, and it is
+    resolved HERE rather than by a ``Query(default_factory=...)``: a factory
+    still hands an in-process caller the factory's declaration object instead of
+    a datetime (see the parameter-declaration rule above), which is how a
+    ``Query(...)`` reached a SQL bind in CI run 35959902953. ``since`` stays
+    optional because only ``/overview`` treats it as one, and there ``_window``
+    turns it into a trailing ``days`` window.
     """
+    until = datetime.now(UTC) if until is None else until
     failures: list[dict] = []
-    bound: dict[str, datetime | None] = {}
-    for name, value in (("since", since), ("until", until)):
-        if value is None:
-            bound[name] = None
-            continue
-        try:
-            bound[name] = analytics_service.bind_instant(value, name)
-        except ValidationError as exc:
-            failures.append(
-                {
-                    "type": "value_error",
-                    "loc": ["query", name],
-                    "msg": f"Value error, {exc.message}",
-                    "input": value.isoformat(),
-                }
-            )
+    bound_since = None if since is None else _bind_edge(since, "since", failures)
+    bound_until = _bind_edge(until, "until", failures)
     if failures:
         raise HTTPException(status_code=422, detail=failures)
-    return bound["since"], bound["until"]
+    return bound_since, bound_until
+
 
 # Metrics whose value is money, so the response must carry the currency the
 # amount is denominated in.
@@ -195,8 +252,8 @@ async def list_metric_definitions(ctx: TenantCtxDep) -> dict:
 async def compute_metric(
     metric_name: str,
     ctx: TenantCtxDep,
-    since: datetime = Query(..., description=_SINCE_DOC),
-    until: datetime = Query(default_factory=lambda: datetime.now(UTC), description=_UNTIL_DOC),
+    since: Annotated[datetime, Query(description=_SINCE_DOC)],
+    until: Annotated[datetime | None, Query(description=_UNTIL_DOC)] = None,
 ) -> dict:
     """Compute a single canonical metric for the tenant's window.
 
@@ -235,11 +292,12 @@ async def compute_metric(
 @router.get("/revenue/summary")
 async def revenue_summary(
     ctx: TenantCtxDep,
-    since: datetime = Query(..., description=_SINCE_DOC),
-    until: datetime = Query(default_factory=lambda: datetime.now(UTC), description=_UNTIL_DOC),
-    timezone: str | None = Query(
-        default=None, description="IANA zone for the day label; defaults to the deployment zone"
-    ),
+    since: Annotated[datetime, Query(description=_SINCE_DOC)],
+    until: Annotated[datetime | None, Query(description=_UNTIL_DOC)] = None,
+    timezone: Annotated[
+        str | None,
+        Query(description="IANA zone for the day label; defaults to the deployment zone"),
+    ] = None,
 ) -> dict:
     """Gross and net money for one window, each figure named for its family.
 
@@ -258,16 +316,18 @@ async def revenue_summary(
 @router.get("/daily-series")
 async def daily_series(
     ctx: TenantCtxDep,
-    since: datetime = Query(..., description=_SINCE_DOC),
-    until: datetime = Query(default_factory=lambda: datetime.now(UTC), description=_UNTIL_DOC),
-    timezone: str | None = Query(
-        default=None,
-        description=(
-            "IANA zone the merchant counts days in. The day LABEL is local to "
-            "this zone; since/until remain instants. Omit it and the tenant's "
-            "declared zone is used, then the deployment's ANALYTICS_TIMEZONE."
+    since: Annotated[datetime, Query(description=_SINCE_DOC)],
+    until: Annotated[datetime | None, Query(description=_UNTIL_DOC)] = None,
+    timezone: Annotated[
+        str | None,
+        Query(
+            description=(
+                "IANA zone the merchant counts days in. The day LABEL is local to "
+                "this zone; since/until remain instants. Omit it and the tenant's "
+                "declared zone is used, then the deployment's ANALYTICS_TIMEZONE."
+            )
         ),
-    ),
+    ] = None,
 ) -> dict:
     """The merchant's daily revenue series — bucketed in the merchant's day."""
     since, until = _bind_window(since, until)
@@ -305,11 +365,9 @@ async def daily_series(
 @router.get("/inventory/stock-health")
 async def stock_health(
     ctx: TenantCtxDep,
-    low_stock_threshold: int = Query(
-        default=analytics_service.LOW_STOCK_THRESHOLD,
-        ge=0,
-        description="Available units at which a variant counts as low",
-    ),
+    low_stock_threshold: Annotated[
+        int, Query(ge=0, description="Available units at which a variant counts as low")
+    ] = analytics_service.LOW_STOCK_THRESHOLD,
 ) -> dict:
     """Replenishment signal with empty shelves split out of "low stock"."""
     health = await analytics_service.stock_health(
@@ -321,32 +379,34 @@ async def stock_health(
 @router.get("/overview")
 async def analytics_overview(
     ctx: TenantCtxDep,
-    days: int = Query(
-        default=30,
-        ge=1,
-        le=365,
-        description=(
-            "Trailing window in days; ignored when `since` is given. Counted "
-            "back from `until`, which is an instant, so the window it describes "
-            "is the same one on every connection."
+    days: Annotated[
+        int,
+        Query(
+            ge=1,
+            le=365,
+            description=(
+                "Trailing window in days; ignored when `since` is given. Counted "
+                "back from `until`, which is an instant, so the window it describes "
+                "is the same one on every connection."
+            ),
         ),
-    ),
-    since: datetime | None = Query(
-        default=None, description=f"{_SINCE_DOC} When given, overrides `days`."
-    ),
-    until: datetime = Query(default_factory=lambda: datetime.now(UTC), description=_UNTIL_DOC),
-    timezone: str | None = Query(
-        default=None,
-        description=(
-            "IANA zone the merchant counts days in — the day label is local to "
-            "it. Defaults to the deployment's ANALYTICS_TIMEZONE."
+    ] = 30,
+    since: Annotated[
+        datetime | None, Query(description=f"{_SINCE_DOC} When given, overrides `days`.")
+    ] = None,
+    until: Annotated[datetime | None, Query(description=_UNTIL_DOC)] = None,
+    timezone: Annotated[
+        str | None,
+        Query(
+            description=(
+                "IANA zone the merchant counts days in — the day label is local to "
+                "it. Defaults to the deployment's ANALYTICS_TIMEZONE."
+            )
         ),
-    ),
-    low_stock_threshold: int = Query(
-        default=analytics_service.LOW_STOCK_THRESHOLD,
-        ge=0,
-        description="Available units at which a variant counts as low",
-    ),
+    ] = None,
+    low_stock_threshold: Annotated[
+        int, Query(ge=0, description="Available units at which a variant counts as low")
+    ] = analytics_service.LOW_STOCK_THRESHOLD,
 ) -> dict:
     """One call for the analytics screen: money, orders, AOV, days, stock.
 
@@ -375,6 +435,16 @@ async def analytics_overview(
     There is deliberately no top-products key: no canonical reader computes one,
     and an invented field is how a screen ends up trusting a number that does
     not exist.
+
+    Every default in the signature above is a VALUE (``30`` days, no ``since``,
+    ``until`` resolved by ``_bind_window``, no zone, a threshold of
+    ``analytics_service.LOW_STOCK_THRESHOLD``) and not a ``Query(...)``
+    declaration. This is the handler that showed why: it used to declare
+    ``low_stock_threshold: int = Query(default=2, ...)``, and the seeded case
+    ``tests/test_analytics_overview.py::test_overview_reports_seeded_money_in_its_named_families``
+    calls it in-process without that argument, so the unconverted ``Query(2)``
+    rode into ``stock_health``'s ``:threshold`` bind. See the
+    parameter-declaration rule above.
     """
     since, until = _bind_window(since, until)
     zone = resolve_timezone(timezone)  # fail closed before the first query
