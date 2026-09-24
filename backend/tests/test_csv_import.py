@@ -426,19 +426,29 @@ def test_import_intake_routes_are_mounted() -> None:
     assert "/api/v1/imports/products" in paths, "product import has no route"
 
 
-def _write_ctx(session: AsyncSession, tenant_id: uuid.UUID) -> TenantContext:
+def _write_ctx(
+    session: AsyncSession, tenant_id: uuid.UUID, actor_user_id: uuid.UUID
+) -> TenantContext:
+    """The owner's request context.
+
+    ``actor_user_id`` MUST be a persisted ``users.id``: the import routes append
+    one audit row per run (§66, ``catalog/router._audit_import``) on BOTH the
+    green and the conflicted verdict, and ``audit_logs.actor_user_id`` carries a
+    foreign key to ``users``. A fabricated id is a CI-only
+    ForeignKeyViolationError.
+    """
     return TenantContext(
         session=session,
-        user=AuthedUser(id=uuid.uuid4(), tenant_id=tenant_id, role_code="owner"),
+        user=AuthedUser(id=actor_user_id, tenant_id=tenant_id, role_code="owner"),
         tenant_id=tenant_id,
         role_code="owner",
         permission_codes={"customers:write", "products:write"},
     )
 
 
-def _app(session: AsyncSession, tenant_id: uuid.UUID):
+def _app(session: AsyncSession, tenant_id: uuid.UUID, actor_user_id: uuid.UUID):
     app = create_app()
-    ctx = _write_ctx(session, tenant_id)
+    ctx = _write_ctx(session, tenant_id, actor_user_id)
 
     async def _override() -> TenantContext:
         return ctx
@@ -458,7 +468,7 @@ async def test_customer_import_route_drives_the_whole_path(
     db: AsyncSession, tenant_ctx
 ) -> None:
     tenant_id = tenant_ctx.tenant_id
-    app = _app(db, tenant_id)
+    app = _app(db, tenant_id, tenant_ctx.user.id)
 
     response = await _post_import(
         app, "/api/v1/imports/customers", "name,phone\nAisha,01001234567\n"
@@ -487,7 +497,7 @@ async def test_customer_import_route_conflict_is_not_a_green_lie(
         source="csv_import", tags=None,
     )
     await db.flush()
-    app = _app(db, tenant_id)
+    app = _app(db, tenant_id, tenant_ctx.user.id)
 
     response = await _post_import(
         app,
@@ -503,7 +513,7 @@ async def test_customer_import_route_conflict_is_not_a_green_lie(
 
 async def test_product_import_route_is_reachable(db: AsyncSession, tenant_ctx) -> None:
     tenant_id = tenant_ctx.tenant_id
-    app = _app(db, tenant_id)
+    app = _app(db, tenant_id, tenant_ctx.user.id)
 
     response = await _post_import(
         app, "/api/v1/imports/products", _PRODUCTS_CSV
@@ -516,6 +526,10 @@ async def test_product_import_route_is_reachable(db: AsyncSession, tenant_ctx) -
 
 async def test_import_route_requires_write_permission(db: AsyncSession, tenant_ctx) -> None:
     app = create_app()
+    # The fabricated id is deliberate and safe HERE and only here: the refusal
+    # happens in the require_permission DEPENDENCY (no membership, no route
+    # body, no audit row; the DomainError handler in app.main writes nothing
+    # to audit_logs), so the actor never reaches the FK.
     ctx = TenantContext(
         session=db,
         user=AuthedUser(id=uuid.uuid4(), tenant_id=tenant_ctx.tenant_id, role_code="viewer"),

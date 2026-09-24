@@ -490,15 +490,30 @@ def test_the_column_carries_a_shape_check_and_says_why() -> None:
 # ============================================ driven over a real database ===
 
 
-def _client(db: AsyncSession, *, ctx_tenant_id: uuid.UUID, perms: set[str]) -> AsyncClient:
+def _client(
+    db: AsyncSession,
+    *,
+    ctx_tenant_id: uuid.UUID,
+    ctx_user_id: uuid.UUID,
+    perms: set[str],
+) -> AsyncClient:
     """The real ASGI stack with ONLY the auth context swapped, so the route, its
-    gate and its tenant-match rule are the things under test."""
+    gate and its tenant-match rule are the things under test.
+
+    ``ctx_user_id`` must be a PERSISTED ``users.id`` whenever the call reaches
+    the settings service: a zone change appends one audit row (§66) and
+    ``audit_logs.actor_user_id`` carries a foreign key to ``users`` — a
+    fabricated id is a CI-only ForeignKeyViolationError. The refusal paths
+    (permission gate, tenant mismatch, unresolvable zone) raise before any
+    audit write, but they pass the real id too so the rule never depends on
+    which branch the request takes.
+    """
     app: FastAPI = create_app()
 
     async def _ctx() -> TenantContext:
         return TenantContext(
             session=db,
-            user=AuthedUser(id=uuid.uuid4(), tenant_id=ctx_tenant_id, role_code="owner"),
+            user=AuthedUser(id=ctx_user_id, tenant_id=ctx_tenant_id, role_code="owner"),
             tenant_id=ctx_tenant_id,
             role_code="owner",
             permission_codes=perms,
@@ -594,7 +609,12 @@ async def test_clearing_the_zone_returns_the_tenant_to_the_deployment(
 async def test_the_settings_route_sets_and_reads_the_zone(
     db: AsyncSession, tenant_ctx
 ) -> None:
-    async with _client(db, ctx_tenant_id=tenant_ctx.tenant_id, perms={"settings:write"}) as client:
+    async with _client(
+        db,
+        ctx_tenant_id=tenant_ctx.tenant_id,
+        ctx_user_id=tenant_ctx.user.id,
+        perms={"settings:write"},
+    ) as client:
         written = await client.put(
             f"/api/v1/tenants/{tenant_ctx.tenant_id}/timezone",
             json={"timezone": "Africa/Cairo"},
@@ -605,7 +625,12 @@ async def test_the_settings_route_sets_and_reads_the_zone(
         "timezone": "Africa/Cairo",
     }
 
-    async with _client(db, ctx_tenant_id=tenant_ctx.tenant_id, perms={"settings:read"}) as client:
+    async with _client(
+        db,
+        ctx_tenant_id=tenant_ctx.tenant_id,
+        ctx_user_id=tenant_ctx.user.id,
+        perms={"settings:read"},
+    ) as client:
         read = await client.get(f"/api/v1/tenants/{tenant_ctx.tenant_id}/timezone")
     assert read.status_code == 200, read.text
     body: dict[str, Any] = read.json()
@@ -620,7 +645,12 @@ async def test_the_settings_route_reports_no_zone_as_null(
     every analytics response as `timezone` + `timezone_source`, which is the
     layer that actually bucketed the numbers the merchant is looking at."""
     monkeypatch.setenv(REPORTING_TZ_ENV, DEPLOYMENT)
-    async with _client(db, ctx_tenant_id=tenant_ctx.tenant_id, perms={"settings:read"}) as client:
+    async with _client(
+        db,
+        ctx_tenant_id=tenant_ctx.tenant_id,
+        ctx_user_id=tenant_ctx.user.id,
+        perms={"settings:read"},
+    ) as client:
         read = await client.get(f"/api/v1/tenants/{tenant_ctx.tenant_id}/timezone")
 
     assert read.status_code == 200, read.text
@@ -628,7 +658,12 @@ async def test_the_settings_route_reports_no_zone_as_null(
 
 
 async def test_a_route_refuses_a_zone_it_cannot_resolve(db: AsyncSession, tenant_ctx) -> None:
-    async with _client(db, ctx_tenant_id=tenant_ctx.tenant_id, perms={"settings:write"}) as client:
+    async with _client(
+        db,
+        ctx_tenant_id=tenant_ctx.tenant_id,
+        ctx_user_id=tenant_ctx.user.id,
+        perms={"settings:write"},
+    ) as client:
         response = await client.put(
             f"/api/v1/tenants/{tenant_ctx.tenant_id}/timezone",
             json={"timezone": "Mars/Olympus_Mons"},
@@ -639,7 +674,12 @@ async def test_a_route_refuses_a_zone_it_cannot_resolve(db: AsyncSession, tenant
 async def test_another_tenants_caller_cannot_set_the_zone(
     db: AsyncSession, tenant_ctx
 ) -> None:
-    async with _client(db, ctx_tenant_id=uuid.uuid4(), perms={"settings:write"}) as client:
+    async with _client(
+        db,
+        ctx_tenant_id=uuid.uuid4(),
+        ctx_user_id=tenant_ctx.user.id,
+        perms={"settings:write"},
+    ) as client:
         response = await client.put(
             f"/api/v1/tenants/{tenant_ctx.tenant_id}/timezone",
             json={"timezone": "Africa/Cairo"},
@@ -650,7 +690,12 @@ async def test_another_tenants_caller_cannot_set_the_zone(
 async def test_a_writer_without_the_permission_is_refused(
     db: AsyncSession, tenant_ctx
 ) -> None:
-    async with _client(db, ctx_tenant_id=tenant_ctx.tenant_id, perms={"settings:read"}) as client:
+    async with _client(
+        db,
+        ctx_tenant_id=tenant_ctx.tenant_id,
+        ctx_user_id=tenant_ctx.user.id,
+        perms={"settings:read"},
+    ) as client:
         response = await client.put(
             f"/api/v1/tenants/{tenant_ctx.tenant_id}/timezone",
             json={"timezone": "Africa/Cairo"},
