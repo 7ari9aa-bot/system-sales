@@ -28,7 +28,7 @@ import uuid
 from typing import Any
 
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import select
+from sqlalchemy import Integer, cast, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events.schemas import DOMAIN_EVENT_TYPES, EVENT_TYPES, deserialize
@@ -130,6 +130,14 @@ async def _stored_version(db: AsyncSession, order_id: uuid.UUID) -> int:
 async def _events(
     db: AsyncSession, order_id: uuid.UUID, event_type: str = EVENT_TYPE
 ) -> list[OutboxEvent]:
+    """The aggregate's event stream, in the order the events happened.
+
+    Ordered by §153 `meta.aggregate_version`, NOT by the row id: `id` is a
+    `uuid4`, so ordering by it returns rows in an order that only looks stable.
+    CI caught a test asserting `events[1]` is the newest and getting whichever
+    random UUID sorted second.
+    """
+    version = cast(OutboxEvent.meta["aggregate_version"].astext, Integer)
     return list(
         (
             await db.execute(
@@ -139,7 +147,7 @@ async def _events(
                     OutboxEvent.aggregate_id == order_id,
                     OutboxEvent.payload["event_type"].astext == event_type,
                 )
-                .order_by(OutboxEvent.id.asc())
+                .order_by(version.asc())
             )
         )
         .scalars()
