@@ -25,6 +25,11 @@ router = APIRouter(prefix="/workflows", tags=["automation"])
 
 WriteCtx = Annotated[TenantContext, Depends(require_permission("settings:write"))]
 
+# Query params are declared `Annotated[type, Query(...)] = <value>`, never
+# `name: type = Query(...)` — see the parameter-declaration rule in
+# app/modules/analytics/router.py and the full-app gate in
+# tests/test_route_parameter_declarations.py.
+
 
 class WorkflowCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
@@ -82,7 +87,7 @@ def _execution_dict(execution: WorkflowExecution) -> dict:
 @router.get("")
 async def list_workflows(
     ctx: TenantCtxDep,
-    status: str | None = Query(default=None, pattern="^(draft|active|paused|archived)$"),
+    status: Annotated[str | None, Query(pattern="^(draft|active|paused|archived)$")] = None,
 ):
     """List this tenant's workflows (optionally filtered by status)."""
     stmt = select(Workflow).where(Workflow.tenant_id == ctx.tenant_id)
@@ -201,7 +206,7 @@ async def list_workflow_versions(ctx: TenantCtxDep, workflow_id: uuid.UUID):
 async def list_workflow_executions(
     ctx: TenantCtxDep,
     workflow_id: uuid.UUID,
-    limit: int = Query(default=50, ge=1, le=200),
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ):
     """List executions of one workflow (newest first)."""
     await WorkflowService.get(ctx.session, ctx.tenant_id, workflow_id)

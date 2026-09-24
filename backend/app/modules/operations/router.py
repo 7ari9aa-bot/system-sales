@@ -24,6 +24,11 @@ sla_router = APIRouter(prefix="/sla", tags=["sla"])
 
 SettingsCtx = Annotated[TenantContext, Depends(require_permission("settings:write"))]
 
+# Query params are declared `Annotated[type, Query(...)] = <value>` (a required
+# one keeps no default), never `name: type = Query(...)` — see the
+# parameter-declaration rule in app/modules/analytics/router.py and the full-app
+# gate in tests/test_route_parameter_declarations.py.
+
 
 class TaskCreate(BaseModel):
     title: str = Field(min_length=1, max_length=255)
@@ -112,7 +117,9 @@ async def update_task_status(ctx: TenantCtxDep, task_id: uuid.UUID, body: TaskUp
 
 @search_router.get("")
 async def global_search(
-    ctx: TenantCtxDep, q: str = Query(min_length=1, max_length=200), limit: int = 20
+    ctx: TenantCtxDep,
+    q: Annotated[str, Query(min_length=1, max_length=200)],
+    limit: int = 20,
 ):
     """§45: unified search through the SearchPort (engine-agnostic)."""
     hits = await get_search().search(ctx.session, ctx.tenant_id, q, limit=limit)
@@ -306,7 +313,7 @@ async def upsert_business_calendar(
 
 
 @sla_router.get("/risk")
-async def sla_risk(ctx: TenantCtxDep, limit: int = Query(default=50, ge=1, le=200)):
+async def sla_risk(ctx: TenantCtxDep, limit: Annotated[int, Query(ge=1, le=200)] = 50):
     """Conversations whose first-response SLA is running, breached or at risk.
 
     This is the query behind the inbox "SLA risk" view: without it the clock
@@ -415,7 +422,7 @@ async def list_jobs(
     ctx: TenantCtxDep,
     status: str | None = None,
     kind: str | None = None,
-    limit: int = Query(default=100, ge=1, le=200),
+    limit: Annotated[int, Query(ge=1, le=200)] = 100,
 ):
     """Newest-first jobs for the tenant, optionally filtered by status/kind."""
     stmt = select(Job).where(Job.tenant_id == ctx.tenant_id)
@@ -492,11 +499,13 @@ async def fairness_usage(ctx: TenantCtxDep):
 @router.get("/fairness/check")
 async def fairness_check(
     ctx: TenantCtxDep,
-    resource: str = Query(
-        ...,
-        description="ai_tokens | messages_outbound | storage_bytes | worker_seconds",
-    ),
-    units: int = Query(default=1, ge=1),
+    resource: Annotated[
+        str,
+        Query(
+            description="ai_tokens | messages_outbound | storage_bytes | worker_seconds",
+        ),
+    ],
+    units: Annotated[int, Query(ge=1)] = 1,
 ):
     """§144: pre-flight check — does the tenant have `units` remaining?"""
     from app.core.fairness import ResourceType, check_budget

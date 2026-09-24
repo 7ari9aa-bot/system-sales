@@ -34,6 +34,11 @@ router = APIRouter(prefix="/ai", tags=["ai"])
 
 SettingsCtx = Annotated[TenantContext, Depends(require_permission("settings:write"))]
 
+# Query params are declared `Annotated[type, Query(...)] = <value>` (a required
+# one keeps no default), never `name: type = Query(...)` — see the
+# parameter-declaration rule in app/modules/analytics/router.py and the full-app
+# gate in tests/test_route_parameter_declarations.py.
+
 
 @router.post("/knowledge", status_code=201)
 async def ingest_knowledge(ctx: SettingsCtx, body: KnowledgeIngestRequest) -> dict:
@@ -51,8 +56,8 @@ async def ingest_knowledge(ctx: SettingsCtx, body: KnowledgeIngestRequest) -> di
 @router.get("/knowledge/search")
 async def search_knowledge(
     ctx: TenantCtxDep,
-    q: str = Query(min_length=1),
-    limit: int = Query(default=5, ge=1, le=50),
+    q: Annotated[str, Query(min_length=1)],
+    limit: Annotated[int, Query(ge=1, le=50)] = 5,
 ) -> list[dict]:
     results = await knowledge.search_knowledge(ctx.session, ctx.tenant_id, q, limit=limit)
     return [
@@ -139,7 +144,7 @@ async def usage_summary(ctx: TenantCtxDep, days: Annotated[int, Query(ge=1, le=3
 async def list_knowledge(
     ctx: SettingsCtx,
     cursor: str | None = None,
-    limit: int = Query(default=50, ge=1, le=200),
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ):
     stmt = select(KnowledgeItem).where(KnowledgeItem.tenant_id == ctx.tenant_id)
     items, next_cursor = await paginate(ctx.session, stmt, cursor=cursor, limit=limit)
@@ -211,10 +216,10 @@ async def _load_memory(ctx: TenantContext, memory_id: uuid.UUID) -> Memory:
 @router.get("/memories")
 async def list_memories(
     ctx: SettingsCtx,
-    customer_id: uuid.UUID | None = Query(default=None),
-    status: str | None = Query(default=None, description="active | invalidated"),
+    customer_id: Annotated[uuid.UUID | None, Query()] = None,
+    status: Annotated[str | None, Query(description="active | invalidated")] = None,
     cursor: str | None = None,
-    limit: int = Query(default=50, ge=1, le=200),
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ):
     stmt = select(Memory).where(Memory.tenant_id == ctx.tenant_id)
     if customer_id is not None:
@@ -320,7 +325,7 @@ def _approval_out(a) -> dict:
 @router.get("/approvals")
 async def list_approvals(
     ctx: TenantCtxDep,
-    status: str | None = Query(default=None, description="PENDING | APPROVED | ..."),
+    status: Annotated[str | None, Query(description="PENDING | APPROVED | ...")] = None,
 ):
     rows, truncated = await ApprovalService.list_for_tenant(
         ctx.session, ctx.tenant_id, status=status
@@ -493,7 +498,7 @@ def _evaluation_out(ev) -> dict:
 @router.get("/evaluations")
 async def list_eval(
     ctx: TenantCtxDep,
-    agent_id: uuid.UUID | None = Query(default=None),
+    agent_id: Annotated[uuid.UUID | None, Query()] = None,
 ) -> dict:
     rows = await list_evaluations(ctx.session, ctx.tenant_id, agent_id=agent_id)
     return {"items": [_evaluation_out(ev) for ev in rows]}

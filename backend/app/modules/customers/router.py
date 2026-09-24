@@ -30,6 +30,11 @@ from app.modules.platform.models import Integration
 router = APIRouter(tags=["customers"])
 platform_router = APIRouter(tags=["platform"])
 
+# Query params are declared `Annotated[type, Query(...)] = <value>`, never
+# `name: type = Query(...)` — see the parameter-declaration rule in
+# app/modules/analytics/router.py and the full-app gate in
+# tests/test_route_parameter_declarations.py.
+
 WriteCtx = Annotated[TenantContext, Depends(require_permission("customers:write"))]
 
 # The contact report renames a phone before it reports it, and §146 redacts by
@@ -60,7 +65,7 @@ async def list_customers(
     search: str | None = None,
     tag: str | None = None,
     cursor: str | None = None,
-    limit: int = Query(default=50, ge=1, le=200),
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ):
     before_created_at, before_id = decode_cursor(cursor) if cursor else (None, None)
     rows = await CustomerService.list_customers(
@@ -85,7 +90,7 @@ async def list_customers(
 @router.get("/customers/contact-data-issues")
 async def list_contact_data_issues(
     ctx: WriteCtx,
-    limit: int = Query(default=200, ge=1, le=500),
+    limit: Annotated[int, Query(ge=1, le=500)] = 200,
 ):
     """M12: the rows the contact backfill could not fix on its own.
 
@@ -215,8 +220,8 @@ async def get_customer(ctx: TenantCtxDep, customer_id: UUID, response: Response)
 async def get_customer_360(
     ctx: TenantCtxDep,
     customer_id: UUID,
-    limit: int = Query(default=20, ge=1, le=100),
-    timeline_limit: int = Query(default=60, ge=1, le=200),
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    timeline_limit: Annotated[int, Query(ge=1, le=200)] = 60,
 ):
     """Spec W5: one composed record — profile, orders, payments, conversations,
     tasks and a merged timeline, so the record page needs a single round trip."""

@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel, Field
@@ -18,6 +19,11 @@ from app.modules.orders.returns import ReturnsService
 from app.modules.orders.service import OrderService
 
 router = APIRouter(tags=["orders"])
+
+# Query params are declared `Annotated[type, Query(...)] = <value>`, never
+# `name: type = Query(...)` — see the parameter-declaration rule in
+# app/modules/analytics/router.py and the full-app gate in
+# tests/test_route_parameter_declarations.py.
 
 
 class StatusChangeRequest(BaseModel):
@@ -37,11 +43,11 @@ async def list_orders(
     customer_id: uuid.UUID | None = None,
     # M8: the three things staff actually search orders by. Each narrows the
     # tenant-scoped page the endpoint already returns — never widens it.
-    number: str | None = Query(default=None, max_length=63),
+    number: Annotated[str | None, Query(max_length=63)] = None,
     created_from: datetime | None = None,
     created_to: datetime | None = None,
     cursor: str | None = None,
-    limit: int = Query(default=50, ge=1, le=200),
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ):
     before_created_at, before_id = decode_cursor(cursor) if cursor else (None, None)
     rows = await OrderService.list_orders(

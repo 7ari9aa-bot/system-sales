@@ -8,6 +8,7 @@ import logging
 import time
 import uuid
 from datetime import datetime
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, Field
@@ -35,6 +36,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["inbox"])
 public_router = APIRouter(tags=["channels"])
 webhook_router = APIRouter(tags=["channels"])
+
+# Query params are declared `Annotated[type, Query(...)] = <value>`, never
+# `name: type = Query(...)` — see the parameter-declaration rule in
+# app/modules/analytics/router.py and the full-app gate in
+# tests/test_route_parameter_declarations.py.
 
 
 # ---------- staff inbox ----------
@@ -100,7 +106,7 @@ async def list_conversations(
     status: str | None = None,
     customer_id: uuid.UUID | None = None,
     cursor: str | None = None,
-    limit: int = Query(default=50, ge=1, le=200),
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ):
     """The conversation list, served by the §137 inbox read model.
 
@@ -149,7 +155,7 @@ async def inbox_query(
     channel: str | None = None,
     customer_id: uuid.UUID | None = None,
     cursor: str | None = None,
-    limit: int = Query(default=50, ge=1, le=200),
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ):
     """§137 ``InboxQuery``: the whole inbox page in one read.
 
@@ -184,7 +190,7 @@ async def list_messages(
     ctx: TenantCtxDep,
     conversation_id: uuid.UUID,
     cursor: str | None = None,
-    limit: int = Query(default=100, ge=1, le=200),
+    limit: Annotated[int, Query(ge=1, le=200)] = 100,
 ):
     before_created_at, before_id = decode_cursor(cursor) if cursor else (None, None)
     # The service fetches newest-first (keyset) and returns oldest-first for
@@ -494,7 +500,7 @@ async def channel_webhook(channel: str, request: Request, session: DbSession):
 
 @router.post("/conversations/messages/reconcile")
 async def reconcile_messages(
-    minutes: int = Query(default=15, ge=1, le=1440),
+    minutes: Annotated[int, Query(ge=1, le=1440)] = 15,
     ctx: TenantContext = Depends(require_permission("conversations:write")),
 ):
     """Reconcile messages stuck in 'unknown' or 'sending' for longer than threshold."""

@@ -29,6 +29,11 @@ router = APIRouter(prefix="/privacy", tags=["privacy"])
 ReadCtx = Annotated[TenantContext, Depends(require_permission("customers:read"))]
 WriteCtx = Annotated[TenantContext, Depends(require_permission("customers:write"))]
 
+# Query params are declared `Annotated[type, Query(...)] = <value>`, never
+# `name: type = Query(...)` — see the parameter-declaration rule in
+# app/modules/analytics/router.py and the full-app gate in
+# tests/test_route_parameter_declarations.py.
+
 
 class ConsentGrant(BaseModel):
     customer_id: uuid.UUID
@@ -81,7 +86,7 @@ async def list_consents(
     ctx: ReadCtx,
     customer_id: uuid.UUID | None = None,
     purpose: str | None = None,
-    status: str | None = Query(default=None, pattern="^(granted|revoked|expired)$"),
+    status: Annotated[str | None, Query(pattern="^(granted|revoked|expired)$")] = None,
 ):
     """List the consent ledger, filtered by customer / purpose / status."""
     stmt = select(Consent).where(Consent.tenant_id == ctx.tenant_id)
@@ -152,12 +157,10 @@ async def open_data_request(ctx: WriteCtx, body: DataRequestCreate):
 @router.get("/data-requests")
 async def list_data_requests(
     ctx: ReadCtx,
-    status: str | None = Query(
-        default=None, pattern="^(pending|in_progress|completed|rejected|failed)$"
-    ),
-    request_type: str | None = Query(
-        default=None, pattern="^(access|export|delete|rectify)$"
-    ),
+    status: Annotated[
+        str | None, Query(pattern="^(pending|in_progress|completed|rejected|failed)$")
+    ] = None,
+    request_type: Annotated[str | None, Query(pattern="^(access|export|delete|rectify)$")] = None,
 ):
     """List data-subject requests, filtered by status / type."""
     stmt = select(DataSubjectRequest).where(DataSubjectRequest.tenant_id == ctx.tenant_id)

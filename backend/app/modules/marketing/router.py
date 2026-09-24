@@ -35,6 +35,11 @@ analytics_router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 WriteCtx = Annotated[TenantContext, Depends(require_permission("marketing:write"))]
 
+# Query params are declared `Annotated[type, Query(...)] = <value>`, never
+# `name: type = Query(...)` — see the parameter-declaration rule in
+# app/modules/analytics/router.py (CI run 35959902953) and the full-app gate in
+# tests/test_route_parameter_declarations.py.
+
 #: ADR-001/§47 — an AMOUNT leaves as a Decimal string, the same helper the read
 #: models use, so this module has exactly one money-to-wire rule. A ratio
 #: (``budget_roas``) and a count (``conversions``) are not money and are never
@@ -97,7 +102,7 @@ async def list_campaigns(
     ctx: TenantCtxDep,
     status: str | None = None,
     cursor: str | None = None,
-    limit: int = Query(default=50, ge=1, le=200),
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ):
     before_created_at, before_id = decode_cursor(cursor) if cursor else (None, None)
     rows = await MarketingService.list_campaigns(
@@ -240,8 +245,8 @@ async def record_conversion(ctx: WriteCtx, body: ConversionRequest):
 async def list_campaign_conversions(
     campaign_id: uuid.UUID,
     ctx: TenantCtxDep,
-    limit: int = Query(default=50, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ):
     """Conversions this campaign's touchpoints took part in.
 
@@ -297,13 +302,15 @@ async def analytics_summary(ctx: TenantCtxDep, days: int = 30):
 async def analytics_daily_orders(
     ctx: TenantCtxDep,
     days: int = 30,
-    timezone: str | None = Query(
-        default=None,
-        description=(
-            "IANA zone the merchant counts days in — the day label is local to "
-            "it. Defaults to the deployment's ANALYTICS_TIMEZONE (UTC)."
+    timezone: Annotated[
+        str | None,
+        Query(
+            description=(
+                "IANA zone the merchant counts days in — the day label is local to "
+                "it. Defaults to the deployment's ANALYTICS_TIMEZONE (UTC)."
+            )
         ),
-    ),
+    ] = None,
 ):
     """Daily buckets on the MERCHANT's day, with gross/net money named apart."""
     return await analytics.daily_orders(
@@ -361,7 +368,7 @@ async def list_journey_runs(
     journey_id: uuid.UUID,
     ctx: TenantCtxDep,
     status: str | None = None,
-    limit: int = Query(default=50, ge=1, le=200),
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ):
     """List journey runs for a journey."""
     from sqlalchemy import select
@@ -466,7 +473,7 @@ async def get_attribution(
     ctx: TenantCtxDep,
     campaign_id: uuid.UUID | None = None,
     conversion_id: uuid.UUID | None = None,
-    days: int = Query(default=30, ge=1, le=365),
+    days: Annotated[int, Query(ge=1, le=365)] = 30,
 ):
     """§82: Attribution report for a campaign or conversion."""
     if conversion_id:
