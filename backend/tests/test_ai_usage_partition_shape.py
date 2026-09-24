@@ -37,7 +37,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import partitioning
-from app.modules.ai.models import AIUsage
+from app.core.model_kit import AI_COST
+from app.modules.ai.models import Agent, AIUsage
 
 BACKEND_ROOT = pathlib.Path(partitioning.__file__).resolve().parents[2]
 VERSIONS_DIR = BACKEND_ROOT / "migrations" / "versions"
@@ -275,18 +276,48 @@ async def _children(db: AsyncSession) -> list[tuple[str, str]]:
     return [(r[0], r[1] or "") for r in rows]
 
 
+async def _relkind(db: AsyncSession, relation: str) -> str:
+    """What the catalog says a relation IS, as a Python `str`.
+
+    THIS IS THE TEST'S OWN BUG, FIXED IN SQL. `pg_class.relkind` is declared
+    with the internal `"char"` type (OID 18, the single-byte one that predates
+    `char(1)`), not with `text`. asyncpg has no codec for that type, so it hands
+    the value back undecoded, as `bytes`. CI run 35959902953 showed exactly that:
+    `AssertionError: ai_usage is relkind=b'p'`, where `b'p' == 'p'` is False.
+    The database was right and the comparison was wrong; the table WAS
+    partitioned.
+
+    The cast belongs in the SQL, not a `.decode()` at the assertion: the TYPE is
+    what was wrong, at the source, and `relkind::text` makes the statement return
+    the thing the assertion actually means. A `.decode()` in Python would also
+    raise `AttributeError` the moment the query hands back a `str` (another
+    driver, or the column selected through something that runs its output
+    function), which is the wrong kind of red for a shape pin. The repo already
+    lets Postgres do this typing — `tests/test_hierarchy_rls.py` filters on
+    `relkind = 'r'` inside the WHERE clause; this is the same posture one level up.
+    """
+    kind = (
+        await db.execute(
+            text("SELECT c.relkind::text FROM pg_class c WHERE c.oid = to_regclass(:name)"),
+            {"name": relation},
+        )
+    ).scalar_one_or_none()
+    assert kind is not None, f"{relation} is not in the catalog at all"
+    return kind
+
+
 async def test_ai_usage_parent_is_range_partitioned_on_period_date(db: AsyncSession) -> None:
     """Not 'a table with a comment saying partitioned' — `relkind = 'p'`."""
-    row = (
+    assert await _relkind(db, PARENT) == "p", "ai_usage is not a partitioned table"
+    partkey = (
         await db.execute(
             text(
-                "SELECT c.relkind, pg_get_partkeydef(c.oid) FROM pg_class c "
+                "SELECT pg_get_partkeydef(c.oid) FROM pg_class c "
                 "WHERE c.oid = 'public.ai_usage'::regclass"
             )
         )
-    ).one()
-    assert row[0] == "p", f"ai_usage is relkind={row[0]!r}: not a partitioned table"
-    assert row[1].upper() == "RANGE (period_date)", row[1]
+    ).scalar_one()
+    assert partkey.upper() == "RANGE (period_date)", partkey
 
 
 async def test_partitions_are_monthly_bounds_plus_a_default(db: AsyncSession) -> None:
@@ -373,13 +404,17 @@ async def test_primary_key_and_natural_key_include_the_partition_key(db: AsyncSe
 
 
 async def test_the_legacy_snapshot_survives_as_a_plain_table(db: AsyncSession) -> None:
-    row = (
-        await db.execute(
-            text("SELECT c.relkind FROM pg_class c WHERE c.oid = to_regclass(:name)"),
-            {"name": f"public.{partitioning.LEGACY_SNAPSHOT_TABLE}"},
-        )
-    ).one()
-    assert row[0] == "r", "the rollback copy must be a real, untouched table"
+    """`r` = an ordinary table — see `_relkind` for why the cast is in the SQL.
+
+    The snapshot must be `r` and NOT `p`: it is the rollback copy, and a
+    partitioned snapshot would mean the conversion renamed the new parent onto
+    the old name and left nothing to roll back to.
+    """
+    kind = await _relkind(db, f"public.{partitioning.LEGACY_SNAPSHOT_TABLE}")
+    assert kind == "r", (
+        f"the rollback copy is relkind={kind!r}, not a real untouched table — "
+        "if it is 'p' the rename and the new parent share a name"
+    )
 
 
 async def test_rows_route_to_their_own_month_and_orphans_to_default(
@@ -457,17 +492,40 @@ async def test_the_daily_upsert_still_converges_on_a_partitioned_table(
     in the same month partition, so the counter still accumulates on one row.
     If this test ever shows two rows, the partitioning is wrong for this table
     and must be reverted, not patched around.
+
+    WHY THE TEST'S OLD PREMISE WAS WRONG (CI 35959902953): it invented
+    `agent_id = uuid.uuid4()` and `record_usage` put that into `ai_usage`, which
+    carries a real foreign key — `ai_usage_agent_id_fkey ... REFERENCES
+    public.agents (id) ON DELETE SET NULL`, re-declared by the conversion and
+    present since `0b79f7470c1a`. Postgres checks the FK on the leaf the row
+    routes into, hence "violates foreign key constraint ... on table
+    ai_usage_2026_09". That is the product being correct: an FK to a table that
+    does not have the row must fail, whatever the partitioning is. The test needed
+    a genuine parent row, so it now creates one — the same way
+    `test_ai_cost_guardrail.py` does.
+
+    Binding NULL instead (the column IS nullable) would have made the test pass
+    for a false reason: `uq_ai_usage_tenant_period_agent` is a plain UNIQUE, and
+    a partitioned table's unique index compares NULLs as DISTINCT, so
+    `ON CONFLICT (tenant_id, period_date, agent_id)` can never match a row whose
+    `agent_id` IS NULL. Three calls would write three rows, and the convergence
+    this file exists to pin would not be under test at all.
     """
     from decimal import Decimal
 
     from app.modules.ai.usage import record_usage
 
-    agent_id = uuid.uuid4()
+    agent = Agent(
+        tenant_id=tenant_ctx.tenant_id, name="Partition Upsert Probe", model="fast"
+    )
+    db.add(agent)
+    await db.flush()
+
     for _ in range(3):
         await record_usage(
             db,
             tenant_ctx.tenant_id,
-            agent_id=agent_id,
+            agent_id=agent.id,
             tokens_in=100,
             tokens_out=5,
             # `record_usage` is the port into a Numeric(18,8) MONEY column, so it
@@ -482,7 +540,7 @@ async def test_the_daily_upsert_still_converges_on_a_partitioned_table(
                 "SELECT count(*), sum(tokens_in), sum(model_calls) FROM ai_usage "
                 "WHERE tenant_id = :t AND agent_id = :a"
             ),
-            {"t": tenant_ctx.tenant_id, "a": agent_id},
+            {"t": tenant_ctx.tenant_id, "a": agent.id},
         )
     ).one()
     assert rows[0] == 1, "the upsert split into duplicate rows after partitioning"
@@ -495,7 +553,7 @@ async def test_the_daily_upsert_still_converges_on_a_partitioned_table(
                 "SELECT tableoid::regclass::text, period_date FROM ai_usage "
                 "WHERE tenant_id = :t AND agent_id = :a"
             ),
-            {"t": tenant_ctx.tenant_id, "a": agent_id},
+            {"t": tenant_ctx.tenant_id, "a": agent.id},
         )
     ).one()
     today = datetime.now(UTC).date()
@@ -509,6 +567,18 @@ async def test_cost_precision_and_money_shape_survive_the_conversion(
     """`LIKE ... INCLUDING ALL` must have carried NUMERIC(18,8) and the server
     defaults, or every INSERT through the ORM starts failing on a column the
     model thinks the database fills.
+
+    THE COMPARISON WAS THE BUG, NOT THE SHAPE (CI 35959902953):
+    `assert ['numeric', 18, 8] == ('numeric', 18, 8)`. `numeric_precision` and
+    `numeric_scale` are `information_schema.columns` columns typed
+    `smallint`/`integer`, and they arrive as the Python `int`s the assertion
+    already wanted; what differed was the CONTAINER — `for name, *rest in cols`
+    binds `rest` to a `list`, and a list never equals a tuple. Against a fake
+    session that returned tuples the file never ran, so only a real database
+    could show it. Rows from a database are tuples, so the local map now holds
+    tuples; and the expected precision/scale are read off `AI_COST`, the type
+    the ORM column actually uses, so this pins the DB against the money type
+    rather than against a second copy of the numbers 18 and 8.
     """
     cols = (
         await db.execute(
@@ -519,8 +589,9 @@ async def test_cost_precision_and_money_shape_survive_the_conversion(
             )
         )
     ).all()
-    shape = {name: rest for name, *rest in cols}
-    assert shape["cost"][:3] == ("numeric", 18, 8), shape["cost"]
+    shape = {name: tuple(rest) for name, *rest in cols}
+    assert AI_COST.precision == 18 and AI_COST.scale == 8, "AI_COST itself drifted"
+    assert shape["cost"][:3] == ("numeric", AI_COST.precision, AI_COST.scale), shape["cost"]
     for name in ("tokens_in", "tokens_out", "model_calls", "created_at"):
         assert shape[name][3] == "NO", name
         assert shape[name][4] is True, f"{name} lost its server_default"

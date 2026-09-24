@@ -551,7 +551,16 @@ async def test_the_write_needs_the_analytics_write_scope(
 # It skips locally without DATABASE_URL_APP_ADMIN and runs in CI.
 
 
-def _ctx(db: AsyncSession, tenant_ctx, permissions: set[str]) -> TenantContext:
+def _context_for(db: AsyncSession, tenant_ctx, permissions: set[str]) -> TenantContext:
+    """A request context whose tenancy IS the fixture's, for the DB-gated cases.
+
+    Two things must hold at once there, and they are easy to get wrong separately:
+    the ``tenant_id`` the route passes to ``retention`` must be the tenant the
+    transaction's ``app.tenant_id`` GUC is bound to (``tenant_ctx`` does that
+    binding through ``bind_tenant``), and the session must be the same one the
+    GUC was set on. ``get_tenant_ctx`` does both in production; an override does
+    neither unless the test says so.
+    """
     return TenantContext(
         session=db,
         user=AuthedUser(
@@ -563,14 +572,43 @@ def _ctx(db: AsyncSession, tenant_ctx, permissions: set[str]) -> TenantContext:
     )
 
 
-async def _position_over_real_db(db: AsyncSession, tenant_ctx) -> dict:
+def _app_for(
+    db: AsyncSession, tenant_ctx, permissions: set[str]
+):
+    """The app, driven over a REAL database with the fixture's own tenancy.
+
+    The module-level ``_app`` is for the DB-free cases, where the fabricated
+    ``TENANT``/``ACTOR`` constants cost nothing. Over a real database both
+    constants break, in two different ways, and CI 35959902953 showed them
+    together:
+
+    * ``retention_policies`` is FORCE RLS, so a row whose ``tenant_id`` is not
+      the transaction's ``app.tenant_id`` GUC — which the ``db``/``tenant_ctx``
+      fixtures bind to ``tenant_ctx.tenant_id`` — is refused on INSERT with
+      "new row violates row-level security policy".
+    * ``audit_logs.actor_user_id`` carries a foreign key to ``users``, so the
+      fabricated ``ACTOR`` is a ``ForeignKeyViolationError`` on the audit row
+      every write appends (§66).
+
+    The override is named ``_override`` and not ``_ctx``: an earlier version
+    shadowed the module-level builder with its own zero-arg override, and
+    Python made the inner name local to the scope, so the builder call resolved
+    to the override — ``TypeError: _ctx() takes 0 positional arguments but 3
+    were given``.
+    """
     app = create_app()
 
-    async def _ctx() -> TenantContext:
-        return _ctx(db, tenant_ctx, {"analytics:read", "analytics:write"})
+    async def _override() -> TenantContext:
+        return _context_for(db, tenant_ctx, permissions)
 
-    app.dependency_overrides[get_tenant_ctx] = _ctx
-    transport = ASGITransport(app=app)
+    app.dependency_overrides[get_tenant_ctx] = _override
+    return app
+
+
+async def _position_over_real_db(db: AsyncSession, tenant_ctx) -> dict:
+    transport = ASGITransport(
+        app=_app_for(db, tenant_ctx, {"analytics:read", "analytics:write"})
+    )
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.get(POSITION_PATH)
     assert response.status_code == 200, response.text
@@ -628,7 +666,7 @@ async def test_choosing_a_legal_policy_moves_position_and_leaves_an_audit_row(
     await db.flush()
     before_count, before_missing, _ = await _aggregate(db)
 
-    app = _app(db, {"analytics:read", "analytics:write"})
+    app = _app_for(db, tenant_ctx, {"analytics:read", "analytics:write"})
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         chosen = await client.put(
@@ -677,7 +715,7 @@ async def test_pausing_withdraws_the_choice_from_the_shared_gate(
     )
     _, chosen_missing, _ = await _aggregate(db)
 
-    app = _app(db, {"analytics:read", "analytics:write"})
+    app = _app_for(db, tenant_ctx, {"analytics:read", "analytics:write"})
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         paused = await client.put(
@@ -707,7 +745,7 @@ async def test_an_illegal_choice_writes_no_policy_and_no_audit_row(
     )
     await db.flush()
 
-    app = _app(db, {"analytics:read", "analytics:write"})
+    app = _app_for(db, tenant_ctx, {"analytics:read", "analytics:write"})
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         refused = await client.put(
@@ -742,7 +780,7 @@ async def test_a_second_choice_replaces_the_first_rather_than_contradicting_it(
 ) -> None:
     """``UNIQUE (tenant_id, data_class)`` is the whole reason "the policy" has one
     answer; the route must not grow a second row per call."""
-    app = _app(db, {"analytics:read", "analytics:write"})
+    app = _app_for(db, tenant_ctx, {"analytics:read", "analytics:write"})
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         for days in (390, 500):
