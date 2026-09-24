@@ -31,6 +31,51 @@ services:
       timeout: 3s
       retries: 10
 
+  # ---------------------------------------------------------- app processes --
+  # Two process classes, deliberately two services.
+  #
+  # The API must NOT host a worker pool: `railway.json` runs it as
+  # `uvicorn --workers 2`, so anything the app lifespan boots runs once per HTTP
+  # worker — N consumers claiming the same non-leased work. That rule is
+  # machine-checked by backend/tests/test_worker_deployment_declaration.py,
+  # which also requires every pool named in `app/workers/run.py:POOLS` to be
+  # started by a committed deployment artifact. Before this service existed,
+  # nothing in the repo did: the only start command was inside the manual
+  # provisioning script `backend/scripts/deploy_railway.py`.
+  api:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.backend
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
+    environment: &app_env
+      ENVIRONMENT: local
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/sales
+      DATABASE_URL_ADMIN: postgresql+asyncpg://postgres:postgres@postgres:5432/sales
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.backend
+    # No pool arguments on purpose: run.py defaults to every pool in POOLS, so
+    # a pool added there is deployed by this service without anyone having to
+    # remember to edit a command line — and the guard test fails if a pool is
+    # ever added that this cannot start.
+    command: python -m app.workers.run
+    environment: *app_env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
 volumes:
   pgdata:
   redisdata:

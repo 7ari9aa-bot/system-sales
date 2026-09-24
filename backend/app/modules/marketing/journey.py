@@ -223,13 +223,69 @@ class JourneyExecutionService:
         return run
 
     @staticmethod
+    async def resume_after_delay(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        run_id: uuid.UUID,
+    ) -> JourneyRun | None:
+        """Continue a run whose DELAY step has elapsed — the scheduler's entry point.
+
+        ``_handle_delay`` parks the run at WAITING_DELAY and deliberately does
+        NOT advance ``current_step``: the step is what owns the scheduled row.
+        So resuming is not simply re-entering ``process_step`` — that would hit
+        the same DELAY step and schedule another delay, forever. The step is
+        verified to still BE a delay before it is stepped over, so a journey
+        edited mid-flight cannot have a real action (a message, an AI call)
+        silently skipped by a resume.
+
+        Returns None when the run is gone or no longer waiting: a journey
+        cancelled during its delay must finish as a no-op rather than as a job
+        that burns its retry budget on a run that will never resume.
+        """
+        run = (
+            await session.execute(
+                select(JourneyRun).where(
+                    JourneyRun.tenant_id == tenant_id,
+                    JourneyRun.id == run_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if run is None or run.status != JourneyRunStatus.WAITING_DELAY.value:
+            return None
+
+        journey = (
+            await session.execute(select(Journey).where(Journey.id == run.journey_id))
+        ).scalar_one_or_none()
+        steps = (journey.steps or []) if journey is not None else []
+        step = steps[run.current_step] if run.current_step < len(steps) else {}
+        step_type = step.get("type", step.get("step_type", ""))
+        if step_type != JourneyStepType.DELAY.value:
+            raise ValidationError(
+                f"journey run {run.id} waits on step {run.current_step}, which is "
+                f"{step_type or 'missing'} and not a delay — refusing to skip it"
+            )
+
+        run.current_step += 1
+        run.status = JourneyRunStatus.RUNNING.value
+        await session.flush()
+        return await JourneyExecutionService.process_step(session, tenant_id, run.id)
+
+    @staticmethod
     async def _handle_delay(
         session: AsyncSession,
         tenant_id: uuid.UUID,
         run: JourneyRun,
         config: dict,
     ) -> None:
-        """Schedule a ScheduledJob to resume after the delay."""
+        """Schedule a ScheduledJob to resume after the delay.
+
+        ``job_type='journey.resume'`` is dispatched by
+        ``app/workers/scheduler_worker.py``; that registration and this literal
+        are kept in sync by
+        ``tests/test_worker_deployment_declaration.py`` — this call site is the
+        producer half of a pair that was broken here for the whole life of the
+        feature (the row was created, claimed and failed with "no handler").
+        """
         from app.modules.platform.models import ScheduledJob
 
         delay_minutes = int(config.get("minutes", config.get("delay_minutes", 5)))
@@ -242,7 +298,14 @@ class JourneyExecutionService:
             job_type="journey.resume",
             run_at=run_at,
             payload={"run_id": str(run.id)},
-            idempotency_key=f"journey:resume:{run.id}",
+            # Keyed on the STEP, not just the run. `idempotency_key` is UNIQUE
+            # (uq_scheduled_jobs_idem), so a journey with a second DELAY step
+            # would insert a row under a key the first step's row still holds:
+            # the flush raises at commit and rolls the whole claimed batch back
+            # — the exact failure `_reschedule_recurring` documents. The step
+            # index is stable for one delay, so a duplicate wake-up still
+            # dedupes against the row that already carries it.
+            idempotency_key=f"journey:resume:{run.id}:{run.current_step}",
         )
         session.add(job)
         await session.flush()

@@ -1,8 +1,18 @@
 """Worker pool entrypoint: `python -m app.workers.run [pools...]`.
 
-Runs the outbox relay plus the selected worker pools in one process. In
-production each pool gets its own deployment so AI load can never squeeze the
-messaging hot path.
+Runs the outbox relay plus the selected worker pools in one process. POOLS here
+is the single declaration of what this codebase ships — every concrete
+StreamWorker in `app/workers/` must appear in it exactly once, or be dispatched
+by a scheduler job handler instead (see
+`tests/test_worker_deployment_declaration.py`).
+
+Per-pool deployments are an option, not the current state: passing pool names
+runs a subset (`python -m app.workers.run messages webhooks`), which is how a
+busy tier gets its own process. Nothing deploys it that way yet — the compose
+`worker` service starts this entrypoint with no arguments, i.e. every pool in
+one process, so an AI campaign today can still occupy a messaging worker slot.
+The Railway topology carries only the API service, which is the gap recorded as
+`TOPOLOGY_START_GAPS["railway"]` in the guard test.
 """
 
 from __future__ import annotations
@@ -19,7 +29,6 @@ from app.workers.campaign_worker import CampaignWorker
 from app.workers.job_runner import JobRunner
 from app.workers.message_worker import MessageWorker
 from app.workers.platform_workers import NotificationWorker, WebhookWorker
-from app.workers.retention_worker import RetentionWorker
 from app.workers.scheduler_worker import SchedulerWorker
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -34,8 +43,19 @@ POOLS: dict[str, type[StreamWorker]] = {
     # webhook pools that carry interactive traffic.
     "campaigns": CampaignWorker,
     "scheduler": SchedulerWorker,
-    "retention": RetentionWorker,
     "jobs": JobRunner,
+    # `RetentionWorker` is deliberately absent. It is not a pool: nothing can
+    # wake it. Its `handle()` only acts on a payload whose event_type is
+    # `retention.run`, and a stream name is derived from the aggregate type
+    # (`core/events/writer.py:105` → `{aggregate_type}.events`), so no producer
+    # can route such an event to the `platform.events` stream this class
+    # subscribes to — `app/core/secrets.py:650` is the only publisher there and
+    # it emits `platform.secret_rotated`. The live trigger is the durable
+    # `retention.run` sweep the scheduler dispatches per active tenant
+    # (`scheduler_worker.py`, `RECURRING_JOBS`), which re-uses
+    # `RetentionWorker.run_once` — the agreed entry point. Leaving the pool in
+    # would mean two declared triggers for one data-destroying sweep, with the
+    # second one unable ever to fire.
 }
 
 

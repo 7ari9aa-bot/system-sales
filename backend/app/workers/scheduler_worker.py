@@ -222,6 +222,40 @@ async def _handle_segments_recompute(session, tenant_id, payload: dict) -> dict:
 register_job_handler("segments.recompute", _handle_segments_recompute)
 
 
+async def _handle_journey_resume(session, tenant_id, payload: dict) -> dict:
+    """§175: continue a journey run whose DELAY step has elapsed.
+
+    The producer is ``marketing.journey._handle_delay``, which creates this
+    row and parks the run at ``waiting_delay``. Until this handler existed the
+    row had no handler at all: every delayed journey step was claimed, then
+    written back ``failed / "no handler for journey.resume"``, so a journey
+    stopped dead at its first wait and the merchant saw a run stuck in
+    ``waiting_delay`` forever. That is this repo's named failure mode —
+    built, unit-tested, never called — one level down from a whole worker.
+
+    ``resume_after_delay`` owns the step bookkeeping (it is the journey
+    module's own invariant, not the scheduler's); this handler only unmarshals
+    the payload and reports what the run did next.
+    """
+    from uuid import UUID
+
+    from app.core.errors import ValidationError
+    from app.modules.marketing.journey import JourneyExecutionService
+
+    run_id = payload.get("run_id")
+    if not run_id:
+        raise ValidationError("journey.resume payload carries no run_id")
+    run = await JourneyExecutionService.resume_after_delay(
+        session, tenant_id, UUID(str(run_id))
+    )
+    if run is None:
+        return {"skipped": "not waiting", "run_id": str(run_id)}
+    return {"run_id": str(run.id), "status": run.status, "step": run.current_step}
+
+
+register_job_handler("journey.resume", _handle_journey_resume)
+
+
 async def ensure_recurring_jobs() -> None:
     """Insert the recurring sweep jobs (per active tenant) if absent.
 
