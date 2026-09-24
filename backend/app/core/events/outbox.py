@@ -9,12 +9,29 @@ Flow (the core of "order created / event never lost"):
       --> this relay picks the row up and publishes it.
 
 The outbox_events table is created by the Stage-1 migrations; this module is
-the runtime that drains it. Rows are claimed with FOR UPDATE SKIP LOCKED so
-multiple relay instances can run concurrently. Rows stranded in 'publishing'
-by a crashed relay are reclaimed after 5 minutes (§128) — the SKIP LOCKED
-lock dies with the connection, so the row is safe to re-claim. Every
-successfully published event is also appended to event_log (§152), the
-durable replay history: the outbox is only a publication buffer.
+the runtime that drains it.
+
+CLAIM SEMANTICS (G-08). One row is claimed, published and marked in a SINGLE
+transaction, so the row's Postgres lock IS the lease: while a relay works a row
+no other relay can even see it as claimable, and a relay that dies mid-publish
+rolls its claim back — the row goes straight back to 'pending' and another
+relay takes it at once. That ordering is what makes the failure mode safe:
+the publish to the stream and the 'published' mark commit together or not at
+all, so a crash can only ever mean "re-publish", never "lost" and never
+"two relays publishing the same row at the same time".
+
+Because 'published' is committed with the publish itself, at-least-once
+delivery still exists (the bus may ack and then the process die before the
+commit), and the consumer's dedupe key — the stable outbox row id in
+``meta["outbox_id"]`` — makes a *sequential* redelivery harmless. A concurrent
+redelivery would not (the consumer's dedupe is a read-then-act), which is
+precisely the hole the single-transaction claim closes.
+
+Rows stranded in 'publishing' by something other than a live relay (an older
+deployment mid-roll, ops SQL) are re-queued after ``settings.outbox_lease_seconds``
+(§128); that scan runs FOR UPDATE SKIP LOCKED, so it can never steal from a
+live relay. Every successfully published event is also appended to event_log
+(§152), the durable replay history: the outbox is only a publication buffer.
 """
 
 from __future__ import annotations
@@ -36,12 +53,21 @@ from app.core.events.schemas import EventEnvelope, deserialize
 
 logger = logging.getLogger(__name__)
 
-_RECLAIM_SQL = sa.text(
+# §128 backstop: a row durably committed in 'publishing' whose lease expired.
+# FOR UPDATE SKIP LOCKED is the part that makes the reclaim safe: a LIVE relay
+# holds its claimed row locked for the whole publish (see the module docstring),
+# so this scan walks past it at any age instead of re-queueing work that is
+# already being done — which is what used to double-publish a backlog.
+_RECLAIM_PUBLISHING_SQL = sa.text(
     """
     UPDATE outbox_events
        SET status = 'pending'
-     WHERE status = 'publishing'
-       AND created_at < now() - interval '5 minutes'
+     WHERE id IN (
+        SELECT id FROM outbox_events
+         WHERE status = 'publishing'
+           AND created_at < now() - make_interval(secs => :lease_seconds)
+         FOR UPDATE SKIP LOCKED
+     )
     """
 )
 
@@ -53,12 +79,23 @@ _RECLAIM_FAILED_SQL = sa.text(
     """
     UPDATE outbox_events
        SET status = 'pending', attempts = 0
-     WHERE status = 'failed'
-       AND COALESCE(published_at, created_at) < now() - interval '5 minutes'
+     WHERE id IN (
+        SELECT id FROM outbox_events
+         WHERE status = 'failed'
+           AND COALESCE(published_at, created_at)
+               < now() - make_interval(secs => :failed_requeue_seconds)
+         FOR UPDATE SKIP LOCKED
+     )
     """
 )
 
-_CLAIM_SQL = sa.text(
+# ONE row per statement, and the claim runs in the same transaction as the
+# publish and the mark — so the row lock is the lease and no claim can outlive
+# the relay that took it. `LIMIT 1` is deliberate: a multi-row claim would hold
+# locks across every other row's publish, and if it committed early (as the old
+# batch claim did at its first per-row commit) the remaining rows became
+# durably 'publishing' yet UNLOCKED, i.e. stealable by a second relay.
+_CLAIM_ONE_SQL = sa.text(
     """
     UPDATE outbox_events
        SET status = 'publishing', attempts = attempts + 1
@@ -69,12 +106,15 @@ _CLAIM_SQL = sa.text(
            AND (not_before IS NULL OR not_before <= now())
          ORDER BY created_at
          FOR UPDATE SKIP LOCKED
-         LIMIT :batch
+         LIMIT 1
      )
     RETURNING id, stream, payload, meta, aggregate_type, aggregate_id, created_at
     """
 )
 
+# The claim and this mark share one transaction, which is why 'publishing' is
+# never observable to another relay and why no lock_owner column is needed:
+# the transaction is the owner.
 _MARK_PUBLISHED_SQL = sa.text(
     "UPDATE outbox_events SET status = 'published', published_at = now() WHERE id = :id"
 )
@@ -144,29 +184,52 @@ class OutboxRelay:
     def stop(self) -> None:
         self._running = False
 
+    async def _reclaim_stranded(self, session: AsyncSession) -> None:
+        """Re-queue rows no live relay can be working on (§128).
+
+        Both scans carry their duration from settings — never a literal baked
+        into the SQL — and both run FOR UPDATE SKIP LOCKED, so a row another
+        relay holds locked for its in-flight publish is walked past rather than
+        re-queued out from under it.
+        """
+        settings = get_settings()
+        await session.execute(
+            _RECLAIM_PUBLISHING_SQL, {"lease_seconds": settings.outbox_lease_seconds}
+        )
+        await session.execute(
+            _RECLAIM_FAILED_SQL,
+            {"failed_requeue_seconds": settings.outbox_failed_requeue_seconds},
+        )
+
+    async def _claim_one(self, session: AsyncSession, max_attempts: int) -> Any | None:
+        """Take the next publishable row, or None when there is none.
+
+        The claim locks exactly one row and the caller's transaction stays open
+        across the publish, so the lock is held for precisely the work it
+        protects and released — with the 'published' mark — in one commit.
+        """
+        return (
+            (await session.execute(_CLAIM_ONE_SQL, {"max_attempts": max_attempts}))
+            .mappings()
+            .first()
+        )
+
     async def _drain_once(self, batch: int, max_attempts: int) -> int:
         published = 0
+        # The reclaims get their own short transaction: a reclaim lock held
+        # across the publish of the rows it just freed would be exactly the
+        # contention this function exists to remove.
         async with SessionLocal() as session:
-            # §128: reclaim rows stranded in 'publishing' by a crashed relay.
-            # The claim transaction (and its SKIP LOCKED lock) died with that
-            # connection; anything stuck past 5 minutes is safe to re-queue.
-            await session.execute(_RECLAIM_SQL)
-            # Re-queue rows whose bus publish failed (Redis outage) — without
-            # this they were stranded in 'failed' forever.
-            await session.execute(_RECLAIM_FAILED_SQL)
-            rows = (
-                (
-                    await session.execute(
-                        _CLAIM_SQL, {"batch": batch, "max_attempts": max_attempts}
-                    )
-                )
-                .mappings()
-                .all()
-            )
-            if not rows:
-                await session.commit()
-                return 0
-            for row in rows:
+            await self._reclaim_stranded(session)
+            await session.commit()
+        # At most `batch` rows per drain, so a sustained backlog cannot starve
+        # the poll loop of its sleep.
+        for _ in range(batch):
+            async with SessionLocal() as session:
+                row = await self._claim_one(session, max_attempts)
+                if row is None:
+                    await session.rollback()
+                    break
                 payload = _loads(row["payload"])
                 meta = _loads(row["meta"])
                 try:
@@ -187,8 +250,9 @@ class OutboxRelay:
                     logger.exception(
                         "outbox.relay.event_log_failed id=%s", row["id"]
                     )
-                # Commit PER ROW: a crash after N publishes no longer discards
-                # every mark in the batch (which re-published all of them).
+                # Claim + publish + mark commit together: a crash before here
+                # rolls the claim back, so the row is re-published rather than
+                # stranded. A crash after here has published it for good.
                 await session.commit()
                 published += 1
         return published

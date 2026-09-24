@@ -106,6 +106,16 @@ class Settings(BaseSettings):
     # outbox relay
     outbox_poll_interval_seconds: float = 0.5
     outbox_batch_size: int = 100
+    # G-08: how long an outbox row may sit in 'publishing' before another relay
+    # re-queues it. Claim → publish → mark now run in ONE transaction, so a
+    # live relay always holds the row's Postgres lock and the reclaim skips it
+    # at any age; this lease is the backstop for a row that was durably
+    # committed in 'publishing' by something else (an older deployment
+    # mid-roll, ops SQL), never the primary guarantee.
+    outbox_lease_seconds: float = 300.0
+    # Cool-down before a 'failed' row (bus unreachable at publish time) is
+    # re-queued, so a Redis outage retries on its own instead of stranding.
+    outbox_failed_requeue_seconds: float = 300.0
 
     # CORS: comma-separated origins, "*" allows all (dev); set explicitly in prod
     cors_origins: str = "*"
