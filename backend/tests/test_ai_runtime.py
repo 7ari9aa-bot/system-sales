@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import select
@@ -13,10 +15,16 @@ from app.modules.ai.gateway import AIGateway
 from app.modules.ai.models import Agent, AgentRun, AgentTool, AIUsage, ToolCall
 from app.modules.ai.providers import ChatCompletionResult, ToolCallRequest
 from app.modules.ai.runtime import AgentRunner
-from app.modules.ai.tools import get_tool, tool_to_openai_schema
+from app.modules.ai.tools import (
+    _get_variant_price,
+    _search_products,
+    get_tool,
+    tool_to_openai_schema,
+)
 from app.modules.catalog.models import Product, ProductVariant
 from app.modules.errors import NotFoundError as ModuleNotFoundError
 from app.modules.inventory.models import InventoryBalance, Warehouse
+from app.modules.orders.service import SELLABLE_PRODUCT_STATUSES
 
 
 def _result(content=None, tool_calls=None, tokens_in=0, tokens_out=0) -> ChatCompletionResult:
@@ -40,9 +48,12 @@ async def _agent_with_tool(db, tenant_id, *, name="search_products", policy=None
     return agent
 
 
-async def _seed_variant(db, tenant_id):
+async def _seed_variant(db, tenant_id, *, status: str = "active", price=Decimal("25.50")):
     product = Product(
-        tenant_id=tenant_id, title="Blue Widget", slug=f"bw-{uuid.uuid4().hex[:8]}"
+        tenant_id=tenant_id,
+        title="Blue Widget",
+        slug=f"bw-{uuid.uuid4().hex[:8]}",
+        status=status,
     )
     db.add(product)
     await db.flush()
@@ -51,7 +62,7 @@ async def _seed_variant(db, tenant_id):
         product_id=product.id,
         sku=f"BW-{uuid.uuid4().hex[:6].upper()}",
         title="Blue Widget M",
-        price=Decimal("25.50"),
+        price=price,
     )
     db.add(variant)
     await db.flush()
@@ -136,7 +147,9 @@ async def test_agent_run_calls_tool_then_answers(db, tenant_ctx, monkeypatch):
     assert tc_row.args == {"query": "widget", "limit": 5}
     assert tc_row.result["results"][0]["variant_id"] == str(variant.id)
     assert tc_row.result["results"][0]["sku"] == variant.sku
-    assert tc_row.result["results"][0]["price"] == 25.5
+    # §47/ADR-053: money crosses the wire as the exact Decimal STRING, never a
+    # binary float — "25.50" carries the cents the price row holds.
+    assert tc_row.result["results"][0]["price"] == "25.50"
     assert tc_row.duration_ms is not None
 
     # Usage rollup written by the finalize step.
@@ -342,3 +355,104 @@ async def test_get_variant_price_unknown_raises(db, tenant_ctx):
     spec = get_tool("get_variant_price")
     with pytest.raises(ModuleNotFoundError):
         await spec.handler(db, tenant_ctx.tenant_id, variant_id=str(uuid.uuid4()))
+
+
+# ------------------------------------- W4-T5: money wire + sellable browse gate --
+
+
+class _StubResult:
+    def __init__(self, rows):
+        self._rows = list(rows)
+
+    def all(self):
+        return self._rows
+
+    def first(self):
+        return self._rows[0] if self._rows else None
+
+
+class _StubSession:
+    """Records the statement and replays canned rows — no database needed.
+
+    The money tests exercise only the serialization half of a handler, and
+    the browse contract test only its WHERE clause; neither may pretend to
+    have run the DB-backed half, which is why the behavior test below uses
+    the real `db` fixture and skips honestly without one.
+    """
+
+    def __init__(self, rows=()):
+        self._rows = list(rows)
+        self.statements = []
+
+    async def execute(self, stmt):
+        self.statements.append(stmt)
+        return _StubResult(self._rows)
+
+
+def _stub_variant(price):
+    return SimpleNamespace(
+        id=uuid.uuid4(), title="Blue Widget M", sku="BW-1", price=price
+    )
+
+
+async def test_search_products_price_crosses_as_exact_string():
+    # 25.55 must not round-trip through binary float (§47): the tool result
+    # carries the exact Decimal string the price row holds.
+    variant = _stub_variant(Decimal("25.55"))
+    result = await _search_products(
+        _StubSession([(variant, "Blue Widget")]), uuid.uuid4(), query="widget"
+    )
+    price = result["results"][0]["price"]
+    assert price == "25.55"
+    assert isinstance(price, str)
+
+
+async def test_get_variant_price_crosses_as_exact_string():
+    variant = _stub_variant(Decimal("25.55"))
+    result = await _get_variant_price(
+        _StubSession([(variant, "Blue Widget")]), uuid.uuid4(), variant_id=variant.id
+    )
+    assert result["price"] == "25.55"
+    assert isinstance(result["price"], str)
+
+
+async def test_null_price_stays_null_not_zero():
+    # None is "no price recorded", not "0" and not 0.0 — the wire keeps it null.
+    variant = _stub_variant(None)
+    rows = [(variant, "Blue Widget")]
+    search = await _search_products(_StubSession(rows), uuid.uuid4(), query="widget")
+    assert search["results"][0]["price"] is None
+    price = await _get_variant_price(
+        _StubSession(rows), uuid.uuid4(), variant_id=variant.id
+    )
+    assert price["price"] is None
+
+
+async def test_search_products_browse_filter_agrees_with_the_sell_gate():
+    # The browse query must constrain Product.status to exactly the statuses
+    # checkout sells (orders.service.SELLABLE_PRODUCT_STATUSES), not re-type
+    # the vocabulary.
+    session = _StubSession()
+    await _search_products(session, uuid.uuid4(), query="widget")
+    sql = str(session.statements[0].compile(compile_kwargs={"literal_binds": True}))
+    match = re.search(r"products\.status IN \(([^)]*)\)", sql)
+    assert match is not None, (
+        "the browse query never filters Product.status — a draft/archived "
+        "product is enumerable by the assistant although checkout refuses it"
+    )
+    statuses = {value.strip().strip("'") for value in match.group(1).split(",")}
+    assert statuses == set(SELLABLE_PRODUCT_STATUSES)
+
+
+async def test_browse_tool_hides_unlisted_products(db, tenant_ctx):
+    # The behavioral half of the same rule, against real rows: only the
+    # active product's variant comes back; draft and archived stay invisible.
+    tenant_id = tenant_ctx.tenant_id
+    active = await _seed_variant(db, tenant_id, status="active")
+    await _seed_variant(db, tenant_id, status="draft")
+    await _seed_variant(db, tenant_id, status="archived")
+
+    spec = get_tool("search_products")
+    kwargs = spec.args_schema(query="Widget", limit=20).model_dump()
+    result = await spec.handler(db, tenant_id, **kwargs)
+    assert [row["variant_id"] for row in result["results"]] == [str(active.id)]

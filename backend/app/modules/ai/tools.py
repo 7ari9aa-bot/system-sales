@@ -92,10 +92,28 @@ def tool_to_openai_schema(spec: ToolSpec) -> dict:
 # `_task_model` below: both are genuinely new edges on the total.
 
 
+def _order_deps():
+    """OrderService and its sellable-status vocabulary, from ONE lazy import.
+
+    The AI browse tool must agree with the sell gate (§M4): a product whose
+    status checkout refuses (draft, archived) must not be enumerable by the
+    assistant either, and the honest way to agree is to read the SAME
+    ``SELLABLE_PRODUCT_STATUSES`` the gate uses, never re-type "active" here.
+
+    Both names ride the import edge ``_create_order`` already has
+    (ai -> orders.service): the boundary ratchet counts import EDGES
+    (tests/test_module_boundaries.py, total 97), so a second
+    ``from app.modules.orders...`` line here would raise the ceiling.
+    Naming a second thing at one existing site moves the number zero.
+    """
+    from app.modules.orders.service import SELLABLE_PRODUCT_STATUSES, OrderService
+
+    return OrderService, SELLABLE_PRODUCT_STATUSES
+
+
 def _order_service():
     """OrderService, imported lazily so the registry works without orders."""
-    from app.modules.orders.service import OrderService
-
+    OrderService, _ = _order_deps()
     return OrderService
 
 
@@ -167,6 +185,10 @@ class SearchProductsArgs(BaseModel):
 async def _search_products(
     session: AsyncSession, tenant_id: uuid.UUID, *, query: str, limit: int = 5
 ) -> dict:
+    # §M4: browse agrees with the sell gate. A variant is visible to the
+    # assistant only when its product's status is one checkout would sell —
+    # the same frozen vocabulary, imported from orders, not re-typed here.
+    _, sellable_statuses = _order_deps()
     pattern = f"%{query}%"
     stmt = (
         select(ProductVariant, Product.title)
@@ -174,6 +196,7 @@ async def _search_products(
         .where(
             ProductVariant.tenant_id == tenant_id,
             ProductVariant.is_active.is_(True),
+            Product.status.in_(sellable_statuses),
             or_(
                 ProductVariant.title.ilike(pattern),
                 ProductVariant.sku.ilike(pattern),
@@ -190,7 +213,9 @@ async def _search_products(
                 "variant_id": str(variant.id),
                 "title": variant.title or product_title,
                 "sku": variant.sku,
-                "price": float(variant.price),
+                # Decimal as a string (§47): a cent-exact price never
+                # round-trips through binary float. None stays None.
+                "price": _money(variant.price),
             }
             for variant, product_title in rows
         ]
@@ -221,7 +246,9 @@ async def _get_variant_price(
         "variant_id": str(variant.id),
         "title": variant.title or product_title,
         "sku": variant.sku,
-        "price": float(variant.price),
+        # Decimal as a string (§47) — the price tool has no more excuse for
+        # a float than the order tool never had. None stays None.
+        "price": _money(variant.price),
     }
 
 
