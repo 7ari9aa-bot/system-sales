@@ -19,6 +19,8 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.requests import Request
 from starlette.responses import Response
 
+from app.core.errors import request_id_contextvar
+
 logger = logging.getLogger(__name__)
 
 # OpenTelemetry is optional at runtime. The import is inside a try block
@@ -107,7 +109,16 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        request_id = request.headers.get("x-request-id") or uuid.uuid4().hex[:16]
+        # The id published by app.main._RequestIDMiddleware, when that middleware
+        # is in the stack. Minting a second one here is how the response header
+        # and the error body's ``request_id`` ended up naming two different
+        # requests (P5); the edge sanitizer is also the only place that decides
+        # whether a client-supplied id is trustworthy enough to echo.
+        request_id = (
+            request_id_contextvar.get()
+            or request.headers.get("x-request-id")
+            or uuid.uuid4().hex[:16]
+        )
         started = time.perf_counter()
 
         # §84: create an OTEL span if the tracer is available

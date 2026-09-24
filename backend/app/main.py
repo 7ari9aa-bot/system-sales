@@ -13,9 +13,12 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.config import get_settings
 from app.core.context import actor_kind_contextvar, credentials_audit_contextvar
@@ -23,7 +26,9 @@ from app.core.db import engine
 from app.core.errors import (
     DomainError,
     PermissionDeniedError,
+    ValidationError,
     build_error_body,
+    build_error_envelope,
     correlation_id_contextvar,
     request_id_contextvar,
 )
@@ -33,7 +38,11 @@ from app.core.middleware import (
     RateLimitMiddleware,
     SecurityHeadersMiddleware,
 )
-from app.core.observability import RequestLoggingMiddleware, configure_logging
+from app.core.observability import (
+    RequestLoggingMiddleware,
+    configure_logging,
+    get_logger,
+)
 from app.core.redis import close_redis, get_redis
 from app.modules.ai.router import router as ai_router
 from app.modules.analytics.router import router as analytics_module_router
@@ -111,6 +120,21 @@ class _RequestIDMiddleware:
 
     Honors an incoming ``x-request-id`` (or generates one); the same id is
     echoed by the unified error body's ``request_id`` field.
+
+    It also echoes it on the RESPONSE, by wrapping ``send`` — because the id a
+    client is told is the id it must report, on every status. Doing it here
+    rather than in the logging middleware is the point: the 413 (body cap) and
+    429 (rate limiter) bodies are written by layers OUTSIDE
+    ``RequestLoggingMiddleware``, so a header set there never reached them, and
+    the two middlewares each minted its own id, so even where both ran they
+    named different requests (P5).
+
+    The value is published in three places on purpose:
+    * the contextvar — what error bodies read, and what a route/worker sees;
+    * ``scope["state"]`` — what the 500 handler reads, since it runs in
+      ``ServerErrorMiddleware``, ABOVE this middleware, by which time the
+      contextvar token has already been reset by the ``finally`` below;
+    * the response header — what the client gets back.
     """
 
     def __init__(self, app) -> None:  # ASGI app signature
@@ -128,6 +152,8 @@ class _RequestIDMiddleware:
         correlation_id = (
             _trusted_trace_id(headers.get("x-correlation-id")) or uuid.uuid4().hex[:16]
         )
+        # Readable from the 500 handler, which runs after the reset below.
+        scope.setdefault("state", {})["request_id"] = request_id
         req_token = request_id_contextvar.set(request_id)
         cor_token = correlation_id_contextvar.set(correlation_id)
         # §66: actor kind for the audit source column — an internal service
@@ -139,8 +165,20 @@ class _RequestIDMiddleware:
         kind_token = actor_kind_contextvar.set(actor_kind)
         # §68: fresh per-request batch set for credential-read auditing.
         audit_token = credentials_audit_contextvar.set(set())
+        echo = request_id.encode("latin-1")
+
+        async def send_with_request_id(message) -> None:
+            if message.get("type") == "http.response.start":
+                response_headers = list(message.get("headers", []))
+                if not any(
+                    key.lower() == b"x-request-id" for key, _ in response_headers
+                ):
+                    response_headers.append((b"x-request-id", echo))
+                message = {**message, "headers": response_headers}
+            await send(message)
+
         try:
-            await self.app(scope, receive, send)
+            await self.app(scope, receive, send_with_request_id)
         finally:
             request_id_contextvar.reset(req_token)
             correlation_id_contextvar.reset(cor_token)
@@ -180,6 +218,62 @@ def _presents_service_token(headers: dict[str, str], service_token: str | None) 
     return scheme.lower() == "bearer" and hmac.compare_digest(presented, service_token)
 
 
+def _error_request_id(request: Request) -> str | None:
+    """The correlation id of THIS request, from whichever copy is still live.
+
+    ``scope["state"]`` is written by :class:`_RequestIDMiddleware` and outlives
+    its contextvar token, so the 500 handler — which runs above that middleware
+    — can still name the request. Outside a request, ``None``.
+    """
+    return getattr(request.state, "request_id", None) or request_id_contextvar.get()
+
+
+def _field_error_message(detail: object) -> str:
+    """One readable sentence out of FastAPI's field-error list.
+
+    A 422 that only says "422" sends the caller back to the docs. The full
+    structured list still rides along under ``detail``; this is the human line
+    the envelope promises, built the same way for a ``RequestValidationError``
+    and for a route that raises ``HTTPException`` with a field list of its own
+    (``app/modules/analytics/router.py``), so one code reads both the same way.
+    """
+    if isinstance(detail, str) and detail:
+        return detail
+    if isinstance(detail, list):
+        parts: list[str] = []
+        for item in detail:
+            if not isinstance(item, dict):
+                continue
+            loc = ".".join(str(p) for p in item.get("loc", ()) if p)
+            msg = str(item.get("msg", "")).removeprefix("Value error, ")
+            parts.append(f"{loc}: {msg}" if loc else msg)
+        joined = "; ".join(part for part in parts if part)
+        if joined:
+            return joined
+    return "Request could not be processed"
+
+
+# Machine-readable codes for the statuses the FRAMEWORK raises (a route that
+# answers 404/405/…, an unmatched path). Domain errors carry their own code,
+# from ``app.core.errors``; these are the same names wherever both exist, so a
+# client switches on ``error.code`` and not on which layer answered.
+_HTTP_ERROR_CODES: dict[int, str] = {
+    400: "bad_request",
+    401: "unauthorized",
+    403: "permission_denied",
+    404: "not_found",
+    405: "method_not_allowed",
+    409: "conflict",
+    413: "payload_too_large",
+    422: "validation_error",
+    429: "rate_limit_exceeded",
+    500: "internal_error",
+    502: "bad_gateway",
+    503: "service_unavailable",
+    504: "gateway_timeout",
+}
+
+
 def _exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(DomainError)
     async def domain_error_handler(_: Request, exc: DomainError) -> JSONResponse:
@@ -195,6 +289,82 @@ def _exception_handlers(app: FastAPI) -> None:
             status_code=error.http_status,
             content=build_error_body(error, request_id=request_id_contextvar.get()),
         )
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error_handler(
+        _: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        """FastAPI's default 422 body is ``{"detail": [...]}`` — no code, no
+        ``retryable``, no correlation id. Same information, in the contract."""
+        fields = jsonable_encoder(exc.errors())
+        body = build_error_envelope(
+            ValidationError.code,
+            _field_error_message(fields),
+            request_id=request_id_contextvar.get(),
+        )
+        # Accepted legacy key, not a second shape: ``frontend/src/lib/api.ts``
+        # falls back to ``body.detail``, and the structured per-field list is
+        # only representable outside the four contract keys as this extra.
+        body["detail"] = fields
+        return JSONResponse(
+            status_code=422, content=body, headers=getattr(exc, "headers", None)
+        )
+
+    @app.exception_handler(StarletteHTTPException)
+    async def http_exception_handler(
+        _: Request, exc: StarletteHTTPException
+    ) -> JSONResponse:
+        """Every ``HTTPException`` — including Starlette's own 404 for an
+        unmatched path and 405 for a wrong method — in the contract shape.
+
+        The status is the one the framework chose, unchanged; only the body is
+        normalised.
+        """
+        detail = jsonable_encoder(exc.detail)
+        body = build_error_envelope(
+            _HTTP_ERROR_CODES.get(exc.status_code, f"http_{exc.status_code}"),
+            _field_error_message(detail),
+            retryable=exc.status_code >= 500,
+            request_id=request_id_contextvar.get(),
+        )
+        # ``detail`` kept verbatim for the same reason as above: it is what a
+        # ``{"detail": ...}`` reader (and the analytics 422 field list) expects.
+        body["detail"] = detail
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=body,
+            headers=getattr(exc, "headers", None),
+        )
+
+    @app.exception_handler(Exception)
+    async def unhandled_error_handler(request: Request, exc: Exception) -> JSONResponse:
+        """The 500 a client can actually parse (and an operator can grep).
+
+        Starlette's default answered ``text/plain`` "Internal Server Error"
+        with no correlation id at all — the one failure where the id is the
+        whole point, since the log line is found by it. The exception text is
+        deliberately NOT echoed: an unhandled error may carry a DSN, a token or
+        a row value.
+        """
+        request_id = _error_request_id(request)
+        get_logger("http").error(
+            "unhandled_error",
+            method=request.method,
+            path=request.url.path,
+            error=exc.__class__.__name__,
+            request_id=request_id,
+            exc_info=exc,
+        )
+        body = build_error_envelope(
+            "internal_error",
+            "Internal server error",
+            retryable=True,
+            request_id=request_id,
+        )
+        # This response is written by ServerErrorMiddleware, ABOVE every other
+        # middleware, so nothing else can add the correlation header.
+        headers = {"X-Request-ID": request_id} if request_id else None
+        return JSONResponse(status_code=500, content=body, headers=headers)
 
 
 def create_app() -> FastAPI:

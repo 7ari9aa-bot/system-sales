@@ -13,9 +13,23 @@ hand-built ``{"error": {...}}`` in the body-size middleware, and a dead
 ``body?.error?.message ?? body?.detail`` and ``retryable`` drives the
 login/signup retry UX, a bypass degrades a real browser response.
 
-DB-free: the body cap rejects BEFORE the route runs, the rate limiter is driven
-with fakeredis, and the 403 handler is exercised through the real wiring — so
-the whole guard runs locally (``ENVIRONMENT=local pytest tests/test_error_contract.py``).
+P5 (docs/GAP_REGISTER.md) filed the remaining four shapes this guard did NOT
+yet cover, and measurement confirmed each of them on the current code:
+
+* a request that fails validation answered 422 with FastAPI's default
+  ``{"detail": [...]}`` — no envelope, no code, no request id;
+* an unmatched route answered 404 with ``{"detail": "Not Found"}`` (and
+  ``app/modules/analytics/router.py`` raises the same legacy shape as an
+  ``HTTPException``);
+* an unhandled crash answered 500 with the ``text/plain`` body
+  ``Internal Server Error``, carrying no correlation id at all;
+* the ``X-Request-ID`` response header was a DIFFERENT id from the body's
+  ``request_id`` — ``RequestLoggingMiddleware`` minted its own — and was
+  missing entirely on the 413/429/500 paths, which are emitted outside it.
+
+All four are pinned below, on the real app, with no database: the body cap and
+the rate limiter answer before a route runs, the 422 is a pydantic refusal
+before the handler body, and the 500 is a route this file adds.
 """
 
 from __future__ import annotations
@@ -23,8 +37,9 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
+import pytest
 from fakeredis.aioredis import FakeRedis
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from httpx import ASGITransport, AsyncClient
 
 from app.core import middleware as mw
@@ -34,6 +49,12 @@ from app.core.security import create_access_token
 from app.main import _exception_handlers, _RequestIDMiddleware, create_app
 
 ORDERS = "/api/v1/orders"
+#: A public route whose body is validated before the handler runs, so a 422 is
+#: reachable on the real graph without a database.
+WEBCHAT_INBOUND = "/api/v1/webchat/any-widget-key/messages"
+#: A 500 has to come from somewhere; this file owns the only crashing route in
+#: the suite and registers it on its own app instance.
+CRASH_PATH = "/api/v1/error-contract-probe-crash"
 
 
 def _envelope(body: dict[str, Any], *, retryable: bool | None = None) -> dict[str, Any]:
@@ -265,3 +286,208 @@ def test_domain_error_has_no_dead_to_dict_variant() -> None:
     """``to_dict`` emitted ``{code, message, details}`` and had no ``app/``
     caller — a fourth shape waiting to be adopted. It is deleted."""
     assert not hasattr(DomainError, "to_dict")
+
+
+# ---------------------------------------------------------------------------
+# P5 — the shapes the guard did not cover: 422, legacy 404, unhandled 500
+# ---------------------------------------------------------------------------
+
+
+def _crashing_app() -> FastAPI:
+    """The real app, plus the one route that raises a non-domain error.
+
+    A 500 cannot be provoked from a shipped route without a database (or a
+    bug), so the probe route is registered here — every layer that matters
+    (middleware stack, exception handlers, request-id publisher) is production.
+    """
+    app = create_app()
+
+    async def crash() -> None:
+        raise RuntimeError("boom — an unhandled programming error")
+
+    app.get(CRASH_PATH)(crash)
+    return app
+
+
+async def _real_request(method: str, path: str, **kwargs):
+    """One call against the real graph; a 500 must not raise into the test."""
+    app = _crashing_app() if path == CRASH_PATH else create_app()
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        return await client.request(method, path, **kwargs)
+
+
+async def test_request_validation_422_uses_the_contract() -> None:
+    """A pydantic refusal used to answer in FastAPI's own shape.
+
+    ``RequestValidationError`` had no handler, so the caller got
+    ``{"detail": [...]}``: no code to switch on, no ``retryable``, no
+    correlation id — the one 4xx a client hits most often.
+    """
+    response = await _real_request("POST", WEBCHAT_INBOUND, json={})
+
+    assert response.status_code == 422, response.text
+    error = _envelope(response.json(), retryable=False)
+    assert error["code"] == "validation_error"
+    # The message has to say WHICH field and WHAT is wrong, not just "invalid".
+    assert "body" in error["message"], error["message"]
+    assert error["request_id"]
+
+
+async def test_request_validation_422_keeps_the_field_list() -> None:
+    """``detail`` stays readable: it is a list of ``{loc, msg}`` entries.
+
+    Two real consumers read it — ``frontend/src/lib/api.ts`` falls back to
+    ``body?.detail`` and ``tests/test_analytics_window_binding.py`` flattens
+    ``detail`` to name the offending window edge — so the canonical envelope is
+    ADDED to it, not swapped for it.
+    """
+    response = await _real_request("POST", WEBCHAT_INBOUND, json={})
+
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert isinstance(detail, list) and detail
+    assert {"loc", "msg"} <= set(detail[0]), detail
+
+
+async def test_unmatched_route_404_uses_the_contract() -> None:
+    """The framework's own 404 (no route matched) was ``{"detail\": \"Not Found\"}``.
+
+    A domain ``NotFoundError`` already answered in the envelope, so the SAME
+    status reached a client in two bodies depending on whether the path existed.
+    """
+    response = await _real_request("GET", "/api/v1/no/such/route/here")
+
+    assert response.status_code == 404, response.text
+    error = _envelope(response.json(), retryable=False)
+    assert error["code"] == "not_found"
+    assert error["request_id"]
+    # Legacy key kept: it is what a ``{"detail": "Not Found"}`` reader expects.
+    assert response.json()["detail"] == "Not Found"
+
+
+async def test_http_exception_422_from_a_route_uses_the_contract() -> None:
+    """A route that raises ``HTTPException`` must not answer in the legacy body.
+
+    ``app/modules/analytics/router.py`` deliberately raises 422 with a FastAPI
+    ``{loc, msg}`` list so a client reads it like any other 422 — the envelope
+    now agrees with that, and the list survives underneath ``detail``.
+    """
+    app = FastAPI()
+    _exception_handlers(app)
+    app.add_middleware(_RequestIDMiddleware)
+
+    @app.get("/legacy-422")
+    async def legacy() -> None:
+        raise HTTPException(
+            status_code=422,
+            detail=[
+                {
+                    "type": "value_error",
+                    "loc": ["query", "since"],
+                    "msg": "Value error, naive",
+                }
+            ],
+        )
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get("/legacy-422", headers={"x-request-id": "req-httpexc"})
+
+    assert response.status_code == 422, response.text
+    error = _envelope(response.json(), retryable=False)
+    assert error["code"] == "validation_error"
+    assert "query.since" in error["message"], error["message"]
+    assert error["request_id"] == "req-httpexc"
+    assert response.json()["detail"][0]["loc"] == ["query", "since"]
+
+
+async def test_unhandled_crash_500_uses_the_contract() -> None:
+    """Starlette's default 500 was ``text/plain`` "Internal Server Error".
+
+    Nothing JSON-parseable, no code, no correlation id — the one failure a
+    client most needs an id for, because that id is what an operator greps logs
+    by. It must also not leak the exception's own text.
+    """
+    response = await _real_request("GET", CRASH_PATH)
+
+    assert response.status_code == 500, response.text
+    error = _envelope(response.json(), retryable=True)
+    assert error["code"] == "internal_error"
+    assert "boom" not in error["message"], "an unhandled error must not leak"
+    assert error["request_id"]
+
+
+# ---------------------------------------------------------------------------
+# P5 — the correlation id in the body IS the id in the response header
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "kwargs"),
+    [
+        pytest.param("POST", ORDERS, {"content": b"x" * (mw.MAX_BODY_BYTES + 1)}, id="413-cap"),
+        pytest.param("POST", WEBCHAT_INBOUND, {"json": {}}, id="422-validation"),
+        pytest.param("GET", "/api/v1/webhooks/definitely-not-a-channel", {}, id="404-domain"),
+        pytest.param("GET", "/api/v1/no/such/route/here", {}, id="404-unmatched"),
+        pytest.param("GET", CRASH_PATH, {}, id="500-crash"),
+    ],
+)
+async def test_error_response_header_matches_the_body_request_id(
+    method: str, path: str, kwargs: dict
+) -> None:
+    """One id per request, in the header AND in the body.
+
+    ``RequestLoggingMiddleware`` generated a second, independent id for the
+    ``X-Request-ID`` header, and the 413/429/500 responses are written outside
+    it — so they carried no header at all. A client that reports the header it
+    was given and a support engineer searching the body's id were looking at two
+    different requests.
+    """
+    response = await _real_request(method, path, **kwargs)
+
+    assert response.status_code in (404, 413, 422, 500)
+    body = response.json()
+    _envelope(body)
+    header = response.headers.get("x-request-id")
+    assert header, f"{path}: the error response carries no correlation header"
+    assert header == body["error"]["request_id"], (header, body["error"]["request_id"])
+
+
+async def test_rate_limit_429_header_matches_the_body_request_id(monkeypatch) -> None:
+    """The 429 is written by the limiter, which sits OUTSIDE the logging
+    middleware that used to own the header — so it never had one."""
+    monkeypatch.setattr(mw, "ENDPOINT_LIMIT", 1)
+    monkeypatch.setattr(mw, "TENANT_LIMIT", 1000)
+    client = FakeRedis(decode_responses=True)
+    app = _rate_app(client)
+
+    first = await _get(app)
+    second = await _get(app)
+
+    assert first.status_code == 200
+    assert second.status_code == 429
+    assert second.headers["x-request-id"] == second.json()["error"]["request_id"]
+    await client.aclose()
+
+
+async def test_untrusted_request_id_is_replaced_in_both_copies() -> None:
+    """A client-supplied id the edge refuses must not survive in the header.
+
+    ``_trusted_trace_id`` rejects an over-long id so it cannot land in the
+    String(64) audit columns; the header used to echo the raw client value
+    anyway, so the pair disagreed by construction on exactly the input the
+    sanitizer exists for.
+    """
+    untrusted = "x" * 80
+    response = await _real_request(
+        "GET",
+        "/api/v1/webhooks/definitely-not-a-channel",
+        headers={"x-request-id": untrusted},
+    )
+
+    body_id = response.json()["error"]["request_id"]
+    assert body_id and body_id != untrusted
+    assert response.headers["x-request-id"] == body_id
+

@@ -9,7 +9,19 @@ The unified API error contract (v2) is::
 
     {"error": {"code": ..., "message": ..., "retryable": bool, "request_id": ...}}
 
-built by :func:`build_error_body` and rendered by the handler in app.main.
+built by :func:`build_error_body` (domain errors) and
+:func:`build_error_envelope` (failures the framework raises before/around a
+route, which carry no ``DomainError``), and rendered by the handlers in app.main.
+Every error status the API answers — domain error, permission denial, 404 for
+an unmatched path, 413 body cap, 422 validation refusal, 429 rate limit, 500
+crash — carries that object, with the same four keys, and its ``request_id`` is
+the id the ``x-request-id`` response header echoes.
+
+Two diagnostic keys ride BESIDE the envelope, both deliberately:
+``detail`` on a framework-shaped refusal (the structured per-field list a 422
+has no other place to live, and what ``frontend/src/lib/api.ts`` falls back to)
+and ``tier`` / ``retry_after`` on a 429 (the only way to tell which bucket
+denied). They are additive: a client that only reads ``error`` is never wrong.
 """
 
 from __future__ import annotations
@@ -120,15 +132,33 @@ class PayloadTooLargeError(DomainError):
     default_message = "Request body too large"
 
 
+def build_error_envelope(
+    code: str,
+    message: str,
+    *,
+    retryable: bool = False,
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    """The one writer of the v2 envelope's key set.
+
+    Framework-shaped failures (a request that never reached a route, an
+    unhandled crash) carry no ``DomainError``, so they build the same body
+    through here rather than hand-assembling a fifth shape.
+    """
+    return {
+        "error": {
+            "code": code,
+            "message": message,
+            "retryable": retryable,
+            "request_id": request_id,
+        }
+    }
+
+
 def build_error_body(
     exc: DomainError, request_id: str | None = None
 ) -> dict[str, Any]:
     """Unified error contract body: ``{error: {code, message, retryable, request_id}}``."""
-    return {
-        "error": {
-            "code": exc.code,
-            "message": exc.message,
-            "retryable": exc.retryable,
-            "request_id": request_id,
-        }
-    }
+    return build_error_envelope(
+        exc.code, exc.message, retryable=exc.retryable, request_id=request_id
+    )
