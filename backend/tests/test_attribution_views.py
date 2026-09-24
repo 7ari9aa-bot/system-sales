@@ -109,7 +109,11 @@ def test_a_report_of_two_full_credit_views_never_adds_up_above_the_order() -> No
 
     # One canonical number, from one model — that is what analytics quotes.
     assert report["canonical_model"] == "last_touch"
-    assert report["revenue"] == pytest.approx(200.0)
+    # An AMOUNT, so a Decimal string across the wire (ADR-001/§47), not a float64
+    # a client has to trust its JSON parser to reproduce. This assertion used to
+    # read `== pytest.approx(200.0)`, which pinned the bug rather than the money.
+    assert report["revenue"] == "200.00"
+    assert Decimal(report["revenue"]) == Decimal("200.00")
     assert report["conversions"] == 1
     # Each model is a labelled view of the SAME money, and says so.
     assert report["views_are_alternative"] is True
@@ -124,18 +128,21 @@ def test_a_report_without_attributions_reports_zero_not_absent() -> None:
     report = AttributionService.attribution_report(
         campaign_id=uuid.uuid4(), days=30, model_rows=[]
     )
-    assert report["revenue"] == 0
+    # Zero of money is still an amount: "0.00", the shape every other credit in
+    # this payload carries. It was `== 0`, which asserted the float wire.
+    assert report["revenue"] == "0.00"
     assert report["alternative_views"] == []
 
 
 def test_the_summing_guard_still_sees_money_written_as_a_string() -> None:
     """A guard that stops working when the wire changes shape is worse than none.
 
-    §47/ADR-001 moves marketing AMOUNTS onto Decimal strings (the report shape
-    above is owned by ``attribution_service.attribution_report`` and is only
-    migrated with that file). This pins that ``_numbers`` reads the same money
-    whichever way it is serialised, so "nothing here is 400.00" cannot be
-    satisfied by a payload that merely stopped looking like numbers.
+    §47/ADR-001 moves marketing AMOUNTS onto Decimal strings, and
+    ``attribution_service.attribution_report`` ships ``revenue`` and
+    ``credited_revenue`` that way now — which is precisely the moment a
+    numeric-only guard would have gone blind. This pins that ``_numbers`` reads
+    the same money whichever way it is serialised, so "nothing here is 400.00"
+    cannot be satisfied by a payload that merely stopped looking like numbers.
     """
     as_string = {
         "revenue": "200.00",
@@ -159,7 +166,7 @@ def test_the_last_touch_view_of_a_split_is_canonical_when_only_a_split_exists() 
         model_rows=[("linear", 2, Decimal("90.00"))],
     )
     assert report["canonical_model"] == "linear"
-    assert report["revenue"] == pytest.approx(90.0)
+    assert report["revenue"] == "90.00"
 
 
 # ---------------------------------------------------------------------------
@@ -197,7 +204,7 @@ async def test_the_campaign_rollup_quotes_one_canonical_figure(
         db, tenant_ctx.tenant_id, seeded["campaign"].id
     )
 
-    assert report["revenue"] == pytest.approx(200.0)
+    assert report["revenue"] == "200.00"
     assert {v["model"] for v in report["alternative_views"]} == {"first_touch", "last_touch"}
     assert report["views_are_alternative"] is True
     assert 400.0 not in _numbers(report)

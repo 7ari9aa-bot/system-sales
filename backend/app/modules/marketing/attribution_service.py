@@ -12,6 +12,14 @@ last row so pence are neither invented nor lost.
 
 The Attribution model already exists in marketing/models.py; this service
 computes and stores those rows and shapes the report.
+
+The report is a JSON payload, so it obeys the same boundary rule as
+``marketing/analytics.wire_money``: a credited AMOUNT leaves as a Decimal STRING
+(ADR-001/§47 — the shape ``orders/router.py`` ships for ``grand_total``), while
+``conversions`` (a count) and ``weight`` (a share of one whole) stay numbers.
+Floats appear in this file only as SHARES — ``compute_weights`` returns them and
+``split_credited_value`` turns them back into Decimal money; no amount is ever
+cast to float here.
 """
 
 from __future__ import annotations
@@ -27,6 +35,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ConflictError, NotFoundError
+from app.modules.marketing.analytics import wire_money
 from app.modules.marketing.models import (
     Attribution,
     Conversion,
@@ -207,6 +216,12 @@ class AttributionService:
         sits under ``alternative_views`` carrying ``never_sum_with_other_views``,
         so a rollup can quote one Revenue number without a reader having to know
         which models exist.
+
+        Both of those figures are AMOUNTS, so both leave through ``wire_money``
+        as Decimal strings (ADR-001/§47) — a client that parsed a credited
+        revenue as a float64 could not sum campaign rows and still trust the
+        cents. ``conversions`` and ``days`` are counts and a window length, not
+        money, and stay numbers; stringifying them would be its own bug.
         """
         ordered = sorted(model_rows, key=lambda row: row[0])
         by_model = {model: (conversions, credited) for model, conversions, credited in ordered}
@@ -219,14 +234,14 @@ class AttributionService:
             "campaign_id": str(campaign_id),
             "days": days,
             "canonical_model": canonical,
-            "revenue": float(credited),
+            "revenue": wire_money(credited),
             "conversions": conversions,
             "views_are_alternative": True,
             "alternative_views": [
                 {
                     "model": model,
                     "conversions": view_conversions,
-                    "credited_revenue": float(view_credited),
+                    "credited_revenue": wire_money(view_credited),
                     "credits_full_value_of_each_conversion": model in FULL_CREDIT_MODELS,
                     "never_sum_with_other_views": True,
                 }

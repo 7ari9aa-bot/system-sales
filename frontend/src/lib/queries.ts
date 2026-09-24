@@ -416,13 +416,21 @@ export type RoasBasis = "planned_budget" | "actual_spend";
  *  `revenue` here is last-touch ATTRIBUTED credit (see `AttributedByCampaign`),
  *  not collected money, and `actual_spend`/`spend_roas` are legitimately `null`
  *  because no burned-spend feed exists (`campaign_actual_spend` is the seam).
- *  A null must render as "no spend feed", never as 0 or NaN. */
+ *  A null must render as "no spend feed", never as 0 or NaN.
+ *
+ *  MONEY IS A STRING, RATIO IS A NUMBER (ADR-001/§47). `revenue`,
+ *  `planned_budget` and `actual_spend` are amounts, so `wire_money` serialises
+ *  them as 2-decimal Decimal strings — the same shape as `MoneySummary` above,
+ *  and the reason a `toFixed()` here would be a type error rather than a bug.
+ *  `budget_roas`/`spend_roas` are ratios: dimensionless shares a client sorts and
+ *  thresholds, so they stay numbers. Render amounts with `formatMoney`, order or
+ *  size bars with `scaleOf`; never add these fields up in the browser. */
 export type CampaignBudgetRoas = {
   campaign_id: string;
   name: string;
-  revenue: number;
-  planned_budget: number | null;
-  actual_spend: number | null;
+  revenue: string;
+  planned_budget: string | null;
+  actual_spend: string | null;
   basis: RoasBasis;
   budget_roas: number | null;
   spend_roas: number | null;
