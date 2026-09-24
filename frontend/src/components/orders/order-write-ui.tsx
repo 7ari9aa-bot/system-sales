@@ -5,9 +5,11 @@
  *  1. `useDialogIdempotencyKey` — the §91 discipline, stated once instead of
  *     four times: ONE key per dialog OPEN (not per click), re-sent unchanged on
  *     every retry and across a 401→refresh (that part lives in `apiWithMeta`),
- *     cleared when the write succeeds, and NEVER re-minted after a 409/412.
- *     `create-order-dialog.tsx` holds its own copy inline because it predates
- *     this file; the rule is identical.
+ *     cleared when the write succeeds, and NEVER re-minted after a 409/412. It
+ *     now lives in `@/lib/use-dialog-idempotency` — a home with no order copy —
+ *     so the approvals screen can reuse the discipline without dragging this
+ *     file's vocabulary along; it is re-exported here so the order dialogs that
+ *     import it from `./order-write-ui` are untouched.
  *  2. `<RefusalNotice>` — a refused action says WHY, in the backend's own
  *     sentence (`ApiError.message` is the envelope's `error.message`), with the
  *     status class deciding the title and the next step. A generic "something
@@ -17,48 +19,12 @@
  */
 
 import * as React from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { newIdempotencyKey } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { ot } from "./labels";
 import { isTerminalRefusal, type WriteRefusal } from "./order-ops";
 
-/** One Idempotency-Key per opened dialog.
- *
- *  `spent` is set by a 409/412 and is what freezes the submit: the server said
- *  this attempt is over, and the only honest way to get a new key is to open the
- *  dialog again — a new intent. It resets on open, so a close-and-reopen is the
- *  one path to a fresh key, exactly as the guard expects. */
-export function useDialogIdempotencyKey(open: boolean) {
-  const keyRef = useRef<string | null>(null);
-  const [spent, setSpent] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-    keyRef.current = newIdempotencyKey();
-    setSpent(false);
-  }, [open]);
-
-  /** Read the key this dialog owns, minting one only if the open transition has
-   *  not run yet (a submit cannot arrive before it, but never send no key). */
-  const draftKey = useCallback((): string => {
-    if (keyRef.current === null) keyRef.current = newIdempotencyKey();
-    return keyRef.current;
-  }, []);
-
-  /** The write landed: the next dialog open is a new intent with a new key. */
-  const clearKey = useCallback(() => {
-    keyRef.current = null;
-  }, []);
-
-  /** The write is over server-side, one way or another. Keep the key, stop
-   *  submitting — resending under a fresh one could repeat the money movement. */
-  const spendKey = useCallback(() => {
-    setSpent(true);
-  }, []);
-
-  return { draftKey, clearKey, spendKey, spent };
-}
+/** Re-exported so the guarded writes share one implementation — see above. */
+export { useDialogIdempotencyKey } from "@/lib/use-dialog-idempotency";
 
 /** The server's own words about a write it did not accept.
  *

@@ -1,4 +1,11 @@
-/** String-safe money for the create-order dialog — no float64 anywhere.
+/** String-safe money — no float64 anywhere.
+ *
+ *  Started as the create-order dialog's kit; it is where any screen that has to
+ *  RE-SCALE or MULTIPLY a money string comes, because that is the arithmetic
+ *  `formatMoney` (render only) and `scaleOf` (geometry only) deliberately refuse
+ *  to do. The order dialog and the AI usage screen are its callers today.
+ *  What it does NOT do is total a set of amounts: §55 puts business aggregation
+ *  behind the API, so a period total arrives already summed (`totals.cost`).
  *
  *  §47's rule in `backend/app/modules/orders/money.py` is that money is a
  *  `Decimal` quantized to the currency's places and never a float. The client
@@ -150,6 +157,67 @@ export function priceMinor(price: string | null | undefined): bigint | null {
   const kept = frac.slice(0, STORAGE_SCALE);
   const bump = frac[STORAGE_SCALE] >= "5" ? 1n : 0n;
   return toMinor(int, kept, STORAGE_SCALE) + bump;
+}
+
+/** `1E-8` -> `0.00000001`, on text.
+ *
+ *  Python's `str(Decimal)` prints any value below 1E-6 in engineering notation,
+ *  so a column at EIGHT places — `AI_COST = Numeric(18,8)`, widened so a
+ *  sub-cent call does not round to zero — can put `"0E-8"` or `"1.23E-7"` in a
+ *  money field. Both are still §47's contract: they are `str(Decimal)`, and
+ *  `Decimal(x)` reads them back with every place intact. So the client expands
+ *  the notation rather than rejecting the amount, and it expands it in TEXT —
+ *  `Number("0E-8")` would put the figure back through float64, which is the
+ *  whole thing this file exists to prevent. */
+function expandExponent(text: string): string | null {
+  const scientific = /^(-?\d+)(?:\.(\d+))?[eE]([+-]?\d{1,4})$/.exec(text);
+  if (!scientific) return /^-?\d+(?:\.\d+)?$/.test(text) ? text : null;
+  const [, head, frac = "", exp] = scientific;
+  const negative = head.startsWith("-");
+  const int = negative ? head.slice(1) : head;
+  const digits = int + frac;
+  // Capped at four digits above, so the EXPONENT is an exact JS number. It is a
+  // count of places to shift, not an amount: no money ever passes through Number.
+  const point = int.length + Number(exp);
+  const body =
+    point <= 0
+      ? `0.${"0".repeat(-point)}${digits}`
+      : point >= digits.length
+        ? digits + "0".repeat(point - digits.length)
+        : `${digits.slice(0, point)}.${digits.slice(point)}`;
+  return negative ? `-${body}` : body;
+}
+
+/** Any money string -> minor units at `places`, rounded half-up ON TEXT at the
+ *  boundary, exactly like `to_money` rounds it server-side. `null` for anything
+ *  that is not a decimal, so a caller renders a stated dash rather than a number
+ *  derived from nothing. Accepts the exponent form `expandExponent` handles. */
+function decimalMinorAt(value: string, places: number): bigint | null {
+  const plain = expandExponent(value.trim());
+  if (plain === null) return null;
+  const negative = plain.startsWith("-");
+  const body = negative ? plain.slice(1) : plain;
+  if (!PLAIN_DECIMAL.test(body)) return null;
+  const [int, frac = ""] = body.split(".");
+  const kept = (frac + "0".repeat(places)).slice(0, places);
+  const minor = toMinor(int, kept, places);
+  const rounded = frac.length > places && frac[places] >= "5" ? minor + 1n : minor;
+  return negative ? -rounded : rounded;
+}
+
+/** A money string rendered at exactly `places`, no float64 anywhere.
+ *
+ *  The order screens use `formatMoney`; this is for a figure whose COLUMN scale
+ *  is finer than a cent and must not be flattened to one — an AI spend shown at
+ *  4 places is the same figure the ledger holds, where `formatMoney` would print
+ *  `0.00` for a call that actually cost something. */
+export function fixedDecimal(
+  value: string | null | undefined,
+  places: number,
+): string | null {
+  if (value === null || value === undefined) return null;
+  const minor = decimalMinorAt(value, places);
+  return minor === null ? null : renderMinor(minor, places);
 }
 
 /** One line: unit price × whole quantity. Integer multiplication on minor

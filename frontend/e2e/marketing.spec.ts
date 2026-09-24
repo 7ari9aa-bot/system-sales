@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import type { Campaign, CampaignBudgetRoas, MarketingSummary, MoneySummary } from "../src/lib/queries";
+
 import { json, mockShell, seedAuth, seedLang } from "./support";
 
 /* Wave-4 money discipline on the marketing screen (ADR-053, §167, gap M11).
@@ -9,49 +11,62 @@ import { json, mockShell, seedAuth, seedLang } from "./support";
  * `budget_roas`, `spend_roas` and the `basis` that produced the shown ratio.
  * There is no burned-spend feed in this schema, so `actual_spend` and
  * `spend_roas` are `null` — the honest render is a stated "no spend feed", and
- * a `null` must never reach the screen as 0 or NaN. */
+ * a `null` must never reach the screen as 0 or NaN.
+ *
+ * THE FIXTURE IS THE WIRE, NOT A CONVENIENCE SHAPE. Every AMOUNT below is a
+ * 2-decimal Decimal STRING, because that is literally what
+ * `marketing/analytics.wire_money` puts in the JSON document; the RATIOS
+ * (`budget_roas`/`spend_roas`) stay numbers, and `orders_count`/`conversions`
+ * stay counts — §47's line. Feeding numbers here used to pass while the server
+ * answered strings, so the spec could not see a regression to float at all.
+ * Typing each block against its exported wire type is what makes a number
+ * reaching for `gross_revenue` a `tsc --noEmit` error instead of a green run. */
 
-const summaryFixture = {
-  orders_summary: {
-    orders_count: 4,
-    gross_revenue: 1250,
-    refunded_amount: 200,
-    net_revenue: 1050,
-    refund_excess: 0,
-    gross_aov: 312.5,
-    net_aov: 262.5,
-    currency: "EGP",
-    timezone: "Africa/Cairo",
-  },
-  revenue_by_source: [{ source: "facebook", revenue: 800, conversions: 3 }],
-  revenue_by_campaign: [
-    { campaign_id: "c1", campaign_name: "Ramadan", revenue: 800, conversions: 3 },
-  ],
-  campaign_budget_roas: [
-    {
-      campaign_id: "c1",
-      name: "Ramadan",
-      revenue: 800,
-      planned_budget: 400,
-      actual_spend: null,
-      basis: "planned_budget",
-      budget_roas: 2,
-      spend_roas: null,
-    },
-    {
-      campaign_id: "c2",
-      name: "Zero-budget test",
-      revenue: 100,
-      planned_budget: null,
-      actual_spend: null,
-      basis: "planned_budget",
-      budget_roas: null,
-      spend_roas: null,
-    },
-  ],
+const ordersSummary: MoneySummary = {
+  orders_count: 4,
+  gross_revenue: "1250.00",
+  refunded_amount: "200.00",
+  net_revenue: "1050.00",
+  refund_excess: "0.00",
+  gross_aov: "312.50",
+  net_aov: "262.50",
+  currency: "EGP",
+  timezone: "Africa/Cairo",
 };
 
-const campaignsFixture = {
+const campaignReturns: CampaignBudgetRoas[] = [
+  {
+    campaign_id: "c1",
+    name: "Ramadan",
+    revenue: "800.00",
+    planned_budget: "400.00",
+    actual_spend: null,
+    basis: "planned_budget",
+    budget_roas: 2,
+    spend_roas: null,
+  },
+  {
+    campaign_id: "c2",
+    name: "Zero-budget test",
+    revenue: "100.00",
+    planned_budget: null,
+    actual_spend: null,
+    basis: "planned_budget",
+    budget_roas: null,
+    spend_roas: null,
+  },
+];
+
+const summaryFixture: MarketingSummary = {
+  orders_summary: ordersSummary,
+  revenue_by_source: [{ source: "facebook", revenue: "800.00", conversions: 3 }],
+  revenue_by_campaign: [
+    { campaign_id: "c1", campaign_name: "Ramadan", revenue: "800.00", conversions: 3 },
+  ],
+  campaign_budget_roas: campaignReturns,
+};
+
+const campaignsFixture: { items: Campaign[] } = {
   items: [
     { id: "c1", name: "Ramadan", provider: "facebook", status: "active", budget: "400.00" },
     { id: "c2", name: "Zero-budget test", provider: "google", status: "draft", budget: null },

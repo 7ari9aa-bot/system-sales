@@ -490,8 +490,13 @@ async def enforce_budget(
             details={"spend": str(spend), "cap": str(cap)},
         )
     return {
-        "spend": float(spend),
-        "cap": float(cap),
+        # §47/ADR-053: spend and cap are AMOUNTS, so they cross JSON as
+        # `str(Decimal)` — the same spelling the budget-exceeded path one frame
+        # above uses. `ratio` is a percentage and stays a number. `str()` rather
+        # than marketing's `wire_money`: AI money is `Numeric(18,8)` and the
+        # two-place quantise would zero a sub-cent spend out.
+        "spend": str(spend),
+        "cap": str(cap),
         "ratio": ratio,
         "on_exceed": on_exceed,
     }
@@ -732,7 +737,12 @@ class AIGateway:
                     model=config["model"],
                     tokens_in=0,
                     tokens_out=0,
-                    cost=0.0,
+                    # A Decimal, not `0.0`: `model_calls.cost` is
+                    # `AI_COST = Numeric(18,8)`, so this is a money column, and
+                    # the chat path beside it (`_record_run`) already writes
+                    # `Decimal(0)`. Two spellings of "zero cost" in one module is
+                    # how a float sneaks back into the ledger.
+                    cost=Decimal(0),
                     latency_ms=latency_ms,
                     status=status,
                 )

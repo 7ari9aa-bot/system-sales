@@ -7,6 +7,7 @@ request/worker owns the transaction, the service owns the rules.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import delete, func, or_, select, tuple_
@@ -1353,6 +1354,11 @@ class Customer360Query:
             "customer": customer_info,
             "recent_orders": recent_orders,
             "recent_conversations": recent_conversations,
-            "lifetime_value": float(customer_info.get("lifetime_value") or 0),
+            # §47/ADR-053: the SAME column `customers/router.py::_customer_summary`
+            # and `timeline.py` already ship as `str(Decimal)`. The `or` keeps the
+            # money scale on a zero row so this reader never answers "0" where the
+            # human read answers "0.00"; it is a float-free coercion, not a second
+            # money rule.
+            "lifetime_value": str(customer_info.get("lifetime_value") or Decimal("0.00")),
             "memories": memories,
         }

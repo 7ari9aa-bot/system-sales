@@ -21,6 +21,11 @@ from app.modules.ai.models import ApprovalRequest
 
 APPROVAL_TTL_MINUTES = 60
 
+#: How many rows one read of the queue returns. Bounded because the decided
+#: histories (APPROVED / REJECTED) grow forever; reported as `truncated` so a
+#: bounded page never reads as a complete one.
+APPROVALS_PAGE_SIZE = 100
+
 
 def payload_fingerprint(payload: dict | None) -> str:
     """Stable SHA-256 over a payload, for binding an approval to its arguments.
@@ -107,10 +112,18 @@ class ApprovalService:
             raise ValidationError(f"invalid decision: {decision}")
         request = (
             await session.execute(
-                select(ApprovalRequest).where(
+                select(ApprovalRequest)
+                .where(
                     ApprovalRequest.tenant_id == tenant_id,
                     ApprovalRequest.id == approval_id,
                 )
+                # The lock is what makes the two checks below a decision rather
+                # than a guess. Under READ COMMITTED a second `decide` blocks
+                # here, and when the winner commits it re-reads the NEW row
+                # version — so it sees `status != PENDING` and refuses, instead
+                # of both reviewers getting a 200 and the parked run being
+                # released twice.
+                .with_for_update()
             )
         ).scalar_one_or_none()
         if request is None:
@@ -175,6 +188,14 @@ class ApprovalService:
                 )
                 .order_by(ApprovalRequest.decided_at.desc())
                 .limit(1)
+                # `consume` below is a separate write, so without this lock two
+                # resumed runs of one conversation both read the same unconsumed
+                # grant and BOTH ran the handler — the approval authorizing two
+                # executions of a HIGH-risk action. Locked, the loser blocks, and
+                # on the winner's commit Postgres re-checks the predicate against
+                # the new row version: `consumed_at IS NULL` no longer holds, so
+                # it reads None and parks a fresh request instead of double-firing.
+                .with_for_update()
             )
         ).scalar_one_or_none()
 
@@ -193,17 +214,25 @@ class ApprovalService:
         tenant_id: uuid.UUID,
         *,
         status: str | None = None,
-        limit: int = 100,
-    ) -> list[ApprovalRequest]:
+        limit: int = APPROVALS_PAGE_SIZE,
+    ) -> tuple[list[ApprovalRequest], bool]:
+        """One page of a tenant's approvals, and whether the queue was longer.
+
+        The second value is the point: a reviewer who is handed exactly 100
+        pending rows cannot tell 100 from 1000 by looking at them, and §135's
+        promise is that this queue is the whole set of decisions owed. So the
+        page is fetched one row deep and cut, which says "there is more" without
+        a COUNT over the whole table.
+        """
         stmt = select(ApprovalRequest).where(ApprovalRequest.tenant_id == tenant_id)
         if status:
             stmt = stmt.where(ApprovalRequest.status == status)
         rows = (
             await session.execute(
-                stmt.order_by(ApprovalRequest.created_at.desc()).limit(limit)
+                stmt.order_by(ApprovalRequest.created_at.desc()).limit(limit + 1)
             )
         ).scalars().all()
-        return list(rows)
+        return list(rows[:limit]), len(rows) > limit
 
     @staticmethod
     async def expire_stale(session: AsyncSession, tenant_id: uuid.UUID) -> int:

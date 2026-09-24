@@ -458,6 +458,8 @@ async def test_the_daily_upsert_still_converges_on_a_partitioned_table(
     If this test ever shows two rows, the partitioning is wrong for this table
     and must be reverted, not patched around.
     """
+    from decimal import Decimal
+
     from app.modules.ai.usage import record_usage
 
     agent_id = uuid.uuid4()
@@ -468,7 +470,10 @@ async def test_the_daily_upsert_still_converges_on_a_partitioned_table(
             agent_id=agent_id,
             tokens_in=100,
             tokens_out=5,
-            cost=0.5,
+            # `record_usage` is the port into a Numeric(18,8) MONEY column, so it
+            # takes a Decimal (§47). This used to be `cost=0.5` — a float booking
+            # money — which the port no longer accepts by contract.
+            cost=Decimal("0.5"),
         )
     await db.flush()
     rows = (

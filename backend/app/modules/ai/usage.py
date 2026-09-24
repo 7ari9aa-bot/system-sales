@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from decimal import Decimal
 
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,9 +26,18 @@ async def record_usage(
     agent_id: uuid.UUID | None = None,
     tokens_in: int = 0,
     tokens_out: int = 0,
-    cost: float = 0.0,
+    cost: Decimal = Decimal("0"),
 ) -> None:
-    """Increment today's (tenant, agent) usage row, creating it if needed."""
+    """Increment today's (tenant, agent) usage row, creating it if needed.
+
+    ``cost`` is a Decimal because ``ai_usage.cost`` is ``AI_COST =
+    Numeric(18,8)``: sub-cent money, widened off ``Numeric(14,2)`` precisely so a
+    call costing 0.001 did not round to 0.00 and make the §42 hard cap
+    unreachable. A float parameter would put that rounding back one frame above
+    the INSERT, so the port takes what the column holds and no caller converts
+    on its behalf — the same shape ``BillingService.record_usage`` uses for its
+    Decimal quantity.
+    """
     # UTC everywhere: the budget month window (gateway._month_spend) buckets
     # by UTC — mixing server-local dates made usage roll into the wrong day.
     period_date = datetime.now(UTC).date()

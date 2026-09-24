@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
@@ -113,10 +114,24 @@ async def usage_summary(ctx: TenantCtxDep, days: Annotated[int, Query(ge=1, le=3
                 "date": period.isoformat(),
                 "tokens_in": int(tokens_in),
                 "tokens_out": int(tokens_out),
-                "cost": float(cost),
+                # §47/ADR-053: AI spend is an AMOUNT, so it crosses JSON as a
+                # Decimal string — `Numeric(18,8)` carries sub-cent money a
+                # float64 cannot round-trip. The token columns beside it are
+                # counts and stay numbers.
+                "cost": str(cost),
             }
             for period, tokens_in, tokens_out, cost in rows
         ],
+        # §55 forbids the browser from doing business aggregation, so the period
+        # total is answered here rather than left to the caller: SQL has already
+        # grouped by day, and adding the days on a Decimal is exact. Summing it
+        # client-side would also be the wrong shape — the money would pass
+        # through float64 on its way to a `toFixed`.
+        "totals": {
+            "cost": str(sum((Decimal(cost) for _, _, _, cost in rows), Decimal(0))),
+            "tokens_in": sum(int(tokens_in) for _, tokens_in, _, _ in rows),
+            "tokens_out": sum(int(tokens_out) for _, _, tokens_out, _ in rows),
+        },
     }
 
 
@@ -307,8 +322,10 @@ async def list_approvals(
     ctx: TenantCtxDep,
     status: str | None = Query(default=None, description="PENDING | APPROVED | ..."),
 ):
-    rows = await ApprovalService.list_for_tenant(ctx.session, ctx.tenant_id, status=status)
-    return {"items": [_approval_out(a) for a in rows]}
+    rows, truncated = await ApprovalService.list_for_tenant(
+        ctx.session, ctx.tenant_id, status=status
+    )
+    return {"items": [_approval_out(a) for a in rows], "truncated": truncated}
 
 
 @router.post("/approvals/{approval_id}/decide")

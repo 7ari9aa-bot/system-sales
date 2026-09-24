@@ -12,6 +12,7 @@ import {
 } from "@/lib/queries";
 import { t } from "@/lib/t";
 import { formatDate, formatNumber } from "@/lib/utils";
+import { fixedDecimal } from "@/components/orders/money";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -63,7 +64,8 @@ export default function AIPage() {
 
   const items = knowledgeQuery.data ?? [];
   const agents = agentsQuery.data ?? [];
-  const usage = usageQuery.data ?? [];
+  const usage = usageQuery.data?.summary ?? [];
+  const usageTotals = usageQuery.data?.totals;
 
   React.useEffect(() => {
     if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("new") === "1") {
@@ -71,8 +73,12 @@ export default function AIPage() {
     }
   }, []);
 
-  const totalCost = usage.reduce((sum, r) => sum + Number(r.cost), 0);
-  const totalTokens = usage.reduce((sum, r) => sum + r.tokens_in + r.tokens_out, 0);
+  // §55: the period totals come from the ROUTE, already summed in Decimal.
+  // Adding them here would be the business aggregation the spec forbids the
+  // browser, and `cost` is money in `Numeric(18,8)` — so the total renders at 4
+  // places from the string (`formatMoney` would flatten a real spend to 0.00).
+  const totalCost = usageTotals ? fixedDecimal(usageTotals.cost, 4) : null;
+  const totalTokens = usageTotals ? usageTotals.tokens_in + usageTotals.tokens_out : 0;
 
   function submitKnowledge() {
     if (!title.trim() || !content.trim()) return;
@@ -125,7 +131,7 @@ export default function AIPage() {
         <>
           <div className="mb-4 grid gap-4 sm:grid-cols-3">
             <StatCard label={t.totalTokens} value={formatNumber(totalTokens)} />
-            <StatCard label={`${t.usageCost} ($)`} value={totalCost.toFixed(2)} />
+            <StatCard label={`${t.usageCost} ($)`} value={totalCost ?? "—"} />
             <StatCard label={t.agents} value={agents.length} />
           </div>
 
@@ -250,7 +256,11 @@ export default function AIPage() {
                             </TableCell>
                             <TableCell dir="ltr">{formatNumber(r.tokens_in)}</TableCell>
                             <TableCell dir="ltr">{formatNumber(r.tokens_out)}</TableCell>
-                            <TableCell dir="ltr">{Number(r.cost).toFixed(4)}</TableCell>
+                            {/* AI cost is `Numeric(18,8)` — sub-cent money on
+                              * purpose — so it renders at 4 places from the
+                              * string itself. `formatMoney` would flatten a real
+                              * call to 0.00. */}
+                            <TableCell dir="ltr">{fixedDecimal(r.cost, 4) ?? "—"}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>

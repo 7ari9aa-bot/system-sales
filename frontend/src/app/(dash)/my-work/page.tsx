@@ -158,7 +158,7 @@ export default function MyWorkPage() {
     });
   }, [slaQuery.data]);
 
-  const approvals = approvalsQuery.data ?? [];
+  const approvals = approvalsQuery.data?.items ?? [];
 
   const myTasks = React.useMemo<Task[]>(() => {
     if (!myId) return [];

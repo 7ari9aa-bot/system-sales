@@ -449,7 +449,25 @@ export type TenantCurrency = { tenant_id: string; currency: string };
 
 export type KnowledgeItem = { id: string; title: string; status: string; created_at: string };
 export type Agent = { id: string; name: string; model: string | null; is_active: boolean };
-export type UsageRow = { date: string; tokens_in: number; tokens_out: number; cost: number };
+/** `GET /ai/usage/summary` — one UTC day of AI spend, plus the period totals.
+ *
+ *  `cost` is a DECIMAL STRING (§47/ADR-053): it is money in `ai_usage.cost`, a
+ *  `Numeric(18,8)` column widened off `Numeric(14,2)` precisely so a sub-cent
+ *  call does not round to `0.00`, and the route ships `str(Decimal)` to keep
+ *  those eight places out of float64. Because the scale is finer than a cent,
+ *  render it with `fixedDecimal(cost, 4)` from `components/orders/money` —
+ *  `formatMoney` would flatten a real spend to `0.00`, and `Number(cost)` is the
+ *  bug this note exists to keep dead. `tokens_in`/`tokens_out` are COUNTS and
+ *  stay numbers.
+ *
+ *  `totals` comes from the ROUTE, and that placement is the rule, not a
+ *  preference: §55 forbids the browser from doing business aggregation
+ *  (`docs/spec/ARCHITECTURE_SPEC_1-124.txt`, "لا تجعل browser يعمل business
+ *  aggregation"), and summing money strings on the client would put them back
+ *  through float64 anyway. */
+export type UsageRow = { date: string; tokens_in: number; tokens_out: number; cost: string };
+export type UsageTotals = { cost: string; tokens_in: number; tokens_out: number };
+export type UsageSummary = { summary: UsageRow[]; totals: UsageTotals };
 export type SearchHit = { id: string; title: string; distance: number };
 export type GlobalSearchHit = { entity_type: string; entity_id: string; title: string; snippet: string | null };
 export type Invitation = { id: string; email: string; status: string; role_code: string | null; token?: string };
@@ -866,7 +884,7 @@ export function useAgents() {
 export function useUsageSummary() {
   return useQuery({
     queryKey: qk.usage,
-    queryFn: () => api<{ summary: UsageRow[] }>("/ai/usage/summary").then((r) => r.summary ?? []),
+    queryFn: () => api<UsageSummary>("/ai/usage/summary"),
   });
 }
 
@@ -903,50 +921,18 @@ export function useSlaRisk(opts: { enabled?: boolean } = {}) {
   });
 }
 
+/** §135 — one page of the queue, plus the server's own admission that the queue
+ *  is longer than what it sent. `list_for_tenant` is bounded (100 rows), so a
+ *  full page cannot be told apart from a complete one without this flag. */
+export type ApprovalsPage = { items: Approval[]; truncated: boolean };
+
 /** §135 — approvals parked awaiting a decision (defaults to the pending queue). */
 export function useApprovals(status = "PENDING") {
   return useQuery({
     queryKey: qk.approvals(status),
     queryFn: () =>
-      api<{ items: Approval[] }>(`/ai/approvals?status=${encodeURIComponent(status)}`).then(
-        (r) => r.items,
-      ),
+      api<ApprovalsPage>(`/ai/approvals?status=${encodeURIComponent(status)}`),
     refetchInterval: 30_000,
-  });
-}
-
-/** §135 — approve or reject a parked HIGH-risk AI action. */
-export function useDecideApproval() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({
-      approvalId,
-      decision,
-      reason,
-    }: {
-      approvalId: string;
-      decision: "APPROVED" | "REJECTED";
-      reason?: string;
-    }) =>
-      api<Approval>(`/ai/approvals/${approvalId}/decide`, {
-        method: "POST",
-        body: { decision, rejection_reason: reason },
-        idempotencyKey: newIdempotencyKey(),
-      }),
-    onSuccess: (_data, variables) => {
-      toast({
-        title:
-          variables.decision === "APPROVED"
-            ? "تمت الموافقة على الإجراء"
-            : "تم رفض الإجراء",
-        variant: variables.decision === "APPROVED" ? "success" : "default",
-      });
-      qc.invalidateQueries({ queryKey: qk.approvals("PENDING") });
-      qc.invalidateQueries({ queryKey: qk.approvals("APPROVED") });
-      qc.invalidateQueries({ queryKey: qk.approvals("REJECTED") });
-    },
-    onError: (err) =>
-      toast({ title: t.somethingWentWrong, description: errMessage(err), variant: "danger" }),
   });
 }
 

@@ -139,7 +139,9 @@ async def transcribe_inbound_voice(
     if result.text:
         # §42: booked whether or not the provider answered, so the cap sees the
         # money a failed call may still have consumed.
-        await record_usage(session, tenant_id, cost=float(cost))
+        # §47: the estimate is a Decimal and `ai_usage.cost` is Numeric(18,8);
+        # `float(cost)` rounded the sub-cent places the column exists to hold.
+        await record_usage(session, tenant_id, cost=cost)
         return result.text
     return None
 
