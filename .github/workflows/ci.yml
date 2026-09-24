@@ -103,6 +103,11 @@ jobs:
       # The security header policy is the only protection on the HTML Vercel
       # serves; the API middleware never sees those responses (review G-07).
       - run: npm run check:headers
+      # Same shape: the last grep-only guard on this job. It compiles
+      # src/lib/api.ts and calls the REAL apiUrl() under both deployment shapes,
+      # so the pass means the resolver is correct and the walk means nothing
+      # hand-builds a second one. A pre-fix `/api/v1/api/v1` would fail here.
+      - run: npm run check:urls
       - run: npm run build
 
   # Browser tests against the production bundle. Split from `frontend` so a
