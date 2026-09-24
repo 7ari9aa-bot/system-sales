@@ -94,22 +94,65 @@ async def list_contact_data_issues(
     Gated on ``customers:write``, not a read: this is a work queue for the
     person who can act on it, and it lists raw phone numbers.
     """
-    from app.core.field_auth import PII_FIELDS, redact_fields
-
     items = await CustomerService.contact_data_quality_report(
         ctx.session, ctx.tenant_id, limit=limit
     )
-    # §146: every one of these columns is a phone number, including the ones
-    # the backfill renamed — the PII set alone would leave them readable.
-    redacted = [
-        redact_fields(
-            item,
-            permission_codes=ctx.permission_codes,
-            fields_to_redact=PII_FIELDS | _EXTRA_PHONE_FIELDS,
-        )
-        for item in items
-    ]
-    return {"items": redacted, "count": len(redacted)}
+    return {"items": [_redact_issue_item(i, ctx) for i in items], "count": len(items)}
+
+
+def _redact_issue_item(item: dict, ctx: TenantContext) -> dict:
+    """§146 on a queue item — every phone column, including the ones the
+    backfill RENAMED (``legacy_raw``/``suspected_phone``/``canonical_phone``),
+    redacted unless the caller holds ``pii:read``. The redaction set is only
+    applied when it must be: ``redact_fields`` with an explicit set redacts
+    UNCONDITIONALLY, so passing it for a ``pii:read`` caller would hide the
+    very values the operator is there to judge."""
+    from app.core.field_auth import PII_FIELDS, redact_fields
+
+    if "pii:read" in ctx.permission_codes:
+        return dict(item)
+    return redact_fields(
+        item,
+        permission_codes=ctx.permission_codes,
+        fields_to_redact=PII_FIELDS | _EXTRA_PHONE_FIELDS,
+    )
+
+
+class ContactIssueResolution(BaseModel):
+    issue: str = Field(min_length=1, max_length=64)
+    resolution: str = Field(min_length=1, max_length=32)
+    # Only ``correct`` on a legacy-default issue uses it; everything else is
+    # refused by the service, including any idea of merging here.
+    phone: str | None = Field(default=None, max_length=31)
+
+
+@router.post("/customers/{customer_id}/contact-issue/resolve")
+async def resolve_contact_issue(
+    customer_id: UUID,
+    body: ContactIssueResolution,
+    ctx: WriteCtx,
+):
+    """Clear ONE M12 quarantine mark an operator has decided, and audit it.
+
+    ``customers:write`` — the same gate as the queue itself. The offered
+    resolutions, and why the surface stops there, are documented on
+    ``CustomerService.resolve_contact_issue``: confirming a normalization is
+    automatable, merging two customers (orders, conversations and ledgers all
+    point at one survivor) is not, so a merge request is refused with 400 and
+    pointed at ``POST /customers/merge``. The response is the row's REAL
+    remaining issue view after the clear — an already-resolved row answers
+    409 with the server's actual open issues rather than pretending.
+    """
+    item = await CustomerService.resolve_contact_issue(
+        ctx.session,
+        ctx.tenant_id,
+        customer_id,
+        issue=body.issue,
+        resolution=body.resolution,
+        phone=body.phone,
+        actor_user_id=ctx.user.id,
+    )
+    return _redact_issue_item(item, ctx)
 
 
 @router.get("/customers/{customer_id}")

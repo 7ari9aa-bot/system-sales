@@ -37,6 +37,46 @@ _RESOLVE_ATTEMPTS = 2
 # The extra key migration d5a1c7e94b02 leaves its contact findings under.
 _BACKFILL_KEY = "m12_contact_backfill"
 
+# The two things the backfill could not decide, named once here and used by
+# both the queue (``contact_data_quality_report``) and its resolve half, so
+# the vocabulary the operator sees and the vocabulary the server checks can
+# never drift. Each issue owns exactly the mark keys its resolution may clear.
+ISSUE_LEGACY_DEFAULT = "phone_legacy_default_country"
+ISSUE_CANONICAL_COLLISION = "phone_canonical_collision"
+_ISSUE_MARK_KEYS: dict[str, tuple[str, ...]] = {
+    ISSUE_LEGACY_DEFAULT: ("phone_status", "legacy_raw", "suspected_phone"),
+    ISSUE_CANONICAL_COLLISION: ("phone_collision",),
+}
+# A ``+9640`` fabrication resolves two ways (the column is right after all, or
+# the operator states the real number). A collision resolves ONE way: the two
+# rows are confirmed different people. Merging them is NOT offered here —
+# see ``resolve_contact_issue``.
+_ISSUE_RESOLUTIONS: dict[str, tuple[str, ...]] = {
+    ISSUE_LEGACY_DEFAULT: ("confirm_genuine", "correct"),
+    ISSUE_CANONICAL_COLLISION: ("confirm_distinct",),
+}
+
+
+def _contact_flag(extra: dict | None) -> dict:
+    """The backfill mark on a row's ``extra``, as a dict (possibly empty)."""
+    flag = ((extra or {}).get("data_quality") or {}).get(_BACKFILL_KEY)
+    return flag if isinstance(flag, dict) else {}
+
+
+def _open_contact_issues(flag: dict) -> list[str]:
+    """Which of the two queue issues this mark still has open.
+
+    Read off the MARK, not a re-scan — same rule the queue list uses: a row
+    the backfill merely rewrote carries provenance (``phone_from``) with
+    nothing to act on.
+    """
+    issues: list[str] = []
+    if flag.get("phone_status") == "needs_review":
+        issues.append(ISSUE_LEGACY_DEFAULT)
+    if flag.get("phone_collision"):
+        issues.append(ISSUE_CANONICAL_COLLISION)
+    return issues
+
 
 def _canonical_or_raw(raw: str | None, normalize) -> str | None:
     """Canonical form when we are confident, otherwise the value as it came in.
@@ -212,6 +252,9 @@ class CustomerService:
         the backfill merely rewrote carries a mark with nothing to act on, and
         is dropped here. ``phone_state`` IS re-classified per row, which is what
         makes a human-corrected row visibly corrected instead of quietly wrong.
+        Tombstoned and merged-away rows are excluded: a dead row is not a
+        quarantined CONTACT any more — resolve refuses it, so the queue must
+        not promise it.
         """
         mark = func.jsonb_extract_path(Customer.extra, "data_quality", _BACKFILL_KEY)
         rows = (
@@ -219,37 +262,172 @@ class CustomerService:
                 select(
                     Customer.id, Customer.name, Customer.phone, Customer.email, Customer.extra
                 )
-                .where(Customer.tenant_id == tenant_id, mark.isnot(None))
+                .where(
+                    Customer.tenant_id == tenant_id,
+                    mark.isnot(None),
+                    Customer.deleted_at.is_(None),
+                    Customer.merged_into_customer_id.is_(None),
+                )
                 .order_by(Customer.id.asc())
                 .limit(limit)
             )
         ).all()
         items: list[dict] = []
         for row in rows:
-            flag = ((row.extra or {}).get("data_quality") or {}).get(_BACKFILL_KEY) or {}
-            collision = flag.get("phone_collision") or {}
-            issues: list[str] = []
-            if flag.get("phone_status") == "needs_review":
-                issues.append("phone_legacy_default_country")
-            if collision:
-                issues.append("phone_canonical_collision")
+            flag = _contact_flag(row.extra)
+            issues = _open_contact_issues(flag)
             if not issues:
                 continue
-            items.append(
-                {
-                    "customer_id": str(row.id),
-                    "name": row.name,
-                    "phone": row.phone,
-                    "email": row.email,
-                    "phone_state": classify_stored_phone(row.phone),
-                    "issues": issues,
-                    "legacy_raw": flag.get("legacy_raw"),
-                    "suspected_phone": flag.get("suspected_phone"),
-                    "canonical_phone": collision.get("canonical"),
-                    "peer_customer_ids": collision.get("peer_customer_ids") or [],
-                }
-            )
+            items.append(CustomerService._contact_issue_view(row, flag, issues))
         return items
+
+    @staticmethod
+    def _contact_issue_view(row, flag: dict, issues: list[str]) -> dict:
+        """One queue item — the mark's facts, the raw stored value, and the
+        LIVE classification. Never a value the server does not have: keys the
+        mark does not carry come back ``None``/empty, and the screen says so."""
+        collision = flag.get("phone_collision") or {}
+        return {
+            "customer_id": str(row.id),
+            "name": row.name,
+            "phone": row.phone,
+            "email": row.email,
+            "phone_state": classify_stored_phone(row.phone),
+            "issues": issues,
+            "legacy_raw": flag.get("legacy_raw"),
+            "suspected_phone": flag.get("suspected_phone"),
+            "canonical_phone": collision.get("canonical"),
+            "peer_customer_ids": collision.get("peer_customer_ids") or [],
+        }
+
+    @staticmethod
+    async def resolve_contact_issue(
+        session: AsyncSession,
+        tenant_id: UUID,
+        customer_id: UUID,
+        *,
+        issue: str,
+        resolution: str,
+        phone: str | None = None,
+        actor_user_id: UUID | None = None,
+    ) -> dict:
+        """Clear ONE quarantine mark the operator has actually decided.
+
+        What is safe to automate, and what is not:
+
+        * ``confirm_genuine`` / ``correct`` for a ``+9640`` review mark —
+          safe: they change a MARK (and, for ``correct``, the one column the
+          operator restates, canonicalized by the same strict rule every human
+          write uses and clash-checked against live rows).
+        * ``confirm_distinct`` for a collision — safe: it records that two
+          rows are two people; each keeps its own spelling.
+        * MERGING the colliding pair is NOT offered, deliberately. A merge
+          retargets orders, conversations, ledgers and identities onto one
+          survivor and tombstones the other — whose lifetime value and
+          history survive is a business decision ``IdentityMergeService``
+          guards behind explicit human approval (``POST /customers/merge``).
+          A mark-clearing endpoint that could trigger it would let a queue
+          click decide that, so it refuses instead — and says where the real
+          merge lives.
+
+        A row whose issue is not open answers ``ConflictError`` naming the
+        server's REAL open issues — an already-resolved row never reports
+        success a second time.
+        """
+        from app.core.audit import write_audit_row
+
+        customer = await CustomerService.get(session, tenant_id, customer_id)
+        if issue not in _ISSUE_MARK_KEYS:
+            raise ValidationError(
+                f"unknown contact issue '{issue}'; openable issues are "
+                f"{sorted(_ISSUE_MARK_KEYS)}"
+            )
+        open_issues = _open_contact_issues(_contact_flag(customer.extra))
+        if issue not in open_issues:
+            raise ConflictError(
+                f"customer {customer_id} has no open '{issue}' contact issue — "
+                f"the server's real state: open issues are "
+                f"{open_issues if open_issues else 'none (row is clean)'}"
+            )
+        allowed = _ISSUE_RESOLUTIONS[issue]
+        if resolution not in allowed:
+            refusal = ""
+            if issue == ISSUE_CANONICAL_COLLISION:
+                refusal = (
+                    " — a merge moves orders, conversations and ledgers and "
+                    "tombstones a customer, which is a human decision owned by "
+                    "POST /customers/merge, not by this endpoint"
+                )
+            raise ValidationError(
+                f"resolution '{resolution}' is not offered for '{issue}'; "
+                f"allowed: {list(allowed)}{refusal}"
+            )
+
+        before_flag = _contact_flag(customer.extra)
+        cleared = [k for k in _ISSUE_MARK_KEYS[issue] if k in before_flag]
+        after_flag = {k: v for k, v in before_flag.items() if k not in _ISSUE_MARK_KEYS[issue]}
+
+        phone_before = customer.phone
+        if resolution == "correct":
+            if not phone:
+                raise ValidationError(
+                    f"resolution 'correct' for '{issue}' requires the real phone"
+                )
+            canonical = normalize_phone(phone)  # strict, like every human write
+            clash = (
+                await session.execute(
+                    select(Customer.id).where(
+                        Customer.tenant_id == tenant_id,
+                        Customer.phone.in_(phone_candidates(phone)),
+                        Customer.id != customer_id,
+                        Customer.deleted_at.is_(None),
+                        Customer.merged_into_customer_id.is_(None),
+                    )
+                )
+            ).scalar_one_or_none()
+            if clash is not None:
+                raise ConflictError(
+                    f"customer phone '{canonical}' already belongs to customer {clash}"
+                )
+            customer.phone = canonical
+
+        # Rebuild extra WHOLESALE: JSONB has no in-place mutation the ORM can
+        # see, and the mark is merged additively with any other data_quality
+        # keys the row may have gained since.
+        extra = dict(customer.extra or {})
+        quality = dict(extra.get("data_quality") or {})
+        if after_flag:
+            quality[_BACKFILL_KEY] = after_flag
+        else:
+            quality.pop(_BACKFILL_KEY, None)
+        if quality:
+            extra["data_quality"] = quality
+        else:
+            extra.pop("data_quality", None)
+        customer.extra = extra
+        await session.flush()
+
+        await write_audit_row(
+            session,
+            tenant_id,
+            actor_user_id,
+            action="customer.contact_issue_resolved",
+            resource_type="customer",
+            resource_id=str(customer_id),
+            before={
+                "issue": issue,
+                "cleared_keys": cleared,
+                "phone_before": phone_before,
+            },
+            after={
+                "resolution": resolution,
+                "phone_after": customer.phone,
+                "remaining_issues": _open_contact_issues(after_flag),
+            },
+        )
+        return CustomerService._contact_issue_view(
+            customer, after_flag, _open_contact_issues(after_flag)
+        )
 
     # ------------------------------------------------------------- crud ----
 
