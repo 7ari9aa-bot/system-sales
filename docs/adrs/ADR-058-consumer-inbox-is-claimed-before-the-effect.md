@@ -1,6 +1,6 @@
 # ADR-058 — The consumer inbox is claimed before the effect, not checked beside it
 
-Date: 2026-09-25. Wave 4 / T3 money-safety track.
+Date: 2026-09-24. Wave 5 / worker reliability.
 Evidence: `backend/app/workers/base.py` (`_process_event`, `_claim_inbox`,
 `_close_inbox`, `_run_with_lineage`), `backend/app/core/lease.py`,
 `backend/tests/gate/test_gate_inbox_dedupe.py` (8: 4 run anywhere, 4 need a
