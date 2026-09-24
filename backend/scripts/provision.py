@@ -209,6 +209,30 @@ PRIVILEGE_REFREEZE: tuple[str, ...] = (
     "REVOKE TRUNCATE ON public.invoices FROM sales_app",
 )
 
+#: Spec §55–57 — functions the application calls, granted here because the
+#: migrations that create them cannot grant them to a role that is missing.
+#:
+#: `f7a2c9d4e8b1` revokes PUBLIC's EXECUTE on its four SECURITY DEFINER
+#: maintenance functions and hands it back to `sales_app` only
+#: `IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'sales_app')`. CI runs
+#: `alembic upgrade head` and THEN `provision.py`, which is where that role is
+#: created — so every guarded grant is skipped, and `GRANT ALL PRIVILEGES ON ALL
+#: TABLES` below cannot cover it: a function is not a table. The app role is then
+#: left unable to call the code it was written to call, which surfaces at
+#: runtime as `permission denied for function partitioning_ensure_partition`
+#: rather than at provision time.
+#:
+#: Both deploy orders are covered by the pair: on a database where this script
+#: runs first, the migration's own guard sees the role and fires instead.
+#: `tests/test_app_role_function_grants.py` pins that no migration-side grant
+#: ever goes missing from this list.
+FUNCTION_EXECUTE_GRANTS: tuple[str, ...] = (
+    "GRANT EXECUTE ON FUNCTION public.partitioning_ensure_partition(text, date) TO sales_app",
+    "GRANT EXECUTE ON FUNCTION public.partitioning_ensure_months(text, integer) TO sales_app",
+    "GRANT EXECUTE ON FUNCTION public.retention_drop_horizon(text) TO sales_app",
+    "GRANT EXECUTE ON FUNCTION public.partitioning_purge_month(text, date) TO sales_app",
+)
+
 
 ROLES = [
     ("owner", "Owner", "Full access to the tenant"),
@@ -298,9 +322,20 @@ async def setup_app_role(conn: asyncpg.Connection, password: str) -> None:
             # Provisioned ahead of the migrations on a fresh database. Nothing
             # is lost: migration a9b0c1d2e3f4 issues the identical revoke.
             print(f"privilege re-freeze skipped (table not migrated yet): {stmt}")
+    # The mirror image: this time provision.py is the only copy that can run,
+    # because the migration's copy is guarded on a role that does not exist yet
+    # when alembic runs. See FUNCTION_EXECUTE_GRANTS.
+    for stmt in FUNCTION_EXECUTE_GRANTS:
+        try:
+            await conn.execute(stmt)
+        except asyncpg.exceptions.UndefinedFunctionError:
+            # Provisioned ahead of the migrations on a fresh database. Nothing
+            # is lost: f7a2c9d4e8b1 grants these once the role exists.
+            print(f"function grant skipped (not migrated yet): {stmt}")
     print(
         "app role: sales_app ready (no bypassrls, full table grants EXCEPT the "
-        "§53–54 TRUNCATE freeze on invoices)"
+        "§53–54 TRUNCATE freeze on invoices, plus EXECUTE on the §55–57 "
+        "maintenance functions)"
     )
 
 
