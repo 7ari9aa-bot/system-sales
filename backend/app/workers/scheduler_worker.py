@@ -53,6 +53,18 @@ RECURRING_JOBS: dict[str, tuple[timedelta, dict]] = {
     # was not in POOLS and nothing ever scheduled it, so no tenant's
     # RetentionPolicy was ever enforced.
     "retention.run": (timedelta(hours=24), {}),
+    # §56: a monthly partition must exist BEFORE the month it belongs to. The
+    # migration pre-creates a horizon; without a sweep that horizon simply runs
+    # out and rows start falling into the DEFAULT partition, where retention
+    # cannot reach them month-by-month.
+    "partition.ensure_months": (timedelta(days=1), {"months_ahead": 3}),
+    # §57: the destructive half, and deliberately the slowest sweep here — a
+    # dropped month cannot be un-dropped. Safe to run from every tenant's row
+    # because the consent gate it consults is global: `ai_usage` is partitioned
+    # by month, not by tenant (spec §56), so the act either applies to all
+    # tenants or to none. `partitioning_purge_month` takes an advisory lock on
+    # (parent, month), so two workers racing the same month cannot both drop it.
+    "retention.purge_partitions": (timedelta(days=1), {}),
 }
 
 
@@ -134,6 +146,43 @@ async def _handle_retention(session, tenant_id, payload: dict) -> dict:
 
 
 register_job_handler("retention.run", _handle_retention)
+
+
+async def _handle_partition_ensure(session, tenant_id, payload: dict) -> dict:
+    """§56: make sure the next months' partitions exist.
+
+    The DDL cannot be issued by this process: `sales_app` has no CREATE on
+    schema public, so `app.core.partitioning` calls the SECURITY DEFINER
+    maintenance functions the migration installs. A missing grant or a lagging
+    migration therefore raises `PartitionMaintenanceUnavailable` and shows up in
+    `scheduled_jobs.last_error` — which is the point. Silently reporting "0
+    created" on a database where nothing can be created is how this repo's
+    sweeps stayed dead for their whole life.
+    """
+    from app.core.partitioning import ensure_month_partitions
+
+    months_ahead = int(payload.get("months_ahead", 3))
+    created = await ensure_month_partitions(session, months_ahead=months_ahead)
+    return {"created": created, "months_ahead": months_ahead}
+
+
+register_job_handler("partition.ensure_months", _handle_partition_ensure)
+
+
+async def _handle_retention_purge(session, tenant_id, payload: dict) -> dict:
+    """§57: drop whole months, but only after every active tenant chose it.
+
+    Deliberately one call, into the module that owns the decision. It must not
+    reach for `partitioning.purge_month` directly: the consent gate is the only
+    thing separating this from the `archive_old_rows` that was deleted for
+    having no policy behind it.
+    """
+    from app.modules.analytics.retention import purge_expired_partitions
+
+    return await purge_expired_partitions(session, tenant_id)
+
+
+register_job_handler("retention.purge_partitions", _handle_retention_purge)
 
 
 async def ensure_recurring_jobs() -> None:

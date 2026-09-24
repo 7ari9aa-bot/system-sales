@@ -1,170 +1,298 @@
-"""Spec §56 — Partitioning strategy.
+"""Spec §56 — monthly partitioning of the append-only series, and its maintenance.
 
-For high-volume tables (Messages, AuditLog, AIUsage, EventLog,
-WebhookEvent), PostgreSQL declarative partitioning by created_at (range,
-monthly) is used. tenant_id is always indexed on each partition.
+What this module IS: the thin Python seam over the partition-maintenance
+functions that ``f7a2c9d4e8b1`` installs. The DDL itself cannot live here,
+because ``sales_app`` is granted USAGE on ``public`` plus table privileges and
+deliberately NOT ``CREATE`` (``scripts/provision.py``), so no worker holding an
+application connection may create or drop a table. The maintenance functions are
+therefore SECURITY DEFINER, owned by the migration role, with a pinned
+``search_path`` and a hard table allowlist inside the SQL body — the same shape
+as ``resolve_channel_tenant`` in ``b2c3d4e5f6a7``. This module calls them; it
+does not build DDL from strings.
 
-§56: "Do not create thousands of partitions due to tenant count."
-We partition by time, not by tenant.
+HISTORY — what this module used to be, and why the claims were removed. Every
+one of these was verified against the schema and the Postgres documentation, not
+assumed:
+
+* it asserted "declarative partitioning by created_at (range, monthly) is used"
+  while NO table in the schema was partitioned. Nothing could call it without
+  raising on the first ``PARTITION OF``, because a plain table cannot be a
+  parent. It was not "primitives with no caller" — it was primitives for a
+  structure that did not exist;
+* ``detach_old_partitions()`` issued ``ALTER TABLE <child> DETACH PARTITION
+  CONCURRENTLY``, which is not a statement: DETACH is issued against the PARENT
+  (``ALTER TABLE parent DETACH PARTITION child [CONCURRENTLY]``). It also ran
+  CONCURRENTLY inside the job's transaction, which Postgres forbids;
+* it discovered partitions by matching ``tablename LIKE 'table_%'``, so it
+  would have found ordinary tables whose names merely start the same way, and
+  parsed a month out of the suffix with ``int(suffix[:4])`` — an
+  ``IndexError``/``ValueError`` away from detaching the wrong object;
+* it built bounds from naive ``datetime`` values against ``timestamptz``/``date``
+  keys, and created a per-partition tenant index, duplicating the partitioned
+  index the parent already propagates.
+
+WHAT IS PARTITIONED (``PARTITIONED_TABLES``), and what §56 asked for:
+
+    ai_usage   RANGE (period_date), monthly
+
+The other four §56 candidates are NOT partitioned, and each reason is a
+structural one, recorded where the gap can be seen rather than in a document
+nobody reads:
+
+* ``messages`` — inbound single-column FKs reference ``messages.id``
+  (``attachments``, ``delivery_attempts``; see ``49303e2e2dd0`` and
+  ``8a1f6fb95fc6``). A partitioned table can only carry a unique/PK constraint
+  that includes the partition key, so ``messages.id`` could no longer be
+  globally unique, and every one of those foreign keys becomes impossible.
+  Statement of the blocker: ``app/modules/analytics/retention.py`` and
+  ``migrations/versions/f7a2c9d4e8b1_*`` both name it; the retention worker's
+  row-level path stays the mechanism for this store.
+* ``event_log`` — ``app/core/events/outbox.py`` writes with
+  ``ON CONFLICT (event_id) DO NOTHING``. Outbox idempotency would degrade to
+  per-partition uniqueness, i.e. a duplicate event in a later month would be
+  published twice. Not partitioned.
+* ``webhook_events`` — ``uq_webhook_events_provider_external`` is the S10 replay
+  guard (see ``b2c3d4e5f6a7``). Same argument as ``event_log``: a replay in a
+  different month would slip past a month-local uniqueness check. Not partitioned.
+* ``audit_logs`` — §57 and ``docs/PII_DATA_MAP.md`` put this store under legal
+  retention, "never hard-delete". Partitioning it would exist to enable a DROP
+  that must never happen. Not partitioned, and it is not on the maintenance
+  allowlist either, so the purge path cannot reach it even by mistake.
+
+§56 also warns "do not create thousands of partitions due to tenant count" —
+which this shape honours: one partition per month per table, never per tenant.
+That is exactly why a dropped month is a shared act, and why
+``analytics/retention.py`` will not drop one unless every active tenant chose it.
 """
 
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+import re
+from collections.abc import Mapping
+from datetime import date
+from typing import Any
 
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
-# Tables eligible for range partitioning by created_at (§56)
-PARTITION_CANDIDATES = frozenset({
-    "messages",
-    "audit_logs",
-    "ai_usage",
-    "event_log",
-    "webhook_events",
-    "delivery_attempts",
-    "outbound_messages",
-})
+#: Store the migration actually partitions -> its range key. Anything here may be
+#: maintained; anything absent may not (and the SQL side enforces the same list).
+PARTITIONED_TABLES: Mapping[str, str] = {"public.ai_usage": "period_date"}
+
+#: Parents the SECURITY DEFINER maintenance functions accept. Kept separate from
+#: ``PARTITIONED_TABLES`` because a table can be partitioned by hand without ever
+#: being auto-maintained; today the two sets are identical on purpose.
+PARTITION_MAINTENANCE_ALLOWLIST: tuple[str, ...] = tuple(sorted(PARTITIONED_TABLES))
+
+#: The name the conversion leaves behind. It is NOT dropped: it is the rollback
+#: that does not depend on a restore from backup.
+LEGACY_SNAPSHOT_TABLE = "ai_usage_pre_partition"
+
+#: ``ai_usage_default`` — the catch-all that keeps a business write from failing
+#: when a month has not been pre-created. Never a purge target.
+DEFAULT_PARTITION_SUFFIX = "_default"
+
+#: Months a month partition must be older than before ANYONE may drop it, even
+#: with a per-tenant policy that asks for less. 13 is the horizon
+#: ``docs/PII_DATA_MAP.md`` states for ``ai_usage`` ("metrics ... 13 months").
+#: Enforced a second time inside ``partitioning_purge_month``, because a Python
+#: constant cannot stop a caller that reaches the function directly.
+PARTITION_DROP_FLOOR_MONTHS = 13
+
+ENSURE_ONE_FUNCTION = "public.partitioning_ensure_partition"
+ENSURE_FUNCTION = "public.partitioning_ensure_months"
+PURGE_FUNCTION = "public.partitioning_purge_month"
+
+#: `FOR VALUES FROM ('2026-09-01') TO ('2026-10-01')` as the catalog renders it.
+_BOUND_RE = re.compile(r"FROM \('(\d{4}-\d{2}-\d{2})'\) TO \('(\d{4}-\d{2}-\d{2})'\)")
+
+_MONTH_RE = re.compile(r"^(?P<base>.+)_(?P<year>\d{4})_(?P<month>\d{2})$")
 
 
-class PartitionManager:
-    """§56: create and manage monthly partitions for high-volume tables.
+class PartitionMaintenanceError(RuntimeError):
+    """Base class: partition maintenance did not happen, and nothing was lost."""
 
-    Partitions are created ahead of time (next month's partition is
-    created before the month starts) so inserts never fail due to a
-    missing partition.
+
+class PartitionMaintenanceUnavailable(PartitionMaintenanceError):
+    """The helpers are missing or the connected role may not use them.
+
+    Raised instead of quietly returning "0 created": a deployment whose
+    migrations lag behind the code must fail the job loudly. That is the exact
+    class of invisible no-op this repo has already been burned by twice
+    (``ensure_recurring_jobs`` running unbound, retention never being seeded).
     """
 
-    @staticmethod
-    async def ensure_partition(
-        session: AsyncSession,
-        table_name: str,
-        *,
-        year: int,
-        month: int,
-    ) -> bool:
-        """Create a monthly partition if it does not exist.
 
-        Returns True if created, False if already existed.
-        """
-        if table_name not in PARTITION_CANDIDATES:
-            logger.warning("%s is not a partition candidate", table_name)
-            return False
+class PartitionMaintenanceRefused(PartitionMaintenanceError):
+    """The database said no to the argument: not an allowlisted parent, not a
+    whole month, or still inside :data:`PARTITION_DROP_FLOOR_MONTHS`."""
 
-        partition_name = f"{table_name}_{year}{month:02d}"
-        start = datetime(year, month, 1)
-        if month == 12:
-            end = datetime(year + 1, 1, 1)
-        else:
-            end = datetime(year, month + 1, 1)
 
-        # Check if partition exists
-        exists = await session.execute(
-            text(
-                "SELECT 1 FROM pg_tables WHERE tablename = :name"
-            ),
-            {"name": partition_name},
+def _classify(exc: DBAPIError, *, action: str) -> PartitionMaintenanceError:
+    """Map Postgres SQLSTATEs onto the two honest failure modes."""
+    state = getattr(getattr(exc, "orig", None), "sqlstate", None) or ""
+    message = str(getattr(exc, "orig", exc))
+    if state == "22023":  # invalid_parameter_value — raised by the functions below
+        return PartitionMaintenanceRefused(f"{action} refused by the database: {message}")
+    if state in ("42501", "3F000", "42883", "42P01"):
+        # insufficient_privilege / undefined schema / undefined function /
+        # undefined table: the migration is missing, lagging, or the role lost
+        # its EXECUTE grant.
+        return PartitionMaintenanceUnavailable(
+            f"{action} is unavailable in this database ({message.strip()}). "
+            "Expected the SECURITY DEFINER maintenance functions from "
+            "f7a2c9d4e8b1 and EXECUTE granted to the application role."
         )
-        if exists.scalar():
-            return False
+    return PartitionMaintenanceError(f"{action} failed: {message.strip()}")
 
-        await session.execute(
-            text(
-                f"CREATE TABLE {partition_name} "
-                f"PARTITION OF {table_name} "
-                f"FOR VALUES FROM ('{start.isoformat()}') "
-                f"TO ('{end.isoformat()}')"
-            )
+
+async def _call(session: AsyncSession, statement: str, params: dict[str, Any], *, action: str):
+    try:
+        result = await session.execute(text(statement), params)
+    except DBAPIError as exc:
+        raise _classify(exc, action=action) from exc
+    return result
+
+
+def month_bounds(year: int, month: int) -> tuple[date, date]:
+    """Half-open ``[first-of-month, first-of-next-month)`` in UTC terms."""
+    if not 1 <= month <= 12 or not 1 <= year <= 9999:
+        raise ValueError(f"not a month: {year}-{month:02d}")
+    end_year, end_month = (year + 1, 1) if month == 12 else (year, month + 1)
+    return date(year, month, 1), date(end_year, end_month, 1)
+
+
+def month_of(value: date) -> date:
+    return date(value.year, value.month, 1)
+
+
+def partition_name(parent: str, month_start: date) -> str:
+    """`public.ai_usage` + 2026-09 -> `ai_usage_2026_09` (the naming the SQL uses)."""
+    if not isinstance(month_start, date) or month_start.day != 1:
+        raise ValueError(f"not a month start: {month_start}")
+    base = parent.split(".")[-1]
+    return f"{base}_{month_start:%Y_%m}"
+
+
+def is_default_partition(name: str) -> bool:
+    return name.endswith(DEFAULT_PARTITION_SUFFIX)
+
+
+def is_month_partition(name: str) -> bool:
+    return bool(_MONTH_RE.match(name))
+
+
+def _require_parent(parent: str) -> str:
+    if parent not in PARTITIONED_TABLES:
+        raise ValueError(
+            f"{parent} is not a partitioned table of this schema "
+            f"(partitioned: {sorted(PARTITIONED_TABLES)}). §56 candidates that "
+            "cannot be converted are listed in this module's docstring."
         )
-        # Create tenant_id index on the partition
-        await session.execute(
-            text(
-                f"CREATE INDEX ix_{partition_name}_tenant "
-                f"ON {partition_name} (tenant_id)"
-            )
+    return parent
+
+
+async def ensure_partition_for_month(
+    session: AsyncSession, parent: str, month_start: date
+) -> str | None:
+    """Create one monthly partition (grants + RLS included). None if it exists."""
+    _require_parent(parent)
+    created = await _call(
+        session,
+        f"SELECT {ENSURE_ONE_FUNCTION}(:parent, CAST(:month AS date)) AS name",
+        {"parent": parent, "month": month_start},
+        action=f"{ENSURE_ONE_FUNCTION}({parent}, {month_start})",
+    )
+    return created.scalar()
+
+
+async def ensure_month_partitions(
+    session: AsyncSession, *, months_ahead: int = 3
+) -> list[str]:
+    """Ensure this month plus the next ``months_ahead`` exist, for every table
+    on the maintenance allowlist. Returns the partitions actually created.
+
+    Ahead-of-time, monthly, and idempotent: a healthy month creates nothing.
+    """
+    if not 0 <= months_ahead <= 24:
+        raise ValueError(f"months_ahead out of range: {months_ahead}")
+    created: list[str] = []
+    for parent in sorted(PARTITION_MAINTENANCE_ALLOWLIST):
+        rows = await _call(
+            session,
+            f"SELECT unnest({ENSURE_FUNCTION}(:parent, :ahead)) AS name",
+            {"parent": parent, "ahead": months_ahead},
+            action=f"{ENSURE_FUNCTION}({parent}, {months_ahead})",
         )
-        logger.info("created partition %s", partition_name)
-        return True
+        names = [r[0] for r in rows]
+        if names:
+            logger.info("partition.created %s: %s", parent, ", ".join(names))
+        created.extend(names)
+    return created
 
-    @staticmethod
-    async def ensure_upcoming_partitions(
-        session: AsyncSession,
-        table_name: str,
-        *,
-        months_ahead: int = 2,
-    ) -> int:
-        """Ensure partitions exist for the next N months."""
-        if table_name not in PARTITION_CANDIDATES:
-            return 0
 
-        now = datetime.now(UTC)
-        created = 0
-        for i in range(months_ahead + 1):
-            # Calculate target month
-            total_months = now.month + i
-            target_year = now.year + (total_months - 1) // 12
-            target_month = ((total_months - 1) % 12) + 1
+async def purge_month(session: AsyncSession, parent: str, month_start: date) -> str | None:
+    """DETACH + DROP one whole month partition. Returns the dropped name, or None
+    when that month's partition was already gone.
 
-            if await PartitionManager.ensure_partition(
-                session, table_name,
-                year=target_year, month=target_month,
-            ):
-                created += 1
+    Deliberately narrow, in four directions:
 
-        return created
+    * the parent must be on the allowlist (checked here AND in the SQL body);
+    * the month must be a real attached child, never the DEFAULT partition;
+    * the database refuses anything inside :data:`PARTITION_DROP_FLOOR_MONTHS`
+      regardless of what a policy says;
+    * non-concurrent ``DETACH``, so it commits or rolls back with the caller's
+      job transaction, and an advisory lock inside the function so two workers
+      cannot race the same month.
 
-    @staticmethod
-    async def detach_old_partitions(
-        session: AsyncSession,
-        table_name: str,
-        *,
-        older_than_months: int = 12,
-    ) -> int:
-        """Detach partitions older than N months for archiving (§57).
+    It is still an unrecoverable act, which is why the only caller with a
+    legitimate reason to use it is ``analytics.retention.purge_expired_partitions``
+    — after the consent gate, not before it.
+    """
+    _require_parent(parent)
+    dropped = await _call(
+        session,
+        f"SELECT {PURGE_FUNCTION}(:parent, CAST(:month AS date)) AS name",
+        {"parent": parent, "month": month_start},
+        action=f"{PURGE_FUNCTION}({parent}, {month_start})",
+    )
+    name = dropped.scalar()
+    if name:
+        logger.warning("partition.dropped %s.%s", parent, name)
+    return name
 
-        Detached partitions can be moved to cheaper storage or exported
-        for archival.
-        """
-        if table_name not in PARTITION_CANDIDATES:
-            return 0
 
-        cutoff = datetime.now(UTC).replace(
-            day=1, hour=0, minute=0, second=0, microsecond=0
+async def list_partition_months(session: AsyncSession, parent: str) -> list[date]:
+    """Month starts of the ATTACHED children, read from the partition bounds.
+
+    The catalog is the only source of truth: names are a convention, ``FOR
+    VALUES`` is a fact. The DEFAULT partition is excluded — it has no month and
+    no horizon.
+    """
+    _require_parent(parent)
+    rows = (
+        await _call(
+            session,
+            "SELECT c.relname, pg_get_expr(cc.relpartbound, c.oid) "
+            "FROM pg_inherits i "
+            "JOIN pg_class c ON c.oid = i.inhrelid "
+            "JOIN pg_class cc ON cc.oid = c.oid "
+            "WHERE i.inhparent = to_regclass(:parent) ORDER BY c.relname",
+            {"parent": parent},
+            action=f"list_partition_months({parent})",
         )
-        # Go back N months
-        for _ in range(older_than_months):
-            if cutoff.month == 1:
-                cutoff = cutoff.replace(year=cutoff.year - 1, month=12)
-            else:
-                cutoff = cutoff.replace(month=cutoff.month - 1)
-
-        # Find and detach old partitions
-        result = await session.execute(
-            text(
-                "SELECT tablename FROM pg_tables "
-                "WHERE tablename LIKE :pattern "
-                "ORDER BY tablename",
-            ),
-            {"pattern": f"{table_name}_%"},
-        )
-        detached = 0
-        for row in result:
-            name = row[0]
-            # Parse year+month from partition name
-            suffix = name.replace(f"{table_name}_", "")
-            if len(suffix) == 6:
-                p_year = int(suffix[:4])
-                p_month = int(suffix[4:])
-                partition_date = datetime(p_year, p_month, 1)
-                if partition_date < cutoff:
-                    # Detach — CONCURRENTLY for zero downtime
-                    await session.execute(
-                        text(f"ALTER TABLE {name} DETACH PARTITION CONCURRENTLY")
-                    )
-                    detached += 1
-                    logger.info("detached old partition %s", name)
-
-        return detached
+    ).all()
+    months: list[date] = []
+    for name, bound in rows:
+        if is_default_partition(name) or not bound:
+            continue
+        match = _BOUND_RE.search(bound)
+        if not match:  # a non-monthly child: not ours to decide about
+            logger.warning("partition.unparsed_bound %s: %s", name, bound)
+            continue
+        months.append(date.fromisoformat(match.group(1)))
+    return sorted(months)

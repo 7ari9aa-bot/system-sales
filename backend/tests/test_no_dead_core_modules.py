@@ -73,6 +73,10 @@ WIRED_CORE_MODULES: tuple[str, ...] = (
     "app.core.net_guard",
     "app.core.observability",
     "app.core.pagination",
+    # §56: the recurring `partition.ensure_months` job in the scheduler worker
+    # calls ensure_month_partitions, and retention.purge_expired_partitions calls
+    # purge_month — wired on purpose (f7a2c9d4e8b1).
+    "app.core.partitioning",
     "app.core.ratelimit",
     "app.core.redis",
     "app.core.search",
@@ -93,10 +97,8 @@ KNOWN_DEAD_CORE_MODULES: dict[str, str] = {
     # `app.core.money` is NOT here: it was deleted, not rewired (ADR-053). A
     # minor-unit value object nothing imported, whose shape contradicted the
     # NUMERIC(14,2) every money column actually uses.
-    "app.core.partitioning": (
-        "Zero non-test importers. §56 partition-maintenance helpers are not "
-        "run by any worker or script in the source roots."
-    ),
+    # `app.core.partitioning` is NOT here either: §56 wired it in f7a2c9d4e8b1
+    # (see WIRED_CORE_MODULES).
     "app.core.search_indexer": (
         "Zero non-test importers. §45 external-search indexer; search runs "
         "on pgvector via app.core.search directly."
@@ -222,7 +224,7 @@ def test_detector_distinguishes_wired_from_dead() -> None:
     wired/dead split above is known to be a real measurement.
     """
     assert importers_of("app.core.circuit_breaker"), "detector found no importer for a wired module"
-    assert importers_of("app.core.partitioning") == set(), (
+    assert importers_of("app.core.search_indexer") == set(), (
         "detector found importers for a dead module"
     )
     assert importers_of("app.core.not_a_real_module") == set(), "detector matches anything"
