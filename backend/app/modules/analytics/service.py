@@ -7,14 +7,16 @@ number for a given tenant and time window.
 
 Design rules (from the spec):
 - Read-only: these functions never write; they are the read side of CQRS.
-- Partition-ready: the tables they read from (orders, order_payments, refunds,
-  messages, conversations) are designed to be range-partitioned by created_at
-  in a future migration. The queries here do not assume partitioning is
-  already in place — they work on plain tables today.
-- Cold data (§55-57): the read tables here are *partition-ready* only. Actual
-  retention/archiving is an OPEN gap pending a DBA-approved range-partition
-  migration — there is intentionally no runtime archive helper (see the note at
-  the foot of this module).
+- Partition-ready (§56): what that phrase now MEANS in this schema is decided
+  in ``app/core/partitioning.py``: ``ai_usage`` is a monthly RANGE partition on
+  ``period_date`` (migration ``f7a2c9d4e8b1``) with ``tenant_id`` indexed, and
+  the four candidates that cannot be converted carry their structural blockers
+  there. The queries below do not assume partitioning — they work the same on
+  a plain or a partitioned parent.
+- Cold data (§57): retention/archiving is NOT this module's surface — it is a
+  chosen per-tenant policy executed by the workers through
+  ``analytics/retention.py``; the HTTP door is in ``router.py``. This module
+  stays read-only.
 - Tenant-scoped: every query carries tenant_id (RLS enforces it too, but
   the explicit filter keeps the query plan tenant-pinned).
 - Money is labelled: `revenue` is GROSS and `net_revenue` is the refund-adjusted
@@ -30,14 +32,14 @@ from __future__ import annotations
 
 import re
 import uuid
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import ValidationError
+from app.core.errors import NotFoundError, ValidationError
 from app.core.tenancy import resolve_tenant_currency
 from app.modules.analytics.timekit import ResolvedTimezone, resolve_timezone
 from app.modules.platform.metrics import MetricRegistry
@@ -614,6 +616,127 @@ async def ai_resolution_rate(
     return round((total - human) / total, 4)
 
 
+async def conversion_rate(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    since: datetime,
+    until: datetime,
+) -> float:
+    """§55/§167: purchase conversions divided by touchpoints in the window.
+
+    The registry row pins the definition ("COUNT(conversions WHERE
+    type='purchase') / COUNT(touchpoints)") and both operands are taken in
+    THIS window. Conversions age by ``COALESCE(occurred_at, created_at)`` —
+    the same window column marketing's ``revenue_by_source`` uses, so the two
+    screens cannot disagree about which conversions COUNT. Touchpoints are
+    append-only (``AppendOnlyCreatedAtMixin``), so ``created_at`` is the event.
+
+    A ratio in [0, 1] that may exceed 1 (the registry says so, and one
+    touchpoint can yield several purchases). No touchpoints at all is 0.0 —
+    the same empty-population answer ``ai_resolution_rate`` gives, and a
+    division error on a merchant-visible route is not an option here.
+    """
+    since, until = bind_window(since, until)
+    row = (
+        await session.execute(
+            text(
+                """
+                WITH purchases AS (
+                  SELECT COUNT(*) AS n
+                    FROM conversions
+                   WHERE tenant_id = :tenant_id
+                     AND type = 'purchase'
+                     AND COALESCE(occurred_at, created_at) >= :since
+                     AND COALESCE(occurred_at, created_at) < :until
+                ),
+                touched AS (
+                  SELECT COUNT(*) AS n
+                    FROM touchpoints
+                   WHERE tenant_id = :tenant_id
+                     AND created_at >= :since
+                     AND created_at < :until
+                )
+                SELECT purchases.n, touched.n FROM purchases, touched
+                """
+            ),
+            {"tenant_id": str(tenant_id), "since": since, "until": until},
+        )
+    ).one()
+    conversions_n = int(row[0] or 0)
+    touchpoints_n = int(row[1] or 0)
+    if touchpoints_n == 0:
+        return 0.0
+    return round(conversions_n / touchpoints_n, 4)
+
+
+async def roas(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    since: datetime,
+    until: datetime,
+) -> float | None:
+    """§55/§167: return on the PLAN — last-touch credit / planned budget.
+
+    The registry row pins this metric's honesty, and the query follows it
+    literally: numerator ``SUM(attributions.credited_value)`` for
+    ``model='last_touch'`` whose conversion landed in the window (same
+    COALESCE column as marketing's readers); denominator the
+    ``campaigns.budget`` of exactly the campaigns those attributions point at
+    — money PLANNED, never burned, because the schema records no spend feed
+    (``marketing/analytics.campaign_actual_spend`` returns {} by design). The
+    denominator is the DISTINCT set of linked campaigns: an attribution per
+    converted touchpoint must not count one campaign's budget several times.
+
+    Decimal in, ratio out, quantized at 0.0001 like marketing's ``_ratio`` —
+    same scale, or a campaign row and this platform figure would print two
+    precisions of one number. ``None`` when no linked campaign budgeted
+    anything: 0.0 would read as "spent and got nothing back" when the truth
+    is "there was no denominator" — and the response labels the figure with
+    ``basis='planned_budget'`` because §167 demands a ratio name its own
+    denominator.
+    """
+    since, until = bind_window(since, until)
+    row = (
+        await session.execute(
+            text(
+                """
+                WITH attributed AS (
+                  SELECT a.touchpoint_id, a.credited_value
+                    FROM attributions a
+                    JOIN conversions c
+                      ON c.id = a.conversion_id AND c.tenant_id = a.tenant_id
+                   WHERE a.tenant_id = :tenant_id
+                     AND a.model = 'last_touch'
+                     AND COALESCE(c.occurred_at, c.created_at) >= :since
+                     AND COALESCE(c.occurred_at, c.created_at) < :until
+                ),
+                linked AS (
+                  SELECT DISTINCT t.campaign_id
+                    FROM attributed a
+                    JOIN touchpoints t
+                      ON t.id = a.touchpoint_id AND t.tenant_id = :tenant_id
+                   WHERE t.campaign_id IS NOT NULL
+                )
+                SELECT COALESCE(SUM(a.credited_value), 0) AS credited,
+                       (SELECT COALESCE(SUM(cp.budget), 0)
+                          FROM campaigns cp
+                          JOIN linked l ON l.campaign_id = cp.id
+                         WHERE cp.tenant_id = :tenant_id) AS planned_budget
+                  FROM attributed a
+                """
+            ),
+            {"tenant_id": str(tenant_id), "since": since, "until": until},
+        )
+    ).one()
+    credited = _money(row[0])
+    planned = _money(row[1])
+    if planned <= ZERO:
+        return None
+    return float((credited / planned).quantize(Decimal("0.0001")))
+
+
 async def compute_metric(
     session: AsyncSession,
     tenant_id: uuid.UUID,
@@ -621,28 +744,45 @@ async def compute_metric(
     metric_name: str,
     since: datetime,
     until: datetime,
-) -> Decimal | float | int:
-    """Dispatch to the right query by metric name (§167: single computation path)."""
-    spec = MetricRegistry.get(metric_name)
-    if spec is None:
-        raise ValueError(f"unknown metric: {metric_name}")
+) -> Decimal | float | int | None:
+    """Dispatch to the right query by metric name (§167: single computation path).
 
-    handlers = {
-        "revenue": revenue,
-        "net_revenue": net_revenue,
-        "orders_count": orders_count,
-        "refunded_amount": refunded_amount,
-        "aov": aov,
-        "first_response_time": first_response_time_avg,
-        "resolution_time": resolution_time_avg,
-        "ai_resolution_rate": ai_resolution_rate,
-    }
-    handler = handlers.get(metric_name)
+    A name this module cannot answer is a 404 (``NotFoundError`` maps to the
+    unified error contract at the edge), NOT the bare ``ValueError`` this used
+    to raise — a merchant-visible read endpoint answering its own documented
+    surface with a 500 was the defect. ``METRIC_HANDLERS`` and the registry
+    are pinned equal by ``tests/test_analytics_metric_parity.py``, so the
+    refusal below is reachable only by a name outside §167 altogether.
+    """
+    handler = METRIC_HANDLERS.get(metric_name)
     if handler is None:
-        raise ValueError(
-            f"metric '{metric_name}' is defined in the registry but has no query yet"
+        raise NotFoundError(
+            f"unknown metric: {metric_name!r}. The canonical metrics (§167) are "
+            f"{', '.join(sorted(METRIC_HANDLERS))}.",
+            details={"metric": metric_name, "known": sorted(METRIC_HANDLERS)},
         )
     return await handler(session, tenant_id, since=since, until=until)
+
+
+#: THE dispatch table behind ``GET /analytics/metrics/{name}``: one query per
+#: canonical metric, keyed by the §167 registry name. Module-level (not a
+#: local inside ``compute_metric``) precisely so the parity test can read it:
+#: ``/metrics/definitions`` advertises EVERY registry name, so a metric with a
+#: definition and no query here is a 404 the API is not allowed to have. A
+#: registry row and a query must land together; ``conversion_rate`` and
+#: ``roas`` were advertised without one, and asking for either was a 500.
+METRIC_HANDLERS: Mapping[str, Callable[..., Awaitable[Decimal | float | int | None]]] = {
+    "revenue": revenue,
+    "net_revenue": net_revenue,
+    "orders_count": orders_count,
+    "refunded_amount": refunded_amount,
+    "aov": aov,
+    "first_response_time": first_response_time_avg,
+    "resolution_time": resolution_time_avg,
+    "ai_resolution_rate": ai_resolution_rate,
+    "conversion_rate": conversion_rate,
+    "roas": roas,
+}
 
 
 # §55-57 — what landed here, and what this module still refuses to do.
@@ -676,8 +816,10 @@ async def compute_metric(
 #     default 390 days from `docs/PII_DATA_MAP.md`, executed by the recurring
 #     `retention.purge_partitions` job as a partition-shaped DETACH/DROP, and only
 #     once EVERY active tenant has chosen (a month is shared by all tenants, so a
-#     silent default can never delete anything).
+#     silent default can never delete anything);
+#   * the merchant's door on that choice exists: `GET /analytics/retention` and
+#     `PUT /analytics/retention/policies/{data_class}` in `router.py` — the
+#     paragraph this file used to end with ("no permissioned HTTP route calls
+#     `choose_policy` yet") is closed, not open.
 #
-# Still open, in one place: no permissioned HTTP route calls `choose_policy` yet,
-# so no tenant can answer the question from the product. See the "What is
-# deliberately NOT enforced" section of `retention.py`. This module stays read-only.
+# This module stays read-only.

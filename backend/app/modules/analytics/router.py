@@ -123,6 +123,13 @@ def _bind_window(
 # amount is denominated in.
 _MONEY_METRICS = frozenset({"revenue", "net_revenue", "refunded_amount", "aov"})
 
+#: Ratios that must name their denominator on the wire (§167: "a consumer must
+#: say which budget figure it used"). ``roas`` divides by ``campaigns.budget``
+#: — money PLANNED, not burned; no spend feed exists in this schema
+#: (``marketing/analytics.campaign_actual_spend`` returns {} by design), so a
+#: reader that never sees the basis will read a plan as an actual.
+_METRIC_BASIS = {"roas": "planned_budget"}
+
 # Every key a read model can return whose value is money. Named per family so
 # a gross figure cannot be serialised under a net name, and — the reason this is
 # one set rather than a set per route — the averages are money too. FastAPI's
@@ -141,9 +148,17 @@ _MONEY_FIELDS = frozenset(
 )
 
 
-def _as_json(value: Decimal | float | int) -> str | int:
-    """Money stays a string on the wire — a float would round-trip a cent away."""
-    return value if isinstance(value, int) else str(value)
+def _as_json(value: Decimal | float | int | None) -> str | int | float | None:
+    """Money leaves as a STRING; counts and RATIOS leave as NUMBERS; None as null.
+
+    A float would round-trip a cent away from an amount (ADR-001), a stringified
+    ratio would disagree with the SAME ratio as marketing ships it
+    (``budget_roas=1.5`` is a number there), and ``str(None) == "None"`` would
+    turn "no denominator exists" into a four-character lie.
+    """
+    if value is None or isinstance(value, (int, float)):
+        return value
+    return str(value)
 
 
 def _money_json(row: dict) -> dict:
@@ -208,6 +223,8 @@ async def compute_metric(
     if spec is not None:
         payload["refund_treatment"] = spec.refund_treatment
         payload["timezone_rule"] = spec.timezone_rule
+    if metric_name in _METRIC_BASIS:
+        payload["basis"] = _METRIC_BASIS[metric_name]
     if metric_name in _MONEY_METRICS:
         # Money belongs to a tenant and one tenant trades in one currency (§47);
         # the label comes from the tenant row, never from a literal.
