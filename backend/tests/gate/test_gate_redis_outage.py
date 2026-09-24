@@ -111,12 +111,20 @@ async def _age(db, ids: list[str], minutes: int) -> None:
     """Make rows look `minutes` old, as if the outage had lasted that long.
 
     `now()` is the TRANSACTION time in Postgres, so a row created in this test
-    cannot age by itself — the clock is moved by rewriting `created_at`.
+    cannot age by itself — the clock is moved by rewriting its timestamps. P-02
+    moved the failed-row cool-down onto the durable `not_before` schedule, so
+    this ages BOTH the staging clock (`created_at`, still used by the
+    publishing-strand reclaim and the `not_before IS NULL` legacy floor) and the
+    earned schedule (`not_before`) — pushing a row's `not_before` into the past
+    is exactly what the passage of `minutes` of real outage time would do.
     """
     await db.execute(
         text(
-            "UPDATE outbox_events SET created_at = now() - make_interval(mins => :m) "
-            "WHERE id = ANY(CAST(:ids AS uuid[]))"
+            "UPDATE outbox_events "
+            "   SET created_at = now() - make_interval(mins => :m), "
+            "       not_before = CASE WHEN not_before IS NULL THEN NULL "
+            "                          ELSE now() - make_interval(mins => :m) END "
+            " WHERE id = ANY(CAST(:ids AS uuid[]))"
         ),
         {"m": minutes, "ids": ids},
     )
@@ -224,3 +232,68 @@ async def test_gate_replayed_event_keeps_the_same_dedupe_key(
     sent = [meta for _, _, meta in bus.published if meta.get("outbox_id") == event_id]
     assert len(sent) == 1
     assert sent[0]["outbox_id"] == event_id
+
+
+async def _failed_schedule(db, event_id: str):
+    """Return a failed row's (status, not_before, attempts) as Postgres sees them."""
+    row = (
+        await db.execute(
+            text(
+                "SELECT status, not_before, attempts FROM outbox_events WHERE id = :i"
+            ),
+            {"i": event_id},
+        )
+    ).first()
+    return row
+
+
+async def test_gate_a_failed_row_is_not_hammered_once_per_drain(
+    db, tenant_ctx, relay_on_test_connection
+):
+    """P-02 hot-loop guard, on real rows: a down bus is retried on its cool-down.
+
+    The defect: ``_MARK_FAILED_SQL`` stamped no ``not_before`` and
+    ``_RECLAIM_FAILED_SQL`` woke on the immutable ``created_at``, so once a row
+    was older than the re-queue bound the relay re-claimed and republished the
+    SAME poisoned row every drain against a bus that was still down. After the
+    fix the failure stamps a durable schedule, so a second drain that does NOT
+    advance the clock must leave the row untouched — one publish attempt per
+    cool-down, not one per poll. This is the behaviour that CI proves; the
+    DB-free file pins the statements that make it true.
+    """
+    bus = SwitchableBus()
+    relay = OutboxRelay(bus)
+    [event_id] = await _stage(db, tenant_ctx.tenant_id, count=1)
+
+    # --- Bus is DOWN: the row is attempted once and comes back 'failed' with a
+    # FUTURE not_before (the durable cool-down). ---
+    bus.up = False
+    await relay._drain_once(batch=BATCH, max_attempts=MAX_ATTEMPTS)
+
+    status, not_before, attempts = await _failed_schedule(db, event_id)
+    assert status == "failed"
+    assert not_before is not None, "a failed row earned no durable cool-down schedule"
+    # now() is transaction time; the schedule must sit in the future so the next
+    # drain cannot claim it. Compare against Postgres's own clock.
+    is_future = (
+        await db.execute(
+            text("SELECT :nb::timestamptz > now()"), {"nb": not_before}
+        )
+    ).scalar_one()
+    assert is_future, f"failed row's not_before is not in the future: {not_before}"
+    assert attempts == 1
+
+    # --- Drain AGAIN, without aging anything: the bus is STILL down and the
+    # cool-down has NOT elapsed, so the row must not be touched at all. ---
+    first_publishes = len([i for i in bus.outbox_ids() if i == event_id])
+    await relay._drain_once(batch=BATCH, max_attempts=MAX_ATTEMPTS)
+    second_publishes = len([i for i in bus.outbox_ids() if i == event_id])
+
+    assert first_publishes == 0 and second_publishes == 0, (
+        "the relay published during a down bus"
+    )
+    status2, _, _ = await _failed_schedule(db, event_id)
+    assert status2 == "failed", (
+        "a not-yet-due failed row was re-queued before its cool-down elapsed — "
+        "the P-02 hot loop is back"
+    )

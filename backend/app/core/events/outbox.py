@@ -38,6 +38,17 @@ it again — five relay deaths would read as a lost event, silently, which the
 the event nothing; the row is logged at WARNING instead. Every successfully
 published event is also appended to event_log (§152), the durable replay
 history: the outbox is only a publication buffer.
+
+The cool-down that keeps a failed row from hammering an unreachable bus is
+carried by ``not_before`` (P-02), not by the attempt budget. ``_MARK_FAILED_SQL``
+stamps a future ``not_before`` off the row's own attempt count, bounded by a
+ceiling; ``_RECLAIM_FAILED_SQL`` then wakes the row on that durable schedule
+(rather than the immutable staging clock, whose cool-down evaporated after the
+first re-queue and left a poisoned row retried once per drain). The two intents
+are deliberately separate: ``attempts`` is a per-processing-failure budget that
+every re-queue resets (P-01), while ``not_before`` is the retry pace the row
+earns and keeps — a Redis outage must not burn the former, and a down bus must
+still be backed off.
 """
 
 from __future__ import annotations
@@ -58,6 +69,19 @@ from app.core.events.bus import EventBus
 from app.core.events.schemas import EventEnvelope, deserialize
 
 logger = logging.getLogger(__name__)
+
+# P-02: the failed-row cool-down is a bounded exponential in ``attempts``,
+# stamped into ``not_before`` when a row fails and read back by the claim. The
+# base is the operator-configurable re-queue interval
+# (``settings.outbox_failed_requeue_seconds``, threaded per-drain so an operator
+# owns the pace); the ceiling below is the hard bound that keeps the ladder from
+# parking a row for unbounded time across a long outage no matter how the base is
+# set. Expressing the schedule in SQL (see ``_MARK_FAILED_SQL``) off the
+# transaction's ``now()`` is what makes it durable across a relay death and
+# readable under the connection pooler — a Python-side timestamp would not be,
+# and the claim's ``not_before <= now()`` reads the SAME DB clock, so the two
+# must agree.
+OUTBOX_BACKOFF_CEILING_SECONDS = 3600.0  # one hour: a row never waits past this
 
 # §128 backstop: a committed row no live relay can be working on, in either of
 # the two shapes that strand it —
@@ -82,6 +106,12 @@ logger = logging.getLogger(__name__)
 # instead of dying quietly — that is the deliberate trade, and it is why every
 # row freed here is logged at WARNING with its id (see `_reclaim_stranded`): the
 # loop stays loud and countable rather than silent either way.
+# P-02: both arms ALSO clear `not_before`. A row stranded in 'publishing' was
+# never marked failed, so it earned no cool-down and a stale schedule must not
+# block its prompt fresh-budget retry; a row stranded 'pending' at the cap is
+# revived for the same reason. The cool-down a row DOES earn is stamped by
+# `_MARK_FAILED_SQL` and preserved by `_RECLAIM_FAILED_SQL` — the two intents
+# stay separate.
 # The created_at bound is shared by both arms and keeps the scan on
 # ix_outbox_status_created and off the hot path.
 # FOR UPDATE SKIP LOCKED is the part that makes the reclaim safe: a LIVE relay
@@ -91,7 +121,7 @@ logger = logging.getLogger(__name__)
 _RECLAIM_STRANDED_SQL = sa.text(
     """
     UPDATE outbox_events
-       SET status = 'pending', attempts = 0
+       SET status = 'pending', attempts = 0, not_before = NULL
      WHERE id IN (
         SELECT id FROM outbox_events
          WHERE created_at < now() - make_interval(secs => :lease_seconds)
@@ -107,22 +137,27 @@ _RECLAIM_STRANDED_SQL = sa.text(
 
 # A `failed` row means the BUS was unreachable at publish time (an
 # environmental failure — poison events dead-letter at the worker, not here).
-# Re-queue them after a cool-down instead of stranding them forever, and
-# reset attempts: the retry budget applies to processing, not to Redis outages.
-# The reset is load-bearing, not tidiness (P-01): any statement that writes
-# 'pending' WITHOUT zeroing attempts can strand the row for good, because the
-# claim below refuses attempts >= :max_attempts and no other statement — and no
-# alert — ever looks at it again. `tests/test_outbox_claim.py` pins that for
-# both reclaim statements.
-# NOTE (P-02, found while fixing P-01 and deliberately NOT fixed here): the
-# cool-down clock is the row's STAGING time — `published_at` is never set on a
-# failed row, so COALESCE lands on created_at — which means the cool-down holds
-# only until the first re-queue. After that the row is older than
-# :failed_requeue_seconds forever, so a bus that stays down is retried once per
-# drain (~poll interval) per row instead of once per cool-down. The fix is to
-# stamp `not_before` (the durable scheduling column the claim already honours)
-# when marking a row failed and let the reclaim wake on it; that changes retry
-# timing under outage and has CI-only coverage, so it needs its own pass.
+# P-02: the cool-down is a DURABLE schedule now. `_MARK_FAILED_SQL` stamps a
+# future `not_before` on every failure, and this reclaim WAKES on it
+# (`not_before <= now()`), so a not-yet-due failed row is left alone — no retry
+# storm, and no `ORDER BY created_at` starvation of the rows behind it. The
+# `not_before` the row just earned is PRESERVED by the re-queue below (only
+# status + attempts reset), so the next claim honours it and the retry stays
+# paced; `_MARK_FAILED_SQL` re-stamps the schedule on the next failure.
+# The `not_before IS NULL` arm is the STAGING-time floor for rows this shipped
+# on top of — `failed` rows written by the pre-P-02 code (and rows a P-01 test
+# stages) carry no schedule, so they wake on `created_at`. A legacy row self-
+# heals after one retry: the mark gives it a real `not_before`, so it can never
+# be hammered once per drain the way the pure-staging-clock reclaim was.
+# Resetting attempts here is load-bearing, not tidiness (P-01): any statement
+# that writes 'pending' WITHOUT zeroing attempts strands the row for good,
+# because the claim refuses attempts >= :max_attempts and nothing else — and no
+# alert — ever looks at it again. `tests/test_outbox_claim.py` and
+# `tests/test_outbox_backoff.py` pin that for both reclaim statements.
+# NOTE (P-02, resolved here): the cool-down and the attempt budget are separate
+# intents and this statement honours both without conflating them — attempts is
+# reset (897fb6f: a Redis outage must not burn the PROCESSING budget) while
+# `not_before` is PRESERVED (the row keeps the pace it just earned).
 _RECLAIM_FAILED_SQL = sa.text(
     """
     UPDATE outbox_events
@@ -130,8 +165,12 @@ _RECLAIM_FAILED_SQL = sa.text(
      WHERE id IN (
         SELECT id FROM outbox_events
          WHERE status = 'failed'
-           AND COALESCE(published_at, created_at)
-               < now() - make_interval(secs => :failed_requeue_seconds)
+           AND (
+                 not_before <= now()
+              OR (not_before IS NULL
+                  AND COALESCE(published_at, created_at)
+                      < now() - make_interval(secs => :failed_requeue_seconds))
+               )
          FOR UPDATE SKIP LOCKED
      )
     """
@@ -174,8 +213,39 @@ _MARK_PUBLISHED_SQL = sa.text(
     "UPDATE outbox_events SET status = 'published', published_at = now() WHERE id = :id"
 )
 
+# P-02: marking a row failed must SCHEDULE its next try, not merely flag it, or
+# the claim (which honours `not_before`) will re-take the row on the very next
+# drain — a hot loop against a down bus that also starves the `ORDER BY
+# created_at` queue behind it. The cool-down is computed entirely in SQL off the
+# transaction's `now()` — durable across a relay death and readable under the
+# connection pooler, never a client-side timestamp — from the row's own
+# `attempts` (already incremented by the claim in this transaction) as a base
+# doubled per prior attempt, clamped by `LEAST(..., :backoff_max_seconds)`.
+# The two intents stay distinct (P-01 vs P-02): because every re-queue resets
+# `attempts` (897fb6f), a clean row re-marks at attempts = 1 and settles to the
+# bounded base every cycle — which is exactly the durable cool-down that stops
+# the once-per-drain hammering. The exponential term bites for a row that
+# arrives with attempts already spent (a pre-P-01 / mixed-version stranded row
+# the claim lifts above 0), so a row that HAS burned budget backs off further,
+# and the ceiling bounds it however the count arrived. GREATEST(attempts - 1, 0)
+# keeps the exponent non-negative for the (theoretical) attempts = 0 mark.
+# Both durations are CAST to double precision on purpose: `GREATEST(:base, 0)`
+# lets Postgres infer int4 from the integer sibling, and the driver then refuses
+# the float the settings field holds — inside the relay's own failure handler.
+# `:base::double precision` is not an alternative spelling: SQLAlchemy's text()
+# reads that parameter as `bas` and leaves the rest as SQL.
 _MARK_FAILED_SQL = sa.text(
-    "UPDATE outbox_events SET status = 'failed', last_error = :err WHERE id = :id"
+    """
+    UPDATE outbox_events
+       SET status = 'failed',
+           last_error = :err,
+           not_before = now() + make_interval(
+               secs => LEAST(
+                   GREATEST(CAST(:backoff_base_seconds AS double precision), 0)
+                       * power(2, GREATEST(attempts - 1, 0)),
+                   CAST(:backoff_max_seconds AS double precision)))
+     WHERE id = :id
+    """
 )
 
 # §152: durable replay history — written in the same transaction that marks
@@ -296,6 +366,12 @@ class OutboxRelay:
 
     async def _drain_once(self, batch: int, max_attempts: int) -> int:
         published = 0
+        settings = get_settings()
+        # A failed row's cool-down is a bounded exponential: the base is the
+        # operator-configurable re-queue interval, the ceiling keeps the ladder
+        # from parking a row for unbounded time across a long outage.
+        backoff_base = settings.outbox_failed_requeue_seconds
+        backoff_max = OUTBOX_BACKOFF_CEILING_SECONDS
         async with SessionLocal() as session:
             # The reclaim commits before any claim runs: locks it took to free
             # stranded rows must not be held across the publishes that follow,
@@ -317,7 +393,13 @@ class OutboxRelay:
                 except Exception as exc:  # noqa: BLE001 — one bad event must not stop the relay
                     logger.exception("outbox.relay.publish_failed id=%s", row["id"])
                     await session.execute(
-                        _MARK_FAILED_SQL, {"id": row["id"], "err": str(exc)[:500]}
+                        _MARK_FAILED_SQL,
+                        {
+                            "id": row["id"],
+                            "err": str(exc)[:500],
+                            "backoff_base_seconds": backoff_base,
+                            "backoff_max_seconds": backoff_max,
+                        },
                     )
                     await session.commit()
                     continue
