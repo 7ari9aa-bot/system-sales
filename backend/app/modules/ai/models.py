@@ -272,14 +272,39 @@ class ModelCall(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base
 
 
 class AIUsage(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
-    """Daily per-agent AI usage rollup."""
+    """Daily per-bucket AI usage rollup: one row per (tenant, day, bucket).
+
+    A ROLLUP, not an event log — the point of the row is that writes accumulate
+    into it. ``ai/usage.py`` writes it as ``INSERT ... ON CONFLICT ... DO UPDATE``,
+    and an upsert is only as good as its conflict target, which is why the two
+    keys below are described in terms of what each can *match*:
+
+    * ``uq_ai_usage_tenant_period_agent`` arbitrates the per-agent bucket. A plain
+      UNIQUE compares NULLs as DISTINCT (the SQL standard default, and the reason
+      ``NULLS NOT DISTINCT`` exists since PG 15), so this key is void for a row
+      whose ``agent_id`` IS NULL: ``agent_id = NULL`` never matches, the UPDATE
+      branch is unreachable, and each write inserts. ``agent_id`` stays nullable
+      because it is a real FK — deleting an agent must not delete or orphan-block
+      its cost history, hence ``ON DELETE SET NULL``.
+    * ``PRIMARY KEY (id, period_date)`` therefore arbitrates the agent-less
+      bucket, whose ``id`` is derived from the bucket key rather than random
+      (``ai/usage.bucket_row_id``). ``(id, period_date)`` and not ``(id)`` because
+      ``f7a2c9d4e8b1`` made the table a monthly RANGE partition on ``period_date``
+      and Postgres refuses a unique key that omits the partition column; that is
+      also why ``ai_usage.id`` is no longer globally unique at the database level,
+      so the ORM must not claim it alone as the row's identity.
+    """
 
     __tablename__ = "ai_usage"
 
+    # (id, period_date): both columns are `primary_key=True`, and declaration
+    # order puts `id` first, which is the column order the migrated key has.
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    period_date: Mapped[date] = mapped_column(Date)
+    # The bucket's business day, and the partition key — so it is part of the
+    # identity, not merely a column that happens to be indexed.
+    period_date: Mapped[date] = mapped_column(Date, primary_key=True)
     agent_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("agents.id", ondelete="SET NULL"), nullable=True
     )

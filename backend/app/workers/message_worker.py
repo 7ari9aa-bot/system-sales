@@ -52,7 +52,7 @@ from app.modules.ai.gateway import (
     reserve_budget,
     settle_reservation,
 )
-from app.modules.ai.usage import record_usage
+from app.modules.ai.usage import PLATFORM_BUCKET, record_usage
 from app.modules.conversations.gateway.base import (
     ChannelAdapter,
     OutboundMessage,
@@ -141,7 +141,12 @@ async def transcribe_inbound_voice(
         # money a failed call may still have consumed.
         # §47: the estimate is a Decimal and `ai_usage.cost` is Numeric(18,8);
         # `float(cost)` rounded the sub-cent places the column exists to hold.
-        await record_usage(session, tenant_id, cost=cost)
+        # PLATFORM_BUCKET, not an omitted agent_id: this spend happens BEFORE
+        # `maybe_auto_reply` picks an agent (and even when the tenant has none, or
+        # no AI entitlement), so attributing it to an agent would be a fiction —
+        # while leaving it NULL gives the rollup a bucket its unique key cannot
+        # arbitrate, which fragments it into one row per voice note.
+        await record_usage(session, tenant_id, agent_id=PLATFORM_BUCKET, cost=cost)
         return result.text
     return None
 

@@ -50,7 +50,7 @@ from fastapi.encoders import jsonable_encoder
 from app.modules.ai import gateway as ai_gateway
 from app.modules.ai.gateway import enforce_budget
 from app.modules.ai.router import usage_summary
-from app.modules.ai.usage import record_usage
+from app.modules.ai.usage import PLATFORM_BUCKET, record_usage
 from app.workers import message_worker
 
 TENANT = uuid.UUID("11111111-1111-1111-1111-111111111111")
@@ -271,7 +271,7 @@ async def test_record_usage_binds_the_decimal_the_column_holds() -> None:
     from sqlalchemy.dialects import postgresql
 
     session = _CapturingSession()
-    await record_usage(session, TENANT, cost=SPEND)
+    await record_usage(session, TENANT, agent_id=PLATFORM_BUCKET, cost=SPEND)
     params = session.statement.compile(dialect=postgresql.dialect()).params
 
     bound = params["cost"]
