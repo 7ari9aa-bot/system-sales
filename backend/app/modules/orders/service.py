@@ -11,7 +11,6 @@ without a database; this module only supplies the aggregates they run on.
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -22,6 +21,7 @@ from sqlalchemy import func, select, text, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.audit import write_audit_row
 from app.core.events.writer import add_outbox_event
 from app.core.idempotency import apply_versioned_update, require_version  # §17
 from app.modules.errors import ConflictError, NotFoundError, ValidationError
@@ -194,39 +194,21 @@ async def _audit_shipping(
     before: dict,
     after: dict,
 ) -> None:
-    """One append-only audit_logs row for a shipping correction.
+    """One append-only audit_logs row for a shipping correction (§66).
 
-    Written as SQL rather than through ``platform.service.AuditService``: an
-    ``orders -> platform`` edge is one the module-boundary ratchet cannot pay
-    for, and this is the same parameter-bound INSERT that writer makes, with
-    §66 lineage read from the request context instead of an argument.
+    Delegates to the shared ``app.core.audit`` writer — the same parameter-bound
+    INSERT every module now uses, with §66 lineage read from the request context
+    rather than an argument.
     """
-    from app.core.context import (
-        actor_kind_contextvar,
-        correlation_id_contextvar,
-        request_id_contextvar,
-    )
-
-    await session.execute(
-        text(
-            "INSERT INTO audit_logs (id, tenant_id, actor_user_id, action, "
-            "resource_type, resource_id, before, after, source, request_id, "
-            "correlation_id) VALUES (:id, :tenant_id, :actor_user_id, "
-            "'order.shipping_updated', 'order', :resource_id, "
-            "CAST(:before AS jsonb), CAST(:after AS jsonb), :source, "
-            ":request_id, :correlation_id)"
-        ),
-        {
-            "id": uuid4(),
-            "tenant_id": tenant_id,
-            "actor_user_id": actor_user_id,
-            "resource_id": str(order_id),
-            "before": json.dumps(before),
-            "after": json.dumps(after),
-            "source": actor_kind_contextvar.get() or "human",
-            "request_id": request_id_contextvar.get(),
-            "correlation_id": correlation_id_contextvar.get(),
-        },
+    await write_audit_row(
+        session,
+        tenant_id,
+        actor_user_id,
+        action="order.shipping_updated",
+        resource_type="order",
+        resource_id=str(order_id),
+        before=before,
+        after=after,
     )
 
 

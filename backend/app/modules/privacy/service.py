@@ -33,8 +33,8 @@ class DeletionService:
         Returns a report of what was deleted where — auditable proof.
         """
 
+        from app.core.audit import write_audit_row
         from app.modules.customers.service import CustomerService
-        from app.modules.platform.service import AuditService
 
         customer = await CustomerService.get_for_erasure(session, tenant_id, customer_id)
         if customer.deleted_at is not None:
@@ -153,7 +153,7 @@ class DeletionService:
         report["steps"].append({"step": "dsr_closed", "rows": result.rowcount or 0})
 
         # 5) Audit + event
-        await AuditService.write(
+        await write_audit_row(
             session,
             tenant_id,
             requested_by_user_id,

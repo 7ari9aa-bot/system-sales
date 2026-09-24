@@ -21,13 +21,18 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.main import create_app
 from app.modules.catalog.external.csv_import import CSVImportService
 from app.modules.catalog.models import Product, ProductVariant
 from app.modules.catalog.service import CatalogService
+from app.modules.customers.models import Customer
+from app.modules.customers.service import CustomerService
 from app.modules.errors import ConflictError
+from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 
 TENANT = uuid.UUID("00000000-0000-0000-0000-000000000001")
 
@@ -120,9 +125,47 @@ async def test_row_declaring_an_unstorable_currency_is_refused_before_write() ->
     service.upsert_from_external.assert_not_awaited()
 
 
-# ------------------------------------------- pure: the customer half refuses ----
-async def test_customer_import_refuses_naming_the_missing_method() -> None:
-    """NotImplementedError beats an AttributeError swallowed into a report."""
+# --------------------------------------- pure: the customer half is live ----
+async def test_customer_import_uses_the_real_service_surface() -> None:
+    """The pipeline must call a method CustomerService ACTUALLY defines.
+
+    ``AsyncMock(spec=CustomerService)`` is the mirror of the product-path pin:
+    any attribute the importer reaches that the real class does not define
+    lands here as an ``AttributeError`` (a failed row), never a silently green
+    report. ``create_from_import`` therefore has to exist on the production
+    ``CustomerService``, with the exact call shape the pipeline sends.
+    """
+    service = AsyncMock(spec=CustomerService)
+
+    report = await CSVImportService.import_customers(
+        _session(),
+        TENANT,
+        raw_csv="name,email,phone,tags\nAisha,a@x.com,+201001234567,vip\n",
+        customer_service=service,
+    )
+
+    assert report.imported == 1 and report.success, report.error_details
+    service.create_from_import.assert_awaited_once()
+    args, kwargs = service.create_from_import.await_args
+    # session + tenant positional, then the documented keyword contract — the
+    # pipeline passes each CSV value UNCHANGED (it only strips blanks).
+    assert args[1] == TENANT
+    assert kwargs == {
+        "name": "Aisha",
+        "email": "a@x.com",
+        "phone": "+201001234567",
+        "source": "csv_import",
+        "tags": "vip",
+    }
+
+
+async def test_customer_import_guard_still_refuses_a_service_without_intake() -> None:
+    """The loud refusal is only for a caller that has no create_from_import.
+
+    ``object()`` is not a CustomerService; a NotImplementedError still beats an
+    AttributeError swallowed into a report. (The real service now HAS the
+    method — the previous test pinned the ORPHAN state, which no longer holds.)
+    """
     with pytest.raises(NotImplementedError) as excinfo:
         await CSVImportService.import_customers(
             _session(),
@@ -133,8 +176,13 @@ async def test_customer_import_refuses_naming_the_missing_method() -> None:
     assert "create_from_import" in str(excinfo.value)
 
 
+async def test_real_customer_service_now_owns_the_intake() -> None:
+    """The hard refusal is gone: the production class defines the method."""
+    assert hasattr(CustomerService, "create_from_import")
+
+
 async def test_customer_import_delegates_when_the_method_exists() -> None:
-    """Pinned for the day CustomerService owns the intake: one call per row."""
+    """The documented per-row call shape: one create_from_import per row."""
 
     class _Stub:
         def __init__(self) -> None:
@@ -155,6 +203,27 @@ async def test_customer_import_delegates_when_the_method_exists() -> None:
 
     assert report.imported == 1 and report.success
     assert stub.calls[0]["name"] == "Aisha"
+
+
+async def test_customer_import_conflict_is_a_conflict_not_a_generic_error() -> None:
+    """A domain refusal raises ConflictError so the pipeline surfaces it.
+
+    The generic ``except Exception`` branch would fold a duplicate into
+    ``errors``; a CSV row that collides with an existing customer must land in
+    ``conflicts`` instead, and the run must not read green.
+    """
+    service = AsyncMock(spec=CustomerService)
+    service.create_from_import.side_effect = ConflictError("phone already exists")
+
+    report = await CSVImportService.import_customers(
+        _session(), TENANT, raw_csv="name,phone\nAisha,+201001234567\n",
+        customer_service=service,
+    )
+
+    assert report.imported == 0
+    assert report.conflicts == 1
+    assert report.errors == 0
+    assert not report.success
 
 
 # ---------------------------------------------------------- end to end (DB) ----
@@ -234,3 +303,235 @@ async def test_foreign_currency_row_writes_nothing(db: AsyncSession, tenant_ctx)
     assert report.imported == 0 and report.conflicts == 1
     assert not report.success
     assert await _products(db, tenant_id) == []
+
+
+# --------------------------------------- DB: the REAL CustomerService intake ----
+async def _customers(db: AsyncSession, tenant_id: uuid.UUID) -> list[Customer]:
+    return list(
+        (await db.execute(select(Customer).where(Customer.tenant_id == tenant_id)))
+        .scalars()
+        .all()
+    )
+
+
+async def test_create_from_import_lands_a_real_normalized_customer(
+    db: AsyncSession, tenant_ctx
+) -> None:
+    """The fake in the delegation test must not hide a broken production method.
+
+    This drives the REAL ``CustomerService.create_from_import``: a local-format
+    phone is stored CANONICAL (ADR-056), the source rides the row, and the
+    comma-separated tags become tag links.
+    """
+    tenant_id = tenant_ctx.tenant_id
+
+    customer = await CustomerService.create_from_import(
+        db,
+        tenant_id,
+        name="Sameh",
+        email="  Sameh@Example.COM ",
+        phone="01001234567",
+        source="csv_import",
+        tags="vip,wholesale",
+    )
+    await db.flush()
+
+    assert customer.phone == "+201001234567"
+    assert customer.email == "sameh@example.com"
+    assert (customer.extra or {}).get("source") == "csv_import"
+    tags = await CustomerService.list_tags(db, tenant_id, customer.id)
+    assert {t.name for t in tags} == {"vip", "wholesale"}
+
+
+async def test_create_from_import_refuses_a_normalised_phone_duplicate(
+    db: AsyncSession, tenant_ctx
+) -> None:
+    """A CSV row cannot clone a customer the API path already refuses.
+
+    The first row is typed in local format (stored canonical ``+20…``); the
+    second is the international spelling of the SAME number. Identity
+    resolution must catch it and raise ``ConflictError`` — the one exception the
+    pipeline surfaces as a visible conflict, not a generic error.
+    """
+    tenant_id = tenant_ctx.tenant_id
+    await CustomerService.create_from_import(
+        db, tenant_id, name="Sameh", phone="01001234567",
+        source="csv_import", tags=None,
+    )
+    await db.flush()
+
+    with pytest.raises(ConflictError):
+        await CustomerService.create_from_import(
+            db, tenant_id, name="Sameh Again", phone="+20 100 123 4567",
+            source="csv_import", tags=None,
+        )
+
+    # The refused row wrote nothing.
+    assert len(await _customers(db, tenant_id)) == 1
+
+
+async def test_csv_customer_row_lands_through_the_real_service(
+    db: AsyncSession, tenant_ctx
+) -> None:
+    """End to end through the real CustomerService: not 'imported 0, errors 1'."""
+    tenant_id = tenant_ctx.tenant_id
+
+    report = await CSVImportService.import_customers(
+        db,
+        tenant_id,
+        raw_csv="name,email,phone\nAisha,a@x.com,01001234567\n",
+        customer_service=CustomerService,
+    )
+    await db.flush()
+
+    assert report.imported == 1 and report.success, report.error_details
+    (customer,) = await _customers(db, tenant_id)
+    assert customer.name == "Aisha"
+    assert customer.phone == "+201001234567"
+
+
+async def test_csv_reupload_collides_on_the_normalised_number(
+    db: AsyncSession, tenant_ctx
+) -> None:
+    """Second run, same human spelled differently: a conflict, never a clone."""
+    tenant_id = tenant_ctx.tenant_id
+    await CSVImportService.import_customers(
+        db, tenant_id,
+        raw_csv="name,phone\nAisha,01001234567\n",
+        customer_service=CustomerService,
+    )
+    await db.flush()
+
+    report = await CSVImportService.import_customers(
+        db, tenant_id,
+        raw_csv="name,phone\nAisha,+201001234567\n",
+        customer_service=CustomerService,
+    )
+
+    assert report.imported == 0 and report.conflicts == 1
+    assert not report.success
+    assert len(await _customers(db, tenant_id)) == 1
+
+
+# ------------------------------------- route: parse → resolve → create → status ----
+def test_import_intake_routes_are_mounted() -> None:
+    """The pipeline is reachable from the composition root without a database.
+
+    OpenAPI-only: this proves ``app.main`` wires the ``/imports/*`` intake (and
+    so transitively imports ``csv_import``) on any machine, including one that
+    cannot run the DB-backed cases below.
+    """
+    paths = create_app().openapi()["paths"]
+    assert "/api/v1/imports/customers" in paths, "customer import has no route"
+    assert "/api/v1/imports/products" in paths, "product import has no route"
+
+
+def _write_ctx(session: AsyncSession, tenant_id: uuid.UUID) -> TenantContext:
+    return TenantContext(
+        session=session,
+        user=AuthedUser(id=uuid.uuid4(), tenant_id=tenant_id, role_code="owner"),
+        tenant_id=tenant_id,
+        role_code="owner",
+        permission_codes={"customers:write", "products:write"},
+    )
+
+
+def _app(session: AsyncSession, tenant_id: uuid.UUID):
+    app = create_app()
+    ctx = _write_ctx(session, tenant_id)
+
+    async def _override() -> TenantContext:
+        return ctx
+
+    app.dependency_overrides[get_tenant_ctx] = _override
+    return app
+
+
+async def _post_import(app, path: str, csv: str):
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        return await client.post(path, json={"csv": csv})
+
+
+async def test_customer_import_route_drives_the_whole_path(
+    db: AsyncSession, tenant_ctx
+) -> None:
+    tenant_id = tenant_ctx.tenant_id
+    app = _app(db, tenant_id)
+
+    response = await _post_import(
+        app, "/api/v1/imports/customers", "name,phone\nAisha,01001234567\n"
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["imported"] == 1 and body["success"] is True
+    (customer,) = await _customers(db, tenant_id)
+    assert customer.phone == "+201001234567"
+
+
+async def test_customer_import_route_conflict_is_not_a_green_lie(
+    db: AsyncSession, tenant_ctx
+) -> None:
+    """A row colliding by NORMALISED phone → non-2xx + per-row error_details.
+
+    The stored customer was first written in local format (canonicalised on
+    store); the CSV row arrives as an ``+20`` value for the SAME number. The
+    run must not report 200-green, and the merchant must get back the row that
+    clashed.
+    """
+    tenant_id = tenant_ctx.tenant_id
+    await CustomerService.create_from_import(
+        db, tenant_id, name="Aisha", phone="01001234567",
+        source="csv_import", tags=None,
+    )
+    await db.flush()
+    app = _app(db, tenant_id)
+
+    response = await _post_import(
+        app,
+        "/api/v1/imports/customers",
+        "name,phone\nAisha Clone,+20 100 123 4567\n",
+    )
+
+    assert response.status_code == 409, response.text
+    body = response.json()
+    assert body["conflicts"] == 1 and body["success"] is False
+    assert body["error_details"][0]["row"] == 1
+
+
+async def test_product_import_route_is_reachable(db: AsyncSession, tenant_ctx) -> None:
+    tenant_id = tenant_ctx.tenant_id
+    app = _app(db, tenant_id)
+
+    response = await _post_import(
+        app, "/api/v1/imports/products", _PRODUCTS_CSV
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["imported"] == 1 and body["success"] is True
+
+
+async def test_import_route_requires_write_permission(db: AsyncSession, tenant_ctx) -> None:
+    app = create_app()
+    ctx = TenantContext(
+        session=db,
+        user=AuthedUser(id=uuid.uuid4(), tenant_id=tenant_ctx.tenant_id, role_code="viewer"),
+        tenant_id=tenant_ctx.tenant_id,
+        role_code="viewer",
+        permission_codes=set(),
+    )
+
+    async def _override() -> TenantContext:
+        return ctx
+
+    app.dependency_overrides[get_tenant_ctx] = _override
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.post(
+            "/api/v1/imports/customers", json={"csv": "name\nAisha\n"}
+        )
+    assert response.status_code == 403

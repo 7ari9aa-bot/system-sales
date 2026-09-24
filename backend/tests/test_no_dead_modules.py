@@ -72,9 +72,8 @@ ROOT_MODULES: frozenset[str] = frozenset(
 
 # Module files with ZERO reachable importers today, and why. Kept rather than
 # deleted: a deletion is the owner's call, and a wrong deletion is unrecoverable.
-# Nothing here sits in a path owned by a concurrent agent EXCEPT csv_import.py,
-# which is listed only because it is genuinely unreachable and off-limits — see
-# its note.
+# Nothing here sits in a path owned by a concurrent agent: each is a feature
+# genuinely awaiting its caller, honestly recorded rather than deleted.
 KNOWN_DEAD_MODULES: dict[str, str] = {
     # §166 / ADR-042 storm-suppression write path. Wiring it correctly is a
     # feature, not a one-line call: NotificationService.create() returns the
@@ -94,7 +93,8 @@ KNOWN_DEAD_MODULES: dict[str, str] = {
     # is unit-tested, but no route or worker yet constructs an adapter — that
     # needs a per-tenant connector-config surface that stores the shop's
     # credentials (Integration) and drives sync. Recorded, not deleted, until
-    # that intake exists. csv_import.py below belongs to a concurrent agent.
+    # that intake exists. (The CSV half of §161 is now live: it is reached from
+    # the catalog router's ``/imports/*`` intake, so it is no longer listed here.)
     "app.modules.catalog.external.shopify_adapter": (
         "§161 Shopify sync. No connector-config route/worker constructs a "
         "ShopifyAdapter yet; sync_products already delegates to the live "
@@ -104,14 +104,6 @@ KNOWN_DEAD_MODULES: dict[str, str] = {
         "§161 source-of-truth policy model + service. Reached only by "
         "shopify_adapter (itself dead) and its tests; kept with it so the "
         "feature is not half-deleted. Table source_of_truth_policies exists."
-    ),
-    # OWNED BY A CONCURRENT AGENT (v10 exclusion list) — do NOT delete or wire
-    # from this task. Listed only because the detector honestly reports it
-    # unreachable; leaving it for its owner is the instructed behaviour.
-    "app.modules.catalog.external.csv_import": (
-        "§161 CSV import pipeline. Unreachable from the roots today, but "
-        "app/modules/catalog/external/csv_import.py is owned by a concurrent "
-        "agent and must not be touched by this task; handed off as-is."
     ),
 }
 

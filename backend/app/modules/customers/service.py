@@ -254,6 +254,83 @@ class CustomerService:
     # ------------------------------------------------------------- crud ----
 
     @staticmethod
+    async def create_from_import(
+        session: AsyncSession,
+        tenant_id: UUID,
+        *,
+        name: str,
+        email: str | None = None,
+        phone: str | None = None,
+        source: str = "csv_import",
+        tags: str | None = None,
+    ) -> Customer:
+        """Create one customer from a CSV row through the SAME rules (§161/ADR-056).
+
+        The §161 import pipeline hands each validated row here UNCHANGED. This
+        is the customers intake, and it is not a bypass: the contact handles are
+        canonicalised with ``normalize_phone``/``normalize_email`` and then
+        resolved with the very resolver the webhook path uses
+        (``_resolve_live_by_contact``), which matches the canonical value AND
+        the raw typing because legacy rows still hold what a human typed. So a
+        CSV line can never clone a customer that ``update_customer``/
+        ``get_or_create_by_identity`` refuse.
+
+        Refusals differ on purpose. A handle that collides with a live customer
+        raises ``ConflictError`` — the one exception the pipeline surfaces as a
+        visible conflict rather than folding into a generic error. A handle that
+        cannot be canonicalised lets ``ContactNormalizationError`` (the project's
+        400) propagate: it is refused as that row's error, never stored as a
+        fabricated ``+…`` that would poison the uniqueness key.
+        """
+        canonical_phone = normalize_phone(phone)
+        canonical_email = normalize_email(email)
+
+        if phone:
+            clash = await CustomerService._resolve_live_by_contact(
+                session, tenant_id, Customer.phone, phone_candidates(phone)
+            )
+            if clash is not None:
+                raise ConflictError(
+                    f"customer with phone '{canonical_phone}' already exists "
+                    f"(id {clash.id})"
+                )
+        if email:
+            clash = await CustomerService._resolve_live_by_contact(
+                session, tenant_id, Customer.email, email_candidates(email)
+            )
+            if clash is not None:
+                raise ConflictError(
+                    f"customer with email '{canonical_email}' already exists "
+                    f"(id {clash.id})"
+                )
+
+        # ``source`` is provenance, not a column: it rides ``extra`` so the row
+        # records where it came in without inventing a schema for a CSV.
+        extra: dict = {"source": source} if source else {}
+        customer = Customer(
+            tenant_id=tenant_id,
+            name=name,
+            phone=canonical_phone,
+            email=canonical_email,
+            extra=extra,
+        )
+        try:
+            async with session.begin_nested():
+                session.add(customer)
+                await session.flush()
+        except IntegrityError:
+            # Lost a phone race with a concurrent write (uq_customers_tenant_phone).
+            raise ConflictError(
+                f"customer with phone '{canonical_phone}' already exists"
+            ) from None
+
+        if tags:
+            for tag in (t.strip() for t in tags.split(",")):
+                if tag:
+                    await CustomerService.add_tag(session, tenant_id, customer.id, tag)
+        return customer
+
+    @staticmethod
     async def update_customer(
         session: AsyncSession, tenant_id: UUID, customer_id: UUID, **fields: object
     ) -> Customer:
@@ -814,10 +891,10 @@ class IdentityMergeService:
 
         from sqlalchemy import text
 
+        from app.core.audit import write_audit_row
         from app.core.errors import ConflictError, NotFoundError
         from app.core.events.writer import add_outbox_event
         from app.modules.customers.models import IdentityMergeEvent
-        from app.modules.platform.service import AuditService
 
         if canonical_customer_id == merged_away_customer_id:
             raise ConflictError("cannot merge a customer into itself")
@@ -908,7 +985,7 @@ class IdentityMergeService:
                 details={},
             )
         )
-        await AuditService.write(
+        await write_audit_row(
             session,
             tenant_id,
             performed_by_user_id,

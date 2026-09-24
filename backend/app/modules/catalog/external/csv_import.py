@@ -109,22 +109,26 @@ class CSVImportService:
         """Import customers from CSV via CustomerService.
 
         Identity resolution: if a customer with the same phone or email
-        already exists, the row is skipped (not duplicated). The service
-        layer makes the final decision, not this pipeline.
+        already exists, the row is refused as a conflict (never duplicated).
+        The service layer makes the final decision, not this pipeline — each
+        row is handed to ``CustomerService.create_from_import`` UNCHANGED, so
+        the canonicalisation and duplicate rules a human write obeys apply
+        here too.
 
-        Refuses loudly before the first row if the owning service has no
-        CSV intake: ``create_from_import`` is defined nowhere in
-        ``app/modules/customers/service.py`` today, and a
+        Refuses loudly before the first row if the owning service has no CSV
+        intake. ``create_from_import`` is now defined on the real
+        ``CustomerService``, so the production path never trips this; the guard
+        only fires for a caller that hands in something without it, where a
         ``NotImplementedError`` beats an ``AttributeError`` swallowed into a
-        report nobody reads (the exact defect the Shopify sync shipped with).
+        report nobody reads (the defect class the Shopify sync shipped with).
         """
         if not hasattr(customer_service, "create_from_import"):
             raise NotImplementedError(
-                "CSV customer import is not implemented: CustomerService "
-                "defines no create_from_import(). The customers row and its "
-                "identity rules belong to app/modules/customers/service.py; "
-                "this pipeline calls it unchanged once it exists. Product "
-                "import is unaffected."
+                "CSV customer import needs a service that owns the intake: "
+                "CustomerService.create_from_import is the method that applies "
+                "the customers identity rules; a caller that passes something "
+                "without it cannot import. The production CustomerService "
+                "defines it; this guard is for a wrong injected service only."
             )
 
         rows = CSVImportService.parse_csv(raw_csv)

@@ -121,7 +121,18 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 #        `operations.models`, same as the ai_budget_policies row beside it, and
 #        it gains the atomicity that two-step check-then-insert never had.
 # Edge 7 is also what broke the blob: see BASELINE_CYCLIC_SCCS.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 97
+#
+# 97 -> 94 on 2026-09-24. The real count had already drifted to 99: the CSV
+# import feature added a 5th `-> platform.service.AuditService` site
+# (catalog.router), and the baseline was NOT raised to meet it. Auditing is a
+# cross-cutting capability, not another module's contract, so the shared §66
+# writer moved to `app.core.audit.write_audit_row` — the same parameter-bound
+# INSERT the orders precedent already made with raw SQL. That takes the five
+# `conversations/customers/identity/privacy/catalog -> platform` audit edges out
+# of the graph at once (99 -> 94) and lets `orders` delegate too, so the INSERT
+# exists once. The drop from 97 is the debt the CSV feature owed and this
+# refactor pays off — not a ceiling lifted to hide it.
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 94
 BASELINE_MODULE_SCOPE_SERVICE_IMPORTS = 5
 
 # Cycles are identified by their STRONGLY CONNECTED COMPONENT — the set of
@@ -370,6 +381,38 @@ def test_module_scope_service_imports_do_not_grow() -> None:
         f"{BASELINE_MODULE_SCOPE_SERVICE_IMPORTS}): "
         + ", ".join(sorted(offenders))
         + ". Move the import into the function that needs it."
+    )
+
+
+def test_audit_writers_no_longer_cost_a_platform_edge() -> None:
+    """Auditing moved to ``app.core.audit`` — a migrated module must not re-add it.
+
+    Regression guard for the §66 writer refactor. These files previously imported
+    ``platform.service.AuditService`` purely to write one audit row, which cost a
+    cross-module edge each. The writer now lives in ``app.core.audit`` (a core
+    capability, not another module), so importing ``app.modules.platform`` here at
+    all would pay back an edge the ratchet just removed.
+    """
+    migrated = [
+        "privacy/service.py",
+        "customers/service.py",
+        "conversations/service.py",
+        "catalog/router.py",
+    ]
+    offenders = []
+    for rel in migrated:
+        tree = ast.parse((MODULES_DIR / rel).read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.Import, ast.ImportFrom)):
+                continue
+            target = _imported_module(node)
+            if target and target.startswith("app.modules.platform"):
+                offenders.append(rel)
+                break
+    assert not offenders, (
+        "audit writer(s) still import app.modules.platform: "
+        + ", ".join(sorted(set(offenders)))
+        + " — write through app.core.audit.write_audit_row instead."
     )
 
 

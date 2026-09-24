@@ -61,15 +61,10 @@ async def _record_audit(
     before: dict | None = None,
     after: dict | None = None,
 ) -> None:
-    """Write this module's audit rows through one call.
+    """Write this module's audit rows through the shared §66 core writer."""
+    from app.core.audit import write_audit_row
 
-    The single cross-module import is deliberate: identity reaches into
-    `platform` once here instead of once per call site, and
-    `tests/test_module_boundaries.py` ratchets that count.
-    """
-    from app.modules.platform.service import AuditService
-
-    await AuditService.write(
+    await write_audit_row(
         session,
         tenant_id,
         actor_user_id,

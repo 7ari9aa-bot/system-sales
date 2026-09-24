@@ -46,7 +46,9 @@ class AuditService:
     """§66 — append-only audit log writer (cross-module safe, §8).
 
     Every critical mutation is auditable. Modules call this instead of
-    touching AuditLog directly.
+    touching AuditLog directly. Cross-module writers live in
+    ``app.core.audit.write_audit_row`` instead, so auditing costs no
+    ``module -> platform`` edge; this class stays for platform-internal callers.
     """
 
     @staticmethod

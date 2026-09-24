@@ -7,10 +7,13 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.core.errors import ValidationError
+from app.core.middleware import MAX_BODY_BYTES
+from app.modules.catalog.external.csv_import import CSVImportService
 from app.modules.catalog.service import CatalogService
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
 from app.modules.inventory.models import Warehouse
@@ -18,6 +21,9 @@ from app.modules.inventory.models import Warehouse
 router = APIRouter(tags=["catalog"])
 
 WriteCtx = Annotated[TenantContext, Depends(require_permission("products:write"))]
+CustomerWriteCtx = Annotated[
+    TenantContext, Depends(require_permission("customers:write"))
+]
 
 
 def _variant_out(variant) -> dict:
@@ -313,3 +319,101 @@ async def list_warehouses(ctx: TenantCtxDep, limit: int = 200, offset: int = 0):
         }
         for w in rows
     ]
+
+
+# ------------------------------------------------------- §161 CSV import ----
+# The one intake for the §161 pipeline. It lives in the catalog module because
+# that is where ``csv_import`` sits; it owns NO rules. Each row is handed to the
+# same application service a human write uses — ``CustomerService.create_from_import``
+# for a customer, ``CatalogService.upsert_from_external`` for a product — so the
+# import can never clone what the API refuses (§161's whole point).
+#
+# The report is the contract: ``ImportReport.success`` decides the status, so a
+# run with a refused or failed row is never a 200-green lie, and the per-row
+# ``error_details`` come back so the merchant can fix the file. The body is a
+# JSON string bounded by the SAME cap the edge middleware enforces
+# (``MAX_BODY_BYTES``); a CSV larger than the request cap is a 413 before this
+# route ever parses it, and one larger than the field cap is a 422.
+
+
+class CsvImportRequest(BaseModel):
+    csv: str = Field(min_length=1, max_length=MAX_BODY_BYTES)
+
+
+def _report_out(report) -> dict:
+    """The ImportReport as JSON — counts stay numbers, no money crosses here."""
+    return {
+        "total_rows": report.total_rows,
+        "imported": report.imported,
+        "skipped": report.skipped,
+        "errors": report.errors,
+        "conflicts": report.conflicts,
+        "error_details": report.error_details,
+        "success": report.success,
+    }
+
+
+def _report_status(report) -> int:
+    """The verdict as an HTTP status: green only when nothing was refused.
+
+    A conflict (an identity clash, a foreign currency) is 409; a generic per-row
+    failure (an unparseable handle, a bad price) is 422. Both are non-200 so a
+    client cannot read a partial run as a success.
+    """
+    if report.success:
+        return 200
+    if report.conflicts:
+        return 409
+    return 422
+
+
+async def _audit_import(ctx: TenantContext, action: str, resource_type: str, report) -> None:
+    """One audit row per bulk import, recording the run's verdict (§66).
+
+    The writer is the shared ``app.core.audit`` one — auditing is a core
+    capability, so this route costs no cross-module edge.
+    """
+    from app.core.audit import write_audit_row
+
+    await write_audit_row(
+        ctx.session,
+        ctx.tenant_id,
+        ctx.user.id,
+        action=action,
+        resource_type=resource_type,
+        resource_id="csv_import",
+        after={
+            "total_rows": report.total_rows,
+            "imported": report.imported,
+            "errors": report.errors,
+            "conflicts": report.conflicts,
+            "success": report.success,
+        },
+    )
+
+
+@router.post("/imports/customers")
+async def import_customers_csv(ctx: CustomerWriteCtx, body: CsvImportRequest):
+    """§161: import customers from a CSV through CustomerService, never the DB."""
+    from app.modules.customers.service import CustomerService
+
+    report = await CSVImportService.import_customers(
+        ctx.session,
+        ctx.tenant_id,
+        raw_csv=body.csv,
+        customer_service=CustomerService,
+    )
+    await _audit_import(ctx, "customer.csv_import", "customer", report)
+    return JSONResponse(status_code=_report_status(report), content=_report_out(report))
+
+
+@router.post("/imports/products")
+async def import_products_csv(ctx: WriteCtx, body: CsvImportRequest):
+    """§161: import products from a CSV through the catalog's external upsert."""
+    report = await CSVImportService.import_products(
+        ctx.session,
+        ctx.tenant_id,
+        raw_csv=body.csv,
+    )
+    await _audit_import(ctx, "catalog.csv_import", "product", report)
+    return JSONResponse(status_code=_report_status(report), content=_report_out(report))

@@ -613,9 +613,9 @@ class ConversationService:
         action: str,
         resource_id: str,
     ) -> None:
-        from app.modules.platform.service import AuditService
+        from app.core.audit import write_audit_row
 
-        await AuditService.write(
+        await write_audit_row(
             session,
             tenant_id,
             actor_user_id,
