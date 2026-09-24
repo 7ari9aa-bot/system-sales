@@ -490,14 +490,16 @@ async def test_an_unknown_status_is_refused_not_guessed(
 
 
 @pytest.mark.parametrize(
-    "data_class", ["audit_logs", "orders", "messages", "ai_usage ", "AI_USAGE"]
+    "data_class", ["audit_logs", "orders", "customer_data", "ai_usage ", "AI_USAGE"]
 )
 async def test_a_store_this_door_cannot_execute_is_refused_naming_the_fix(
     monkeypatch: pytest.MonkeyPatch, data_class: str
 ) -> None:
     """``audit_logs`` must never be hard-deleted (§57 legal retention); a typo'd
-    class would otherwise park a policy row that governs nothing; a row-level
-    store is a real question this partition-shaped door does not answer.
+    class would otherwise park a policy row that governs nothing. The row stores
+    (``messages``, ``webhook_events``) are NOT in this list any more: the row
+    sweep always honoured a chosen policy for them, and the door that lets a
+    merchant state one is the gap that closed.
 
     The refusal names the store it DOES govern, so the caller is not left to
     guess which of the two happened.
@@ -518,11 +520,15 @@ async def test_a_store_this_door_cannot_execute_is_refused_naming_the_fix(
     assert AI_USAGE in named, "the refusal must name the stores that ARE accepted"
 
 
-def test_the_door_governs_exactly_the_stores_the_purge_can_drop() -> None:
+def test_the_door_governs_exactly_the_stores_an_executor_can_purge() -> None:
     """A door and a read model must cover the same set: publishing a policy the
-    position route cannot show would recreate "a choice nobody can read".
+    position route cannot show would recreate "a choice nobody can read". And the
+    union is exactly the two executors this module owns — months and rows — so
+    neither can grow a store the other cannot execute.
     """
-    assert retention.CHOOSABLE_DATA_CLASSES == frozenset(retention.PARTITIONED_DATA_CLASSES)
+    assert retention.CHOOSABLE_DATA_CLASSES == frozenset(
+        retention.PARTITIONED_DATA_CLASSES
+    ) | frozenset(retention.ROW_LEVEL_DATA_CLASSES)
     assert AI_USAGE in retention.CHOOSABLE_DATA_CLASSES
     assert "audit_logs" not in retention.CHOOSABLE_DATA_CLASSES
 

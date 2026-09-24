@@ -11,42 +11,50 @@ Two entry points:
   so the scheduler can run it inline from a ``job_type='retention.run'`` job.
 - ``handle(event)`` — the legacy Redis-stream path (payload event_type
   ``retention.run``); kept working, delegates to ``run_once``.
+
+This worker owns NO retention decision. Which tables a policy may empty
+(``ROW_LEVEL_DATA_CLASSES``), what horizon counts as consent, and the bounded
+DELETE itself all live in ``app/modules/analytics/retention.py``, which is also
+the half that answers the merchant's ``PUT /analytics/retention/policies/
+{data_class}``. That is deliberate: a second copy of the allowlist, or a TTL
+kept beside the chosen policy, is a second source of truth about who is allowed
+to destroy data — and the two drift. So this file enumerates a tenant's policy
+rows, hands each one to the gated executor, and REPORTS what was refused. Note
+that it enumerates every policy, not only ``status == "active"`` ones: a
+withdrawn choice that silently disappeared from the summary is how "nobody
+chose" became invisible to whoever watches the sweep.
 """
 
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
-from sqlalchemy import select, text
+from sqlalchemy import select
 
 from app.core.db import SessionLocal, bind_tenant
+from app.modules.analytics.retention import (
+    REASON_NOT_A_ROW_STORE,
+    ROW_LEVEL_DATA_CLASSES,
+    purge_row_store,
+)
 from app.workers.base import StreamWorker
 
 logger = logging.getLogger(__name__)
 
-# data_class -> (table, age timestamp column) for age-based cleanup.
+# data_class -> (table, age timestamp column) for age-based cleanup, derived from
+# the module's allowlist rather than restated here.
 #
-# GUARD RAIL: a data_class that is NOT a key here is SKIPPED, never guessed at
-# — a wrong table name means unrecoverable data loss. Only append a store
-# whose PII-map row (docs/PII_DATA_MAP.md, §131) says the retention worker
-# deletes it. Stores the map marks "legal retention" / "keep" — orders,
-# payments, audit_logs, customers — MUST NOT be added here.
-#
-# Current entries, with their PII-map justification:
-#   messages       — "policy (default 365d) ... retention worker"
-#   ai_usage       — "metrics ... 13 months ... retention worker"
-#   webhook_events — minimal inbound ingress payload; system table (§130)
-#
-# Table/column names come from this static allowlist, never from a policy row,
-# so the f-string built in _delete_older_than cannot be influenced by data.
+# GUARD RAIL: a data_class that is NOT a key here is SKIPPED, never guessed at —
+# a wrong table name means unrecoverable data loss. Only append a store to
+# ``analytics/retention.ROW_LEVEL_DATA_CLASSES`` whose PII-map row
+# (docs/PII_DATA_MAP.md, §131) says the retention worker deletes it. Stores the
+# map marks "legal retention" / "keep" — orders, payments, audit_logs, customers
+# — MUST NOT be added. Table/column names therefore come from a static allowlist,
+# never from a policy row, so the DELETE the module builds cannot be influenced
+# by data.
 _RETENTABLE: dict[str, tuple[str, str]] = {
-    "messages": ("messages", "created_at"),
-    "ai_usage": ("ai_usage", "created_at"),
-    "webhook_events": ("webhook_events", "received_at"),
+    data_class: (spec.table, spec.ts_column)
+    for data_class, spec in ROW_LEVEL_DATA_CLASSES.items()
 }
-
-# Rows deleted per statement. A sweep must not lock a hot table for minutes,
-# so each DELETE touches at most this many rows and loops until drained.
-_DELETE_BATCH_SIZE = 500
 
 
 class RetentionWorker(StreamWorker):
@@ -70,16 +78,19 @@ class RetentionWorker(StreamWorker):
 
     @staticmethod
     async def run_once(session, tenant_id) -> dict:
-        """Apply every active RetentionPolicy for one tenant.
+        """Execute every RetentionPolicy this tenant holds, through the gate.
 
         Runs INSIDE the caller's already-open transaction, with the tenant GUC
-        already bound by the caller. Loads ``status == "active"`` policies and,
-        for each, deletes rows older than ``retention_days`` from the mapped
-        table in bounded batches, then stamps ``last_run_at``.
+        already bound by the caller. Loads EVERY policy row (an inert one is
+        reported, not dropped from the summary) and hands each to
+        ``analytics.retention.purge_row_store``, which re-reads the policy from the
+        database, applies the same consent gate the partition drop applies, and
+        deletes in bounded batches. Nothing here computes a cutoff, a table name,
+        or a reason of its own.
 
         Returns e.g. ``{"policies": 2, "deleted": {"messages": 12, "ai_usage":
         0}, "skipped": [...]}``. ``skipped`` records every policy deliberately
-        NOT run, with the reason.
+        NOT executed, with the module's own reason.
         """
         from app.modules.privacy.models import RetentionPolicy
 
@@ -90,19 +101,17 @@ class RetentionWorker(StreamWorker):
 
         policies = (
             await session.execute(
-                select(RetentionPolicy).where(
-                    RetentionPolicy.tenant_id == tenant_id,
-                    RetentionPolicy.status == "active",
-                )
+                select(RetentionPolicy).where(RetentionPolicy.tenant_id == tenant_id)
             )
         ).scalars().all()
 
         for policy in policies:
-            mapping = _RETENTABLE.get(policy.data_class)
-            if mapping is None:
-                # Unknown data_class: skip and report — never guess a table.
+            if policy.data_class not in _RETENTABLE:
+                # Unknown data_class: skip and report — never guess a table. The
+                # decision is still the module's (purge_row_store refuses the
+                # same way); this only keeps the refusal free of any SQL.
                 skipped.append(
-                    {"data_class": policy.data_class, "reason": "unknown_data_class"}
+                    {"data_class": policy.data_class, "reason": REASON_NOT_A_ROW_STORE}
                 )
                 logger.warning(
                     "retention.skipped_unknown_class tenant=%s data_class=%s",
@@ -110,61 +119,27 @@ class RetentionWorker(StreamWorker):
                     policy.data_class,
                 )
                 continue
-            if policy.retention_days is None or policy.retention_days <= 0:
-                # 0 or negative would mean "delete everything" — unrecoverable.
-                skipped.append(
-                    {
-                        "data_class": policy.data_class,
-                        "reason": "non_positive_retention_days",
-                    }
-                )
+
+            result = await purge_row_store(session, tenant_id, policy.data_class, now=now)
+            reason = result["skipped_reason"]
+            if reason:
+                # A refusal is reported under the gate's own vocabulary, so the
+                # sweep and the merchant's door cannot disagree about why.
+                skipped.append({"data_class": policy.data_class, "reason": reason})
                 logger.warning(
-                    "retention.skipped_non_positive_days tenant=%s data_class=%s days=%s",
+                    "retention.skipped tenant=%s data_class=%s reason=%s",
                     tenant_id,
                     policy.data_class,
-                    policy.retention_days,
+                    reason,
                 )
                 continue
 
-            table, ts_col = mapping
-            cutoff = now - timedelta(days=policy.retention_days)
-            total = await RetentionWorker._delete_older_than(
-                session, table, ts_col, tenant_id, cutoff
-            )
+            total = int(result["deleted"])
             deleted[policy.data_class] = deleted.get(policy.data_class, 0) + total
             policy.last_run_at = now
             applied += 1
 
         return {"policies": applied, "deleted": deleted, "skipped": skipped}
-
-    @staticmethod
-    async def _delete_older_than(
-        session, table: str, ts_col: str, tenant_id, cutoff
-    ) -> int:
-        """Delete rows older than ``cutoff`` in bounded batches.
-
-        ``table``/``ts_col`` are interpolated from the ``_RETENTABLE`` allowlist
-        only — SQL identifiers cannot be bound as parameters, and no policy
-        value ever reaches this string. Every retentable table has a UUID
-        ``id`` primary key. The explicit ``tenant_id`` predicate is required
-        for RLS-exempt tables such as ``webhook_events`` (belt-and-suspenders
-        elsewhere). Returns the number of rows removed.
-        """
-        removed = 0
-        while True:
-            result = await session.execute(
-                text(
-                    f"DELETE FROM {table} WHERE id IN ("
-                    f"SELECT id FROM {table} "
-                    f"WHERE tenant_id = :tenant_id AND {ts_col} < :cutoff "
-                    f"LIMIT {_DELETE_BATCH_SIZE})"
-                ),
-                {"tenant_id": tenant_id, "cutoff": cutoff},
-            )
-            batch = result.rowcount or 0
-            removed += batch
-            if batch < _DELETE_BATCH_SIZE:
-                return removed
 
 
 # ---------------------------------------------------------------------------

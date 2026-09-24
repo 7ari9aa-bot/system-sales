@@ -467,10 +467,15 @@ def _unblock_requires(gate: retention.DropGate) -> list[str]:
     A bare ``blocked_reason`` is a verdict; a merchant who is one of the tenants
     holding the month needs the actionable form of it — including the fact that
     the answer they can give is not the whole fix, because the gate is shared.
+
+    Only the PARTITIONED stores can pin a shared month, so only they belong in
+    this advice: naming ``messages`` here would send a merchant to fix a store
+    whose rows were never part of the question (§56 partitions by time, and a
+    row purge asks one tenant, not all of them).
     """
     if gate.may_drop:
         return []
-    stores = ", ".join(sorted(retention.CHOOSABLE_DATA_CLASSES))
+    stores = ", ".join(sorted(retention.PARTITIONED_DATA_CLASSES))
     if gate.reason == retention.BLOCKED_NO_ACTIVE_TENANTS:
         return [
             "No active tenant exists, so there is nothing to consent and nothing "
@@ -512,14 +517,22 @@ async def retention_position(ctx: AnalyticsReadCtx) -> dict:
     status and horizon that produced that answer beside them (``null`` for a
     question never answered — deliberately not 0, which would read as an
     instant-delete policy). The horizon this door pre-fills is
-    ``offered_default_days``, and ``legal_floor_months`` is the 13 months no
-    choice may undercut.
+    ``offered_default_days`` (a store with no documented duration gets no
+    suggestion), and ``legal_floor_months`` is the 13 months no SHARED month may
+    be dropped under.
 
-    ``blocked_reason`` and ``gate`` are ``evaluate_gate``'s answer, computed by
-    ``read_drop_gate`` from the database's own SECURITY DEFINER aggregate. They
-    are GLOBAL by construction — §56 partitions by time, so a month is shared —
-    and they expose counts and the longest horizon only, never another tenant's
-    policy or existence by name.
+    Every store a policy can govern is listed, month-purged or row-purged, and
+    ``purge_paths`` says which: ``["partition"]`` data leaves as whole months,
+    ``["row"]`` data leaves as one tenant's own rows. For the row stores
+    ``row_gate_reason`` is the answer that matters and ``shared_gate_reason`` is
+    ``null`` — another tenant's silence cannot block a purge of this tenant's
+    rows, and reporting it would send the merchant to fix the wrong thing.
+
+    ``blocked_reason`` and ``gate`` are ``evaluate_gate``'s answer for the shared
+    month, computed by ``read_drop_gate`` from the database's own SECURITY
+    DEFINER aggregate. They are GLOBAL by construction — §56 partitions by time,
+    so a month is shared — and they expose counts and the longest horizon only,
+    never another tenant's policy or existence by name.
     """
     gate = await retention.read_drop_gate(ctx.session)
     position = await retention.policy_position(ctx.session, ctx.tenant_id)
@@ -545,19 +558,20 @@ async def choose_retention_policy(
     not agree to.
 
     Audited through ``app.core.audit`` with the previous answer as the ``before``
-    image: this write is permission to DELETE other tenants' shared month, so
-    "who said what, when, replacing what" is the record that has to exist
-    afterwards (§66). The gate is re-read after the write and returned, so the
-    caller sees immediately whether the month is now droppable or still pinned
-    by someone else's silence.
+    image: this write is permission to DELETE — this tenant's own rows for a row
+    store, every tenant's shared month for a partitioned one — so "who said what,
+    when, replacing what" is the record that has to exist afterwards (§66). The
+    gate is re-read after the write and returned, so the caller sees immediately
+    whether the month is now droppable or still pinned by someone else's silence.
     """
     allowed = sorted(retention.CHOOSABLE_DATA_CLASSES)
     if data_class not in retention.CHOOSABLE_DATA_CLASSES:
         raise ValidationError(
             f"unknown data_class {data_class!r}: the stores a chosen policy can "
-            f"execute against are {', '.join(allowed)}. A row-level store such as "
-            "'messages' has no HTTP surface for its horizon yet, and 'audit_logs' "
-            "is under legal retention (§57) so it never will be.",
+            f"execute against are {', '.join(allowed)}. 'audit_logs' is under "
+            "legal retention (§57) so it never will be, and a store with no "
+            "executor in this module is refused rather than parked as a policy "
+            "that governs nothing.",
             details={"data_class": data_class, "allowed": allowed},
         )
 
