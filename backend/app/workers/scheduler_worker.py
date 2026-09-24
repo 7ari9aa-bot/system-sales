@@ -65,6 +65,11 @@ RECURRING_JOBS: dict[str, tuple[timedelta, dict]] = {
     # tenants or to none. `partitioning_purge_month` takes an advisory lock on
     # (parent, month), so two workers racing the same month cannot both drop it.
     "retention.purge_partitions": (timedelta(days=1), {}),
+    # §82: the `segments.materialize` job handler existed with NO producer —
+    # `JobService.create` had zero production callers, so in production the
+    # recompute could never run ("built, tested in isolation, never called").
+    # This sweep is that producer: per tenant, it ENQUEUES the runner job.
+    "segments.recompute": (timedelta(hours=6), {}),
 }
 
 
@@ -183,6 +188,38 @@ async def _handle_retention_purge(session, tenant_id, payload: dict) -> dict:
 
 
 register_job_handler("retention.purge_partitions", _handle_retention_purge)
+
+
+async def _handle_segments_recompute(session, tenant_id, payload: dict) -> dict:
+    """§82: enqueue this tenant's segment recompute as a §84 Job.
+
+    Deliberately NOT a direct recompute: the heavy DSL evaluation belongs to
+    `job_runner`'s `segments.materialize` handler, where progress, retries and
+    the operations job views apply — the scheduler row is only the wake-up.
+    A still-pending job is not doubled: the sweep re-fires every 6 hours and
+    a stalled runner must not turn it into a queue pile-up.
+    """
+    from app.modules.platform.models import Job
+    from app.modules.platform.service import JobService
+
+    pending = (
+        await session.execute(
+            select(Job.id)
+            .where(
+                Job.tenant_id == tenant_id,
+                Job.kind == "segments.materialize",
+                Job.status.in_(["queued", "processing", "retrying"]),
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if pending is not None:
+        return {"skipped": "pending", "job_id": str(pending)}
+    job = await JobService.create(session, tenant_id, kind="segments.materialize")
+    return {"job_id": str(job.id), "kind": job.kind}
+
+
+register_job_handler("segments.recompute", _handle_segments_recompute)
 
 
 async def ensure_recurring_jobs() -> None:

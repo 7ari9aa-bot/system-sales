@@ -305,9 +305,12 @@ class AuthService:
             raise PermissionDeniedError("invalid credentials")
 
         if not user.is_active:
+            # §67: no PII in `details` — the same coarse proxy `login_failure`
+            # above uses. The read surface masks this key, but the row is
+            # written once and read by everyone who holds `settings:read`.
             await _record_security_event(
                 "account_disabled_login",
-                details={"email": user.email},
+                details={"email_domain": email.split("@")[-1] if "@" in email else ""},
                 ip=ip,
                 actor_user_id=user.id,
             )
@@ -592,16 +595,19 @@ class TenantService:
             raise ConflictError("invitation already used or revoked")
         if invitation.expires_at < _now():
             invitation.status = "expired"
-            from app.modules.platform.models import SecurityEvent
-
-            session.add(
-                SecurityEvent(
-                    event_type="invitation_expired",
-                    tenant_id=invitation.tenant_id,
-                    actor_user_id=None,
-                    details={"email": invitation.email, "invitation_id": str(invitation.id)},
-                    ip=None,
-                )
+            # §67 on its OWN transaction: the raise below rolls the request
+            # transaction back, so `session.add(SecurityEvent(...))` here wrote
+            # an event that never landed. Same reason `login_failure` above
+            # goes through the canonical writer, and no full email is stored.
+            await _record_security_event(
+                "invitation_expired",
+                details={
+                    "email_domain": invitation.email.split("@")[-1]
+                    if "@" in invitation.email
+                    else "",
+                    "invitation_id": str(invitation.id),
+                },
+                tenant_id=invitation.tenant_id,
             )
             raise ValidationError("invitation expired")
         existing = (

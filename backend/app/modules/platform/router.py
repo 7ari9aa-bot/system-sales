@@ -29,6 +29,7 @@ from app.modules.platform.models import (
     Integration,
     OutboxEvent,
     SavedView,
+    SecurityEvent,
     WebhookEvent,
 )
 from app.modules.platform.tenant_restore import TenantRestoreJob, TenantRestoreService
@@ -1155,3 +1156,58 @@ async def execute_tenant_restore_job(
         ctx.session, ctx.tenant_id, job_id
     )
     return _restore_job_payload(job)
+
+
+# ---------------------------------------------------------------------------
+# §67: the security-event read surface
+#
+# `security_events` had nine production writers and ZERO readers — the Wave C
+# lesson ("built, tested in isolation, never called") in its purest form. This
+# is the operator-visible half. Deliberations:
+#
+# * Gated by `settings:read` — the code every other admin-facing read uses;
+#   no new permission strings are invented here.
+# * Tenant isolation is EXPLICIT (`tenant_id == ctx.tenant_id`) on top of the
+#   table's FORCE RLS. Pre-auth NULL-tenant rows (login failures recorded
+#   before any tenant is known) are NOT returned: RLS makes them visible to
+#   every tenant, so a tenant endpoint that passed them through would leak
+#   one tenant's probing patterns to another. They belong to a future
+#   platform-admin plane, which must make that exposure decision openly.
+# * `details` is redacted through app.core.field_auth (§146): PII keys are
+#   nulled without `pii:read`, secret keys (`vault_key`, tokens) ALWAYS.
+# ---------------------------------------------------------------------------
+
+
+@router.get("/security-events")
+async def list_security_events(
+    ctx: TenantContext = Depends(require_permission("settings:read")),
+    event_type: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+):
+    """§67: this tenant's security trail, newest first. Read-only."""
+    from app.core.field_auth import redact_fields
+
+    stmt = (
+        select(SecurityEvent)
+        .where(SecurityEvent.tenant_id == ctx.tenant_id)
+        .order_by(SecurityEvent.created_at.desc())
+        .limit(limit)
+    )
+    if event_type:
+        stmt = stmt.where(SecurityEvent.event_type == event_type)
+    rows = (await ctx.session.execute(stmt)).scalars().all()
+    return {
+        "items": [
+            {
+                "id": str(event.id),
+                "event_type": event.event_type,
+                "actor_user_id": str(event.actor_user_id) if event.actor_user_id else None,
+                "ip": event.ip,
+                "details": redact_fields(
+                    dict(event.details or {}), permission_codes=ctx.permission_codes
+                ),
+                "created_at": event.created_at.isoformat() if event.created_at else None,
+            }
+            for event in rows
+        ]
+    }
