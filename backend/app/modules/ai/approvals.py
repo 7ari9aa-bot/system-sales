@@ -14,6 +14,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import NotFoundError, ValidationError
@@ -42,6 +43,34 @@ def payload_fingerprint(payload: dict | None) -> str:
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
+def _pending_duplicate_stmt(
+    tenant_id: uuid.UUID,
+    conversation_id: uuid.UUID | None,
+    action: str,
+    fingerprint: str,
+):
+    """THE dedupe statement — spelled once for both the pre-check and the
+    post-violation re-read, so the two can never drift and the index in
+    migration e6f7a8b9c0d1 expresses exactly this predicate.
+
+    Idempotent by key: (tenant, conversation, action, payload_hash) restricted
+    to the PENDING state. `conversation_id == None` renders IS NULL, which is
+    why the index buckets NULL through coalesce — see that migration's
+    docstring and tests/test_approval_pending_dedupe_index.py.
+    """
+    return (
+        select(ApprovalRequest)
+        .where(
+            ApprovalRequest.tenant_id == tenant_id,
+            ApprovalRequest.conversation_id == conversation_id,
+            ApprovalRequest.action == action,
+            ApprovalRequest.status == "PENDING",
+            ApprovalRequest.payload_hash == fingerprint,
+        )
+        .limit(1)
+    )
+
+
 class ApprovalService:
     @staticmethod
     async def request(
@@ -64,19 +93,8 @@ class ApprovalService:
         # requests for the same conversation + action + arguments. This matters
         # because a STALE approval is discarded and re-requested, and a resumed
         # run re-enters the gate.
-        existing = (
-            await session.execute(
-                select(ApprovalRequest)
-                .where(
-                    ApprovalRequest.tenant_id == tenant_id,
-                    ApprovalRequest.conversation_id == conversation_id,
-                    ApprovalRequest.action == action,
-                    ApprovalRequest.status == "PENDING",
-                    ApprovalRequest.payload_hash == fingerprint,
-                )
-                .limit(1)
-            )
-        ).scalar_one_or_none()
+        stmt = _pending_duplicate_stmt(tenant_id, conversation_id, action, fingerprint)
+        existing = (await session.execute(stmt)).scalar_one_or_none()
         if existing is not None:
             return existing
 
@@ -94,8 +112,24 @@ class ApprovalService:
             status="PENDING",
             expires_at=datetime.now(UTC) + timedelta(minutes=ttl_minutes),
         )
-        session.add(request)
-        await session.flush()
+        # The SELECT above is a check-then-act: two simultaneous gate entries
+        # can both see no PENDING row. The database closes the race —
+        # uq_approvals_pending_dedupe (unique partial index on exactly this
+        # key, WHERE status = 'PENDING') lets one INSERT through and refuses
+        # the other. The savepoint keeps that refusal recoverable: without it
+        # the 23505 would abort the CALLER's transaction (the whole agent run),
+        # and the re-read below could not run at all.
+        try:
+            async with session.begin_nested():
+                session.add(request)
+                await session.flush()
+        except IntegrityError as exc:
+            if getattr(exc.orig, "pgcode", None) != "23505":
+                raise  # an FK or other integrity fault is not this race
+            winner = (await session.execute(stmt)).scalar_one_or_none()
+            if winner is None:
+                raise  # not explainable by the dedupe key — fail closed
+            return winner
         return request
 
     @staticmethod
