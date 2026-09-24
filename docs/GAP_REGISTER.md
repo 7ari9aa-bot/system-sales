@@ -384,7 +384,7 @@ complete, not by a red test. Each now has a regression test that names it.
 | Consents | privacy/models.py | never enforced in messaging |
 | SLAPolicy / BusinessCalendar / SLAEvent | operations/models.py | no clock, no writer, no worker |
 | ProductPrice / invoices lines | catalog, billing | write-only (tier fields now writable via `POST /variants/{id}/prices`; still no reader in pricing logic) |
-| FeatureFlag / MetricDefinition / SecretReference | platform/models.py | dead tables |
+| FeatureFlag / MetricDefinition / SecretReference | platform/models.py | **measured 2026-09-24: two of three were stale, the third is now closed** — `FeatureFlag` (`GET/POST /platform/flags*`) and `SecretReference` (register/rotate under `settings:write`) were already served by live routes. `metric_definitions` was the real case, and not "dead": WRITE-ONLY (provisioning seed + `scripts/backfill_metric_definitions.py`, read only by the writer's own convergence SELECT), while both endpoints named "definitions" answered from the in-code `MetricRegistry`. Closed by `GET /platform/metrics/definitions` (table-backed, reports `missing`/`drifted`), pinned by `tests/test_contract_reachability.py` §6, which now also baselines every table `app/` never reads |
 | InboxQuery read model (§137) | — | absent (joins in write service) |
 | Outbox `not_before` scheduling | workers/base.py docstring | unimplemented |
 | NotificationPort / PaymentProviderPort / SecretStorePort | — | absent (SMTP stub derefs nonexistent setting) |

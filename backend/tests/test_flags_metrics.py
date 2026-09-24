@@ -2,20 +2,29 @@
 
 Both services need a database for real work, so these tests drive the pure
 decision logic with a tiny fake session: flag precedence, rollout determinism
-and boundaries, registry integrity, and proof the routes are mounted.
+and boundaries, registry integrity, proof the routes are mounted, and proof the
+``metric_definitions`` TABLE is actually SERVED — §167's audit copy is only
+worth its rows if a caller can read them back.
 """
 
 from __future__ import annotations
 
+import json
 import uuid
+from types import SimpleNamespace
 
 import pytest
 
 from app.core.errors import ValidationError
 from app.main import create_app
 from app.modules.platform.flags import FeatureFlagService
-from app.modules.platform.metrics import METRIC_DEFINITIONS, TZ_MERCHANT, MetricRegistry
-from app.modules.platform.models import FeatureFlag
+from app.modules.platform.metrics import (
+    METRIC_DEFINITIONS,
+    TZ_MERCHANT,
+    MetricRegistry,
+)
+from app.modules.platform.models import FeatureFlag, MetricDefinition
+from app.modules.platform.router import list_tenant_metric_definitions
 
 TENANT = uuid.UUID("11111111-1111-1111-1111-111111111111")
 FEATURE = "voice.enabled"
@@ -212,4 +221,174 @@ def test_platform_routes_are_mounted() -> None:
         "/api/v1/platform/flags/{feature}",
         "/api/v1/platform/flags/{feature}/check",
         "/api/v1/platform/metrics",
+        "/api/v1/platform/metrics/definitions",
     } <= paths
+
+
+# ------------------------------------------------ metric_definitions TABLE --
+#
+# §167 makes ``metric_definitions`` the tenant-visible AUDIT COPY of the
+# registry: ``seed_definitions`` pushes rows into it at provisioning and
+# ``scripts/backfill_metric_definitions.py`` converges existing tenants. Both
+# are WRITE halves. These tests pin the read half — a caller must be able to
+# read the tenant's own rows back, and the answer must come FROM THE TABLE.
+
+
+class _RowsResult:
+    def __init__(self, rows: list[MetricDefinition]) -> None:
+        self._rows = rows
+
+    def scalars(self) -> _RowsResult:
+        return self
+
+    def all(self) -> list[MetricDefinition]:
+        return list(self._rows)
+
+
+class _RowsSession:
+    """Answers every query with fixed rows and keeps the statements it was sent."""
+
+    def __init__(self, rows: list[MetricDefinition]) -> None:
+        self.rows = rows
+        self.statements: list[object] = []
+
+    async def execute(self, stmt: object) -> _RowsResult:
+        self.statements.append(stmt)
+        return _RowsResult(self.rows)
+
+
+def _definition(**overrides: object) -> MetricDefinition:
+    values: dict[str, object] = {
+        "tenant_id": TENANT,
+        "name": "revenue",
+        "definition": "gross captured money",
+        "source": "orders",
+        "filters": {"status": ["paid", "shipped"]},
+        "timezone_rule": TZ_MERCHANT,
+        "currency_rule": "presentment",
+        "refund_treatment": "excluded",
+        "version": 1,
+    }
+    values.update(overrides)
+    return MetricDefinition(**values)
+
+
+def _ctx(rows: list[MetricDefinition]) -> SimpleNamespace:
+    return SimpleNamespace(session=_RowsSession(rows), tenant_id=TENANT)
+
+
+async def test_tenant_definitions_route_serves_the_table_not_the_registry() -> None:
+    """The response must carry what the ROW says, even where it disagrees.
+
+    A route that answered from ``MetricRegistry`` would satisfy every other test
+    in this file while leaving the table unread — which is exactly the defect
+    this pins. The row's text is deliberately absent from the registry.
+    """
+    marker = "TEXT THAT EXISTS ONLY IN THIS TENANT'S ROW"
+    payload = await list_tenant_metric_definitions(_ctx([_definition(definition=marker)]))
+
+    assert json.dumps(MetricRegistry.definitions()).count(marker) == 0
+    items = payload["items"]
+    assert [item["definition"] for item in items] == [marker]
+    assert items[0]["name"] == "revenue"
+    assert items[0]["version"] == 1
+
+
+async def test_tenant_definitions_route_scopes_the_read_to_the_caller_tenant() -> None:
+    """No cross-tenant leak: the SELECT's WHERE carries the caller's tenant id.
+
+    Asserted against the WHERE clause and its bound params, not the whole
+    statement — ``tenant_id`` is a column of the table, so it appears in the
+    column list of even a fully unfiltered SELECT.
+    """
+    session = _RowsSession([_definition()])
+    await list_tenant_metric_definitions(SimpleNamespace(session=session, tenant_id=TENANT))
+
+    assert len(session.statements) == 1
+    compiled = session.statements[0].compile()
+    sql = str(compiled)
+    where = sql.split("WHERE", 1)
+    assert len(where) == 2, "the definitions read has no WHERE clause"
+    assert "tenant_id" in where[1], "the definitions read is not tenant-filtered"
+    assert compiled.params["tenant_id_1"] == TENANT
+
+
+async def test_tenant_definitions_route_reports_history_newest_version_first() -> None:
+    """``(name, version)`` is the row identity: v1 stays as audit history.
+
+    Two halves, because only one of them is testable without PostgreSQL. The
+    ORDER BY is what puts v2 before v1 in production — the fake session cannot
+    sort, so it is pinned as SQL. The handler then must not re-sort or filter
+    the superseded version away, which the payload order does prove.
+    """
+    session = _RowsSession([])
+    await list_tenant_metric_definitions(
+        SimpleNamespace(session=session, tenant_id=TENANT)
+    )
+    sql = str(session.statements[0].compile())
+    order_by = sql.split("ORDER BY", 1)
+    assert len(order_by) == 2, "the definitions read has no ORDER BY"
+    assert "metric_definitions.name" in order_by[1]
+    assert "version DESC" in order_by[1], "versions are not newest-first"
+
+    payload = await list_tenant_metric_definitions(
+        _ctx([
+            _definition(version=2, definition="current rule"),
+            _definition(version=1, definition="retired rule"),
+        ])
+    )
+
+    assert [item["version"] for item in payload["items"]] == [2, 1]
+
+
+async def test_tenant_definitions_route_names_missing_and_drifted_rows() -> None:
+    """A tenant that was never backfilled must be VISIBLE, not silently short.
+
+    ``missing``: the registry has it, this tenant has no row for that version.
+    ``drifted``: the row exists but no longer mirrors the registry it names.
+    """
+    drifted = next(spec for spec in METRIC_DEFINITIONS if spec.name == "revenue")
+    rows = [
+        _definition(
+            name=drifted.name,
+            version=drifted.version,
+            definition="an OLD definition the registry no longer carries",
+        )
+    ]
+    payload = await list_tenant_metric_definitions(_ctx(rows))
+
+    assert payload["drifted"] == [drifted.name]
+    assert set(payload["missing"]) == {
+        spec.name for spec in METRIC_DEFINITIONS if spec.name != drifted.name
+    }
+
+
+async def test_converged_tenant_reports_no_gap_and_no_invented_rows() -> None:
+    """After a seed, every registry entry has an exact-mirroring row."""
+    rows = [
+        _definition(
+            name=spec.name,
+            version=spec.version,
+            definition=spec.definition,
+            source=spec.source,
+            filters=spec.filters,
+            timezone_rule=spec.timezone_rule,
+            currency_rule=spec.currency_rule,
+            refund_treatment=spec.refund_treatment,
+        )
+        for spec in METRIC_DEFINITIONS
+    ]
+    payload = await list_tenant_metric_definitions(_ctx(rows))
+
+    assert payload["missing"] == []
+    assert payload["drifted"] == []
+    assert len(payload["items"]) == len(METRIC_DEFINITIONS)
+
+
+async def test_empty_tenant_is_an_empty_answer_not_an_error() -> None:
+    """A tenant with no rows yet reads as empty — never a 500."""
+    payload = await list_tenant_metric_definitions(_ctx([]))
+
+    assert payload["items"] == []
+    assert set(payload["missing"]) == {spec.name for spec in METRIC_DEFINITIONS}
+    assert payload["drifted"] == []

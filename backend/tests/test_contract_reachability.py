@@ -34,6 +34,15 @@ Pairs covered, and why each is worth a permanent test:
 5. Cursor, ETag and visitor-token pairs — both halves are wired, but these are
    the other opaque-string contracts a consumer (the frontend / an SSE client)
    depends on, so they are pinned here too.
+6. Table read reachability — the §4 gap-register claim "FeatureFlag /
+   MetricDefinition / SecretReference | dead tables" was half stale: two of the
+   three are served by live routes, one (``metric_definitions``) was WRITE-ONLY,
+   read by nothing but the function that writes it, while two endpoints NAMED
+   AFTER DEFINITIONS answered from a Python registry. A round-trip pair is only
+   half the story: a table can be perfectly serialized and still be read by
+   nobody. So this section (a) drives the real route for each of the three
+   tables and proves the ROW's bytes reach the response, and (b) pins the set
+   of tables app code never SELECTs, so a new one cannot join silently.
 
 Type-preservation: the envelope pair preserves the Python types a real
 producer sends. ``app/modules/orders/service.py`` publishes ``grand_total`` as a
@@ -50,8 +59,11 @@ DB-free: every test here runs locally (the fake session pattern is the same one
 
 from __future__ import annotations
 
+import ast
 import base64
 import json
+import pathlib
+import re
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -59,6 +71,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from httpx import ASGITransport, AsyncClient
 
 from app.core.events.schemas import build_envelope, deserialize, serialize
 from app.core.events.writer import add_outbox_event
@@ -67,7 +80,11 @@ from app.core.pagination import decode_cursor, encode_cursor
 from app.core.security import create_visitor_token, decode_visitor_token
 from app.modules.billing.models import Invoice
 from app.modules.billing.service import BillingSnapshotService, PeriodUsage
-from app.modules.platform.metrics import METRIC_DEFINITIONS, MetricSpec
+from app.modules.platform.metrics import (
+    METRIC_DEFINITIONS,
+    MetricRegistry,
+    MetricSpec,
+)
 from app.modules.platform.models import MetricDefinition
 
 # ---------------------------------------------------------------------------
@@ -460,3 +477,386 @@ def test_b64_round_trip_is_what_the_idempotency_row_relies_on() -> None:
     payload = b'{"ok":true}'
     encoded = base64.b64encode(payload).decode("ascii")
     assert base64.b64decode(encoded) == payload
+
+
+# ---------------------------------------------------------------------------
+# 6. Table read reachability: a table nothing READS has no consumer
+# ---------------------------------------------------------------------------
+#
+# ``docs/GAP_REGISTER.md`` §4 lists ``FeatureFlag / MetricDefinition /
+# SecretReference`` as "dead tables". Measured on the code, two of the three
+# claims were stale — both are read and written behind mounted, permission-gated
+# routes — and one was true in a way the register did not describe:
+# ``metric_definitions`` had a write path (the provisioning seed and
+# ``scripts/backfill_metric_definitions.py``) whose only SELECT was the one
+# inside the writer itself, used to decide what to UPDATE. Nothing served a row,
+# while ``GET /platform/metrics`` and ``GET /analytics/metrics/definitions``
+# answered from the in-code ``MetricRegistry``. That is the repo's named failure
+# mode in its narrowest form: not dead code, but a live table with no reader, and
+# an endpoint whose name implies a source it never queries.
+#
+# So this section guards both directions:
+#
+#   * BEHAVIOURALLY — for each §4 table, drive the REAL route with a stub
+#     session holding a row whose value exists nowhere in Python, and require
+#     that value to arrive in the response. Delete the route, or re-point it at
+#     an in-code source, and the named test goes red.
+#   * STATICALLY — no ORM table may exist that ``app/`` never reads, unless it is
+#     named below with the reason. The baseline may only SHRINK; a new write-only
+#     table fails naming it.
+
+BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[1]
+MODELS_DIR = BACKEND_ROOT / "app" / "modules"
+
+#: Methods whose first argument being a model means "this code reads the table".
+_READ_CALLS = frozenset({"select", "update", "delete", "insert", "get"})
+
+#: Tables ``app/`` never reads, and why. This is the dead-schema inventory of
+#: ``docs/GAP_REGISTER.md`` §4 plus the voice/ads tables whose ingest was never
+#: built. Wiring a reader for one means DELETING its entry here — the positive
+#: assertion then keeps it read.
+TABLES_NEVER_READ: dict[str, str] = {
+    # No writer and no reader: the schema exists, the feature does not.
+    "Prompt": "§38 prompt registry — dead schema, zero references outside the model.",
+    "AISession": "conversations — dead schema, zero references outside the model.",
+    "PhoneNumber": "voice — no ingest writes it, no route reads it.",
+    "Call": "voice — superseded by the telephony work; nothing constructs a row.",
+    "CallSession": "voice — same: no producer, no reader.",
+    "CallLeg": "voice — same: no producer, no reader.",
+    "AdSet": "marketing — Meta ad ingest that would fill it is unbuilt.",
+    "Ad": "marketing — same; no producer, no reader.",
+    # platform/models.py — the `automations` table. The automation that shipped
+    # is app/modules/automation/ on the `workflows` tables, so nothing here is
+    # ever written or read: two schemas for one feature, one of them abandoned.
+    "Automation": "platform — superseded by automation/workflows; no writer, no reader.",
+    # Written by a live path, read by nothing: the row is a receipt, not a source.
+    "DeliveryAttempt": "§130 — message_worker writes one row per attempt; nobody reads it.",
+    "AIHandover": "ai/hooks + runtime write handover rows; no surface lists them.",
+    "WorkflowFailure": "automation/service writes failures a dispatcher never reads.",
+    "Assignment": "conversations/service writes assignments; no read model serves them.",
+    "TemplateApproval": "§templates — approval rows never checked at send.",
+    "IdentityMergeEvent": "customers/service writes the merge trail; no API reads it.",
+}
+
+
+def _orm_tables() -> dict[str, str]:
+    """Model class name -> ``__tablename__`` for every declarative model."""
+    tables: dict[str, str] = {}
+    for path in sorted(MODELS_DIR.glob("*/models.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in tree.body:
+            if not isinstance(node, ast.ClassDef):
+                continue
+            if not any("Base" in ast.unparse(base) for base in node.bases):
+                continue
+            for statement in node.body:
+                targets = (
+                    statement.targets
+                    if isinstance(statement, ast.Assign)
+                    else ([statement.target] if isinstance(statement, ast.AnnAssign) else [])
+                )
+                named = any(
+                    (getattr(t, "id", None) or getattr(t, "attr", None)) == "__tablename__"
+                    for t in targets
+                )
+                if named and statement.value is not None:
+                    try:
+                        tables[node.name] = ast.literal_eval(statement.value)
+                    except (ValueError, SyntaxError):
+                        pass
+    return tables
+
+
+def _module_sources() -> dict[str, str]:
+    """Every non-test, non-models app source: relative path -> text."""
+    sources: dict[str, str] = {}
+    for path in sorted((BACKEND_ROOT / "app").rglob("*.py")):
+        if "__pycache__" in path.parts or path.name == "models.py":
+            continue
+        sources[path.relative_to(BACKEND_ROOT).as_posix()] = path.read_text(encoding="utf-8")
+    return sources
+
+
+def _reading_modules(sources: dict[str, str]) -> dict[str, set[str]]:
+    """Model name -> app modules that read its table.
+
+    A read is either an ORM call naming the class (``select(Model)``,
+    ``session.get(Model, pk)``, ``Model.__table__``) or raw SQL naming the
+    TABLE (``FROM audit_logs``) — the two ways this codebase actually reads.
+    """
+    readers: dict[str, set[str]] = {}
+
+    def note(model: str, where: str) -> None:
+        readers.setdefault(model, set()).add(where)
+
+    for rel, src in sources.items():
+        tree = ast.parse(src, filename=rel)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                func = node.func
+                name = (
+                    func.id
+                    if isinstance(func, ast.Name)
+                    else (func.attr if isinstance(func, ast.Attribute) else None)
+                )
+                if name not in _READ_CALLS:
+                    continue
+                for arg in node.args:
+                    target = None
+                    if isinstance(arg, ast.Name):
+                        target = arg.id
+                    elif isinstance(arg, ast.Attribute) and isinstance(arg.value, ast.Name):
+                        target = arg.value.id
+                    elif isinstance(arg, ast.Starred) and isinstance(arg.value, ast.Name):
+                        target = arg.value.id
+                    if target and target[:1].isupper():
+                        note(target, rel)
+            elif isinstance(node, ast.Attribute) and node.attr == "__table__":
+                if isinstance(node.value, ast.Name):
+                    note(node.value.id, rel)
+        for table in set(re.findall(r"\b([a-z][a-z0-9_]{3,})\b", src)):
+            if re.search(rf"\b(?:from|join|into)\s+{re.escape(table)}\b", src, re.IGNORECASE):
+                note(f"table:{table}", rel)
+    return readers
+
+
+def write_only_tables() -> list[str]:
+    """Model names whose table is never read anywhere in ``app/``."""
+    sources = _module_sources()
+    readers = _reading_modules(sources)
+    sql_read_by_table = {
+        key.removeprefix("table:"): mods
+        for key, mods in readers.items()
+        if key.startswith("table:")
+    }
+    unread: list[str] = []
+    for model, table in _orm_tables().items():
+        if readers.get(model) or sql_read_by_table.get(table):
+            continue
+        unread.append(model)
+    return sorted(unread)
+
+
+def test_no_table_is_written_but_never_read_beyond_the_recorded_baseline() -> None:
+    """A table ``app/`` never reads is storage nobody consults — dead by definition.
+
+    New offender -> wire a reader or explain it in ``TABLES_NEVER_READ`` (and
+    expect the explanation to be audited). Entry that has become readable -> the
+    wiring worked; delete the entry so the guard starts enforcing it.
+    """
+    unread = set(write_only_tables())
+    baseline = set(TABLES_NEVER_READ)
+
+    assert unread == baseline, (
+        "table read-reachability drifted:\n"
+        + "".join(
+            f"  NEW write-only table {name}: nothing in app/ reads it — "
+            "give it a reader or record why it waits\n"
+            for name in sorted(unread - baseline)
+        )
+        + "".join(
+            f"  {name} is now READ but still recorded as unread — "
+            "delete its TABLES_NEVER_READ entry\n"
+            for name in sorted(baseline - unread)
+        )
+    )
+
+
+def test_detector_distinguishes_read_from_unread() -> None:
+    """Proof the read detector discriminates, so neither half passes vacuously.
+
+    ``AuditLog`` is read only through raw SQL (so a class-name scan alone would
+    wrongly report it dead) and ``FeatureFlag`` only through ``select()``;
+    ``Prompt`` is read by neither and must appear in the offender list.
+    """
+    sources = _module_sources()
+    readers = _reading_modules(sources)
+    unread = set(write_only_tables())
+
+    assert readers.get("FeatureFlag"), "detector missed a select(Model) read"
+    assert readers.get("table:audit_logs"), "detector missed a raw-SQL read"
+    assert "AuditLog" not in unread, "a raw-SQL-read table was reported unread"
+    assert "Prompt" in unread, "detector reports a table nothing reads as alive"
+
+
+# --- the §4 tables, served: drive the real route, require the row's bytes ----
+
+SERVED_TENANT = uuid.UUID("99999999-9999-9999-9999-999999999999")
+
+
+class _ServedResult:
+    def __init__(self, rows: list[Any]) -> None:
+        self._rows = rows
+
+    def all(self) -> list[Any]:
+        return list(self._rows)
+
+    def scalars(self) -> _ServedResult:
+        return self
+
+    def first(self) -> Any:
+        return self._rows[0] if self._rows else None
+
+    def scalar_one(self) -> Any:
+        return self._rows[0]
+
+    def scalar_one_or_none(self) -> Any:
+        return self._rows[0] if self._rows else None
+
+
+class _ServedSession:
+    """Answers every read with one fixed row set; records writes, touches no DB."""
+
+    def __init__(self, rows: list[Any]) -> None:
+        self._result = _ServedResult(rows)
+        self.added: list[Any] = []
+
+    async def execute(self, *_args: Any, **_kwargs: Any) -> _ServedResult:
+        return self._result
+
+    def add(self, instance: Any) -> None:
+        self.added.append(instance)
+
+    async def flush(self) -> None:
+        return None
+
+    async def commit(self) -> None:
+        return None
+
+
+def _served_ctx(rows: list[Any], *, permissions: set[str]) -> Any:
+    from app.modules.identity.deps import AuthedUser, TenantContext
+
+    user = AuthedUser(
+        id=uuid.uuid4(),
+        tenant_id=SERVED_TENANT,
+        role_code="owner",
+        is_platform_admin=False,
+    )
+    return TenantContext(
+        session=_ServedSession(rows),
+        user=user,
+        tenant_id=SERVED_TENANT,
+        role_code="owner",
+        permission_codes=permissions,
+    )
+
+
+async def _drive(method: str, path: str, rows: list[Any], *, permissions: set[str], body=None):
+    """Send a real request through the mounted app with a fabricated context."""
+    from fastapi import Depends
+
+    from app.main import create_app
+    from app.modules.identity.deps import get_db, get_tenant_ctx
+
+    ctx = _served_ctx(rows, permissions=permissions)
+    app = create_app()
+
+    async def _session():
+        yield ctx.session
+
+    app.dependency_overrides[get_tenant_ctx] = lambda: ctx
+    app.dependency_overrides[get_db] = Depends(_session)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test", timeout=10) as client:
+        response = await client.request(method, path, json=body)
+    return response, ctx
+
+
+def _metric_definition(marker: str) -> MetricDefinition:
+    return MetricDefinition(
+        tenant_id=SERVED_TENANT,
+        name="revenue",
+        definition=marker,
+        source="orders",
+        filters={},
+        timezone_rule="merchant_local",
+        currency_rule="presentment",
+        refund_treatment="excluded",
+        version=1,
+    )
+
+
+async def test_metric_definitions_table_is_served_by_a_route() -> None:
+    """``GET /platform/metrics/definitions`` answers from the ROW, not the code.
+
+    This is the §4 resolution for ``metric_definitions``: the seed and the
+    backfill script write it, and this route is the half that reads it. The
+    marker exists nowhere in the registry, so a handler that fell back to
+    ``MetricRegistry`` — the previous behaviour of every "definitions" endpoint —
+    cannot produce it.
+    """
+    marker = "ROW-ONLY-DEFINITION-F1EEDBACK"
+    response, _ = await _drive(
+        "GET", "/api/v1/platform/metrics/definitions", [_metric_definition(marker)],
+        permissions=set(),
+    )
+
+    assert response.status_code == 200, response.text
+    assert marker in response.text
+    assert marker not in json.dumps(MetricRegistry.definitions())
+    item = next(entry for entry in response.json()["items"] if entry["definition"] == marker)
+    assert item["name"] == "revenue" and item["version"] == 1
+
+
+async def test_feature_flags_table_is_served_by_a_route() -> None:
+    """``GET /platform/flags`` carries the row's feature name end to end."""
+    from app.modules.platform.models import FeatureFlag
+
+    marker = "row-only.feature.marker"
+    row = FeatureFlag(
+        tenant_id=SERVED_TENANT, feature=marker, enabled=True, rollout_percent=100
+    )
+    response, _ = await _drive("GET", "/api/v1/platform/flags", [row], permissions=set())
+
+    assert response.status_code == 200, response.text
+    assert marker in response.text
+
+
+async def test_secret_references_table_is_served_by_a_route(monkeypatch) -> None:
+    """``POST /platform/secrets/{provider}/rotate`` reads the row back and answers.
+
+    ``secret_references`` is NOT a second copy of the §68/G-06 value store — that
+    one is ``secret_values``, backed by ``core.secrets.DatabaseSecretStore``.
+    This table holds the reference half (provider, vault_key, status, version)
+    and is read on a live route, so the register's "dead table" claim is stale.
+    """
+    from app.core.secrets import InMemorySecretStore, set_secret_store
+    from app.modules.platform.models import SecretReference
+
+    monkeypatch.setattr("app.core.secrets._store", InMemorySecretStore())
+    set_secret_store(InMemorySecretStore())
+
+    marker = "row-only-provider"
+    row = SecretReference(
+        tenant_id=SERVED_TENANT,
+        scope="tenant",
+        provider=marker,
+        vault_key="vault-key-1",
+        status="active",
+        version=1,
+    )
+    response, _ = await _drive(
+        "POST",
+        "/api/v1/platform/secrets/whatsapp/rotate",
+        [row],
+        permissions={"settings:write"},
+        body={"new_value": "rotation-under-test"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert marker in response.text
+
+
+def test_router_definition_fields_are_the_synced_registry_fields() -> None:
+    """``_DEFINITION_FIELDS`` (router) and ``_SYNCED_FIELDS`` (metrics) must agree.
+
+    The route compares a row against the registry using one field list and the
+    seed converges using the other; if they drift, the drift report and the
+    convergence stop describing the same contract — and the route would report
+    a tenant as clean while the seed kept rewriting it.
+    """
+    from app.modules.platform.metrics import _SYNCED_FIELDS
+    from app.modules.platform.router import _DEFINITION_FIELDS
+
+    assert set(_DEFINITION_FIELDS) == set(_SYNCED_FIELDS)

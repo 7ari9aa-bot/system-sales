@@ -267,4 +267,15 @@ async def test_list_is_newest_first(db, tenant_ctx) -> None:
     async with _client(db, tenant_ctx.tenant_id, tenant_ctx.user.id, {"settings:read"}) as client:
         items = (await client.get(LIST_PATH)).json()["items"]
 
-    assert [i["details"]["n"] for i in items] == ["2", "1"], "newest first"
+    # Two claims, pinned together:
+    # 1. newest first — the row backdated an hour (n=1) sorts AFTER the fresh one (n=2);
+    # 2. the wire type — `n` is a JSONB seq marker, NOT money. §47/ADR-053 send only
+    #    Decimal money across JSON as a string; counts, ids and ordinary numbers stay
+    #    JSON numbers, so redact_fields passes it through as an int. Asserting ints here
+    #    also rejects a silent str() coercion or float() (both would be wrong contracts).
+    seq = [i["details"]["n"] for i in items]
+    assert seq == [2, 1], f"newest first, as numbers: {seq!r}"
+    assert all(isinstance(v, int) and not isinstance(v, bool) for v in seq), (
+        "non-money numbers stay ints on the wire, got "
+        f"{[type(v).__name__ for v in seq]}"
+    )
