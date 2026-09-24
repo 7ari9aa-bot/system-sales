@@ -15,6 +15,12 @@ media is untrusted, so callers MUST use the two steps deliberately —
 BEFORE anything is written to the bucket. There is deliberately no one-call
 `fetch-and-store` helper, because such a helper looks safe and is not — the
 screened path lives in `app.modules.conversations.media.MediaService`.
+
+The third verb is `delete_objects`, and it is here because §52 says retention is
+executed, not displayed: media is customer PII with a horizon, and a row-level
+purge that cannot remove the bytes leaves that PII in the bucket with its
+pointer deleted. It reports the keys it could NOT remove rather than raising —
+see its docstring for why that direction matters.
 """
 
 from __future__ import annotations
@@ -23,6 +29,7 @@ import hashlib
 import logging
 import re
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from urllib.parse import urljoin
 
@@ -235,6 +242,66 @@ class ObjectStorage:
             storage_key=key,
             checksum=media.checksum,
         )
+
+    #: S3 accepts at most 1000 keys per `delete_objects` request.
+    DELETE_CHUNK = 1000
+
+    async def delete_objects(self, keys: Sequence[str]) -> list[str]:
+        """Remove stored objects, and RETURN THE KEYS THAT STAYED BEHIND.
+
+        The third verb of this port, and the reason §52's media retention can be
+        executed at all: an `attachments` row is a pointer, the object is the
+        customer's photo/voice byte payload, and deleting only the pointer makes
+        the PII permanently invisible — nothing in the schema knows to remove it
+        again. So a purge that stops at the row is not a purge.
+
+        The return value is the contract: a partial failure (one key denied, a
+        bucket policy refusal, a dead endpoint) must NOT raise, because the rows
+        are already deleted and the caller's transaction is about to commit. A
+        raised error would roll the purge back and a swallowed one would report
+        success, and both leave objects in the bucket with nobody holding the
+        list. Callers get the surviving keys back and are expected to audit them.
+
+        When S3 is not configured there is nothing to remove: `store` kept the
+        expiring provider URL and wrote no object, so this answers "no failures"
+        rather than raising out of a dev-only setup.
+        """
+        if not self.configured:
+            return []
+        pending = [k for k in keys if k]
+        if not pending:
+            return []
+
+        import asyncio
+
+        failed: list[str] = []
+        for start in range(0, len(pending), self.DELETE_CHUNK):
+            chunk = pending[start : start + self.DELETE_CHUNK]
+            try:
+                outcome = await get_breaker(STORAGE_OBJECTS).call(
+                    asyncio.to_thread,
+                    self._s3().delete_objects,
+                    Bucket=self._bucket,
+                    Delete={
+                        "Objects": [{"Key": k} for k in chunk],
+                        "Quiet": True,
+                    },
+                )
+            except Exception as exc:  # a dead bucket is reported, never fatal
+                logger.warning(
+                    "storage.delete_objects_failed count=%d error=%s", len(chunk), exc
+                )
+                failed.extend(chunk)
+                continue
+            errors = (outcome or {}).get("Errors") or []
+            if errors:
+                logger.warning(
+                    "storage.delete_objects_partial bucket=%s failed=%d",
+                    self._bucket,
+                    len(errors),
+                )
+                failed.extend(str(e.get("Key") or "") for e in errors)
+        return [k for k in failed if k]
 
 _storage: ObjectStorage | None = None
 

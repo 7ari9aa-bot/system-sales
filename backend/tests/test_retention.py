@@ -91,6 +91,11 @@ class _Session:
             )
         if "retention_policies" in sql:
             return _Result(self._policies)
+        if sql.strip().upper().startswith("SELECT") and "storage_key" in sql:
+            # §52 media gather: this double holds no attachment rows, so a batch
+            # never carries media. The media path itself is pinned in
+            # tests/test_media_and_lead_retention.py.
+            return _Result([])
         if sql.strip().upper().startswith("DELETE"):
             rowcount = self._delete_rowcounts.pop(0) if self._delete_rowcounts else 0
             return _Result(rowcount=rowcount)
@@ -160,9 +165,19 @@ def test_retentable_map_excludes_legally_retained_stores():
     """GUARD RAIL: the allowlist must not name any legally retained store."""
     tables = {table for table, _column in _RETENTABLE.values()}
     assert tables.isdisjoint(LEGALLY_RETAINED)
-    # And it is exactly the documented retention-worker stores.
-    assert set(_RETENTABLE) == {"messages", "ai_usage", "webhook_events"}
-    assert tables == {"messages", "ai_usage", "webhook_events"}
+    # The stores a tenant can hold a horizon for. ``attachments`` and ``leads``
+    # joined it with §52's own data-class list (media has a policy, a marketing
+    # lead is someone's phone number) — tests/test_media_and_lead_retention.py
+    # pins why each is there, and REFUSED_DATA_CLASSES pins what stays out.
+    assert set(_RETENTABLE) == {
+        "attachments",
+        "messages",
+        "ai_usage",
+        "webhook_events",
+        "leads",
+    }
+    assert tables == set(_RETENTABLE)
+    assert set(retention.REFUSED_DATA_CLASSES).isdisjoint(_RETENTABLE)
 
 
 def test_retentable_map_is_the_modules_allowlist_not_a_copy():
@@ -179,6 +194,8 @@ def test_retentable_columns_match_model_timestamps():
     assert _RETENTABLE["messages"] == ("messages", "created_at")
     assert _RETENTABLE["ai_usage"] == ("ai_usage", "created_at")
     assert _RETENTABLE["webhook_events"] == ("webhook_events", "received_at")
+    assert _RETENTABLE["attachments"] == ("attachments", "created_at")
+    assert _RETENTABLE["leads"] == ("leads", "created_at")
 
 
 async def test_allowed_policy_deletes_in_bounded_batches_and_stamps_last_run():

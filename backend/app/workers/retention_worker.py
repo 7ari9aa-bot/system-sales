@@ -46,15 +46,31 @@ logger = logging.getLogger(__name__)
 # GUARD RAIL: a data_class that is NOT a key here is SKIPPED, never guessed at —
 # a wrong table name means unrecoverable data loss. Only append a store to
 # ``analytics/retention.ROW_LEVEL_DATA_CLASSES`` whose PII-map row
-# (docs/PII_DATA_MAP.md, §131) says the retention worker deletes it. Stores the
-# map marks "legal retention" / "keep" — orders, payments, audit_logs, customers
-# — MUST NOT be added. Table/column names therefore come from a static allowlist,
-# never from a policy row, so the DELETE the module builds cannot be influenced
-# by data.
+# (docs/PII_DATA_MAP.md, §131) hands it to the retention worker: either its
+# "Deletion behavior" says the retention worker deletes it (``messages``,
+# ``ai_usage``) or it says the store delete happens at all (``attachments``:
+# "storage delete + row delete"), which spec §52's own data-class list demands.
+# Stores the map marks "legal retention" / "keep" — orders, payments, audit_logs,
+# customers — MUST NOT be added, and ``analytics/retention.REFUSED_DATA_CLASSES``
+# now says which are refused and under which rule, instead of leaving "absent" to
+# mean both "not yet" and "never". Table/column names therefore come from a static
+# allowlist, never from a policy row, so the DELETE the module builds cannot be
+# influenced by data.
 _RETENTABLE: dict[str, tuple[str, str]] = {
     data_class: (spec.table, spec.ts_column)
     for data_class, spec in ROW_LEVEL_DATA_CLASSES.items()
 }
+
+#: The order the sweep visits stores in, taken from the allowlist's declaration
+#: order. This is load-bearing, not cosmetic: ``attachments.message_id`` is
+#: ``ON DELETE CASCADE``, so if ``messages`` is purged first the cascade takes the
+#: media rows with it, no keys are in hand, and the objects leak permanently.
+#: ``analytics/retention.py`` declares the child before its parent for exactly
+#: this reason, and ``tests/test_media_and_lead_retention.py`` pins both halves.
+_SWEEP_ORDER: dict[str, int] = {
+    data_class: position for position, data_class in enumerate(ROW_LEVEL_DATA_CLASSES)
+}
+_UNRANKED = len(_SWEEP_ORDER)
 
 
 class RetentionWorker(StreamWorker):
@@ -89,8 +105,14 @@ class RetentionWorker(StreamWorker):
         or a reason of its own.
 
         Returns e.g. ``{"policies": 2, "deleted": {"messages": 12, "ai_usage":
-        0}, "skipped": [...]}``. ``skipped`` records every policy deliberately
-        NOT executed, with the module's own reason.
+        0}, "skipped": [...], "media_released": 4, "media_failed": [...]}``.
+        ``skipped`` records every policy deliberately NOT executed, with the
+        module's own reason. ``media_failed`` names the bucket objects a purged row
+        left behind — a leak this sweep cannot fix twice.
+
+        The policies are visited in the allowlist's dependency order, not in the
+        order the database handed them back: a child whose rows cascade with a
+        parent's must be cleared first or its objects orphan (``_SWEEP_ORDER``).
         """
         from app.modules.privacy.models import RetentionPolicy
 
@@ -98,6 +120,8 @@ class RetentionWorker(StreamWorker):
         deleted: dict[str, int] = {}
         skipped: list[dict] = []
         applied = 0
+        media_released = 0
+        media_failed: list[str] = []
 
         policies = (
             await session.execute(
@@ -105,7 +129,7 @@ class RetentionWorker(StreamWorker):
             )
         ).scalars().all()
 
-        for policy in policies:
+        for policy in sorted(policies, key=lambda p: _SWEEP_ORDER.get(p.data_class, _UNRANKED)):
             if policy.data_class not in _RETENTABLE:
                 # Unknown data_class: skip and report — never guess a table. The
                 # decision is still the module's (purge_row_store refuses the
@@ -136,10 +160,18 @@ class RetentionWorker(StreamWorker):
 
             total = int(result["deleted"])
             deleted[policy.data_class] = deleted.get(policy.data_class, 0) + total
+            media_released += int(result.get("media_objects_released") or 0)
+            media_failed.extend(result.get("media_objects_failed") or [])
             policy.last_run_at = now
             applied += 1
 
-        return {"policies": applied, "deleted": deleted, "skipped": skipped}
+        return {
+            "policies": applied,
+            "deleted": deleted,
+            "skipped": skipped,
+            "media_released": media_released,
+            "media_failed": media_failed,
+        }
 
 
 # ---------------------------------------------------------------------------

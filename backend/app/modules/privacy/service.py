@@ -7,6 +7,7 @@ Deletion chain (EVERY step, never a bare DELETE):
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import UTC, datetime
 
@@ -16,6 +17,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import ValidationError
 from app.core.events.writer import add_outbox_event
 from app.modules.privacy.models import DataSubjectRequest
+
+logger = logging.getLogger(__name__)
 
 
 class DeletionService:
@@ -123,6 +126,69 @@ class DeletionService:
         report["steps"].append(
             {"step": "transcripts_anonymized", "rows": result.rowcount or 0}
         )
+
+        # §131/§172, and the half `PII_DATA_MAP.md` demands of every store:
+        # "storage delete + row delete". The step above only strips the
+        # POINTER (`media_url = NULL`); the `attachments` rows still hold the
+        # subject's media — including each voice note's `transcript_text` — and
+        # the bytes in the bucket are now named by nothing at all. A
+        # data-subject deletion was therefore the one path that leaked media
+        # for certain. Rows first, bytes last: releasing before the rows are
+        # gone could delete an object a live customer's message still points
+        # at. A release that fails is REPORTED in the audited report rather
+        # than aborting the request — a dead bucket must not make a deletion
+        # impossible to close, and an unreported leak is what made the old
+        # path unauditable.
+        media_rows = (
+            await session.execute(
+                text(
+                    "SELECT a.id, a.storage_key FROM attachments a "
+                    "WHERE a.tenant_id = :t AND ("
+                    "  a.conversation_id IN ("
+                    "    SELECT id FROM conversations WHERE customer_id = :c)"
+                    "  OR a.message_id IN ("
+                    "    SELECT m.id FROM messages m "
+                    "    JOIN conversations mc ON mc.id = m.conversation_id "
+                    "    WHERE mc.customer_id = :c))"
+                ),
+                {"t": tenant_id, "c": customer_id},
+            )
+        ).all()
+        if media_rows:
+            result = await session.execute(
+                text(
+                    "DELETE FROM attachments "
+                    "WHERE id = ANY(CAST(:ids AS uuid[])) AND tenant_id = :t"
+                ),
+                {"ids": [str(row[0]) for row in media_rows], "t": tenant_id},
+            )
+            report["steps"].append(
+                {"step": "media_rows_deleted", "rows": result.rowcount or 0}
+            )
+
+            keys = [row[1] for row in media_rows if row[1]]
+            if keys:
+                from app.core.storage import get_storage
+
+                try:
+                    unreleased = list(await get_storage().delete_objects(keys) or [])
+                    error = None
+                except Exception as exc:  # reported leak, not a failed erasure
+                    unreleased = list(keys)
+                    error = f"{type(exc).__name__}: {exc}"
+                    logger.warning(
+                        "privacy.media_release.unreachable keys=%d error=%s",
+                        len(keys),
+                        exc,
+                    )
+                step: dict = {
+                    "step": "media_objects_released",
+                    "released": len(keys) - len(unreleased),
+                    "failed": unreleased,
+                }
+                if error:
+                    step["error"] = error
+                report["steps"].append(step)
 
         # §131: emit an event so n8n and other integrations can purge their
         # own copies of this customer's data (CRM sync, marketing tools, etc.)

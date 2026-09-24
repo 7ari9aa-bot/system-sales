@@ -32,12 +32,14 @@ and :func:`evaluate_row_gate` for one tenant's rows), so there is one answer to
 "did anyone authorise deleting this?" and one vocabulary for refusing
 (``BLOCKED_NO_ACTIVE_TENANTS`` / ``BLOCKED_NO_CHOSEN_POLICY`` /
 ``BLOCKED_NO_POSITIVE_HORIZON``). That matters most for the row stores, because
-they are the PII-bearing ones: ``messages`` is conversation content, and
-``webhook_events`` is raw inbound ingress. §52 makes retention per data class and
-per tenant, so a horizon a merchant cannot state is a store whose retention is
-not a policy at all — which is why :data:`ROW_LEVEL_DATA_CLASSES` is the single
-allowlist of deletable tables and ``app/workers/retention_worker.py`` reads it
-instead of keeping its own.
+they are the PII-bearing ones: ``messages`` is conversation content,
+``attachments`` is the media that content points at (so a message purge that
+misses it orphans every object its cascade deleted), ``webhook_events`` is raw
+inbound ingress, and ``leads`` is phone/email captured before a customer exists.
+§52 makes retention per data class and per tenant, so a horizon a merchant
+cannot state is a store whose retention is not a policy at all — which is why
+:data:`ROW_LEVEL_DATA_CLASSES` is the single allowlist of deletable tables and
+``app/workers/retention_worker.py`` reads it instead of keeping its own.
 
 Nothing here creates a policy row on a tenant's behalf. ``DEFAULT_RETENTION_DAYS``
 is the value the opt-in surface offers; the database default for a policy row is
@@ -75,11 +77,15 @@ What is deliberately NOT enforced
   own conversation history below thirteen months is a per-tenant choice §52
   grants; the floor protects data other tenants still hold in the same relation.
 * any store not named by :data:`PARTITIONED_DATA_CLASSES` or
-  :data:`ROW_LEVEL_DATA_CLASSES` — ``event_log`` is out of both (it is §152's
-  replay source), and ``audit_logs`` must never be hard-deleted (§57 legal
-  retention). Stores that cannot be partitioned are explained in
-  ``app/core/partitioning.py``; the ones a row purge may reach are listed here,
-  each with the age column and the rows ANOTHER rule keeps.
+  :data:`ROW_LEVEL_DATA_CLASSES`. Stores that hold personal data and are NOT
+  purged are not left to inference: each one is named in
+  :data:`REFUSED_DATA_CLASSES` with the section that keeps it and the residual
+  risk, so "absent from the allowlist" no longer conflates "not yet wired" with
+  "decided never". ``audit_logs`` must never be hard-deleted (§57 legal
+  retention), ``event_log`` is §152's replay source, and stores that cannot be
+  partitioned are explained in ``app/core/partitioning.py``; the ones a row
+  purge may reach are listed in :data:`ROW_LEVEL_DATA_CLASSES`, each with the
+  age column and the rows ANOTHER rule keeps.
 
 The merchant's door
 -------------------
@@ -111,6 +117,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import partitioning
 from app.core.audit import write_audit_row
+from app.core.storage import get_storage
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +126,24 @@ logger = logging.getLogger(__name__)
 PARTITIONED_DATA_CLASSES: Mapping[str, str] = {"ai_usage": "public.ai_usage"}
 
 AI_USAGE_DATA_CLASS = "ai_usage"
+
+
+@dataclass(frozen=True)
+class MediaChild:
+    """A child table whose rows leave with the parent's, and whose objects must
+    leave with them.
+
+    ``attachments.message_id`` is ``ON DELETE CASCADE`` (``49303e2e2dd0``), so a
+    parent DELETE silently takes media rows with it. Silently is the problem: the
+    row is the only thing that knows which bucket key holds a customer's voice
+    note, so a purge that lets the cascade fire removes the pointer and keeps the
+    PII forever, with no row left to retry from. Declaring the child here makes
+    the sweep delete those rows FIRST, keys in hand.
+    """
+
+    table: str
+    key_column: str
+    link_column: str
 
 
 @dataclass(frozen=True)
@@ -131,6 +156,13 @@ class RowStore:
     always carries: retention ages data out, another rule may still need it, and a
     purge that forgot which would quietly retire evidence the §24 dead letter or
     the §130 reconciler is still working on.
+
+    ``media_key_column`` says the rows of THIS store name an object in the bucket
+    (``attachments``): the purge therefore gathers the batch by key and deletes it
+    by explicit id list, so the objects it releases are exactly the rows it
+    removed. ``media_child`` says the opposite direction — my rows carry someone
+    else's objects away by cascade. A store may set one, both, or neither; a store
+    that sets neither is deleted by the plain LIMIT-shaped statement.
     """
 
     data_class: str
@@ -138,6 +170,8 @@ class RowStore:
     ts_column: str
     keep: str | None = None
     keep_reason: str | None = None
+    media_key_column: str | None = None
+    media_child: MediaChild | None = None
 
 
 #: The stores purged by ROW rather than by month — and the single allowlist of
@@ -146,8 +180,30 @@ class RowStore:
 #: because two lists of "which tables may be destroyed" is how the wrong one
 #: drifts. Only a store whose PII-map row (docs/PII_DATA_MAP.md, §131) says the
 #: retention worker deletes it belongs here; the stores the map marks "legal
-#: retention" / "keep" — orders, payments, audit_logs, customers — never will.
+#: retention" / "keep" — orders, payments, audit_logs, customers — never will, and
+#: :data:`REFUSED_DATA_CLASSES` says so store by store rather than by silence.
+#:
+#: DECLARATION ORDER IS A CONTRACT: the sweep visits these stores in this order
+#: (``retention_worker._SWEEP_ORDER``), and a child whose rows leave with a
+#: parent's cascade is declared BEFORE that parent so the parent never wins.
 ROW_LEVEL_DATA_CLASSES: Mapping[str, RowStore] = {
+    "attachments": RowStore(
+        data_class="attachments",
+        table="attachments",
+        ts_column="created_at",
+        keep=(
+            "scan_status NOT IN ('pending', 'downloading') "
+            "AND processing_status NOT IN ('pending', 'processing') "
+            "AND COALESCE(transcription_status, 'ready') NOT IN "
+            "('pending', 'processing')"
+        ),
+        keep_reason=(
+            "§33-35: a media row still being fetched, screened or transcribed is "
+            "an in-flight pipeline, not cold data — the same reasoning §130 "
+            "applies to an unreconciled message"
+        ),
+        media_key_column="storage_key",
+    ),
     "messages": RowStore(
         data_class="messages",
         table="messages",
@@ -156,6 +212,9 @@ ROW_LEVEL_DATA_CLASSES: Mapping[str, RowStore] = {
         keep_reason=(
             "§130: a message whose provider outcome is 'sending'/'unknown' is "
             "still being reconciled — its outcome is evidence, not cold data"
+        ),
+        media_child=MediaChild(
+            table="attachments", key_column="storage_key", link_column="message_id"
         ),
     ),
     "ai_usage": RowStore(
@@ -172,6 +231,65 @@ ROW_LEVEL_DATA_CLASSES: Mapping[str, RowStore] = {
             "§24: a 'dead' ingress row awaits human hands (replay / ignore / "
             "resolve); only the terminal close-outs are allowed to age out"
         ),
+    ),
+    "leads": RowStore(
+        data_class="leads",
+        table="leads",
+        ts_column="created_at",
+    ),
+}
+
+#: Stores §52 asks about that this module will NEVER execute a policy for, and the
+#: rule that keeps them. The list exists because "unreachable" and "deliberately
+#: kept" look identical from the outside, and a compliance claim that cannot tell
+#: them apart is an assertion, not a check. Each reason names a spec section, and
+#: ``tests/test_media_and_lead_retention.py`` reads ``docs/PII_DATA_MAP.md`` as a
+#: contract: a store the map hands to the retention worker must appear here or in
+#: :data:`ROW_LEVEL_DATA_CLASSES`, never in neither.
+REFUSED_DATA_CLASSES: Mapping[str, str] = {
+    "audit_logs": (
+        "§57/§66 legal retention: 'never hard-delete'. A purge that could empty "
+        "the audit trail would break the very requirement §57 says archival must "
+        "not touch, and it is not on the partition maintenance allowlist either "
+        "(app/core/partitioning.py), so no path reaches it"
+    ),
+    "event_log": (
+        "§152: the replay source. Emptying it makes an outbox replay impossible, "
+        "which is an availability bug paid for by a retention win. docs/"
+        "PII_DATA_MAP.md still says 'retention worker' for EventLog — the map "
+        "predates §152 and is the stale half of that pair"
+    ),
+    "customers": (
+        "§143/§172 Customer 360: tombstone (deleted_at/by/reason) is the deletion "
+        "act, not a DELETE. docs/PII_DATA_MAP.md: 'life of tenant'"
+    ),
+    "orders": (
+        "§54/§57 financial legal retention: an immutable snapshot is the invoice's "
+        "source of truth; 'never hard-delete' (docs/PII_DATA_MAP.md)"
+    ),
+    "payments": (
+        "§57 financial legal retention, same rule as orders — a refund state is a "
+        "record that money moved"
+    ),
+    "memories": (
+        "§158 provenance + §172 propagation: a memory's own ``expires_at`` is its "
+        "horizon and recall honours it; erasure goes through "
+        "``DeletionService.propagate_customer_deletion`` (hard DELETE), not a "
+        "per-tenant sweep. OPEN RESIDUAL: a row past ``expires_at`` keeps its "
+        "content text until then, which is what app/modules/ai/knowledge.py:197 "
+        "documents as 'stored for audit'"
+    ),
+    "agent_runs": (
+        "BLOCKED, NOT DECIDED: agent_runs.input/output hold run content, so a "
+        "horizon is owed — but approval_requests.run_id is ON DELETE CASCADE "
+        "(ai/models.py:312), so purging a run would also erase the §135 proof of "
+        "who authorised which action, which §57 forbids. A nullable-FK/SET NULL "
+        "migration is the prerequisite; until then this store is unpurged and "
+        "says why here rather than in a TODO"
+    ),
+    "knowledge_items": (
+        "§39-40 business knowledge, not customer PII: superseded on re-index, "
+        "tenant-scoped delete (docs/PII_DATA_MAP.md 'until superseded')"
     ),
 }
 
@@ -208,6 +326,15 @@ BLOCKED_NO_POSITIVE_HORIZON = "non_positive_horizon"
 #: Keeps the worker's old ``"unknown_data_class"`` wording so a log or a summary
 #: that already reads it does not change meaning mid-flight.
 REASON_NOT_A_ROW_STORE = "unknown_data_class"
+
+#: The media half of a purge result when no media was involved. Spelled once so a
+#: refusal and an executed purge return the SAME keys and a caller never has to
+#: guess which shape it got.
+_EMPTY_MEDIA: Mapping[str, Any] = {
+    "media_rows_deleted": 0,
+    "media_objects_released": 0,
+    "media_objects_failed": [],
+}
 
 PURGE_AUDIT_ACTION = "retention.partition_dropped"
 PURGE_AUDIT_RESOURCE = "partition"
@@ -509,6 +636,18 @@ async def policy_position(session: AsyncSession, tenant_id) -> list[dict[str, An
         if spec is not None and spec.keep is not None:
             entry["keep_predicate"] = spec.keep
             entry["keep_reason"] = spec.keep_reason
+        if spec is not None and (spec.media_key_column or spec.media_child):
+            # A store whose rows name an object in the bucket: the merchant is
+            # entitled to know that the horizon governs the BYTES, not only the
+            # row, and which rows the sweep clears on the way to another store.
+            entry["media"] = {
+                "key_column": spec.media_key_column,
+                "cascades_from_child": (
+                    None
+                    if spec.media_child is None
+                    else f"{spec.media_child.table}.{spec.media_child.link_column}"
+                ),
+            }
         if partitioned:
             entry["legal_floor_months"] = partitioning.PARTITION_DROP_FLOOR_MONTHS
             entry["shared_gate_reason"] = gate.reason
@@ -686,8 +825,46 @@ async def purge_expired_partitions(session: AsyncSession, tenant_id) -> dict[str
 # ---------------------------------------------------------------------------
 
 
+def _check_identifiers(spec: RowStore) -> None:
+    """Re-validate every SQL identifier this store can interpolate.
+
+    An identifier cannot be bound as a parameter, so the shapes come from a
+    static spec and are checked here anyway: a media child added later with a
+    typo or a dotted name must fail before it reaches the driver.
+    """
+    names = [spec.table, spec.ts_column]
+    if spec.media_key_column:
+        names.append(spec.media_key_column)
+    if spec.media_child:
+        names.extend(
+            [spec.media_child.table, spec.media_child.key_column, spec.media_child.link_column]
+        )
+    for name in names:
+        if not _NAME_RE.fullmatch(name):
+            raise ValueError(f"not a deletable row store: {spec.data_class!r} ({name!r})")
+
+
+def _doomed_ids_sql(spec: RowStore) -> str:
+    """The batch this purge is allowed to take: one tenant's rows, past the
+    horizon THAT TENANT chose, minus the rows another rule keeps, bounded, in a
+    total order.
+
+    ``id`` is in the ORDER BY because a timestamp alone is not a total order: two
+    rows sharing an instant could swap sides of the LIMIT between two evaluations,
+    and a media purge evaluates this twice on purpose (once to gather keys, once
+    to delete). The docstring has always claimed the batch is deterministic; this
+    is what makes the claim true.
+    """
+    keep = f" AND ({spec.keep})" if spec.keep else ""
+    return (
+        f"SELECT id FROM {spec.table} "
+        f"WHERE tenant_id = :tenant_id AND {spec.ts_column} < :cutoff{keep} "
+        f"ORDER BY {spec.ts_column}, id LIMIT {ROW_PURGE_BATCH_SIZE}"
+    )
+
+
 def _row_purge_sql(spec: RowStore) -> str:
-    """The one DELETE shape this module will ever issue against a row store.
+    """The one DELETE shape this module issues against a content store.
 
     ``table``, ``ts_column`` and the keep predicate are SQL fragments, which
     cannot be bound as parameters, so they are interpolated from
@@ -703,16 +880,82 @@ def _row_purge_sql(spec: RowStore) -> str:
 
     ``ORDER BY`` the age column makes the batch deterministic, so a run that stops
     early resumes where it stopped instead of skipping rows.
+
+    A store that owns or cascades bucket media is not deleted this way: its keys
+    have to be read before its rows go, so it goes by explicit id list instead
+    (:func:`_media_gather_sql`, :func:`_media_delete_sql`).
     """
-    if not (_NAME_RE.fullmatch(spec.table) and _NAME_RE.fullmatch(spec.ts_column)):
-        raise ValueError(f"not a deletable row store: {spec.data_class!r}")
-    keep = f" AND ({spec.keep})" if spec.keep else ""
+    _check_identifiers(spec)
+    return f"DELETE FROM {spec.table} WHERE id IN ({_doomed_ids_sql(spec)})"
+
+
+def _media_gather_sql(spec: RowStore) -> str:
+    """``(id, storage_key)`` for the media rows this batch takes with it.
+
+    Two shapes, one purpose. When the store IS the media table (``attachments``)
+    the doomed set is its own rows past the horizon. When the store merely
+    cascades a child (``messages`` -> ``attachments``) the doomed set is derived
+    from that parent's own batch subquery, so a media row is only ever gathered
+    because its parent is about to be deleted by the same cutoff.
+
+    A NULL ``storage_key`` is kept in the SELF shape, not filtered out: it means
+    the object was never written durably (S3 unconfigured, pass-through), and the
+    ROW still has to age out. The caller drops NULL keys before releasing. In the
+    CHILD shape a keyless row is filtered, because the parent's own cascade will
+    take that row anyway and there is no object to lose track of.
+    """
+    _check_identifiers(spec)
+    if spec.media_key_column:
+        return (
+            f"SELECT id, {spec.media_key_column} FROM {spec.table} "
+            f"WHERE id IN ({_doomed_ids_sql(spec)})"
+        )
+    child = spec.media_child
+    if child is None:  # pragma: no cover - the caller checks first
+        raise ValueError(f"no media declared for {spec.data_class!r}")
     return (
-        f"DELETE FROM {spec.table} WHERE id IN ("
-        f"SELECT id FROM {spec.table} "
-        f"WHERE tenant_id = :tenant_id AND {spec.ts_column} < :cutoff{keep} "
-        f"ORDER BY {spec.ts_column} LIMIT {ROW_PURGE_BATCH_SIZE})"
+        f"SELECT c.id, c.{child.key_column} FROM {child.table} c "
+        f"WHERE c.{child.link_column} IN ({_doomed_ids_sql(spec)}) "
+        f"AND c.tenant_id = :tenant_id AND c.{child.key_column} IS NOT NULL"
     )
+
+
+def _media_delete_sql(child_table: str) -> str:
+    """Delete exactly the ids whose keys were just read — never a re-evaluated
+    predicate, which could reach a row this batch never gathered a key for.
+
+    The cast is not decoration: the ids are bound as TEXT because that is what a
+    list of ``str(uuid)`` adapts to, and Postgres will not compare ``uuid`` to
+    ``text``. Every store here has a UUID primary key, so the cast is total.
+    """
+    if not _NAME_RE.fullmatch(child_table):
+        raise ValueError(f"not a media table: {child_table!r}")
+    return (
+        f"DELETE FROM {child_table} "
+        f"WHERE id = ANY(CAST(:ids AS uuid[])) AND tenant_id = :tenant_id"
+    )
+
+
+async def release_media_objects(keys: Sequence[str]) -> list[str]:
+    """Remove the bucket objects behind purged media rows; return what stayed.
+
+    A module-level function rather than an inline call for two reasons: the tests
+    replace it with a spy (a purge test must not need a bucket), and it is the
+    ONLY place this module touches object storage. It never raises — by the time
+    it is called the rows are already deleted, so an exception would roll the
+    purge back to a state where live rows point at objects nobody attempted to
+    delete, which is worse than a reported leak.
+    """
+    pending = [k for k in keys if k]
+    if not pending:
+        return []
+    try:
+        return list(await get_storage().delete_objects(pending))
+    except Exception as exc:  # a dead bucket is a reported leak, not a failed job
+        logger.warning(
+            "retention.media_release.unreachable keys=%d error=%s", len(pending), exc
+        )
+        return pending
 
 
 async def purge_row_store(
@@ -740,9 +983,12 @@ async def purge_row_store(
     would not police.
 
     Returns ``{"data_class", "deleted", "skipped_reason", "horizon_days",
-    "cutoff", "truncated"}``; ``cutoff`` is the isoformat string an audit reader
-    can compare, and ``truncated`` says the batch cap stopped this run, so the
-    rest of the backlog belongs to the next.
+    "cutoff", "truncated", "media_rows_deleted", "media_objects_released",
+    "media_objects_failed"}``; ``cutoff`` is the isoformat string an audit reader
+    can compare, ``truncated`` says the batch cap stopped this run so the rest of
+    the backlog belongs to the next, and the ``media_*`` keys say what left the
+    bucket and WHICH KEYS DID NOT — a media purge that cannot report the objects it
+    failed to remove has simply moved the leak somewhere nobody reads.
     """
     spec = ROW_LEVEL_DATA_CLASSES.get(data_class)
     if spec is None:
@@ -753,6 +999,7 @@ async def purge_row_store(
             "horizon_days": None,
             "cutoff": None,
             "truncated": False,
+            **_EMPTY_MEDIA,
         }
 
     tenant_active = bool(
@@ -787,28 +1034,65 @@ async def purge_row_store(
             "horizon_days": gate.max_days,
             "cutoff": None,
             "truncated": False,
+            **_EMPTY_MEDIA,
         }
 
     moment = now or datetime.now(UTC)
     horizon = gate.max_days if gate.max_days is not None else 0
     cutoff = moment - timedelta(days=horizon)
     cutoff_iso = cutoff.isoformat()
-    sql = _row_purge_sql(spec)
+    params = {"tenant_id": tenant_id, "cutoff": cutoff}
+
+    # A store whose own rows name the objects it carries (``attachments``) is
+    # deleted BY THOSE IDS and nothing else: the key must be in hand before the
+    # pointer to it goes. A store that merely cascades such rows (``messages``)
+    # keeps its own LIMIT-shaped DELETE untouched — the child is cleared first, so
+    # the cascade has nothing left to take silently.
+    media_self = spec.media_key_column is not None
+    gather_sql = _media_gather_sql(spec) if (media_self or spec.media_child) else None
+    child_table = spec.table if media_self else (
+        spec.media_child.table if spec.media_child else None
+    )
+    media_delete_sql = _media_delete_sql(child_table) if child_table else None
+    purge_sql = None if media_self else _row_purge_sql(spec)
+
     deleted = 0
+    media_rows_deleted = 0
+    keys: list[str] = []
     batches = 0
     truncated = True
     while batches < ROW_PURGE_MAX_BATCHES:
-        result = await session.execute(
-            text(sql), {"tenant_id": tenant_id, "cutoff": cutoff}
-        )
-        batch = result.rowcount or 0
-        deleted += batch
+        store_batch = 0
+        if gather_sql is not None:
+            rows = (await session.execute(text(gather_sql), params)).all()
+            ids = [str(row[0]) for row in rows]
+            keys.extend(str(row[1]) for row in rows if row[1] is not None)
+            if ids:
+                taken = (
+                    await session.execute(
+                        text(media_delete_sql), {"ids": ids, "tenant_id": tenant_id}
+                    )
+                ).rowcount or 0
+                if media_self:
+                    store_batch = taken
+                    deleted += taken
+                else:
+                    media_rows_deleted += taken
+        if not media_self:
+            store_batch = (await session.execute(text(purge_sql), params)).rowcount or 0
+            deleted += store_batch
         batches += 1
-        if batch < ROW_PURGE_BATCH_SIZE:
+        if store_batch < ROW_PURGE_BATCH_SIZE:
             truncated = False
             break
 
-    if deleted:
+    failed: list[str] = []
+    if keys:
+        # AFTER the rows are gone, deliberately: see :func:`release_media_objects`.
+        failed = list(await release_media_objects(keys) or [])
+    released = len(keys) - len(failed)
+
+    if deleted or media_rows_deleted or failed:
         # A destructive act with no trail is the §66 hole; a daily sweep that
         # audited "nothing happened" every day is noise nobody reads.
         await write_audit_row(
@@ -832,6 +1116,10 @@ async def purge_row_store(
                 "cutoff": cutoff_iso,
                 "truncated": truncated,
                 "consent": "tenant_chosen_policy",
+                "media_rows_deleted": media_rows_deleted,
+                "media_objects_gathered": len(keys),
+                "media_objects_released": released,
+                "media_objects_failed": failed,
             },
         )
         logger.warning(
@@ -842,6 +1130,13 @@ async def purge_row_store(
             horizon,
             truncated,
         )
+    if failed:
+        logger.error(
+            "retention.media_leak tenant=%s data_class=%s keys=%d",
+            tenant_id,
+            data_class,
+            len(failed),
+        )
     return {
         "data_class": data_class,
         "deleted": deleted,
@@ -849,4 +1144,7 @@ async def purge_row_store(
         "horizon_days": horizon,
         "cutoff": cutoff_iso,
         "truncated": truncated,
+        "media_rows_deleted": media_rows_deleted,
+        "media_objects_released": released,
+        "media_objects_failed": failed,
     }

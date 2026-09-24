@@ -62,6 +62,8 @@ from app.workers import retention_worker
 
 MESSAGES = "messages"
 WEBHOOK_EVENTS = "webhook_events"
+ATTACHMENTS = "attachments"
+LEADS = "leads"
 AI_USAGE = retention.AI_USAGE_DATA_CLASS
 POSITION_PATH = "/api/v1/analytics/retention"
 CHOOSE_PATH_TPL = "/api/v1/analytics/retention/policies/{data_class}"
@@ -114,10 +116,12 @@ class _PurgeSession:
         tenant_active: bool = True,
         policy: tuple[int | None, str | None] | None = (365, "active"),
         rowcounts: list[int] | None = None,
+        media_rows: tuple[Any, ...] = (),
     ) -> None:
         self.tenant_active = tenant_active
         self.policy = policy
         self.rowcounts = list(rowcounts or [])
+        self.media_rows = media_rows
         self.statements: list[str] = []
         self.params: list[dict] = []
         self.audit_writes = 0
@@ -134,6 +138,12 @@ class _PurgeSession:
             return _Result()
         if "retention_policies" in sql and "data_class" in params:
             return _Result((self.policy,) if self.policy is not None else ())
+        if sql.strip().upper().startswith("SELECT") and "storage_key" in sql:
+            # §52 media gather. Empty by default: a batch that carries no media
+            # must purge exactly like it did before this path existed, which is
+            # what most of this file asserts. The media cases live in
+            # tests/test_media_and_lead_retention.py.
+            return _Result(self.media_rows)
         if sql.strip().upper().startswith("DELETE"):
             return _Result(rowcount=self.rowcounts.pop(0) if self.rowcounts else 0)
         raise AssertionError(f"unexpected statement from the purge path: {sql[:140]}")
@@ -221,13 +231,22 @@ def test_row_stores_are_choosable() -> None:
 def test_the_row_allowlist_exists_once_and_the_worker_borrows_it() -> None:
     """Two copies of "which tables may a purge touch" is how the wrong one drifts."""
     row_stores = retention.ROW_LEVEL_DATA_CLASSES
-    assert set(row_stores) == {MESSAGES, AI_USAGE, WEBHOOK_EVENTS}
+    assert set(row_stores) == {
+        ATTACHMENTS,
+        MESSAGES,
+        AI_USAGE,
+        WEBHOOK_EVENTS,
+        LEADS,
+    }
     assert dict(retention_worker._RETENTABLE) == {
         dc: (spec.table, spec.ts_column) for dc, spec in row_stores.items()
     }
     for dc, spec in row_stores.items():
         assert spec.data_class == dc
         assert spec.table == dc, "the allowlist maps to a real table, never to a name from data"
+    # A child whose rows leave with a parent's cascade is declared BEFORE it, so
+    # the sweep's dependency order comes from this one readable list.
+    assert list(row_stores).index(ATTACHMENTS) < list(row_stores).index(MESSAGES)
 
 
 def test_every_executable_store_is_reachable_from_the_door() -> None:
@@ -505,6 +524,9 @@ class _SweepSession:
             )
         if "retention_policies" in sql:
             return _Result(tuple(self.policies))
+        if sql.strip().upper().startswith("SELECT") and "storage_key" in sql:
+            # §52 media gather — see _PurgeSession. No media rows here.
+            return _Result(())
         if sql.strip().upper().startswith("DELETE"):
             return _Result(rowcount=self.rowcounts.pop(0) if self.rowcounts else 0)
         raise AssertionError(f"unexpected statement: {sql[:140]}")
