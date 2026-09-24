@@ -20,11 +20,11 @@ the publish to the stream and the 'published' mark commit together or not at
 all, so a crash can only ever mean "re-publish", never "lost" and never
 "two relays publishing the same row at the same time".
 
-Because 'published' is committed with the publish itself, at-least-once
-delivery still exists (the bus may ack and then the process die before the
-commit), and the consumer's dedupe key — the stable outbox row id in
+Because 'published' is committed with the publish itself, delivery is still
+at-least-once (the XADD can reach Redis and the process die before the commit
+lands), and the consumer's dedupe key — the stable outbox row id in
 ``meta["outbox_id"]`` — makes a *sequential* redelivery harmless. A concurrent
-redelivery would not (the consumer's dedupe is a read-then-act), which is
+redelivery is not (the consumer's dedupe is a read-then-act), which is
 precisely the hole the single-transaction claim closes.
 
 Rows stranded in 'publishing' by something other than a live relay (an older
@@ -216,16 +216,16 @@ class OutboxRelay:
 
     async def _drain_once(self, batch: int, max_attempts: int) -> int:
         published = 0
-        # The reclaims get their own short transaction: a reclaim lock held
-        # across the publish of the rows it just freed would be exactly the
-        # contention this function exists to remove.
         async with SessionLocal() as session:
+            # The reclaim commits before any claim runs: locks it took to free
+            # stranded rows must not be held across the publishes that follow,
+            # and every claim below opens its OWN transaction (committed at the
+            # bottom of the loop), so a single connection is enough.
             await self._reclaim_stranded(session)
             await session.commit()
-        # At most `batch` rows per drain, so a sustained backlog cannot starve
-        # the poll loop of its sleep.
-        for _ in range(batch):
-            async with SessionLocal() as session:
+            # One row per claim, at most `batch` rows per drain so a sustained
+            # backlog cannot starve the poll loop of its sleep.
+            for _ in range(batch):
                 row = await self._claim_one(session, max_attempts)
                 if row is None:
                     await session.rollback()
@@ -250,9 +250,11 @@ class OutboxRelay:
                     logger.exception(
                         "outbox.relay.event_log_failed id=%s", row["id"]
                     )
-                # Claim + publish + mark commit together: a crash before here
-                # rolls the claim back, so the row is re-published rather than
-                # stranded. A crash after here has published it for good.
+                # Claim + publish + mark commit together, per row: this single
+                # commit is why no relay can see this row as anything but
+                # 'pending' (locked) while it is being published, and why a
+                # crash anywhere above rolls the claim back with the publish
+                # instead of stranding the row in 'publishing'.
                 await session.commit()
                 published += 1
         return published

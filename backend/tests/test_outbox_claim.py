@@ -47,9 +47,18 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.core.db import bind_tenant
 from app.core.events.outbox import OutboxRelay
 
+
+class RelayProcessDied(BaseException):
+    """A relay killed mid-publish.
+
+    A BaseException on purpose: it escapes every ``except Exception`` in the
+    relay the way SIGKILL does, so the claim transaction is never committed —
+    which is exactly the moment G-08 is about.
+    """
+
+
 BATCH = 50
 MAX_ATTEMPTS = 5
-CRASH = asyncio.CancelledError("relay process died")
 
 
 class RecordingBus:
@@ -69,7 +78,7 @@ class RecordingBus:
         if self.gate is not None:
             await self.gate.wait()
         if self.raise_on_call == self._calls:
-            raise CRASH
+            raise RelayProcessDied("relay process died")
         self.published.append({"outbox_id": (meta or {}).get("outbox_id"), "stream": stream})
         return f"{self._calls}-0"
 
@@ -285,7 +294,7 @@ async def test_relay_that_dies_mid_batch_does_not_strand_its_other_rows(
 
     relay_on_own_connection.set(async_sessionmaker(engine, expire_on_commit=False))
     relay = OutboxRelay(bus)
-    with pytest.raises(asyncio.CancelledError):
+    with pytest.raises(RelayProcessDied):
         await relay._drain_once(batch=BATCH, max_attempts=MAX_ATTEMPTS)
 
     # The dead relay's unpublished row is NOT stranded in 'publishing'.
@@ -296,16 +305,18 @@ async def test_relay_that_dies_mid_batch_does_not_strand_its_other_rows(
     )
 
     # A fresh relay publishes it at once — nothing was lost, and it is the
-    # FIRST time this event goes out.
+    # FIRST time this event goes out. Filtered to this test's own rows: the
+    # claim has no tenant predicate, so a shared CI database may hold others.
     bus2 = RecordingBus()
     relay_on_own_connection.set(async_sessionmaker(engine, expire_on_commit=False))
     await OutboxRelay(bus2)._drain_once(batch=BATCH, max_attempts=MAX_ATTEMPTS)
 
-    assert bus2.ids() == [second]
-    assert bus.ids()[0] == first
-    assert sorted(bus.ids() + bus2.ids()) == sorted([first, second]), (
-        "an event was published twice across the crash"
-    )
+    mine = {first, second}
+    assert [i for i in bus2.ids() if i in mine] == [second]
+    assert [i for i in bus.ids() if i in mine] == [first]
+    assert sorted(i for i in bus.ids() + bus2.ids() if i in mine) == sorted(
+        [first, second]
+    ), "an event was published twice across the crash"
 
 
 async def test_two_concurrent_relays_never_work_the_same_row(
@@ -324,6 +335,7 @@ async def test_two_concurrent_relays_never_work_the_same_row(
     bus_a = RecordingBus()
     bus_a.gate = asyncio.Event()
     bus_a.entered = asyncio.Event()
+    bus_b = RecordingBus()
 
     task_a: asyncio.Task | None = None
 
@@ -333,10 +345,6 @@ async def test_two_concurrent_relays_never_work_the_same_row(
 
     async def drain_b() -> int:
         relay_on_own_connection.set(async_sessionmaker(engine, expire_on_commit=False))
-        bus_b = RecordingBus()
-        b_task = asyncio.current_task()
-        assert b_task is not None
-        b_task.set_name("drain_b")
         # B runs while A holds its claim open, and must return promptly.
         return await OutboxRelay(bus_b)._drain_once(batch=BATCH, max_attempts=MAX_ATTEMPTS)
 
@@ -344,7 +352,7 @@ async def test_two_concurrent_relays_never_work_the_same_row(
         task_a = asyncio.create_task(drain_a())
         await asyncio.wait_for(bus_a.entered.wait(), timeout=10)
 
-        bus_b_result = await asyncio.wait_for(drain_b(), timeout=5)
+        published_b = await asyncio.wait_for(drain_b(), timeout=5)
 
         bus_a.gate.set()
         published_a = await asyncio.wait_for(task_a, timeout=10)
@@ -352,7 +360,14 @@ async def test_two_concurrent_relays_never_work_the_same_row(
         factory = relay_env["factory"]
         statuses = await _statuses(factory, ids)
         assert statuses == {i: "published" for i in ids}, statuses
-        assert published_a + bus_b_result == 2
+        # Both relays did real work while the other was in flight (B returned
+        # inside its timeout instead of blocking on A's claim).
+        assert published_a >= 1 and published_b >= 1, (published_a, published_b)
+        # THE invariant: every staged event reached the stream exactly once,
+        # with the two relays running over the same table at the same time.
+        # Filtered to this test's rows — the claim has no tenant predicate.
+        both = [i for i in bus_a.ids() + bus_b.ids() if i in set(ids)]
+        assert sorted(both) == sorted(ids), f"duplicate or lost publish: {both}"
     finally:
         if bus_a.gate is not None:
             bus_a.gate.set()
@@ -406,7 +421,7 @@ async def test_a_row_published_and_marked_done_is_never_republished(
     relay_on_own_connection.set(async_sessionmaker(engine, expire_on_commit=False))
     bus = RecordingBus()
     await OutboxRelay(bus)._drain_once(batch=BATCH, max_attempts=MAX_ATTEMPTS)
-    assert bus.ids() == [row_id]
+    assert [i for i in bus.ids() if i == row_id] == [row_id]
 
     # Push it far past any lease and drain again with a fresh relay.
     async with factory() as s, s.begin():
@@ -420,5 +435,5 @@ async def test_a_row_published_and_marked_done_is_never_republished(
     bus2 = RecordingBus()
     await OutboxRelay(bus2)._drain_once(batch=BATCH, max_attempts=MAX_ATTEMPTS)
 
-    assert bus2.ids() == [], "a published row was re-published"
+    assert [i for i in bus2.ids() if i == row_id] == [], "a published row was re-published"
     assert (await _statuses(factory, [row_id]))[row_id] == "published"
