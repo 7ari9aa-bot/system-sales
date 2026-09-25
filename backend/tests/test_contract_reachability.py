@@ -829,6 +829,7 @@ async def test_secret_references_table_is_served_by_a_route(monkeypatch) -> None
 
     marker = "row-only-provider"
     row = SecretReference(
+        id=uuid.uuid4(),
         tenant_id=SERVED_TENANT,
         scope="tenant",
         provider=marker,

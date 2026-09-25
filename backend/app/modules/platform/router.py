@@ -20,6 +20,7 @@ from sqlalchemy import and_, func, or_, select, text
 from app.core.errors import NotFoundError, PermissionDeniedError, ValidationError
 from app.core.redis import get_redis
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
+from app.modules.platform import schemas
 from app.modules.platform.dr import DRService
 from app.modules.platform.flags import FeatureFlagService
 from app.modules.platform.metrics import MetricRegistry, MetricSpec, missing_or_drifted
@@ -44,6 +45,14 @@ FEATURE_MAX_LEN = 127  # matches feature_flags.feature String(127)
 # `name: type = Query(...)` / `= Header(...)` — see the parameter-declaration rule
 # in app/modules/analytics/router.py and the full-app gate in
 # tests/test_route_parameter_declarations.py.
+
+# The paging knobs every paged platform list shares. One ceiling declared once,
+# so a fourth list route cannot be born with a wider one (P7: an unclamped
+# `limit` is `LIMIT -1`, which PostgreSQL answers with EVERY row, and a negative
+# `offset` is a database error raised as a 500). `tests/test_platform_http_surface.py`
+# pins that each paged route refuses both.
+PageLimit = Annotated[int, Query(ge=1, le=schemas.PAGE_LIMIT_MAX)]
+PageOffset = Annotated[int, Query(ge=0)]
 
 # §160: Platform Admin is a SEPARATE plane from Tenant RBAC.
 # The claim is global (users.is_platform_admin, minted into the JWT at login)
@@ -84,14 +93,21 @@ def _flag_payload(flag: FeatureFlag) -> dict:
     }
 
 
-@router.get("/flags")
+@router.get("/flags", response_model=schemas.FlagListOut)
 async def list_flags(ctx: TenantCtxDep):
-    """Every feature flag configured for the caller's tenant."""
+    """Every feature flag configured for the caller's tenant.
+
+    Ordered by ``feature``, which is unique per tenant
+    (``uq_feature_flags_tenant_feature``) — a total order, so the list is
+    reproducible without a page. Flags are tenant configuration, not a growing
+    user dataset, so this route carries no ``limit``: the row count is bounded by
+    the number of switches an operator can name.
+    """
     flags = await FeatureFlagService.list_flags(ctx.session, ctx.tenant_id)
-    return [_flag_payload(flag) for flag in flags]
+    return {"items": [_flag_payload(flag) for flag in flags]}
 
 
-@router.put("/flags/{feature}")
+@router.put("/flags/{feature}", response_model=schemas.FlagOut)
 async def upsert_flag(
     feature: str,
     body: FlagUpsert,
@@ -115,7 +131,7 @@ async def upsert_flag(
     return _flag_payload(flag)
 
 
-@router.get("/flags/{feature}/check")
+@router.get("/flags/{feature}/check", response_model=schemas.FlagCheckOut)
 async def check_flag(ctx: TenantCtxDep, feature: str):
     """Evaluate ``feature`` for the calling user — used to hide a UI affordance.
 
@@ -139,7 +155,7 @@ async def check_flag(ctx: TenantCtxDep, feature: str):
     return {"feature": feature, "enabled": enabled}
 
 
-@router.get("/metrics")
+@router.get("/metrics", response_model=schemas.MetricListOut)
 async def list_metric_definitions(ctx: TenantCtxDep):
     """The canonical metric registry (§167) — one definition per number.
 
@@ -151,8 +167,12 @@ async def list_metric_definitions(ctx: TenantCtxDep):
     ``metric_definitions`` table. A tenant that wants the definitions IT was
     measured under — with version history and any convergence gap — reads
     ``GET /platform/metrics/definitions``, which answers from the table.
+
+    The payload is the module's ``{items}`` envelope: the registry has no
+    ``updated_at`` to carry and no gap to report, so its rows are
+    ``MetricSpecOut`` rather than ``MetricDefinitionRowOut``.
     """
-    return MetricRegistry.definitions()
+    return {"items": MetricRegistry.definitions()}
 
 
 # ``(name, version)`` is a row's IDENTITY and every other ``MetricSpec`` field is
@@ -164,8 +184,8 @@ _DEFINITION_FIELDS: tuple[str, ...] = tuple(
 )
 
 
-@router.get("/metrics/definitions")
-async def list_tenant_metric_definitions(ctx: TenantCtxDep) -> dict:
+@router.get("/metrics/definitions", response_model=schemas.MetricDefinitionsOut)
+async def list_tenant_metric_definitions(ctx: TenantCtxDep):
     """§167: THIS tenant's metric definitions, read from ``metric_definitions``.
 
     The registry above is the authority; the table is its tenant-visible audit
@@ -184,6 +204,13 @@ async def list_tenant_metric_definitions(ctx: TenantCtxDep) -> dict:
     * ``missing`` — registry entries with no row at this ``(name, version)``: a
       tenant provisioned before the seed existed and never backfilled.
     * ``drifted`` — rows that no longer mirror the registry entry they name.
+
+    Two deliberate departures from the module's paging convention. It is not
+    paginated because ``missing``/``drifted`` are DERIVED from the rows read: a
+    page boundary would report the rows left off it as absent from the tenant,
+    inventing a gap the backfill script would then "fix". And its envelope is
+    not a bare ``{items}`` because the two extra lists ARE the contract — this
+    is the surface that tells an operator the seed never reached them.
 
     Read-only like its siblings (``GET /flags``, ``GET /metrics``): reads need a
     tenant context, not a write permission. The WHERE clause carries the caller's
@@ -322,14 +349,33 @@ async def _load_view(ctx: TenantContext, view_id: uuid.UUID) -> SavedView:
     return view
 
 
-@router.get("/saved-views")
-async def list_saved_views(ctx: TenantCtxDep, entity: str | None = None):
+@router.get("/saved-views", response_model=schemas.SavedViewListOut)
+async def list_saved_views(
+    ctx: TenantCtxDep,
+    entity: str | None = None,
+    limit: PageLimit = schemas.PAGE_LIMIT_DEFAULT,
+    offset: PageOffset = 0,
+):
     """The caller's own private views plus every team/workspace view.
 
     Another user's private view is filtered in the query, never returned and
     left for the client to hide.
+
+    Paged, and ordered by ``(name, id)`` rather than ``name`` alone.
+    ``saved_views.name`` carries no unique constraint — a tenant can hold two
+    views called "Default", one for customers and one for orders, and PostgreSQL
+    owes nothing for their relative order. On a single unbounded read that is
+    invisible; the moment a page exists it is not: the tied pair can swap places
+    between two reads, so one of them crosses the page boundary and the caller
+    either sees it twice or never. ``id`` (the primary key) is the tie-break that
+    makes ``ORDER BY`` a total order, exactly as the webhook and security-event
+    lists already do.
+
+    ``total`` is the size of the WHOLE filtered list, so a client that receives
+    ``len(items) < total`` knows it is looking at one page rather than at
+    everything it has.
     """
-    stmt = select(SavedView).where(
+    conditions = [
         SavedView.tenant_id == ctx.tenant_id,
         or_(
             and_(
@@ -338,16 +384,32 @@ async def list_saved_views(ctx: TenantCtxDep, entity: str | None = None):
             ),
             SavedView.visibility.in_(("team", "workspace")),
         ),
-    )
+    ]
     if entity:
-        stmt = stmt.where(SavedView.entity == entity)
+        conditions.append(SavedView.entity == entity)
+    total = (
+        await ctx.session.execute(
+            select(func.count(SavedView.id)).where(*conditions)
+        )
+    ).scalar_one()
     rows = (
-        await ctx.session.execute(stmt.order_by(SavedView.name))
+        await ctx.session.execute(
+            select(SavedView)
+            .where(*conditions)
+            .order_by(SavedView.name, SavedView.id)
+            .limit(limit)
+            .offset(offset)
+        )
     ).scalars().all()
-    return {"items": [_view_out(view) for view in rows]}
+    return {
+        "items": [_view_out(view) for view in rows],
+        "total": int(total),
+        "limit": limit,
+        "offset": offset,
+    }
 
 
-@router.post("/saved-views", status_code=201)
+@router.post("/saved-views", response_model=schemas.SavedViewOut, status_code=201)
 async def create_saved_view(ctx: TenantCtxDep, body: SavedViewCreate):
     """Create a saved view owned by the caller."""
     if body.visibility not in SAVED_VIEW_VISIBILITIES:
@@ -372,13 +434,13 @@ async def create_saved_view(ctx: TenantCtxDep, body: SavedViewCreate):
     return _view_out(view)
 
 
-@router.get("/saved-views/{view_id}")
+@router.get("/saved-views/{view_id}", response_model=schemas.SavedViewOut)
 async def get_saved_view(ctx: TenantCtxDep, view_id: uuid.UUID):
     """One saved view, if the caller may see it."""
     return _view_out(await _load_view(ctx, view_id))
 
 
-@router.patch("/saved-views/{view_id}")
+@router.patch("/saved-views/{view_id}", response_model=schemas.SavedViewOut)
 async def update_saved_view(ctx: TenantCtxDep, view_id: uuid.UUID, body: SavedViewUpdate):
     """Rename, re-scope or re-define a view the caller may modify."""
     view = await _load_view(ctx, view_id)
@@ -401,7 +463,7 @@ async def update_saved_view(ctx: TenantCtxDep, view_id: uuid.UUID, body: SavedVi
     return _view_out(view)
 
 
-@router.delete("/saved-views/{view_id}")
+@router.delete("/saved-views/{view_id}", response_model=schemas.SavedViewDeletedOut)
 async def delete_saved_view(ctx: TenantCtxDep, view_id: uuid.UUID):
     """Delete a view the caller may modify."""
     view = await _load_view(ctx, view_id)
@@ -588,14 +650,26 @@ async def _dr_subsystem(ctx: TenantContext) -> dict:
     return subsystem("dr", "degraded", "last restore test did not pass")
 
 
-@router.get("/health")
-async def health(ctx: TenantCtxDep) -> dict:
+@router.get(
+    "/health",
+    response_model=schemas.PlatformHealthOut,
+    # `subsystem()` OMITS `detail` rather than sending it null, and the
+    # per-provider rows ride ONLY on the integrations entry; excluding nulls keeps
+    # the declared model from inventing keys the surface never had.
+    response_model_exclude_none=True,
+)
+async def health(ctx: TenantCtxDep):
     """§103: per-subsystem status for the UI health indicator.
 
     Never raises and never 500s — a subsystem that fails is reported as
     ``down``/``degraded`` with a short reason, because a health check that
     errors tells the caller nothing. No secret, URL or connection string is
     ever included: details are fixed strings plus counts and ages.
+
+    Not a ``{items}`` list: this is a status surface, and the frontend's badge
+    reads the rolled-up ``status`` beside the rows
+    (``frontend/src/lib/queries.ts`` ``PlatformHealth``), so the envelope is
+    pinned as-is.
     """
     subsystems = [
         await _database_subsystem(ctx),
@@ -622,12 +696,29 @@ async def health(ctx: TenantCtxDep) -> dict:
 # NOTE: _require_platform_admin is defined at the top of this file.
 
 
-@router.get("/admin/tenants")
-async def admin_list_tenants(ctx: TenantCtxDep):
-    """§160: list all tenants on the deployment (metadata only, no tenant data)."""
+@router.get("/admin/tenants", response_model=schemas.TenantListOut)
+async def admin_list_tenants(
+    ctx: TenantCtxDep,
+    limit: PageLimit = schemas.PAGE_LIMIT_DEFAULT,
+    offset: PageOffset = 0,
+):
+    """§160: list all tenants on the deployment (metadata only, no tenant data).
+
+    The one cross-tenant list on this plane, and until now the one unbounded
+    read of it: a deployment's whole tenant count was the size of the dump an
+    operator's accidental ``GET`` pulled. Paged with the module's shared ceiling.
+
+    Ordered ``(created_at, id)`` DESC, not ``created_at`` DESC. Tenants
+    provisioned together share one ``now()`` — the seed and any bulk provisioning
+    run produce stretches of identical timestamps — and an un-tied ORDER BY lets
+    PostgreSQL break those ties differently on each read, so across pages one
+    tenant is listed twice while another is never listed at all. ``id`` (the
+    primary key) is the tie-break that makes the sort a total order.
+    """
     _require_platform_admin(ctx)
     from app.modules.identity.models import Tenant
 
+    total = (await ctx.session.execute(select(func.count(Tenant.id)))).scalar_one()
     rows = (
         await ctx.session.execute(
             select(
@@ -636,7 +727,10 @@ async def admin_list_tenants(ctx: TenantCtxDep):
                 Tenant.lifecycle_state,
                 Tenant.is_active,
                 Tenant.created_at,
-            ).order_by(Tenant.created_at.desc())
+            )
+            .order_by(Tenant.created_at.desc(), Tenant.id.desc())
+            .limit(limit)
+            .offset(offset)
         )
     ).all()
     return {
@@ -649,11 +743,14 @@ async def admin_list_tenants(ctx: TenantCtxDep):
                 "created_at": row.created_at.isoformat() if row.created_at else None,
             }
             for row in rows
-        ]
+        ],
+        "total": int(total),
+        "limit": limit,
+        "offset": offset,
     }
 
 
-@router.get("/admin/tenants/{tenant_id}")
+@router.get("/admin/tenants/{tenant_id}", response_model=schemas.TenantDetailOut)
 async def admin_get_tenant(ctx: TenantCtxDep, tenant_id: uuid.UUID):
     """§160: one tenant's metadata + health (no customer/message data)."""
     _require_platform_admin(ctx)
@@ -695,7 +792,9 @@ async def admin_get_tenant(ctx: TenantCtxDep, tenant_id: uuid.UUID):
     }
 
 
-@router.patch("/admin/tenants/{tenant_id}/status")
+@router.patch(
+    "/admin/tenants/{tenant_id}/status", response_model=schemas.TenantStatusOut
+)
 async def admin_update_tenant_status(
     ctx: TenantCtxDep,
     tenant_id: uuid.UUID,
@@ -760,7 +859,9 @@ async def admin_update_tenant_status(
     }
 
 
-@router.post("/webhook-events/{event_id}/retry")
+@router.post(
+    "/webhook-events/{event_id}/retry", response_model=schemas.WebhookRetryOut
+)
 async def admin_retry_webhook_event(ctx: TenantCtxDep, event_id: uuid.UUID):
     """§24: replay a failed or dead-lettered inbound webhook ingress row.
 
@@ -872,17 +973,24 @@ def _webhook_event_summary(row: WebhookEvent) -> dict:
     }
 
 
-@router.get("/webhook-events")
+@router.get("/webhook-events", response_model=schemas.WebhookEventListOut)
 async def admin_list_webhook_events(
     ctx: TenantCtxDep,
     status: str | None = None,
     provider: str | None = None,
-    limit: Annotated[int, Query(ge=1, le=200)] = 50,
-    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: PageLimit = schemas.PAGE_LIMIT_DEFAULT,
+    offset: PageOffset = 0,
 ):
     """§24 Inspect: the active tenant's ingress ledger — newest first, with
     the full DLQ vocabulary (dead/ignored/resolved included). The raw payload
-    body is deliberately NOT listed; fetch a row for that."""
+    body is deliberately NOT listed; fetch a row for that.
+
+    The reference paging route of this module: a bounded page, a ``total`` so a
+    caller can tell a full page from the whole list, and an
+    ``(received_at, id)`` DESC sort. ``received_at`` alone is not a total order —
+    a burst of deliveries lands inside one clock tick — so ``id`` is the
+    tie-break that keeps page 2 from repeating page 1.
+    """
     _require_platform_admin(ctx)
     if status is not None and status not in WEBHOOK_EVENT_STATUSES:
         raise ValidationError(
@@ -916,7 +1024,9 @@ async def admin_list_webhook_events(
     }
 
 
-@router.get("/webhook-events/{event_id}")
+@router.get(
+    "/webhook-events/{event_id}", response_model=schemas.WebhookEventDetailOut
+)
 async def admin_inspect_webhook_event(ctx: TenantCtxDep, event_id: uuid.UUID):
     """§24 Inspect: the full ingress row — envelope, attempts trail AND the
     raw payload, the evidence a replay/ignore/resolve decision is made on."""
@@ -925,7 +1035,9 @@ async def admin_inspect_webhook_event(ctx: TenantCtxDep, event_id: uuid.UUID):
     return {**_webhook_event_summary(row), "payload": row.payload}
 
 
-@router.post("/webhook-events/{event_id}/ignore")
+@router.post(
+    "/webhook-events/{event_id}/ignore", response_model=schemas.WebhookCloseOut
+)
 async def admin_ignore_webhook_event(
     ctx: TenantCtxDep, event_id: uuid.UUID, reason: str | None = None
 ):
@@ -952,7 +1064,9 @@ async def admin_ignore_webhook_event(
     return {"id": str(row.id), "status": "ignored"}
 
 
-@router.post("/webhook-events/{event_id}/resolve")
+@router.post(
+    "/webhook-events/{event_id}/resolve", response_model=schemas.WebhookCloseOut
+)
 async def admin_resolve_webhook_event(
     ctx: TenantCtxDep, event_id: uuid.UUID, reason: str | None = None
 ):
@@ -992,7 +1106,7 @@ class BreakGlassRequest(BaseModel):
     reason: str = Field(min_length=10, max_length=2000)
 
 
-@router.post("/admin/break-glass")
+@router.post("/admin/break-glass", response_model=schemas.BreakGlassOut)
 async def admin_break_glass(
     ctx: TenantCtxDep,
     body: BreakGlassRequest,
@@ -1028,7 +1142,9 @@ class BreakGlassValidateRequest(BaseModel):
     action: str
 
 
-@router.post("/admin/break-glass/validate")
+@router.post(
+    "/admin/break-glass/validate", response_model=schemas.BreakGlassValidateOut
+)
 async def admin_validate_break_glass(
     ctx: TenantCtxDep,
     body: BreakGlassValidateRequest,
@@ -1069,7 +1185,9 @@ class SecretRotateRequest(BaseModel):
     new_value: str = Field(min_length=1)
 
 
-@router.post("/secrets", status_code=201)
+@router.post(
+    "/secrets", response_model=schemas.SecretReferenceOut, status_code=201
+)
 async def create_secret_reference(
     body: SecretRefCreate,
     ctx: TenantContext = Depends(require_permission("settings:write")),
@@ -1106,7 +1224,9 @@ async def create_secret_reference(
     }
 
 
-@router.post("/secrets/{provider}/rotate")
+@router.post(
+    "/secrets/{provider}/rotate", response_model=schemas.SecretRotatedOut
+)
 async def rotate_secret(
     provider: str,
     body: SecretRotateRequest,
@@ -1175,7 +1295,9 @@ def _restore_job_payload(job: TenantRestoreJob) -> dict:
     }
 
 
-@router.post("/tenant-restores", status_code=201)
+@router.post(
+    "/tenant-restores", response_model=schemas.TenantRestoreJobOut, status_code=201
+)
 async def create_tenant_restore_job(
     body: TenantRestoreJobCreate,
     ctx: TenantContext = Depends(require_permission("settings:write")),
@@ -1196,7 +1318,9 @@ async def create_tenant_restore_job(
     return _restore_job_payload(job)
 
 
-@router.get("/tenant-restores/{job_id}")
+@router.get(
+    "/tenant-restores/{job_id}", response_model=schemas.TenantRestoreJobOut
+)
 async def get_tenant_restore_job(ctx: TenantCtxDep, job_id: uuid.UUID):
     """One restore job's status + extraction/validation/restore manifests."""
     job = await TenantRestoreService.get_restore_job(
@@ -1205,7 +1329,9 @@ async def get_tenant_restore_job(ctx: TenantCtxDep, job_id: uuid.UUID):
     return _restore_job_payload(job)
 
 
-@router.post("/tenant-restores/{job_id}/extract")
+@router.post(
+    "/tenant-restores/{job_id}/extract", response_model=schemas.TenantRestoreJobOut
+)
 async def extract_tenant_restore_job(
     job_id: uuid.UUID,
     ctx: TenantContext = Depends(require_permission("settings:write")),
@@ -1224,7 +1350,9 @@ async def extract_tenant_restore_job(
     return _restore_job_payload(job)
 
 
-@router.post("/tenant-restores/{job_id}/validate")
+@router.post(
+    "/tenant-restores/{job_id}/validate", response_model=schemas.TenantRestoreJobOut
+)
 async def validate_tenant_restore_job(
     job_id: uuid.UUID,
     ctx: TenantContext = Depends(require_permission("settings:write")),
@@ -1240,7 +1368,9 @@ async def validate_tenant_restore_job(
     return _restore_job_payload(job)
 
 
-@router.post("/tenant-restores/{job_id}/execute")
+@router.post(
+    "/tenant-restores/{job_id}/execute", response_model=schemas.TenantRestoreJobOut
+)
 async def execute_tenant_restore_job(
     job_id: uuid.UUID,
     ctx: TenantContext = Depends(require_permission("settings:write")),
@@ -1276,18 +1406,35 @@ async def execute_tenant_restore_job(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/security-events")
+@router.get("/security-events", response_model=schemas.SecurityEventListOut)
 async def list_security_events(
     ctx: TenantContext = Depends(require_permission("settings:read")),
     event_type: str | None = None,
-    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    limit: PageLimit = schemas.PAGE_LIMIT_DEFAULT,
+    offset: PageOffset = 0,
 ):
-    """§67: this tenant's security trail, newest first. Read-only."""
+    """§67: this tenant's security trail, newest first. Read-only.
+
+    It already sorted on ``(created_at, id)`` DESC — the tie-break the comment
+    below explains — but had a ``limit`` and no ``offset``, so the trail was
+    unreadable past its first page: a caller asking for ``offset=50`` was not
+    refused, it was handed page 1 again and had no way to know. It also had no
+    ``total``, so "the tenant has 4 000 login failures" and "the tenant has 50"
+    were the same answer.
+    """
     from app.core.field_auth import redact_fields
 
+    conditions = [SecurityEvent.tenant_id == ctx.tenant_id]
+    if event_type:
+        conditions.append(SecurityEvent.event_type == event_type)
+    total = (
+        await ctx.session.execute(
+            select(func.count(SecurityEvent.id)).where(*conditions)
+        )
+    ).scalar_one()
     stmt = (
         select(SecurityEvent)
-        .where(SecurityEvent.tenant_id == ctx.tenant_id)
+        .where(*conditions)
         # created_at alone is not a total order: security events written in one
         # transaction share now(), so an un-tied ORDER BY lets `limit` drop an
         # arbitrary row and lets equal-timestamp pages reorder. id (a uuid4) is
@@ -1295,9 +1442,8 @@ async def list_security_events(
         # surface already uses, so the two reads do not disagree.
         .order_by(SecurityEvent.created_at.desc(), SecurityEvent.id.desc())
         .limit(limit)
+        .offset(offset)
     )
-    if event_type:
-        stmt = stmt.where(SecurityEvent.event_type == event_type)
     rows = (await ctx.session.execute(stmt)).scalars().all()
     return {
         "items": [
@@ -1312,5 +1458,8 @@ async def list_security_events(
                 "created_at": event.created_at.isoformat() if event.created_at else None,
             }
             for event in rows
-        ]
+        ],
+        "total": int(total),
+        "limit": limit,
+        "offset": offset,
     }
