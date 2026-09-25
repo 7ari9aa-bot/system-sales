@@ -27,6 +27,7 @@ import pytest
 from sqlalchemy import func, select
 
 from app.core.config import get_settings
+from app.core.db import bind_tenant
 from app.modules.automation.models import (
     Workflow,
     WorkflowExecution,
@@ -57,6 +58,12 @@ async def _stage_unreachable_n8n(db, tenant_id, monkeypatch) -> WorkflowExecutio
     monkeypatch.setattr(
         get_settings(), "n8n_base_url", f"http://127.0.0.1:{_closed_port()}", raising=False
     )
+    # CI connects as `sales_app` with RLS enforced, and the `db` fixture does
+    # not bind the tenant GUC, so every tenant_id table refuses the INSERTs
+    # below until the row-owning tenant is bound (the reason
+    # test_inbox_read_model's inbox_seed binds before it writes — visible only
+    # in CI, where these tests actually run).
+    await bind_tenant(db, tenant_id)
     workflow = Workflow(
         tenant_id=tenant_id,
         name="gate n8n outage",
@@ -69,7 +76,10 @@ async def _stage_unreachable_n8n(db, tenant_id, monkeypatch) -> WorkflowExecutio
     await db.flush()
     db.add(
         WorkflowVersion(
-            workflow_id=workflow.id, version=workflow.current_version, definition={"steps": []}
+            tenant_id=tenant_id,  # NOT NULL, no default — the writer must own it
+            workflow_id=workflow.id,
+            version=workflow.current_version,
+            definition={"steps": []},
         )
     )
     await db.flush()

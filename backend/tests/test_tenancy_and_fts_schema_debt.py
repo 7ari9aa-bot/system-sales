@@ -800,12 +800,19 @@ async def test_workflow_versions_isolates_across_tenants(db) -> None:
     refuses: a snapshot owned by tenant A must be invisible under tenant B's GUC
     even though the SELECT carries no tenant filter at all — which is exactly
     the shape of the router's query that motivated this whole change.
+
+    The stranger writes its OWN rows, under its OWN bound GUC (the hierarchy
+    pattern): CI's `sales_app` role refuses any INSERT whose `app.tenant_id`
+    is unset, so the row-owning tenant must bind first — then a different
+    tenant binds and must not see what it wrote.
     """
     from sqlalchemy import text
 
+    from app.core.db import bind_tenant
     from app.modules.automation.models import Workflow, WorkflowVersion
 
     stranger = uuid.uuid4()
+    await bind_tenant(db, stranger)
     workflow = Workflow(
         tenant_id=stranger, name="isolated", trigger_event="order.created", current_version=1
     )
@@ -814,9 +821,7 @@ async def test_workflow_versions_isolates_across_tenants(db) -> None:
     db.add(WorkflowVersion(workflow_id=workflow.id, version=1, definition={}, tenant_id=stranger))
     await db.flush()
 
-    await db.execute(
-        text("SELECT set_config('app.tenant_id', :t, true)"), {"t": str(uuid.uuid4())}
-    )
+    await bind_tenant(db, uuid.uuid4())  # a different tenant reads
     rows = (
         await db.execute(
             text(

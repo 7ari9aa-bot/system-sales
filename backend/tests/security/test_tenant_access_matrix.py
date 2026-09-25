@@ -275,9 +275,12 @@ async def test_list_and_search_never_leak_foreign_rows(db, tenant_ctx) -> None: 
     secret = f"ZZSECRETONLY {uuid.uuid4().hex[:6]}"
     tenant_b = await _seed_foreign_tenant(db, tag="list")
     await _customer_in(db, tenant_b, secret)
+    # _seed_foreign_tenant left the GUC bound to B; A's own row can only be
+    # minted once the session is bound to A again (RLS WITH CHECK refuses the
+    # write otherwise — seen in CI as InsufficientPrivilegeError).
+    await bind_tenant(db, tenant_ctx.tenant_id)
     await _customer_in(db, tenant_ctx.tenant_id, "Alpha Ownco")  # one of A's own
 
-    await bind_tenant(db, tenant_ctx.tenant_id)
     listing = await CustomerService.list_customers(db, tenant_ctx.tenant_id, limit=200)
     assert all(c.name != secret for c in listing), "foreign customer surfaced in list"
     assert any(c.name == "Alpha Ownco" for c in listing)
@@ -298,9 +301,12 @@ async def test_identity_merge_cannot_cross_tenants(db, tenant_ctx) -> None:  # n
     rewrites history, so BOTH rows must be visible to the caller first."""
     tenant_b = await _seed_foreign_tenant(db, tag="merge")
     b_source = await _customer_in(db, tenant_b, "B source")
+    # _seed_foreign_tenant left the GUC bound to B; A's canonical row can only
+    # be minted once the session is bound to A again (RLS WITH CHECK refuses
+    # the write otherwise — seen in CI as InsufficientPrivilegeError).
+    await bind_tenant(db, tenant_ctx.tenant_id)
     a_only = await _customer_in(db, tenant_ctx.tenant_id, "A canonical")
 
-    await bind_tenant(db, tenant_ctx.tenant_id)
     with pytest.raises(NotFoundError):
         await IdentityMergeService.merge(
             db,

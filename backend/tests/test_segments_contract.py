@@ -543,6 +543,14 @@ async def test_the_http_surface_round_trips_a_typed_segment(
     CI-only. This is the case that catches a response model typing the right
     NAMES with the wrong nullability, which no OpenAPI walk can see.
     """
+    # The real get_tenant_ctx verifies membership AND binds the RLS GUC; the
+    # fake in `_client` replaces it wholesale, so this test binds the GUC to
+    # the tenant the fake context claims. Without it CI's `sales_app` role —
+    # with RLS enforced — refuses the POST's INSERT INTO segments
+    # (InsufficientPrivilegeError: new row violates row-level security policy).
+    from app.core.db import bind_tenant
+
+    await bind_tenant(db, TENANT)
     transport = ASGITransport(app=_client(db))
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         created = await client.post(
