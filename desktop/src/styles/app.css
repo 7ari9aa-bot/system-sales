@@ -1,0 +1,123 @@
+/*
+ * Arabic-first, RTL by default, and every rule written with logical properties so
+ * a Latin-script locale flips the layout instead of breaking it. No pixel offsets,
+ * no left/right.
+ */
+:root {
+  --fh-space-1: 0.25rem;
+  --fh-space-2: 0.5rem;
+  --fh-space-3: 1rem;
+  --fh-space-4: 2rem;
+  --fh-radius: 0.5rem;
+  --fh-font: 'Segoe UI', 'Noto Sans Arabic', 'Tahoma', system-ui, sans-serif;
+  --fh-ink:#1d1b17;
+  --fh-ink-muted:#6b655c;
+  --fh-surface:#fbf9f5;
+  --fh-line:#ded7cb;
+  --fh-accent:#0f6b5c;
+  --fh-danger:#9b2c2c;
+
+  color-scheme: light dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  background: var(--fh-surface);
+  color: var(--fh-ink);
+  font-family: var(--fh-font);
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+.boot,
+.fatal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fh-space-2);
+  margin-inline: auto;
+  max-width: 46rem;
+  padding-block: var(--fh-space-4);
+  padding-inline: var(--fh-space-3);
+}
+
+.boot__brand,
+.fatal__brand {
+  color: var(--fh-accent);
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.boot__state,
+.fatal__title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.fatal__body,
+.boot__addressLabel,
+.fatal__meta {
+  color: var(--fh-ink-muted);
+  font-size: 0.9375rem;
+  margin: 0;
+}
+
+.boot__address,
+.fatal__requestId {
+  direction: ltr;
+  font-family: ui-monospace, 'Cascadia Mono', monospace;
+  unicode-bidi: isolate;
+  word-break: break-all;
+}
+
+.fatal__meta {
+  border-block-start: 1px solid var(--fh-line);
+  display: grid;
+  gap: var(--fh-space-1);
+  padding-block-start: var(--fh-space-2);
+}
+
+.fatal__metaRow {
+  display: flex;
+  gap: var(--fh-space-2);
+}
+
+.fatal__retry {
+  align-self: flex-start;
+  background: var(--fh-accent);
+  border: 0;
+  border-radius: var(--fh-radius);
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  padding-block: var(--fh-space-2);
+  padding-inline: var(--fh-space-3);
+}
+
+.fatal__retry:focus-visible {
+  outline: 2px solid var(--fh-ink);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .fatal__retry {
+    transition: filter 120ms ease-in-out;
+  }
+
+  .fatal__retry:hover {
+    filter: brightness(1.08);
+  }
+}

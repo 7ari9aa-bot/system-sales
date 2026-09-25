@@ -273,3 +273,30 @@ is §6. Every row names the evidence in the current tree, not an assumption.
   `typescript-eslint` 8.70.1 declares `>=4.8.4 <6.1.0` — TS 7 would take the type-aware
   boundary lint away.
 
+
+## 7. Session A's answers to the Phase 0 report's open items (2026-09-25)
+
+The Phase 0 gates were re-run from `desktop/` on Session A's machine before any of this
+was committed: **110/110 tests, `tsc` clean, build clean, hardcoded-host check OK** —
+the §6.5 precondition is met. What remains unverified is unchanged from the report's own
+§4: the entire `src-tauri/` tree (no `cargo` on any machine yet) waits for the first
+`desktop-ci.yml` run, and no `Cargo.lock` exists until CI generates one.
+
+1. **Runner budget** — `ci.yml` stays unfiltered for now: the backend suite is the
+   project's only DB-backed executor and it must run on every API-affecting push. The
+   desktop work is already isolated by `desktop-ci.yml`'s `paths:` filter. Revisit if a
+   desktop-only push burns meaningful minutes.
+2. **ADR-059 / CORS** — confirmed: no `tauri://localhost` or `http://tauri.localhost`
+   entry is to be added to `CORS_ORIGINS`. The desktop is not a browser origin; it
+   authenticates as a client, not as a page.
+3. **Canonical ADR directory** — **`docs/adrs/` (one file per number) is canonical**;
+   every ADR from 042 on lives there and new ones land there. `docs/adr/`'s five
+   range-compilation files are a frozen archive of 001–041 and will not be extended.
+4. **R1 is accepted as the critical path** and is queued behind the current CI-repair
+   wave: a script exporting `create_app().openapi()` to `desktop/openapi.lock.json`
+   with its SHA-256, plus the drift job. The other requests (R2–R8) follow.
+5. The §5 defects are registered on the API side: `?token=` on the realtime stream
+   (R5, web exposure too) and `tenant_id` as a query parameter on
+   `/auth/switch-tenant` are both scheduled; the route-coverage figures were already
+   reconciled to the measured 245/112/133 (commit `c17a3fa`), `search_ts` being
+   unqueried was already in the gap register, and the §5 heading collision is fixed.

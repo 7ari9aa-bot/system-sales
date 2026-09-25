@@ -1,0 +1,7 @@
+# Exact toolchain: CI must never build with a compiler nobody reviewed.
+# 1.98.1 is the current stable line as of 2026-09-25; Tauri 2.11.6 declares
+# rust-version = "1.77.2", so this is comfortably above the MSRV.
+[toolchain]
+channel = "1.98.1"
+components = ["clippy", "rustfmt"]
+profile = "minimal"

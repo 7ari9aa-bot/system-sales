@@ -1,0 +1,20 @@
+# --- build output ---
+dist/
+coverage/
+
+# --- node ---
+node_modules/
+
+# --- rust / tauri ---
+src-tauri/target/
+src-tauri/gen/
+
+# --- runtime configuration: never committed, never baked into the bundle ---
+.env
+.env.local
+.env.*.local
+
+# --- editor / OS ---
+.DS_Store
+Thumbs.db
+*.swp

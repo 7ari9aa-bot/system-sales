@@ -1,0 +1,7 @@
+{
+  "$schema": "gen/schemas/desktop-schema.json",
+  "identifier": "utility",
+  "description": "Hidden helper window reserved for background work. It is never a login surface and never holds a credential.",
+  "windows": ["utility"],
+  "permissions": ["core:default"]
+}

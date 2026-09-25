@@ -1,0 +1,127 @@
+name: desktop-ci
+
+# The desktop owns this file; the web/API pipeline lives in ci.yml and never
+# fires on these paths, and vice versa. Nothing here rewrites shared config.
+on:
+  push:
+    paths:
+      - 'desktop/**'
+      - '.github/workflows/desktop-ci.yml'
+  pull_request:
+    paths:
+      - 'desktop/**'
+      - '.github/workflows/desktop-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Pinned, not floating: a toolchain that moves under the build makes a red
+  # job ambiguous. Must stay in step with desktop/package.json engines and
+  # desktop/rust-toolchain.toml.
+  NODE_VERSION: '24.18.1'
+
+jobs:
+  web:
+    name: JS gates (ubuntu)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      - uses: actions/setup-node@v4.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install exactly what the lockfile says
+        run: npm ci
+
+      - name: Platform boundary (no invoke / fetch / web storage / any outside the adapters)
+        run: npm run boundary
+
+      - name: TypeScript
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm run test
+
+      - name: Production build
+        run: npm run build
+
+      - name: No host baked into the bundle
+        run: node config/check-no-hardcoded-host.mjs
+
+  native:
+    name: Rust + package (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            label: windows-x64
+            tauri-args: ''
+          - os: macos-latest
+            label: macos-arm64
+            tauri-args: ''
+    defaults:
+      run:
+        working-directory: desktop/src-tauri
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      - uses: actions/setup-node@v4.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      # rustup reads desktop/rust-toolchain.toml; `show` makes it install and
+      # print the pinned channel + components before anything compiles.
+      - name: Pin the Rust toolchain
+        run: rustup show
+
+      - name: Install JS dependencies (beforeBuildCommand runs vite)
+        shell: bash
+        working-directory: desktop
+        run: npm ci
+
+      - name: Formatting
+        shell: bash
+        run: cargo fmt --check
+
+      - name: Clippy
+        shell: bash
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Native unit tests (log redaction)
+        shell: bash
+        run: cargo test
+
+      # `tauri build` is the only gate that proves the bundle config, the
+      # capability files and the icons are all valid together. It is unsigned by
+      # design here: signing and notarization are Phase 5 and their credentials
+      # never enter this repository.
+      - name: Package the app
+        shell: bash
+        working-directory: desktop
+        run: npx tauri build ${{ matrix.tauri-args }}
+
+      - uses: actions/upload-artifact@v4.4.3
+        with:
+          name: fihrist-desktop-${{ matrix.label }}
+          path: |
+            desktop/src-tauri/target/release/bundle/**
+          if-no-files-found: warn
