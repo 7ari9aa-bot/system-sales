@@ -8,6 +8,7 @@ from datetime import datetime
 from sqlalchemy import (
     Boolean,
     Column,
+    Computed,
     DateTime,
     ForeignKey,
     Index,
@@ -17,7 +18,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -58,6 +59,23 @@ class Customer(TenantMixin, TimestampMixin, WorkspaceScopeMixin, VersionMixin, B
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     deletion_reason: Mapped[str | None] = mapped_column(String(255))
+
+    # §45 full text. DATABASE-DERIVED — never assign to it. `simple` is pinned
+    # because a GENERATED column must be IMMUTABLE and the 1-argument
+    # to_tsvector is only STABLE; it is also the only configuration that treats
+    # this tenant's mixed Arabic+Latin names without stemming one of them.
+    # See migration b2e3d4f5a6c7 for the reasoning, and for why the ILIKE search
+    # in customers/service.py stays: a partial phone number is not a token.
+    search_ts: Mapped[str | None] = mapped_column(
+        TSVECTOR,
+        Computed(
+            "(setweight(to_tsvector('simple', coalesce(name, '')), 'A') "
+            "|| setweight(to_tsvector('simple', coalesce(email, '')), 'B') "
+            "|| setweight(to_tsvector('simple', coalesce(phone, '')), 'C'))",
+            persisted=True,
+        ),
+        nullable=True,
+    )
 
     __table_args__ = (
         UniqueConstraint("tenant_id", "phone", name="uq_customers_tenant_phone"),

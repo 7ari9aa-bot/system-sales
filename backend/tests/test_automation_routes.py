@@ -225,9 +225,11 @@ async def test_the_list_read_is_scoped_to_the_context_tenant() -> None:
     session = FakeSession(workflows=[_workflow()])
     response = await _call_read(session, "", perms={"automation:read"})
     assert response.status_code == 200, response.text
-    sql = next(s for s in session.sql if "from workflows" in s.lower())
-    assert "workflows.tenant_id" in sql
-    assert TENANT in {v for row in session.bound for v in row.values()}
+    index = next(i for i, s in enumerate(session.sql) if "from workflows" in s.lower())
+    low = " ".join(session.sql[index].split()).lower()
+    where = low.split(" where ", 1)[1] if " where " in low else ""
+    assert "workflows.tenant_id = " in where, low
+    assert TENANT in session.bound[index].values(), session.bound[index]
 
 
 async def test_the_list_read_stays_bounded() -> None:
@@ -263,8 +265,11 @@ async def test_a_single_read_carries_the_version_and_a_strong_etag() -> None:
 async def test_another_tenants_workflow_reads_as_not_found_everywhere() -> None:
     """Four reads, one rule: the id is not a permission. The fake holds NO row
     for this tenant, so every read must 404 — and the version/execution lists
-    must 404 BEFORE they query the child table, because ``workflow_versions``
-    has no ``tenant_id`` column and so no RLS of its own."""
+    must 404 BEFORE they query the child table. That ordering is the guard that
+    holds whichever way the child's own tenancy goes: ``workflow_versions`` has
+    carried a ``tenant_id`` (and so its own RLS policy) only since migration
+    ``a1f2c3d4e5b6``, and this route predates it.
+    """
     foreign_id = uuid.uuid4()
     for path in (f"/{foreign_id}", f"/{foreign_id}/versions", f"/{foreign_id}/executions"):
         session = FakeSession(workflows=[])
@@ -287,9 +292,41 @@ async def test_the_execution_list_is_scoped_twice() -> None:
     session = FakeSession(workflows=[workflow], executions=[])
     response = await _call_read(session, f"/{workflow.id}/executions", perms=set())
     assert response.status_code == 200, response.text
-    sql = next(s for s in session.sql if "from workflow_executions" in s.lower())
-    assert "workflow_executions.tenant_id" in sql
-    assert TENANT in {v for row in session.bound for v in row.values()}
+    index = next(
+        i for i, s in enumerate(session.sql) if "from workflow_executions" in s.lower()
+    )
+    low = " ".join(session.sql[index].split()).lower()
+    # See the versions test below for WHY this reads the WHERE clause: the SELECT
+    # list already names the column, so matching the whole statement proves nothing.
+    where = low.split(" where ", 1)[1] if " where " in low else ""
+    assert "workflow_executions.tenant_id = " in where, low
+    assert TENANT in session.bound[index].values(), session.bound[index]
+
+
+async def test_the_version_list_is_scoped_by_tenant_too() -> None:
+    """§151 — the child read that had no tenant to name until migration
+    ``a1f2c3d4e5b6`` gave ``workflow_versions`` its ``tenant_id``.
+
+    Naming the tenant here is not decoration next to the new RLS policy: the
+    policy only bites when the tenant GUC is set, and this repo's own convention
+    (``core/idempotency.py``'s CAS, ``workflow_executions`` above) is to pin the
+    predicate in the statement so a caller running without the GUC still cannot
+    read across tenants.
+    """
+    workflow = _workflow()
+    session = FakeSession(workflows=[workflow], versions=[])
+    response = await _call_read(session, f"/{workflow.id}/versions", perms=set())
+    assert response.status_code == 200, response.text
+    index = next(
+        i for i, s in enumerate(session.sql) if "from workflow_versions" in s.lower()
+    )
+    low = " ".join(session.sql[index].split()).lower()
+    # Asserted on the PREDICATE, not the statement: TenantMixin puts
+    # ``workflow_versions.tenant_id`` in the SELECT list, so a substring match on
+    # the whole string passes while the WHERE clause names nobody.
+    where = low.split(" where ", 1)[1] if " where " in low else ""
+    assert "workflow_versions.tenant_id = " in where, low
+    assert TENANT in session.bound[index].values(), session.bound[index]
 
 
 async def test_the_execution_list_limit_is_bounded_on_both_sides() -> None:

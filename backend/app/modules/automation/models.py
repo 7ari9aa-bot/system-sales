@@ -18,6 +18,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -63,8 +64,19 @@ class Workflow(TenantMixin, TimestampMixin, VersionMixin, WorkspaceScopeMixin, B
     )
 
 
-class WorkflowVersion(TimestampMixin, Base):
-    """Immutable definition snapshot — running executions pin their version."""
+class WorkflowVersion(TenantMixin, TimestampMixin, Base):
+    """Immutable definition snapshot — running executions pin their version.
+
+    ``TenantMixin`` is load-bearing, not tidiness: the b2c3d4e5f6a7 RLS sweep is
+    dynamic over "tables that have a tenant_id column", so this table was walked
+    past and had no policy at all. ``GET /workflows/{id}/versions`` filtered on
+    ``workflow_id`` only and relied on the ``WorkflowService.get()`` in front of
+    it. Migration a1f2c3d4e5b6 backfills the value from the parent workflow,
+    aborts if any row has no parent, and puts FORCE RLS on the table.
+
+    Writers MUST set it: the column is NOT NULL with no server default, so an
+    insert that omits it fails rather than guessing a tenant.
+    """
 
     __tablename__ = "workflow_versions"
 
@@ -76,12 +88,10 @@ class WorkflowVersion(TimestampMixin, Base):
     definition: Mapped[dict] = mapped_column(JSONB)  # steps/conditions AST
 
     __table_args__ = (
-        Index(
-            "uq_workflow_versions_workflow_version",
-            "workflow_id",
-            "version",
-            unique=True,
-        ),
+        # Was a unique INDEX of the same name; a named CONSTRAINT is a FK target,
+        # visible in pg_constraint, and — the part that matters — droppable by a
+        # name that resolves when a downgrade runs.
+        UniqueConstraint("workflow_id", "version", name="uq_workflow_versions_workflow_version"),
     )
 
 

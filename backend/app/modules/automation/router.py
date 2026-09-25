@@ -264,7 +264,10 @@ async def list_workflow_versions(ctx: TenantCtxDep, workflow_id: uuid.UUID):
     rows = (
         await ctx.session.execute(
             select(WorkflowVersion)
-            .where(WorkflowVersion.workflow_id == workflow_id)
+            .where(
+                WorkflowVersion.tenant_id == ctx.tenant_id,
+                WorkflowVersion.workflow_id == workflow_id,
+            )
             .order_by(WorkflowVersion.version.desc())
         )
     ).scalars().all()

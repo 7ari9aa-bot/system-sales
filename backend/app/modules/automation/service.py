@@ -97,6 +97,7 @@ class WorkflowService:
         await session.flush()
         session.add(
             WorkflowVersion(
+                tenant_id=tenant_id,
                 workflow_id=workflow.id,
                 version=1,
                 definition=definition,
@@ -140,6 +141,7 @@ class WorkflowService:
             {"current_version": workflow.current_version + 1},
         )
         version = WorkflowVersion(
+            tenant_id=workflow.tenant_id,
             workflow_id=workflow.id,
             version=workflow.current_version,
             definition=definition,
@@ -246,6 +248,7 @@ class WorkflowService:
         version = (
             await session.execute(
                 select(WorkflowVersion).where(
+                    WorkflowVersion.tenant_id == tenant_id,
                     WorkflowVersion.workflow_id == execution.workflow_id,
                     WorkflowVersion.version == execution.workflow_version,
                 )

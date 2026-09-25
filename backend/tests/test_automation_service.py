@@ -340,6 +340,67 @@ async def test_an_unconditional_publish_still_cas_on_the_version_it_read(
     assert 7 in bound.values(), f"the CAS bound no version: {bound}"
 
 
+async def test_every_snapshot_names_the_tenant_that_owns_it() -> None:
+    """§151 — migration ``a1f2c3d4e5b6`` gives ``workflow_versions`` a NOT NULL
+    ``tenant_id`` with no server default, which is the whole reason the table now
+    falls under the dynamic RLS sweep. It also means a snapshot written without
+    the column is an INSERT failure: both doors that create one would answer 500
+    on every call. A row nobody can insert isolates nothing, so the writers are
+    part of the contract.
+    """
+    created = FakeSession()
+    await WorkflowService.create(
+        created,
+        TENANT,
+        name="wf",
+        trigger_event="order.created",
+        definition={"steps": [{"action": "notify"}]},
+    )
+    on_create = [a for a in created.added if isinstance(a, WorkflowVersion)]
+    assert on_create, "create() wrote no version-1 snapshot at all"
+    assert [s.tenant_id for s in on_create] == [TENANT] * len(on_create), (
+        f"create() wrote snapshots with no tenant: {[s.tenant_id for s in on_create]}"
+    )
+
+    workflow = _workflow()
+    published = FakeSession(workflows=[workflow], update_returns=2)
+    await WorkflowService.publish_new_version(
+        published,
+        TENANT,
+        workflow.id,
+        definition={"steps": [{"action": "notify"}]},
+    )
+    on_publish = [a for a in published.added if isinstance(a, WorkflowVersion)]
+    assert len(on_publish) == 1
+    assert on_publish[0].tenant_id == TENANT, (
+        f"publish() stamped the snapshot with tenant {on_publish[0].tenant_id!r}"
+    )
+
+
+async def test_the_run_path_reads_its_pinned_snapshot_by_tenant() -> None:
+    """§151 — the execution read above this one names its tenant; the snapshot
+    read did not, because when it was written ``workflow_versions`` had no
+    ``tenant_id`` to name. Migration ``a1f2c3d4e5b6`` gave it one, and the RLS
+    policy only speaks while the tenant GUC is set — so the predicate is what
+    keeps this correct for every caller that reaches it without one.
+    """
+    workflow = _workflow()
+    execution = _execution(workflow)
+    session = FakeSession(
+        workflows=[workflow],
+        executions=[execution],
+        versions=[_version(workflow, {"steps": [{"action": "set_context"}]})],
+    )
+
+    await WorkflowService.run_execution(session, TENANT, execution.id)
+
+    index = next(i for i, s in enumerate(session.sql) if "from workflow_versions" in s.lower())
+    low = " ".join(session.sql[index].split()).lower()
+    where = low.split(" where ", 1)[1] if " where " in low else ""
+    assert "workflow_versions.tenant_id = " in where, low
+    assert TENANT in session.bound[index].values(), session.bound[index]
+
+
 # ------------------------------------------------ §66/§17: the lifecycle -----
 
 

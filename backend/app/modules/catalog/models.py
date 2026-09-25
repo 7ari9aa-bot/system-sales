@@ -13,6 +13,7 @@ from decimal import Decimal
 
 from sqlalchemy import (
     Boolean,
+    Computed,
     ForeignKey,
     Index,
     Integer,
@@ -20,7 +21,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -72,6 +73,22 @@ class Product(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, Base):
     # allowed: draft | active | archived
     status: Mapped[str] = mapped_column(String(15), server_default="draft")
     attributes: Mapped[dict] = mapped_column(JSONB, server_default="{}")
+
+    # §45 full text — DATABASE-DERIVED, never assign. `simple` is pinned because
+    # a GENERATED column needs an IMMUTABLE expression and the 1-argument
+    # to_tsvector is only STABLE; it is also the only configuration that treats
+    # mixed Arabic+Latin titles without stemming one of them. Migration
+    # b2e3d4f5a6c7 carries the reasoning. `sku`/variant titles are deliberately
+    # NOT here — they are substring lookups, which is trigram work, not tsvector.
+    search_ts: Mapped[str | None] = mapped_column(
+        TSVECTOR,
+        Computed(
+            "(setweight(to_tsvector('simple', coalesce(title, '')), 'A') "
+            "|| setweight(to_tsvector('simple', coalesce(description, '')), 'B'))",
+            persisted=True,
+        ),
+        nullable=True,
+    )
 
     __table_args__ = (
         UniqueConstraint("tenant_id", "slug", name="uq_products_tenant_slug"),

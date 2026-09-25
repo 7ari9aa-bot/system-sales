@@ -17,6 +17,7 @@ from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     ARRAY,
     Boolean,
+    Computed,
     Date,
     DateTime,
     ForeignKey,
@@ -26,7 +27,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -170,6 +171,22 @@ class KnowledgeItem(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     # allowed: customer_facing | staff_only | internal | admin_only
     visibility: Mapped[str] = mapped_column(
         String(15), server_default="customer_facing"
+    )
+
+    # §45 full text — DATABASE-DERIVED, never assign. Complements the pgvector
+    # `embedding`: the vector answers "what is about this", this answers "what
+    # literally contains this word", and `simple` is pinned because a GENERATED
+    # column needs an IMMUTABLE expression (the 1-argument to_tsvector is only
+    # STABLE) and is the only configuration that treats mixed Arabic+Latin
+    # knowledge content without stemming one of them. Migration b2e3d4f5a6c7.
+    search_ts: Mapped[str | None] = mapped_column(
+        TSVECTOR,
+        Computed(
+            "(setweight(to_tsvector('simple', coalesce(title, '')), 'A') "
+            "|| setweight(to_tsvector('simple', coalesce(content, '')), 'B'))",
+            persisted=True,
+        ),
+        nullable=True,
     )
 
     __table_args__ = (
