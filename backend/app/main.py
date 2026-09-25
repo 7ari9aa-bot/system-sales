@@ -34,6 +34,7 @@ from app.core.errors import (
     retryable_for_status,
 )
 from app.core.idempotency import IdempotencyMiddleware
+from app.core.metrics import metrics_router
 from app.core.middleware import (
     BodySizeLimitMiddleware,
     RateLimitMiddleware,
@@ -444,6 +445,11 @@ def create_app() -> FastAPI:
     ):
         api_v1.include_router(router)
     app.include_router(api_v1)
+
+    # O10: /metrics rides at the ROOT beside the probes, not under /api/v1 — a
+    # Prometheus scraper has no tenant JWT to present, and the route carries its
+    # own admission (internal service token wherever SECURE_ENVIRONMENT is on).
+    app.include_router(metrics_router)
 
     @app.get("/healthz", tags=["ops"])
     async def healthz() -> dict[str, str]:

@@ -26,12 +26,24 @@ from app.core.events.outbox import OutboxRelay
 from app.core.redis import close_redis, get_redis
 from app.workers.base import StreamWorker
 from app.workers.campaign_worker import CampaignWorker
+from app.workers.correlation import install_log_correlation
 from app.workers.job_runner import JobRunner
 from app.workers.message_worker import MessageWorker
 from app.workers.platform_workers import NotificationWorker, WebhookWorker
 from app.workers.scheduler_worker import SchedulerWorker
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+#: The worker process's log format. The `correlation_id=` field is the point
+#: (O10): a worker line that names no message cannot be tied to the request
+#: that caused it, which is what made the pools undebuggable in a fleet.
+#: ``app.workers.correlation.install_log_correlation`` stamps the attribute on
+#: every record, so this format never raises KeyError for it.
+#: Pinned by tests/test_worker_correlation_logging.py — do not rename.
+WORKER_LOG_FORMAT = (
+    "%(asctime)s %(levelname)s %(name)s correlation_id=%(correlation_id)s %(message)s"
+)
+
+install_log_correlation()
+logging.basicConfig(level=logging.INFO, format=WORKER_LOG_FORMAT)
 logger = logging.getLogger(__name__)
 
 POOLS: dict[str, type[StreamWorker]] = {

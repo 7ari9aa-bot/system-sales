@@ -35,8 +35,15 @@ from app.core.db import SessionLocal
 from app.core.errors import ValidationError
 from app.core.events.bus import ATTEMPTS_META_KEY, Event, EventBus
 from app.core.events.schemas import deserialize, deserialize_event
+from app.workers.correlation import bind_message, bind_pool, install_log_correlation
 
 logger = logging.getLogger(__name__)
+
+# O10: every pool subclasses StreamWorker, so importing this module is what a
+# worker process cannot avoid. Installing here (rather than only in run.py) is
+# what makes "every worker log line carries a correlation id" true for a pool
+# started any other way — an embedded run(), a scheduler-driven one-off, a test.
+install_log_correlation()
 
 MAX_BACKOFF_SECONDS = 60.0
 
@@ -159,10 +166,18 @@ class StreamWorker:
         raise NotImplementedError
 
     async def run(self) -> None:
-        import time
-
         consumer = f"{socket.gethostname()}:{os.getpid()}"
         self._running = True
+        # O10: pool lifecycle lines belong to no single message, so they carry
+        # the pool's own id rather than an empty field. bind_message overrides it
+        # for the duration of each event; the contextvar is per-asyncio-task, so
+        # pools running in one process never bleed into each other.
+        with bind_pool(self.stream):
+            await self._run_loop(consumer)
+
+    async def _run_loop(self, consumer: str) -> None:
+        import time
+
         last_reclaim = 0.0
         logger.info(
             "worker.started name=%s stream=%s group=%s consumer=%s",
@@ -230,14 +245,21 @@ class StreamWorker:
         the GATE lives on the throttled tiers (bulk/campaign defer on an
         exhausted budget), because the §144 priority order forbids human /
         AI / webhook work from being starved by a tenant's own meter.
+
+        O10: the whole body runs under the message's correlation id, so the
+        inbox-claim lines, the handler's own lines, the retry / dead-letter
+        lines and the metering line are one greppable unit. The id comes from
+        the MESSAGE, not the delivery, so this also holds when the event is
+        reprocessed after a staged retry or a PEL reclaim.
         """
         import time
 
-        started = time.monotonic()
-        try:
-            await self._process_event(event)
-        finally:
-            await self._charge_worker_seconds(event, started)
+        with bind_message(event):
+            started = time.monotonic()
+            try:
+                await self._process_event(event)
+            finally:
+                await self._charge_worker_seconds(event, started)
 
     async def _charge_worker_seconds(self, event: Event, started: float) -> None:
         import math
