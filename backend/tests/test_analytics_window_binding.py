@@ -567,6 +567,30 @@ def test_the_refusal_answers_a_non_datetime_instead_of_raising_inside_the_422() 
 
 # ============================================ driven over a real database ===
 
+# The probe `test_a_stamp_without_an_offset_really_names_two_instants` runs to
+# show the SERVER deciding which instant a zone-less stamp names. The cast must
+# be spelled `CAST(:stamp AS timestamp)`, never `:stamp::timestamp`:
+# SQLAlchemy's text() tokenizer refuses a bind immediately followed by another
+# colon, so the parameter is renamed (here to `stam`) and the ``stamp=`` value
+# is silently dropped — the raw statement, `:stamp` and all, reaches Postgres
+# and asyncpg answers `syntax error at or near ":"`. Same constraint, same
+# spelling, as `_MARK_FAILED_SQL`'s backoff casts (see
+# tests/test_outbox_backoff_param_types.py). The DB-free pin below fails before
+# CI's asyncpg does.
+_TWO_ZONE_PROBE_SQL = (
+    "SELECT ((CAST(:stamp AS timestamp))::timestamptz AT TIME ZONE 'UTC')::text"
+)
+
+
+def test_the_two_zone_probe_binds_the_parameter_it_is_handed() -> None:
+    """DB-free pin for the probe's cast spelling (see the constant's comment)."""
+    bound = set(sa.text(_TWO_ZONE_PROBE_SQL)._bindparams)
+    assert bound == {"stamp"}, (
+        f"the two-zone probe's parameter does not bind as `stamp` (tokenizer saw "
+        f"{bound or 'nothing'}); spell the cast `CAST(:stamp AS timestamp)`, not "
+        f"`:stamp::timestamp` — the raw statement otherwise reaches Postgres"
+    )
+
 
 async def test_a_stamp_without_an_offset_really_names_two_instants(
     db: AsyncSession, tenant_ctx
@@ -584,8 +608,10 @@ async def test_a_stamp_without_an_offset_really_names_two_instants(
     of this test proved nothing: a ``timestamptz`` bind is a Python-side decision
     (asyncpg encodes an instant and Postgres has nothing left to interpret), and
     a comparison of two Python strings never reached the database at all. Parsing
-    to a naive ``datetime`` and letting ``::timestamp::timestamptz`` do the zone
-    work is the one formulation where the answer comes from PostgreSQL.
+    to a naive ``datetime`` and letting the ``timestamp`` → ``timestamptz`` casts
+    do the zone work is the one formulation where the answer comes from
+    PostgreSQL — spelled with CAST() so the tokenizer keeps the bind (see
+    ``_TWO_ZONE_PROBE_SQL`` above).
     """
 
     async def utc_instant(wall_clock: str, zone: str) -> str:
@@ -597,12 +623,7 @@ async def test_a_stamp_without_an_offset_really_names_two_instants(
         # cast below provably runs after it (a target list has no order).
         await db.execute(sa.text("SELECT set_config('TimeZone', :tz, true)"), {"tz": zone})
         row = (
-            await db.execute(
-                sa.text(
-                    "SELECT ((:stamp::timestamp)::timestamptz AT TIME ZONE 'UTC')::text"
-                ),
-                {"stamp": naive},
-            )
+            await db.execute(sa.text(_TWO_ZONE_PROBE_SQL), {"stamp": naive})
         ).first()
         return row[0]
 

@@ -32,6 +32,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.platform.models import ScheduledJob
+from app.workers import scheduler_worker
 from app.workers.scheduler_worker import (
     RECURRING_JOBS,
     SchedulerWorker,
@@ -39,6 +40,22 @@ from app.workers.scheduler_worker import (
 )
 
 RUN: list[str] = []
+
+
+@pytest.fixture(autouse=True)
+def _isolate_handler_registry():
+    """``register_job_handler`` writes a MODULE-LEVEL dict that outlives a test.
+
+    Without this, every fake handler registered here — ``test.job`` and the
+    recurring-type stand-in — leaks into the rest of the pytest session, where
+    ``test_worker_deployment_declaration.py`` reads ``scheduler._HANDLERS`` as
+    production truth and reports the leaked ``test.job`` as a handler nothing
+    ever dispatches. Snapshot the registry before each test, restore after.
+    """
+    snapshot = dict(scheduler_worker._HANDLERS)
+    yield
+    scheduler_worker._HANDLERS.clear()
+    scheduler_worker._HANDLERS.update(snapshot)
 
 
 class _NoBus:

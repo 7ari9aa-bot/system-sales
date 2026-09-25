@@ -35,6 +35,16 @@ pytestmark = [pytest.mark.gate]
 BATCH = 100
 MAX_ATTEMPTS = 5
 
+# The probe `test_gate_a_failed_row_is_not_hammered_once_per_drain` runs to read
+# Postgres's own clock against a failed row's cool-down. It must spell its cast
+# the way `_MARK_FAILED_SQL` spells its backoff casts — `CAST(:param AS type)`,
+# never `:param::type`. SQLAlchemy's text() tokenizer does not read a bind that
+# is immediately followed by another colon; it renames the parameter (here to
+# `n`) and the compiled statement goes to Postgres RAW with the `:nb` text in
+# it, where asyncpg refuses it (`syntax error at or near ":"`). The DB-free pin
+# below fails before CI's asyncpg does.
+_COOL_DOWN_PROBE_SQL = "SELECT CAST(:nb AS timestamptz) > now()"
+
 
 class SwitchableBus:
     """An EventBus whose `publish` fails while `up` is False (a Redis outage)."""
@@ -276,9 +286,7 @@ async def test_gate_a_failed_row_is_not_hammered_once_per_drain(
     # now() is transaction time; the schedule must sit in the future so the next
     # drain cannot claim it. Compare against Postgres's own clock.
     is_future = (
-        await db.execute(
-            text("SELECT :nb::timestamptz > now()"), {"nb": not_before}
-        )
+        await db.execute(text(_COOL_DOWN_PROBE_SQL), {"nb": not_before})
     ).scalar_one()
     assert is_future, f"failed row's not_before is not in the future: {not_before}"
     assert attempts == 1
@@ -296,4 +304,22 @@ async def test_gate_a_failed_row_is_not_hammered_once_per_drain(
     assert status2 == "failed", (
         "a not-yet-due failed row was re-queued before its cool-down elapsed — "
         "the P-02 hot loop is back"
+    )
+
+
+def test_the_cool_down_probe_binds_the_parameter_it_is_handed() -> None:
+    """DB-free pin for the probe's cast spelling.
+
+    SQLAlchemy's text() tokenizer refuses a bind followed by another colon, so
+    ``:nb::timestamptz`` is not a cast of ``nb`` — the parameter is renamed to
+    ``n``, the ``nb=`` value is silently dropped, and the raw statement reaches
+    Postgres, which answers ``syntax error at or near ":"`` (asyncpg). The
+    tokenizer is the authority on what the driver will actually be asked to
+    fill; this fails the moment the probe's SQL forgets the CAST spelling.
+    """
+    bound = set(text(_COOL_DOWN_PROBE_SQL)._bindparams)
+    assert bound == {"nb"}, (
+        f"the cool-down probe's parameter does not bind as `nb` (tokenizer saw "
+        f"{bound or 'nothing'}); spell the cast `CAST(:nb AS timestamptz)`, not "
+        f"`:nb::timestamptz` — see _MARK_FAILED_SQL's own comment"
     )

@@ -9,8 +9,8 @@ regression actually slows down unnoticed:
     sellability gate + stock reserve + totals + reservation + outbox)
   * analytics overview             -> analytics.service.revenue_summary
     (gross/refund/net/count/AOV aggregation over the orders created above)
-  * customer 360 read              -> CustomerService.get_360 (profile + recent
-    orders + conversations + LTV + memories fan-out on one screen)
+  * customer 360 read              -> Customer360Service.build (profile + recent
+    orders + payments + conversations + tasks + merged timeline on one screen)
 
 BUDGETS (documented, asserted):
   create_order    p95 <= 300 ms
@@ -44,6 +44,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.analytics.service import revenue_summary
 from app.modules.catalog.service import CatalogService
 from app.modules.customers.service import CustomerService
+from app.modules.customers.timeline import Customer360Service
 from app.modules.inventory.models import Warehouse
 from app.modules.inventory.service import InventoryService
 from app.modules.orders.service import OrderService
@@ -164,7 +165,10 @@ async def test_hot_path_latency_budgets(db, tenant_ctx) -> None:  # noqa: ANN001
 
     # 3) CUSTOMER 360 READ --------------------------------------------------
     async def profile() -> Any:
-        return await CustomerService.get_360(db, tenant_id, customer.id)
+        # The 360 read lives in its own read-model module now; the customers
+        # router (router.py::get_customer_360) serves it through this: profile +
+        # recent orders + payments + conversations + tasks + merged timeline.
+        return await Customer360Service.build(db, tenant_id, customer.id)
 
     profile_samples = await _measure("get_360", profile, iters=READ_ITERS)
     profile_p95 = _percentile(profile_samples, 0.95)
