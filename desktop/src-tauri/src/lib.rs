@@ -18,12 +18,7 @@ impl log::Log for StderrLogger {
             return;
         }
 
-        eprintln!(
-            "[{}] {} {}",
-            record.level(),
-            record.target(),
-            record.args()
-        );
+        eprintln!("[{}] {} {}", record.level(), record.target(), record.args());
     }
 
     fn flush(&self) {}
@@ -44,7 +39,10 @@ pub fn run() {
     }
 
     if let Err(err) = tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![commands::app_info, commands::log_write])
+        .invoke_handler(tauri::generate_handler![
+            commands::app_info,
+            commands::log_write
+        ])
         .run(tauri::generate_context!())
     {
         eprintln!("Fihrist exited with an error: {err}");

@@ -160,7 +160,10 @@ mod tests {
 
     #[test]
     fn redacts_a_token_inside_a_free_text_value() {
-        let out = redact(&json!({ "detail": ["ok", "decode failed eyJhbGci.eyJzdWI.YQ"] }), 0);
+        let out = redact(
+            &json!({ "detail": ["ok", "decode failed eyJhbGci.eyJzdWI.YQ"] }),
+            0,
+        );
 
         assert_eq!(out["detail"][0], json!("ok"));
         assert_eq!(out["detail"][1], json!(REDACTED));

@@ -60,7 +60,11 @@ pub fn log_write(record: LogRecordIn) {
         "error" => log::Level::Error,
         _ => log::Level::Info,
     };
-    let line = redaction::render(&record.message, &record.fields, record.request_id.as_deref());
+    let line = redaction::render(
+        &record.message,
+        &record.fields,
+        record.request_id.as_deref(),
+    );
 
     log::log!(target: record.sink.as_str(), level, "{line}");
 }
