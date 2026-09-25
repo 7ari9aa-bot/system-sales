@@ -60,9 +60,26 @@ not before. Two of the nine proposed packages would today contain exactly one co
 ### C-D2 — Contract generation depends on my current wave
 
 §7's pipeline (FastAPI → OpenAPI → generated types) only works on routes that declare a
-response model, and measured today: **175 of 185 routes declare none** (the register's
-P8 line said "~45 of 62"; that count is stale — the current one is the number above).
-Generating a client now produces `any` almost everywhere, which §7 then forbids.
+response model. Counted against the live application with `create_app().openapi()` — 245 operations,
+**112 publish a 2xx JSON schema, 133 publish none.**
+
+The two figures this document carried before ("175 of 185" here, "~45 of 62" in the register's P8
+line) were grep counts over lines starting `@router.` in `app/modules/*/router.py`, and they were
+wrong in two directions. **Only 186 of the 242 route decorators in `backend/app` are named
+`@router`** — the other 56 sit on `@tenants_router`, `@templates_router`, `@hierarchy_router`,
+`@sla_router`, `@billing_router`, `@platform_router`, `@analytics_router`, `@webhook_router`,
+`@search_router` and `@public_router`, in files and under names the pattern never looked at. And the
+pattern counted only `response_model=` on the decorator line, while FastAPI also types a route from
+its return annotation (`-> TaskMutationResult`), which is how `operations` reads as 10 typed to a
+grep and 20 typed in the published document.
+
+The desktop session's count (245 operations, 82 typed, §6.1) and mine (245, 112) agree on the
+denominator and disagree on the numerator for that same reason: it counted the decorator argument,
+this counted what OpenAPI publishes. The published schema is what a generator sees, so **112 typed /
+133 untyped of 245** is the number to use — and it should be re-derived from
+`create_app().openapi()` with the routers flattened, never from a filename pattern.
+
+Generating a client now still produces `any` across the majority of the surface, which §7 forbids.
 
 Decision: `desktop/openapi.lock.json` holds a pinned export of the spec plus its
 SHA-256. A CI job regenerates it and fails on drift, and a second check refuses generated
@@ -201,3 +218,58 @@ makes the rest cheap. Two changes:
    the "no floating `latest` in CI" rule in the same section is the one that matters, so
    the first commit should be a lockfile plus a `rust-toolchain.toml`, and versions
    corrected in it rather than in prose.
+
+---
+
+## 6. Requests to the API team (desktop → Session A) — append-only
+
+Added by the desktop session on 2026-09-25, per §4. §4 promises this table under a
+`## 5. Requests to the API team` heading; §5 was taken by the execution order, so it
+is §6. Every row names the evidence in the current tree, not an assumption.
+
+| # | Endpoint / artifact | What is needed | Justification | Blocked desktop work |
+|---|---|---|---|---|
+| R1 | `desktop/openapi.lock.json` | A pinned OpenAPI export + SHA-256 produced by a job on the API side, and a drift check. No generator exists today: `backend/scripts/` has no OpenAPI export (0 matches for `openapi` in `*.py` there) and `ci.yml` has no such step | C-D2 | Phase 1 contract tests; the "generated `any` fails CI" rule cannot be enforced without an input |
+| R2 | the `IDEMPOTENT_PATHS` prefixes | A machine-readable per-operation idempotency marker in the OpenAPI document, plus `Idempotency-Replayed` declared as a response header | `backend/app/core/idempotency.py:117-128` — the allow-list is 7 prefixes (`/orders`, `/billing`, `/marketing/campaigns`, `/marketing/touchpoints`, `/conversations`, `/privacy/data-requests`, `/workflows/executions`), and a replay is already distinguishable by header | Phase 3 offline-mutation ADR: which writes may be deferred, and how a queued attempt learns it was a replay |
+| R3 | `GET /api/v1/search` | Route `SearchPort` through the `tsvector` columns that now exist, add `entity_type` filter + rank ordering + cursor paging | `backend/app/core/search.py:57` says out loud that this is *not* full-text ("no tsvector"); the generated columns are in `ai/models.py:179-186` and `catalog/models.py:79-87`; the route is `operations/router.py:53,147` with `response_model=list[SearchHit]` | Phase 4 ⌘K and inbox search parity; today local SQLite FTS is the fast path by necessity, not by preference |
+| R4 | `GET /api/v1/realtime/stream` | `Last-Event-ID` / cursor replay (register line P9) | C-D3's stated hard dependency | Honest gap detection. Until then the event plane re-queries and says so, which is the behaviour Phase 1 will ship |
+| R5 | realtime auth dependency | A short-lived stream-scoped credential instead of the long-lived access token accepted in `?token=` | `backend/app/modules/realtime/router.py:51-59`, and `:61-65` noting a removed user kept the firehose "for the whole token lifetime" | Nothing functionally — the desktop sends a header from Rust (ADR-059). This is a security request, and it is the web client's exposure too |
+| R6 | error contract | A published list of `error.code` values with their `retryable` mapping (an enum in the OpenAPI components, or a doc both clients read) | §3.1 and §4.5: the UI branches on `code`, so the code set is part of the contract | Phase 1 error mapping is today a per-case guess; every feature's error state inherits that guess |
+| R7 | versioned entities | Which routes return a strong `ETag` and accept `If-Match`, stated per route | `backend/app/core/idempotency.py:684-767` shows the mechanism; only reading the source reveals which entities are versioned | Phase 4 optimistic UI reconciliation |
+| R8 | `GET /auth/me` | The actor's resolved permission codes (`pii:read`, `settings:write`, …) beside `role_code` | `backend/app/modules/identity/router.py:113-129` returns `id/email/full_name/is_platform_admin/tenants[]{id,name,slug,role_code}` — no permission set | A deny-by-default UI has to hide affordances it cannot yet enumerate; today the client would have to invent the mapping |
+
+### 6.1 Measurements that have moved since this review was written
+
+* **Route coverage.** "175 of 185 routes declare no `response_model`" and the
+  register's older "~45 of 62" (`docs/GAP_REGISTER.md:431`) both disagree with the
+  tree as counted on 2026-09-25: **245 route decorators, 82 with `response_model`,
+  163 without** (per module: `platform` 29/29, `operations` 20/20, `segments` 6/6,
+  `identity` 21/32, `customers` 5/19, `marketing` 1/17, `ai` 0/24,
+  `conversations` 0/22, `catalog` 0/18, `orders` 0/15). Method: every
+  `@router.{get,post,put,patch,delete}` decorator under `backend/app`, checked for
+  `response_model` in its own decorator block. The conclusion of C-D2 is unchanged;
+  the number wants a script that reads `app.openapi()` so the three figures stop
+  drifting apart.
+* **`/auth/switch-tenant` takes `tenant_id` as a query parameter**
+  (`identity/router.py:132-135`), while the guard named in §3.3
+  (`tests/test_automation_routes.py:205-213`) asserts `PREFIX = "/api/v1/automation"`
+  only — so the invariant "a tenant is never a parameter" is pinned in one slice of
+  the surface, not on `/auth`. Reported, not fixed; the desktop treats `tenant_id`
+  as an opaque id copied from `/auth/me` and never as input.
+* **Refresh tokens rotate, and reuse of a revoked token revokes the whole family**
+  (`backend/app/modules/identity/service.py:383-399`). C-D4's token design is right,
+  and this raises the stakes: two windows refreshing from a stale vault copy log the
+  user out everywhere, so Phase 1's Stronghold access needs a single-flight refresh
+  across windows and processes, not a per-window one.
+* **No WebSocket, no PKCE, no OpenSearch: confirmed still true.** Grep over
+  `backend/app` returns 0 hits for `websocket`, 0 for
+  `pkce|code_verifier|authorization_code`, and the only `text/event-stream` routes
+  are the two named in C-D3 (`realtime/router.py:406`, `conversations/router.py:688`).
+* **Toolchain versions in §2 of the original doc.** Resolved against the registries
+  on 2026-09-25 and pinned in `desktop/package.json` + `desktop/rust-toolchain.toml`:
+  Tauri crate 2.11.6 / CLI 2.11.5 / api 2.11.1, Vite 8.3.1, React 19.3.0,
+  TanStack Query 5.103.2, Rust stable 1.98.1 (Tauri's MSRV is 1.77.2). One real
+  correction: **TypeScript is pinned to 5.9.3, not `latest` (7.0.2)**, because
+  `typescript-eslint` 8.70.1 declares `>=4.8.4 <6.1.0` — TS 7 would take the type-aware
+  boundary lint away.
+
