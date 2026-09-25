@@ -195,8 +195,17 @@ class CustomerService:
 
         Tombstoned (soft-deleted) customers are always excluded. ``tag``
         narrows to customers carrying that tag. Pass before_created_at +
-        before_id for stable keyset pages; the keyset path orders by
-        (created_at, id) so cursors stay consistent.
+        before_id for stable keyset pages.
+
+        P7 — ONE sort key for every page: ``(created_at DESC, id DESC)``. The
+        cursor is a ``(created_at, id)`` position (``core/pagination.py``), so
+        the keyset predicate below only means anything while the ORDER BY breaks
+        its tie on ``id`` too. This used to order the uncursed page by ``name``,
+        which made page 1's boundary row and page 2's ``<`` comparison agree on
+        nothing: customers sharing a ``created_at`` repeated on the next page and
+        whatever slid past the boundary was never returned. ``name`` is not
+        unique and the tie does happen in practice — a CSV import or a webhook
+        burst stamps rows in one transaction.
         """
         stmt = select(Customer).where(
             Customer.tenant_id == tenant_id,
@@ -232,9 +241,7 @@ class CustomerService:
                 tuple_(Customer.created_at, Customer.id)
                 < tuple_(before_created_at, before_id)
             )
-            stmt = stmt.order_by(Customer.created_at.desc(), Customer.id.desc())
-        else:
-            stmt = stmt.order_by(Customer.created_at.desc(), Customer.name.asc())
+        stmt = stmt.order_by(Customer.created_at.desc(), Customer.id.desc())
         stmt = stmt.limit(limit).offset(offset)
         return list((await session.execute(stmt)).scalars().all())
 

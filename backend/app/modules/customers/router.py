@@ -7,7 +7,6 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Response
-from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.core.contact_norm import normalize_email, normalize_phone
@@ -21,9 +20,19 @@ from app.core.idempotency import (
 from app.core.pagination import decode_cursor, page_slice
 from app.core.secrets import encrypt_credentials_dict
 from app.modules.billing.service import EntitlementService
+from app.modules.customers import schemas
+from app.modules.customers.schemas import (
+    ArchiveBody,
+    ContactIssueResolution,
+    CustomerUpdate,
+    IntegrationBody,
+    MergeBody,
+    NoteBody,
+    TagBody,
+)
 from app.modules.customers.service import CustomerService
 from app.modules.customers.timeline import Customer360Service
-from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
+from app.modules.identity.deps import TenantContext, require_permission
 from app.modules.identity.models import Invitation, Role
 from app.modules.platform.models import Integration
 
@@ -36,6 +45,14 @@ platform_router = APIRouter(tags=["platform"])
 # tests/test_route_parameter_declarations.py.
 
 WriteCtx = Annotated[TenantContext, Depends(require_permission("customers:write"))]
+# P4 — the seeded matrix (scripts/provision.py ROLE_MATRIX) grants
+# ``customers:read`` and ``customers:write`` as separate codes, so a read that
+# resolved tenancy only (``TenantCtxDep``) let any member of the tenant pull the
+# whole customer book. The five customer reads are gated on the read code now;
+# the settings-screen read below is gated on ``settings:read`` for the same
+# reason — its three siblings in this file already required ``settings:write``.
+ReadCtx = Annotated[TenantContext, Depends(require_permission("customers:read"))]
+SettingsReadCtx = Annotated[TenantContext, Depends(require_permission("settings:read"))]
 
 # The contact report renames a phone before it reports it, and §146 redacts by
 # FIELD NAME — so the renamed ones have to be listed alongside PII_FIELDS.
@@ -52,16 +69,16 @@ def _customer_summary(customer, *, permission_codes: set[str] | None = None) -> 
         "phone": customer.phone,
         "email": customer.email,
         "lifetime_value": str(customer.lifetime_value),
-        "is_blocked": customer.is_blocked,
+        "is_blocked": bool(customer.is_blocked),
     }
     if permission_codes is None:
         return raw
     return redact_customer(raw, permission_codes=permission_codes)
 
 
-@router.get("/customers")
+@router.get("/customers", response_model=schemas.CustomerList)
 async def list_customers(
-    ctx: TenantCtxDep,
+    ctx: ReadCtx,
     search: str | None = None,
     tag: str | None = None,
     cursor: str | None = None,
@@ -87,7 +104,7 @@ async def list_customers(
     }
 
 
-@router.get("/customers/contact-data-issues")
+@router.get("/customers/contact-data-issues", response_model=schemas.ContactIssueList)
 async def list_contact_data_issues(
     ctx: WriteCtx,
     limit: Annotated[int, Query(ge=1, le=500)] = 200,
@@ -123,15 +140,9 @@ def _redact_issue_item(item: dict, ctx: TenantContext) -> dict:
     )
 
 
-class ContactIssueResolution(BaseModel):
-    issue: str = Field(min_length=1, max_length=64)
-    resolution: str = Field(min_length=1, max_length=32)
-    # Only ``correct`` on a legacy-default issue uses it; everything else is
-    # refused by the service, including any idea of merging here.
-    phone: str | None = Field(default=None, max_length=31)
-
-
-@router.post("/customers/{customer_id}/contact-issue/resolve")
+@router.post(
+    "/customers/{customer_id}/contact-issue/resolve", response_model=schemas.ContactIssue
+)
 async def resolve_contact_issue(
     customer_id: UUID,
     body: ContactIssueResolution,
@@ -160,8 +171,8 @@ async def resolve_contact_issue(
     return _redact_issue_item(item, ctx)
 
 
-@router.get("/customers/{customer_id}")
-async def get_customer(ctx: TenantCtxDep, customer_id: UUID, response: Response):
+@router.get("/customers/{customer_id}", response_model=schemas.CustomerDetail)
+async def get_customer(ctx: ReadCtx, customer_id: UUID, response: Response):
     customer = await CustomerService.get(ctx.session, ctx.tenant_id, customer_id)
     tags = await CustomerService.list_tags(ctx.session, ctx.tenant_id, customer_id)
     identities = await CustomerService.list_identities(
@@ -180,7 +191,7 @@ async def get_customer(ctx: TenantCtxDep, customer_id: UUID, response: Response)
         "locale": customer.locale,
         "version": customer.version,
         "lifetime_value": str(customer.lifetime_value),
-        "is_blocked": customer.is_blocked,
+        "is_blocked": bool(customer.is_blocked),
         "extra": customer.extra or {},
         "deleted_at": customer.deleted_at.isoformat() if customer.deleted_at else None,
         "created_at": customer.created_at.isoformat() if customer.created_at else None,
@@ -216,9 +227,9 @@ async def get_customer(ctx: TenantCtxDep, customer_id: UUID, response: Response)
     }
 
 
-@router.get("/customers/{customer_id}/360")
+@router.get("/customers/{customer_id}/360", response_model=schemas.Customer360)
 async def get_customer_360(
-    ctx: TenantCtxDep,
+    ctx: ReadCtx,
     customer_id: UUID,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     timeline_limit: Annotated[int, Query(ge=1, le=200)] = 60,
@@ -232,14 +243,6 @@ async def get_customer_360(
         limit=limit,
         timeline_limit=timeline_limit,
     )
-
-
-class CustomerUpdate(BaseModel):
-    name: str | None = Field(default=None, min_length=1, max_length=255)
-    phone: str | None = Field(default=None, max_length=31)
-    email: str | None = Field(default=None, max_length=320)
-    locale: str | None = Field(default=None, max_length=15)
-    extra: dict | None = None
 
 
 def _canonicalize_contact_fields(fields: dict) -> dict:
@@ -262,7 +265,7 @@ def _canonicalize_contact_fields(fields: dict) -> dict:
     return fields
 
 
-@router.patch("/customers/{customer_id}")
+@router.patch("/customers/{customer_id}", response_model=schemas.CustomerSummary)
 async def update_customer(
     customer_id: UUID,
     body: CustomerUpdate,
@@ -294,27 +297,26 @@ async def update_customer(
     return _customer_summary(customer, permission_codes=ctx.permission_codes)
 
 
-@router.post("/customers/{customer_id}/block")
+@router.post("/customers/{customer_id}/block", response_model=schemas.BlockState)
 async def block_customer(customer_id: UUID, ctx: WriteCtx):
     customer = await CustomerService.set_blocked(
         ctx.session, ctx.tenant_id, customer_id, blocked=True
     )
-    return {"id": str(customer.id), "is_blocked": customer.is_blocked}
+    return {"id": str(customer.id), "is_blocked": bool(customer.is_blocked)}
 
 
-@router.post("/customers/{customer_id}/unblock")
+@router.post("/customers/{customer_id}/unblock", response_model=schemas.BlockState)
 async def unblock_customer(customer_id: UUID, ctx: WriteCtx):
     customer = await CustomerService.set_blocked(
         ctx.session, ctx.tenant_id, customer_id, blocked=False
     )
-    return {"id": str(customer.id), "is_blocked": customer.is_blocked}
+    return {"id": str(customer.id), "is_blocked": bool(customer.is_blocked)}
 
 
-class ArchiveBody(BaseModel):
-    reason: str | None = Field(default=None, max_length=255)
 
 
-@router.post("/customers/{customer_id}/archive")
+
+@router.post("/customers/{customer_id}/archive", response_model=schemas.Archived)
 async def archive_customer(
     customer_id: UUID,
     ctx: WriteCtx,
@@ -330,12 +332,9 @@ async def archive_customer(
     return {"id": str(customer.id), "deleted_at": customer.deleted_at.isoformat()}
 
 
-class MergeBody(BaseModel):
-    source_customer_id: UUID
-    target_customer_id: UUID
 
 
-@router.post("/customers/merge")
+@router.post("/customers/merge", response_model=schemas.CustomerSummary)
 async def merge_customers(
     body: MergeBody,
     ctx: WriteCtx,
@@ -357,17 +356,19 @@ async def merge_customers(
     return _customer_summary(customer, permission_codes=ctx.permission_codes)
 
 
-class TagBody(BaseModel):
-    name: str = Field(min_length=1, max_length=63)
 
 
-@router.get("/customers/{customer_id}/tags")
-async def list_customer_tags(ctx: TenantCtxDep, customer_id: UUID):
+@router.get("/customers/{customer_id}/tags", response_model=list[schemas.TagOut])
+async def list_customer_tags(ctx: ReadCtx, customer_id: UUID):
     tags = await CustomerService.list_tags(ctx.session, ctx.tenant_id, customer_id)
     return [{"id": str(t.id), "name": t.name, "color": t.color} for t in tags]
 
 
-@router.post("/customers/{customer_id}/tags", status_code=201)
+@router.post(
+    "/customers/{customer_id}/tags",
+    status_code=201,
+    response_model=schemas.TagOut,
+)
 async def add_customer_tag(
     customer_id: UUID, body: TagBody, ctx: WriteCtx
 ):
@@ -378,7 +379,10 @@ async def add_customer_tag(
     return {"id": str(tag.id), "name": tag.name, "color": tag.color}
 
 
-@router.delete("/customers/{customer_id}/tags/{tag_name}", status_code=204)
+@router.delete(
+    "/customers/{customer_id}/tags/{tag_name}",
+    status_code=204,
+)
 async def remove_customer_tag(
     customer_id: UUID, tag_name: str, ctx: WriteCtx
 ):
@@ -386,12 +390,10 @@ async def remove_customer_tag(
     return Response(status_code=204)
 
 
-class NoteBody(BaseModel):
-    body: str = Field(min_length=1)
 
 
-@router.get("/customers/{customer_id}/notes")
-async def list_customer_notes(ctx: TenantCtxDep, customer_id: UUID):
+@router.get("/customers/{customer_id}/notes", response_model=list[schemas.NoteOut])
+async def list_customer_notes(ctx: ReadCtx, customer_id: UUID):
     notes = await CustomerService.list_notes(ctx.session, ctx.tenant_id, customer_id)
     return [
         {
@@ -404,7 +406,11 @@ async def list_customer_notes(ctx: TenantCtxDep, customer_id: UUID):
     ]
 
 
-@router.post("/customers/{customer_id}/notes", status_code=201)
+@router.post(
+    "/customers/{customer_id}/notes",
+    status_code=201,
+    response_model=schemas.NoteCreated,
+)
 async def add_customer_note(
     customer_id: UUID, body: NoteBody, ctx: WriteCtx
 ):
@@ -414,12 +420,6 @@ async def add_customer_note(
     return {"id": str(note.id), "body": note.body}
 
 
-class IntegrationBody(BaseModel):
-    provider: str = Field(max_length=63)
-    kind: str = "channel"
-    config: dict = {}
-    credentials: dict = {}
-    status: str = "connected"
 
 
 # §145: pre-lifecycle status values and the canonical states the migration
@@ -430,7 +430,7 @@ class IntegrationBody(BaseModel):
 _LEGACY_STATUS_ALIASES = {"connected": "active", "error": "reauth_required"}
 
 
-@platform_router.get("/invitations")
+@platform_router.get("/invitations", response_model=list[schemas.PlatformInvitation])
 async def list_invitations(
     ctx: TenantContext = Depends(require_permission("settings:write")),
 ):
@@ -454,7 +454,10 @@ async def list_invitations(
     ]
 
 
-@platform_router.delete("/invitations/{invitation_id}", status_code=204)
+@platform_router.delete(
+    "/invitations/{invitation_id}",
+    status_code=204,
+)
 async def revoke_invitation(
     invitation_id: UUID,
     ctx: TenantContext = Depends(require_permission("settings:write")),
@@ -473,8 +476,8 @@ async def revoke_invitation(
     return Response(status_code=204)
 
 
-@platform_router.get("/integrations")
-async def list_integrations(ctx: TenantCtxDep):
+@platform_router.get("/integrations", response_model=list[schemas.IntegrationOut])
+async def list_integrations(ctx: SettingsReadCtx):
     rows = (
         (
             await ctx.session.execute(
@@ -489,7 +492,11 @@ async def list_integrations(ctx: TenantCtxDep):
     ]
 
 
-@platform_router.post("/integrations", status_code=201)
+@platform_router.post(
+    "/integrations",
+    status_code=201,
+    response_model=schemas.IntegrationUpserted,
+)
 async def upsert_integration(
     body: IntegrationBody,
     ctx: TenantContext = Depends(require_permission("settings:write")),
