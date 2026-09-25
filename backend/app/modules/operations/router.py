@@ -1,4 +1,9 @@
-"""OPERATIONS routes — tasks (§83) + search (§45) + SLA (§46)."""
+"""OPERATIONS routes — tasks (§83) + search (§45) + SLA (§46).
+
+Every route declares ``response_model`` from :mod:`app.modules.operations.schemas`
+— the contract, not a prose description of one — and every query parameter that
+pages, multiplies or dates is bounded at the edge (register P7).
+"""
 
 from __future__ import annotations
 
@@ -8,13 +13,39 @@ from typing import Annotated
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.core.search import get_search
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
 from app.modules.operations.models import Task
+from app.modules.operations.schemas import (
+    AlertDestination,
+    BusinessCalendarList,
+    BusinessCalendarOut,
+    BusinessCalendarUpsert,
+    FairnessBucket,
+    FairnessCheckResult,
+    JobList,
+    JobOut,
+    ScheduledJobReschedule,
+    ScheduledJobRescheduleResult,
+    ScheduledJobStatusResult,
+    SearchHit,
+    SLAPolicyList,
+    SLAPolicyOut,
+    SLAPolicyUpsert,
+    SLARiskItem,
+    SLARiskList,
+    SLODefinitionList,
+    SLODefinitionOut,
+    SLOMeasurement,
+    SLOMeasurementList,
+    TaskCreate,
+    TaskMutationResult,
+    TaskSummary,
+    TaskUpdate,
+)
 from app.modules.operations.task_service import TaskService  # §13-14
 from app.modules.platform.models import Job
 
@@ -30,60 +61,52 @@ SettingsCtx = Annotated[TenantContext, Depends(require_permission("settings:writ
 # gate in tests/test_route_parameter_declarations.py.
 
 
-class TaskCreate(BaseModel):
-    title: str = Field(min_length=1, max_length=255)
-    description: str | None = None
-    assignee_user_id: uuid.UUID | None = None
-    due_date: str | None = None
-    priority: int = 2
-
-
-class TaskUpdate(BaseModel):
-    status: str | None = Field(default=None, pattern="^(todo|in_progress|done|cancelled)$")
-    assignee_user_id: uuid.UUID | None = None
-    priority: int | None = None
-
-
-@router.get("/tasks")
+@router.get("/tasks", response_model=list[TaskSummary])
 async def list_tasks(
     ctx: TenantCtxDep,
     status: str | None = None,
     mine: bool = False,
     customer_id: uuid.UUID | None = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ):
-    from sqlalchemy import select
+    """The tenant's tasks, newest first.
 
+    ``customer_id`` answers "what is owed on this customer?": tasks attach
+    polymorphically, so a customer's tasks are the ones whose related entity
+    points at that customer.
+    """
     stmt = select(Task).where(Task.tenant_id == ctx.tenant_id)
     if status:
         stmt = stmt.where(Task.status == status)
     if mine:
         stmt = stmt.where(Task.assignee_user_id == ctx.user.id)
     if customer_id is not None:
-        # Customer 360: tasks attach polymorphically, so a customer's tasks
-        # are the ones whose related entity points at that customer.
         stmt = stmt.where(
             Task.related_entity_type == "customer",
             Task.related_entity_id == customer_id,
         )
     rows = (
-        await ctx.session.execute(stmt.order_by(Task.created_at.desc()).limit(100))
+        await ctx.session.execute(
+            stmt.order_by(Task.created_at.desc(), Task.id.desc()).limit(limit).offset(offset)
+        )
     ).scalars().all()
     return [
-        {
-            "id": str(t.id),
-            "title": t.title,
-            "status": t.status,
-            "priority": t.priority,
-            "assignee_user_id": str(t.assignee_user_id) if t.assignee_user_id else None,
-            "due_date": t.due_date.isoformat() if t.due_date else None,
-            "source": t.source,
-        }
+        TaskSummary(
+            id=t.id,
+            title=t.title,
+            status=t.status,
+            priority=t.priority,
+            assignee_user_id=t.assignee_user_id,
+            due_date=t.due_date,
+            source=t.source,
+        )
         for t in rows
     ]
 
 
-@router.post("/tasks", status_code=201)
-async def create_task(ctx: TenantCtxDep, body: TaskCreate):
+@router.post("/tasks", status_code=201, response_model=TaskMutationResult)
+async def create_task(ctx: TenantCtxDep, body: TaskCreate) -> TaskMutationResult:
     # §13-14: route through TaskService — no direct model construction.
     task = await TaskService.create_task(
         ctx.session,
@@ -91,45 +114,56 @@ async def create_task(ctx: TenantCtxDep, body: TaskCreate):
         title=body.title,
         description=body.description,
         assignee_user_id=body.assignee_user_id,
+        due_date=body.due_date,
         priority=body.priority,
         source="human",
     )
-    return {"id": str(task.id), "status": task.status}
+    return TaskMutationResult(id=task.id, status=task.status)
 
 
-@router.post("/tasks/{task_id}/status")
-async def update_task_status(ctx: TenantCtxDep, task_id: uuid.UUID, body: TaskUpdate):
-    task = (
-        await ctx.session.execute(
-            select(Task).where(Task.tenant_id == ctx.tenant_id, Task.id == task_id)
-        )
-    ).scalar_one_or_none()
-    if task is None:
-        from app.core.errors import NotFoundError
+@router.post("/tasks/{task_id}/status", response_model=TaskMutationResult)
+async def update_task_status(
+    ctx: TenantCtxDep, task_id: uuid.UUID, body: TaskUpdate
+) -> TaskMutationResult:
+    """Move a task: status, assignee, priority — any combination.
 
-        raise NotFoundError("task not found")
-    if body.status:
-        task.status = body.status
-    if body.priority is not None:
-        task.priority = body.priority
-    return {"id": str(task.id), "status": task.status}
+    §13-14 again. This route used to run its own ``select(Task)`` and apply
+    ``status``/``priority`` by hand, which cost it two things the service
+    already enforced: ``assignee_user_id`` was accepted and silently discarded,
+    and ``priority`` had no bound on the write path (``create`` bounded it at
+    1..3, ``update`` did not).
+    """
+    task = await TaskService.update_status(
+        ctx.session,
+        ctx.tenant_id,
+        task_id,
+        status=body.status,
+        assignee_user_id=body.assignee_user_id,
+        priority=body.priority,
+    )
+    return TaskMutationResult(id=task.id, status=task.status)
 
 
-@search_router.get("")
+@search_router.get("", response_model=list[SearchHit])
 async def global_search(
     ctx: TenantCtxDep,
     q: Annotated[str, Query(min_length=1, max_length=200)],
-    limit: int = 20,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ):
-    """§45: unified search through the SearchPort (engine-agnostic)."""
+    """§45: unified search through the SearchPort (engine-agnostic).
+
+    ``limit`` is bounded on both sides: an unbounded one is an amplification
+    knob on the most-called endpoint an agent has, and a negative one reached
+    the backend as ``LIMIT -1``.
+    """
     hits = await get_search().search(ctx.session, ctx.tenant_id, q, limit=limit)
     return [
-        {
-            "entity_type": h.entity_type,
-            "entity_id": str(h.entity_id),
-            "title": h.title,
-            "snippet": h.snippet,
-        }
+        SearchHit(
+            entity_type=h.entity_type,
+            entity_id=h.entity_id,
+            title=h.title,
+            snippet=h.snippet,
+        )
         for h in hits
     ]
 
@@ -139,46 +173,8 @@ async def global_search(
 # Without these routes a tenant cannot configure an SLA at all, so the clock in
 # operations/sla.py would never have a policy to apply.
 
-class SLAPolicyUpsert(BaseModel):
-    name: str = Field(min_length=1, max_length=255)
-    first_response_minutes: int = Field(gt=0, le=60 * 24 * 30)
-    resolution_minutes: int = Field(gt=0, le=60 * 24 * 365)
-    applies_to_channel: str | None = Field(default=None, max_length=31)
-    is_default: bool = False
 
-
-class BusinessCalendarUpsert(BaseModel):
-    name: str = Field(min_length=1, max_length=255)
-    timezone: str = Field(default="Africa/Cairo", max_length=63)
-    hours: dict = Field(default_factory=dict)
-    holidays: list = Field(default_factory=list)
-    is_default: bool = False
-
-
-def _policy_out(p) -> dict:
-    return {
-        "id": str(p.id),
-        "name": p.name,
-        "first_response_minutes": p.first_response_minutes,
-        "resolution_minutes": p.resolution_minutes,
-        "applies_to_channel": p.applies_to_channel,
-        "is_default": p.is_default,
-        "status": p.status,
-    }
-
-
-def _calendar_out(c) -> dict:
-    return {
-        "id": str(c.id),
-        "name": c.name,
-        "timezone": c.timezone,
-        "hours": c.hours or {},
-        "holidays": c.holidays or [],
-        "is_default": c.is_default,
-    }
-
-
-@sla_router.get("/policies")
+@sla_router.get("/policies", response_model=SLAPolicyList)
 async def list_sla_policies(ctx: TenantCtxDep):
     from app.modules.operations.models import SLAPolicy
 
@@ -187,13 +183,13 @@ async def list_sla_policies(ctx: TenantCtxDep):
             select(SLAPolicy).where(SLAPolicy.tenant_id == ctx.tenant_id)
         )
     ).scalars().all()
-    return {"items": [_policy_out(p) for p in rows]}
+    return SLAPolicyList(items=[_policy_out(p) for p in rows])
 
 
-@sla_router.put("/policies", status_code=201)
+@sla_router.put("/policies", status_code=201, response_model=SLAPolicyOut)
 async def upsert_sla_policy(
     body: SLAPolicyUpsert,
-    ctx: TenantContext = Depends(require_permission("settings:write")),
+    ctx: SettingsCtx,
 ):
     """Create or replace the tenant's SLA policy of the same name.
 
@@ -243,7 +239,7 @@ async def upsert_sla_policy(
     return _policy_out(policy)
 
 
-@sla_router.get("/calendars")
+@sla_router.get("/calendars", response_model=BusinessCalendarList)
 async def list_business_calendars(ctx: TenantCtxDep):
     from app.modules.operations.models import BusinessCalendar
 
@@ -252,13 +248,13 @@ async def list_business_calendars(ctx: TenantCtxDep):
             select(BusinessCalendar).where(BusinessCalendar.tenant_id == ctx.tenant_id)
         )
     ).scalars().all()
-    return {"items": [_calendar_out(c) for c in rows]}
+    return BusinessCalendarList(items=[_calendar_out(c) for c in rows])
 
 
-@sla_router.put("/calendars", status_code=201)
+@sla_router.put("/calendars", status_code=201, response_model=BusinessCalendarOut)
 async def upsert_business_calendar(
     body: BusinessCalendarUpsert,
-    ctx: TenantContext = Depends(require_permission("settings:write")),
+    ctx: SettingsCtx,
 ):
     """Configure opening hours. A malformed calendar is refused here rather
     than silently degrading the SLA clock to wall-clock time at run time."""
@@ -312,7 +308,7 @@ async def upsert_business_calendar(
     return _calendar_out(calendar)
 
 
-@sla_router.get("/risk")
+@sla_router.get("/risk", response_model=SLARiskList)
 async def sla_risk(ctx: TenantCtxDep, limit: Annotated[int, Query(ge=1, le=200)] = 50):
     """Conversations whose first-response SLA is running, breached or at risk.
 
@@ -342,23 +338,23 @@ async def sla_risk(ctx: TenantCtxDep, limit: Annotated[int, Query(ge=1, le=200)]
         if row.deadline_at is not None:
             remaining = int((row.deadline_at - now).total_seconds() // 60)
         items.append(
-            {
-                "id": str(row.id),
-                "conversation_id": str(row.conversation_id),
-                "kind": row.kind,
-                "status": row.status,
-                "deadline_at": row.deadline_at.isoformat() if row.deadline_at else None,
-                "minutes_remaining": remaining,
+            SLARiskItem(
+                id=row.id,
+                conversation_id=row.conversation_id,
+                kind=row.kind,
+                status=row.status,
+                deadline_at=row.deadline_at,
+                minutes_remaining=remaining,
                 # "at risk" = still running but under a quarter of the window
                 # left, which is what an agent needs to triage by.
-                "at_risk": bool(
+                at_risk=bool(
                     row.status == "running"
                     and remaining is not None
                     and remaining <= 15
                 ),
-            }
+            )
         )
-    return {"items": items, "timezone": clock.timezone_name}
+    return SLARiskList(items=items, timezone=clock.timezone_name)
 
 
 # ---------- Jobs (§84) ----------
@@ -388,21 +384,44 @@ def job_can_cancel(status: str) -> bool:
     return status not in JOB_TERMINAL_STATUSES
 
 
-def _job_out(job: Job) -> dict:
-    return {
-        "id": str(job.id),
-        "kind": job.kind,
-        "status": job.status,
-        "progress": job.progress,
-        "attempts": job.attempts,
-        "max_attempts": job.max_attempts,
-        "last_error": job.last_error,
-        "result": job.result,
-        "correlation_id": job.correlation_id,
-        "actor_user_id": str(job.actor_user_id) if job.actor_user_id else None,
-        "created_at": job.created_at.isoformat() if job.created_at else None,
-        "updated_at": job.updated_at.isoformat() if job.updated_at else None,
-    }
+def _policy_out(policy) -> SLAPolicyOut:
+    return SLAPolicyOut(
+        id=policy.id,
+        name=policy.name,
+        first_response_minutes=policy.first_response_minutes,
+        resolution_minutes=policy.resolution_minutes,
+        applies_to_channel=policy.applies_to_channel,
+        is_default=policy.is_default,
+        status=policy.status,
+    )
+
+
+def _calendar_out(calendar) -> BusinessCalendarOut:
+    return BusinessCalendarOut(
+        id=calendar.id,
+        name=calendar.name,
+        timezone=calendar.timezone,
+        hours=calendar.hours or {},
+        holidays=calendar.holidays or [],
+        is_default=calendar.is_default,
+    )
+
+
+def _job_out(job: Job) -> JobOut:
+    return JobOut(
+        id=job.id,
+        kind=job.kind,
+        status=job.status,
+        progress=job.progress,
+        attempts=job.attempts,
+        max_attempts=job.max_attempts,
+        last_error=job.last_error,
+        result=job.result,
+        correlation_id=job.correlation_id,
+        actor_user_id=job.actor_user_id,
+        created_at=job.created_at,
+        updated_at=job.updated_at,
+    )
 
 
 async def _load_job(ctx: TenantContext, job_id: uuid.UUID) -> Job:
@@ -417,12 +436,13 @@ async def _load_job(ctx: TenantContext, job_id: uuid.UUID) -> Job:
     return job
 
 
-@router.get("/jobs")
+@router.get("/jobs", response_model=JobList)
 async def list_jobs(
     ctx: TenantCtxDep,
     status: str | None = None,
     kind: str | None = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ):
     """Newest-first jobs for the tenant, optionally filtered by status/kind."""
     stmt = select(Job).where(Job.tenant_id == ctx.tenant_id)
@@ -431,22 +451,24 @@ async def list_jobs(
     if kind:
         stmt = stmt.where(Job.kind == kind)
     rows = (
-        await ctx.session.execute(stmt.order_by(Job.created_at.desc()).limit(limit))
+        await ctx.session.execute(
+            stmt.order_by(Job.created_at.desc(), Job.id.desc()).limit(limit).offset(offset)
+        )
     ).scalars().all()
-    return {"items": [_job_out(job) for job in rows]}
+    return JobList(items=[_job_out(job) for job in rows])
 
 
-@router.get("/jobs/{job_id}")
-async def get_job(ctx: TenantCtxDep, job_id: uuid.UUID):
+@router.get("/jobs/{job_id}", response_model=JobOut)
+async def get_job(ctx: TenantCtxDep, job_id: uuid.UUID) -> JobOut:
     """One job's full record — status, progress, attempts, error and result."""
     return _job_out(await _load_job(ctx, job_id))
 
 
-@router.post("/jobs/{job_id}/retry")
+@router.post("/jobs/{job_id}/retry", response_model=JobOut)
 async def retry_job(
     job_id: uuid.UUID,
-    ctx: TenantContext = Depends(require_permission("settings:write")),
-):
+    ctx: SettingsCtx,
+) -> JobOut:
     """Re-queue a job that stopped without succeeding."""
     job = await _load_job(ctx, job_id)
     if not job_can_retry(job.status):
@@ -466,11 +488,11 @@ async def retry_job(
     return _job_out(job)
 
 
-@router.post("/jobs/{job_id}/cancel")
+@router.post("/jobs/{job_id}/cancel", response_model=JobOut)
 async def cancel_job(
     job_id: uuid.UUID,
-    ctx: TenantContext = Depends(require_permission("settings:write")),
-):
+    ctx: SettingsCtx,
+) -> JobOut:
     """Cancel a job that has not reached a terminal state."""
     job = await _load_job(ctx, job_id)
     if not job_can_cancel(job.status):
@@ -488,15 +510,19 @@ async def cancel_job(
 # Resource quotas: a single tenant cannot starve the platform.
 
 
-@router.get("/fairness/usage")
+@router.get("/fairness/usage", response_model=dict[str, FairnessBucket])
 async def fairness_usage(ctx: TenantCtxDep):
-    """§144: current tenant's resource usage against fairness budgets."""
+    """§144: current tenant's resource usage against fairness budgets.
+
+    Keyed by resource name, so the value schema is the contract; the key set is
+    ``ResourceType``'s, which is why no per-resource field is declared here.
+    """
     from app.core.fairness import get_usage
 
     return await get_usage(ctx.tenant_id)
 
 
-@router.get("/fairness/check")
+@router.get("/fairness/check", response_model=FairnessCheckResult)
 async def fairness_check(
     ctx: TenantCtxDep,
     resource: Annotated[
@@ -505,9 +531,14 @@ async def fairness_check(
             description="ai_tokens | messages_outbound | storage_bytes | worker_seconds",
         ),
     ],
-    units: Annotated[int, Query(ge=1)] = 1,
+    units: Annotated[int, Query(ge=1, le=1_000_000)] = 1,
 ):
-    """§144: pre-flight check — does the tenant have `units` remaining?"""
+    """§144: pre-flight check — does the tenant have `units` remaining?
+
+    ``units`` is bounded above: it multiplies the ask, and an unbounded one lets
+    any caller ask the budget check "may I spend 10^18 storage bytes?" in a
+    single request.
+    """
     from app.core.fairness import ResourceType, check_budget
 
     try:
@@ -518,13 +549,13 @@ async def fairness_check(
             details={"valid_types": [r.value for r in ResourceType]},
         ) from err
     result = await check_budget(ctx.tenant_id, res, units=units)
-    return {
-        "resource": result.resource.value,
-        "limit": result.limit,
-        "current_usage": result.current_usage,
-        "remaining": result.remaining,
-        "allowed": result.allowed,
-    }
+    return FairnessCheckResult(
+        resource=result.resource.value,
+        limit=result.limit,
+        current_usage=result.current_usage,
+        remaining=result.remaining,
+        allowed=result.allowed,
+    )
 
 
 # ---------- SLO (§168) ----------
@@ -532,64 +563,76 @@ async def fairness_check(
 # Aggregate health objectives, distinct from per-conversation SLA.
 
 
-@sla_router.get("/slos")
+@sla_router.get("/slos", response_model=SLODefinitionList)
 async def list_slo_definitions(ctx: TenantCtxDep):
     """§168: list all SLO definitions (deployment-wide, not per-tenant)."""
     from app.modules.operations.slo_service import get_slo_definitions
 
-    return {"items": get_slo_definitions()}
+    return SLODefinitionList(
+        items=[
+            SLODefinitionOut(
+                name=row["name"],
+                description=row["description"],
+                target_percent=row["target_percent"],
+                window_hours=row["window_hours"],
+                warning_percent=row["warning_percent"],
+                error_percent=row["error_percent"],
+                runbook=row["runbook"],
+                alert_destinations=[
+                    AlertDestination(channel=d["channel"], target=d["target"])
+                    for d in row["alert_destinations"]
+                ],
+            )
+            for row in get_slo_definitions()
+        ]
+    )
 
 
-@sla_router.get("/slos/measure")
+def _slo_out(result) -> SLOMeasurement:
+    return SLOMeasurement(
+        name=result.name,
+        compliance_percent=result.compliance_percent,
+        total=result.total,
+        met=result.met,
+        target_percent=result.target_percent,
+        status=result.status,
+        window_since=result.window_since,
+    )
+
+
+@sla_router.get("/slos/measure", response_model=SLOMeasurementList)
 async def measure_all_slos(ctx: TenantCtxDep):
     """§168: compute every SLO's compliance for the tenant."""
     from app.modules.operations.slo_service import measure_all_slos
 
-    results = await measure_all_slos(ctx.session, ctx.tenant_id)
-    return {
-        "items": [
-            {
-                "name": r.name,
-                "compliance_percent": r.compliance_percent,
-                "total": r.total,
-                "met": r.met,
-                "target_percent": r.target_percent,
-                "status": r.status,
-                "window_since": r.window_since,
-            }
-            for r in results
-        ]
-    }
+    return SLOMeasurementList(items=[_slo_out(r) for r in await measure_all_slos(
+        ctx.session, ctx.tenant_id
+    )])
 
 
-@sla_router.get("/slos/{slo_name}")
-async def measure_one_slo(ctx: TenantCtxDep, slo_name: str):
-    """§168: compute one SLO's compliance for the tenant."""
+@sla_router.get("/slos/{slo_name}", response_model=SLOMeasurement)
+async def measure_one_slo(ctx: TenantCtxDep, slo_name: str) -> SLOMeasurement:
+    """§168: compute one SLO's compliance for the tenant.
+
+    An unknown name is the client's mistake: ``measure_slo`` refuses it as a
+    ``ValidationError`` (400 ``validation_error``, not retryable). It used to
+    raise ``ValueError``, which the 500 handler answered as
+    ``internal_error``/``retryable: true`` — telling the caller to retry a
+    request that will fail identically forever.
+    """
     from app.modules.operations.slo_service import measure_slo
 
-    result = await measure_slo(ctx.session, ctx.tenant_id, slo_name)
-    return {
-        "name": result.name,
-        "compliance_percent": result.compliance_percent,
-        "total": result.total,
-        "met": result.met,
-        "target_percent": result.target_percent,
-        "status": result.status,
-        "window_since": result.window_since,
-    }
+    return _slo_out(await measure_slo(ctx.session, ctx.tenant_id, slo_name))
 
 
 # ---------- §154: Scheduled job cancel/reschedule ----------
 
-class ScheduledJobReschedule(BaseModel):
-    run_at: datetime
 
-
-@router.post("/scheduled-jobs/{job_id}/cancel")
+@router.post("/scheduled-jobs/{job_id}/cancel", response_model=ScheduledJobStatusResult)
 async def cancel_scheduled_job(
     job_id: uuid.UUID,
-    ctx: TenantContext = Depends(require_permission("settings:write")),
-):
+    ctx: SettingsCtx,
+) -> ScheduledJobStatusResult:
     """§154: cancel a queued/retrying scheduled job."""
     from app.modules.platform.models import ScheduledJob
 
@@ -609,15 +652,17 @@ async def cancel_scheduled_job(
     job.status = "cancelled"
     job.cancelled_at = datetime.now(UTC)
     await ctx.session.flush()
-    return {"id": str(job.id), "status": job.status}
+    return ScheduledJobStatusResult(id=job.id, status=job.status)
 
 
-@router.post("/scheduled-jobs/{job_id}/reschedule")
+@router.post(
+    "/scheduled-jobs/{job_id}/reschedule", response_model=ScheduledJobRescheduleResult
+)
 async def reschedule_scheduled_job(
     job_id: uuid.UUID,
     body: ScheduledJobReschedule,
-    ctx: TenantContext = Depends(require_permission("settings:write")),
-):
+    ctx: SettingsCtx,
+) -> ScheduledJobRescheduleResult:
     """§154: move a scheduled job's run_at."""
     from app.modules.platform.models import ScheduledJob
 
@@ -635,8 +680,4 @@ async def reschedule_scheduled_job(
     job.run_at = body.run_at
     job.status = "queued"
     await ctx.session.flush()
-    return {
-        "id": str(job.id),
-        "status": job.status,
-        "run_at": job.run_at.isoformat() if job.run_at else None,
-    }
+    return ScheduledJobRescheduleResult(id=job.id, status=job.status, run_at=job.run_at)

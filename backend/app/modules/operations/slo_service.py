@@ -29,6 +29,8 @@ from typing import Any
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.errors import ValidationError
+
 
 @dataclass(frozen=True, slots=True)
 class SLOSpec:
@@ -441,14 +443,27 @@ async def measure_slo(
     tenant_id: uuid.UUID,
     slo_name: str,
 ) -> SLOResult:
-    """Compute one SLO's compliance for the tenant."""
+    """Compute one SLO's compliance for the tenant.
+
+    An unknown name is a bad parameter, not a server failure. This used to
+    raise ``ValueError``, which ``app.main`` has no handler for: the caller got
+    500 ``internal_error`` with ``retryable: true``, telling a client to retry a
+    request that fails identically every time and hiding the fact that IT
+    supplied the typo. ``ValidationError`` is 400 / not retryable.
+    """
     spec = next((s for s in SLO_DEFINITIONS if s.name == slo_name), None)
     if spec is None:
-        raise ValueError(f"unknown SLO: {slo_name}")
+        raise ValidationError(
+            f"unknown SLO: {slo_name}",
+            details={"valid_names": [s.name for s in SLO_DEFINITIONS]},
+        )
 
     handler = _COMPLIANCE_QUERIES.get(slo_name)
     if handler is None:
-        raise ValueError(f"SLO '{slo_name}' has no compliance query")
+        raise ValidationError(
+            f"SLO '{slo_name}' has no compliance query",
+            details={"implemented": sorted(_COMPLIANCE_QUERIES)},
+        )
 
     since = datetime.now(UTC) - timedelta(hours=spec.window_hours)
     total, met = await handler(session, tenant_id, since)

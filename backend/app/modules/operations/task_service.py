@@ -1,4 +1,4 @@
-"""§13-14: TaskService — the single entry point for creating tasks.
+"""§13-14: TaskService — the single entry point for task writes.
 
 The AI tool `_add_task` and the operations router both call this service
 instead of directly constructing Task models. This ensures:
@@ -17,6 +17,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import NotFoundError, ValidationError
 from app.modules.operations.models import Task
+
+TASK_STATUSES = frozenset({"todo", "in_progress", "done", "cancelled"})
+PRIORITY_MIN, PRIORITY_MAX = 1, 3
 
 
 class TaskService:
@@ -42,7 +45,7 @@ class TaskService:
             raise ValidationError("task title is required")
         if len(title) > 255:
             raise ValidationError("task title must be 255 chars or less")
-        if priority < 1 or priority > 3:
+        if priority < PRIORITY_MIN or priority > PRIORITY_MAX:
             raise ValidationError("priority must be 1 (high), 2 (normal), or 3 (low)")
 
         task = Task(
@@ -63,47 +66,65 @@ class TaskService:
         return task
 
     @staticmethod
-    async def update_status(
-        session: AsyncSession,
-        tenant_id: uuid.UUID,
-        task_id: uuid.UUID,
-        *,
-        status: str,
-        by_user_id: uuid.UUID | None = None,
-    ) -> Task:
-        """Transition a task's status with validation."""
-        task = (
-            await session.execute(
-                select(Task).where(
-                    Task.tenant_id == tenant_id, Task.id == task_id
-                )
-            )
-        ).scalar_one_or_none()
-        if task is None:
-            raise NotFoundError(f"task {task_id} not found")
-
-        allowed = {"todo", "in_progress", "done", "cancelled"}
-        if status not in allowed:
-            raise ValidationError(f"invalid task status: {status}")
-
-        task.status = status
-        await session.flush()
-        return task
-
-    @staticmethod
     async def get(
         session: AsyncSession,
         tenant_id: uuid.UUID,
         task_id: uuid.UUID,
     ) -> Task:
-        """Get a task by ID (tenant-scoped)."""
+        """Get a task by ID (tenant-scoped).
+
+        The one task read in this module. Every caller — the HTTP route and any
+        future tool — has to pass the tenant, so a missing predicate is a
+        reviewable omission here instead of a silent cross-tenant read
+        somewhere else.
+        """
         task = (
             await session.execute(
-                select(Task).where(
-                    Task.tenant_id == tenant_id, Task.id == task_id
-                )
+                select(Task).where(Task.tenant_id == tenant_id, Task.id == task_id)
             )
         ).scalar_one_or_none()
         if task is None:
             raise NotFoundError(f"task {task_id} not found")
+        return task
+
+    @staticmethod
+    async def update_status(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        task_id: uuid.UUID,
+        *,
+        status: str | None = None,
+        assignee_user_id: uuid.UUID | None = None,
+        priority: int | None = None,
+        by_user_id: uuid.UUID | None = None,
+    ) -> Task:
+        """Apply whatever the caller actually sent, through one set of rules.
+
+        Every field is optional and ``None`` means "leave it alone" — clearing
+        an assignee is a different operation from omitting one, and this layer
+        cannot tell those apart from a bare ``None``, so it does not try.
+
+        The three rules that live here rather than in the route are the reason
+        the route must not do this work itself: the row has to be loaded
+        TENANT-SCOPED (:meth:`get`), ``status`` has to be one of four values,
+        and ``priority`` has to be in 1..3. ``POST /tasks/{id}/status`` used to
+        enforce only the first two (via the request model's regex) and none of
+        the third.
+        """
+        task = await TaskService.get(session, tenant_id, task_id)
+
+        if status is not None:
+            if status not in TASK_STATUSES:
+                raise ValidationError(f"invalid task status: {status}")
+            task.status = status
+        if priority is not None:
+            if priority < PRIORITY_MIN or priority > PRIORITY_MAX:
+                raise ValidationError(
+                    "priority must be 1 (high), 2 (normal), or 3 (low)"
+                )
+            task.priority = priority
+        if assignee_user_id is not None:
+            task.assignee_user_id = assignee_user_id
+
+        await session.flush()
         return task

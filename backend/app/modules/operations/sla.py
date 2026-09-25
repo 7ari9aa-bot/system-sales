@@ -28,7 +28,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import NotFoundError, ValidationError
+from app.core.errors import ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -354,11 +354,13 @@ def validate_calendar(hours: dict | None, holidays: list | None) -> None:
         raise ValidationError("holidays must be a list of YYYY-MM-DD strings")
 
 
-def find_calendar_or_404(rows: list, calendar_id: uuid.UUID):
-    for row in rows:
-        if row.id == calendar_id:
-            return row
-    raise NotFoundError("business calendar not found")
+# ``find_calendar_or_404(rows, calendar_id)`` lived here for two waves with no
+# caller. Verdict RETIRE, on the evidence in
+# tests/test_operations_contracts.py::test_find_calendar_or_404_is_retired_not_kept:
+# it searched a LIST OF ROWS for an id, but the SLA surface upserts calendars by
+# NAME (``PUT /sla/calendars``) and has no ``/calendars/{id}`` route — so nothing
+# could call it without inventing product surface, and ``__all__`` was advertising
+# a helper no code path reaches.
 
 
 __all__ = [
@@ -366,6 +368,5 @@ __all__ = [
     "BusinessClock",
     "BusinessWindow",
     "SlaService",
-    "find_calendar_or_404",
     "validate_calendar",
 ]
