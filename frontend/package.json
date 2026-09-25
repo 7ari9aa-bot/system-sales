@@ -9,6 +9,7 @@
     "check:headers": "node scripts/check-security-headers.mjs",
     "check:urls": "node scripts/check-request-urls.mjs",
     "check:storage": "node scripts/check-token-storage.mjs",
+    "check:palette": "node scripts/check-command-palette-search.mjs",
     "lint": "eslint .",
     "test:e2e": "playwright test"
   },

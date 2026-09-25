@@ -114,6 +114,12 @@ jobs:
       # src/lib/api.ts and feeds it unreadable payloads — a deleted try/catch
       # fails the job rather than a merchant's screen.
       - run: npm run check:storage
+      # F3: the palette once fired `/search` in a loop because a mutation's
+      # identity changed inside its own effect deps. This mounts the shipping
+      # component over a stubbed fetch and counts the requests — and carries a
+      # control case that reproduces 12 requests when the identity changes
+      # again, so the gate is proven to measure the loop, not to pass forever.
+      - run: npm run check:palette
       - run: npm run build
 
   # Browser tests against the production bundle. Split from `frontend` so a
