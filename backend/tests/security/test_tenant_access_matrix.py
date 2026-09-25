@@ -81,8 +81,22 @@ _ALLOWED_PUBLIC_ROUTES: frozenset[str] = frozenset(
         # load-balancer probes
         "GET /healthz",
         "GET /readyz",
+        # §O10 Prometheus exposition. It carries no tenant context and a scraper
+        # has no JWT to present, so it sits at the root beside the probes and
+        # admits itself a different way: a constant-time internal service token
+        # wherever SECURE_ENVIRONMENT is on, 503 if that token is not configured.
+        # What makes this safe to declare is the closed `stream` label set in
+        # app/core/metrics.py — an open label there would publish tenant ids.
+        "GET /metrics",
     }
 )
+
+#: Routes mounted on the app itself rather than under the `/api/v1` router. The
+#: prefix below is derived from membership here, NOT from a guess about the path:
+#: a heuristic that assumes "everything except the two probes is versioned" turns
+#: a new root route into a phantom `/api/v1/...` and reports the wrong URL in a
+#: security failure.
+_ROOT_MOUNTED: frozenset[str] = frozenset({"/healthz", "/readyz", "/metrics"})
 
 
 def _walk_routes(app):  # noqa: ANN001, ANN201
@@ -118,7 +132,7 @@ def _resource_routes():  # noqa: ANN201
     app = create_app()
     out: list[tuple[str, APIRoute]] = []
     for route in _walk_routes(app):
-        prefix = "" if route.path in ("/healthz", "/readyz") else "/api/v1"
+        prefix = "" if route.path in _ROOT_MOUNTED else "/api/v1"
         for method in sorted(m for m in route.methods if m != "HEAD"):
             out.append((f"{method} {prefix}{route.path}", route))
     return out

@@ -408,6 +408,63 @@ which costs throughput but no configuration. A test can pin either: the count of
 `POOLS`, the engine's pool limits, and the two-connections-per-event shape are all
 readable without a database.
 
+### The wave that died at the finish line — 13 agents, one provider error (2026-09-25)
+
+Thirteen implementation agents were dispatched in parallel across disjoint modules. All thirteen
+failed with the same provider error after 1.7–2.6 hours and 100+ tool calls each, so none reported
+and none of their claims could be taken on trust. Their work was sitting uncommitted in one shared
+tree: 22 modified tracked files and 14 new ones. This section is the triage, done by measurement
+rather than by reading their intentions.
+
+**Broken on arrival, fixed before anything could be judged:** `customers/router.py` had a
+half-finished schema extraction (a `schemas.py` plus the imports, with the original class bodies
+still in place) so `BaseModel` was undefined and **45 test files failed to collect**;
+`operations/slo_service.py` raised a `ValidationError` it never imported; `core/metrics.py` ended in
+a dead function using an unimported `datetime`; seven lines exceeded the lint width. After the
+repairs: `import app.main` clean and `ruff check app tests` clean.
+
+**Landed, each lane verified by its own tests** (together 182 passed, 7 skipped on the selection
+that covers them):
+- `1065c38` — the schema lane: three migrations on one linear head, `workflow_versions` brought
+  under the RLS sweep, and the weighted `tsvector` columns. Reviewing it found two defects the
+  migrations themselves created — the writers never stamped the new `tenant_id` (RED watched:
+  `create() wrote snapshots with no tenant: [None]`), and neither read of the table named its
+  tenant. One of my own first tests PASSED FOR THE WRONG REASON and was caught that way:
+  `TenantMixin` puts `workflow_versions.tenant_id` in the SELECT list, so matching the whole
+  statement proves nothing about the WHERE clause; tightening three scoping assertions to the
+  predicate kept two green and turned the third red, which is the order that means the guard bites.
+- `dd75fab` platform (15 of 29 routes typed), `33e77d8` segments (6 of 6), `a42925b` operations
+  (10 of 11), `e2f580b` observability (worker correlation ids + `/metrics`).
+- `43ff71b` — the palette gate for F3, which carries a control case that reproduces the 12-request
+  loop, so the gate is proven to measure the thing it claims.
+
+**Held out, with the count that made them unacceptable** (nothing deleted; the tests are the spec,
+kept under `.wave-f-hold/` at the repo root with a 765-line patch of the implementation that never
+finished, so a re-run starts from the analysis and not from a blank page):
+- `test_ai_contract.py` — 19 failures, and `ai/router.py` was never touched: the lane wrote its
+  spec and died before implementing it.
+- `test_marketing_analytics_contracts.py` — 18 failures; `marketing/router.py` had 510 lines of
+  partial work, `analytics/router.py` none. Reverted to HEAD.
+- `test_customers_http_surface.py` — 7 failures (12 routes still untyped, gating incomplete) and it
+  broke `test_customers_if_match.py`, which is a regression against an existing guard. Reverted.
+- `test_notifications_contracts.py` — 6 failures, and its `notifications/schemas.py` was never
+  wired, so the dead-module gate flagged it as unreachable code.
+- `check-search-hits.mjs` — red on an unfinished harness. It is the F7 gate; the fix it wanted
+  (`searchHref` exported from the palette, `command-palette.tsx:101`) is a one-word change plus a
+  harness pass, not a rewrite.
+
+**Two gaps this wave created and did not close, stated so nobody reads them as done:**
+1. **`search_ts` exists and nothing queries it.** The DDL and the GIN indexes landed, but
+   `app/core/search.py:57` still says of itself: "This is NOT full-text search, whatever the name
+   suggests: no tsvector". §45 is therefore *schema-complete and behaviour-open* — the read side
+   must OR `websearch_to_tsquery('simple', …)` with the existing ILIKE containment (fragments are
+   the reason ILIKE stays), and that wiring is where the ranking the column exists to provide
+   actually reaches a merchant.
+2. **`worker_events_total` and `worker_seconds_total` have no writer.** `/metrics` publishes them
+   and the catalogue validates their labels, but no worker increments them, so the exposition would
+   render empty series. The correlation half of `e2f580b` is real; the counting half is the next
+   change in that file's life.
+
 ### AI safety
 - A1 Knowledge content concatenated verbatim into the system prompt, unbounded, threshold-less, no chunking, no dedupe, no delete endpoints; ingestion fails hard on provider error (row rolls back) (`ai/hooks.py:88-93`, `knowledge.py:34-95`).
 - A2 Guardrails: 4 literal markers only; `margin` regex false positives; tool-evidence check unreachable; guardrail lives in hooks, not AgentRunner (any future caller bypasses it); no input-side guardrail (`guardrails.py:19-97`).
