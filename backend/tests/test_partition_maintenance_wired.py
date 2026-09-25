@@ -26,7 +26,7 @@ import uuid
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import partitioning
@@ -147,6 +147,37 @@ def test_the_purge_job_is_slow_and_the_ensure_job_stays_ahead_of_the_calendar() 
     )
 
 
+async def test_recurring_sweeps_re_arm_the_row_instead_of_completing_it() -> None:
+    """DB-free half of the live chain's re-arm assertion, so the convention holds
+    without a database: a sweep whose type is in `RECURRING_JOBS` must come back
+    from `_reschedule_recurring` as `queued` with its next run pushed out and its
+    attempt budget reset. `completed` is the ONE-SHOT terminal state — a sweep
+    that reached it would never run again, because the row IS the schedule.
+    """
+    worker = sw.SchedulerWorker(bus=_NoBus())  # type: ignore[arg-type]
+    now = datetime.now(UTC)
+    for job_type in ("partition.ensure_months", "retention.purge_partitions"):
+        job = ScheduledJob(
+            tenant_id=uuid.uuid4(),
+            job_type=job_type,
+            status="processing",
+            run_at=now,
+            attempts=3,
+            last_error="stale",
+            payload={"months_ahead": 8},
+        )
+        # The re-arm mutates the row in place; it takes the session only for
+        # signature symmetry with the claim loop, so a bare None is honest here.
+        assert await worker._reschedule_recurring(None, job, now) is True, (
+            f"{job_type} is recurring: returning False marks the row completed"
+        )
+        assert job.status == "queued", job.status
+        assert job.run_at > now
+        assert job.attempts == 0
+        assert job.next_attempt_at is None
+        assert job.last_error is None
+
+
 def test_module_boundary_measure_is_not_raised_by_this_feature() -> None:
     """The retention surface reads `retention_policies` (privacy) and appends the
     audit row (platform) through bound raw SQL in `app.core`, because
@@ -192,6 +223,31 @@ async def _due_job(
     return job
 
 
+async def _job_after_drain(db: AsyncSession, job: ScheduledJob) -> ScheduledJob:
+    """Re-read the claimed row the way the sibling wired test does — a SELECT —
+    never with ``Session.refresh()``.
+
+    ``refresh()`` expires the instance and re-SELECTs it WITHOUT flushing the
+    session's pending changes. ``_drain_tenant`` had already autoflushed the
+    claimed row back as 'processing' (the flush in front of its first bound
+    statement), while the recurring re-arm — status 'queued', pushed run_at,
+    reset attempts, the result dict — was still pending in memory. refresh()
+    therefore read the stale row and CLOBBERED the re-arm: the sweep looked
+    completed ('processing' != 'queued') even though the worker had re-armed
+    it, which is exactly the red herring this test's CI failure carried. A
+    SELECT autoflushes first, so the re-armed state is both written and read
+    back; ``populate_existing`` makes the round-trip real instead of trusting
+    the identity map.
+    """
+    return (
+        await db.execute(
+            select(ScheduledJob)
+            .where(ScheduledJob.id == job.id)
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one()
+
+
 async def _partition_names(db: AsyncSession) -> set[str]:
     return {
         r[0]
@@ -235,7 +291,7 @@ async def test_a_due_ensure_job_creates_a_partition_eight_months_out(
     )
     worker = sw.SchedulerWorker(bus=_NoBus())  # type: ignore[arg-type]
     assert await worker._drain_tenant(db, tenant_ctx.tenant_id) == 1
-    await db.refresh(job)
+    job = await _job_after_drain(db, job)
 
     assert job.status == "queued", "a recurring sweep must re-arm, not complete"
     assert not job.last_error, job.last_error
@@ -275,16 +331,20 @@ async def _seed_month(db: AsyncSession, months_back: int, tenant_id: uuid.UUID) 
     month = _month_back(months_back)
     created = await partitioning.ensure_partition_for_month(db, PARENT, month)
     name = created or f"ai_usage_{month:%Y_%m}"
+    # Bind a REAL datetime. asyncpg validates parameter types client-side,
+    # before Postgres ever sees the statement — a 'YYYY-MM-DDT00:00:00+00:00'
+    # string is refused with DataError even though a server-side CAST would
+    # have parsed it, which is exactly how this INSERT used to die in CI.
     await db.execute(
         text(
             "INSERT INTO ai_usage (id, period_date, tokens_in, tokens_out, cost, "
             "model_calls, created_at, tenant_id) VALUES (:id, :d, 7, 7, 0, 1, "
-            "CAST(:ts AS timestamptz), :t)"
+            ":ts, :t)"
         ),
         {
             "id": uuid.uuid4(),
             "d": month,
-            "ts": f"{month:%Y-%m-%d}T00:00:00+00:00",
+            "ts": datetime(month.year, month.month, 1, tzinfo=UTC),
             "t": tenant_id,
         },
     )
@@ -348,7 +408,7 @@ async def test_a_due_purge_job_deletes_nothing_without_a_chosen_policy(
     job = await _due_job(db, tenant_ctx.tenant_id, "retention.purge_partitions", {})
     worker = sw.SchedulerWorker(bus=_NoBus())  # type: ignore[arg-type]
     assert await worker._drain_tenant(db, tenant_ctx.tenant_id) == 1
-    await db.refresh(job)
+    job = await _job_after_drain(db, job)
     assert not job.last_error, job.last_error
     assert job.status == "queued"
     assert job.result["purged"] == []
@@ -384,7 +444,7 @@ async def test_an_opted_in_tenant_loses_exactly_the_month_it_should(
     job = await _due_job(db, tenant_ctx.tenant_id, "retention.purge_partitions", {})
     worker = sw.SchedulerWorker(bus=_NoBus())  # type: ignore[arg-type]
     assert await worker._drain_tenant(db, tenant_ctx.tenant_id) == 1
-    await db.refresh(job)
+    job = await _job_after_drain(db, job)
     assert not job.last_error, job.last_error
     assert job.result["purged"] == [old], job.result
 
