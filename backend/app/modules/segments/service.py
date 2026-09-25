@@ -91,6 +91,14 @@ def validate_dsl(node: Any) -> None:
         raise ValidationError(f"operator not allowed: {node['op']}")
     if "value" not in node:
         raise ValidationError("condition requires value")
+    # An `in` with nothing in it is not "matches nobody": it compiles to
+    # `(... IN ())`, which PostgreSQL rejects as a syntax error. The whitelist
+    # validator is the documented 400 boundary (§82: "an invalid definition is
+    # rejected by the whitelist compiler as a ValidationError, never a 500"),
+    # so the empty list has to be refused HERE — before the compiler, before
+    # the bind, before the database.
+    if node["op"] == "in" and isinstance(node["value"], list) and not node["value"]:
+        raise ValidationError("`in` requires at least one value")
 
 
 def _field_sql(field: str) -> str:
@@ -136,12 +144,22 @@ def _compile_where(node: dict, params: dict) -> str:
     field_sql = _field_sql(node["field"])
     op = node["op"]
     value = node["value"]
+    # `key` is this leaf's parameter name — and, for `in`, the PREFIX of one
+    # name per element. It is only bound when the SQL actually names it:
+    # binding the leaf value unconditionally used to mint a `p1` holding the
+    # whole list beside `p1_0`/`p1_1`, and `p1` appeared in no placeholder, so
+    # asyncpg never received it (see ``Compiled.positiontup``, which is exactly
+    # the argument list the driver call sends). A parameter that is computed,
+    # "bound", and then dropped is a lie about what the database compared.
     key = f"p{len(params)}"
-    params[key] = value
 
     ops = {"eq": "=", "neq": "<>", "gt": ">", "gte": ">=", "lt": "<", "lte": "<="}
     if op == "in":
         values = value if isinstance(value, list) else [value]
+        if not values:
+            # validate_dsl refuses this on every service path; this guard is
+            # for the direct caller, because `(x IN ())` is a syntax error.
+            raise ValidationError("`in` requires at least one value")
         marks = []
         for i, item in enumerate(values):
             item_key = f"{key}_{i}"
@@ -153,6 +171,7 @@ def _compile_where(node: dict, params: dict) -> str:
         # not that it is text; `contains 5` means the substring "5".
         params[key] = like_pattern(str(value))
         return f"({field_sql} ILIKE :{key} ESCAPE '\\')"
+    params[key] = value
     return f"({field_sql} {ops[op]} :{key})"
 
 

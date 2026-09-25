@@ -13,7 +13,8 @@ are a CRM/marketing concept — no new permission codes are invented).
 from __future__ import annotations
 
 import uuid
-from typing import Annotated
+from datetime import datetime
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
@@ -26,6 +27,46 @@ from app.modules.segments.service import Segment, SegmentService, validate_dsl
 router = APIRouter(prefix="/segments", tags=["segments"])
 
 WriteCtx = Annotated[TenantContext, Depends(require_permission("marketing:write"))]
+
+
+class SegmentOut(BaseModel):
+    """One segment and the evaluation state that makes it worth having.
+
+    Declared field-for-field against ``_segment_dict`` (``test_segments_contract``
+    holds the two in sync), because a response model that omits a key is a
+    SILENT filter: the handler can keep building it and the client stops
+    receiving it, with nothing failing anywhere. ``last_count`` /
+    ``last_evaluated_at`` stay explicitly nullable — an un-evaluated segment must
+    answer ``null`` rather than the ``0`` that would read as "ran, matched
+    nobody".
+    """
+
+    id: uuid.UUID
+    name: str
+    definition: dict[str, Any]
+    is_active: bool
+    last_count: int | None
+    last_evaluated_at: datetime | None
+    created_at: datetime
+
+
+class SegmentPreviewOut(BaseModel):
+    """``/preview``'s answer: how many match, and a few ids to eyeball.
+
+    Customer ids are STRINGS here as everywhere else in this API — a UUID has no
+    lossless JSON number form.
+    """
+
+    count: int
+    sample: list[str]
+
+
+class SegmentArchiveOut(BaseModel):
+    """Archive is a SOFT delete, so the body says which way the flag moved."""
+
+    id: uuid.UUID
+    is_active: bool
+    archived: bool
 
 
 class SegmentCreate(BaseModel):
@@ -72,7 +113,7 @@ async def _get_segment(ctx: TenantContext, segment_id: uuid.UUID) -> Segment:
     return segment
 
 
-@router.get("")
+@router.get("", response_model=list[SegmentOut])
 async def list_segments(ctx: TenantCtxDep, is_active: bool | None = None):
     """List this tenant's segments (optionally only active ones)."""
     stmt = select(Segment).where(Segment.tenant_id == ctx.tenant_id)
@@ -84,7 +125,7 @@ async def list_segments(ctx: TenantCtxDep, is_active: bool | None = None):
     return [_segment_dict(segment) for segment in rows]
 
 
-@router.post("", status_code=201)
+@router.post("", response_model=SegmentOut, status_code=201)
 async def create_segment(ctx: WriteCtx, body: SegmentCreate):
     """Create a segment from a name + DSL definition (definition is validated)."""
     segment = await SegmentService.create(
@@ -93,7 +134,7 @@ async def create_segment(ctx: WriteCtx, body: SegmentCreate):
     return _segment_dict(segment)
 
 
-@router.post("/preview")
+@router.post("/preview", response_model=SegmentPreviewOut)
 async def preview_segment(ctx: TenantCtxDep, body: SegmentPreviewRequest):
     """Compile a DSL definition and return the matching count WITHOUT persisting.
 
@@ -109,13 +150,13 @@ async def preview_segment(ctx: TenantCtxDep, body: SegmentPreviewRequest):
     }
 
 
-@router.get("/{segment_id}")
+@router.get("/{segment_id}", response_model=SegmentOut)
 async def get_segment(ctx: TenantCtxDep, segment_id: uuid.UUID):
     """Fetch one segment by id."""
     return _segment_dict(await _get_segment(ctx, segment_id))
 
 
-@router.put("/{segment_id}")
+@router.put("/{segment_id}", response_model=SegmentOut)
 async def update_segment(ctx: WriteCtx, segment_id: uuid.UUID, body: SegmentUpdate):
     """Update a segment's name / definition / active flag (definition validated)."""
     segment = await _get_segment(ctx, segment_id)
@@ -130,7 +171,7 @@ async def update_segment(ctx: WriteCtx, segment_id: uuid.UUID, body: SegmentUpda
     return _segment_dict(segment)
 
 
-@router.delete("/{segment_id}")
+@router.delete("/{segment_id}", response_model=SegmentArchiveOut)
 async def archive_segment(ctx: WriteCtx, segment_id: uuid.UUID):
     """Archive a segment (soft delete: ``is_active`` flipped to false)."""
     segment = await _get_segment(ctx, segment_id)
