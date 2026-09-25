@@ -23,7 +23,7 @@ from app.core.errors import (
     NotFoundError,
     ValidationError,
 )
-from app.core.idempotency import apply_versioned_update  # §17
+from app.core.idempotency import apply_versioned_update, parse_if_match  # §17
 from app.modules.automation.models import (
     Workflow,
     WorkflowExecution,
@@ -121,10 +121,22 @@ class WorkflowService:
         # §17: the CAS on the workflow row IS the race guard — two publishers
         # holding the same version cannot both bump current_version; the loser
         # gets ConflictError before any snapshot is inserted.
+        #
+        # An absent or wildcard If-Match is not a licence to skip that guard.
+        # Without a predicate BOTH publishers compute the same N+1, and the loser
+        # collides on uq_workflow_versions_workflow_version at INSERT — a 500
+        # where the contract owes a 409. The version this call just read is the
+        # token to CAS on, which keeps the door usable without a header and makes
+        # a lost race fail the way a lost race is supposed to.
+        cas_token = (
+            expected_version
+            if parse_if_match(expected_version) is not None
+            else str(workflow.version)
+        )
         await apply_versioned_update(
             session,
             workflow,
-            expected_version,
+            cas_token,
             {"current_version": workflow.current_version + 1},
         )
         version = WorkflowVersion(

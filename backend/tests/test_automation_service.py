@@ -302,6 +302,44 @@ async def test_a_legal_snapshot_is_stamped_with_the_version_it_bumps_to() -> Non
     assert version.version == workflow.current_version == 4
 
 
+@pytest.mark.parametrize("absent", [None, "*"], ids=["no-header", "star"])
+async def test_an_unconditional_publish_still_cas_on_the_version_it_read(
+    absent: str | None,
+) -> None:
+    """§17 — the publish door is the one place an absent If-Match costs money.
+
+    ``apply_versioned_update`` adds ``AND version = :expected`` ONLY when an
+    expected version arrives (``core/idempotency.py:784``), so a publish with no
+    If-Match issued a bare ``UPDATE workflows SET ... WHERE id`` and BOTH
+    writers computed the same ``N+1``. The loser then collided on
+    ``uq_workflow_versions_workflow_version`` at INSERT and answered 500, where
+    the contract owes a 409. The version this service just read IS the token it
+    should CAS on: the door stays usable without a header, and the loser fails
+    the way a lost race is supposed to fail.
+    """
+    workflow = _workflow(current_version=3, version=7)
+    session = FakeSession(workflows=[workflow], update_returns=4)
+
+    await WorkflowService.publish_new_version(
+        session,
+        TENANT,
+        workflow.id,
+        definition={"steps": [{"action": "notify"}]},
+        expected_version=absent,
+    )
+
+    updates = [
+        (sql, bound)
+        for sql, bound in zip(session.sql, session.bound, strict=True)
+        if " ".join(sql.split()).lower().startswith("update workflows")
+    ]
+    assert len(updates) == 1, f"expected exactly one CAS UPDATE, saw {len(updates)}"
+    low_sql, bound = updates[0]
+    low_sql = " ".join(low_sql.split()).lower()
+    assert "and workflows.version = " in low_sql, low_sql
+    assert 7 in bound.values(), f"the CAS bound no version: {bound}"
+
+
 # ------------------------------------------------ §66/§17: the lifecycle -----
 
 
