@@ -10,6 +10,7 @@ import {
   type Integration,
   type Invitation,
 } from "@/lib/queries";
+import { useCreateDialog } from "@/lib/use-create-dialog";
 import { t } from "@/lib/t";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,6 +26,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { EmptyState, PageHeader } from "@/components/ui/states";
+import { QueryErrorState } from "@/components/query-error";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { MerchantDayCard } from "./merchant-day";
@@ -62,11 +64,7 @@ export default function SettingsPage() {
   const integrations = integrationsQuery.data ?? [];
   const revoke = useRevokeInvitation();
 
-  React.useEffect(() => {
-    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("new") === "1") {
-      document.getElementById("inv-email")?.focus();
-    }
-  }, []);
+  useCreateDialog(() => document.getElementById("inv-email")?.focus());
 
   function submit() {
     if (!email.trim()) return;
@@ -87,9 +85,7 @@ export default function SettingsPage() {
       <PageHeader title={t.settings} description="الفريق والتكاملات" />
 
       {invitationsQuery.isError || integrationsQuery.isError ? (
-        <EmptyState
-          title={(invitationsQuery.error as Error | undefined ?? integrationsQuery.error as Error).message}
-        />
+        <QueryErrorState queries={[invitationsQuery, integrationsQuery]} />
       ) : invitationsQuery.isLoading || integrationsQuery.isLoading ? (
         <div className="space-y-4" aria-busy="true" aria-label={t.loading}>
           <Skeleton className="h-64" />

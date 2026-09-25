@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Megaphone, Plus } from "lucide-react";
 import { useCampaigns, useCreateCampaign, useMarketingSummary, useTenantCurrency, type Campaign, type CampaignBudgetRoas } from "@/lib/queries";
+import { useCreateDialog } from "@/lib/use-create-dialog";
 import { t } from "@/lib/t";
 import { formatMoney, scaleOf } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -26,10 +27,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { EmptyState, PageHeader } from "@/components/ui/states";
+import { QueryErrorState } from "@/components/query-error";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function MarketingPage() {
-  const [open, setOpen] = React.useState(false);
+  const [open, setOpen] = useCreateDialog();
   const [name, setName] = React.useState("");
   const [provider, setProvider] = React.useState("facebook");
   const [budget, setBudget] = React.useState("");
@@ -48,12 +50,6 @@ export default function MarketingPage() {
 
   const campaigns = campaignsQuery.data ?? [];
   const summary = summaryQuery.data;
-
-  React.useEffect(() => {
-    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("new") === "1") {
-      setOpen(true);
-    }
-  }, []);
 
   function submit() {
     if (!name.trim()) return;
@@ -83,9 +79,7 @@ export default function MarketingPage() {
       />
 
       {campaignsQuery.isError || summaryQuery.isError ? (
-        <EmptyState
-          title={(campaignsQuery.error as Error | undefined ?? summaryQuery.error as Error).message}
-        />
+        <QueryErrorState queries={[campaignsQuery, summaryQuery]} />
       ) : campaignsQuery.isLoading || summaryQuery.isLoading ? (
         <div className="space-y-4" aria-busy="true" aria-label={t.loading}>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

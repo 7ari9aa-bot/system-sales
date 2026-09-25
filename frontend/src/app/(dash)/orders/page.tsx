@@ -5,6 +5,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { Plus, ShoppingCart } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCustomers, useOrders, type Order } from "@/lib/queries";
+import { useCreateDialog } from "@/lib/use-create-dialog";
 import { t } from "@/lib/t";
 import { formatDate, formatMoney } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -27,7 +28,7 @@ const STATUS_VARIANT: Record<string, "warning" | "primary" | "success" | "danger
 };
 
 export default function OrdersPage() {
-  const [open, setOpen] = React.useState(false);
+  const [open, setOpen] = useCreateDialog();
   const router = useRouter();
 
   const ordersQuery = useOrders();
@@ -37,13 +38,6 @@ export default function OrdersPage() {
   // Memoised so the `columns` memo below has a stable dependency: `?? []` made
   // a fresh array on every render, which re-created the whole table definition.
   const customers = React.useMemo(() => customersQuery.data ?? [], [customersQuery.data]);
-
-  // فتح النموذج من قائمة "إنشاء" في الشريط العلوي (?new=1) أو من لوحة الأوامر
-  React.useEffect(() => {
-    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("new") === "1") {
-      setOpen(true);
-    }
-  }, []);
 
   const columns = React.useMemo<ColumnDef<Order, unknown>[]>(
     () => [

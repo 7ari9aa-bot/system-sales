@@ -108,6 +108,12 @@ jobs:
       # so the pass means the resolver is correct and the walk means nothing
       # hand-builds a second one. A pre-fix `/api/v1/api/v1` would fail here.
       - run: npm run check:urls
+      # Same shape again: `getTokens()` is the first read every dashboard route
+      # makes, and it used to `JSON.parse` bare, so one malformed byte in
+      # localStorage blanked the whole dashboard. This transpiles the shipping
+      # src/lib/api.ts and feeds it unreadable payloads — a deleted try/catch
+      # fails the job rather than a merchant's screen.
+      - run: npm run check:storage
       - run: npm run build
 
   # Browser tests against the production bundle. Split from `frontend` so a

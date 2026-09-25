@@ -10,6 +10,7 @@ import {
   useUsageSummary,
   type KnowledgeItem,
 } from "@/lib/queries";
+import { useCreateDialog } from "@/lib/use-create-dialog";
 import { t } from "@/lib/t";
 import { formatDate, formatNumber } from "@/lib/utils";
 import { fixedDecimal } from "@/components/orders/money";
@@ -27,6 +28,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { EmptyState, PageHeader } from "@/components/ui/states";
+import { QueryErrorState } from "@/components/query-error";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
@@ -51,7 +53,7 @@ function StatCard({ label, value }: { label: string; value: string | number }) {
 }
 
 export default function AIPage() {
-  const [addOpen, setAddOpen] = React.useState(false);
+  const [addOpen, setAddOpen] = useCreateDialog();
   const [title, setTitle] = React.useState("");
   const [content, setContent] = React.useState("");
   const [query, setQuery] = React.useState("");
@@ -66,12 +68,6 @@ export default function AIPage() {
   const agents = agentsQuery.data ?? [];
   const usage = usageQuery.data?.summary ?? [];
   const usageTotals = usageQuery.data?.totals;
-
-  React.useEffect(() => {
-    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("new") === "1") {
-      setAddOpen(true);
-    }
-  }, []);
 
   // §55: the period totals come from the ROUTE, already summed in Decimal.
   // Adding them here would be the business aggregation the spec forbids the
@@ -113,11 +109,7 @@ export default function AIPage() {
       />
 
       {knowledgeQuery.isError || agentsQuery.isError || usageQuery.isError ? (
-        <EmptyState
-          title={
-            (knowledgeQuery.error as Error | undefined ?? agentsQuery.error as Error | undefined ?? usageQuery.error as Error).message
-          }
-        />
+        <QueryErrorState queries={[knowledgeQuery, agentsQuery, usageQuery]} />
       ) : knowledgeQuery.isLoading || agentsQuery.isLoading || usageQuery.isLoading ? (
         <div className="space-y-4" aria-busy="true" aria-label={t.loading}>
           <div className="grid gap-4 sm:grid-cols-3">

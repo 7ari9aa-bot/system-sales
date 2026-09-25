@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Check, ListChecks, Plus } from "lucide-react";
 import { useCreateTask, useTasks, useUpdateTaskStatus, type Task } from "@/lib/queries";
+import { useCreateDialog } from "@/lib/use-create-dialog";
 import { t } from "@/lib/t";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -28,7 +29,7 @@ const STATUS_STYLES: Record<Task["status"], string> = {
 };
 
 export default function TasksPage() {
-  const [open, setOpen] = React.useState(false);
+  const [open, setOpen] = useCreateDialog();
   const [title, setTitle] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [priority, setPriority] = React.useState("2");
@@ -38,13 +39,6 @@ export default function TasksPage() {
   const updateStatus = useUpdateTaskStatus();
   const statusLabels = buildStatusLabels();
   const tasks = (tasksQuery.data ?? []).filter((task) => filter === "all" || task.status === filter);
-
-  // Open the form from the top-bar "create" menu (?new=1) or the command palette.
-  React.useEffect(() => {
-    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("new") === "1") {
-      setOpen(true);
-    }
-  }, []);
 
   function submit() {
     if (!title.trim()) return;

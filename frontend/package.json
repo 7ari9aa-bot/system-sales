@@ -8,6 +8,7 @@
     "start": "next start",
     "check:headers": "node scripts/check-security-headers.mjs",
     "check:urls": "node scripts/check-request-urls.mjs",
+    "check:storage": "node scripts/check-token-storage.mjs",
     "lint": "eslint .",
     "test:e2e": "playwright test"
   },

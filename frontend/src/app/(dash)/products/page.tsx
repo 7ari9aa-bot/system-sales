@@ -4,6 +4,7 @@ import * as React from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Package, Plus } from "lucide-react";
 import { useCreateProduct, useProducts, type Product } from "@/lib/queries";
+import { useCreateDialog } from "@/lib/use-create-dialog";
 import { t } from "@/lib/t";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -26,19 +27,13 @@ const STATUS_VARIANT: Record<string, "success" | "default" | "danger"> = {
 };
 
 export default function ProductsPage() {
-  const [open, setOpen] = React.useState(false);
+  const [open, setOpen] = useCreateDialog();
   const [title, setTitle] = React.useState("");
   const [price, setPrice] = React.useState("");
 
   const productsQuery = useProducts();
   const createProduct = useCreateProduct();
   const products = productsQuery.data ?? [];
-
-  React.useEffect(() => {
-    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("new") === "1") {
-      setOpen(true);
-    }
-  }, []);
 
   const columns = React.useMemo<ColumnDef<Product, unknown>[]>(
     () => [
