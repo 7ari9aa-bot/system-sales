@@ -148,6 +148,183 @@ if (unexpected.length) {
   );
 }
 
+// -------------------------------------- nothing feeds a relative path to URL --
+//
+// `apiUrl()` is allowed — deliberately — to answer with a RELATIVE path, because
+// that is the default same-origin deployment (and the assertions above pin it).
+// But the URL constructor accepts only an ABSOLUTE argument, so handing it an
+// `apiUrl()` result type-checks, builds, passes every other rule in this file,
+// and then throws `TypeError: Failed to construct 'URL': Invalid URL` in the
+// browser. That is the regression this rule exists for: in the 2026-09-23→24
+// window `use-realtime.ts` was moved onto `apiUrl()` for exactly the reason
+// above, its module-level absolute default disappeared with it, and the
+// single-argument `URL` call three lines later started throwing on every mount.
+// The throw landed inside the notifications bell's effect, the dashboard
+// layout's `ErrorBoundary` swallowed the whole `Shell` with it, and
+// `frontend-e2e` began dying test after test on `toBeVisible()` failures that
+// never mentioned a URL. See the header of src/lib/use-realtime.ts for the
+// full post-mortem.
+//
+// The rule: a one-argument URL construction is only sound when that argument is
+// provably absolute. `absoluteApiUrl()` is the one app-side call that guarantees
+// it; a location read is the document's own absolute URL. Anything else has to
+// name its base as the second argument.
+//
+// An EMPTY argument is read as prose, not code — write `new URL()` in a comment
+// and this stays quiet.
+
+const ABSOLUTE_ARG = [
+  /^absoluteApiUrl\s*\(/,
+  /^(?:globalThis\.)?window\.location\.href$/,
+  /^document\.baseURI$/,
+  /^["'`]https?:\/\//,
+];
+
+/** The argument list of the call whose "(" sits at `open`, split on TOP-LEVEL
+ *  commas only, or null if the text never closes. */
+function callArgs(text, open) {
+  let depth = 0;
+  let current = "";
+  const parts = [];
+  for (let i = open; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "(" || ch === "[" || ch === "{") {
+      depth += 1;
+      if (depth === 1) continue;
+    } else if (ch === ")" || ch === "]" || ch === "}") {
+      depth -= 1;
+      if (depth === 0) return [...parts, current];
+    } else if (ch === "," && depth === 1) {
+      parts.push(current);
+      current = "";
+      continue;
+    }
+    current += ch;
+  }
+  return null;
+}
+
+for await (const file of walk(srcRoot)) {
+  const text = await readFile(file, "utf8");
+  const rel = relative(appRoot, file).replace(/\\/g, "/");
+  for (const found of text.matchAll(/\bnew\s+URL\s*\(/g)) {
+    const args = callArgs(text, found.index + found[0].length - 1);
+    if (args === null) {
+      problems.push(`${rel}: an unparsable URL construction — make it a two-argument call`);
+      continue;
+    }
+    if (args.length > 1) continue; // the base is stated, which is the whole rule
+    const arg = args[0].trim();
+    if (!arg || ABSOLUTE_ARG.some((re) => re.test(arg))) continue;
+    problems.push(
+      `${rel}: new URL(${arg}) is given no base.\n` +
+        "    apiUrl() may answer with a relative path and the URL constructor throws on one —\n" +
+        "    pass the base as the second argument, or use absoluteApiUrl(path, origin).",
+    );
+  }
+}
+
+// --------------------------------- the realtime URL, resolved both ways --
+//
+// The static rule above says a base is present. This says the result is the URL
+// the browser should actually open, by importing the SHIPPING `use-realtime.ts`
+// (through the same chain builder `check:palette` mounts with) and calling its
+// `sseUrl()` under both deployment shapes. It needs no port, no browser and no
+// dev server, which is the point: this is the one place the crash could be
+// reproduced on every push, and the e2e job that finally caught it is the only
+// step that runs after `npm run build`.
+
+const { createGate } = await import("./lib/browser-chain.mjs");
+
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
+const srcPath = (p) => join(ROOT, "src", p);
+const ORIGIN = "https://app.test";
+const STREAMS = ["notification.events", "conversation.events"];
+
+async function realtimeUrl(env, label, expected) {
+  if (env === null) delete process.env.NEXT_PUBLIC_API_URL;
+  else process.env.NEXT_PUBLIC_API_URL = env;
+
+  let gate;
+  try {
+    gate = await createGate({
+      entry: srcPath("lib/use-realtime.ts"),
+      chain: [srcPath("lib/api.ts")],
+      // Nothing here may reach the network: `sseUrl` is a pure resolution.
+      fetch: async (url) => {
+        throw new Error(`the gate fetched ${url} — resolution is not supposed to connect`);
+      },
+    });
+  } catch (err) {
+    problems.push(`${label}: the gate could not load src/lib/use-realtime.ts: ${err?.stack ?? err}`);
+    return;
+  }
+
+  try {
+    if (gate.problems.length) {
+      problems.push(`${label}: the gate could not resolve the chain: ${gate.problems.join("; ")}`);
+      return;
+    }
+    if (typeof gate.module?.sseUrl !== "function") {
+      problems.push(
+        `${label}: src/lib/use-realtime.ts exports no sseUrl(origin, {streams, cursor}) —\n` +
+          "    the module that builds the event-stream URL and this guard have diverged.",
+      );
+      return;
+    }
+    let href = null;
+    let threw = null;
+    try {
+      href = gate.module.sseUrl(ORIGIN, { streams: STREAMS, cursor: "evt-7" }).href;
+    } catch (err) {
+      threw = err;
+    }
+    if (threw) {
+      problems.push(
+        `${label}: building the event-stream URL threw ${threw}.\n` +
+          "    connect() calls this inside the notifications bell's effect, so a throw here\n" +
+          "    takes down the whole Shell — every dashboard route renders the error boundary.",
+      );
+      return;
+    }
+    check(`${label} stream URL`, href, expected);
+  } finally {
+    await gate.cleanup();
+  }
+}
+
+const QUERY = "?streams=notification.events&streams=conversation.events&cursor=evt-7";
+
+await realtimeUrl(SAME_ORIGIN, "same-origin", `${ORIGIN}${PREFIX}/realtime/events${QUERY}`);
+await realtimeUrl(ABSOLUTE, "absolute base", `${ABSOLUTE}${PREFIX}/realtime/events${QUERY}`);
+delete process.env.NEXT_PUBLIC_API_URL;
+
+// The control, and the reason the two assertions above are worth anything: if
+// `apiUrl()` answered the default shape with something absolute, a one-argument
+// URL construction would be safe and this whole section would pass forever
+// without measuring the defect it guards.
+{
+  const shape = await loadApi(SAME_ORIGIN);
+  let threw = null;
+  try {
+    new URL(shape.apiUrl("/realtime/events"));
+  } catch {
+    threw = "threw";
+  }
+  if (!threw) {
+    problems.push(
+      "control failed: under the same-origin shape apiUrl() returned something a baseless " +
+        "URL construction accepts, so `new URL` is not the hazard this file guards and the " +
+        "sections above are passing for the wrong reason.",
+    );
+  } else {
+    console.log(
+      "  · control: the same-origin apiUrl() output is relative, and resolving it without a " +
+        "base really does throw. The guard above measures the crash it exists for.",
+    );
+  }
+}
+
 if (problems.length) {
   console.error(`✗ ${SOURCE} request URLs\n`);
   for (const problem of problems) console.error(`  - ${problem}`);
@@ -156,3 +333,4 @@ if (problems.length) {
 }
 
 console.log(`✓ ${SOURCE}: every request URL comes from apiUrl(), both shapes`);
+console.log(`✓ src/lib/use-realtime.ts: the event-stream URL is absolute under both shapes`);

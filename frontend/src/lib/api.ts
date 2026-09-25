@@ -23,6 +23,26 @@ export function apiUrl(path: string): string {
   return API.startsWith("/") ? `${API}${rel}` : `${API}${API_PREFIX}${rel}`;
 }
 
+/** `apiUrl()` resolved against the origin of the document making the call.
+ *
+ *  Under the default same-origin shape `apiUrl()` answers with a RELATIVE path
+ *  (`/api/v1/...`) — that is the point of it, and `check-request-urls.mjs`
+ *  asserts it. Most consumers never mind: `fetch` resolves a relative URL
+ *  against the document. The URL CONSTRUCTOR does not: it requires an absolute
+ *  argument, so feeding it `apiUrl()` directly throws
+ *  `TypeError: Invalid URL` in the browser while type-checking and building
+ *  cleanly. Anything that needs an absolute URL — a `URL` to put query
+ *  parameters on, a link that leaves the document — asks this and passes the
+ *  origin it is standing in. Under the absolute-base shape the base is already
+ *  absolute and `origin` is ignored, exactly as the URL spec says.
+ *
+ *  Never call it at module scope with `window.location.origin`: a client module
+ *  is still evaluated on the server during prerender, where `window` does not
+ *  exist. Resolve at the moment of use. */
+export function absoluteApiUrl(path: string, origin: string): string {
+  return new URL(apiUrl(path), origin).toString();
+}
+
 type Tokens = { access_token: string; refresh_token: string };
 
 /** The unified API error envelope (`app/core/errors.build_error_body`). */

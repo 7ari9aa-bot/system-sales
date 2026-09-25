@@ -26,17 +26,50 @@
  */
 
 import { useEffect, useRef, useCallback } from "react";
-import { apiUrl, getTokens } from "@/lib/api";
+import { absoluteApiUrl, getTokens } from "@/lib/api";
 
-/** The stream endpoint, resolved by the ONE url rule in the app.
+/** The stream route, resolved by the ONE url rule in the app.
  *
  *  This used to read `NEXT_PUBLIC_API_URL` itself with a `http://localhost:8000`
  *  fallback — a third copy of the base rule, and the only one whose default was
  *  an absolute origin. Deployed without the variable set (which is how the
  *  same-origin Vercel rewrite is meant to work), every browser then opened its
  *  event stream against the developer's machine: realtime silently dead in
- *  production while every REST call kept working through `/api/v1`. */
-const SSE_URL = apiUrl("/realtime/events");
+ *  production while every REST call kept working through `/api/v1`.
+ *
+ *  Routing it through `apiUrl()` instead fixed that and broke something worse,
+ *  because `apiUrl()` answers with a RELATIVE path under the default shape and
+ *  the URL constructor rejects a relative argument outright. The old code could
+ *  not crash — an absolute string always parses; the new one threw the moment
+ *  `connect()` tried to build its URL, inside the bell's mount effect. That
+ *  effect lives in `Shell`, which the dashboard layout wraps in `ErrorBoundary`,
+ *  so the whole shell — nav, user menu, page — was replaced by "Something went
+ *  wrong: Failed to construct 'URL': Invalid URL" on every authenticated
+ *  screen, for every merchant, on the default deployment shape.
+ *  It survived lint, `npm run build` and all four browserless checks, because
+ *  every one of them stops before a dashboard component's effect runs, and the
+ *  e2e job — the only thing that mounts the shell with a token in storage —
+ *  reported it as a wall of `toBeVisible()` failures that never said "URL".
+ *
+ *  Hence: a PATH at module scope (safe to evaluate anywhere, including the
+ *  server), and an absolute URL only at the moment of use. `sseUrl` is exported
+ *  so `npm run check:urls` can prove both shapes browserlessly — that gate runs
+ *  on every push and needs no port. */
+const SSE_PATH = "/realtime/events";
+
+/** The event-stream URL for the document that is asking, with the non-secret
+ *  query state already applied. Exported for `scripts/check-request-urls.mjs`. */
+export function sseUrl(
+  origin: string,
+  { streams, cursor }: { streams?: string[]; cursor?: string | null } = {},
+): URL {
+  const url = new URL(absoluteApiUrl(SSE_PATH, origin));
+  if (streams?.length) {
+    for (const s of streams) url.searchParams.append("streams", s);
+  }
+  if (cursor) url.searchParams.set("cursor", cursor);
+  return url;
+}
 
 export interface RealtimeEvent {
   stream: string;
@@ -91,14 +124,9 @@ export function useRealtimeEvents({
     const tokens = getTokens();
     if (!tokens?.access_token) return;
 
-    // Only non-secret state goes in the URL.
-    const url = new URL(SSE_URL);
-    if (streams?.length) {
-      for (const s of streams) url.searchParams.append("streams", s);
-    }
-    if (cursorRef.current) {
-      url.searchParams.set("cursor", cursorRef.current);
-    }
+    // Resolved at connect time, not at module scope: it needs the origin of the
+    // document that is opening the stream, and only non-secret state goes in it.
+    const url = sseUrl(window.location.origin, { streams, cursor: cursorRef.current });
 
     abortRef.current?.abort();
     const controller = new AbortController();
