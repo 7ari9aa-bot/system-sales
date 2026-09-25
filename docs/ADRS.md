@@ -6,11 +6,11 @@ documents.
 
 | Home | Files | Number range | What it is | Citation form |
 |---|---|---|---|---|
-| [`docs/adrs/`](adrs/) | 46 individual files | `ADR-013` … `ADR-058` | The **project's live decision record**. `ADR-013`…`ADR-047` are the decision list the architecture spec enumerates in §174 (the titles in `docs/spec/ARCHITECTURE_PATCH_125-177.txt:2248-2284` match these files one-for-one, e.g. "ADR-014 Conversation Serialization & AI Cancellation", "ADR-025 Channel Account Lifecycle"). `ADR-048`…`ADR-058` are the team's own wave records, added after §174 was written. | bare `ADR-0NN` |
+| [`docs/adrs/`](adrs/) | 47 individual files | `ADR-013` … `ADR-059` | The **project's live decision record**. `ADR-013`…`ADR-047` are the decision list the architecture spec enumerates in §174 (the titles in `docs/spec/ARCHITECTURE_PATCH_125-177.txt:2248-2284` match these files one-for-one, e.g. "ADR-014 Conversation Serialization & AI Cancellation", "ADR-025 Channel Account Lifecycle"). `ADR-048`…`ADR-058` are the team's own wave records, added after §174 was written. | bare `ADR-0NN` |
 | [`docs/adr/`](adr/) | 5 bundled files | `ADR-001` … `ADR-041`, **sparsely** (25 decisions, not 41) | A separate bundle set, also project-authored, that reads as a baseline/first-pass record: `ADR-001`…`ADR-012` state decisions *against* spec sections (`docs/adr/ADR-001-to-004.md:6` "Spec §47 requires `amount_minor` … Our schema stores `Numeric(14,2)`"), and `ADR-013`…`ADR-041` restate several §174 topics in their own words with narrower content. | `SPEC ADR-0NN` |
 
 **The rule.** A bare `ADR-0NN` means `docs/adrs/` — the project's live record. The bundle in
-`docs/adr/` is cited as `SPEC ADR-0NN`. **Neither family is renumbered**: renumbering 46 files plus
+`docs/adr/` is cited as `SPEC ADR-0NN`. **Neither family is renumbered**: renumbering 47 files plus
 every citation in `GAP_REGISTER.md`, `COMPLIANCE_MATRIX.md`, `ROADMAP_TO_90.md`, the `docs/spec/`
 reviews and code comments would rot more references than it fixes, and the overlap is removed by
 declaration, not by renumbering.
@@ -26,7 +26,7 @@ separately).
 
 ---
 
-## 1. Project record — `docs/adrs/` (46 files)
+## 1. Project record — `docs/adrs/` (47 files)
 
 Status and `**Spec:**` are transcribed from each file's own header. Where a file declares no status
 or no `**Spec:**` line, that is written out rather than inferred.
@@ -80,8 +80,13 @@ or no `**Spec:**` line, that is written out rather than inferred.
 | ADR-057 | An approval is decided once, honoured once, and a partial queue says so | 2026-09-24 | **not declared** | **none declared** (prose cites §135) | The approval row is the lock on both sides — `SELECT … FOR UPDATE` in `decide` and `find_granted` — so a grant can be consumed exactly once, and a capped pending queue reports itself as partial. |
 | ADR-058 | The consumer inbox is claimed before the effect, not checked beside it | 2026-09-24 | **not declared** | **none declared** (prose cites §127) | The claim is a transaction-scoped `pg_try_advisory_xact_lock` keyed on `(consumer_name, event_id)`; the marker is checked inside the lock and inserted in the same transaction as the effect. |
 
-Coverage: 46 files in `docs/adrs/`, 46 rows above. Verified with
-`ls docs/adrs | wc -l` == `grep -c "^| ADR-" docs/ADRS.md`.
+| ADR-059 | The desktop's network calls leave from Rust, so the API needs no CORS change | 2026-09-25 | **Accepted** (Session A confirmed decision 3 the same day) | desktop mission §2, §3.2, §3.6, §5 | Every desktop request — including the SSE stream, which carries `Authorization: Bearer` — is issued by the Rust process behind the `http` port, so the webview never makes a cross-origin call and `CORS_ORIGINS` gains no Tauri origin. The boundary lint is what enforces it (`config/check-platform-boundary.mjs` fails the build if the React tree calls `fetch`). The ADR's separate request that the server narrow `?token=` (R5) is open. |
+
+Coverage: 47 files in `docs/adrs/`, 47 rows above. Verified with
+`ls docs/adrs | wc -l` == `awk '/^## 1\./,/^## 2\./' docs/ADRS.md | grep -c "^| ADR-"`.
+(The row prefix `^| ADR-` also opens the §3 collision and §4 caveat tables, so an
+unscoped `grep -c` over the whole file counts 57 and verifies nothing — that is how
+this line read 46 == 46 while §1 held 46 rows and the count had already moved on.)
 
 ---
 

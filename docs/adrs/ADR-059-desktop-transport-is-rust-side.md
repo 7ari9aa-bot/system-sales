@@ -1,6 +1,6 @@
 # ADR-059 — The desktop's network calls leave from Rust, so the API needs no CORS change
 
-- **Status:** Proposed — needs Session A's confirmation (§6 of `docs/DESKTOP_ARCH_REVIEW.md` lists adding the Tauri origins as a config request; this ADR argues it is unnecessary, and asks that it stay unmade)
+- **Status:** Accepted — Session A confirmed decision 3 on 2026-09-25 (`docs/DESKTOP_ARCH_REVIEW.md` §7 item 2: no `tauri://localhost` / `http://tauri.localhost` entry is to be added to `CORS_ORIGINS`; the desktop authenticates as a client, not as a page). The ADR's separate request that the server narrow `?token=` (R5) is **still open** and tracked there.
 - **Date:** 2026-09-25
 - **Spec:** desktop mission §2 (layers), §3.2 (realtime is SSE), §3.6 (CORS), §5 (API behaviour)
 - **Related:** `docs/DESKTOP_ARCH_REVIEW.md` C-D3 / C-D4 / C-D6; ADR-015 (consumer idempotency, for the queue this defers); ADR-013 (execution modes)
