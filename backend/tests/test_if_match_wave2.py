@@ -68,7 +68,11 @@ class _FakeSession:
         self.statements: list[object] = []
         self.added: list[object] = []
 
-    async def execute(self, statement: object) -> _FakeResult:
+    async def execute(self, statement: object, params: object = None) -> _FakeResult:
+        # ``params`` is part of the real ``AsyncSession.execute`` signature — the
+        # §66 audit writer passes bound parameters, so a double without it would
+        # fail on the SECOND positional argument rather than on anything it is
+        # here to observe.
         self.statements.append(statement)
         return _FakeResult(self.returned)
 

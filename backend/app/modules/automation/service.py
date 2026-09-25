@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import (
+    ConflictError,
     DomainError,
     ExternalProviderError,
     NotFoundError,
@@ -31,6 +32,41 @@ from app.modules.automation.models import (
 )
 
 _MAX_STEPS = 25  # §134-style execution bound
+
+WORKFLOW_STATUSES = ("draft", "active", "paused", "archived")
+
+#: §176/§136 lifecycle ladder. CURRENT -> allowed targets, mirroring the repo's
+#: own convention (``conversations/templates.py:44``): ``archived`` is TERMINAL.
+#: A withdrawn workflow must not be resumable by a status PATCH, because
+#: ``active`` is exactly the flag that lets ``execute_for_event`` fire it — and
+#: therefore let it mutate tenant data — on every matching tenant event.
+ALLOWED_STATUS_TRANSITIONS: dict[str, frozenset[str]] = {
+    "draft": frozenset({"active", "archived"}),
+    "active": frozenset({"paused", "archived"}),
+    "paused": frozenset({"active", "archived"}),
+    "archived": frozenset(),
+}
+
+
+def _validate_definition(definition: object) -> None:
+    """§136: OUR Workflow Version is the canonical definition the engine runs.
+
+    Checked at WRITE time, on both doors that create a snapshot, for the same
+    reason ``create`` already checked it: a version nobody can execute is not a
+    draft, it is an outage waiting for the next event. Before this, ``create``
+    rejected a definition without ``steps`` while ``publish_new_version``
+    rejected nothing — so the very next write to a live workflow could replace
+    a runnable definition with one that executes zero steps and still reports
+    ``completed``. The engine's own guard in ``_run_internal`` stays: snapshots
+    published before this rule existed are still refused at run time.
+    """
+    if not isinstance(definition, dict) or "steps" not in definition:
+        raise ValidationError("definition must contain 'steps'")
+    steps = definition["steps"]
+    if not isinstance(steps, list):
+        raise ValidationError("definition['steps'] must be a list")
+    if len(steps) > _MAX_STEPS:
+        raise ValidationError(f"a workflow may not exceed {_MAX_STEPS} steps")
 
 
 class WorkflowService:
@@ -47,8 +83,7 @@ class WorkflowService:
     ) -> Workflow:
         if execution_backend not in ("internal", "n8n"):
             raise ValidationError(f"unknown backend: {execution_backend}")
-        if not isinstance(definition, dict) or "steps" not in definition:
-            raise ValidationError("definition must contain 'steps'")
+        _validate_definition(definition)
         workflow = Workflow(
             tenant_id=tenant_id,
             name=name,
@@ -79,6 +114,9 @@ class WorkflowService:
         definition: dict,
         expected_version: str | None = None,  # §17 If-Match
     ) -> WorkflowVersion:
+        # Refused BEFORE the row is touched: a snapshot nobody can execute must
+        # not bump current_version even when the definition is rejected later.
+        _validate_definition(definition)
         workflow = await WorkflowService.get(session, tenant_id, workflow_id)
         # §17: the CAS on the workflow row IS the race guard — two publishers
         # holding the same version cannot both bump current_version; the loser
@@ -118,9 +156,17 @@ class WorkflowService:
         *,
         expected_version: str | None = None,  # §17 If-Match
     ) -> Workflow:
-        if status not in ("draft", "active", "paused", "archived"):
+        if status not in WORKFLOW_STATUSES:
             raise ValidationError(f"invalid status: {status}")
         workflow = await WorkflowService.get(session, tenant_id, workflow_id)
+        allowed = ALLOWED_STATUS_TRANSITIONS.get(workflow.status, frozenset())
+        if status not in allowed:
+            hint = f" (allowed: {', '.join(sorted(allowed))})" if allowed else (
+                " - archived is terminal"
+            )
+            raise ConflictError(
+                f"cannot move a {workflow.status} workflow to {status}{hint}"
+            )
         # ONE statement, always version-bumped (even without If-Match) so an
         # ETag never goes stale silently on a concurrent unconditional write.
         await apply_versioned_update(
@@ -194,6 +240,16 @@ class WorkflowService:
             )
         ).scalar_one_or_none()
         workflow = await WorkflowService.get(session, tenant_id, execution.workflow_id)
+        # §136 lifecycle: the TRIGGER path only stages an ACTIVE workflow
+        # (see ``execute_for_event``), so the manual run door must honour the
+        # same ladder or pausing/archiving a workflow achieves nothing — an
+        # operator could still fire the queued executions of a definition the
+        # merchant withdrew, queueing notifications and webhooks on its behalf.
+        if workflow.status != "active":
+            raise ConflictError(
+                f"workflow {workflow.id} is {workflow.status}; only an active "
+                "workflow executes"
+            )
 
         try:
             if workflow.execution_backend == "n8n":

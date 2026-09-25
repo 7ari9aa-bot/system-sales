@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
+from app.core.audit import write_audit_row  # §66
 from app.core.idempotency import IfMatch, apply_etag  # §17
 from app.modules.automation.models import Workflow, WorkflowExecution, WorkflowVersion
 from app.modules.automation.service import WorkflowService
@@ -24,6 +25,19 @@ from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permi
 router = APIRouter(prefix="/workflows", tags=["automation"])
 
 WriteCtx = Annotated[TenantContext, Depends(require_permission("settings:write"))]
+
+# §66: every mutation on this surface is a governance event, not a routine
+# insert. Activating a workflow grants it the right to act on tenant data by
+# itself (``execute_for_event`` fires on business events), and publishing a
+# version decides what every future execution will run — so each of the four
+# writes below leaves a row naming who did it, to what, from what to what.
+# ``app.core.audit`` is a core capability, so this costs no cross-module edge.
+AUDIT_CREATE = "workflow.created"
+AUDIT_STATUS = "workflow.status_changed"
+AUDIT_PUBLISH = "workflow.version_published"
+AUDIT_RUN = "workflow.execution_run"
+AUDIT_RESOURCE_WORKFLOW = "workflow"
+AUDIT_RESOURCE_EXECUTION = "workflow_execution"
 
 # Query params are declared `Annotated[type, Query(...)] = <value>`, never
 # `name: type = Query(...)` — see the parameter-declaration rule in
@@ -114,6 +128,21 @@ async def create_workflow(ctx: WriteCtx, body: WorkflowCreate):
     if body.description is not None:
         workflow.description = body.description
         await ctx.session.flush()
+    await write_audit_row(
+        ctx.session,
+        ctx.tenant_id,
+        ctx.user.id,
+        AUDIT_CREATE,
+        AUDIT_RESOURCE_WORKFLOW,
+        str(workflow.id),
+        after={
+            "name": workflow.name,
+            "trigger_event": workflow.trigger_event,
+            "status": workflow.status,
+            "execution_backend": workflow.execution_backend,
+            "current_version": workflow.current_version,
+        },
+    )
     return _workflow_dict(workflow)
 
 
@@ -126,6 +155,20 @@ async def run_workflow_execution(ctx: WriteCtx, execution_id: uuid.UUID):
     in ``workflow_failures`` — they are not surfaced as a 5xx.
     """
     execution = await WorkflowService.run_execution(ctx.session, ctx.tenant_id, execution_id)
+    await write_audit_row(
+        ctx.session,
+        ctx.tenant_id,
+        ctx.user.id,
+        AUDIT_RUN,
+        AUDIT_RESOURCE_EXECUTION,
+        str(execution.id),
+        after={
+            "workflow_id": str(execution.workflow_id),
+            "workflow_version": execution.workflow_version,
+            "status": execution.status,
+            "error": execution.error,
+        },
+    )
     return _execution_dict(execution)
 
 
@@ -148,6 +191,12 @@ async def update_workflow_status(
     if_match: IfMatch = None,  # §17 optimistic concurrency; absent = unconditional
 ):
     """Change a workflow's lifecycle status (draft | active | paused | archived)."""
+    # Read the current rung FIRST: §66 wants the transition, not just the
+    # destination, and ``set_status`` overwrites the attribute in place. The
+    # CAS inside set_status is what makes the read safe — a racing writer
+    # loses on ``WHERE version``, it does not slip past this lookup.
+    previous = await WorkflowService.get(ctx.session, ctx.tenant_id, workflow_id)
+    before_status = previous.status
     workflow = await WorkflowService.set_status(
         ctx.session,
         ctx.tenant_id,
@@ -156,6 +205,20 @@ async def update_workflow_status(
         expected_version=if_match,
     )
     await ctx.session.flush()
+    await write_audit_row(
+        ctx.session,
+        ctx.tenant_id,
+        ctx.user.id,
+        AUDIT_STATUS,
+        AUDIT_RESOURCE_WORKFLOW,
+        str(workflow.id),
+        before={"status": before_status},
+        after={
+            "status": workflow.status,
+            "current_version": workflow.current_version,
+            "version": workflow.version,
+        },
+    )
     apply_etag(response, workflow.version)
     return _workflow_dict(workflow)
 
@@ -178,6 +241,19 @@ async def publish_workflow_version(
     )
     workflow = await WorkflowService.get(ctx.session, ctx.tenant_id, workflow_id)
     apply_etag(response, workflow.version)
+    await write_audit_row(
+        ctx.session,
+        ctx.tenant_id,
+        ctx.user.id,
+        AUDIT_PUBLISH,
+        AUDIT_RESOURCE_WORKFLOW,
+        str(workflow_id),
+        after={
+            "version": version.version,
+            "current_version": workflow.current_version,
+            "step_count": len(version.definition.get("steps", [])),
+        },
+    )
     return {"workflow_id": str(workflow_id), "version": version.version}
 
 
