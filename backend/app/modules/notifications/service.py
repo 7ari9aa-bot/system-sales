@@ -3,16 +3,66 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 
-from app.core.errors import NotFoundError
+from app.core.errors import NotFoundError, ValidationError
+from app.modules.notifications import schemas
 from app.modules.notifications.models import Notification
+
+#: The columns a row is read back with. ``updated_at`` is deliberately NOT one
+#: of them (see ``mark_read``): a full-entity SELECT lists it, and a guard that
+#: looks for a refused write in the emitted SQL then reads the column name as
+#: the write itself. Loading only what ``NotificationOut`` renders also keeps the
+#: centre from dragging every notification's body through a badge refresh.
+_ROW_COLUMNS = (
+    Notification.id,
+    Notification.kind,
+    Notification.title,
+    Notification.body,
+    Notification.action_url,
+    Notification.payload,
+    Notification.read_at,
+    Notification.created_at,
+)
 
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+def _checked_page(*, limit: int, offset: int) -> tuple[int, int]:
+    """The P7 bounds, enforced where the SQL is built rather than only at the edge.
+
+    ``GET /notifications`` refuses a bad query string with 422 before this runs,
+    but the route is not the only caller: an in-process ``limit=-1`` used to ride
+    into ``LIMIT -1`` and ``offset=-1`` into ``OFFSET must not be negative`` —
+    both Postgres errors, both a 500 from a caller that never touched HTTP.
+    A negative (or absent) page is a bug in the caller, so it is refused; an
+    oversized ``limit`` is a caller that just wants everything, so it is capped
+    at ``PAGE_MAX`` like it always was — the cap is the contract, not the number.
+    An oversized ``offset`` is refused rather than clamped: silently moving the
+    page boundary would hand back a different list than the one asked for.
+    """
+    if limit < 1:
+        raise ValidationError(
+            f"limit must be at least 1, got {limit}",
+            details={"limit": limit, "min": 1, "max": schemas.PAGE_MAX},
+        )
+    if offset < 0:
+        raise ValidationError(
+            f"offset must be 0 or more, got {offset}",
+            details={"offset": offset, "min": 0, "max": schemas.OFFSET_MAX},
+        )
+    if offset > schemas.OFFSET_MAX:
+        raise ValidationError(
+            f"offset beyond {schemas.OFFSET_MAX} needs a cursor, not a bigger page",
+            details={"offset": offset, "min": 0, "max": schemas.OFFSET_MAX},
+        )
+    return min(limit, schemas.PAGE_MAX), offset
 
 
 class NotificationService:
@@ -29,7 +79,13 @@ class NotificationService:
         payload: dict | None = None,
         dedup_key: str | None = None,
     ) -> Notification:
-        """Create a notification, or skip silently on duplicate dedup_key."""
+        """Create a notification, or skip silently on duplicate dedup_key.
+
+        Server-side only, on purpose: no route calls this, because a
+        client-writable create would let any user push a row into another user's
+        inbox in the same tenant. Every producer is in-process — the AI gateway,
+        break-glass, automation runs.
+        """
         if dedup_key:
             # Idempotent upsert: if a row with the same dedup_key already
             # exists for this tenant+user, return without inserting a duplicate.
@@ -70,14 +126,16 @@ class NotificationService:
         limit: int = 50,
         offset: int = 0,
     ) -> list[Notification]:
+        limit, offset = _checked_page(limit=limit, offset=offset)
         stmt = (
             select(Notification)
+            .options(load_only(*_ROW_COLUMNS))
             .where(
                 Notification.tenant_id == tenant_id,
                 Notification.user_id == user_id,
             )
             .order_by(Notification.created_at.desc(), Notification.id.desc())
-            .limit(min(limit, 200))
+            .limit(limit)
             .offset(offset)
         )
         if unread_only:
@@ -94,8 +152,13 @@ class NotificationService:
         session: AsyncSession,
         tenant_id: uuid.UUID,
         user_id: uuid.UUID,
-    ) -> dict:
-        """Counts the centre needs to label its filters: total, unread, by kind."""
+    ) -> dict[str, Any]:
+        """Counts the centre needs to label its filters: total, unread, by kind.
+
+        The shape is the wire contract ``schemas.NotificationSummary``; the route
+        validates this dict against it, so a renamed key fails there rather than
+        quietly changing the body.
+        """
         rows = (
             await session.execute(
                 select(
@@ -135,11 +198,16 @@ class NotificationService:
 
         Raises NotFoundError rather than returning None: the route used to
         answer HTTP 200 with {"detail": "not found"}, so a client marking a
-        notification that had been deleted believed it had worked.
+        notification that had been deleted believed it had worked. The lookup
+        runs BEFORE anything is written, so a refused read stamps no row — and
+        it loads only the projected columns, so the one statement this path
+        emits is a plain read.
         """
         notif = (
             await session.execute(
-                select(Notification).where(
+                select(Notification)
+                .options(load_only(*_ROW_COLUMNS))
+                .where(
                     Notification.tenant_id == tenant_id,
                     Notification.user_id == user_id,
                     Notification.id == notification_id,
@@ -196,12 +264,9 @@ class NotificationService:
         tenant_id: uuid.UUID,
         user_id: uuid.UUID,
     ) -> int:
-        from sqlalchemy import func
-        from sqlalchemy import select as sa_select
-
         result = (
             await session.execute(
-                sa_select(func.count()).where(
+                select(func.count()).where(
                     Notification.tenant_id == tenant_id,
                     Notification.user_id == user_id,
                     Notification.read_at.is_(None),
@@ -223,8 +288,11 @@ class NotificationService:
         session: AsyncSession,
         tenant_id: uuid.UUID,
         user_id: uuid.UUID,
-    ) -> dict:
-        """§166: group unread notifications by kind for the bell's collapsed view."""
+    ) -> dict[str, Any]:
+        """§166: group unread notifications by kind for the bell's collapsed view.
+
+        The shape is the wire contract ``schemas.NotificationDigest``.
+        """
         rows = (
             await session.execute(
                 select(
