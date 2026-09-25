@@ -562,11 +562,20 @@ def _counting_engine(engine):  # noqa: ANN001 - test helper
 
 @pytest.fixture
 async def inbox_seed(db):
-    """One customer, one conversation with 2 inbound + 1 outbound, one SLA."""
+    """One customer, one conversation with 2 inbound + 1 outbound, one SLA.
+
+    The writes happen under a BOUND tenant GUC: CI executes against the
+    ``sales_app`` role, and the hardening sweep's ``tenant_isolation`` policy
+    refuses every INSERT whose ``app.tenant_id`` is unset — even a correctly
+    owned row. Locally these tests skip, so the refusal can only ever be seen
+    in CI (first seen as 5 setup errors in run 36136180924).
+    """
+    from app.core.db import bind_tenant
     from app.modules.conversations.models import Conversation, Message
     from app.modules.customers.models import Customer
     from app.modules.operations.models import SLAEvent
 
+    await bind_tenant(db, TENANT)
     customer = Customer(tenant_id=TENANT, name="منى", phone="+201000000000")
     db.add(customer)
     await db.flush()
@@ -657,24 +666,40 @@ async def test_unread_cannot_drift_from_the_facts_it_projects(db, inbox_seed) ->
     assert inbound == 3, "the messages table moved with the same write"
 
 
-async def test_page_is_tenant_isolated(db, tenant_ctx, inbox_seed) -> None:
-    """Raw SQL is not a tenancy hole: explicit predicate AND bound RLS."""
+async def test_page_is_tenant_isolated(db, inbox_seed) -> None:
+    """Raw SQL is not a tenancy hole: explicit predicate AND bound RLS.
+
+    The stranger's row enters the table through the stranger's own hands —
+    WITH CHECK refuses to let anyone mint a row owned by someone else — and
+    then the page, bound and predicated to the seeded tenant, must not see it.
+    """
     from app.core.db import bind_tenant
     from app.modules.conversations.models import Conversation
     from app.modules.customers.models import Customer
 
+    await bind_tenant(db, OTHER_TENANT)
     other = Customer(tenant_id=OTHER_TENANT, name="أخرى")
-    # Bound to the seeded tenant first, then prove a foreign row is invisible
-    # even when its id is handed to us directly.
-    await bind_tenant(db, TENANT)
+    db.add(other)
+    await db.flush()
     foreign = Conversation(
         tenant_id=OTHER_TENANT, customer_id=other.id, channel="webchat", status="open"
     )
     db.add(foreign)
     await db.flush()
 
+    await bind_tenant(db, TENANT)
     page = await InboxQuery.page(db, TENANT, limit=50)
     assert [i["id"] for i in page] == [str(inbox_seed.conversation.id)]
+
+    db.add(
+        Conversation(
+            tenant_id=OTHER_TENANT, customer_id=other.id, channel="webchat", status="open"
+        )
+    )
+    with pytest.raises(Exception) as excinfo:  # RLS violation → ProgrammingError
+        await db.flush()
+    assert "row-level security" in str(excinfo.value).lower()
+    await db.rollback()
 
 
 async def test_one_page_costs_one_statement_on_a_real_database(db, inbox_seed) -> None:
