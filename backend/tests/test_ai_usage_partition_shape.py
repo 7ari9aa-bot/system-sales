@@ -317,7 +317,16 @@ async def test_ai_usage_parent_is_range_partitioned_on_period_date(db: AsyncSess
             )
         )
     ).scalar_one()
-    assert partkey.upper() == "RANGE (period_date)", partkey
+    # The comparison used to `.upper()` the catalog's output and compare it
+    # against the mixed-case literal — which can never pass, because upper()
+    # capitalizes the column name too: "RANGE (period_date)".upper() is
+    # "RANGE (PERIOD_DATE)". CI's own assertion message (`AssertionError: RANGE
+    # (period_date)`) is the proof the catalog read was already exactly what the
+    # migration builds (f7a2c9d4e8b1: `PARTITION BY RANGE (period_date)`), so the
+    # bug was the test's, not the schema's. The pin is exact now, which is
+    # stronger rather than looser: it holds the column name as well as the
+    # strategy keyword.
+    assert partkey == "RANGE (period_date)", partkey
 
 
 async def test_partitions_are_monthly_bounds_plus_a_default(db: AsyncSession) -> None:
@@ -460,7 +469,13 @@ async def test_rows_route_to_their_own_month_and_orphans_to_default(
             text(
                 "SELECT tableoid::regclass::text FROM ai_usage "
                 "WHERE tenant_id = :t AND period_date = DATE '2001-01-05'"
-            )
+            ),
+            # The bind belongs HERE: this statement was executed without params,
+            # so SQLAlchemy raised `InvalidRequestError: A value is required for
+            # bind parameter 't'` (CI run 36136180924) before Postgres ever saw
+            # it. The identical probe above passes the same dict; the statement
+            # is the test's own, not production code's.
+            {"t": tenant_ctx.tenant_id},
         )
     ).scalar_one()
     assert placed == "ai_usage_default", (

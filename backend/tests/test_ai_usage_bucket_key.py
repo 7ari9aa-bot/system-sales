@@ -49,8 +49,10 @@ building an upsert whose ONLY arbiter relies on NULLs comparing equal.
 
 from __future__ import annotations
 
+import ast
 import inspect
 import re
+import sys
 import uuid
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -445,7 +447,14 @@ async def test_agent_less_writes_converge_into_one_row_on_postgres(db, tenant_ct
         await db.execute(
             sa_text(
                 "SELECT count(*) AS n, sum(tokens_in) AS tokens, sum(model_calls) AS calls, "
-                "sum(cost) AS cost, min(id) AS id FROM ai_usage "
+                # `(array_agg(id ORDER BY id))[1]`, NOT `min(id)`: `ai_usage.id` is
+                # a uuid and Postgres defines neither min(uuid) nor max(uuid), so
+                # the audit died with "function min(uuid) does not exist" (CI run
+                # 36136180924). This is the same aggregate and the same intent —
+                # the id of the earliest row of the bucket's rows — in a spelling
+                # Postgres can execute for any orderable type; pinned DB-free by
+                # test_the_audit_aggregates_over_the_uuid_identity_are_postgres_legal.
+                "sum(cost) AS cost, (array_agg(id ORDER BY id))[1] AS id FROM ai_usage "
                 "WHERE tenant_id = :t AND agent_id IS NULL"
             ),
             {"t": tenant_ctx.tenant_id},
@@ -509,4 +518,67 @@ async def test_the_agent_bucket_still_converges_on_the_natural_key(
     assert len(rows) == 2, rows
     assert {int(r.calls) for r in rows} == {1, 2}, rows
     assert all(r.cost == D("0.25") or r.cost == D("0.50") for r in rows), rows
+
+
+# ---------------------------------------------------------------------------
+# 9. The audit SQL itself must be Postgres-legal over the uuid identity
+# ---------------------------------------------------------------------------
+
+
+def _sql_statements_of_this_module() -> list[str]:
+    """Every SQL text this module hands to `sa_text(...)`, captured DB-free.
+
+    The statements are written as implicit string concatenations, and
+    `ast.literal_eval` folds those into exactly the text the database would
+    receive — the capture a recording session would make, with no database to
+    record from (this file's statements only run against Postgres, which is the
+    one thing the DB-free pins cannot assume).
+    """
+    tree = ast.parse(inspect.getsource(sys.modules[__name__]))
+    return [
+        ast.literal_eval(node.args[0])
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and getattr(node.func, "id", None) == "sa_text"
+        and node.args
+    ]
+
+
+_UUID_IDENTITY_AGGREGATE = re.compile(r"\b(?:min|max)\s*\(\s*id\s*\)", re.IGNORECASE)
+
+
+def test_the_audit_aggregates_over_the_uuid_identity_are_postgres_legal() -> None:
+    """`ai_usage.id` is a uuid, and Postgres has NO `min(uuid)` / `max(uuid)`.
+
+    The agent-less audit is a production-shaped aggregate: count/sum the bucket's
+    rows and return the identity of the earliest of them, so the caller can pin
+    that row to the derived bucket key. Its first spelling reached for `min(id)` —
+    but Postgres refuses the aggregate over a uuid outright ("function min(uuid)
+    does not exist", CI run 36136180924), which is the exact statement a
+    production audit of the platform bucket would die on. The intent survives in
+    a legal spelling: `(array_agg(id ORDER BY id))[1]` IS the earliest id of the
+    aggregated set, for any type Postgres can order. The live proof cannot run
+    without Postgres, so the shape is pinned where no database is needed: the
+    statements this file issues must aggregate the uuid identity legally, and
+    BOTH branches must stay symmetric — the agent-less audit via the array
+    spelling, its agent-scoped sibling via the GROUP BY key, never a min/max.
+    """
+    audits = [s for s in _sql_statements_of_this_module() if "FROM ai_usage" in s]
+
+    agentless = [s for s in audits if "agent_id IS NULL" in s]
+    assert agentless, f"the agent-less audit statement went missing: {audits}"
+    for sql in agentless:
+        assert "AS id" in sql, sql
+        assert not _UUID_IDENTITY_AGGREGATE.search(sql), (
+            f"min/max over the uuid identity is `function min(uuid) does not "
+            f"exist` on Postgres 17; the earliest row of the set is spelled "
+            f"`(array_agg(id ORDER BY id))[1]`: {sql}"
+        )
+        assert "(array_agg(id ORDER BY id))[1]" in sql, sql
+
+    agent_scoped = [s for s in audits if "agent_id IS NOT NULL" in s]
+    assert agent_scoped, f"the agent-scoped sibling audit went missing: {audits}"
+    for sql in agent_scoped:
+        assert "GROUP BY agent_id" in sql, sql
+        assert not _UUID_IDENTITY_AGGREGATE.search(sql), sql
 
