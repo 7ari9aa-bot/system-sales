@@ -222,17 +222,23 @@ def _segments_only_app() -> FastAPI:
     return app
 
 
-def _client(session: Any) -> Any:
+def _client(session: Any, tenant_id: uuid.UUID = TENANT) -> Any:
     """A request-bound app, for behaviour that is the APP'S contract.
 
     The 400 body and its ``error.code`` are produced by ``main.py``'s
     ``DomainError`` handler, so this half has to run the real app; the schema
     walk above does not.
+
+    ``tenant_id`` defaults to the module's synthetic ``TENANT`` because every
+    caller but one is DB-free and only ever reads the response. The exception
+    passes ``tenant_ctx``'s REAL tenant: the fake context's ``tenant_id`` is
+    what the service writes into ``segments.tenant_id``, and that column is
+    FK-checked against ``tenants`` — so a made-up uuid can only 500.
     """
     ctx = TenantContext(
         session=session,
-        user=AuthedUser(id=uuid.uuid4(), tenant_id=TENANT, role_code="owner"),
-        tenant_id=TENANT,
+        user=AuthedUser(id=uuid.uuid4(), tenant_id=tenant_id, role_code="owner"),
+        tenant_id=tenant_id,
         role_code="owner",
         permission_codes={"marketing:write"},
     )
@@ -544,14 +550,18 @@ async def test_the_http_surface_round_trips_a_typed_segment(
     NAMES with the wrong nullability, which no OpenAPI walk can see.
     """
     # The real get_tenant_ctx verifies membership AND binds the RLS GUC; the
-    # fake in `_client` replaces it wholesale, so this test binds the GUC to
-    # the tenant the fake context claims. Without it CI's `sales_app` role —
-    # with RLS enforced — refuses the POST's INSERT INTO segments
-    # (InsufficientPrivilegeError: new row violates row-level security policy).
+    # fake in `_client` replaces it wholesale, so this test binds the GUC to the
+    # tenant the fake context claims — and claims `tenant_ctx`'s REAL tenant row
+    # rather than the module's synthetic `TENANT`. Two separate refusals sit
+    # behind that: with no bind at all CI's `sales_app` role rejects the POST's
+    # INSERT INTO segments as a row-level security violation, and with a
+    # synthetic bind the RLS check passes and the statement dies one step later
+    # on `fk_segments_tenant_id_tenants` — 'DETAIL: Key is not present in table
+    # "tenants"' (run on c85e130).
     from app.core.db import bind_tenant
 
-    await bind_tenant(db, TENANT)
-    transport = ASGITransport(app=_client(db))
+    await bind_tenant(db, tenant_ctx.tenant_id)
+    transport = ASGITransport(app=_client(db, tenant_ctx.tenant_id))
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         created = await client.post(
             "/api/v1/segments",

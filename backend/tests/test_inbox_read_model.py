@@ -564,16 +564,36 @@ def _counting_engine(engine):  # noqa: ANN001 - test helper
 async def inbox_seed(db):
     """One customer, one conversation with 2 inbound + 1 outbound, one SLA.
 
-    The writes happen under a BOUND tenant GUC: CI executes against the
-    ``sales_app`` role, and the hardening sweep's ``tenant_isolation`` policy
-    refuses every INSERT whose ``app.tenant_id`` is unset — even a correctly
-    owned row. Locally these tests skip, so the refusal can only ever be seen
-    in CI (first seen as 5 setup errors in run 36136180924).
+    Two things have to be true before that seed can land, and CI is the only
+    place that proves it (these tests skip without ``DATABASE_URL_APP_ADMIN``):
+
+    * the tenant GUC is BOUND — CI executes as the ``sales_app`` role and the
+      hardening sweep's ``tenant_isolation`` policy refuses every INSERT whose
+      ``app.tenant_id`` is unset, even a correctly owned row (first seen as 5
+      setup errors in run 36136180924);
+    * the tenant EXISTS. Binding a synthetic UUID satisfies WITH CHECK and then
+      dies one step later on ``fk_customers_tenant_id_tenants`` — 'DETAIL: Key
+      is not present in table "tenants"' (run on c85e130). So this seeds a
+      REAL ``Tenant`` row, the way ``tests/conftest.py``'s ``tenant_ctx`` does.
+      Its id is pinned to this module's ``TENANT`` constant because the ~25
+      DB-free tests above, and every ``InboxQuery.page(db, TENANT, …)`` below,
+      name that uuid; ``default=uuid.uuid4`` on the column only fills in when
+      the id is left unset.
     """
     from app.core.db import bind_tenant
     from app.modules.conversations.models import Conversation, Message
     from app.modules.customers.models import Customer
+    from app.modules.identity.models import Tenant
     from app.modules.operations.models import SLAEvent
+
+    db.add(
+        Tenant(
+            id=TENANT,
+            slug=f"inbox-{uuid.uuid4().hex[:8]}",
+            name="Inbox Read Model Tenant",
+        )
+    )
+    await db.flush()
 
     await bind_tenant(db, TENANT)
     customer = Customer(tenant_id=TENANT, name="منى", phone="+201000000000")
@@ -672,10 +692,27 @@ async def test_page_is_tenant_isolated(db, inbox_seed) -> None:
     The stranger's row enters the table through the stranger's own hands —
     WITH CHECK refuses to let anyone mint a row owned by someone else — and
     then the page, bound and predicated to the seeded tenant, must not see it.
+
+    The stranger is a SECOND REAL TENANT, not a bare UUID: its own customer
+    row is FK-checked against ``tenants``, so a synthetic id would die on
+    ``fk_customers_tenant_id_tenants`` before RLS ever got asked. Real and
+    distinct is the point — nothing here is weakened by it, and the refusal at
+    the bottom still has to come from row-level security rather than from an
+    absent tenant.
     """
     from app.core.db import bind_tenant
     from app.modules.conversations.models import Conversation
     from app.modules.customers.models import Customer
+    from app.modules.identity.models import Tenant
+
+    db.add(
+        Tenant(
+            id=OTHER_TENANT,
+            slug=f"inbox-x-{uuid.uuid4().hex[:8]}",
+            name="Inbox Stranger Tenant",
+        )
+    )
+    await db.flush()
 
     await bind_tenant(db, OTHER_TENANT)
     other = Customer(tenant_id=OTHER_TENANT, name="أخرى")

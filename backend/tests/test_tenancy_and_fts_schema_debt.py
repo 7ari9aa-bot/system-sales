@@ -805,23 +805,48 @@ async def test_workflow_versions_isolates_across_tenants(db) -> None:
     pattern): CI's `sales_app` role refuses any INSERT whose `app.tenant_id`
     is unset, so the row-owning tenant must bind first — then a different
     tenant binds and must not see what it wrote.
+
+    Both of those tenants are REAL rows. A bare uuid satisfies
+    `tenant_isolation`'s WITH CHECK and then dies one step later on the
+    `workflows.tenant_id` foreign key — `Key is not present in table
+    "tenants"` (run on c85e130) — and a reader that owns no tenant row would
+    answer the final SELECT with nothing for the wrong reason.
     """
     from sqlalchemy import text
 
     from app.core.db import bind_tenant
     from app.modules.automation.models import Workflow, WorkflowVersion
+    from app.modules.identity.models import Tenant
 
-    stranger = uuid.uuid4()
-    await bind_tenant(db, stranger)
+    stranger = Tenant(slug=f"wf-{uuid.uuid4().hex[:8]}", name="Workflow Stranger")
+    reader = Tenant(slug=f"wf-read-{uuid.uuid4().hex[:8]}", name="Workflow Reader")
+    db.add_all([stranger, reader])
+    await db.flush()
+
+    await bind_tenant(db, stranger.id)
     workflow = Workflow(
-        tenant_id=stranger, name="isolated", trigger_event="order.created", current_version=1
+        tenant_id=stranger.id, name="isolated", trigger_event="order.created", current_version=1
     )
     db.add(workflow)
     await db.flush()
-    db.add(WorkflowVersion(workflow_id=workflow.id, version=1, definition={}, tenant_id=stranger))
+    db.add(
+        WorkflowVersion(workflow_id=workflow.id, version=1, definition={}, tenant_id=stranger.id)
+    )
     await db.flush()
 
-    await bind_tenant(db, uuid.uuid4())  # a different tenant reads
+    # Non-vacuity control, in the same shape `test_hierarchy_rls.py` uses: the
+    # owner, bound to its own tenant, DOES see the snapshot through an
+    # unfiltered SELECT. Without this the assertion below can be green simply
+    # because nothing was ever written.
+    owned = (
+        await db.execute(
+            text("SELECT id FROM workflow_versions WHERE workflow_id = :w"),
+            {"w": workflow.id},
+        )
+    ).all()
+    assert len(owned) == 1, "the seed wrote no snapshot, so isolation proves nothing"
+
+    await bind_tenant(db, reader.id)  # a different, equally real tenant reads
     rows = (
         await db.execute(
             text(

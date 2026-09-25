@@ -519,9 +519,27 @@ async def test_the_database_itself_refuses_a_month_inside_the_legal_floor(
     """
     month = _month_back(6)
     name = await _seed_month(db, 6, tenant_ctx.tenant_id)
+    # The refusal aborts the PostgreSQL transaction, so the read below cannot
+    # simply follow it — CI's failure was exactly that: `current transaction is
+    # aborted, commands ignored until end of transaction block` raised while
+    # asserting the month survived (run on c85e130). `test_hierarchy_rls.py`
+    # recovers with `await db.rollback()`, and it can afford to because it
+    # asserts nothing afterwards. Here that rollback would ALSO undo the seed:
+    # this month's partition is created inside this transaction — `f7a2c9d4e8b1`
+    # attaches only the DEFAULT child — so unwinding would delete the very
+    # partition the last line claims survived, and the only way to keep it green
+    # would be to drop the claim. So the abort is CONTAINED by a savepoint
+    # instead, which is the repo's other precedent for a database refusal
+    # (`test_invoice_immutability.py`: "without `begin_nested` the surrounding
+    # test transaction would be poisoned"). The tenant GUC is re-asserted after
+    # the recovery rather than trusted: `set_config(..., true)` is
+    # transaction-local, so that is one cheap statement in place of an
+    # assumption about savepoint semantics.
     with pytest.raises(partitioning.PartitionMaintenanceRefused) as exc:
-        await partitioning.purge_month(db, PARENT, month)
+        async with db.begin_nested():
+            await partitioning.purge_month(db, PARENT, month)
     assert "floor" in str(exc.value).lower()
+    await bind_tenant(db, tenant_ctx.tenant_id)
     assert name in await _partition_names(db)
 
 
