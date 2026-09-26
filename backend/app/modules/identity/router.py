@@ -131,10 +131,10 @@ async def me(user: CurrentUserDep, session: DbSession):
 
 @router.post("/auth/switch-tenant", response_model=schemas.TokenPair)
 async def switch_tenant(
-    body: schemas.RefreshRequest, tenant_id: uuid.UUID, user: CurrentUserDep, session: DbSession
+    body: schemas.SwitchTenantRequest, user: CurrentUserDep, session: DbSession
 ):
     return await service.AuthService.switch_tenant(
-        session, user=user, tenant_id=tenant_id, refresh_token=body.refresh_token
+        session, user=user, tenant_id=body.tenant_id, refresh_token=body.refresh_token
     )
 
 

@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 245,
-    "sha256": "c5791d8dbe7f6d0a4236308e0c00aafbe8ac0c6fe6bb7fbd3157a38d031482b2",
-    "typed_operations": 149
+    "operations": 246,
+    "sha256": "7e4227c1a35e45aad2be15452177e90c6f339819fc1fa6a1ee8a5843b880d572",
+    "typed_operations": 150
   },
   "spec": {
     "components": {
@@ -8424,6 +8424,44 @@
           "title": "StockHealthOut",
           "type": "object"
         },
+        "StreamTokenOut": {
+          "properties": {
+            "expires_in": {
+              "title": "Expires In",
+              "type": "integer"
+            },
+            "stream_token": {
+              "title": "Stream Token",
+              "type": "string"
+            }
+          },
+          "required": [
+            "stream_token",
+            "expires_in"
+          ],
+          "title": "StreamTokenOut",
+          "type": "object"
+        },
+        "SwitchTenantRequest": {
+          "description": "§125: tenancy is the request context's, never a URL parameter.\n\nThe target tenant rides the typed body — a query string is logged, cached\nand echoed by every hop between here and the user's finger — and the\nservice still verifies membership server-side before minting anything.",
+          "properties": {
+            "refresh_token": {
+              "title": "Refresh Token",
+              "type": "string"
+            },
+            "tenant_id": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "refresh_token",
+            "tenant_id"
+          ],
+          "title": "SwitchTenantRequest",
+          "type": "object"
+        },
         "TagBody": {
           "properties": {
             "name": {
@@ -15390,16 +15428,6 @@
           "operationId": "switch_tenant_api_v1_auth_switch_tenant_post",
           "parameters": [
             {
-              "in": "query",
-              "name": "tenant_id",
-              "required": true,
-              "schema": {
-                "format": "uuid",
-                "title": "Tenant Id",
-                "type": "string"
-              }
-            },
-            {
               "in": "header",
               "name": "authorization",
               "required": false,
@@ -15420,7 +15448,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RefreshRequest"
+                  "$ref": "#/components/schemas/SwitchTenantRequest"
                 }
               }
             },
@@ -32496,6 +32524,56 @@
             }
           },
           "summary": "SSE stream — realtime domain events (§60, §149)",
+          "tags": [
+            "realtime"
+          ]
+        }
+      },
+      "/api/v1/realtime/stream-token": {
+        "post": {
+          "description": "SEC-1 / ADR-059 R5: mint the credential the ?token= fallback accepts.\n\nEvery other surface authenticates with the access token in the\nAuthorization header. Only the browser EventSource path — which cannot\nsend headers — needs a URL token, and a URL token must not be a\n30-minute replayable access credential. Five minutes, stream-only,\nbound to the caller's own tenant.",
+          "operationId": "mint_stream_token_api_v1_realtime_stream_token_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/StreamTokenOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Mint Stream Token",
           "tags": [
             "realtime"
           ]

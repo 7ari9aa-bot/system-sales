@@ -70,6 +70,9 @@ _ALLOWED_PUBLIC_ROUTES: frozenset[str] = frozenset(
         "POST /api/v1/auth/mfa/confirm",
         "POST /api/v1/auth/mfa/disable",
         "POST /api/v1/invitations/accept",
+        # SEC-1: mints a 5-minute stream-scoped credential from the caller's
+        # OWN authed identity — reads no tenant-scoped row, binds no GUC.
+        "POST /api/v1/realtime/stream-token",
         # public webchat visitor ingress (widget public key + visitor token)
         "POST /api/v1/webchat/{public_key}/messages",
         # provider webhook entrypoints (signature-verified inside the handler)

@@ -35,6 +35,17 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
+class SwitchTenantRequest(RefreshRequest):
+    """§125: tenancy is the request context's, never a URL parameter.
+
+    The target tenant rides the typed body — a query string is logged, cached
+    and echoed by every hop between here and the user's finger — and the
+    service still verifies membership server-side before minting anything.
+    """
+
+    tenant_id: uuid.UUID
+
+
 class CurrentTenant(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

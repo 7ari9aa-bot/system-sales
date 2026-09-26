@@ -55,6 +55,22 @@ def create_refresh_token(user_id: str, claims: dict[str, Any] | None = None) -> 
     )
 
 
+STREAM_TOKEN_TTL_SECONDS = 300
+
+
+def create_stream_token(
+    user_id: str, tenant_id: str, ttl_seconds: int = STREAM_TOKEN_TTL_SECONDS
+) -> str:
+    """A short-lived, stream-only credential (SEC-1 / ADR-059 R5).
+
+    The SSE gateway accepts this type — and ONLY this type — through the
+    ``?token=`` query fallback a browser EventSource needs. A five-minute
+    single-purpose token sitting in a server access log is noise; a
+    30-minute access token there is a replayable credential.
+    """
+    return _create_token(user_id, ttl_seconds, "stream", {"tenant_id": tenant_id})
+
+
 def decode_token(token: str) -> dict[str, Any]:
     """Raise jwt.PyJWTError subclasses on invalid/expired tokens.
 

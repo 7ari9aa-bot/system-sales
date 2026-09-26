@@ -35,14 +35,15 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from sqlalchemy import select as sa_select
 from sqlalchemy import text as sa_text
 
 from app.core.errors import PermissionDeniedError, ValidationError
 from app.core.events.schemas import deserialize
 from app.core.redis import get_redis
-from app.core.security import decode_token
-from app.modules.identity.deps import AuthedUser, tenant_may_use_api
+from app.core.security import STREAM_TOKEN_TTL_SECONDS, create_stream_token, decode_token
+from app.modules.identity.deps import AuthedUser, CurrentUserDep, tenant_may_use_api
 from app.modules.identity.models import Tenant, TenantUser, User
 
 
@@ -73,16 +74,28 @@ async def _sse_auth(
     """
     # Try Authorization header first (standard Bearer)
     auth_header = request.headers.get("authorization", "")
+    via_query = False
     if auth_header.lower().startswith("bearer "):
         raw_token = auth_header.split(" ", 1)[1].strip()
     elif token:
         raw_token = token
+        via_query = True
     else:
         raise PermissionDeniedError("missing bearer token")
 
     try:
         payload = decode_token(raw_token)
-        if payload.get("type") != "access":
+        if via_query:
+            # SEC-1 / ADR-059 R5: the query fallback carries ONLY the
+            # short-lived stream-scoped credential now. An access token in a
+            # URL is a replayable credential sitting in access logs, referrer
+            # headers and proxy caches for its whole lifetime.
+            if payload.get("type") != "stream":
+                raise PermissionDeniedError(
+                    "query tokens must be stream-scoped; mint one at "
+                    "POST /api/v1/realtime/stream-token"
+                )
+        elif payload.get("type") != "access":
             raise PermissionDeniedError("wrong token type")
         if not payload.get("tenant_id"):
             # Fail closed: a tenant-less token must never open a stream —
@@ -182,6 +195,29 @@ async def _tenant_may_stream(tenant_id: str) -> bool:
     return tenant_may_use_api(state)
 
 router = APIRouter(prefix="/realtime", tags=["realtime"])
+
+
+class StreamTokenOut(BaseModel):
+    stream_token: str
+    expires_in: int
+
+
+@router.post("/stream-token", response_model=StreamTokenOut)
+async def mint_stream_token(user: CurrentUserDep) -> StreamTokenOut:
+    """SEC-1 / ADR-059 R5: mint the credential the ?token= fallback accepts.
+
+    Every other surface authenticates with the access token in the
+    Authorization header. Only the browser EventSource path — which cannot
+    send headers — needs a URL token, and a URL token must not be a
+    30-minute replayable access credential. Five minutes, stream-only,
+    bound to the caller's own tenant.
+    """
+    if not user.tenant_id:
+        raise PermissionDeniedError("stream tokens require a tenant context")
+    return StreamTokenOut(
+        stream_token=create_stream_token(str(user.id), str(user.tenant_id)),
+        expires_in=STREAM_TOKEN_TTL_SECONDS,
+    )
 
 # Streams the gateway fans-out.  Extend as new domain streams are added.
 _ALL_STREAMS = [

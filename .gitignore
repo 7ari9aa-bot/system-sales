@@ -62,3 +62,4 @@ website-builder/
 
 # --- scratch workspace for the builder tooling (temp diffs, no project data) ---
 .builder/
+.zcode/
