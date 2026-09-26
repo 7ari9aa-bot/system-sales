@@ -21,7 +21,27 @@ from app.modules.ai import knowledge
 from app.modules.ai.approvals import ApprovalService
 from app.modules.ai.models import Agent, AIUsage, KnowledgeItem, Memory
 from app.modules.ai.policy import AIProviderPolicyService
-from app.modules.ai.schemas import AgentCreateRequest, AgentOut, KnowledgeIngestRequest
+from app.modules.ai.schemas import (
+    AgentCreateRequest,
+    AgentOut,
+    ApprovalDecisionOut,
+    ApprovalList,
+    EvaluationList,
+    EvaluationOut,
+    KnowledgeIngested,
+    KnowledgeIngestRequest,
+    KnowledgeList,
+    KnowledgeSearchHit,
+    MemoryList,
+    MemoryOut,
+    PolicyList,
+    PolicyOut,
+    TraceCorrelationOut,
+    TraceRunOut,
+    TraceSummaryOut,
+    UsageSummaryOut,
+    decimal_amount,
+)
 from app.modules.ai.trace import (
     AITraceService,
     create_evaluation,
@@ -40,8 +60,8 @@ SettingsCtx = Annotated[TenantContext, Depends(require_permission("settings:writ
 # gate in tests/test_route_parameter_declarations.py.
 
 
-@router.post("/knowledge", status_code=201)
-async def ingest_knowledge(ctx: SettingsCtx, body: KnowledgeIngestRequest) -> dict:
+@router.post("/knowledge", status_code=201, response_model=KnowledgeIngested)
+async def ingest_knowledge(ctx: SettingsCtx, body: KnowledgeIngestRequest):
     item = await knowledge.ingest_knowledge(
         ctx.session,
         ctx.tenant_id,
@@ -50,15 +70,18 @@ async def ingest_knowledge(ctx: SettingsCtx, body: KnowledgeIngestRequest) -> di
         source_type=body.source_type,
         source_ref=body.source_ref,
     )
-    return {"id": str(item.id), "status": item.status}
+    # §157: the two columns that decide whether retrieval may show this row at
+    # all. Shipping only `status` left the visibility of what staff just
+    # published unreadable from the write's own answer.
+    return {"id": str(item.id), "status": item.status, "visibility": item.visibility}
 
 
-@router.get("/knowledge/search")
+@router.get("/knowledge/search", response_model=list[KnowledgeSearchHit])
 async def search_knowledge(
     ctx: TenantCtxDep,
     q: Annotated[str, Query(min_length=1)],
     limit: Annotated[int, Query(ge=1, le=50)] = 5,
-) -> list[dict]:
+):
     results = await knowledge.search_knowledge(ctx.session, ctx.tenant_id, q, limit=limit)
     return [
         {
@@ -67,6 +90,7 @@ async def search_knowledge(
             "source_type": item.source_type,
             "content": item.content,
             "distance": distance,
+            "visibility": item.visibility,
         }
         for item, distance in results
     ]
@@ -96,8 +120,8 @@ async def create_agent(ctx: SettingsCtx, body: AgentCreateRequest) -> AgentOut:
     return AgentOut.model_validate(agent)
 
 
-@router.get("/usage/summary")
-async def usage_summary(ctx: TenantCtxDep, days: Annotated[int, Query(ge=1, le=365)] = 30) -> dict:
+@router.get("/usage/summary", response_model=UsageSummaryOut)
+async def usage_summary(ctx: TenantCtxDep, days: Annotated[int, Query(ge=1, le=365)] = 30):
     since = date.today() - timedelta(days=days)
     rows = (
         await ctx.session.execute(
@@ -122,8 +146,10 @@ async def usage_summary(ctx: TenantCtxDep, days: Annotated[int, Query(ge=1, le=3
                 # §47/ADR-053: AI spend is an AMOUNT, so it crosses JSON as a
                 # Decimal string — `Numeric(18,8)` carries sub-cent money a
                 # float64 cannot round-trip. The token columns beside it are
-                # counts and stay numbers.
-                "cost": str(cost),
+                # counts and stay numbers. `decimal_amount` rather than `str`:
+                # the plain-text spelling of 0.00000002 is "2E-8", which is exact
+                # but is not the fixed-point decimal this field promises.
+                "cost": decimal_amount(cost),
             }
             for period, tokens_in, tokens_out, cost in rows
         ],
@@ -133,14 +159,14 @@ async def usage_summary(ctx: TenantCtxDep, days: Annotated[int, Query(ge=1, le=3
         # client-side would also be the wrong shape — the money would pass
         # through float64 on its way to a `toFixed`.
         "totals": {
-            "cost": str(sum((Decimal(cost) for _, _, _, cost in rows), Decimal(0))),
+            "cost": decimal_amount(sum((Decimal(cost) for _, _, _, cost in rows), Decimal(0))),
             "tokens_in": sum(int(tokens_in) for _, tokens_in, _, _ in rows),
             "tokens_out": sum(int(tokens_out) for _, _, tokens_out, _ in rows),
         },
     }
 
 
-@router.get("/knowledge")
+@router.get("/knowledge", response_model=KnowledgeList)
 async def list_knowledge(
     ctx: SettingsCtx,
     cursor: str | None = None,
@@ -153,7 +179,13 @@ async def list_knowledge(
             {
                 "id": str(item.id),
                 "title": item.title,
+                "source_type": item.source_type,
+                "source_ref": item.source_ref,
                 "status": item.status,
+                # §157 was NEVER on the wire: the column retrieval filters on
+                # before a row may reach a model's context is the one thing the
+                # review surface cannot be allowed to omit.
+                "visibility": item.visibility,
                 "created_at": item.created_at.isoformat(),
             }
             for item in items
@@ -213,7 +245,7 @@ async def _load_memory(ctx: TenantContext, memory_id: uuid.UUID) -> Memory:
     return row
 
 
-@router.get("/memories")
+@router.get("/memories", response_model=MemoryList)
 async def list_memories(
     ctx: SettingsCtx,
     customer_id: Annotated[uuid.UUID | None, Query()] = None,
@@ -230,8 +262,8 @@ async def list_memories(
     return {"items": [_memory_out(m) for m in items], "next_cursor": next_cursor}
 
 
-@router.post("/memories", status_code=201)
-async def create_memory(body: MemoryCreateRequest, ctx: SettingsCtx) -> dict:
+@router.post("/memories", status_code=201, response_model=MemoryOut)
+async def create_memory(body: MemoryCreateRequest, ctx: SettingsCtx):
     """Record a STAFF-entered memory (§158: human-attributed provenance)."""
     embedding = await knowledge.embed_text(ctx.session, ctx.tenant_id, body.content)
     memory = await knowledge.add_memory(
@@ -249,10 +281,8 @@ async def create_memory(body: MemoryCreateRequest, ctx: SettingsCtx) -> dict:
     return _memory_out(memory)
 
 
-@router.patch("/memories/{memory_id}")
-async def edit_memory(
-    memory_id: uuid.UUID, body: MemoryEditRequest, ctx: SettingsCtx
-) -> dict:
+@router.patch("/memories/{memory_id}", response_model=MemoryOut)
+async def edit_memory(memory_id: uuid.UUID, body: MemoryEditRequest, ctx: SettingsCtx):
     memory = await _load_memory(ctx, memory_id)
     if body.content is not None:
         memory.content = body.content
@@ -265,8 +295,8 @@ async def edit_memory(
     return _memory_out(memory)
 
 
-@router.post("/memories/{memory_id}/invalidate")
-async def invalidate_memory(memory_id: uuid.UUID, ctx: SettingsCtx) -> dict:
+@router.post("/memories/{memory_id}/invalidate", response_model=MemoryOut)
+async def invalidate_memory(memory_id: uuid.UUID, ctx: SettingsCtx):
     """Take a claim out of service (§158) — recall filters it, the row stays.
 
     Idempotent: a second invalidate keeps the FIRST timestamp, so the audit
@@ -313,16 +343,23 @@ def _approval_out(a) -> dict:
         "conversation_id": str(a.conversation_id) if a.conversation_id else None,
         "run_id": str(a.run_id) if a.run_id else None,
         "payload": a.payload or {},
+        # §135 review G-02: the digest is what makes an approval cover the
+        # ARGUMENTS it approved rather than merely the action name, and
+        # `approved_by_user_id` is who owns that decision. A queue that cannot
+        # be audited after the fact is not a governance surface, so both ride
+        # with the row.
+        "payload_hash": a.payload_hash,
         "requested_by": a.requested_by,
         "expires_at": a.expires_at.isoformat() if a.expires_at else None,
         "decided_at": a.decided_at.isoformat() if a.decided_at else None,
         "consumed_at": a.consumed_at.isoformat() if a.consumed_at else None,
+        "approved_by_user_id": str(a.approved_by_user_id) if a.approved_by_user_id else None,
         "rejection_reason": a.rejection_reason,
         "created_at": a.created_at.isoformat() if a.created_at else None,
     }
 
 
-@router.get("/approvals")
+@router.get("/approvals", response_model=ApprovalList)
 async def list_approvals(
     ctx: TenantCtxDep,
     status: Annotated[str | None, Query(description="PENDING | APPROVED | ...")] = None,
@@ -333,12 +370,12 @@ async def list_approvals(
     return {"items": [_approval_out(a) for a in rows], "truncated": truncated}
 
 
-@router.post("/approvals/{approval_id}/decide")
+@router.post("/approvals/{approval_id}/decide", response_model=ApprovalDecisionOut)
 async def decide_approval(
     approval_id: uuid.UUID,
     body: ApprovalDecisionRequest,
     ctx: SettingsCtx,
-) -> dict:
+):
     """Approve, reject or cancel a parked HIGH-risk action.
 
     Approving RE-ENQUEUES the conversation so the agent re-evaluates context and
@@ -382,21 +419,21 @@ async def decide_approval(
 # context: a trace is operational evidence, not a settings mutation.
 
 
-@router.get("/trace/runs/{run_id}")
-async def trace_run(run_id: uuid.UUID, ctx: TenantCtxDep) -> dict:
+@router.get("/trace/runs/{run_id}", response_model=TraceRunOut)
+async def trace_run(run_id: uuid.UUID, ctx: TenantCtxDep):
     return await AITraceService.for_run(ctx.session, ctx.tenant_id, run_id)
 
 
-@router.get("/trace/correlation/{correlation_id}")
-async def trace_correlation(correlation_id: str, ctx: TenantCtxDep) -> dict:
+@router.get("/trace/correlation/{correlation_id}", response_model=TraceCorrelationOut)
+async def trace_correlation(correlation_id: str, ctx: TenantCtxDep):
     runs = await AITraceService.by_correlation(ctx.session, ctx.tenant_id, correlation_id)
     return {"correlation_id": correlation_id, "runs": runs}
 
 
-@router.get("/trace/summary")
+@router.get("/trace/summary", response_model=TraceSummaryOut)
 async def trace_summary(
     ctx: TenantCtxDep, days: Annotated[int, Query(ge=1, le=365)] = 7
-) -> dict:
+):
     return await AITraceService.summary(ctx.session, ctx.tenant_id, days=days)
 
 
@@ -436,16 +473,14 @@ def _policy_out(policy) -> dict:
     }
 
 
-@router.get("/provider-policies")
-async def list_provider_policies(ctx: SettingsCtx) -> dict:
+@router.get("/provider-policies", response_model=PolicyList)
+async def list_provider_policies(ctx: SettingsCtx):
     policies = await AIProviderPolicyService.list_policies(ctx.session, ctx.tenant_id)
     return {"items": [_policy_out(p) for p in policies]}
 
 
-@router.put("/provider-policies")
-async def upsert_provider_policy(
-    body: ProviderPolicyUpsertRequest, ctx: SettingsCtx
-) -> dict:
+@router.put("/provider-policies", response_model=PolicyOut)
+async def upsert_provider_policy(body: ProviderPolicyUpsertRequest, ctx: SettingsCtx):
     policy = await AIProviderPolicyService.upsert(
         ctx.session,
         ctx.tenant_id,
@@ -495,17 +530,17 @@ def _evaluation_out(ev) -> dict:
     }
 
 
-@router.get("/evaluations")
+@router.get("/evaluations", response_model=EvaluationList)
 async def list_eval(
     ctx: TenantCtxDep,
     agent_id: Annotated[uuid.UUID | None, Query()] = None,
-) -> dict:
+):
     rows = await list_evaluations(ctx.session, ctx.tenant_id, agent_id=agent_id)
     return {"items": [_evaluation_out(ev) for ev in rows]}
 
 
-@router.post("/evaluations", status_code=201)
-async def create_eval(body: EvaluationCreateRequest, ctx: SettingsCtx) -> dict:
+@router.post("/evaluations", status_code=201, response_model=EvaluationOut)
+async def create_eval(body: EvaluationCreateRequest, ctx: SettingsCtx):
     ev = await create_evaluation(
         ctx.session,
         ctx.tenant_id,
@@ -517,12 +552,12 @@ async def create_eval(body: EvaluationCreateRequest, ctx: SettingsCtx) -> dict:
     return _evaluation_out(ev)
 
 
-@router.patch("/evaluations/{evaluation_id}")
+@router.patch("/evaluations/{evaluation_id}", response_model=EvaluationOut)
 async def update_eval(
     evaluation_id: uuid.UUID,
     body: EvaluationUpdateRequest,
     ctx: SettingsCtx,
-) -> dict:
+):
     ev = await update_evaluation_status(
         ctx.session,
         ctx.tenant_id,
@@ -547,8 +582,8 @@ class EvaluationSubmitRequest(BaseModel):
     results: dict = Field(default_factory=dict)
 
 
-@router.post("/evaluations/submit", status_code=201)
-async def submit_evaluation(body: EvaluationSubmitRequest, ctx: SettingsCtx) -> dict:
+@router.post("/evaluations/submit", status_code=201, response_model=EvaluationOut)
+async def submit_evaluation(body: EvaluationSubmitRequest, ctx: SettingsCtx):
     from app.modules.ai.evaluation import AIEvaluationService
 
     ev = await AIEvaluationService.submit_evaluation(
@@ -561,8 +596,8 @@ async def submit_evaluation(body: EvaluationSubmitRequest, ctx: SettingsCtx) -> 
     return _evaluation_out(ev)
 
 
-@router.get("/evaluations/{agent_version_id}/status")
-async def evaluation_status(agent_version_id: uuid.UUID, ctx: TenantCtxDep) -> dict:
+@router.get("/evaluations/{agent_version_id}/status", response_model=EvaluationOut)
+async def evaluation_status(agent_version_id: uuid.UUID, ctx: TenantCtxDep):
     from app.modules.ai.evaluation import AIEvaluationService
 
     ev = await AIEvaluationService.get_evaluation_status(
@@ -573,8 +608,8 @@ async def evaluation_status(agent_version_id: uuid.UUID, ctx: TenantCtxDep) -> d
     return _evaluation_out(ev)
 
 
-@router.post("/evaluations/{agent_version_id}/approve")
-async def approve_evaluation(agent_version_id: uuid.UUID, ctx: SettingsCtx) -> dict:
+@router.post("/evaluations/{agent_version_id}/approve", response_model=EvaluationOut)
+async def approve_evaluation(agent_version_id: uuid.UUID, ctx: SettingsCtx):
     from app.modules.ai.evaluation import AIEvaluationService
 
     ev = await AIEvaluationService.approve_rollout(
