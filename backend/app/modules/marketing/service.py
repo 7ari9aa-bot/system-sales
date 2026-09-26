@@ -247,7 +247,8 @@ class MarketingService:
         campaign_id: UUID,
         *,
         limit: int = 100,
-        offset: int = 0,
+        before_created_at: datetime | None = None,
+        before_id: UUID | None = None,
     ) -> list[tuple[Conversion, list[str]]]:
         """Conversions this campaign touched, with the models that credit it.
 
@@ -255,25 +256,36 @@ class MarketingService:
         the walk is conversion -> attribution -> touchpoint -> campaign.
         ``attribution_models`` names WHICH view credits it, because the models
         are alternative views and listing them together is not a sum.
+
+        Keyset-paginated on ``(created_at, id) DESC`` — the same scheme
+        :meth:`list_campaigns` uses. It replaced an ``OFFSET``: conversions arrive
+        between two pages of a growing table, and an offset page then both skips
+        a row that moved up into it and repeats one that moved down out of it
+        (gap P7).
         """
         await MarketingService.get_campaign(session, tenant_id, campaign_id)
 
+        stmt = (
+            select(Conversion)
+            .join(Attribution, Attribution.conversion_id == Conversion.id)
+            .join(Touchpoint, Touchpoint.id == Attribution.touchpoint_id)
+            .where(
+                Conversion.tenant_id == tenant_id,
+                Attribution.tenant_id == tenant_id,
+                Touchpoint.tenant_id == tenant_id,
+                Touchpoint.campaign_id == campaign_id,
+            )
+            .distinct()
+        )
+        if before_created_at is not None and before_id is not None:
+            stmt = stmt.where(
+                tuple_(Conversion.created_at, Conversion.id)
+                < tuple_(before_created_at, before_id)
+            )
         conversions = list(
             (
                 await session.execute(
-                    select(Conversion)
-                    .join(Attribution, Attribution.conversion_id == Conversion.id)
-                    .join(Touchpoint, Touchpoint.id == Attribution.touchpoint_id)
-                    .where(
-                        Conversion.tenant_id == tenant_id,
-                        Attribution.tenant_id == tenant_id,
-                        Touchpoint.tenant_id == tenant_id,
-                        Touchpoint.campaign_id == campaign_id,
-                    )
-                    .distinct()
-                    .order_by(Conversion.created_at.desc(), Conversion.id.desc())
-                    .limit(limit)
-                    .offset(offset)
+                    stmt.order_by(Conversion.created_at.desc(), Conversion.id.desc()).limit(limit)
                 )
             )
             .scalars()

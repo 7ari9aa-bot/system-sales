@@ -19,6 +19,15 @@ This module provides the canonical metric computation endpoints (revenue,
 orders_count, AOV, etc.) backed by the metric registry (§167). The marketing
 module's analytics_router is for campaign-specific analytics (CAC, ROAS);
 this module is for the platform-wide canonical numbers.
+
+Every route here publishes a model (gap P8: this file measured 0 of 8 typed,
+each annotated ``-> dict``, which FastAPI renders as "an object, keys unknown").
+The models live in ``analytics/schemas.py``. The handlers keep returning the plain
+mapping they always returned, because the payload IS composed in-process by
+callers — ``tests/test_analytics_overview.py`` calls ``analytics_overview(...)``
+directly and indexes the result — and ``response_model=`` is the boundary that
+turns it into a contract: it is what refuses a ``Decimal`` that reached the encoder
+unformatted, which no read-model test can see (ADR-001).
 """
 
 from __future__ import annotations
@@ -33,13 +42,26 @@ from pydantic import BaseModel, Field
 from app.core.audit import write_audit_row
 from app.core.errors import ValidationError
 from app.core.tenancy import resolve_tenant_currency
-from app.modules.analytics import retention
+from app.modules.analytics import retention, schemas
 from app.modules.analytics import service as analytics_service
-from app.modules.analytics.timekit import resolve_timezone
+from app.modules.analytics.timekit import ResolvedTimezone, resolve_timezone
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
 from app.modules.platform.metrics import MetricRegistry
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
+
+#: The widest window any dated read model here will bind, in days. ``days`` was
+#: capped at 365 on ``/overview`` while an explicit ``since`` of 1970 was
+#: unlimited on the SAME route for the SAME query (gap P7) — one ceiling, both
+#: doors, enforced in :func:`_bind_window` before anything reaches a reader.
+MAX_WINDOW_DAYS = 365
+
+#: The ceiling on ``low_stock_threshold``, which is bound into SQL as
+#: ``available <= :threshold``. The floor (0) was already refused; a million is
+#: not a stock band, it is a way to turn a dashboard card into a scan of every
+#: balance a tenant holds. Generously above any real catalogue's reorder point,
+#: so it refuses the mistake and not the use.
+MAX_LOW_STOCK_THRESHOLD = 10_000
 
 SettingsCtx = Annotated[TenantContext, Depends(require_permission("settings:write"))]
 
@@ -145,6 +167,22 @@ def _bind_edge(value: Any, name: str, failures: list[dict]) -> datetime:
         return value
 
 
+def _window_failure(name: str, message: str, value: object) -> dict:
+    """One refusal in the shape FastAPI itself uses for a bad query parameter.
+
+    Same ``loc``/``msg``/``input`` triple :func:`_bind_edge` builds, so a client
+    that reads a 422 anywhere else in this API reads this one unchanged, and so
+    BOTH halves of a broken window are reported in one response rather than one
+    per round trip.
+    """
+    return {
+        "type": "value_error",
+        "loc": ["query", name],
+        "msg": f"Value error, {message}",
+        "input": value.isoformat() if isinstance(value, datetime) else repr(value),
+    }
+
+
 def _bind_window(
     since: datetime | None, until: datetime | None
 ) -> tuple[datetime | None, datetime]:
@@ -166,6 +204,20 @@ def _bind_window(
     ``Query(...)`` reached a SQL bind in CI run 35959902953. ``since`` stays
     optional because only ``/overview`` treats it as one, and there ``_window``
     turns it into a trailing ``days`` window.
+
+    Two more refusals live here, and they are about the window's SHAPE rather
+    than its spelling (gap P7):
+
+    * ``[since, until)`` is an interval, so an inverted or empty one is a
+      mistake, not a result. It selected nothing and answered 200 with a column
+      of zeroes — the same class of 200-shaped-422 as ``{"error": ...}``.
+    * the span is capped at :data:`MAX_WINDOW_DAYS`. ``days`` already carried
+      that ceiling; ``since`` did not have one, so 26 years of payments-and-
+      refunds aggregate was legal only by spelling the window the other way
+      round, on the same route, behind a screen that polls every 20 seconds.
+
+    Both are checked BEFORE anything is returned, so a refused request has run no
+    query: the callers' own fakes assert that.
     """
     until = datetime.now(UTC) if until is None else until
     failures: list[dict] = []
@@ -173,6 +225,35 @@ def _bind_window(
     bound_until = _bind_edge(until, "until", failures)
     if failures:
         raise HTTPException(status_code=422, detail=failures)
+    if bound_since is not None:
+        span = bound_until - bound_since
+        if span <= timedelta(0):
+            raise HTTPException(
+                status_code=422,
+                detail=[
+                    _window_failure(
+                        "since",
+                        "the window is empty or reversed: [since, until) selects the "
+                        f"instants between them, and {bound_since.isoformat()} to "
+                        f"{bound_until.isoformat()} selects none — send a `since` "
+                        "strictly before its `until`.",
+                        bound_since,
+                    )
+                ],
+            )
+        if span > timedelta(days=MAX_WINDOW_DAYS):
+            raise HTTPException(
+                status_code=422,
+                detail=[
+                    _window_failure(
+                        "since",
+                        f"the window is {span.days} days wide, and this route binds "
+                        f"at most {MAX_WINDOW_DAYS} — the same ceiling `days` "
+                        "carries. Ask for a shorter window, or page it.",
+                        bound_since,
+                    )
+                ],
+            )
     return bound_since, bound_until
 
 
@@ -226,6 +307,20 @@ def _money_json(row: dict) -> dict:
     }
 
 
+def _zone_source(zone: object) -> str | None:
+    """Which layer of the resolution chain answered, or ``None`` when it said nothing.
+
+    ``timekit.ResolvedTimezone`` IS a string that remembers whether the caller's
+    ``?timezone=``, ``tenants.timezone``, ``ANALYTICS_TIMEZONE`` or the UTC
+    fallback produced it, and a response that names a zone has to name where it
+    came from — "the merchant's day" and "the deployment's guess about the
+    merchant's day" are different claims. A zone that arrives here without that
+    provenance reports ``null`` rather than letting the router invent a layer,
+    which is the same reason ``str(None)`` is not spelled "None" downstream.
+    """
+    return zone.source if isinstance(zone, ResolvedTimezone) else None
+
+
 def _window(
     days: int, since: datetime | None, until: datetime
 ) -> tuple[datetime, datetime]:
@@ -242,25 +337,46 @@ def _window(
     return start, until
 
 
-@router.get("/metrics/definitions")
-async def list_metric_definitions(ctx: TenantCtxDep) -> dict:
-    """§167: list every canonical metric definition."""
-    return {"items": MetricRegistry.definitions()}
+@router.get("/metrics/definitions", response_model=schemas.MetricDefinitionListOut)
+async def list_metric_definitions(ctx: TenantCtxDep) -> dict[str, Any]:
+    """§167: list every canonical metric definition.
+
+    The registry is finite and never paged, so it shares the list envelope with a
+    ``next_cursor`` of ``null`` rather than inventing a fifth shape for "a list
+    that happens to stop" (gap P8).
+    """
+    return {"items": MetricRegistry.definitions(), "next_cursor": None}
 
 
-@router.get("/metrics/{metric_name}")
+@router.get(
+    "/metrics/{metric_name}",
+    response_model=schemas.MetricValueOut,
+    # The definition keys that travel with a figure depend on WHICH metric was
+    # asked for, so an inapplicable key is absent from the payload rather than
+    # arriving as a null the handler never built.
+    response_model_exclude_unset=True,
+)
 async def compute_metric(
     metric_name: str,
     ctx: TenantCtxDep,
     since: Annotated[datetime, Query(description=_SINCE_DOC)],
     until: Annotated[datetime | None, Query(description=_UNTIL_DOC)] = None,
-) -> dict:
+) -> dict[str, Any]:
     """Compute a single canonical metric for the tenant's window.
 
     The response carries the definition the number was computed under
     (``refund_treatment`` says whether refunds were subtracted at all,
     ``timezone_rule`` says how a calendar bucket is taken) so a bare figure can
     never be read as the other family.
+
+    ``value`` is the one field here that answers with three wire types, and the
+    split is ADR-001's, not an accident: an AMOUNT (revenue, net_revenue,
+    refunded_amount, aov) leaves as a Decimal STRING, a COUNT (orders_count) and
+    a RATIO (conversion_rate, roas, the two durations) leave as NUMBERS, and a
+    metric with no answer leaves as ``null``. ``_as_json`` applies that split and
+    :data:`schemas.MetricValue` refuses a handler that breaks it — in both
+    directions, because stringifying a ratio would disagree with the same ratio as
+    ``marketing`` ships it.
     """
     since, until = _bind_window(since, until)
     spec = MetricRegistry.get(metric_name)
@@ -289,7 +405,7 @@ async def compute_metric(
     return payload
 
 
-@router.get("/revenue/summary")
+@router.get("/revenue/summary", response_model=schemas.RevenueSummaryOut)
 async def revenue_summary(
     ctx: TenantCtxDep,
     since: Annotated[datetime, Query(description=_SINCE_DOC)],
@@ -298,7 +414,7 @@ async def revenue_summary(
         str | None,
         Query(description="IANA zone for the day label; defaults to the deployment zone"),
     ] = None,
-) -> dict:
+) -> dict[str, Any]:
     """Gross and net money for one window, each figure named for its family.
 
     ``net_revenue`` is ``gross_revenue - refunded_amount``, floored at zero;
@@ -313,7 +429,7 @@ async def revenue_summary(
     return _money_json(summary)
 
 
-@router.get("/daily-series")
+@router.get("/daily-series", response_model=schemas.DailySeriesOut)
 async def daily_series(
     ctx: TenantCtxDep,
     since: Annotated[datetime, Query(description=_SINCE_DOC)],
@@ -328,8 +444,16 @@ async def daily_series(
             )
         ),
     ] = None,
-) -> dict:
-    """The merchant's daily revenue series — bucketed in the merchant's day."""
+) -> dict[str, Any]:
+    """The merchant's daily revenue series — bucketed in the merchant's day.
+
+    The payload is the ONE list envelope (``items`` + ``next_cursor``, null on a
+    bounded series) with its window metadata beside it: this used to answer a
+    top-level object with no cursor key at all, which was a fifth spelling of "a
+    page of things" (gap P8). The metadata is not decoration — dropping
+    ``since``/``until``/``timezone``/``timezone_source`` would take back W5-T2's
+    answer to "which window, whose day".
+    """
     since, until = _bind_window(since, until)
     resolve_timezone(timezone)  # reject a bad zone before the tenant lookup
     # ONE resolution for both the SQL and this label. The router cannot see
@@ -344,10 +468,11 @@ async def daily_series(
     )
     return {
         "timezone": str(zone),
-        "timezone_source": zone.source,
+        "timezone_source": _zone_source(zone),
         "since": since.isoformat(),
         "until": until.isoformat(),
         "currency": await resolve_tenant_currency(ctx.session, ctx.tenant_id),
+        "next_cursor": None,
         "items": [
             {
                 "day": row["day"],
@@ -362,13 +487,23 @@ async def daily_series(
     }
 
 
-@router.get("/inventory/stock-health")
+@router.get("/inventory/stock-health", response_model=schemas.StockHealthOut)
 async def stock_health(
     ctx: TenantCtxDep,
     low_stock_threshold: Annotated[
-        int, Query(ge=0, description="Available units at which a variant counts as low")
+        int,
+        Query(
+            ge=0,
+            le=MAX_LOW_STOCK_THRESHOLD,
+            description=(
+                "Available units at which a variant counts as low. Bound on both "
+                "sides because it reaches SQL as `available <= :threshold`: a "
+                "negative selects nothing and a million is not a reorder point, it "
+                "is every balance the tenant holds (gap P7)."
+            ),
+        ),
     ] = analytics_service.LOW_STOCK_THRESHOLD,
-) -> dict:
+) -> dict[str, Any]:
     """Replenishment signal with empty shelves split out of "low stock"."""
     health = await analytics_service.stock_health(
         ctx.session, ctx.tenant_id, low_stock_threshold=low_stock_threshold
@@ -376,14 +511,14 @@ async def stock_health(
     return health
 
 
-@router.get("/overview")
+@router.get("/overview", response_model=schemas.AnalyticsOverviewOut)
 async def analytics_overview(
     ctx: TenantCtxDep,
     days: Annotated[
         int,
         Query(
             ge=1,
-            le=365,
+            le=MAX_WINDOW_DAYS,
             description=(
                 "Trailing window in days; ignored when `since` is given. Counted "
                 "back from `until`, which is an instant, so the window it describes "
@@ -405,9 +540,19 @@ async def analytics_overview(
         ),
     ] = None,
     low_stock_threshold: Annotated[
-        int, Query(ge=0, description="Available units at which a variant counts as low")
+        int,
+        Query(
+            ge=0,
+            le=MAX_LOW_STOCK_THRESHOLD,
+            description=(
+                "Available units at which a variant counts as low. The same bound "
+                "the standalone stock-health route carries, because the same "
+                "parameter reaches the same `available <= :threshold` bind here "
+                "(gap P7)."
+            ),
+        ),
     ] = analytics_service.LOW_STOCK_THRESHOLD,
-) -> dict:
+) -> dict[str, Any]:
     """One call for the analytics screen: money, orders, AOV, days, stock.
 
     The screen used to fetch a path this server never published, so every visit
@@ -593,8 +738,8 @@ def _gate_block(gate: retention.DropGate) -> dict:
     }
 
 
-@router.get("/retention")
-async def retention_position(ctx: AnalyticsReadCtx) -> dict:
+@router.get("/retention", response_model=schemas.RetentionPositionOut)
+async def retention_position(ctx: AnalyticsReadCtx) -> dict[str, Any]:
     """§55-57 read: this tenant's retention policy, the shared gate, and what
     would unblock it.
 
@@ -626,10 +771,12 @@ async def retention_position(ctx: AnalyticsReadCtx) -> dict:
     return {"policies": position, **_gate_block(gate)}
 
 
-@router.put("/retention/policies/{data_class}")
+@router.put(
+    "/retention/policies/{data_class}", response_model=schemas.RetentionPolicyWriteOut
+)
 async def choose_retention_policy(
     data_class: str, body: RetentionPolicyChoice, ctx: AnalyticsWriteCtx
-) -> dict:
+) -> dict[str, Any]:
     """§55-57 write: choose (or withdraw) this tenant's retention policy.
 
     The door the gate was waiting for. It calls ``retention.choose_policy`` — the

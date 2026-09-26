@@ -9,25 +9,63 @@ Money in a response leaves as a Decimal STRING (ADR-001/§47, the same shape
 ``orders/router.py`` ships for ``grand_total``) so no client can lose a cent to a
 float64; ratios (``budget_roas``) and counts (``conversions``) are not money and
 stay numbers, and an amount that does not exist stays ``null`` rather than 0.00.
+
+Every route below publishes a model (gap P8). The models live in
+``marketing/schemas.py``, which carries the reasoning for each field type; what
+stays here is the routing, the window and page bounds, and the payload builders
+that turn read-model rows into those shapes. A handler still returns the plain
+``dict`` it always returned and ``response_model=`` validates it at the edge —
+that is where an amount that left as a float gets refused before a client ever
+sees it, which is the whole reason the models are worth having here.
 """
 
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
-from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, NoReturn
 
-from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.core.pagination import decode_cursor, page_slice
+from app.core.pagination import decode_cursor, encode_cursor, page_slice, paginate
 from app.modules.billing.service import EntitlementService
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
 from app.modules.marketing import analytics
 from app.modules.marketing.attribution_service import AttributionService
 from app.modules.marketing.campaign import CampaignExecutionService
 from app.modules.marketing.journey import JourneyExecutionService
+from app.modules.marketing.schemas import (
+    # ``CampaignOut`` and ``RoasRowOut`` are not named by any route below — a
+    # list model references them — but they are imported explicitly because
+    # they ARE this module's contract surface: callers (and the contract suite)
+    # reach a module's wire models as ``marketing_router.CampaignOut``.
+    AttributionViewOut,  # noqa: F401 — an arm of the campaign rollup, re-exported
+    CampaignAttributionOut,
+    CampaignCreatedOut,
+    CampaignListOut,
+    CampaignOut,  # noqa: F401 — the campaign row shape, re-exported
+    CampaignRequest,
+    CampaignRunProgressOut,
+    CampaignRunStartedOut,
+    CampaignRunStateOut,
+    CampaignStartRequest,
+    ConversionAttributionOut,
+    ConversionListOut,
+    ConversionOut,
+    ConversionRequest,
+    DailyOrderListOut,
+    DashboardOut,
+    JourneyRunListOut,
+    JourneyRunStartedOut,
+    JourneyStartRequest,
+    LeadOut,
+    LeadRequest,
+    LeadStatusOut,
+    LeadStatusRequest,
+    MarketingSummaryOut,
+    RoasRowOut,  # noqa: F401 — the ROI row shape, re-exported
+    TouchpointCreatedOut,
+    TouchpointRequest,
+)
 from app.modules.marketing.service import MarketingService
 
 router = APIRouter(tags=["marketing"])
@@ -35,10 +73,25 @@ analytics_router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 WriteCtx = Annotated[TenantContext, Depends(require_permission("marketing:write"))]
 
+#: The one window length a merchant may ask a marketing read model for, in days.
+#: ``days`` is bound into ``occurred_at >= now() - timedelta(days=days)`` and into
+#: a ``date_trunc`` bucketing pass over ``order_payments``, so an unbounded value
+#: is not a wider report, it is a full scan behind a screen the dashboard
+#: re-polls every twenty seconds. ``days=0`` and a negative were accepted and
+#: answered 200: a negative does not look backwards, it flips the interval and
+#: selects the FUTURE (gap P7, ``docs/GAP_REGISTER.md``). 1..365 is the same
+#: ceiling ``/analytics/overview`` and ``/marketing/attribution`` already held.
+MAX_WINDOW_DAYS = 365
+
+#: The one page size, and the one cursor fetch. ``limit + 1`` is how
+#: :func:`app.core.pagination.page_slice` knows whether a next page exists.
+MAX_PAGE_SIZE = 200
+
 # Query params are declared `Annotated[type, Query(...)] = <value>`, never
 # `name: type = Query(...)` — see the parameter-declaration rule in
 # app/modules/analytics/router.py (CI run 35959902953) and the full-app gate in
-# tests/test_route_parameter_declarations.py.
+# tests/test_route_parameter_declarations.py. The same file is why nothing below
+# resolves a default with a `Query(default_factory=...)`.
 
 #: ADR-001/§47 — an AMOUNT leaves as a Decimal string, the same helper the read
 #: models use, so this module has exactly one money-to-wire rule. A ratio
@@ -47,62 +100,39 @@ WriteCtx = Annotated[TenantContext, Depends(require_permission("marketing:write"
 _wire_money = analytics.wire_money
 
 
-class CampaignRequest(BaseModel):
-    name: str = Field(min_length=1, max_length=255)
-    provider: str = Field(default="manual", max_length=31)
-    external_id: str | None = None
-    objective: str | None = None
-    # THE WRITE SIDE IS STILL A NUMBER, on purpose and on record: ADR-001's
-    # string rule is about money leaving the system, a planned budget is a
-    # merchant's typing rounded into NUMERIC(14,2) by the column, and
-    # ``useCreateCampaign`` still posts a number. Making the request Decimal too
-    # is a separate contract change — see the report, not a silent half-step.
-    budget: float | None = Field(default=None, ge=0)
+def _missing_query_params(*names: str) -> NoReturn:
+    """Answer 422 in the shape the framework uses for a bad query parameter.
 
-
-class TouchpointRequest(BaseModel):
-    customer_id: uuid.UUID | None = None
-    source: str | None = Field(default=None, max_length=63)
-    medium: str | None = Field(default=None, max_length=63)
-    campaign_id: uuid.UUID | None = None
-    ad_set_id: uuid.UUID | None = None
-    ad_id: uuid.UUID | None = None
-    click_id: str | None = None
-    landing_url: str | None = None
-    session_key: str | None = None
-
-
-class LeadRequest(BaseModel):
-    name: str | None = Field(default=None, max_length=255)
-    phone: str | None = Field(default=None, max_length=31)
-    email: str | None = Field(default=None, max_length=320)
-    source: str | None = Field(default=None, max_length=63)
-    campaign_id: uuid.UUID | None = None
-
-
-class LeadStatusRequest(BaseModel):
-    status: str = Field(pattern="^(new|contacted|qualified|converted|lost)$")
-
-
-class ConversionRequest(BaseModel):
-    customer_id: uuid.UUID | None = None
-    order_id: uuid.UUID | None = None
-    type: str = Field(default="purchase", pattern="^(purchase|signup|lead|custom)$")
-    # Decimal, and the NUMERIC(14,2) shape stated explicitly: this is money.
-    value: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
-    occurred_at: datetime | None = None
-
+    ``GET /marketing/attribution`` used to answer this case with a 200 and a
+    prose ``{"error": ...}`` body — which no client checks, which no response
+    model can describe, and which is the same class of lie as
+    ``{"detail": "not found"}`` at HTTP 200 (gap P3). The refusal is the field
+    list FastAPI itself emits, built the way ``analytics/router._bind_window``
+    builds its own, so one client reads both.
+    """
+    raise HTTPException(
+        status_code=422,
+        detail=[
+            {
+                "type": "missing",
+                "loc": ["query", name],
+                "msg": f"provide {' or '.join(names)}",
+                "input": None,
+            }
+            for name in names
+        ],
+    )
 
 
 # --------------------------------------------------------- campaigns ----
 
 
-@router.get("/marketing/campaigns")
+@router.get("/marketing/campaigns", response_model=CampaignListOut)
 async def list_campaigns(
     ctx: TenantCtxDep,
     status: str | None = None,
     cursor: str | None = None,
-    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = 50,
 ):
     before_created_at, before_id = decode_cursor(cursor) if cursor else (None, None)
     rows = await MarketingService.list_campaigns(
@@ -133,7 +163,7 @@ async def list_campaigns(
     }
 
 
-@router.post("/marketing/campaigns", status_code=201)
+@router.post("/marketing/campaigns", status_code=201, response_model=CampaignCreatedOut)
 async def create_campaign(ctx: WriteCtx, body: CampaignRequest):
     # §165: entitlement enforcement lives in ONE service, not per module.
     # Without this the plan was decorative — any tenant could launch campaigns
@@ -160,7 +190,7 @@ async def create_campaign(ctx: WriteCtx, body: CampaignRequest):
 # ------------------------------------------------------- touchpoints ----
 
 
-@router.post("/marketing/touchpoints", status_code=201)
+@router.post("/marketing/touchpoints", status_code=201, response_model=TouchpointCreatedOut)
 async def record_touchpoint(ctx: WriteCtx, body: TouchpointRequest):
     touchpoint = await MarketingService.record_touchpoint(
         ctx.session,
@@ -181,7 +211,7 @@ async def record_touchpoint(ctx: WriteCtx, body: TouchpointRequest):
 # ------------------------------------------------------------- leads ----
 
 
-@router.post("/marketing/leads", status_code=201)
+@router.post("/marketing/leads", status_code=201, response_model=LeadOut)
 async def create_lead(ctx: WriteCtx, body: LeadRequest):
     lead = await MarketingService.create_lead(
         ctx.session,
@@ -201,7 +231,7 @@ async def create_lead(ctx: WriteCtx, body: LeadRequest):
     }
 
 
-@router.patch("/marketing/leads/{lead_id}/status")
+@router.patch("/marketing/leads/{lead_id}/status", response_model=LeadStatusOut)
 async def update_lead_status(lead_id: uuid.UUID, ctx: WriteCtx, body: LeadStatusRequest):
     lead = await MarketingService.update_lead_status(
         ctx.session, ctx.tenant_id, lead_id, body.status
@@ -212,7 +242,7 @@ async def update_lead_status(lead_id: uuid.UUID, ctx: WriteCtx, body: LeadStatus
 # ------------------------------------------------------ conversions ----
 
 
-@router.post("/marketing/conversions", status_code=201)
+@router.post("/marketing/conversions", status_code=201, response_model=ConversionOut)
 async def record_conversion(ctx: WriteCtx, body: ConversionRequest):
     """Record one conversion. A replay of the same order/type is a 409.
 
@@ -241,20 +271,41 @@ async def record_conversion(ctx: WriteCtx, body: ConversionRequest):
     }
 
 
-@router.get("/marketing/campaigns/{campaign_id}/conversions")
+@router.get(
+    "/marketing/campaigns/{campaign_id}/conversions", response_model=ConversionListOut
+)
 async def list_campaign_conversions(
     campaign_id: uuid.UUID,
     ctx: TenantCtxDep,
-    limit: Annotated[int, Query(ge=1, le=200)] = 50,
-    offset: Annotated[int, Query(ge=0)] = 0,
+    cursor: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = 50,
 ):
     """Conversions this campaign's touchpoints took part in.
 
     ``attribution_models`` names which VIEW credits the campaign — the models are
     alternative readings of the same order, so the rows are not additive.
+
+    Paged by keyset, the way ``GET /marketing/campaigns`` pages. It used to page
+    by ``offset`` on a table where conversions arrive between two pages, which
+    skips and repeats rows, and it reported the page length under a ``count``
+    key that read as a total.
     """
+    before_created_at, before_id = decode_cursor(cursor) if cursor else (None, None)
     rows = await MarketingService.list_campaign_conversions(
-        ctx.session, ctx.tenant_id, campaign_id, limit=limit, offset=offset
+        ctx.session,
+        ctx.tenant_id,
+        campaign_id,
+        limit=limit + 1,
+        before_created_at=before_created_at,
+        before_id=before_id,
+    )
+    # The rows are (conversion, models) pairs, so the cursor is taken from the
+    # conversion of the last row of the PAGE rather than through page_slice,
+    # which reads ``.created_at`` off the row object itself.
+    has_more = len(rows) > limit
+    page = rows[:limit]
+    next_cursor = (
+        encode_cursor(page[-1][0].created_at, page[-1][0].id) if has_more and page else None
     )
     return {
         "items": [
@@ -268,17 +319,31 @@ async def list_campaign_conversions(
                 "occurred_at": c.occurred_at.isoformat() if c.occurred_at else None,
                 "attribution_models": models,
             }
-            for c, models in rows
+            for c, models in page
         ],
-        "count": len(rows),
+        "next_cursor": next_cursor,
     }
 
 
 # --------------------------------------------------------- analytics ----
 
 
-@analytics_router.get("/summary")
-async def analytics_summary(ctx: TenantCtxDep, days: int = 30):
+@analytics_router.get("/summary", response_model=MarketingSummaryOut)
+async def analytics_summary(
+    ctx: TenantCtxDep,
+    days: Annotated[
+        int,
+        Query(
+            ge=1,
+            le=MAX_WINDOW_DAYS,
+            description=(
+                "Trailing window in days, 1..365. A wider ask is not a wider "
+                "report, it is an unbounded aggregate scan behind a screen the "
+                "dashboard re-polls (gap P7)."
+            ),
+        ),
+    ] = 30,
+):
     return {
         # Money for the window comes from the canonical read model: gross and net
         # are separate keys here, never one figure called "revenue".
@@ -297,11 +362,17 @@ async def analytics_summary(ctx: TenantCtxDep, days: int = 30):
     }
 
 
-
-@analytics_router.get("/daily-orders")
+@analytics_router.get("/daily-orders", response_model=DailyOrderListOut)
 async def analytics_daily_orders(
     ctx: TenantCtxDep,
-    days: int = 30,
+    days: Annotated[
+        int,
+        Query(
+            ge=1,
+            le=MAX_WINDOW_DAYS,
+            description="Trailing window in days, 1..365 (gap P7).",
+        ),
+    ] = 30,
     timezone: Annotated[
         str | None,
         Query(
@@ -313,13 +384,27 @@ async def analytics_daily_orders(
     ] = None,
 ):
     """Daily buckets on the MERCHANT's day, with gross/net money named apart."""
-    return await analytics.daily_orders(
+    rows = await analytics.daily_orders(
         ctx.session, ctx.tenant_id, days=days, timezone=timezone
     )
+    # A bounded trailing series, so ``next_cursor`` is null and still present:
+    # one list reader serves every list in these two modules (gap P8).
+    return {"items": rows, "next_cursor": None}
 
 
-@analytics_router.get("/dashboard")
-async def dashboard(ctx: TenantCtxDep, days: int = 14, timezone: str | None = None):
+@analytics_router.get("/dashboard", response_model=DashboardOut)
+async def dashboard(
+    ctx: TenantCtxDep,
+    days: Annotated[
+        int,
+        Query(
+            ge=1,
+            le=MAX_WINDOW_DAYS,
+            description="Trailing window for the daily series, 1..365 days (gap P7).",
+        ),
+    ] = 14,
+    timezone: str | None = None,
+):
     """One-call aggregate powering the dashboard home screen."""
     summary = await analytics.dashboard_summary(ctx.session, ctx.tenant_id)
     summary["daily_orders"] = await analytics.daily_orders(
@@ -329,23 +414,10 @@ async def dashboard(ctx: TenantCtxDep, days: int = 14, timezone: str | None = No
     return summary
 
 
-# ------------------------------------------------------- journeys ----
+# ------------------------------------------------------------- journeys ----
 
 
-class JourneyStartRequest(BaseModel):
-    journey_id: uuid.UUID
-    customer_id: uuid.UUID
-
-
-class CampaignStartRequest(BaseModel):
-    campaign_id: uuid.UUID
-    segment_id: uuid.UUID | None = None
-    body: str | None = None
-    template: str | None = None
-    channel: str = "whatsapp"
-
-
-@router.post("/journeys/{journey_id}/start", status_code=201)
+@router.post("/journeys/{journey_id}/start", status_code=201, response_model=JourneyRunStartedOut)
 async def start_journey(journey_id: uuid.UUID, ctx: WriteCtx, body: JourneyStartRequest):
     """§175: Start a journey run for a customer."""
     run = await JourneyExecutionService.start_journey(
@@ -363,14 +435,21 @@ async def start_journey(journey_id: uuid.UUID, ctx: WriteCtx, body: JourneyStart
     }
 
 
-@router.get("/journeys/{journey_id}/runs")
+@router.get("/journeys/{journey_id}/runs", response_model=JourneyRunListOut)
 async def list_journey_runs(
     journey_id: uuid.UUID,
     ctx: TenantCtxDep,
     status: str | None = None,
-    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    cursor: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = 50,
 ):
-    """List journey runs for a journey."""
+    """List journey runs for a journey.
+
+    Ordered by ``(created_at, id) DESC`` — the pair the cursor encodes from. The
+    query used to carry a bare ``LIMIT`` with no ``ORDER BY`` at all, so Postgres
+    returned rows in whatever order it liked and page 2 was not page 2 of the
+    same query (gap P7).
+    """
     from sqlalchemy import select
 
     from app.modules.marketing.journey import JourneyRun
@@ -381,8 +460,7 @@ async def list_journey_runs(
     )
     if status:
         q = q.where(JourneyRun.status == status)
-    q = q.limit(limit)
-    rows = (await ctx.session.execute(q)).scalars().all()
+    rows, next_cursor = await paginate(ctx.session, q, cursor=cursor, limit=limit)
     return {
         "items": [
             {
@@ -394,11 +472,14 @@ async def list_journey_runs(
                 "completed_at": r.completed_at.isoformat() if r.completed_at else None,
             }
             for r in rows
-        ]
+        ],
+        "next_cursor": next_cursor,
     }
 
 
-@router.post("/campaigns/{campaign_id}/start", status_code=201)
+@router.post(
+    "/campaigns/{campaign_id}/start", status_code=201, response_model=CampaignRunStartedOut
+)
 async def start_campaign(campaign_id: uuid.UUID, ctx: WriteCtx, body: CampaignStartRequest):
     """§175: Start a campaign run."""
     await EntitlementService.ensure(ctx.session, ctx.tenant_id, "CanSendCampaign")
@@ -421,21 +502,21 @@ async def start_campaign(campaign_id: uuid.UUID, ctx: WriteCtx, body: CampaignSt
     }
 
 
-@router.post("/campaigns/runs/{run_id}/pause")
+@router.post("/campaigns/runs/{run_id}/pause", response_model=CampaignRunStateOut)
 async def pause_campaign(run_id: uuid.UUID, ctx: WriteCtx):
     """§175: Pause a running campaign."""
     run = await CampaignExecutionService.pause(ctx.session, ctx.tenant_id, run_id)
     return {"id": str(run.id), "status": run.status}
 
 
-@router.post("/campaigns/runs/{run_id}/resume")
+@router.post("/campaigns/runs/{run_id}/resume", response_model=CampaignRunStateOut)
 async def resume_campaign(run_id: uuid.UUID, ctx: WriteCtx):
     """§175: Resume a paused campaign."""
     run = await CampaignExecutionService.resume(ctx.session, ctx.tenant_id, run_id)
     return {"id": str(run.id), "status": run.status}
 
 
-@router.get("/campaigns/runs/{run_id}")
+@router.get("/campaigns/runs/{run_id}", response_model=CampaignRunProgressOut)
 async def get_campaign_run(run_id: uuid.UUID, ctx: TenantCtxDep):
     """Get campaign run status and progress."""
     from sqlalchemy import select
@@ -452,6 +533,7 @@ async def get_campaign_run(run_id: uuid.UUID, ctx: TenantCtxDep):
     ).scalar_one_or_none()
     if run is None:
         from app.core.errors import NotFoundError
+
         raise NotFoundError("campaign run not found")
     return {
         "id": str(run.id),
@@ -465,17 +547,27 @@ async def get_campaign_run(run_id: uuid.UUID, ctx: TenantCtxDep):
     }
 
 
-# ----------------------------------------------------- attribution ----
+# --------------------------------------------------------- attribution ----
 
 
-@router.get("/marketing/attribution")
+@router.get(
+    "/marketing/attribution",
+    response_model=ConversionAttributionOut | CampaignAttributionOut,
+)
 async def get_attribution(
     ctx: TenantCtxDep,
     campaign_id: uuid.UUID | None = None,
     conversion_id: uuid.UUID | None = None,
-    days: Annotated[int, Query(ge=1, le=365)] = 30,
+    days: Annotated[int, Query(ge=1, le=MAX_WINDOW_DAYS)] = 30,
 ):
-    """§82: Attribution report for a campaign or conversion."""
+    """§82: Attribution report for a campaign or conversion.
+
+    Two payloads on one path, and the published ``response_model`` names BOTH —
+    the conversion view lists the touchpoints that credited one conversion, the
+    campaign view rolls the models up over a window. Asking for neither is a
+    malformed question and gets the 422 every other refusal here uses, not the
+    200-and-a-prose-error this route used to answer.
+    """
     if conversion_id:
         records = await AttributionService.compute_for_conversion(
             ctx.session, ctx.tenant_id, conversion_id
@@ -504,4 +596,4 @@ async def get_attribution(
             ctx.session, ctx.tenant_id, campaign_id, days=days
         )
         return report
-    return {"error": "provide campaign_id or conversion_id"}
+    _missing_query_params("campaign_id", "conversion_id")
