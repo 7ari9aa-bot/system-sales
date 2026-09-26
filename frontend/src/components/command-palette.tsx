@@ -98,21 +98,48 @@ function matches(query: string, item: CommandItem) {
  *  this pointed at the list and silently dropped the hit. The other branches
  *  stay as list fallbacks because no detail route exists for them.
  */
-function searchHref(entityType: string, entityId: string) {
-  const id = encodeURIComponent(entityId);
+function listRouteFor(entityType: string): string {
   switch (entityType) {
     case "customer":
-      return `/customers/${id}`;
-    case "conversation":
-      return `/inbox?conversation=${id}`;
-    case "product":
-      return "/products";
+      return "/customers";
     case "order":
       return "/orders";
     case "task":
       return "/tasks";
+    case "product":
+      return "/products";
+    case "conversation":
+      return "/inbox";
     default:
       return "/dashboard";
+  }
+}
+
+/** Where a search hit opens: its own record when one exists, its list otherwise.
+ *
+ *  Exported because "a hit dropped its entity_id" is invisible to every other
+ *  tool in the repo — `scripts/check-search-hits.mjs` imports this function and
+ *  clicks a rendered row with it (gap F7).
+ *
+ *  A hit whose id is missing or empty can only open its list: interpolating it
+ *  would build `/customers/undefined`, or a trailing slash that matches no
+ *  route at all. */
+export function searchHref(entityType: string, entityId: string | null | undefined) {
+  const raw = typeof entityId === "string" ? entityId.trim() : "";
+  if (!raw) return listRouteFor(entityType);
+  const id = encodeURIComponent(raw);
+  switch (entityType) {
+    case "customer":
+      return `/customers/${id}`;
+    case "order":
+      // The order detail screen exists (`(dash)/orders/[id]`), so a hit that
+      // named an order and opened the list was throwing the id away.
+      return `/orders/${id}`;
+    case "conversation":
+      return `/inbox?conversation=${id}`;
+    default:
+      // products and tasks have no `[id]` route yet: the list is the truth.
+      return listRouteFor(entityType);
   }
 }
 
