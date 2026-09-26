@@ -16,7 +16,6 @@ external specs keep inventing for the same concept — are not.
 from __future__ import annotations
 
 import pytest
-from fastapi.testclient import TestClient
 
 from app.main import create_app
 
@@ -25,9 +24,10 @@ TENANT_PARAMETER_NAMES = {"tenant_id", "organization_id", "org_id"}
 
 @pytest.fixture(scope="module")
 def operations() -> dict:
-    app = create_app()
-    with TestClient(app) as client:
-        return client.get("/openapi.json").json()["paths"]
+    # The schema builds synchronously; a TestClient here would open and close
+    # an event loop inside a pytest-asyncio session and poison the async tests
+    # that share this worker (CI: "RuntimeError: Event loop is closed").
+    return create_app().openapi()["paths"]
 
 
 def test_no_operation_accepts_the_tenant_boundary_as_a_query_parameter(operations):
