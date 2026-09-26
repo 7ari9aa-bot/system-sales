@@ -49,9 +49,12 @@ def _create_engine() -> AsyncEngine:
     # statement_cache_size=0 is REQUIRED behind transaction-mode poolers
     # (Supabase Supavisor :6543, pgbouncer) — prepared statements are not
     # supported there and raise DuplicatePreparedStatementError otherwise.
+    settings = get_settings()
     return create_async_engine(
-        get_settings().database_url,
+        settings.database_url,
         pool_pre_ping=True,
+        pool_size=settings.db_pool_size,
+        max_overflow=settings.db_max_overflow,
         connect_args={"statement_cache_size": 0},
     )
 

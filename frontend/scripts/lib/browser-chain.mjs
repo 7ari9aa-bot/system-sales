@@ -162,6 +162,31 @@ const AUTO_STUB_PACKAGES = new Set([
 
 const HAND_STUBS = {
   "@tanstack/react-query": TANSTACK_STUB,
+  // The auto-stub mints `useRouter` as a Proxy that answers every read with
+  // the same node, so `router.push` is undefined and the first real click
+  // throws. The app router surface the harnesses exercise is push/replace
+  // through the recorded `navigation` calls; anything else is a no-op.
+  "next/navigation": /* js */ `
+    export function useRouter() {
+      return {
+        push: (href) => globalThis.__gate.navigation.push(href),
+        replace: (href) => globalThis.__gate.navigation.push(href),
+        back: () => globalThis.__gate.navigation.push("__back__"),
+        forward: () => {},
+        refresh: () => {},
+        prefetch: () => {},
+      };
+    }
+    export const useParams = () => ({});
+    export const usePathname = () => "/inbox";
+    export const useSearchParams = () => new URLSearchParams(globalThis.__gate.searchParams ?? "");
+    export const useSelectedLayoutSegment = () => null;
+    export const useSelectedLayoutSegments = () => [];
+    export const redirect = (href) => globalThis.__gate.navigation.push(href);
+    export const notFound = () => {
+      throw new Error("notFound()");
+    };
+  `,
   "@/components/ui/toast": /* js */ `
     export function toast(x) { globalThis.__gate.toasts.push(x); }
     export function Toaster() { return null; }

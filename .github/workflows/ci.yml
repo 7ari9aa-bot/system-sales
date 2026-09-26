@@ -120,6 +120,7 @@ jobs:
       # control case that reproduces 12 requests when the identity changes
       # again, so the gate is proven to measure the loop, not to pass forever.
       - run: npm run check:palette
+      - run: npm run check:search-hits
       - run: npm run build
 
   # Browser tests against the production bundle. Split from `frontend` so a

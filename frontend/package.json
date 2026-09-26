@@ -10,6 +10,7 @@
     "check:urls": "node scripts/check-request-urls.mjs",
     "check:storage": "node scripts/check-token-storage.mjs",
     "check:palette": "node scripts/check-command-palette-search.mjs",
+    "check:search-hits": "node scripts/check-search-hits.mjs",
     "lint": "eslint .",
     "test:e2e": "playwright test"
   },

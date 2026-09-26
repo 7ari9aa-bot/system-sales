@@ -1,11 +1,25 @@
 "use client";
 
 import * as React from "react";
-import { Activity, AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
 import { t } from "@/lib/t";
 import { PageHeader } from "@/components/ui/states";
+import { QueryErrorState } from "@/components/query-error";
+import { apiClient } from "@/lib/api";
 
-interface SLOStatus {
+/** §103 — the operations surface answers the real contracts:
+ *
+ *  - `GET /api/v1/sla/slos/measure` (SLOMeasurementList) — the compliance
+ *    rows the SLO framework defines, measured server-side.
+ *  - `GET /api/v1/platform/health` (§103 envelope: overall + subsystems) —
+ *    the same surface the top-bar HealthIndicator badge reads.
+ *
+ *  Both go through `api()`'s client — the page used to raw-`fetch`
+ *  `/api/operations/*`, which carried no Authorization header and hit paths
+ *  that do not exist, so it rendered a lying empty state instead of data. */
+
+interface SloMeasurement {
   name: string;
   compliance_percent: number;
   target_percent: number;
@@ -14,48 +28,37 @@ interface SLOStatus {
   met: number;
 }
 
-interface HealthCheck {
+interface HealthRow {
   name: string;
-  healthy: boolean;
-  latency_ms: number;
-  error: string | null;
+  status: string;
+  detail?: string;
 }
 
-export default function OperationsPage() {
-  const [slos, setSlos] = React.useState<SLOStatus[]>([]);
-  const [health, setHealth] = React.useState<HealthCheck[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+const SLO_REFRESH_MS = 30_000;
 
-  React.useEffect(() => {
-    async function load() {
-      try {
-        const [sloRes, healthRes] = await Promise.all([
-          fetch("/api/operations/slos").then((r) => r.json()),
-          fetch("/api/operations/health").then((r) => r.json()),
-        ]);
-        setSlos(sloRes.items ?? []);
-        setHealth(healthRes.items ?? []);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load");
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
-    const interval = setInterval(load, 30000); // refresh every 30s
-    return () => clearInterval(interval);
-  }, []);
+export default function OperationsPage() {
+  const slosQuery = useQuery({
+    queryKey: ["operations", "slos"],
+    queryFn: () => apiClient.get<{ items: SloMeasurement[] }>("/sla/slos/measure"),
+    refetchInterval: SLO_REFRESH_MS,
+  });
+
+  const healthQuery = useQuery({
+    queryKey: ["operations", "health"],
+    queryFn: () => apiClient.get<{ status: string; subsystems: HealthRow[] }>("/platform/health"),
+    refetchInterval: SLO_REFRESH_MS,
+  });
+
+  const loading = slosQuery.isLoading || healthQuery.isLoading;
+  const error = slosQuery.error || healthQuery.error;
+  const slos = slosQuery.data?.items ?? [];
+  const health = healthQuery.data?.subsystems ?? [];
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8">
       <PageHeader title={t.health} description={t.health} />
 
-      {error && (
-        <div className="mb-6 rounded-lg border border-danger/20 bg-danger-soft/50 p-4 text-sm text-danger">
-          {error}
-        </div>
-      )}
+      {error && <QueryErrorState queries={[slosQuery, healthQuery]} />}
 
       {/* Health checks */}
       <section className="mb-8">
@@ -73,7 +76,7 @@ export default function OperationsPage() {
                 key={h.name}
                 className="flex items-center gap-3 rounded-xl border border-border bg-surface p-4"
               >
-                {h.healthy ? (
+                {h.status === "healthy" ? (
                   <CheckCircle2 className="text-success" aria-hidden="true" />
                 ) : (
                   <XCircle className="text-danger" aria-hidden="true" />
@@ -81,7 +84,7 @@ export default function OperationsPage() {
                 <div className="flex-1">
                   <p className="text-sm font-medium">{h.name}</p>
                   <p className="text-xs text-muted-foreground">
-                    {h.healthy ? `${h.latency_ms}ms` : h.error ?? "unhealthy"}
+                    {h.status === "healthy" ? "healthy" : (h.detail ?? h.status)}
                   </p>
                 </div>
               </div>

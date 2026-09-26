@@ -276,6 +276,34 @@ class StreamWorker:
             await consume(envelope.tenant_id, ResourceType.WORKER_SECONDS, units=units)
         except Exception:  # noqa: BLE001 — metering must never break handling
             logger.debug("worker.metering_failed id=%s", event.id, exc_info=True)
+        # OPS-1: the /metrics series this charge feeds — same units, same
+        # finally-block, so the exposition cannot show a stream as idle while
+        # fairness is billing it. Accounting, never handling.
+        try:
+            from app.core.metrics import increment
+
+            await increment(
+                "worker_seconds_total", value=units, labels={"stream": self.stream}
+            )
+        except Exception:  # noqa: BLE001 — accounting must never break handling
+            logger.debug("worker.metrics_failed stream=%s", self.stream, exc_info=True)
+
+    async def _count(self, outcome: str) -> None:
+        """OPS-1: the /metrics writer for worker_events_total{stream,outcome}.
+
+        One call per finished event at each terminal point of _process_event.
+        Accounting only: a metrics failure must never change event handling —
+        same contract as the §144 charge it runs beside.
+        """
+        try:
+            from app.core.metrics import increment
+
+            await increment(
+                "worker_events_total",
+                labels={"stream": self.stream, "outcome": outcome},
+            )
+        except Exception:  # noqa: BLE001 — accounting must never break handling
+            logger.debug("worker.metrics_failed stream=%s", self.stream, exc_info=True)
 
     async def _process_event(self, event: Event) -> None:
         envelope_meta = self._envelope_meta(event)
@@ -312,12 +340,14 @@ class StreamWorker:
                     "worker.inbox_contended stream=%s consumer=%s id=%s",
                     self.stream, self.name, dedupe_id,
                 )
+                await self._count("contested")
                 return
             if state == _INBOX_SEEN:
                 logger.info(
                     "worker.idempotent_skip stream=%s consumer=%s id=%s",
                     self.stream, self.name, dedupe_id,
                 )
+                await self._count("skipped")
                 await self._bus.ack(self.stream, self.group, event)
                 return
             if state == _INBOX_CLAIMED:
@@ -330,6 +360,7 @@ class StreamWorker:
             if claim is not None:
                 await self._close_inbox(*claim, dedupe_id, marker=effect_ran)
         if effect_ran:
+            await self._count("processed")
             await self._bus.ack(self.stream, self.group, event)
 
     async def _claim_inbox(self, dedupe_id: str) -> tuple[str, Any, Any]:
@@ -462,6 +493,7 @@ class StreamWorker:
                 exc,
                 exc.delay_seconds,
             )
+            await self._count("deferred")
             await self._republish_after(event, event.meta, exc.delay_seconds)
             await self._bus.ack(self.stream, self.group, event)
             return False
@@ -479,10 +511,12 @@ class StreamWorker:
                     dedupe_id,
                     attempts,
                 )
+                await self._count("dead_lettered")
                 await self._bus.send_to_dlq(self.stream, event, "permanent failure")
                 await self._bus.ack(self.stream, self.group, event)
                 return False
             if attempts >= settings.worker_max_attempts:
+                await self._count("dead_lettered")
                 await self._bus.send_to_dlq(self.stream, event, "max attempts exceeded")
                 await self._bus.ack(self.stream, self.group, event)
                 return False
@@ -492,6 +526,7 @@ class StreamWorker:
                 MAX_BACKOFF_SECONDS,
             )
             delay = random.uniform(0, base)  # full jitter
+            await self._count("retried")
             await self._republish_after(event, meta, delay)
             await self._bus.ack(self.stream, self.group, event)
             return False

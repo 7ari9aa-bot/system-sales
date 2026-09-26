@@ -61,6 +61,15 @@ class Settings(BaseSettings):
     # event bus / workers
     stream_maxlen: int = 100_000
     consumer_block_ms: int = 5_000
+    # Connection-pool sizing. The worker process holds TWO connections per
+    # in-flight event (the §127 claim transaction stays open across the whole
+    # effect, and every handler opens its own session — GAP_REGISTER's measured
+    # arithmetic), so the pool must cover 2 x (pools + relay) + headroom or the
+    # fleet times out at 30 s with no database error anywhere. The invariant is
+    # pinned by tests/test_db_pool_invariant.py; overriding these in a deploy
+    # must keep it true.
+    db_pool_size: int = 12
+    db_max_overflow: int = 10
     worker_max_attempts: int = 5
     worker_backoff_base_seconds: float = 2.0
 
