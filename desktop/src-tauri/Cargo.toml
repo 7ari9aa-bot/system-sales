@@ -17,7 +17,7 @@ tauri-build = { version = "=2.6.3", features = [] }
 tauri = { version = "=2.11.6", features = [] }
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"
-log = "=0.4.34"
+log = { version = "=0.4.34", features = ["std"] }
 
 # Exact versions, no caret: the same lockfile discipline the JS side uses, and
 # `cargo update` is a deliberate act, not a side effect of a fresh clone.

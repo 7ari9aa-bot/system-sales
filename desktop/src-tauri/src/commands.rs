@@ -1,7 +1,6 @@
 use serde::Deserialize;
 use serde::Serialize;
 use tauri::AppHandle;
-use tauri::Manager as _;
 
 use crate::redaction;
 
