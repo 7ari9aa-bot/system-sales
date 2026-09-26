@@ -396,7 +396,18 @@ async def test_choosing_delegates_to_the_modules_only_writer(
 async def test_the_two_published_statuses_map_to_opt_in_and_opt_out(
     monkeypatch: pytest.MonkeyPatch, status: str, enabled: bool
 ) -> None:
-    recorder = _Recorder(result={"data_class": AI_USAGE, "status": status})
+    # The stand-in mirrors what choose_policy actually returns (data_class,
+    # retention_days, status, chosen) so the response model is exercised against
+    # a payload the real writer can produce; the assertion below still reads the
+    # kwargs, which is what this test is about.
+    recorder = _Recorder(
+        result={
+            "data_class": AI_USAGE,
+            "retention_days": 390,
+            "status": status,
+            "chosen": enabled,
+        }
+    )
     monkeypatch.setattr(retention, "choose_policy", recorder)
     monkeypatch.setattr(analytics_router, "write_audit_row", _Recorder())
     response = await _choose(
@@ -412,7 +423,20 @@ async def test_choosing_is_audited_as_a_permission_to_delete(
     """Every governance write in this repo is audited; a retention choice authorises
     a DELETE of other tenants' shared rows, so it qualifies more than most."""
     monkeypatch.setattr(
-        retention, "choose_policy", _Recorder(result={"data_class": AI_USAGE})
+        retention,
+        "choose_policy",
+        # Mirrors the producer (retention.py: choose_policy returns the row it
+        # wrote: data_class, retention_days, status, chosen) — a stand-in that
+        # returns less than the real writer does would let the route's response
+        # model pass against a payload no production call path can produce.
+        _Recorder(
+            result={
+                "data_class": AI_USAGE,
+                "retention_days": 500,
+                "status": "active",
+                "chosen": True,
+            }
+        ),
     )
     audit = _Recorder()
     monkeypatch.setattr(analytics_router, "write_audit_row", audit)
@@ -435,7 +459,18 @@ async def test_the_audit_records_the_answer_being_replaced(
     """Changing a permission-to-delete must be legible afterwards: the row says
     what the tenant had said before, not only what it now says."""
     monkeypatch.setattr(
-        retention, "choose_policy", _Recorder(result={"data_class": AI_USAGE})
+        retention,
+        "choose_policy",
+        # Faithful to the producer, as above: this test withdraws (paused), so
+        # the writer's own answer carries status/chosen for the withdrawal.
+        _Recorder(
+            result={
+                "data_class": AI_USAGE,
+                "retention_days": 900,
+                "status": "paused",
+                "chosen": False,
+            }
+        ),
     )
     audit = _Recorder()
     monkeypatch.setattr(analytics_router, "write_audit_row", audit)

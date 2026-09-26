@@ -593,7 +593,15 @@ async def test_a_row_store_can_be_chosen_through_the_same_put(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     recorder = _Recorder(
-        result={"data_class": MESSAGES, "retention_days": 365, "status": "active"}
+        result={
+            "data_class": MESSAGES,
+            "retention_days": 365,
+            "status": "active",
+            # choose_policy returns the row it wrote, and `chosen` is part of it
+            # (retention.py) — a stand-in missing the key would exercise the
+            # response model against a payload no real call path produces.
+            "chosen": True,
+        }
     )
     monkeypatch.setattr(retention, "choose_policy", recorder)
     audit = _Recorder()

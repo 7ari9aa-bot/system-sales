@@ -426,7 +426,10 @@ async def revenue_summary(
     summary = await analytics_service.revenue_summary(
         ctx.session, ctx.tenant_id, since=since, until=until, timezone=timezone
     )
-    return _money_json(summary)
+    # The window is part of the answer, not metadata beside it: "the same instant
+    # spelled two ways" can only be checked by a client that can read what the
+    # server bound.
+    return {**_money_json(summary), "since": since.isoformat(), "until": until.isoformat()}
 
 
 @router.get("/daily-series", response_model=schemas.DailySeriesOut)

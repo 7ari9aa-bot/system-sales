@@ -275,7 +275,14 @@ class DropGateOut(BaseModel):
 
     tenant_count: int
     missing_policies: int
-    max_days: int
+    max_days: int | None = Field(
+        default=None,
+        description=(
+            "The longest horizon anyone in the deployment has chosen, or null when "
+            "NO tenant has chosen yet — the gate then blocks on every tenant's "
+            "silence, which is not the same answer as a zero-day horizon."
+        ),
+    )
     may_drop: bool
     reason: str
 

@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 245,
-    "sha256": "2e3a8ffd9fbb2acd790f7df99e6e884b5e459c9a6da7f1b3bc016f6962f38cc6",
+    "sha256": "c5791d8dbe7f6d0a4236308e0c00aafbe8ac0c6fe6bb7fbd3157a38d031482b2",
     "typed_operations": 149
   },
   "spec": {
@@ -3548,8 +3548,16 @@
           "description": "The shared-month gate, in the only form it may be published.\n\nCounts and the longest horizon, and NOTHING else: §56 partitions by time, so\na month belongs to every tenant and one tenant may not see another's policy,\nstore or existence by name.",
           "properties": {
             "max_days": {
-              "title": "Max Days",
-              "type": "integer"
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The longest horizon anyone in the deployment has chosen, or null when NO tenant has chosen yet — the gate then blocks on every tenant's silence, which is not the same answer as a zero-day horizon.",
+              "title": "Max Days"
             },
             "may_drop": {
               "title": "May Drop",
@@ -3571,7 +3579,6 @@
           "required": [
             "tenant_count",
             "missing_policies",
-            "max_days",
             "may_drop",
             "reason"
           ],
