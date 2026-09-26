@@ -26,16 +26,14 @@ impl log::Log for StderrLogger {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let logger = StderrLogger {
-        max: if cfg!(debug_assertions) {
-            log::LevelFilter::Debug
-        } else {
-            log::LevelFilter::Info
-        },
+    let max = if cfg!(debug_assertions) {
+        log::LevelFilter::Debug
+    } else {
+        log::LevelFilter::Info
     };
 
-    if log::set_boxed_logger(Box::new(logger)).is_ok() {
-        log::set_max_level(logger.max);
+    if log::set_boxed_logger(Box::new(StderrLogger { max })).is_ok() {
+        log::set_max_level(max);
     }
 
     if let Err(err) = tauri::Builder::default()

@@ -186,6 +186,6 @@ mod tests {
             nested = json!({ "next": nested });
         }
 
-        assert_eq!(render("boot", &nested, None).contains("[max depth]"), true);
+        assert!(render("boot", &nested, None).contains("[max depth]"));
     }
 }
