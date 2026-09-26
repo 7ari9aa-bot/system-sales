@@ -20,24 +20,25 @@ const DEEP_LINK_PARAM = "new";
 const DEEP_LINK_VALUE = "1";
 
 /** Returns the dialog's open state, already seeded by the deep link.
- *  Pass `onFire` for a create surface that is not a dialog (the settings page
- *  focuses its invite field instead of opening one); its return is then unused. */
-export function useCreateDialog(
-  onFire?: () => void,
-): [boolean, React.Dispatch<React.SetStateAction<boolean>>] {
+ *
+ *  The flag is the only thing this hook reads, so it reports the REQUEST and
+ *  leaves the surface to the page. That matters for a create surface that is
+ *  not a dialog: the settings page focuses its invite field, and that field is
+ *  rendered only once the page's reads have settled. A hook that fired a
+ *  callback here would fire it on the mount commit — before the field exists —
+ *  and the focus would land on nothing, so handing back the state and letting
+ *  the page act on it when its own DOM is ready is the whole design. */
+export function useCreateDialog(): [
+  boolean,
+  React.Dispatch<React.SetStateAction<boolean>>,
+] {
   const [open, setOpen] = React.useState(false);
   const router = useRouter();
-
-  const fire = React.useRef(onFire);
-  React.useEffect(() => {
-    fire.current = onFire;
-  }, [onFire]);
 
   React.useEffect(() => {
     const url = new URL(window.location.href);
     if (url.searchParams.get(DEEP_LINK_PARAM) !== DEEP_LINK_VALUE) return;
     setOpen(true);
-    fire.current?.();
     url.searchParams.delete(DEEP_LINK_PARAM);
     const qs = url.searchParams.toString();
     router.replace(qs ? `${url.pathname}?${qs}` : url.pathname, { scroll: false });

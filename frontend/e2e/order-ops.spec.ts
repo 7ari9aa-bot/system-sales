@@ -712,6 +712,10 @@ test("cancelling posts its reason where the backend can store it", async ({ page
   await page.getByTestId("cancel-order-btn").click();
   await expect(page.getByTestId("cancel-dialog")).toBeVisible();
   await page.getByTestId("cancel-note").fill("Customer asked to stop it");
+  // A note is not an acknowledgement. Cancellation is irreversible, so the
+  // submit stays gated on the explicit checkbox whatever the note says — this
+  // case is about WHERE the reason goes, so it ticks the box and moves on.
+  await page.getByTestId("cancel-confirm-ack").check();
   await page.getByTestId("submit-cancel").click();
 
   const posts = sent.filter((s) => writePath(s, "/status"));
@@ -929,6 +933,14 @@ test("a shipping write that lands updates the version the next write must send",
   await page.getByTestId("shipping-method").fill("courier");
   await page.getByTestId("submit-shipping").click();
   await expect(page.getByText("Shipping updated", { exact: true })).toBeVisible();
+
+  // Wait for the save's close to FINISH before reopening. Radix keeps the
+  // content mounted through the 150ms exit animation, and a pointerdown on the
+  // trigger inside that window is remembered as an outside-press: it opens the
+  // dialog and dismisses it again a frame later (measured: `data-state` goes
+  // open → closed 8ms apart, and the reopen is swallowed). The claim below is
+  // about the version the next write must send, not about clicking mid-fade.
+  await expect(page.getByTestId("shipping-dialog")).toHaveCount(0);
 
   await page.getByTestId("shipping-btn").click();
   // The write landed, so the re-read's destination is now the prefill: what the

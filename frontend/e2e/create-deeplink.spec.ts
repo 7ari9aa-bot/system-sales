@@ -109,6 +109,17 @@ async function expectClosed(page: Page, entry: DeepLink) {
   else expect(await focusedId(page)).not.toBe("inv-email");
 }
 
+/** The URL a consumed deep link leaves behind.
+ *
+ *  `toHaveURL` given a REGEXP matches it against the ABSOLUTE href
+ *  (`http://127.0.0.1:3000/orders`), so an anchored `^/orders$` could never
+ *  match — it rejected every route on every attempt while the app was already
+ *  behaving. Given a STRING, Playwright resolves it against `baseURL` and
+ *  compares the whole URL for equality, which is both what this contract says
+ *  (path, and nothing after it) and stricter than the regex it replaces: no
+ *  prefix, no query, no trailing segment survives it. */
+const cleanUrl = (entry: DeepLink) => entry.path;
+
 for (const entry of DEEP_LINKS) {
   test(`${entry.path}?new=1 opens its create surface and drops the flag from the URL`, async ({
     page,
@@ -118,7 +129,7 @@ for (const entry of DEEP_LINKS) {
     await page.goto(`${entry.path}?new=1`);
 
     await expectOpened(page, entry);
-    await expect(page).toHaveURL(new RegExp(`^${entry.path}$`));
+    await expect(page).toHaveURL(cleanUrl(entry));
   });
 
   test(`${entry.path}: refreshing after the deep link leaves the create surface closed`, async ({
@@ -128,6 +139,12 @@ for (const entry of DEEP_LINKS) {
 
     await page.goto(`${entry.path}?new=1`);
     await expectOpened(page, entry);
+    // The flag is deleted by a `router.replace` that lands some frames after the
+    // surface opens. Reloading before it lands reloads `?new=1` itself, which
+    // re-fires the deep link — and the absence asserted below would then be
+    // testing a page that was never asked to stay shut. Wait for the consumed
+    // URL first, so the reload is the only thing under test.
+    await expect(page).toHaveURL(cleanUrl(entry));
 
     await page.reload();
 

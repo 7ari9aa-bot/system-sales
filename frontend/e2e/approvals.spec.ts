@@ -151,7 +151,12 @@ async function mockApprovalsApi(
       if (outcome === "gone") return json(route, NOT_FOUND, 404);
       if (outcome === "forbidden") return json(route, FORBIDDEN, 403);
       // ok: the row leaves PENDING and is returned as APPROVED, resumed.
-      const id = entry.path.split("/")[4];
+      // `/api/v1/ai/approvals/{id}/decide` split on "/" is
+      // ["", "api", "v1", "ai", "approvals", "{id}", "decide"] — the id is
+      // index 5. Index 4 is the literal "approvals", which matched no row, so
+      // the filter below dropped nothing and the refetched PENDING queue still
+      // held the approval this dialog had just granted.
+      const id = path.split("/")[5];
       const approved = id === "ap-2" ? { ...PENDING_NO_ARGS, status: "APPROVED" } : decided("APPROVED");
       pending = pending.filter((a) => (a as { id: string }).id !== id);
       return json(route, { ...approved, consumed_at: null, resumed: true }, 200);
@@ -358,7 +363,13 @@ test("a replayed decision (400 'already') freezes the dialog: no re-mint, no res
 
   const notice = page.getByTestId("decision-terminal");
   await expect(notice).toBeVisible();
-  await expect(notice).toContainText("approval already APPROVED");
+  // The server's own sentence is shown by `decision-refused`, which the dialog
+  // renders for EVERY refusal — terminal or not — and `decision-terminal` is the
+  // block that explains what the screen will now refuse to do. Both are on
+  // screen together; pinning the message to the freeze block asked a locator
+  // for text the app never puts in it.
+  await expect(page.getByTestId("decision-refused")).toContainText("approval already APPROVED");
+  await expect(notice).toContainText("This decision cannot be sent");
   await expect(page.getByTestId("decision-submit")).toBeDisabled();
   // A second click must not fire a fresh keyed request — that could grant twice.
   await page.getByTestId("decision-submit").click({ force: true });

@@ -64,7 +64,19 @@ export default function SettingsPage() {
   const integrations = integrationsQuery.data ?? [];
   const revoke = useRevokeInvitation();
 
-  useCreateDialog(() => document.getElementById("inv-email")?.focus());
+  // §F14 — «دعوة فريق» from the top bar and the palette is `/settings?new=1`,
+  // and this screen's create surface is a focused field, not a dialog. The
+  // field lives inside the loaded branch below, so the focus cannot happen on
+  // the deep link's own commit: the reads are still in flight and
+  // `#inv-email` is not in the document yet. Hold the request as state and
+  // spend it once the form is actually rendered.
+  const [inviteRequested, setInviteRequested] = useCreateDialog();
+  const formPending = invitationsQuery.isLoading || integrationsQuery.isLoading;
+  React.useEffect(() => {
+    if (!inviteRequested || formPending) return;
+    document.getElementById("inv-email")?.focus();
+    setInviteRequested(false);
+  }, [inviteRequested, formPending, setInviteRequested]);
 
   function submit() {
     if (!email.trim()) return;
