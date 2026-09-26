@@ -107,7 +107,9 @@ fn carries_credential(text: &str) -> bool {
 }
 
 fn looks_like_token(lowered: &str) -> bool {
-    lowered.contains("eyJ") && lowered.matches('.').count() >= 2
+    // The needle must be lowercase too: this haystack is already lowered, so
+    // the JWT prefix in its raw form — eyJ — can never be found in it.
+    lowered.contains("eyj") && lowered.matches('.').count() >= 2
 }
 
 fn normalise(key: &str) -> String {
