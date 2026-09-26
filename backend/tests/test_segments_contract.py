@@ -575,7 +575,11 @@ async def test_the_http_surface_round_trips_a_typed_segment(
         assert body["is_active"] is True
         assert body["last_count"] is None, "an un-evaluated segment must not report a count"
         assert body["definition"]["all"][0]["field"] == "orders_count"
-        assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T[\d:.+]*", body["created_at"]), body["created_at"]
+        # The instant leaves as what `datetime.isoformat()` writes for a tz-aware
+        # value: `2026-09-26T15:17:52.969885Z`. The old class `[\d:.+]*` omitted
+        # the `Z`, so a correct response failed the shape check (CI only: this
+        # test skips without a database).
+        assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T[\d:.+Z]*", body["created_at"]), body["created_at"]
 
         fetched = await client.get(f"/api/v1/segments/{body['id']}")
         assert fetched.status_code == 200, fetched.text

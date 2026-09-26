@@ -925,7 +925,12 @@ async def _rows_at(db: Any, tenant_id: uuid.UUID, *, created_at: datetime, n: in
     return rows
 
 
-async def _client(db: Any, tenant_id: uuid.UUID, user_id: uuid.UUID, permissions: set[str]):
+def _client(db: Any, tenant_id: uuid.UUID, user_id: uuid.UUID, permissions: set[str]):
+    """A request-bound app. NOT a coroutine: the caller wraps the result in
+    `async with`, and `AsyncClient` is the async context manager — an `async def`
+    here hands that statement a coroutine, which is what CI's
+    "'coroutine' object does not support the asynchronous context manager
+    protocol" was (this test skips locally, so only CI could see it)."""
     app = _app_for(permissions=permissions)
 
     async def _session() -> Any:

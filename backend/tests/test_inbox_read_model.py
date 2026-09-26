@@ -547,13 +547,21 @@ def test_phone_survives_for_a_pii_reader() -> None:
 # DATABASE_URL_APP_ADMIN and are CI's job.
 
 
-def _counting_engine(engine):  # noqa: ANN001 - test helper
-    """Attach a per-connection ``before_cursor_execute`` statement counter."""
+def _counting_engine(bind):  # noqa: ANN001 - test helper
+    """Attach a ``before_cursor_execute`` statement counter to whatever the test
+    is bound to.
+
+    `before_cursor_execute` is an event on BOTH an Engine and a Connection, and
+    the db fixture's bind arrives as a plain Connection under CI (where RLS
+    forces the session to share one real connection) and as an Engine elsewhere
+    — `getattr(..., "sync_engine", bind)` covers the async forms too, since
+    AsyncEngine and AsyncConnection both expose `sync_engine`.
+    """
     from sqlalchemy import event
 
     counter = {"n": 0}
 
-    @event.listens_for(engine.sync_engine, "before_cursor_execute")
+    @event.listens_for(getattr(bind, "sync_engine", bind), "before_cursor_execute")
     def _count(conn, cursor, statement, parameters, context, executemany):  # noqa: ANN001
         counter["n"] += 1
 
@@ -652,7 +660,7 @@ async def test_unread_cannot_drift_from_the_facts_it_projects(db, inbox_seed) ->
     A materialized projection would need §137's asynchronous updater and a
     reconciliation job; this reads ``conversations.unread_count``, which the
     write path moves inside the same transaction as the message insert
-    (``append_message``), so the page and the counter are the same row. The
+    (``add_message``), so the page and the counter are the same row. The
     assertion that keeps a future projection honest: after a write, the very
     next page already shows it — no lag window at all.
     """
@@ -661,7 +669,7 @@ async def test_unread_cannot_drift_from_the_facts_it_projects(db, inbox_seed) ->
     before = await InboxQuery.page(db, TENANT, limit=50)
     assert before[0]["unread_count"] == 2
 
-    await ConversationService.append_message(
+    await ConversationService.add_message(
         db, TENANT, conversation_id=inbox_seed.conversation.id,
         direction="inbound", sender_type="customer", body="أخرى",
     )

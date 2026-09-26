@@ -851,7 +851,9 @@ async def test_workflow_versions_isolates_across_tenants(db) -> None:
         await db.execute(
             text(
                 "SELECT id FROM workflow_versions WHERE workflow_id = :w"
-            ),  # no tenant predicate, on purpose
+            ),  # no TENANT predicate, on purpose — the workflow id is the row's
+            # own identity, not a tenancy filter, and it still has to bind.
+            {"w": workflow.id},
         )
     ).all()
     assert rows == [], "RLS must hide the snapshots; the app filter is not the boundary"
