@@ -11,19 +11,19 @@ import { apiClient } from "@/lib/api";
 
 export default function TeamPage() {
   const { data: dataRaw, isLoading, isError } = useQuery({
-    queryKey: ["team"],
-    queryFn: () => apiClient.get("/api/v1/team/members"),
+    queryKey: ["invitations"],
+    queryFn: () => apiClient.get("/api/v1/invitations"),
   });
   const data = dataRaw as any;
 
   if (isError) return <ErrorState message={t.somethingWentWrong} />;
   if (isLoading) return <TeamSkeleton />;
 
-  const members = data?.items ?? [];
+  const members = Array.isArray(data) ? data : data?.items ?? [];
 
   return (
     <div className="space-y-6">
-      <PageHeader title={t.team} description="Team members and roles" />
+      <PageHeader title={t.team} description="Team members and invitations" />
 
       {members.length === 0 ? (
         <EmptyState title={t.noInvitations} />
@@ -38,14 +38,16 @@ export default function TeamPage() {
                 <div key={m.id} className="flex items-center justify-between border-b last:border-0 pb-3 last:pb-0">
                   <div className="flex items-center gap-3">
                     <div className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-sm font-medium">
-                      {(m.name ?? m.email ?? "?").charAt(0).toUpperCase()}
+                      {(m.email ?? m.name ?? "?").charAt(0).toUpperCase()}
                     </div>
                     <div>
-                      <div className="text-sm font-medium">{m.name ?? m.email}</div>
-                      <div className="text-xs text-muted-foreground">{m.email}</div>
+                      <div className="text-sm font-medium">{m.email ?? m.name}</div>
+                      <div className="text-xs text-muted-foreground">{m.role ?? "member"}</div>
                     </div>
                   </div>
-                  <Badge variant="outline">{m.role ?? "member"}</Badge>
+                  <Badge variant={m.status === "accepted" ? "default" : "outline"}>
+                    {m.status ?? "pending"}
+                  </Badge>
                 </div>
               ))}
             </div>

@@ -209,7 +209,7 @@ export default function FinancialPage() {
 
       {/* Tab 1: Trial Balance */}
       {!isLoading && activeTab === "TRIAL_BALANCE" && (
-        errorTB ? (
+        errorTB && !(errorTB.message?.includes("404") || errorTB.message?.toLowerCase().includes("not found")) ? (
           <ErrorState
             message={errorTB.message || (isAr ? "فشل تحميل ميزان المراجعة" : "Failed to load trial balance")}
             onRetry={refetchTB}
@@ -274,7 +274,7 @@ export default function FinancialPage() {
 
       {/* Tab 2: Transactions / Journal Entries */}
       {!isLoading && activeTab === "TRANSACTIONS" && (
-        errorTx ? (
+        errorTx && !(errorTx.message?.includes("404") || errorTx.message?.toLowerCase().includes("not found")) ? (
           <ErrorState
             message={errorTx.message || (isAr ? "فشل تحميل قيود اليومية" : "Failed to load transactions")}
             onRetry={refetchTx}
@@ -351,7 +351,7 @@ export default function FinancialPage() {
 
       {/* Tab 3: Chart of Accounts */}
       {!isLoading && activeTab === "ACCOUNTS" && (
-        errorAcc ? (
+        errorAcc && !(errorAcc.message?.includes("404") || errorAcc.message?.toLowerCase().includes("not found")) ? (
           <ErrorState
             message={errorAcc.message || (isAr ? "فشل تحميل دليل الحسابات" : "Failed to load chart of accounts")}
             onRetry={refetchAcc}

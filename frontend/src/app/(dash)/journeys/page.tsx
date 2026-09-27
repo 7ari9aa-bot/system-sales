@@ -11,15 +11,15 @@ import { apiClient } from "@/lib/api";
 
 export default function JourneysPage() {
   const { data: dataRaw, isLoading, isError } = useQuery({
-    queryKey: ["journeys"],
-    queryFn: () => apiClient.get("/api/v1/journeys?limit=20"),
+    queryKey: ["workflows"],
+    queryFn: () => apiClient.get("/api/v1/workflows"),
   });
   const data = dataRaw as any;
 
   if (isError) return <ErrorState message={t.somethingWentWrong} />;
   if (isLoading) return <JourneysSkeleton />;
 
-  const journeys = data?.items ?? [];
+  const journeys = Array.isArray(data) ? data : data?.items ?? [];
 
   return (
     <div className="space-y-6">

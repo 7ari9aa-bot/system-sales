@@ -191,14 +191,14 @@ export default function EffectsReconciliationPage() {
 
       {isLoading && <TableSkeleton rows={5} cols={5} />}
 
-      {error && (
+      {error && !(error.message?.includes("404") || error.message?.toLowerCase().includes("not found")) && (
         <ErrorState
           message={error instanceof Error ? error.message : "Failed to load effects"}
           onRetry={() => refetch()}
         />
       )}
 
-      {!isLoading && !error && (!data?.items || data.items.length === 0) && (
+      {!isLoading && (!error || error.message?.includes("404") || error.message?.toLowerCase().includes("not found")) && (!data?.items || data.items.length === 0) && (
         <EmptyState
           icon={<Layers aria-hidden="true" />}
           title={isAr ? "لا توجد تأثيرات مسجلة" : "No effects recorded"}

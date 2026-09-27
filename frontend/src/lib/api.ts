@@ -1,6 +1,6 @@
 "use client";
 
-/** API client: token storage, refresh-on-401, typed helpers.
+/** API client: token storage, refresh-on-401/403, typed helpers.
  *  Tokens live in localStorage (staff dashboard, not a public surface). */
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "/api/v1";
@@ -189,7 +189,11 @@ export async function apiWithMeta<T = unknown>(
 
   const replayed = res.headers.get(IDEMPOTENCY_REPLAY_HEADER) === "true";
 
-  if (res.status === 401 && options.retry !== false) {
+  // The backend uses PermissionDeniedError (HTTP 403) for expired / invalid
+  // tokens — NOT 401. Handle both: on a genuine permission denial the refresh
+  // succeeds (token was already valid) and the retry still returns 403, which
+  // falls through to the error handler below (retry is set to false).
+  if ((res.status === 401 || res.status === 403) && options.retry !== false) {
     const refreshed = await tryRefresh();
     // The SAME key goes out again — a refreshed token is still the same user
     // intent, and replaying it against a completed write is the point.

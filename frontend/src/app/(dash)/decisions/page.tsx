@@ -210,14 +210,14 @@ export default function DecisionsPage() {
 
       {isLoading && <TableSkeleton rows={5} cols={5} />}
 
-      {error && (
+      {error && !(error.message?.includes("404") || error.message?.toLowerCase().includes("not found")) && (
         <ErrorState
           message={error instanceof Error ? error.message : "Failed to load decisions"}
           onRetry={() => refetch()}
         />
       )}
 
-      {!isLoading && !error && (!data?.items || data.items.length === 0) && (
+      {!isLoading && (!error || error.message?.includes("404") || error.message?.toLowerCase().includes("not found")) && (!data?.items || data.items.length === 0) && (
         <EmptyState
           icon={<Scale aria-hidden="true" />}
           title={isAr ? "لا توجد قرارات في هذا المسار" : "No decisions found"}

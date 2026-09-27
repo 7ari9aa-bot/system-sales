@@ -12,15 +12,15 @@ import { apiClient } from "@/lib/api";
 export default function LivePage() {
   const { data: dataRaw, isLoading, isError } = useQuery({
     queryKey: ["live"],
-    queryFn: () => apiClient.get("/api/v1/operations/live"),
-    refetchInterval: 5000,
+    queryFn: () => apiClient.get("/api/v1/platform/health"),
+    refetchInterval: 10000,
   });
   const data = dataRaw as any;
 
   if (isError) return <ErrorState message={t.somethingWentWrong} />;
   if (isLoading) return <LiveSkeleton />;
 
-  const systems = data?.systems ?? [];
+  const systems = data?.subsystems ?? data?.systems ?? [];
 
   return (
     <div className="space-y-6">
@@ -31,16 +31,16 @@ export default function LivePage() {
           <Card key={s.name}>
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
-                <span className="font-medium">{s.name}</span>
+                <span className="font-medium uppercase">{s.name}</span>
                 <Badge
-                  variant={s.status === "healthy" ? "default" : s.status === "degraded" ? "warning" : "danger"}
+                  variant={s.status === "ok" || s.status === "healthy" ? "default" : s.status === "degraded" ? "warning" : "danger"}
                 >
                   {s.status}
                 </Badge>
               </div>
-              {s.latency_ms && (
+              {s.detail && (
                 <div className="mt-2 text-xs text-muted-foreground" dir="ltr">
-                  Latency: {s.latency_ms}ms
+                  {s.detail}
                 </div>
               )}
               {s.error_rate && (

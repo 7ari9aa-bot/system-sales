@@ -19,7 +19,7 @@ export default function IntegrationsPage() {
   if (isError) return <ErrorState message={t.somethingWentWrong} />;
   if (isLoading) return <IntegrationsSkeleton />;
 
-  const integrations = data?.items ?? [];
+  const integrations = Array.isArray(data) ? data : data?.items ?? [];
 
   return (
     <div className="space-y-6">

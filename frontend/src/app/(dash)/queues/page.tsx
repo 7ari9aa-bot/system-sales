@@ -11,38 +11,38 @@ import { apiClient } from "@/lib/api";
 
 export default function QueuesPage() {
   const { data: dataRaw, isLoading, isError } = useQuery({
-    queryKey: ["queues"],
-    queryFn: () => apiClient.get("/api/v1/operations/queues"),
+    queryKey: ["jobs"],
+    queryFn: () => apiClient.get("/api/v1/jobs"),
+    refetchInterval: 10000,
   });
   const data = dataRaw as any;
 
   if (isError) return <ErrorState message={t.somethingWentWrong} />;
   if (isLoading) return <QueuesSkeleton />;
 
-  const queues = data?.items ?? [];
+  const jobs = Array.isArray(data) ? data : data?.items ?? [];
 
   return (
     <div className="space-y-6">
       <PageHeader title={t.healthOutbox} description="Background job queue monitoring" />
 
-      {queues.length === 0 ? (
+      {jobs.length === 0 ? (
         <EmptyState title={t.allClear} />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {queues.map((q: any) => (
-            <Card key={q.name}>
+          {jobs.map((q: any) => (
+            <Card key={q.id}>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
-                  <span className="font-medium">{q.name}</span>
-                  <Badge variant={q.depth > 100 ? "danger" : "outline"}>
-                    {q.depth} pending
+                  <span className="font-medium font-mono text-sm">{q.kind ?? q.name ?? "Job"}</span>
+                  <Badge variant={q.status === "succeeded" || q.status === "completed" ? "default" : q.status === "failed" ? "danger" : "outline"}>
+                    {q.status}
                   </Badge>
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-                  <div>Processing: <span className="font-medium text-foreground">{q.processing ?? 0}</span></div>
-                  <div>Failed: <span className="font-medium text-foreground">{q.failed ?? 0}</span></div>
-                  <div>DLQ: <span className="font-medium text-foreground">{q.dlq ?? 0}</span></div>
-                  <div>Throughput: <span className="font-medium text-foreground" dir="ltr">{q.throughput ?? "—"}/min</span></div>
+                  <div>Attempts: <span className="font-medium text-foreground">{q.attempts ?? 0}</span></div>
+                  <div>ID: <span className="font-medium font-mono text-foreground">{String(q.id).slice(0, 8)}</span></div>
+                  {q.error && <div className="col-span-2 text-danger truncate">{q.error}</div>}
                 </div>
               </CardContent>
             </Card>

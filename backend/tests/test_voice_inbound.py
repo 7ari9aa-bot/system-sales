@@ -366,6 +366,7 @@ async def test_message_worker_transcribes_before_answering(
     async def fake_auto_reply(session, tid, conversation_id):
         order.append("reply")
 
+    monkeypatch.setattr(mw, "SessionLocal", app_sessions_on_test_connection)
     monkeypatch.setattr(mw, "transcribe_inbound_voice", fake_transcribe)
     monkeypatch.setattr(ai_hooks, "maybe_auto_reply", fake_auto_reply)
 

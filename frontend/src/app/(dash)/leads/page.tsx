@@ -20,7 +20,7 @@ export default function LeadsPage() {
   if (isError) return <ErrorState message={t.somethingWentWrong} />;
   if (isLoading) return <LeadsSkeleton />;
 
-  const leads = data?.items ?? [];
+  const leads = Array.isArray(data) ? data : data?.items ?? [];
 
   return (
     <div className="space-y-6">
