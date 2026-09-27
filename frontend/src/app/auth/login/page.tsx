@@ -9,6 +9,7 @@ import { getTokens, setTokens } from "@/lib/api";
 import { authPost } from "@/lib/auth-api";
 import { useI18n } from "@/components/public/i18n";
 import Link from "next/link";
+import { Eye, EyeOff, Mail, Lock, Loader2 } from "lucide-react";
 
 export default function AuthLoginPage() {
   const { t } = useI18n();
@@ -57,32 +58,46 @@ export default function AuthLoginPage() {
       <p className="fh-auth-sub">{t.auth.loginSub}</p>
 
       <form className="fh-auth-form" onSubmit={submit} noValidate>
-        <div>
+        <div className="fh-input-group">
           <label htmlFor="email">{t.auth.email}</label>
-          <input
-            id="email"
-            type="email"
-            dir="ltr"
-            autoComplete="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
+          <div className="fh-input-wrap">
+            <Mail className="fh-input-icon" size={18} strokeWidth={1.5} />
+            <input
+              id="email"
+              type="email"
+              dir="ltr"
+              autoComplete="email"
+              placeholder="you@company.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+          </div>
         </div>
-        <div>
+
+        <div className="fh-input-group">
           <label htmlFor="password">{t.auth.password}</label>
-          <div className="fh-pw-field">
+          <div className="fh-input-wrap fh-pw-field">
+            <Lock className="fh-input-icon" size={18} strokeWidth={1.5} />
             <input
               id="password"
               type={showPw ? "text" : "password"}
               dir="ltr"
               autoComplete="current-password"
+              placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
             />
-            <button type="button" className="fh-pw-toggle" onClick={() => setShowPw((s) => !s)} aria-label={showPw ? t.auth.hidePw : t.auth.showPw}>
-              {showPw ? t.auth.hidePw : t.auth.showPw}
+            <button
+              type="button"
+              className="fh-pw-toggle"
+              onClick={() => setShowPw((s) => !s)}
+              aria-label={showPw ? t.auth.hidePw : t.auth.showPw}
+            >
+              {showPw
+                ? <EyeOff size={18} strokeWidth={1.5} />
+                : <Eye size={18} strokeWidth={1.5} />}
             </button>
           </div>
         </div>
@@ -95,7 +110,14 @@ export default function AuthLoginPage() {
         )}
 
         <button className="fh-btn fh-auth-submit" disabled={busy} data-testid="submit-login">
-          {busy ? t.auth.submittingLogin : t.auth.submitLogin}
+          {busy ? (
+            <>
+              <Loader2 size={18} className="fh-spin" />
+              {t.auth.submittingLogin}
+            </>
+          ) : (
+            t.auth.submitLogin
+          )}
         </button>
       </form>
 

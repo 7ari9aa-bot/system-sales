@@ -10,6 +10,7 @@ import { getTokens, setTokens } from "@/lib/api";
 import { authPost } from "@/lib/auth-api";
 import { useI18n } from "@/components/public/i18n";
 import Link from "next/link";
+import { Eye, EyeOff, Mail, Lock, Loader2 } from "lucide-react";
 
 const PASSWORD_MIN = 8;
 
@@ -19,7 +20,11 @@ export default function AuthSignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<{ message: string; retryable: boolean } | null>(null);
+  const [err, setErr] = useState<{
+    message: string;
+    retryable: boolean;
+    showLogin?: boolean;
+  } | null>(null);
   const [showPw, setShowPw] = useState(false);
 
   useEffect(() => {
@@ -61,11 +66,30 @@ export default function AuthSignupPage() {
       status: 0,
       message: undefined,
     }));
+
     if (!reg.ok) {
       if (reg.status === 0) {
         setErr({ message: t.auth.errNetwork, retryable: true });
       } else if (reg.status === 409) {
-        setErr({ message: t.auth.errExists, retryable: false });
+        /* البريد مسجل — نحاول ندخّل تلقائيًا بنفس كلمة المرور */
+        const auto = await authPost<{ access_token: string; refresh_token: string }>(
+          "/auth/login",
+          { email, password },
+        ).catch(() => ({ ok: false as const, status: 0, message: undefined }));
+        if (auto.ok) {
+          setTokens({
+            access_token: auto.data.access_token,
+            refresh_token: auto.data.refresh_token,
+          });
+          router.replace("/inbox");
+          return;
+        }
+        /* كلمة المرور مش مطابقة — نوجّه المستخدم لصفحة الدخول */
+        setErr({
+          message: t.auth.errExistsLogin,
+          retryable: false,
+          showLogin: true,
+        });
       } else if (reg.status === 429) {
         setErr({ message: t.auth.errRate, retryable: true });
       } else if (reg.message) {
@@ -77,12 +101,16 @@ export default function AuthSignupPage() {
       return;
     }
 
+    // التسجيل نجح — ندخّل تلقائيًا
     const login = await authPost<{ access_token: string; refresh_token: string }>(
       "/auth/login",
       { email, password },
     ).catch(() => ({ ok: false as const, status: 0, message: undefined }));
     if (login.ok) {
-      setTokens({ access_token: login.data.access_token, refresh_token: login.data.refresh_token });
+      setTokens({
+        access_token: login.data.access_token,
+        refresh_token: login.data.refresh_token,
+      });
       router.replace("/inbox");
       return;
     }
@@ -96,33 +124,47 @@ export default function AuthSignupPage() {
       <p className="fh-auth-sub">{t.auth.signupSub}</p>
 
       <form className="fh-auth-form" onSubmit={submit} noValidate>
-        <div>
+        <div className="fh-input-group">
           <label htmlFor="email">{t.auth.email}</label>
-          <input
-            id="email"
-            type="email"
-            dir="ltr"
-            autoComplete="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
+          <div className="fh-input-wrap">
+            <Mail className="fh-input-icon" size={18} strokeWidth={1.5} />
+            <input
+              id="email"
+              type="email"
+              dir="ltr"
+              autoComplete="email"
+              placeholder="you@company.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+          </div>
         </div>
-        <div>
+
+        <div className="fh-input-group">
           <label htmlFor="password">{t.auth.password}</label>
-          <div className="fh-pw-field">
+          <div className="fh-input-wrap fh-pw-field">
+            <Lock className="fh-input-icon" size={18} strokeWidth={1.5} />
             <input
               id="password"
               type={showPw ? "text" : "password"}
               dir="ltr"
               autoComplete="new-password"
+              placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
               aria-describedby="pw-hint"
             />
-            <button type="button" className="fh-pw-toggle" onClick={() => setShowPw((s) => !s)} aria-label={showPw ? t.auth.hidePw : t.auth.showPw}>
-              {showPw ? t.auth.hidePw : t.auth.showPw}
+            <button
+              type="button"
+              className="fh-pw-toggle"
+              onClick={() => setShowPw((s) => !s)}
+              aria-label={showPw ? t.auth.hidePw : t.auth.showPw}
+            >
+              {showPw
+                ? <EyeOff size={18} strokeWidth={1.5} />
+                : <Eye size={18} strokeWidth={1.5} />}
             </button>
           </div>
           <small id="pw-hint" className={`fh-pw-hint${pwValid ? " is-ok" : ""}`}>
@@ -133,14 +175,36 @@ export default function AuthSignupPage() {
         {err && (
           <div className="fh-auth-error" role="alert">
             <p>{err.message}</p>
-            <button type="button" onClick={() => setErr(null)}>{t.auth.dismiss}</button>
+            <span className="fh-auth-error-actions">
+              {err.showLogin && (
+                <Link href="/auth/login" className="fh-auth-error-link">
+                  {t.auth.signin} →
+                </Link>
+              )}
+              <button type="button" onClick={() => setErr(null)}>
+                {t.auth.dismiss}
+              </button>
+            </span>
           </div>
         )}
 
-        <button className="fh-btn fh-auth-submit" disabled={busy} data-testid="submit-signup">
-          {busy ? t.auth.submittingSignup : t.auth.submitSignup}
+        <button
+          className="fh-btn fh-auth-submit"
+          disabled={busy}
+          data-testid="submit-signup"
+        >
+          {busy ? (
+            <>
+              <Loader2 size={18} className="fh-spin" />
+              {t.auth.submittingSignup}
+            </>
+          ) : (
+            t.auth.submitSignup
+          )}
         </button>
-        <p className="fh-auth-trust">مجاني خلال الوصول المبكر · بدون بطاقة · بياناتك معزولة من أول يوم</p>
+        <p className="fh-auth-trust">
+          مجاني خلال الوصول المبكر · بدون بطاقة · بياناتك معزولة من أول يوم
+        </p>
       </form>
 
       <p className="fh-auth-alt">

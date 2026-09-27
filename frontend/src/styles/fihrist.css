@@ -484,30 +484,47 @@ html.js .fh-reveal-stagger.fh-pre > * { opacity: 0; transform: translateY(12px);
 .fh-tier-lock { display: block; margin-top: .7rem; font-size: 12.5px; color: var(--muted); text-align: center; }
 .fh-auth-trust { text-align: center; }
 .fh-auth-main { flex: 1; display: flex; align-items: flex-start; justify-content: center; }
-.fh-auth-card { width: 100%; max-width: 430px; padding: 2rem; background: var(--card); border: 1px solid var(--rule); }
-.fh-auth-card h1 { font-size: 24px; margin-bottom: .35rem; }
-.fh-auth-sub { color: var(--muted); font-size: 14px; margin-bottom: 1.5rem; }
-.fh-auth-form { display: flex; flex-direction: column; gap: .95rem; }
-.fh-auth-form label { font-size: 13px; font-weight: 500; color: var(--muted); display: block; margin-bottom: .35rem; }
+.fh-auth-card { width: 100%; max-width: 430px; padding: 2rem; background: var(--card); border: 1px solid var(--rule); border-radius: 14px; }
+.fh-auth-card h1 { font-size: 26px; font-weight: 700; margin-bottom: .35rem; letter-spacing: -.01em; }
+.fh-auth-sub { color: var(--muted); font-size: 14.5px; margin-bottom: 1.75rem; line-height: 1.5; }
+.fh-auth-form { display: flex; flex-direction: column; gap: 1.1rem; }
+.fh-input-group { display: flex; flex-direction: column; gap: .4rem; }
+.fh-input-group label, .fh-auth-form label { font-size: 13px; font-weight: 600; color: var(--ink); display: block; letter-spacing: .01em; }
+.fh-input-wrap { position: relative; direction: ltr; }
+.fh-input-wrap .fh-input-icon { position: absolute; left: .85rem; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; transition: color .2s ease; }
+.fh-input-wrap:focus-within .fh-input-icon { color: var(--forest); }
 .fh-auth-form input {
-  width: 100%; padding: .72rem .95rem; font-size: 14.5px; border-radius: 3px;
-  border: 1px solid var(--rule-strong);
-  background: var(--card); color: var(--ink); font-family: inherit;
+  width: 100%; padding: .78rem .95rem .78rem 2.65rem; font-size: 14.5px; border-radius: 8px;
+  border: 1px solid var(--rule);
+  background: var(--card-soft); color: var(--ink); font-family: inherit;
+  transition: border-color .2s ease, background-color .2s ease, box-shadow .2s ease;
 }
-.fh-auth-form input:focus { outline: 2px solid var(--focus); outline-offset: 0; border-color: var(--forest); }
-.fh-auth-submit { width: 100%; padding: 13px; font-size: 15px; margin-top: .3rem; }
-.fh-pw-hint { display: block; margin-top: .35rem; color: var(--muted); font-size: 12px; }
+.fh-auth-form input::placeholder { color: var(--muted); opacity: .5; }
+.fh-auth-form input:focus { outline: none; border-color: var(--forest); background: var(--card); box-shadow: 0 0 0 3px color-mix(in srgb, var(--forest) 12%, transparent); }
+.fh-auth-submit { width: 100%; padding: 13px; font-size: 15px; font-weight: 600; margin-top: .4rem; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; gap: .5rem; transition: transform .15s ease, box-shadow .15s ease; }
+.fh-auth-submit:not(:disabled):hover { transform: translateY(-1px); box-shadow: 0 4px 14px color-mix(in srgb, var(--forest) 25%, transparent); }
+.fh-auth-submit:not(:disabled):active { transform: translateY(0); }
+.fh-pw-hint { display: block; margin-top: .35rem; color: var(--muted); font-size: 12px; transition: color .2s ease; }
 .fh-pw-hint.is-ok { color: var(--success); }
-.fh-auth-error { background: var(--card-soft); border: 1px solid var(--rule); border-inline-start: 2px solid var(--danger); border-radius: 3px; padding: .75rem .95rem; }
-.fh-auth-error p { color: var(--danger); font-size: 13.5px; font-weight: 500; }
-.fh-auth-error button {
-  margin-top: .4rem; background: none; border: none; padding: 0; display: block;
-  color: var(--muted); font-size: 12.5px; font-weight: 500; text-decoration: underline;
+.fh-auth-error { background: color-mix(in srgb, var(--danger) 6%, var(--card)); border: 1px solid color-mix(in srgb, var(--danger) 20%, var(--rule)); border-radius: 8px; padding: .85rem 1rem; animation: fh-shake .35s ease; }
+@keyframes fh-shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 50% { transform: translateX(5px); } 75% { transform: translateX(-3px); } }
+.fh-auth-error p { color: var(--danger); font-size: 13.5px; font-weight: 500; line-height: 1.5; }
+.fh-auth-error-actions { display: flex; gap: .75rem; align-items: center; margin-top: .45rem; }
+.fh-auth-error button, .fh-auth-error-link {
+  background: none; border: none; padding: 0; display: inline-block;
+  font-size: 12.5px; font-weight: 500; text-decoration: underline; cursor: pointer;
 }
+.fh-auth-error button { color: var(--muted); }
+.fh-auth-error-link { color: var(--forest); text-decoration: none; font-weight: 600; }
 .fh-auth-error button:hover { color: var(--ink); }
+.fh-auth-error-link:hover { text-decoration: underline; }
 .fh-auth-alt { text-align: center; font-size: 13.5px; color: var(--muted); margin: 1.25rem 0 0; }
-.fh-auth-alt a { color: var(--forest); font-weight: 500; }
+.fh-auth-alt a { color: var(--forest); font-weight: 600; text-decoration: none; transition: color .15s ease; }
+.fh-auth-alt a:hover { text-decoration: underline; }
+.fh-auth-trust { font-size: 12.5px; opacity: .65; }
 .fh-auth-foot { display: flex; justify-content: center; gap: .5rem; color: var(--muted); font-size: 12.5px; padding-block: 1.5rem; }
+.fh-spin { animation: fh-spin-kf .7s linear infinite; display: inline-block; }
+@keyframes fh-spin-kf { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
 /* ---------- responsive ---------- */
 @media (max-width: 1280px) { .fh-brand-tag { display: none; } }
@@ -691,7 +708,7 @@ html { scroll-behavior: smooth; }
 .fh-auth-main { display: flex; flex-direction: column; }
 .fh-auth-top { justify-content: flex-start; padding: clamp(28px, 4vw, 40px) clamp(28px, 4vw, 40px) 0; }
 .fh-auth-card-wrap { flex: 1; display: flex; align-items: center; justify-content: center; padding: clamp(24px, 4vw, 48px); }
-.fh-auth-card { max-width: 400px; padding: 0; background: transparent; border: none; box-shadow: none; }
+.fh-auth-card { max-width: 420px; padding: 0; background: transparent; border: none; box-shadow: none; border-radius: 0; }
 .fh-auth-card h1 { font-size: 26px; margin-bottom: .4rem; }
 .fh-auth-foot { justify-content: center; padding: clamp(24px, 4vw, 40px); }
 @media (max-width: 920px) {
@@ -700,11 +717,10 @@ html { scroll-behavior: smooth; }
   .fh-auth-top { justify-content: center; padding-block: 2rem 1rem; }
 }
 
-/* ---------- حقل كلمة المرور: زر الإظهار ---------- */
-.fh-pw-field { position: relative; }
-.fh-pw-field input { padding-inline-end: 2.8rem; }
-.fh-pw-toggle { position: absolute; inset-inline-end: .55rem; top: calc(50% - 14px); background: none; border: none; padding: .25rem .35rem; color: var(--muted); font-size: 12px; font-weight: 500; border-radius: 3px; }
-.fh-pw-toggle:hover { color: var(--forest); }
+/* ---------- حقل كلمة المرور: زر الإظهار (physical right — RTL-safe) ---------- */
+.fh-pw-field input { padding-right: 2.8rem; }
+.fh-pw-toggle { position: absolute; right: .6rem; top: 50%; transform: translateY(-50%); background: none; border: none; padding: .35rem; color: var(--muted); border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: color .15s ease, background-color .15s ease; line-height: 1; }
+.fh-pw-toggle:hover { color: var(--forest); background: color-mix(in srgb, var(--forest) 8%, transparent); }
 
 
 /* ---------- الهيدر: شعار يسار، تسجيل يمين (RTL fix) ---------- */
