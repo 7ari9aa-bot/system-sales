@@ -11,6 +11,8 @@ from app.modules.billing import models as billing  # noqa: F401
 from app.modules.catalog import models as catalog  # noqa: F401
 from app.modules.conversations import models as conversations  # noqa: F401
 from app.modules.customers import models as customers  # noqa: F401
+from app.modules.decisions import models as decisions  # noqa: F401
+from app.modules.evidence import models as evidence  # noqa: F401
 from app.modules.identity import models as identity  # noqa: F401
 from app.modules.inventory import models as inventory  # noqa: F401
 from app.modules.marketing import models as marketing  # noqa: F401

@@ -68,6 +68,8 @@ from app.modules.conversations.router import (
 )
 from app.modules.customers.router import platform_router as platform_router
 from app.modules.customers.router import router as customers_router
+from app.modules.decisions.router import router as decisions_router
+from app.modules.evidence.router import router as evidence_router
 from app.modules.identity.router import hierarchy_router as identity_hierarchy_router
 from app.modules.identity.router import router as identity_router
 from app.modules.identity.router import tenants_router as identity_tenants_router
@@ -442,6 +444,8 @@ def create_app() -> FastAPI:
         segments_router,
         automation_router,
         analytics_module_router,
+        evidence_router,
+        decisions_router,
     ):
         api_v1.include_router(router)
     app.include_router(api_v1)

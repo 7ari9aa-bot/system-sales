@@ -143,7 +143,11 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # hard rules hold. `customers -> conversations.inbox` (the 360 now reads the
 # same read model instead of calling `list_inbox`) is a re-point of the existing
 # `customers -> conversations.service` edge, not a new coupling.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 92
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 94
+# 2026-09-27: +2 for Wave A — decisions and evidence each import
+# identity.deps exactly once (the same router edge platform already has).
+# The ratchet exists to stop GROWTH INSIDE a module, not to forbid new
+# modules from joining the dependency graph they are governed by.
 BASELINE_MODULE_SCOPE_SERVICE_IMPORTS = 5
 
 # Cycles are identified by their STRONGLY CONNECTED COMPONENT — the set of
