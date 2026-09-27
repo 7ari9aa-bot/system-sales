@@ -189,17 +189,33 @@ export async function apiWithMeta<T = unknown>(
 
   const replayed = res.headers.get(IDEMPOTENCY_REPLAY_HEADER) === "true";
 
-  // The backend uses PermissionDeniedError (HTTP 403) for expired / invalid
-  // tokens — NOT 401. Handle both: on a genuine permission denial the refresh
-  // succeeds (token was already valid) and the retry still returns 403, which
-  // falls through to the error handler below (retry is set to false).
-  if ((res.status === 401 || res.status === 403) && options.retry !== false) {
+  if (res.status === 401 && options.retry !== false) {
     const refreshed = await tryRefresh();
     // The SAME key goes out again — a refreshed token is still the same user
     // intent, and replaying it against a completed write is the point.
     if (refreshed) return apiWithMeta<T>(path, { ...options, retry: false });
     if (typeof window !== "undefined") window.location.href = "/login";
     throw new ApiError("غير مصرّح", { status: 401, code: "unauthorized" });
+  }
+
+  // The backend uses PermissionDeniedError (HTTP 403) for expired / invalid
+  // tokens as well as genuine permission denials. Only trigger refresh if the
+  // error message specifically indicates a token issue.
+  if (res.status === 403 && options.retry !== false) {
+    try {
+      const cloned = res.clone();
+      const body = (await cloned.json()) as ErrorEnvelope;
+      const raw = body?.error?.message ?? body?.detail;
+      const msg = typeof raw === "string" ? raw.toLowerCase() : "";
+      if (msg.includes("token") || msg.includes("bearer")) {
+        const refreshed = await tryRefresh();
+        if (refreshed) return apiWithMeta<T>(path, { ...options, retry: false });
+        if (typeof window !== "undefined") window.location.href = "/login";
+        throw new ApiError("غير مصرّح", { status: 401, code: "unauthorized" });
+      }
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
+    }
   }
 
   if (!res.ok) {
