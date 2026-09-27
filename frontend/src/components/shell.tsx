@@ -6,17 +6,12 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { LayoutDashboard,
   MessagesSquare,
-  ListChecks,
-  ClipboardList,
-  Bell,
   Users,
   ShoppingCart,
   Package,
   Warehouse,
   Megaphone,
-  Workflow,
   BarChart3,
-  Activity,
   Sparkles,
   ShieldAlert,
   Settings,
@@ -29,10 +24,7 @@ import { LayoutDashboard,
   Building2,
   Sun,
   Moon,
-  Languages,
-  Scale,
   Receipt,
-  RotateCcw,
 } from "lucide-react";
 import { apiUrl, getTokens, setTokens } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
@@ -64,20 +56,21 @@ type NavGroup = { id: string; label: string; items: NavItem[] };
 /* Built at render time (not module scope) so the labels follow the active
    language without a page reload. */
 function buildNavGroups(): NavGroup[] {
+  // Owner IA decision 2026-09-27: this sidebar belongs to the EMPLOYEE.
+  // - Home + My Work are ONE item (Overview; the work queue renders there).
+  // - Notifications live behind the bell, never a nav section.
+  // - Tasks surface as an Overview card, not a nav item.
+  // - Leads are a Customers view (same entity, earlier lifecycle stage).
+  // - Journeys live inside Marketing. Operations/SLA/queues/effects/decisions
+  //   are operator surfaces — reachable by URL, absent from this rail.
   return [
     {
-      id: "home",
+      id: "daily",
       label: t.groupHome,
-      items: [{ href: "/dashboard", label: t.dashboard, icon: <LayoutDashboard aria-hidden="true" />, testid: "nav-dashboard" }],
-    },
-    {
-      id: "work",
-      label: t.groupWork,
       items: [
-        { href: "/my-work", label: t.myWork, icon: <ClipboardList aria-hidden="true" />, testid: "nav-my-work" },
-        { href: "/notifications", label: t.notifications, icon: <Bell aria-hidden="true" />, testid: "nav-notifications" },
+        { href: "/dashboard", label: t.overview, icon: <LayoutDashboard aria-hidden="true" />, testid: "nav-overview" },
         { href: "/inbox", label: t.inbox, icon: <MessagesSquare aria-hidden="true" />, testid: "nav-inbox" },
-        { href: "/tasks", label: t.myTasks, icon: <ListChecks aria-hidden="true" />, testid: "nav-tasks" },
+        { href: "/approvals", label: t.approvalsTitle, icon: <ShieldAlert aria-hidden="true" />, testid: "nav-approvals" },
       ],
     },
     {
@@ -85,55 +78,19 @@ function buildNavGroups(): NavGroup[] {
       label: t.groupBusiness,
       items: [
         { href: "/customers", label: t.customers, icon: <Users aria-hidden="true" />, testid: "nav-customers" },
-        { href: "/leads", label: "Leads", icon: <Users aria-hidden="true" />, testid: "nav-leads" },
         { href: "/orders", label: t.orders, icon: <ShoppingCart aria-hidden="true" />, testid: "nav-orders" },
         { href: "/products", label: t.products, icon: <Package aria-hidden="true" />, testid: "nav-products" },
         { href: "/inventory", label: t.inventory, icon: <Warehouse aria-hidden="true" />, testid: "nav-inventory" },
+        { href: "/marketing", label: t.marketing, icon: <Megaphone aria-hidden="true" />, testid: "nav-marketing" },
         { href: "/financial", label: t.financial, icon: <Receipt aria-hidden="true" />, testid: "nav-financial" },
       ],
     },
     {
-      id: "growth",
-      label: t.groupGrowth,
-      items: [
-        { href: "/marketing", label: t.marketing, icon: <Megaphone aria-hidden="true" />, testid: "nav-marketing" },
-        { href: "/journeys", label: t.automationFlows, icon: <Workflow aria-hidden="true" />, testid: "nav-journeys" },
-      ],
-    },
-    {
-      id: "ai",
-      label: t.groupAi,
-      items: [
-        { href: "/ai", label: t.ai, icon: <Sparkles aria-hidden="true" />, testid: "nav-ai" },
-        { href: "/approvals", label: t.approvalsTitle, icon: <ShieldAlert aria-hidden="true" />, testid: "nav-approvals" },
-        { href: "/decisions", label: t.decisions, icon: <Scale aria-hidden="true" />, testid: "nav-decisions" },
-      ],
-    },
-    // §89: ANALYTICS, OPERATIONS groups — روابط فقط لصفحات موجودة فعلًا
-    {
-      id: "analytics",
-      label: t.groupAnalytics,
-      items: [
-        { href: "/analytics", label: t.dashboards, icon: <BarChart3 aria-hidden="true" />, testid: "nav-analytics" },
-      ],
-    },
-    {
-      id: "operations",
-      label: t.groupOperations,
-      items: [
-        { href: "/operations", label: t.health, icon: <Activity aria-hidden="true" />, testid: "nav-operations" },
-        { href: "/live", label: "Live", icon: <Activity aria-hidden="true" />, testid: "nav-live" },
-        { href: "/sla", label: "SLA", icon: <ShieldAlert aria-hidden="true" />, testid: "nav-sla" },
-        { href: "/queues", label: "Queues", icon: <ListChecks aria-hidden="true" />, testid: "nav-queues" },
-        { href: "/effects", label: t.effects, icon: <RotateCcw aria-hidden="true" />, testid: "nav-effects" },
-      ],
-    },
-    {
-      id: "admin",
+      id: "system",
       label: t.groupAdmin,
       items: [
-        { href: "/integrations", label: t.integrations, icon: <Building2 aria-hidden="true" />, testid: "nav-integrations" },
-        { href: "/team", label: t.team, icon: <Users aria-hidden="true" />, testid: "nav-team" },
+        { href: "/ai", label: t.agentSettings, icon: <Sparkles aria-hidden="true" />, testid: "nav-ai" },
+        { href: "/analytics", label: t.dashboards, icon: <BarChart3 aria-hidden="true" />, testid: "nav-analytics" },
         { href: "/settings", label: t.settings, icon: <Settings aria-hidden="true" />, testid: "nav-settings" },
       ],
     },

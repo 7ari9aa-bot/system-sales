@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState, ErrorState, PageHeader } from "@/components/ui/states";
+import { MyWorkSection } from "@/components/my-work/my-work-section";
 
 function Stat({
   label,
@@ -120,7 +121,7 @@ export default function DashboardPage() {
 
   return (
     <div>
-      <PageHeader title={t.dashboard} description="نظرة سريعة على أداء متجرك" />
+      <PageHeader title={t.overview} description={t.overviewDescription} />
 
       <Card className="mt-4" data-testid="needs-attention">
         <CardHeader className="flex-row items-center justify-between space-y-0">
@@ -319,6 +320,9 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* §97/Owner 2026-09-27: Overview = Home + My Work as ONE surface. */}
+      <MyWorkSection />
     </div>
   );
 }

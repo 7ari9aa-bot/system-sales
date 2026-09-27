@@ -84,6 +84,37 @@ class AgentCreateRequest(BaseModel):
     description: str | None = None
 
 
+class AgentUpdateRequest(BaseModel):
+    """PATCH /ai/agents/{id} — the tenant edits ITS OWN agent (ADR-060).
+
+    The prompt is the tenant's business secret and their lever on the agent's
+    behavior: editing is settings:write gated, tenant-scoped by the same WHERE
+    the read uses, versioned, and audited."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    model: str | None = Field(default=None, max_length=127)
+    system_prompt: str | None = Field(default=None, min_length=1)
+    description: str | None = None
+    is_active: bool | None = None
+
+
+class AgentDetailOut(BaseModel):
+    """The settings:write view of one agent — the only contract that may carry
+    the system_prompt (a business secret; AgentOut omits it on purpose because
+    GET /ai/agents is tenant-readable by every member). ``version`` is the
+    optimistic-concurrency token the PATCH round-trips."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    description: str | None = None
+    model: str | None = None
+    system_prompt: str | None = None
+    is_active: bool
+    version: int
+
+
 # --------------------------------------------------------------- knowledge (§157)
 
 

@@ -21,7 +21,10 @@ export default function CustomersPage() {
   const selectedCustomerId = searchParams.get("customer") ?? null;
   const activeViewId = searchParams.get("view") ?? null;
   const urlQuery = searchParams.get("q") ?? "";
-  const customersQuery = useCustomers();
+  // Owner IA 2026-09-27: Leads are a VIEW of Customers, not a second module —
+  // ?filter=lead is the same server contract the old /leads page called.
+  const leadFilter = searchParams.get("filter") === "lead";
+  const customersQuery = useCustomers(leadFilter ? "lead" : undefined);
   const customers = customersQuery.data ?? [];
   // §47: the currency code is READ, never assumed — a customer's lifetime
   // value has no currency without it, and the old hard-coded "ج.م" label was
@@ -142,6 +145,27 @@ export default function CustomersPage() {
     return (
       <div>
         <PageHeader title={t.customers} />
+        <div className="mb-4 flex items-center gap-1 rounded-lg border border-border bg-muted/30 p-1 text-sm" role="tablist" aria-label={t.customers}>
+          <button
+            role="tab"
+            aria-selected={!leadFilter}
+            onClick={() => setUrlParams((params) => params.delete("filter"))}
+            className={`rounded-md px-3 py-1.5 transition-colors ${!leadFilter ? "bg-surface font-semibold shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+            data-testid="customers-tab-all"
+          >
+            {t.customers}
+          </button>
+          <button
+            role="tab"
+            aria-selected={leadFilter}
+            onClick={() => setUrlParams((params) => params.set("filter", "lead"))}
+            className={`rounded-md px-3 py-1.5 transition-colors ${leadFilter ? "bg-surface font-semibold shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+            data-testid="customers-tab-leads"
+            title={t.leadsViewHint}
+          >
+            {t.leadsView}
+          </button>
+        </div>
         <ErrorState
           message={(customersQuery.error as Error).message}
           onRetry={() => customersQuery.refetch()}
@@ -154,6 +178,27 @@ export default function CustomersPage() {
     return (
       <div>
         <PageHeader title={t.customers} />
+        <div className="mb-4 flex items-center gap-1 rounded-lg border border-border bg-muted/30 p-1 text-sm" role="tablist" aria-label={t.customers}>
+          <button
+            role="tab"
+            aria-selected={!leadFilter}
+            onClick={() => setUrlParams((params) => params.delete("filter"))}
+            className={`rounded-md px-3 py-1.5 transition-colors ${!leadFilter ? "bg-surface font-semibold shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+            data-testid="customers-tab-all"
+          >
+            {t.customers}
+          </button>
+          <button
+            role="tab"
+            aria-selected={leadFilter}
+            onClick={() => setUrlParams((params) => params.set("filter", "lead"))}
+            className={`rounded-md px-3 py-1.5 transition-colors ${leadFilter ? "bg-surface font-semibold shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+            data-testid="customers-tab-leads"
+            title={t.leadsViewHint}
+          >
+            {t.leadsView}
+          </button>
+        </div>
         <div className="space-y-3 rounded-xl border border-border bg-card p-4" aria-busy="true" aria-label={t.loading}>
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="h-8 animate-pulse rounded-lg bg-muted" />

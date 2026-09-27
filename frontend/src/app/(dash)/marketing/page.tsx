@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
+
 import * as React from "react";
-import { Megaphone, Plus } from "lucide-react";
+import { ArrowUpRight, Megaphone, Plus } from "lucide-react";
 import { useCampaigns, useCreateCampaign, useMarketingSummary, useTenantCurrency, type Campaign, type CampaignBudgetRoas } from "@/lib/queries";
 import { useCreateDialog } from "@/lib/use-create-dialog";
 import { t } from "@/lib/t";
@@ -73,6 +75,16 @@ export default function MarketingPage() {
         actions={
           <Button onClick={() => setOpen(true)} data-testid="open-campaign-form">
             <Plus aria-hidden="true" />
+
+      {/* Owner IA 2026-09-27: automation flows live INSIDE marketing. */}
+      <Link
+        href="/journeys"
+        className="mb-4 flex items-center justify-between rounded-xl border border-border bg-surface p-4 text-sm font-semibold transition-colors hover:bg-muted"
+        data-testid="marketing-journeys-link"
+      >
+        <span>{t.automationFlows}</span>
+        <ArrowUpRight aria-hidden="true" className="size-4 text-muted-foreground" />
+      </Link>
             {t.newCampaign}
           </Button>
         }

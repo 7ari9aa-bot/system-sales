@@ -5,12 +5,15 @@ import { BookOpen, Plus, Sparkles } from "lucide-react";
 import {
   useAddKnowledge,
   useAgents,
+  useAgentPrompt,
+  useUpdateAgentPrompt,
   useKnowledge,
   useKnowledgeSearch,
   useUsageSummary,
   type KnowledgeItem,
 } from "@/lib/queries";
 import { useCreateDialog } from "@/lib/use-create-dialog";
+import { AgentPromptEditor } from "@/components/ai/agent-prompt-editor";
 import { t } from "@/lib/t";
 import { formatDate, formatNumber } from "@/lib/utils";
 import { fixedDecimal } from "@/components/orders/money";
@@ -129,10 +132,15 @@ export default function AIPage() {
 
           <Tabs defaultValue="knowledge">
             <TabsList>
+              <TabsTrigger value="agent">{t.agentSettings}</TabsTrigger>
               <TabsTrigger value="knowledge">{t.aiTabKnowledge}</TabsTrigger>
               <TabsTrigger value="search">{t.aiTabSearch}</TabsTrigger>
               <TabsTrigger value="usage">{t.aiTabUsage}</TabsTrigger>
             </TabsList>
+
+            <TabsContent value="agent">
+              <AgentPromptEditor agents={agents} />
+            </TabsContent>
 
             {/* knowledge list */}
             <TabsContent value="knowledge">

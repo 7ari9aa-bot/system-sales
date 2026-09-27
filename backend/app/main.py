@@ -120,7 +120,8 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         )
 
     # Invariant 13: Boot Reconciler validates RLS ENABLE + FORCE on all tenant tables
-    await run_boot_reconciler(engine)
+    # dedicated engine inside: no shared-pool residue across loops
+    await run_boot_reconciler()
     yield
     await engine.dispose()
     await close_redis()

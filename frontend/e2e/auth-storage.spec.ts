@@ -69,5 +69,5 @@ test("readable stored tokens still authenticate the shell", async ({ page }) => 
 
   await page.goto("/tasks");
 
-  await expect(page.getByTestId("nav-tasks")).toBeVisible();
+  await expect(page.getByTestId("nav-overview")).toBeVisible();
 });

@@ -121,7 +121,7 @@ async def inspect_tenant_rls_invariants(
 
 
 async def run_boot_reconciler(
-    engine: AsyncEngine,
+    engine: AsyncEngine | None = None,
     *,
     fail_closed: bool | None = None,
 ) -> list[str]:
@@ -134,6 +134,20 @@ async def run_boot_reconciler(
         fail_closed if fail_closed is not None else settings.is_secure_environment
     )
 
+    owns_engine = engine is None
+    if engine is None:
+        # Dedicated throwaway engine, disposed below: a probe on the
+        # process-wide engine leaves pooled connections bound to THIS loop,
+        # and the next loop's pool_pre_ping dies on an asyncpg future owned
+        # by a dead loop. One probe, one engine, no shared-pool residue.
+        from sqlalchemy.ext.asyncio import create_async_engine
+
+        engine = create_async_engine(
+            get_settings().database_url,
+            pool_pre_ping=True,
+            connect_args={"statement_cache_size": 0},
+        )
+
     try:
         async with engine.connect() as conn:
             async with AsyncSession(conn) as session:
@@ -145,6 +159,9 @@ async def run_boot_reconciler(
             ) from exc
         logger.warning("boot_reconciler.probe_skipped: %s", exc)
         return []
+    finally:
+        if owns_engine:
+            await engine.dispose()
 
     if violations:
         msg = (

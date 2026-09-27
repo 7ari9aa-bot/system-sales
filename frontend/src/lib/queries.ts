@@ -812,10 +812,13 @@ export function useProducts() {
   });
 }
 
-export function useCustomers() {
+export function useCustomers(filter?: "lead") {
   return useQuery({
-    queryKey: qk.customers,
-    queryFn: () => api<{ items: Customer[] }>("/customers").then((r) => r.items),
+    queryKey: [qk.customers, filter ?? null],
+    queryFn: () =>
+      api<{ items: Customer[] }>(
+        filter ? `/customers?filter=${filter}` : "/customers",
+      ).then((r) => r.items),
   });
 }
 
@@ -895,6 +898,42 @@ export function useAgents() {
   return useQuery({
     queryKey: qk.agents,
     queryFn: () => api<Agent[]>("/ai/agents"),
+  });
+}
+
+/** AgentDetailOut — the settings:write view that MAY carry the system_prompt
+ *  (AgentOut omits it on purpose: the prompt is a business secret). */
+export type AgentDetail = {
+  id: string;
+  name: string;
+  description: string | null;
+  model: string | null;
+  system_prompt: string | null;
+  is_active: boolean;
+  version: number;
+};
+
+export function useAgentPrompt(agentId: string | null) {
+  return useQuery({
+    queryKey: ["agent-prompt", agentId],
+    queryFn: () => api<AgentDetail>(`/ai/agents/${agentId}/prompt`),
+    enabled: Boolean(agentId),
+  });
+}
+
+export function useUpdateAgentPrompt() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { agentId: string; system_prompt: string; version: number }) =>
+      api<AgentDetail>(`/ai/agents/${input.agentId}`, {
+        method: "PATCH",
+        ifMatch: input.version,
+        body: { system_prompt: input.system_prompt },
+      }),
+    onSuccess: (updated) => {
+      qc.setQueryData(["agent-prompt", updated.id], updated);
+      qc.invalidateQueries({ queryKey: qk.agents });
+    },
   });
 }
 
