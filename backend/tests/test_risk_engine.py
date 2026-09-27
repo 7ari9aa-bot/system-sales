@@ -38,17 +38,18 @@ def test_registry_actions_classify_at_their_base_level(action, expected):
     assert assessment.escalations == ()
 
 
+# The SHIPPED registry, frozen at MODULE IMPORT (collection). The snapshot
+# must live here, outside any test body: approval tests register fixture
+# tools (purge_customer_data) into the module-global TOOLS and unregister
+# nothing, so a snapshot taken inside a test body runs AFTER their pollution
+# and sees an action that exists nowhere in the app.
+_SHIPPED_TOOLS = frozenset(__import__("app.modules.ai.tools", fromlist=["TOOLS"]).TOOLS)
+
+
 def test_registry_covers_every_ai_tool_without_disagreement():
     from app.modules.ai import tools as ai_tools
 
-    # Snapshot at TEST-RUN time is too late: approval tests register fixture
-    # tools (purge_customer_data) into the module-global TOOLS and unregister
-    # nothing, so a late reader sees their pollution. This module is IMPORTED
-    # during collection — before any test body runs — so a snapshot taken
-    # here holds exactly the shipped registry.
-    shipped = frozenset(ai_tools.TOOLS)
-
-    for name in sorted(shipped):
+    for name in sorted(_SHIPPED_TOOLS):
         spec = ai_tools.TOOLS[name]
         assert name in known_actions(), f"AI tool {name} is missing from the risk registry"
         spec_level = RiskLevel[spec.risk_level.upper()]
