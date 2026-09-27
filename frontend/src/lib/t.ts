@@ -31,6 +31,9 @@ const ar = {
   customers: "العملاء",
   marketing: "التسويق",
   ai: "الذكاء الاصطناعي",
+  decisions: "سجل القرارات",
+  effects: "التسوية والتأثيرات",
+  financial: "الدفتر المالي",
   settings: "الإعدادات",
   logout: "تسجيل الخروج",
   // topbar
@@ -487,6 +490,9 @@ const en = {
   customers: "Customers",
   marketing: "Marketing",
   ai: "AI",
+  decisions: "Decisions",
+  effects: "Effects Ledger",
+  financial: "Financial Ledger",
   settings: "Settings",
   logout: "Sign out",
   // topbar

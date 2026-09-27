@@ -311,6 +311,20 @@ async def invalidate_memory(memory_id: uuid.UUID, ctx: SettingsCtx):
     return _memory_out(memory)
 
 
+@router.post("/memories/{memory_id}/verify", response_model=MemoryOut)
+async def verify_memory(memory_id: uuid.UUID, ctx: SettingsCtx):
+    """Verify and admit a memory (§158 / V12 Wave D).
+    Transitions to active, sets verified_at = now(UTC), actor_id = ctx.user.id.
+    """
+    memory = await _load_memory(ctx, memory_id)
+    now = datetime.now(UTC)
+    memory.status = "active"
+    memory.verified_at = now
+    memory.actor_id = ctx.user.id
+    await ctx.session.flush()
+    return _memory_out(memory)
+
+
 @router.delete("/memories/{memory_id}", status_code=204)
 async def delete_memory(memory_id: uuid.UUID, ctx: SettingsCtx) -> None:
     """Hard purge (§158 delete) — distinct from invalidate, which keeps the

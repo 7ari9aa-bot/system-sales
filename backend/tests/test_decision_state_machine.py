@@ -353,6 +353,21 @@ async def test_a_live_ttl_and_no_ttl_still_execute() -> None:
     assert result.decision_status == "EXECUTED"
 
 
+async def test_revoke_sets_decision_to_revoked() -> None:
+    decision = _decision(status="APPROVED")
+    session = FakeSession([decision])
+    result = await DecisionService.revoke(session, TENANT, decision.decision_id)
+    assert result.decision_status == "REVOKED"
+
+
+async def test_revoke_from_pending_approval_flips_approval_state_to_denied() -> None:
+    decision = _decision(status="PENDING_APPROVAL", approval_state="PENDING")
+    session = FakeSession([decision])
+    result = await DecisionService.revoke(session, TENANT, decision.decision_id)
+    assert result.decision_status == "REVOKED"
+    assert result.approval_state == "DENIED"
+
+
 # --------------------------------------------------------- dependency snapshot --
 
 

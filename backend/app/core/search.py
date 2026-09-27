@@ -66,23 +66,37 @@ class PostgresSearch:
         term = query.strip()
         if not term:
             return []
-        # The pattern is a bound parameter, so it carries the caller's apostrophes
-        # as text; the wildcards are ours, and ESCAPE makes theirs literal.
         pattern = like_pattern(term)
         wanted = set(entity_types or ("customer", "product"))
         hits: list[SearchHit] = []
 
+        # Detect if we are on a real PostgreSQL engine to leverage tsvector/GIN
+        dialect_name = getattr(getattr(getattr(session, "bind", None), "dialect", None), "name", None)
+        is_postgres = (dialect_name == "postgresql")
+
         if "customer" in wanted:
+            if is_postgres:
+                sql = (
+                    "SELECT id, name, email, phone FROM customers "
+                    "WHERE tenant_id = :t AND deleted_at IS NULL AND ("
+                    "search_ts @@ websearch_to_tsquery('simple', :raw_q) "
+                    r"OR name ILIKE :q ESCAPE '\' OR email ILIKE :q ESCAPE '\'"
+                    r" OR phone ILIKE :q ESCAPE '\') "
+                    "ORDER BY ts_rank(search_ts, websearch_to_tsquery('simple', :raw_q)) DESC, name "
+                    "LIMIT :limit"
+                )
+            else:
+                sql = (
+                    "SELECT id, name, email, phone FROM customers "
+                    "WHERE tenant_id = :t AND deleted_at IS NULL AND ("
+                    r"name ILIKE :q ESCAPE '\' OR email ILIKE :q ESCAPE '\'"
+                    r" OR phone ILIKE :q ESCAPE '\') "
+                    "ORDER BY name LIMIT :limit"
+                )
             rows = (
                 await session.execute(
-                    text(
-                        "SELECT id, name, email, phone FROM customers "
-                        "WHERE tenant_id = :t AND deleted_at IS NULL AND ("
-                        r"name ILIKE :q ESCAPE '\' OR email ILIKE :q ESCAPE '\'"
-                        r" OR phone ILIKE :q ESCAPE '\') "
-                        "ORDER BY name LIMIT :limit"
-                    ),
-                    {"t": tenant_id, "q": pattern, "limit": limit},
+                    text(sql),
+                    {"t": tenant_id, "q": pattern, "raw_q": term, "limit": limit},
                 )
             ).all()
             for r in rows:
@@ -94,14 +108,25 @@ class PostgresSearch:
                 )
 
         if "product" in wanted:
+            if is_postgres:
+                sql = (
+                    "SELECT p.id, p.title, p.status FROM products p "
+                    "WHERE p.tenant_id = :t AND p.status = 'active' AND ("
+                    "p.search_ts @@ websearch_to_tsquery('simple', :raw_q) "
+                    r"OR p.title ILIKE :q ESCAPE '\') "
+                    "ORDER BY ts_rank(p.search_ts, websearch_to_tsquery('simple', :raw_q)) DESC "
+                    "LIMIT :limit"
+                )
+            else:
+                sql = (
+                    "SELECT p.id, p.title, p.status FROM products p "
+                    "WHERE p.tenant_id = :t AND p.status = 'active' "
+                    r"AND p.title ILIKE :q ESCAPE '\' LIMIT :limit"
+                )
             rows = (
                 await session.execute(
-                    text(
-                        "SELECT p.id, p.title, p.status FROM products p "
-                        "WHERE p.tenant_id = :t AND p.status = 'active' "
-                        r"AND p.title ILIKE :q ESCAPE '\' LIMIT :limit"
-                    ),
-                    {"t": tenant_id, "q": pattern, "limit": limit},
+                    text(sql),
+                    {"t": tenant_id, "q": pattern, "raw_q": term, "limit": limit},
                 )
             ).all()
             for r in rows:

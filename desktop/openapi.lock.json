@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 263,
-    "sha256": "932605aed8d0cb08744a1f8c1e95b79e1ca9003f4afc1bb5bcb8f9e1587ee56d",
-    "typed_operations": 167
+    "operations": 287,
+    "sha256": "07b1d5392a1309a610978e6911f9bfd8a25b8c5760e51495dcec6e304d11e61c",
+    "typed_operations": 191
   },
   "spec": {
     "components": {
@@ -34,6 +34,113 @@
             "full_name"
           ],
           "title": "AcceptInvitationRequest",
+          "type": "object"
+        },
+        "AccountCreate": {
+          "properties": {
+            "account_type": {
+              "pattern": "^(ASSET|LIABILITY|EQUITY|REVENUE|EXPENSE)$",
+              "title": "Account Type",
+              "type": "string"
+            },
+            "code": {
+              "maxLength": 32,
+              "minLength": 1,
+              "title": "Code",
+              "type": "string"
+            },
+            "currency": {
+              "default": "SAR",
+              "maxLength": 3,
+              "minLength": 3,
+              "title": "Currency",
+              "type": "string"
+            },
+            "name": {
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "name",
+            "account_type"
+          ],
+          "title": "AccountCreate",
+          "type": "object"
+        },
+        "AccountListOut": {
+          "properties": {
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/AccountOut"
+              },
+              "title": "Items",
+              "type": "array"
+            },
+            "total": {
+              "title": "Total",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "items",
+            "total"
+          ],
+          "title": "AccountListOut",
+          "type": "object"
+        },
+        "AccountOut": {
+          "properties": {
+            "account_id": {
+              "format": "uuid",
+              "title": "Account Id",
+              "type": "string"
+            },
+            "account_type": {
+              "title": "Account Type",
+              "type": "string"
+            },
+            "code": {
+              "title": "Code",
+              "type": "string"
+            },
+            "created_at": {
+              "format": "date-time",
+              "title": "Created At",
+              "type": "string"
+            },
+            "currency": {
+              "title": "Currency",
+              "type": "string"
+            },
+            "is_active": {
+              "title": "Is Active",
+              "type": "boolean"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "tenant_id": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "account_id",
+            "tenant_id",
+            "code",
+            "name",
+            "account_type",
+            "currency",
+            "is_active",
+            "created_at"
+          ],
+          "title": "AccountOut",
           "type": "object"
         },
         "AddImageRequest": {
@@ -1021,6 +1128,295 @@
           "title": "AttributionViewOut",
           "type": "object"
         },
+        "AuthorityLeaseListOut": {
+          "properties": {
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/AuthorityLeaseOut"
+              },
+              "title": "Items",
+              "type": "array"
+            },
+            "limit": {
+              "title": "Limit",
+              "type": "integer"
+            },
+            "offset": {
+              "title": "Offset",
+              "type": "integer"
+            },
+            "total": {
+              "title": "Total",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "total",
+            "limit",
+            "offset",
+            "items"
+          ],
+          "title": "AuthorityLeaseListOut",
+          "type": "object"
+        },
+        "AuthorityLeaseOut": {
+          "properties": {
+            "command_hash": {
+              "title": "Command Hash",
+              "type": "string"
+            },
+            "created_at": {
+              "format": "date-time",
+              "title": "Created At",
+              "type": "string"
+            },
+            "decision_id": {
+              "format": "uuid",
+              "title": "Decision Id",
+              "type": "string"
+            },
+            "expected_versions": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "title": "Expected Versions",
+              "type": "object"
+            },
+            "expires_at": {
+              "format": "date-time",
+              "title": "Expires At",
+              "type": "string"
+            },
+            "grant_id": {
+              "format": "uuid",
+              "title": "Grant Id",
+              "type": "string"
+            },
+            "lease_id": {
+              "format": "uuid",
+              "title": "Lease Id",
+              "type": "string"
+            },
+            "nonce": {
+              "title": "Nonce",
+              "type": "string"
+            },
+            "redeemed_at": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Redeemed At"
+            },
+            "reserved_budget": {
+              "anyOf": [
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reserved Budget"
+            },
+            "state": {
+              "title": "State",
+              "type": "string"
+            },
+            "ttl_seconds": {
+              "title": "Ttl Seconds",
+              "type": "integer"
+            },
+            "updated_at": {
+              "format": "date-time",
+              "title": "Updated At",
+              "type": "string"
+            }
+          },
+          "required": [
+            "lease_id",
+            "grant_id",
+            "decision_id",
+            "command_hash",
+            "expected_versions",
+            "nonce",
+            "state",
+            "ttl_seconds",
+            "expires_at",
+            "created_at",
+            "updated_at"
+          ],
+          "title": "AuthorityLeaseOut",
+          "type": "object"
+        },
+        "AutonomyBudgetCreate": {
+          "properties": {
+            "actor_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Actor Id"
+            },
+            "currency": {
+              "default": "USD",
+              "title": "Currency",
+              "type": "string"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "parent_budget_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent Budget Id"
+            },
+            "period": {
+              "default": "DAILY",
+              "title": "Period",
+              "type": "string"
+            },
+            "total_limit": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0.0,
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                }
+              ],
+              "title": "Total Limit"
+            }
+          },
+          "required": [
+            "name",
+            "total_limit"
+          ],
+          "title": "AutonomyBudgetCreate",
+          "type": "object"
+        },
+        "AutonomyBudgetOut": {
+          "properties": {
+            "actor_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Actor Id"
+            },
+            "available_amount": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "title": "Available Amount",
+              "type": "string"
+            },
+            "budget_id": {
+              "format": "uuid",
+              "title": "Budget Id",
+              "type": "string"
+            },
+            "created_at": {
+              "format": "date-time",
+              "title": "Created At",
+              "type": "string"
+            },
+            "currency": {
+              "title": "Currency",
+              "type": "string"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "parent_budget_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent Budget Id"
+            },
+            "period": {
+              "title": "Period",
+              "type": "string"
+            },
+            "reserved_amount": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "title": "Reserved Amount",
+              "type": "string"
+            },
+            "reset_at": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reset At"
+            },
+            "spent_amount": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "title": "Spent Amount",
+              "type": "string"
+            },
+            "total_limit": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "title": "Total Limit",
+              "type": "string"
+            },
+            "updated_at": {
+              "format": "date-time",
+              "title": "Updated At",
+              "type": "string"
+            }
+          },
+          "required": [
+            "budget_id",
+            "name",
+            "period",
+            "currency",
+            "total_limit",
+            "spent_amount",
+            "reserved_amount",
+            "available_amount",
+            "created_at",
+            "updated_at"
+          ],
+          "title": "AutonomyBudgetOut",
+          "type": "object"
+        },
         "BlockState": {
           "properties": {
             "id": {
@@ -1736,6 +2132,229 @@
             "campaign_id"
           ],
           "title": "CampaignStartRequest",
+          "type": "object"
+        },
+        "CapabilityGrantCreate": {
+          "properties": {
+            "actor_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Actor Id"
+            },
+            "actor_type": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "system",
+              "title": "Actor Type"
+            },
+            "currency": {
+              "default": "USD",
+              "title": "Currency",
+              "type": "string"
+            },
+            "decision_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decision Id"
+            },
+            "max_budget": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Budget"
+            },
+            "scope": {
+              "additionalProperties": true,
+              "title": "Scope",
+              "type": "object"
+            },
+            "tool_name": {
+              "title": "Tool Name",
+              "type": "string"
+            },
+            "ttl_seconds": {
+              "default": 3600,
+              "maximum": 2592000.0,
+              "minimum": 10.0,
+              "title": "Ttl Seconds",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "tool_name"
+          ],
+          "title": "CapabilityGrantCreate",
+          "type": "object"
+        },
+        "CapabilityGrantListOut": {
+          "properties": {
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/CapabilityGrantOut"
+              },
+              "title": "Items",
+              "type": "array"
+            },
+            "limit": {
+              "title": "Limit",
+              "type": "integer"
+            },
+            "offset": {
+              "title": "Offset",
+              "type": "integer"
+            },
+            "total": {
+              "title": "Total",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "total",
+            "limit",
+            "offset",
+            "items"
+          ],
+          "title": "CapabilityGrantListOut",
+          "type": "object"
+        },
+        "CapabilityGrantOut": {
+          "properties": {
+            "actor_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Actor Id"
+            },
+            "actor_type": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Actor Type"
+            },
+            "created_at": {
+              "format": "date-time",
+              "title": "Created At",
+              "type": "string"
+            },
+            "currency": {
+              "title": "Currency",
+              "type": "string"
+            },
+            "decision_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decision Id"
+            },
+            "expires_at": {
+              "format": "date-time",
+              "title": "Expires At",
+              "type": "string"
+            },
+            "grant_id": {
+              "format": "uuid",
+              "title": "Grant Id",
+              "type": "string"
+            },
+            "max_budget": {
+              "anyOf": [
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Budget"
+            },
+            "revoked_at": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Revoked At"
+            },
+            "scope": {
+              "additionalProperties": true,
+              "title": "Scope",
+              "type": "object"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            },
+            "tool_name": {
+              "title": "Tool Name",
+              "type": "string"
+            },
+            "updated_at": {
+              "format": "date-time",
+              "title": "Updated At",
+              "type": "string"
+            }
+          },
+          "required": [
+            "grant_id",
+            "tool_name",
+            "currency",
+            "status",
+            "expires_at",
+            "created_at",
+            "updated_at"
+          ],
+          "title": "CapabilityGrantOut",
           "type": "object"
         },
         "ChosenRetentionPolicyOut": {
@@ -4381,6 +5000,457 @@
           "title": "DropGateOut",
           "type": "object"
         },
+        "EffectIntentCreate": {
+          "properties": {
+            "arguments": {
+              "additionalProperties": true,
+              "title": "Arguments",
+              "type": "object"
+            },
+            "decision_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decision Id"
+            },
+            "lease_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lease Id"
+            },
+            "operation": {
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Operation",
+              "type": "string"
+            },
+            "provider": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider"
+            },
+            "task_id": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Task Id"
+            },
+            "workflow_id": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workflow Id"
+            }
+          },
+          "required": [
+            "operation"
+          ],
+          "title": "EffectIntentCreate",
+          "type": "object"
+        },
+        "EffectListOut": {
+          "properties": {
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/EffectOut"
+              },
+              "title": "Items",
+              "type": "array"
+            },
+            "limit": {
+              "title": "Limit",
+              "type": "integer"
+            },
+            "offset": {
+              "title": "Offset",
+              "type": "integer"
+            },
+            "total": {
+              "title": "Total",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "items",
+            "total",
+            "limit",
+            "offset"
+          ],
+          "title": "EffectListOut",
+          "type": "object"
+        },
+        "EffectOut": {
+          "properties": {
+            "arguments": {
+              "additionalProperties": true,
+              "title": "Arguments",
+              "type": "object"
+            },
+            "attempts": {
+              "title": "Attempts",
+              "type": "integer"
+            },
+            "created_at": {
+              "format": "date-time",
+              "title": "Created At",
+              "type": "string"
+            },
+            "decision_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decision Id"
+            },
+            "effect_id": {
+              "format": "uuid",
+              "title": "Effect Id",
+              "type": "string"
+            },
+            "error_details": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error Details"
+            },
+            "idempotency_key": {
+              "title": "Idempotency Key",
+              "type": "string"
+            },
+            "last_attempt_at": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Attempt At"
+            },
+            "lease_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lease Id"
+            },
+            "operation": {
+              "title": "Operation",
+              "type": "string"
+            },
+            "provider": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider"
+            },
+            "provider_reference": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider Reference"
+            },
+            "resolved_at": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Resolved At"
+            },
+            "result": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Result"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            },
+            "task_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Task Id"
+            },
+            "tenant_id": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            },
+            "updated_at": {
+              "format": "date-time",
+              "title": "Updated At",
+              "type": "string"
+            },
+            "workflow_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workflow Id"
+            }
+          },
+          "required": [
+            "effect_id",
+            "tenant_id",
+            "idempotency_key",
+            "operation",
+            "status",
+            "attempts",
+            "created_at",
+            "updated_at"
+          ],
+          "title": "EffectOut",
+          "type": "object"
+        },
+        "EffectResolve": {
+          "properties": {
+            "error_details": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error Details"
+            },
+            "provider_reference": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider Reference"
+            },
+            "result": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Result"
+            },
+            "status": {
+              "pattern": "^(COMPLETED|FAILED)$",
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status"
+          ],
+          "title": "EffectResolve",
+          "type": "object"
+        },
+        "EntryCreate": {
+          "properties": {
+            "account_code": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Account Code"
+            },
+            "account_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Account Id"
+            },
+            "amount": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0.0,
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,10}|(?=[\\d.]{1,15}0*$)\\d{0,10}\\.\\d{0,4}0*$)",
+                  "type": "string"
+                }
+              ],
+              "title": "Amount"
+            },
+            "entry_type": {
+              "pattern": "^(DEBIT|CREDIT)$",
+              "title": "Entry Type",
+              "type": "string"
+            },
+            "memo": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Memo"
+            }
+          },
+          "required": [
+            "entry_type",
+            "amount"
+          ],
+          "title": "EntryCreate",
+          "type": "object"
+        },
+        "EntryOut": {
+          "properties": {
+            "account_code": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Account Code"
+            },
+            "account_id": {
+              "format": "uuid",
+              "title": "Account Id",
+              "type": "string"
+            },
+            "amount": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "title": "Amount",
+              "type": "string"
+            },
+            "entry_id": {
+              "format": "uuid",
+              "title": "Entry Id",
+              "type": "string"
+            },
+            "entry_type": {
+              "title": "Entry Type",
+              "type": "string"
+            },
+            "memo": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Memo"
+            }
+          },
+          "required": [
+            "entry_id",
+            "account_id",
+            "entry_type",
+            "amount"
+          ],
+          "title": "EntryOut",
+          "type": "object"
+        },
         "EvaluationCreateRequest": {
           "properties": {
             "agent_id": {
@@ -4610,6 +5680,97 @@
             "status"
           ],
           "title": "EvaluationUpdateRequest",
+          "type": "object"
+        },
+        "ExecuteCommandRequest": {
+          "description": "Payload to execute an approved command via an Authority Lease.",
+          "properties": {
+            "action": {
+              "title": "Action",
+              "type": "string"
+            },
+            "arguments": {
+              "additionalProperties": true,
+              "title": "Arguments",
+              "type": "object"
+            },
+            "current_versions": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "description": "Current observed versions of affected resources",
+              "title": "Current Versions",
+              "type": "object"
+            },
+            "lease_token": {
+              "description": "Plaintext bearer lease token",
+              "title": "Lease Token",
+              "type": "string"
+            },
+            "purpose": {
+              "title": "Purpose",
+              "type": "string"
+            },
+            "resource": {
+              "additionalProperties": true,
+              "title": "Resource",
+              "type": "object"
+            }
+          },
+          "required": [
+            "lease_token",
+            "action",
+            "purpose"
+          ],
+          "title": "ExecuteCommandRequest",
+          "type": "object"
+        },
+        "ExecutionResultOut": {
+          "properties": {
+            "decision_id": {
+              "format": "uuid",
+              "title": "Decision Id",
+              "type": "string"
+            },
+            "effect_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Effect Id"
+            },
+            "executed_at": {
+              "format": "date-time",
+              "title": "Executed At",
+              "type": "string"
+            },
+            "lease_id": {
+              "format": "uuid",
+              "title": "Lease Id",
+              "type": "string"
+            },
+            "mutation_result": {
+              "additionalProperties": true,
+              "title": "Mutation Result",
+              "type": "object"
+            },
+            "success": {
+              "title": "Success",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "success",
+            "lease_id",
+            "decision_id",
+            "executed_at"
+          ],
+          "title": "ExecutionResultOut",
           "type": "object"
         },
         "FactCreate": {
@@ -7161,6 +8322,154 @@
             "code"
           ],
           "title": "MfaVerifyRequest",
+          "type": "object"
+        },
+        "MintLeaseRequest": {
+          "properties": {
+            "budget_amount": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Budget Amount"
+            },
+            "budget_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Budget Id"
+            },
+            "command_hash": {
+              "description": "Deterministic sha256:... from canonical_json",
+              "title": "Command Hash",
+              "type": "string"
+            },
+            "decision_id": {
+              "format": "uuid",
+              "title": "Decision Id",
+              "type": "string"
+            },
+            "expected_versions": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "description": "Resource versions that must match at execution time",
+              "title": "Expected Versions",
+              "type": "object"
+            },
+            "grant_id": {
+              "format": "uuid",
+              "title": "Grant Id",
+              "type": "string"
+            },
+            "ttl_seconds": {
+              "default": 60,
+              "description": "Lease TTL; strictly <= 60s",
+              "maximum": 60.0,
+              "minimum": 1.0,
+              "title": "Ttl Seconds",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "grant_id",
+            "decision_id",
+            "command_hash"
+          ],
+          "title": "MintLeaseRequest",
+          "type": "object"
+        },
+        "MintLeaseResponse": {
+          "properties": {
+            "command_hash": {
+              "title": "Command Hash",
+              "type": "string"
+            },
+            "created_at": {
+              "format": "date-time",
+              "title": "Created At",
+              "type": "string"
+            },
+            "decision_id": {
+              "format": "uuid",
+              "title": "Decision Id",
+              "type": "string"
+            },
+            "expected_versions": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "title": "Expected Versions",
+              "type": "object"
+            },
+            "expires_at": {
+              "format": "date-time",
+              "title": "Expires At",
+              "type": "string"
+            },
+            "grant_id": {
+              "format": "uuid",
+              "title": "Grant Id",
+              "type": "string"
+            },
+            "lease_id": {
+              "format": "uuid",
+              "title": "Lease Id",
+              "type": "string"
+            },
+            "lease_token": {
+              "description": "Bearer execution token (only revealed once at mint time)",
+              "title": "Lease Token",
+              "type": "string"
+            },
+            "reserved_budget": {
+              "anyOf": [
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reserved Budget"
+            },
+            "state": {
+              "title": "State",
+              "type": "string"
+            },
+            "ttl_seconds": {
+              "title": "Ttl Seconds",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "lease_id",
+            "lease_token",
+            "grant_id",
+            "decision_id",
+            "command_hash",
+            "expected_versions",
+            "state",
+            "ttl_seconds",
+            "expires_at",
+            "created_at"
+          ],
+          "title": "MintLeaseResponse",
           "type": "object"
         },
         "MovementRequest": {
@@ -11377,6 +12686,320 @@
           "title": "TraceToolCallOut",
           "type": "object"
         },
+        "TransactionCreate": {
+          "properties": {
+            "currency": {
+              "default": "SAR",
+              "maxLength": 3,
+              "minLength": 3,
+              "title": "Currency",
+              "type": "string"
+            },
+            "decision_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decision Id"
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            },
+            "effect_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Effect Id"
+            },
+            "entries": {
+              "items": {
+                "$ref": "#/components/schemas/EntryCreate"
+              },
+              "minItems": 2,
+              "title": "Entries",
+              "type": "array"
+            },
+            "reference_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reference Id"
+            },
+            "reference_type": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Reference Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reference_type",
+            "entries"
+          ],
+          "title": "TransactionCreate",
+          "type": "object"
+        },
+        "TransactionListOut": {
+          "properties": {
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/TransactionOut"
+              },
+              "title": "Items",
+              "type": "array"
+            },
+            "limit": {
+              "title": "Limit",
+              "type": "integer"
+            },
+            "offset": {
+              "title": "Offset",
+              "type": "integer"
+            },
+            "total": {
+              "title": "Total",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "items",
+            "total",
+            "limit",
+            "offset"
+          ],
+          "title": "TransactionListOut",
+          "type": "object"
+        },
+        "TransactionOut": {
+          "properties": {
+            "currency": {
+              "title": "Currency",
+              "type": "string"
+            },
+            "decision_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decision Id"
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            },
+            "effect_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Effect Id"
+            },
+            "entries": {
+              "items": {
+                "$ref": "#/components/schemas/EntryOut"
+              },
+              "title": "Entries",
+              "type": "array"
+            },
+            "posted_at": {
+              "format": "date-time",
+              "title": "Posted At",
+              "type": "string"
+            },
+            "reference_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reference Id"
+            },
+            "reference_type": {
+              "title": "Reference Type",
+              "type": "string"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            },
+            "tenant_id": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            },
+            "total_credits": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "title": "Total Credits",
+              "type": "string"
+            },
+            "total_debits": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "title": "Total Debits",
+              "type": "string"
+            },
+            "transaction_id": {
+              "format": "uuid",
+              "title": "Transaction Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "transaction_id",
+            "tenant_id",
+            "reference_type",
+            "currency",
+            "status",
+            "posted_at",
+            "entries",
+            "total_debits",
+            "total_credits"
+          ],
+          "title": "TransactionOut",
+          "type": "object"
+        },
+        "TrialBalanceItem": {
+          "properties": {
+            "account_id": {
+              "format": "uuid",
+              "title": "Account Id",
+              "type": "string"
+            },
+            "account_type": {
+              "title": "Account Type",
+              "type": "string"
+            },
+            "code": {
+              "title": "Code",
+              "type": "string"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "net_balance": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "title": "Net Balance",
+              "type": "string"
+            },
+            "total_credit": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "title": "Total Credit",
+              "type": "string"
+            },
+            "total_debit": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "title": "Total Debit",
+              "type": "string"
+            }
+          },
+          "required": [
+            "account_id",
+            "code",
+            "name",
+            "account_type",
+            "total_debit",
+            "total_credit",
+            "net_balance"
+          ],
+          "title": "TrialBalanceItem",
+          "type": "object"
+        },
+        "TrialBalanceOut": {
+          "properties": {
+            "currency": {
+              "title": "Currency",
+              "type": "string"
+            },
+            "generated_at": {
+              "format": "date-time",
+              "title": "Generated At",
+              "type": "string"
+            },
+            "is_balanced": {
+              "title": "Is Balanced",
+              "type": "boolean"
+            },
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/TrialBalanceItem"
+              },
+              "title": "Items",
+              "type": "array"
+            },
+            "tenant_id": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            },
+            "total_credits": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "title": "Total Credits",
+              "type": "string"
+            },
+            "total_debits": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "title": "Total Debits",
+              "type": "string"
+            }
+          },
+          "required": [
+            "tenant_id",
+            "currency",
+            "generated_at",
+            "items",
+            "total_debits",
+            "total_credits",
+            "is_balanced"
+          ],
+          "title": "TrialBalanceOut",
+          "type": "object"
+        },
         "UnreadCount": {
           "description": "The bell's badge.",
           "properties": {
@@ -14303,6 +15926,114 @@
           ]
         }
       },
+      "/api/v1/ai/memories/{memory_id}/verify": {
+        "post": {
+          "description": "Verify and admit a memory (§158 / V12 Wave D).\nTransitions to active, sets verified_at = now(UTC), actor_id = ctx.user.id.",
+          "operationId": "verify_memory_api_v1_ai_memories__memory_id__verify_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "memory_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Memory Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MemoryOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Verify Memory",
+          "tags": [
+            "ai"
+          ]
+        }
+      },
       "/api/v1/ai/provider-policies": {
         "get": {
           "operationId": "list_provider_policies_api_v1_ai_provider_policies_get",
@@ -16819,6 +18550,1270 @@
           "summary": "Switch Tenant",
           "tags": [
             "auth"
+          ]
+        }
+      },
+      "/api/v1/authority/budgets": {
+        "get": {
+          "operationId": "list_budgets_api_v1_authority_budgets_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "limit",
+              "required": false,
+              "schema": {
+                "default": 50,
+                "maximum": 200,
+                "minimum": 1,
+                "title": "Limit",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "default": 0,
+                "minimum": 0,
+                "title": "Offset",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/AutonomyBudgetOut"
+                    },
+                    "title": "Response List Budgets Api V1 Authority Budgets Get",
+                    "type": "array"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List AutonomyBudgets for tenant",
+          "tags": [
+            "authority"
+          ]
+        },
+        "post": {
+          "operationId": "create_budget_api_v1_authority_budgets_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutonomyBudgetCreate"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AutonomyBudgetOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Create an AutonomyBudget",
+          "tags": [
+            "authority"
+          ]
+        }
+      },
+      "/api/v1/authority/budgets/{budget_id}": {
+        "get": {
+          "operationId": "get_budget_api_v1_authority_budgets__budget_id__get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "budget_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Budget Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AutonomyBudgetOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get an AutonomyBudget by ID",
+          "tags": [
+            "authority"
+          ]
+        }
+      },
+      "/api/v1/authority/execute": {
+        "post": {
+          "operationId": "execute_command_api_v1_authority_execute_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecuteCommandRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ExecutionResultOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Execute command through the Canonical 15-step Atomic Execution Boundary",
+          "tags": [
+            "authority"
+          ]
+        }
+      },
+      "/api/v1/authority/grants": {
+        "get": {
+          "operationId": "list_grants_api_v1_authority_grants_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "tool_name",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Tool Name"
+              }
+            },
+            {
+              "in": "query",
+              "name": "status",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Status"
+              }
+            },
+            {
+              "in": "query",
+              "name": "limit",
+              "required": false,
+              "schema": {
+                "default": 50,
+                "maximum": 200,
+                "minimum": 1,
+                "title": "Limit",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "default": 0,
+                "minimum": 0,
+                "title": "Offset",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CapabilityGrantListOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List CapabilityGrants for tenant",
+          "tags": [
+            "authority"
+          ]
+        },
+        "post": {
+          "operationId": "issue_grant_api_v1_authority_grants_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapabilityGrantCreate"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CapabilityGrantOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Issue a new CapabilityGrant",
+          "tags": [
+            "authority"
+          ]
+        }
+      },
+      "/api/v1/authority/grants/{grant_id}": {
+        "get": {
+          "operationId": "get_grant_api_v1_authority_grants__grant_id__get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "grant_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Grant Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CapabilityGrantOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get a CapabilityGrant by ID",
+          "tags": [
+            "authority"
+          ]
+        }
+      },
+      "/api/v1/authority/grants/{grant_id}/revoke": {
+        "post": {
+          "operationId": "revoke_grant_api_v1_authority_grants__grant_id__revoke_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "grant_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Grant Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CapabilityGrantOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Revoke an active CapabilityGrant",
+          "tags": [
+            "authority"
+          ]
+        }
+      },
+      "/api/v1/authority/leases": {
+        "get": {
+          "operationId": "list_leases_api_v1_authority_leases_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "state",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "State"
+              }
+            },
+            {
+              "in": "query",
+              "name": "limit",
+              "required": false,
+              "schema": {
+                "default": 50,
+                "maximum": 200,
+                "minimum": 1,
+                "title": "Limit",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "default": 0,
+                "minimum": 0,
+                "title": "Offset",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AuthorityLeaseListOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List AuthorityLeases for tenant",
+          "tags": [
+            "authority"
+          ]
+        }
+      },
+      "/api/v1/authority/leases/mint": {
+        "post": {
+          "operationId": "mint_lease_api_v1_authority_leases_mint_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MintLeaseRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MintLeaseResponse"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Mint an ephemeral AuthorityLease bound to command_hash with TTL <= 60s",
+          "tags": [
+            "authority"
+          ]
+        }
+      },
+      "/api/v1/authority/leases/{lease_id}/revoke": {
+        "post": {
+          "operationId": "revoke_lease_api_v1_authority_leases__lease_id__revoke_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "lease_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Lease Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AuthorityLeaseOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Revoke an active AuthorityLease",
+          "tags": [
+            "authority"
           ]
         }
       },
@@ -21895,6 +24890,114 @@
           ]
         }
       },
+      "/api/v1/decisions/{decision_id}/revoke": {
+        "post": {
+          "description": "-> REVOKED (terminal): decision revoked before execution.",
+          "operationId": "revoke_decision_api_v1_decisions__decision_id__revoke_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "decision_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Decision Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/DecisionOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Revoke Decision",
+          "tags": [
+            "decisions"
+          ]
+        }
+      },
       "/api/v1/decisions/{decision_id}/stale": {
         "post": {
           "description": "-> STALE: a dependency moved; re-propose, never revive.",
@@ -22108,6 +25211,476 @@
           "summary": "Verify Decision",
           "tags": [
             "decisions"
+          ]
+        }
+      },
+      "/api/v1/effects": {
+        "get": {
+          "description": "List effects for the tenant with optional status filter.",
+          "operationId": "list_effects_api_v1_effects_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "status",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "maxLength": 32,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Status"
+              }
+            },
+            {
+              "in": "query",
+              "name": "limit",
+              "required": false,
+              "schema": {
+                "default": 50,
+                "maximum": 200,
+                "minimum": 1,
+                "title": "Limit",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "default": 0,
+                "minimum": 0,
+                "title": "Offset",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EffectListOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Effects",
+          "tags": [
+            "effects"
+          ]
+        },
+        "post": {
+          "description": "Record an effect intent or retrieve existing by deterministic idempotency key.",
+          "operationId": "record_effect_intent_api_v1_effects_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EffectIntentCreate"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EffectOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Record Effect Intent",
+          "tags": [
+            "effects"
+          ]
+        }
+      },
+      "/api/v1/effects/{effect_id}": {
+        "get": {
+          "description": "Retrieve an effect by ID.",
+          "operationId": "get_effect_api_v1_effects__effect_id__get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "effect_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Effect Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EffectOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get Effect",
+          "tags": [
+            "effects"
+          ]
+        }
+      },
+      "/api/v1/effects/{effect_id}/reconcile": {
+        "post": {
+          "description": "Reconcile an AMBIGUOUS effect to COMPLETED or FAILED.",
+          "operationId": "reconcile_effect_api_v1_effects__effect_id__reconcile_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "effect_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Effect Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EffectResolve"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EffectOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Reconcile Effect",
+          "tags": [
+            "effects"
           ]
         }
       },
@@ -23052,6 +26625,762 @@
           "summary": "Fairness Usage",
           "tags": [
             "operations"
+          ]
+        }
+      },
+      "/api/v1/financial/accounts": {
+        "get": {
+          "description": "List chart of accounts for the tenant.",
+          "operationId": "list_accounts_api_v1_financial_accounts_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AccountListOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Accounts",
+          "tags": [
+            "financial"
+          ]
+        },
+        "post": {
+          "description": "Create a new general ledger account in the chart of accounts.",
+          "operationId": "create_account_api_v1_financial_accounts_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountCreate"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AccountOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Create Account",
+          "tags": [
+            "financial"
+          ]
+        }
+      },
+      "/api/v1/financial/accounts/seed-default": {
+        "post": {
+          "description": "Seed standard accounts if missing.",
+          "operationId": "seed_default_accounts_api_v1_financial_accounts_seed_default_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AccountListOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Seed Default Accounts",
+          "tags": [
+            "financial"
+          ]
+        }
+      },
+      "/api/v1/financial/transactions": {
+        "get": {
+          "description": "List financial transactions with entries.",
+          "operationId": "list_transactions_api_v1_financial_transactions_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "reference_type",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Reference Type"
+              }
+            },
+            {
+              "in": "query",
+              "name": "limit",
+              "required": false,
+              "schema": {
+                "default": 50,
+                "maximum": 200,
+                "minimum": 1,
+                "title": "Limit",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "default": 0,
+                "minimum": 0,
+                "title": "Offset",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TransactionListOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Transactions",
+          "tags": [
+            "financial"
+          ]
+        },
+        "post": {
+          "description": "Post an atomic, balanced financial transaction.",
+          "operationId": "post_transaction_api_v1_financial_transactions_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionCreate"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TransactionOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Post Transaction",
+          "tags": [
+            "financial"
+          ]
+        }
+      },
+      "/api/v1/financial/transactions/{transaction_id}/entries": {
+        "get": {
+          "description": "List debits and credits for a specific transaction.",
+          "operationId": "list_transaction_entries_api_v1_financial_transactions__transaction_id__entries_get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "transaction_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Transaction Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/EntryOut"
+                    },
+                    "title": "Response List Transaction Entries Api V1 Financial Transactions  Transaction Id  Entries Get",
+                    "type": "array"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Transaction Entries",
+          "tags": [
+            "financial"
+          ]
+        }
+      },
+      "/api/v1/financial/trial-balance": {
+        "get": {
+          "description": "Retrieve full trial balance proving ledger debits equal credits.",
+          "operationId": "get_trial_balance_api_v1_financial_trial_balance_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TrialBalanceOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get Trial Balance",
+          "tags": [
+            "financial"
           ]
         }
       },

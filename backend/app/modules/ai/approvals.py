@@ -85,8 +85,22 @@ class ApprovalService:
         risk_level: str = "HIGH",
         payload: dict | None = None,
         ttl_minutes: int = APPROVAL_TTL_MINUTES,
+        command_hash: str | None = None,
+        evidence_set_hash: str | None = None,
+        dependency_snapshot_hash: str | None = None,
     ) -> ApprovalRequest:
-        payload = payload or {}
+        payload = dict(payload or {})
+        # V12 Wave D: cryptographically bind approval to command and evidence hashes
+        if command_hash or evidence_set_hash or dependency_snapshot_hash:
+            payload["_v12_lineage"] = {
+                k: v
+                for k, v in {
+                    "command_hash": command_hash,
+                    "evidence_set_hash": evidence_set_hash,
+                    "dependency_snapshot_hash": dependency_snapshot_hash,
+                }.items()
+                if v is not None
+            }
         fingerprint = payload_fingerprint(payload)
 
         # Idempotent: re-running the gate must not pile up duplicate PENDING

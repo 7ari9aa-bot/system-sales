@@ -457,3 +457,53 @@ async def test_relay_event_log_records_the_envelopes_own_occurred_at() -> None:
     assert insert["occurred_at"] != created_at
     assert insert["event_type"] == "order.created"
     assert insert["tenant_id"] == str(tenant_id)
+
+
+async def test_v12_decision_and_effect_ids_round_trip(monkeypatch: pytest.MonkeyPatch) -> None:
+    """V12: decision_id and effect_id must survive envelope serialization and event_log insert."""
+    tenant_id = uuid.uuid4()
+    decision_id = uuid.uuid4()
+    effect_id = uuid.uuid4()
+
+    envelope = build_envelope(
+        "order.created",
+        tenant_id=tenant_id,
+        aggregate_type="order",
+        aggregate_id=uuid.uuid4(),
+        payload={"order_id": "o-1"},
+        decision_id=decision_id,
+        effect_id=effect_id,
+    )
+    assert envelope.decision_id == decision_id
+    assert envelope.effect_id == effect_id
+
+    fields = serialize(envelope)
+    restored = deserialize(fields)
+    assert restored.decision_id == decision_id
+    assert restored.effect_id == effect_id
+
+    # Relay writing to event_log captures both ids
+    from app.core.events.outbox import OutboxRelay
+    meta = json.loads(fields["meta"])
+    payload = {"event_type": "order.created", **json.loads(fields["payload"])}
+    row = {
+        "id": uuid.uuid4(),
+        "aggregate_type": "order",
+        "aggregate_id": envelope.aggregate_id,
+        "created_at": datetime.now(UTC),
+    }
+
+    class _CapturingSession:
+        def __init__(self) -> None:
+            self.params: list[Any] = []
+
+        async def execute(self, _statement: Any, params: Any = None) -> None:
+            self.params.append(params)
+
+    session = _CapturingSession()
+    relay = OutboxRelay(bus=MagicMock())
+    await relay._write_event_log(session, row, payload, meta)
+
+    insert = next(p for p in session.params if p and "event_id" in p)
+    assert insert["decision_id"] == str(decision_id)
+    assert insert["effect_id"] == str(effect_id)

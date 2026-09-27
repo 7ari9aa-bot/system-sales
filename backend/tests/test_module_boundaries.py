@@ -143,12 +143,22 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # hard rules hold. `customers -> conversations.inbox` (the 360 now reads the
 # same read model instead of calling `list_inbox`) is a re-point of the existing
 # `customers -> conversations.service` edge, not a new coupling.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 94
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 101
 # 2026-09-27: +2 for Wave A — decisions and evidence each import
 # identity.deps exactly once (the same router edge platform already has).
 # The ratchet exists to stop GROWTH INSIDE a module, not to forbid new
 # modules from joining the dependency graph they are governed by.
-BASELINE_MODULE_SCOPE_SERVICE_IMPORTS = 5
+# 94 -> 101 on 2026-09-27: V12 Wave A-D modules (decisions, evidence, authority,
+# effects, financial) add 9 new cross-module imports — all legitimate:
+#   • decisions/evidence/authority/effects/financial routers -> identity.deps
+#   • authority -> decisions (executor+service: DecisionService for lease minting)
+# Old-module count SHRANK from 94 to 92 (net -2) via prior read-model work.
+# The ratchet tightened on the old side; the new modules bring their 9 edges.
+BASELINE_MODULE_SCOPE_SERVICE_IMPORTS = 7
+# 5 -> 7 on 2026-09-27: authority/executor.py and authority/service.py each import
+# decisions.service at module scope — authority IS decisions' enforcer, this is
+# the canonical coupling this architecture endorses (§8: "read through the
+# module's service"). No new cycles introduced (authority and decisions form no SCC).
 
 # Cycles are identified by their STRONGLY CONNECTED COMPONENT — the set of
 # modules that can each reach each other — not by one path between them.

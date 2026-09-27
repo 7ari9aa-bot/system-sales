@@ -343,6 +343,19 @@ class DecisionService:
         return await DecisionService._apply_transition(session, decision, "STALE")
 
     @staticmethod
+    async def revoke(
+        session: AsyncSession, tenant_id: uuid.UUID, decision_id: uuid.UUID
+    ) -> Decision:
+        """-> REVOKED (terminal): decision revoked before execution."""
+        decision = await DecisionService.get(session, tenant_id, decision_id)
+        approval_state = (
+            "DENIED" if decision.approval_state == "PENDING" else decision.approval_state
+        )
+        return await DecisionService._apply_transition(
+            session, decision, "REVOKED", approval_state=approval_state
+        )
+
+    @staticmethod
     async def mark_executed(
         session: AsyncSession, tenant_id: uuid.UUID, decision_id: uuid.UUID
     ) -> Decision:

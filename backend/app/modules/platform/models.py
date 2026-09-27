@@ -357,11 +357,15 @@ class EventLog(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base)
     correlation_id: Mapped[str | None] = mapped_column(String(64))
     causation_id: Mapped[str | None] = mapped_column(String(64))
     payload: Mapped[dict] = mapped_column(JSONB, server_default="{}")
+    decision_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    effect_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
     __table_args__ = (
         UniqueConstraint("event_id", name="uq_event_log_event_id"),
         Index("ix_event_log_tenant_type_created", "tenant_id", "event_type", "created_at"),
         Index("ix_event_log_aggregate", "aggregate_type", "aggregate_id"),
+        Index("ix_event_log_decision_id", "decision_id"),
+        Index("ix_event_log_effect_id", "effect_id"),
     )
 
 

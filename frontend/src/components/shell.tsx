@@ -30,6 +30,9 @@ import { LayoutDashboard,
   Sun,
   Moon,
   Languages,
+  Scale,
+  Receipt,
+  RotateCcw,
 } from "lucide-react";
 import { apiUrl, getTokens, setTokens } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
@@ -86,6 +89,7 @@ function buildNavGroups(): NavGroup[] {
         { href: "/orders", label: t.orders, icon: <ShoppingCart aria-hidden="true" />, testid: "nav-orders" },
         { href: "/products", label: t.products, icon: <Package aria-hidden="true" />, testid: "nav-products" },
         { href: "/inventory", label: t.inventory, icon: <Warehouse aria-hidden="true" />, testid: "nav-inventory" },
+        { href: "/financial", label: t.financial, icon: <Receipt aria-hidden="true" />, testid: "nav-financial" },
       ],
     },
     {
@@ -102,6 +106,7 @@ function buildNavGroups(): NavGroup[] {
       items: [
         { href: "/ai", label: t.ai, icon: <Sparkles aria-hidden="true" />, testid: "nav-ai" },
         { href: "/approvals", label: t.approvalsTitle, icon: <ShieldAlert aria-hidden="true" />, testid: "nav-approvals" },
+        { href: "/decisions", label: t.decisions, icon: <Scale aria-hidden="true" />, testid: "nav-decisions" },
       ],
     },
     // §89: ANALYTICS, OPERATIONS groups — روابط فقط لصفحات موجودة فعلًا
@@ -120,6 +125,7 @@ function buildNavGroups(): NavGroup[] {
         { href: "/live", label: "Live", icon: <Activity aria-hidden="true" />, testid: "nav-live" },
         { href: "/sla", label: "SLA", icon: <ShieldAlert aria-hidden="true" />, testid: "nav-sla" },
         { href: "/queues", label: "Queues", icon: <ListChecks aria-hidden="true" />, testid: "nav-queues" },
+        { href: "/effects", label: t.effects, icon: <RotateCcw aria-hidden="true" />, testid: "nav-effects" },
       ],
     },
     {

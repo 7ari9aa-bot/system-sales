@@ -58,6 +58,8 @@ async def add_outbox_event(
     producer: str = "core",
     aggregate_version: int | None = None,
     schema_version: int = 1,
+    decision_id: UUID | None = None,
+    effect_id: UUID | None = None,
 ) -> OutboxEvent:
     """Insert a pending OutboxEvent within the caller's transaction.
 
@@ -71,8 +73,9 @@ async def add_outbox_event(
       request-scoped current_scope(), so an event staged inside a scoped
       mutation carries that mutation's scope (unscoped writers stay NULL).
       Envelope v2 lineage (correlation_id / causation_id / producer /
-      schema_version / aggregate_version) rides inside meta too —
-      the outbox_events table columns are frozen, so no migration is needed.
+      schema_version / aggregate_version) and V12 lineage (decision_id /
+      effect_id) ride inside meta too — the outbox_events table columns
+      are frozen, so no migration is needed.
     """
     if workspace_id is None or location_id is None:
         scope_ws, scope_loc = current_scope()
@@ -94,6 +97,8 @@ async def add_outbox_event(
         producer=producer,
         schema_version=schema_version,
         aggregate_version=aggregate_version,
+        decision_id=decision_id,
+        effect_id=effect_id,
     )
     # Serialize to the bus wire layout, then parse back: JSONB columns need
     # JSON-native values (serialize maps UUID/datetime via default=str), and

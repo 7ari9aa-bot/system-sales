@@ -47,6 +47,8 @@ ROUTING_KEYS: frozenset[str] = frozenset(
         "producer",
         "schema_version",
         "aggregate_version",
+        "decision_id",
+        "effect_id",
     }
 )
 
@@ -110,6 +112,8 @@ class EventEnvelope(BaseModel):
     producer: str = "core"
     schema_version: int = 1
     aggregate_version: int | None = None
+    decision_id: UUID | None = None
+    effect_id: UUID | None = None
 
 
 # The closed set of event types the outbox actually publishes. Every entry is a
@@ -201,14 +205,16 @@ def build_envelope(
     producer: str = "core",
     schema_version: int = 1,
     aggregate_version: int | None = None,
+    decision_id: UUID | str | None = None,
+    effect_id: UUID | str | None = None,
 ) -> EventEnvelope:
     """Build a registered envelope; unknown event types are rejected.
 
     The v2 lineage kwargs (correlation_id / causation_id / producer /
-    schema_version / aggregate_version) and the §19 scope kwargs
-    (workspace_id / location_id) are optional and default to the base
-    envelope's defaults, so v1 callers keep working unchanged. A registered
-    §153 adapter for (event_type, schema_version) is built when present.
+    schema_version / aggregate_version), V12 lineage (decision_id / effect_id),
+    and the §19 scope kwargs (workspace_id / location_id) are optional and
+    default to the base envelope's defaults, so v1 callers keep working unchanged.
+    A registered §153 adapter for (event_type, schema_version) is built when present.
     """
     cls = _resolve_class(event_type, schema_version)
     if cls is None:
@@ -232,6 +238,8 @@ def build_envelope(
         producer=producer,
         schema_version=schema_version,
         aggregate_version=aggregate_version,
+        decision_id=UUID(str(decision_id)) if decision_id else None,
+        effect_id=UUID(str(effect_id)) if effect_id else None,
     )
 
 
@@ -326,6 +334,8 @@ def serialize(envelope: EventEnvelope) -> dict[str, str]:
             "producer": data["producer"],
             "schema_version": data["schema_version"],
             "aggregate_version": data["aggregate_version"],
+            "decision_id": data.get("decision_id"),
+            "effect_id": data.get("effect_id"),
         }
     )
     return {
@@ -367,6 +377,8 @@ def deserialize(fields: Mapping[str, Any]) -> EventEnvelope:
         producer=meta.get("producer", "core"),
         schema_version=schema_version,
         aggregate_version=meta.get("aggregate_version"),
+        decision_id=UUID(str(meta["decision_id"])) if meta.get("decision_id") else None,
+        effect_id=UUID(str(meta["effect_id"])) if meta.get("effect_id") else None,
         payload=payload,
         meta={k: v for k, v in meta.items() if k not in ROUTING_KEYS},
     )

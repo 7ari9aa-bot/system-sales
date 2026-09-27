@@ -1400,4 +1400,176 @@ export function useMarkManyRead() {
   });
 }
 
+/* ------------------------------------------------------------------ V12 Wave A/B/C/D */
+
+export type Decision = {
+  decision_id: string;
+  action: string;
+  risk_level: string;
+  approval_state: string;
+  decision_status: string;
+  expires_at: string | null;
+  content_hash: string;
+  command_hash: string | null;
+  created_at: string;
+  normalized_arguments: Record<string, unknown>;
+  actor_type: string | null;
+  intent: string | null;
+};
+
+export function useDecisions(status?: string, limit = 50, offset = 0) {
+  const qs = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  if (status) qs.set("status", status);
+  return useQuery<{ items: Decision[]; total: number }>({
+    queryKey: ["decisions", status ?? "all", limit, offset],
+    queryFn: () => api<{ items: Decision[]; total: number }>(`/decisions?${qs.toString()}`),
+    staleTime: 10_000,
+  });
+}
+
+export function useDecisionTransition() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      decisionId,
+      action,
+    }: {
+      decisionId: string;
+      action: "verify" | "approve" | "deny" | "stale" | "revoke" | "execute";
+    }) => api<Decision>(`/decisions/${decisionId}/${action}`, { method: "POST" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["decisions"] });
+    },
+  });
+}
+
+export type EvidenceSet = {
+  evidence_set_id: string;
+  purpose: string;
+  evidence_set_hash: string;
+  created_at: string;
+};
+
+export function useEvidenceSets(limit = 50, offset = 0) {
+  const qs = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  return useQuery<{ items: EvidenceSet[]; total: number }>({
+    queryKey: ["evidence_sets", limit, offset],
+    queryFn: () => api<{ items: EvidenceSet[]; total: number }>(`/evidence/sets?${qs.toString()}`),
+    staleTime: 15_000,
+  });
+}
+
+export type EffectItem = {
+  effect_id: string;
+  idempotency_key: string;
+  operation: string;
+  status: string;
+  provider: string | null;
+  provider_reference: string | null;
+  arguments: Record<string, unknown>;
+  result: Record<string, unknown> | null;
+  error_details: Record<string, unknown> | null;
+  attempts: number;
+  last_attempt_at: string | null;
+  created_at: string;
+};
+
+export function useEffects(status?: string, limit = 50, offset = 0) {
+  const qs = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  if (status) qs.set("status", status);
+  return useQuery<{ items: EffectItem[]; total: number }>({
+    queryKey: ["effects", status ?? "all", limit, offset],
+    queryFn: () => api<{ items: EffectItem[]; total: number }>(`/effects?${qs.toString()}`),
+    staleTime: 10_000,
+  });
+}
+
+export function useReconcileEffect() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      effectId,
+      status,
+      provider_reference,
+    }: {
+      effectId: string;
+      status: "COMPLETED" | "FAILED";
+      provider_reference?: string;
+    }) =>
+      api<EffectItem>(`/effects/${effectId}/reconcile`, {
+        method: "POST",
+        body: { status, provider_reference },
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["effects"] });
+    },
+  });
+}
+
+export type FinancialAccount = {
+  account_id: string;
+  code: string;
+  name: string;
+  account_type: string;
+  currency: string;
+  is_active: boolean;
+};
+
+export function useFinancialAccounts() {
+  return useQuery<{ items: FinancialAccount[]; total: number }>({
+    queryKey: ["financial", "accounts"],
+    queryFn: () => api<{ items: FinancialAccount[]; total: number }>("/financial/accounts"),
+    staleTime: 60_000,
+  });
+}
+
+export type FinancialTransactionItem = {
+  transaction_id: string;
+  reference_type: string;
+  reference_id: string | null;
+  currency: string;
+  status: string;
+  description: string | null;
+  posted_at: string;
+  total_debits: string;
+  total_credits: string;
+};
+
+export function useFinancialTransactions(limit = 50, offset = 0) {
+  const qs = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  return useQuery<{ items: FinancialTransactionItem[]; total: number }>({
+    queryKey: ["financial", "transactions", limit, offset],
+    queryFn: () =>
+      api<{ items: FinancialTransactionItem[]; total: number }>(
+        `/financial/transactions?${qs.toString()}`
+      ),
+    staleTime: 15_000,
+  });
+}
+
+export type TrialBalance = {
+  currency: string;
+  total_debits: string;
+  total_credits: string;
+  is_balanced: boolean;
+  generated_at: string;
+  items: Array<{
+    account_id: string;
+    code: string;
+    name: string;
+    account_type: string;
+    total_debit: string;
+    total_credit: string;
+    net_balance: string;
+  }>;
+};
+
+export function useTrialBalance() {
+  return useQuery<TrialBalance>({
+    queryKey: ["financial", "trial-balance"],
+    queryFn: () => api<TrialBalance>("/financial/trial-balance"),
+    staleTime: 15_000,
+  });
+}
+
 export { keepPreviousData };

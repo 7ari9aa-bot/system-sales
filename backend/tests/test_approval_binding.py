@@ -140,6 +140,26 @@ def test_the_fingerprint_ignores_key_order() -> None:
     assert payload_fingerprint(a) == payload_fingerprint(b)
 
 
+def test_v12_lineage_hashes_alter_fingerprint() -> None:
+    """Wave D: approvals bound to command/evidence hashes produce distinct fingerprints."""
+    base = {"arguments": {"variant_id": "v1"}}
+    fp_plain = payload_fingerprint(base)
+
+    with_cmd = {
+        "arguments": {"variant_id": "v1"},
+        "_v12_lineage": {"command_hash": "c" * 64},
+    }
+    fp_cmd = payload_fingerprint(with_cmd)
+    assert fp_plain != fp_cmd
+
+    with_ev = {
+        "arguments": {"variant_id": "v1"},
+        "_v12_lineage": {"command_hash": "c" * 64, "evidence_set_hash": "e" * 64},
+    }
+    fp_ev = payload_fingerprint(with_ev)
+    assert fp_cmd != fp_ev
+
+
 def test_the_fingerprint_distinguishes_different_arguments() -> None:
     a = {"arguments": {"variant_id": "v1", "quantity": 1}}
     b = {"arguments": {"variant_id": "v1", "quantity": 100}}

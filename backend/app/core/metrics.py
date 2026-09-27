@@ -198,6 +198,27 @@ CATALOGUE: tuple[MetricDefinition, ...] = (
         type="counter",
         label_names=("collector",),
     ),
+    # V12 Correctness SLOs (Invariant 62)
+    MetricDefinition(
+        name="decision_stale_total",
+        help_text="Decisions transitioned to STALE due to TTL expiration or invalidated evidence.",
+        type="counter",
+    ),
+    MetricDefinition(
+        name="authority_rejection_total",
+        help_text="Authority lease minting or redemption rejections.",
+        type="counter",
+    ),
+    MetricDefinition(
+        name="version_conflict_total",
+        help_text="Optimistic concurrency or resource version conflicts detected during execution.",
+        type="counter",
+    ),
+    MetricDefinition(
+        name="budget_fail_total",
+        help_text="Budget reservation or limit exhaustion failures.",
+        type="counter",
+    ),
 )
 
 _BY_NAME: dict[str, MetricDefinition] = {m.name: m for m in CATALOGUE}
@@ -328,6 +349,26 @@ async def increment(
         if strict:
             raise
         logger.debug("metrics.increment_failed name=%s err=%s", name, exc)
+
+
+async def record_decision_stale(*, redis: Any = None, count: float = 1.0) -> None:
+    """Record Invariant 62: decision TTL or evidence invalidation stale transition."""
+    await increment("decision_stale_total", value=count, redis=redis, strict=False)
+
+
+async def record_authority_rejection(*, redis: Any = None, count: float = 1.0) -> None:
+    """Record Invariant 62: authority lease minting or redemption rejection."""
+    await increment("authority_rejection_total", value=count, redis=redis, strict=False)
+
+
+async def record_version_conflict(*, redis: Any = None, count: float = 1.0) -> None:
+    """Record Invariant 62: optimistic concurrency / resource version conflict."""
+    await increment("version_conflict_total", value=count, redis=redis, strict=False)
+
+
+async def record_budget_fail(*, redis: Any = None, count: float = 1.0) -> None:
+    """Record Invariant 62: budget reservation or exhaustion failure."""
+    await increment("budget_fail_total", value=count, redis=redis, strict=False)
 
 
 # -------------------------------------------------------------------- reading

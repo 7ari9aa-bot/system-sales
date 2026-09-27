@@ -53,6 +53,9 @@ from app.modules.billing.router import (
     billing_router,
     webhooks_router,
 )
+from app.modules.authority.router import router as authority_router
+from app.modules.effects.router import router as effects_router
+from app.modules.financial.router import router as financial_router
 from app.modules.catalog.router import router as catalog_router
 from app.modules.conversations.router import (
     public_router as conversations_public_router,
@@ -105,6 +108,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     # lost on restart). get_secret_store() resolves DatabaseSecretStore there
     # by default; this catches a mistaken set_secret_store() override at boot
     # rather than at first secret read.
+    from app.core.boot import run_boot_reconciler
     from app.core.secrets import EnvSecretStore, get_secret_store
 
     if get_settings().is_secure_environment and isinstance(
@@ -114,6 +118,9 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
             "secure environment resolved EnvSecretStore — secret values would be "
             "process-local and lost on restart; refusing to boot"
         )
+
+    # Invariant 13: Boot Reconciler validates RLS ENABLE + FORCE on all tenant tables
+    await run_boot_reconciler(engine)
     yield
     await engine.dispose()
     await close_redis()
@@ -446,6 +453,9 @@ def create_app() -> FastAPI:
         analytics_module_router,
         evidence_router,
         decisions_router,
+        authority_router,
+        effects_router,
+        financial_router,
     ):
         api_v1.include_router(router)
     app.include_router(api_v1)

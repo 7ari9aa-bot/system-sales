@@ -257,12 +257,12 @@ _EVENT_LOG_SQL = sa.text(
         id, event_id, event_type, aggregate_type, aggregate_id,
         aggregate_version, schema_version, occurred_at, producer,
         correlation_id, causation_id, payload, tenant_id,
-        workspace_id, location_id
+        workspace_id, location_id, decision_id, effect_id
     ) VALUES (
         :id, :event_id, :event_type, :aggregate_type, :aggregate_id,
         :aggregate_version, :schema_version, :occurred_at, :producer,
         :correlation_id, :causation_id, CAST(:payload AS jsonb), :tenant_id,
-        :workspace_id, :location_id
+        :workspace_id, :location_id, :decision_id, :effect_id
     )
     ON CONFLICT (event_id) DO NOTHING
     """
@@ -518,6 +518,8 @@ class OutboxRelay:
                 "tenant_id": str(envelope.tenant_id),
                 "workspace_id": str(envelope.workspace_id) if envelope.workspace_id else None,
                 "location_id": str(envelope.location_id) if envelope.location_id else None,
+                "decision_id": str(envelope.decision_id) if getattr(envelope, "decision_id", None) else (str(meta["decision_id"]) if meta.get("decision_id") else None),
+                "effect_id": str(envelope.effect_id) if getattr(envelope, "effect_id", None) else (str(meta["effect_id"]) if meta.get("effect_id") else None),
             },
         )
 

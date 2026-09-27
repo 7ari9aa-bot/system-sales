@@ -19,6 +19,9 @@ import {
   Plus,
   Search,
   CornerDownLeft,
+  Scale,
+  RotateCcw,
+  Receipt,
 } from "lucide-react";
 import { t } from "@/lib/t";
 import { cn } from "@/lib/utils";
@@ -48,8 +51,11 @@ function buildNavItems(): CommandItem[] {
     { id: "nav-orders", label: t.goOrders, group: "nav", href: "/orders", icon: <ShoppingCart aria-hidden="true" />, keywords: "طلب" },
     { id: "nav-products", label: t.goProducts, group: "nav", href: "/products", icon: <Package aria-hidden="true" />, keywords: "منتج" },
     { id: "nav-inventory", label: t.goInventory, group: "nav", href: "/inventory", icon: <Warehouse aria-hidden="true" />, keywords: "مخزون رصيد" },
+    { id: "nav-financial", label: t.financial, group: "nav", href: "/financial", icon: <Receipt aria-hidden="true" />, keywords: "مالية حسابات قيود ledger balance" },
     { id: "nav-marketing", label: t.goMarketing, group: "nav", href: "/marketing", icon: <Megaphone aria-hidden="true" />, keywords: "حملة اعلان" },
     { id: "nav-ai", label: t.goAi, group: "nav", href: "/ai", icon: <Sparkles aria-hidden="true" />, keywords: "معرفة وكيل" },
+    { id: "nav-decisions", label: t.decisions, group: "nav", href: "/decisions", icon: <Scale aria-hidden="true" />, keywords: "قرارات حوكمة اعتماد decision" },
+    { id: "nav-effects", label: t.effects, group: "nav", href: "/effects", icon: <RotateCcw aria-hidden="true" />, keywords: "تسوية تأثيرات idempotency outbox" },
     { id: "nav-settings", label: t.goSettings, group: "nav", href: "/settings", icon: <Settings aria-hidden="true" />, keywords: "اعدادات دعوة تكامل" },
   ];
 }

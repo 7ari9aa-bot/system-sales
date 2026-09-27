@@ -248,7 +248,25 @@ def claims_facts(text: str) -> bool:
     return bool(_FACT_CLAIM.search(_screened(text)))
 
 
-def default_guardrail(*, require_tool_evidence: bool = False) -> OutputGuardrail:
+def claim_checks(content: str, ctx: dict) -> GuardrailVerdict | None:
+    """V12 §26: Generated commercial claims verified against authoritative evidence.
+    No evidence -> BLOCK.
+    """
+    if claims_facts(content):
+        evidence_present = bool(
+            ctx.get("evidence_set_id")
+            or ctx.get("verified_facts")
+            or ctx.get("evidence_facts")
+            or ctx.get("tool_results")
+        )
+        if not evidence_present:
+            return GuardrailVerdict(decision="block", reason="unverified_commercial_claim")
+    return None
+
+
+def default_guardrail(
+    *, require_tool_evidence: bool = False, require_claim_check: bool = False
+) -> OutputGuardrail:
     """Production-default chain.
 
     `require_tool_evidence` is off by default because it needs the run's tool
@@ -256,8 +274,16 @@ def default_guardrail(*, require_tool_evidence: bool = False) -> OutputGuardrail
     run to look at. The runner turns it on: without a caller passing
     `tool_results`, the factual constraint could never fire and §41's chain was
     four checks with a fifth comment beside them.
+
+    `require_claim_check` (V12 §26): when enabled, commercial claims asserting
+    prices/stock without verifiable evidence are strictly BLOCKED.
     """
     chain = OutputGuardrail()
+
+    def _claim_checks_gate(content: str, ctx: dict) -> GuardrailVerdict | None:
+        if not require_claim_check and not ctx.get("require_claim_check", False):
+            return None
+        return claim_checks(content, ctx)
 
     def _tool_evidence(content: str, ctx: dict) -> GuardrailVerdict | None:
         # Factual constraint: price/stock claims must come from tool results.
@@ -272,6 +298,7 @@ def default_guardrail(*, require_tool_evidence: bool = False) -> OutputGuardrail
     chain.add_check("pii", _pii)
     chain.add_check("injection_echo", _injection_risk)
     chain.add_check("cross_tenant", _cross_tenant_request)
+    chain.add_check("claim_checks", _claim_checks_gate)
     chain.add_check("tool_evidence", _tool_evidence)
     return chain
 

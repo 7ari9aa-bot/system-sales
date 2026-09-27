@@ -252,6 +252,13 @@ async def mark_stale(decision_id: uuid.UUID, ctx: WriteCtx):
     return _decision_dict(decision)
 
 
+@router.post("/{decision_id}/revoke", response_model=schemas.DecisionOut)
+async def revoke_decision(decision_id: uuid.UUID, ctx: WriteCtx):
+    """-> REVOKED (terminal): decision revoked before execution."""
+    decision = await DecisionService.revoke(ctx.session, ctx.tenant_id, decision_id)
+    return _decision_dict(decision)
+
+
 @router.post("/{decision_id}/execute", response_model=schemas.DecisionOut)
 async def execute_decision(decision_id: uuid.UUID, ctx: WriteCtx):
     """APPROVED -> EXECUTED (terminal).

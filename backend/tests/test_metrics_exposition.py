@@ -115,12 +115,30 @@ def test_the_catalogue_carries_the_five_signals_and_nothing_invented() -> None:
         "worker_events_total",
         "worker_seconds_total",
         "metrics_collection_failures_total",
+        "decision_stale_total",
+        "authority_rejection_total",
+        "version_conflict_total",
+        "budget_fail_total",
     }, names
 
     # The two series the register names but this tree cannot back must not be
     # here — this assertion fails the moment someone adds a zero-valued stub.
     for unbaked in ("rate_limit_rejections_total", "idempotency_conflicts_total"):
         assert unbaked not in names, f"{unbaked} has no increment site in this tree"
+
+
+async def test_v12_correctness_slo_counters_round_trip() -> None:
+    fake = FakeRedis(decode_responses=True)
+    await metrics.record_decision_stale(redis=fake, count=2)
+    await metrics.record_authority_rejection(redis=fake, count=1)
+    await metrics.record_version_conflict(redis=fake, count=3)
+    await metrics.record_budget_fail(redis=fake, count=4)
+
+    body = await metrics.render_prometheus(redis=fake)
+    assert "decision_stale_total 2" in body
+    assert "authority_rejection_total 1" in body
+    assert "version_conflict_total 3" in body
+    assert "budget_fail_total 4" in body
 
 
 # ------------------------------------------------------------- label hygiene
