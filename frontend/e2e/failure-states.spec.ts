@@ -35,7 +35,8 @@ test("an API that fails every endpoint does not crash the shell", async ({ page 
 
   await page.goto("/dashboard");
 
-  await expect(page.getByTestId("nav-dashboard")).toBeVisible();
+  // Owner IA 2026-09-27: the dashboard nav item is now "Overview".
+  await expect(page.getByTestId("nav-overview")).toBeVisible();
   await expect(page.getByTestId("error-state")).toBeVisible();
   await expect(page.getByTestId("health-indicator")).toBeVisible();
 });

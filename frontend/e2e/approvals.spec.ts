@@ -404,7 +404,8 @@ test("my-work still surfaces pending approvals and their risk level", async ({ p
   await page.route("**/api/v1/conversations**", (route) => json(route, { items: [], next_cursor: null }));
   await page.route("**/api/v1/platform/saved-views**", (route) => json(route, { items: [] }));
 
-  await page.goto("/my-work");
+  // Owner IA 2026-09-27: my-work lives ON the overview now (/my-work redirects).
+  await page.goto("/dashboard");
   await expect(page.getByText("issue_refund")).toBeVisible();
   await expect(page.getByText(/Risk level:\s*High/)).toBeVisible();
 });
