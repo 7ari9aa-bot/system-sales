@@ -114,7 +114,7 @@ async def create_account(ctx: WriteCtx, body: schemas.AccountCreate):
 @router.post("/accounts/seed-default", response_model=schemas.AccountListOut)
 async def seed_default_accounts(ctx: WriteCtx):
     """Seed standard accounts if missing."""
-    seeded = await FinancialService.seed_default_chart_of_accounts(ctx.session, ctx.tenant_id)
+    await FinancialService.seed_default_chart_of_accounts(ctx.session, ctx.tenant_id)
     return await list_accounts(ctx)
 
 

@@ -22,7 +22,6 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
-    Text,
     UniqueConstraint,
     func,
 )
@@ -70,7 +69,9 @@ class EffectLedger(TenantMixin, Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("tenant_id", "idempotency_key", name="uq_effect_ledger_tenant_idempotency"),
+        UniqueConstraint(
+            "tenant_id", "idempotency_key", name="uq_effect_ledger_tenant_idempotency"
+        ),
         Index("ix_effect_ledger_tenant_status", "tenant_id", "status"),
         Index("ix_effect_ledger_tenant_decision", "tenant_id", "decision_id"),
         Index("ix_effect_ledger_tenant_created", "tenant_id", "created_at"),

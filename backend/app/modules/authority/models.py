@@ -5,9 +5,10 @@ PROPOSAL ≠ DECISION ≠ CAPABILITY ≠ AUTHORITY ≠ EXECUTION ≠ EFFECT ≠ 
 
 - CapabilityGrant: The durable grant issued upon decision approval (or direct human/admin policy)
   defining permitted action, scope, and upper budget boundary.
-- AuthorityLease: The ephemeral, cryptographically bound, single-use token granting execution authority
-  with TTL <= 60s, bound to a canonical command_hash and expected resource versions.
-- AutonomyBudget: Sliced parent/child budget hierarchies bounding autonomous agent and automated actions.
+- AuthorityLease: The ephemeral, cryptographically bound, single-use token granting execution
+  authority with TTL <= 60s, bound to a canonical command_hash and expected resource versions.
+- AutonomyBudget: Sliced parent/child budget hierarchies bounding autonomous agent and
+  automated actions.
 - BudgetReservation: Holds on budgets while authority leases are in flight.
 """
 
@@ -35,7 +36,9 @@ from app.core.model_kit import TenantMixin
 GRANT_STATUSES: frozenset[str] = frozenset({"ACTIVE", "REVOKED", "EXPIRED", "CONSUMED"})
 LEASE_STATES: frozenset[str] = frozenset({"MINTED", "ACTIVE", "EXECUTED", "REVOKED", "EXPIRED"})
 RESERVATION_STATUSES: frozenset[str] = frozenset({"RESERVED", "COMMITTED", "RELEASED"})
-BUDGET_PERIODS: frozenset[str] = frozenset({"DAILY", "WEEKLY", "MONTHLY", "PER_TRANSACTION", "LIFETIME"})
+BUDGET_PERIODS: frozenset[str] = frozenset(
+    {"DAILY", "WEEKLY", "MONTHLY", "PER_TRANSACTION", "LIFETIME"}
+)
 
 #: V12 canonical TTL for authority leases: strictly <= 60 seconds
 MAX_LEASE_TTL_SECONDS = 60
@@ -87,7 +90,8 @@ class AuthorityLease(TenantMixin, Base):
     grant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     decision_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     lease_token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
-    command_hash: Mapped[str] = mapped_column(String(71), nullable=False)  # "sha256:" + 64 hex chars
+    # "sha256:" + 64 hex chars:
+    command_hash: Mapped[str] = mapped_column(String(71), nullable=False)
     expected_versions: Mapped[dict] = mapped_column(JSONB, server_default="{}", nullable=False)
     nonce: Mapped[str] = mapped_column(String(64), nullable=False)
     state: Mapped[str] = mapped_column(String(31), server_default="MINTED", nullable=False)
@@ -124,8 +128,12 @@ class AutonomyBudget(TenantMixin, Base):
     period: Mapped[str] = mapped_column(String(31), server_default="DAILY", nullable=False)
     currency: Mapped[str] = mapped_column(String(15), server_default="USD", nullable=False)
     total_limit: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
-    spent_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), server_default="0", nullable=False)
-    reserved_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), server_default="0", nullable=False)
+    spent_amount: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2), server_default="0", nullable=False
+    )
+    reserved_amount: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2), server_default="0", nullable=False
+    )
     reset_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

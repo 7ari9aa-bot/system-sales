@@ -96,7 +96,12 @@ class FinancialTransaction(TenantMixin, Base):
     )
 
     __table_args__ = (
-        Index("ix_financial_transactions_tenant_ref", "tenant_id", "reference_type", "reference_id"),
+        Index(
+            "ix_financial_transactions_tenant_ref",
+            "tenant_id",
+            "reference_type",
+            "reference_id",
+        ),
         Index("ix_financial_transactions_tenant_posted", "tenant_id", "posted_at"),
         Index("ix_financial_transactions_tenant_decision", "tenant_id", "decision_id"),
     )

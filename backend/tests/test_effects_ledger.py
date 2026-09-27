@@ -10,14 +10,11 @@ Unit tests using mock/fake async session (zero database required):
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
-from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.core.errors import ConflictError, NotFoundError, ValidationError
+from app.core.errors import ConflictError
 from app.modules.effects.models import EffectLedger
 from app.modules.effects.schemas import compute_effect_idempotency_key
 from app.modules.effects.service import EffectService

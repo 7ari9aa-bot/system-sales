@@ -77,7 +77,10 @@ async def test_run_boot_reconciler_fails_closed_in_secure_environment() -> None:
     conn_mock = AsyncMock()
     engine.connect.return_value.__aenter__.return_value = conn_mock
 
-    with patch("app.core.boot.inspect_tenant_rls_invariants", return_value=["leaky_table: RLS disabled"]):
+    with patch(
+        "app.core.boot.inspect_tenant_rls_invariants",
+        return_value=["leaky_table: RLS disabled"],
+    ):
         with pytest.raises(BootReconcilerError, match="leaky_table: RLS disabled"):
             await run_boot_reconciler(engine, fail_closed=True)
 
@@ -88,6 +91,9 @@ async def test_run_boot_reconciler_warns_when_not_fail_closed() -> None:
     conn_mock = AsyncMock()
     engine.connect.return_value.__aenter__.return_value = conn_mock
 
-    with patch("app.core.boot.inspect_tenant_rls_invariants", return_value=["leaky_table: RLS disabled"]):
+    with patch(
+        "app.core.boot.inspect_tenant_rls_invariants",
+        return_value=["leaky_table: RLS disabled"],
+    ):
         violations = await run_boot_reconciler(engine, fail_closed=False)
         assert violations == ["leaky_table: RLS disabled"]

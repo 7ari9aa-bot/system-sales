@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import uuid
 
-import pytest
-
 from app.core.guardrails import claim_checks, claims_facts, default_guardrail
 
 

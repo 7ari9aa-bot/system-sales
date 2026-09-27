@@ -70,8 +70,9 @@ class PostgresSearch:
         wanted = set(entity_types or ("customer", "product"))
         hits: list[SearchHit] = []
 
-        # Detect if we are on a real PostgreSQL engine to leverage tsvector/GIN
-        dialect_name = getattr(getattr(getattr(session, "bind", None), "dialect", None), "name", None)
+        bind = getattr(session, "bind", None)
+        dialect = getattr(bind, "dialect", None)
+        dialect_name = getattr(dialect, "name", None)
         is_postgres = (dialect_name == "postgresql")
 
         if "customer" in wanted:
@@ -82,8 +83,9 @@ class PostgresSearch:
                     "search_ts @@ websearch_to_tsquery('simple', :raw_q) "
                     r"OR name ILIKE :q ESCAPE '\' OR email ILIKE :q ESCAPE '\'"
                     r" OR phone ILIKE :q ESCAPE '\') "
-                    "ORDER BY ts_rank(search_ts, websearch_to_tsquery('simple', :raw_q)) DESC, name "
-                    "LIMIT :limit"
+                    "ORDER BY ts_rank("
+                    "search_ts, websearch_to_tsquery('simple', :raw_q)"
+                    ") DESC, name LIMIT :limit"
                 )
             else:
                 sql = (

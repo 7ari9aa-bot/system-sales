@@ -5,7 +5,7 @@ Enforces:
 2. Invariant 11: CapabilityGrant scope and budget bounding.
 3. Invariant 21: Command hash deterministic verification.
 4. Invariant 22: Resource version verification (optimistic concurrency / state locking).
-5. Invariant 62: Correctness SLO emissions (decision_stale, authority_rejection, version_conflict, budget_fail).
+5. Invariant 62: Correctness SLO emissions.
 """
 
 from __future__ import annotations
@@ -21,7 +21,6 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import metrics
-from app.core.commands import command_hash as compute_command_hash
 from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.modules.authority.models import (
     MAX_LEASE_TTL_SECONDS,
@@ -60,15 +59,8 @@ class AuthorityService:
             raise ValidationError("tool_name is required for CapabilityGrant")
 
         if decision_id is not None:
-            # Verify decision exists for this tenant
-            decision = await session.scalar(
-                select(Decision).where(
-                    Decision.tenant_id == tenant_id,
-                    Decision.decision_id == decision_id,
-                )
-            )
-            if not decision:
-                raise NotFoundError(f"Decision {decision_id} not found for tenant")
+            # Verify decision exists for this tenant via DecisionService (§8 boundary)
+            await DecisionService.get(session, tenant_id, decision_id)
 
         now = datetime.now(UTC)
         grant = CapabilityGrant(
@@ -162,7 +154,8 @@ class AuthorityService:
         # 1. Enforce V12 TTL ceiling
         if ttl_seconds > MAX_LEASE_TTL_SECONDS or ttl_seconds < 1:
             raise ValidationError(
-                f"Authority lease TTL must be between 1 and {MAX_LEASE_TTL_SECONDS}s, got {ttl_seconds}"
+                f"Authority lease TTL must be between 1 and {MAX_LEASE_TTL_SECONDS}s, "
+                f"got {ttl_seconds}"
             )
 
         if not command_hash or not command_hash.startswith("sha256:"):
@@ -186,12 +179,13 @@ class AuthorityService:
             decision = await DecisionService.get(session, tenant_id, decision_id)
         except NotFoundError:
             await metrics.record_authority_rejection()
-            raise NotFoundError(f"Decision {decision_id} not found")
+            raise NotFoundError(f"Decision {decision_id} not found") from None
 
         if decision.decision_status != "APPROVED":
             await metrics.record_authority_rejection()
             raise ConflictError(
-                f"Decision must be in APPROVED state to mint authority lease (current: {decision.decision_status})"
+                f"Decision must be in APPROVED state to mint authority lease "
+                f"(current: {decision.decision_status})"
             )
 
         if decision.expires_at and decision.expires_at <= now:
@@ -204,7 +198,8 @@ class AuthorityService:
         if decision.command_hash and decision.command_hash != command_hash:
             await metrics.record_authority_rejection()
             raise ConflictError(
-                f"command_hash {command_hash} does not match decision pinned command_hash {decision.command_hash}"
+                f"command_hash {command_hash} does not match decision pinned "
+                f"command_hash {decision.command_hash}"
             )
 
         # 4. Handle budget reservation if applicable
@@ -346,7 +341,8 @@ class AuthorityService:
             if total_limit > available:
                 await metrics.record_budget_fail()
                 raise ConflictError(
-                    f"Child budget limit ({total_limit}) exceeds parent available budget ({available})"
+                    f"Child budget limit ({total_limit}) exceeds parent available "
+                    f"budget ({available})"
                 )
 
         budget = AutonomyBudget(

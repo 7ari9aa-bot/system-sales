@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ConflictError, NotFoundError, ValidationError
-from app.modules.effects.models import EFFECT_STATUSES, EffectLedger
+from app.modules.effects.models import EffectLedger
 from app.modules.effects.schemas import compute_effect_idempotency_key
 
 
@@ -30,7 +30,10 @@ class EffectService:
         lease_id: uuid.UUID | None = None,
         provider: str | None = None,
     ) -> EffectLedger:
-        """Record intent to perform an effect. If idempotency key already exists, return existing."""
+        """Record intent to perform an effect.
+
+        If idempotency key already exists, return existing.
+        """
         if not operation or not operation.strip():
             raise ValidationError("operation must be a non-empty string")
 
@@ -242,7 +245,9 @@ class EffectService:
             raise NotFoundError(f"Effect {effect_id} not found")
 
         if effect.status != "AMBIGUOUS":
-            raise ConflictError(f"Only AMBIGUOUS effects can be reconciled (current: {effect.status})")
+            raise ConflictError(
+                f"Only AMBIGUOUS effects can be reconciled (current: {effect.status})"
+            )
 
         now = datetime.now(UTC)
         effect.status = resolution_status

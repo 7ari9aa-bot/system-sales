@@ -13,6 +13,7 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
+
 from app.modules.authority import schemas
 from app.modules.authority.executor import AtomicExecutionService
 from app.modules.authority.models import AutonomyBudget, CapabilityGrant
@@ -159,7 +160,10 @@ async def list_leases(
         ctx.session, ctx.tenant_id, state=state, limit=limit, offset=offset
     )
     return schemas.AuthorityLeaseListOut(
-        items=[schemas.AuthorityLeaseOut.model_validate(l, from_attributes=True) for l in items],
+        items=[
+            schemas.AuthorityLeaseOut.model_validate(lease_item, from_attributes=True)
+            for lease_item in items
+        ],
         total=total,
         limit=limit,
         offset=offset,

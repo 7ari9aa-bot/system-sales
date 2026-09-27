@@ -48,14 +48,12 @@ from app.core.observability import (
 from app.core.redis import close_redis, get_redis
 from app.modules.ai.router import router as ai_router
 from app.modules.analytics.router import router as analytics_module_router
+from app.modules.authority.router import router as authority_router
 from app.modules.automation.router import router as automation_router
 from app.modules.billing.router import (
     billing_router,
     webhooks_router,
 )
-from app.modules.authority.router import router as authority_router
-from app.modules.effects.router import router as effects_router
-from app.modules.financial.router import router as financial_router
 from app.modules.catalog.router import router as catalog_router
 from app.modules.conversations.router import (
     public_router as conversations_public_router,
@@ -72,7 +70,9 @@ from app.modules.conversations.router import (
 from app.modules.customers.router import platform_router as platform_router
 from app.modules.customers.router import router as customers_router
 from app.modules.decisions.router import router as decisions_router
+from app.modules.effects.router import router as effects_router
 from app.modules.evidence.router import router as evidence_router
+from app.modules.financial.router import router as financial_router
 from app.modules.identity.router import hierarchy_router as identity_hierarchy_router
 from app.modules.identity.router import router as identity_router
 from app.modules.identity.router import tenants_router as identity_tenants_router

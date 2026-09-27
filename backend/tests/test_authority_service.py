@@ -13,24 +13,18 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from unittest.mock import AsyncMock, patch
 
 import pytest
-import sqlalchemy as sa
 
 from app.core.commands import command_hash as compute_command_hash
 from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.modules.authority.models import (
-    MAX_LEASE_TTL_SECONDS,
-    AuthorityLease,
     AutonomyBudget,
-    BudgetReservation,
     CapabilityGrant,
 )
 from app.modules.authority.service import AuthorityService
 from app.modules.decisions.models import Decision
 from app.modules.decisions.service import DecisionService
-
 
 # ───────────────────────────────────── helpers ──────────────────────────────
 
@@ -306,7 +300,7 @@ class TestAuthorityLeases:
         )
         items, total = await AuthorityService.list_leases(db, tid, state="MINTED")
         assert total >= 1
-        assert all(l.state == "MINTED" for l in items)
+        assert all(item.state == "MINTED" for item in items)
 
     async def test_revoke_lease(self, tenant_ctx):
         db, tid = tenant_ctx.session, tenant_ctx.tenant_id
@@ -473,10 +467,10 @@ class TestBudgetReservations:
     async def test_multiple_reservations_headroom(self, tenant_ctx):
         db, tid = tenant_ctx.session, tenant_ctx.tenant_id
         budget = await _make_budget(db, tid, total_limit=Decimal("1000.00"))
-        r1 = await AuthorityService.reserve_budget(
+        await AuthorityService.reserve_budget(
             db, tid, budget_id=budget.budget_id, amount=Decimal("400.00"),
         )
-        r2 = await AuthorityService.reserve_budget(
+        await AuthorityService.reserve_budget(
             db, tid, budget_id=budget.budget_id, amount=Decimal("400.00"),
         )
         # Third reservation that exceeds remaining headroom

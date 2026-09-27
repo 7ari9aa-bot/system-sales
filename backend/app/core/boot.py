@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterable
-from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
@@ -98,7 +97,7 @@ async def inspect_tenant_rls_invariants(
         if not relforcerowsecurity:
             violations.append(f"{name}: RLS is NOT forced (relforcerowsecurity=false)")
 
-        policies = (
+        policies_list = (
             await session.execute(
                 text(
                     """
@@ -111,10 +110,11 @@ async def inspect_tenant_rls_invariants(
             )
         ).scalars().all()
 
-        policy_names = set(policies)
+        policy_names = set(policies_list)
         if "tenant_isolation" not in policy_names:
+            found_str = sorted(policy_names)
             violations.append(
-                f"{name}: missing canonical 'tenant_isolation' policy (found: {sorted(policy_names)})"
+                f"{name}: missing canonical 'tenant_isolation' policy (found: {found_str})"
             )
 
     return violations

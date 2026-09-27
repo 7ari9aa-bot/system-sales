@@ -19,18 +19,15 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
-import sqlalchemy as sa
 
 from app.core.commands import command_hash as compute_command_hash
 from app.core.errors import ConflictError, NotFoundError
 from app.modules.authority.executor import AtomicExecutionService
-from app.modules.authority.models import AuthorityLease
 from app.modules.authority.service import AuthorityService
 from app.modules.decisions.service import DecisionService
-
 
 # ───────────────────────────────────── helpers ──────────────────────────────
 

@@ -12,12 +12,11 @@ from __future__ import annotations
 import uuid
 from decimal import Decimal
 from typing import Any
-from unittest.mock import AsyncMock
 
 import pytest
 
 from app.core.errors import ConflictError, ValidationError
-from app.modules.financial.models import ChartOfAccount, FinancialTransaction
+from app.modules.financial.models import ChartOfAccount
 from app.modules.financial.ports import SandboxPaymentAdapter
 from app.modules.financial.schemas import EntryCreate
 from app.modules.financial.service import FinancialService

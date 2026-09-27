@@ -49,8 +49,9 @@ class FinancialService:
         total_credits = Decimal("0.0000")
 
         for entry in entries:
-            e_type = entry.entry_type if isinstance(entry, EntryCreate) else entry["entry_type"]
-            amount = entry.amount if isinstance(entry, EntryCreate) else Decimal(str(entry["amount"]))
+            is_create = isinstance(entry, EntryCreate)
+            e_type = entry.entry_type if is_create else entry["entry_type"]
+            amount = entry.amount if is_create else Decimal(str(entry["amount"]))
             if e_type == "DEBIT":
                 total_debits += amount
             elif e_type == "CREDIT":

@@ -30,7 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import metrics
 from app.core.commands import command_hash as compute_command_hash
-from app.core.errors import ConflictError, NotFoundError, ValidationError
+from app.core.errors import ConflictError, NotFoundError
 from app.core.events.writer import add_outbox_event
 from app.modules.authority.models import AuthorityLease, CapabilityGrant
 from app.modules.authority.schemas import ExecutionResultOut
@@ -105,7 +105,8 @@ class AtomicExecutionService:
         if lease.command_hash != arrived_hash:
             await metrics.record_authority_rejection()
             raise ConflictError(
-                f"Execution command_hash mismatch (lease: {lease.command_hash}, execution: {arrived_hash})"
+                f"Execution command_hash mismatch (lease: {lease.command_hash}, "
+                f"execution: {arrived_hash})"
             )
 
         # 6. Verify Capability Grant with row lock
@@ -149,7 +150,8 @@ class AtomicExecutionService:
             await session.flush()
             await metrics.record_authority_rejection()
             raise ConflictError(
-                f"Underlying decision is not in APPROVED state (current: {decision.decision_status})"
+                f"Underlying decision is not in APPROVED state "
+                f"(current: {decision.decision_status})"
             )
 
         if decision.expires_at and decision.expires_at <= now:
@@ -173,7 +175,8 @@ class AtomicExecutionService:
                     lease.state = "REVOKED"
                     await session.flush()
                     raise ConflictError(
-                        f"Resource version conflict on '{res_key}': expected {expected_ver}, observed {observed_ver}"
+                        f"Resource version conflict on '{res_key}': "
+                        f"expected {expected_ver}, observed {observed_ver}"
                     )
 
         # 9. Commit budget reservation if any
