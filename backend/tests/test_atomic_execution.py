@@ -358,7 +358,7 @@ class TestAtomicExecution:
             purpose=PURPOSE,
             outbox_aggregate_type="order",
             outbox_aggregate_id=agg_id,
-            outbox_event_type="order.discount_applied",
+            outbox_event_type="order.status_changed",
             outbox_payload={"discount_pct": 10},
         )
         assert result.success is True

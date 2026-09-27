@@ -517,6 +517,11 @@ class OutboxRelay:
                 "payload": json.dumps(payload, default=str),
                 "tenant_id": str(envelope.tenant_id),
                 "workspace_id": str(envelope.workspace_id) if envelope.workspace_id else None,
+                "location_id": (
+                    str(envelope.location_id)
+                    if getattr(envelope, "location_id", None)
+                    else (str(meta["location_id"]) if meta.get("location_id") else None)
+                ),
                 "decision_id": (
                     str(envelope.decision_id)
                     if getattr(envelope, "decision_id", None)
