@@ -456,6 +456,26 @@ class ConversationService:
         return {message_id: (status, text) for message_id, status, text in rows}
 
     @staticmethod
+    async def attachment_storage_keys(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        message_ids: list[uuid.UUID],
+    ) -> dict[uuid.UUID, str]:
+        """Return tenant-scoped durable media keys for a page of messages."""
+        if not message_ids:
+            return {}
+        rows = (
+            await session.execute(
+                select(Attachment.message_id, Attachment.storage_key).where(
+                    Attachment.tenant_id == tenant_id,
+                    Attachment.message_id.in_(message_ids),
+                    Attachment.storage_key.is_not(None),
+                )
+            )
+        ).all()
+        return {message_id: key for message_id, key in rows if message_id and key}
+
+    @staticmethod
     async def mark_read(
         session: AsyncSession, tenant_id: uuid.UUID, conversation_id: uuid.UUID
     ) -> Conversation:

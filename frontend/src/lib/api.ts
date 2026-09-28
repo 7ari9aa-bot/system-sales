@@ -199,7 +199,7 @@ export async function apiWithMeta<T = unknown>(
     // The SAME key goes out again — a refreshed token is still the same user
     // intent, and replaying it against a completed write is the point.
     if (refreshed) return apiWithMeta<T>(path, { ...options, retry: false });
-    if (typeof window !== "undefined") window.location.href = "/login";
+    if (typeof window !== "undefined") window.location.href = "/auth/login";
     throw new ApiError("غير مصرّح", { status: 401, code: "unauthorized" });
   }
 
@@ -215,7 +215,7 @@ export async function apiWithMeta<T = unknown>(
       if (msg.includes("token") || msg.includes("bearer")) {
         const refreshed = await tryRefresh();
         if (refreshed) return apiWithMeta<T>(path, { ...options, retry: false });
-        if (typeof window !== "undefined") window.location.href = "/login";
+        if (typeof window !== "undefined") window.location.href = "/auth/login";
         throw new ApiError("غير مصرّح", { status: 401, code: "unauthorized" });
       }
     } catch (e) {

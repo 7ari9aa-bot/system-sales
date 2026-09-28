@@ -56,7 +56,12 @@ export function NotificationsBell() {
   const qc = useQueryClient();
 
   const { data: countData } = useUnreadCount();
-  const { data: notifications = [] } = useNotifications({ limit: 20 });
+  const { data: rawNotifications } = useNotifications({ limit: 20 });
+  const notifications: Notification[] = Array.isArray(rawNotifications)
+    ? rawNotifications
+    : Array.isArray((rawNotifications as unknown as { items?: Notification[] })?.items)
+      ? ((rawNotifications as unknown as { items: Notification[] }).items)
+      : [];
   const markRead = useMarkRead();
   const markAll = useMarkAllRead();
 

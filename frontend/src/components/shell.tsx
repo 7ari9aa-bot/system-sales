@@ -180,7 +180,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   // حماية: بدون توكنات → صفحة الدخول
   React.useEffect(() => {
     if (!getTokens()) {
-      router.replace("/login");
+      router.replace("/auth/login");
       return;
     }
     setReady(true);
@@ -231,7 +231,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
     }
     setTokens(null);
     queryClient.clear(); // منع وميض بيانات الحساب السابق عند الدخول التالي
-    router.replace("/login");
+    router.replace("/auth/login");
   }
 
   function goCreate(href: string) {

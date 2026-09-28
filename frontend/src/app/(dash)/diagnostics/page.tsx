@@ -88,14 +88,17 @@ function formatLatency(ms: number | null): string {
   return `${ms.toFixed(0)}ms`;
 }
 
-function formatTimestamp(iso: string): string {
+function formatTimestamp(iso: string | undefined | null): string {
+  if (!iso) return "الآن";
   try {
-    return new Date(iso).toLocaleString("ar-EG", {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "الآن";
+    return d.toLocaleString("ar-EG", {
       dateStyle: "medium",
       timeStyle: "medium",
     });
   } catch {
-    return iso;
+    return "الآن";
   }
 }
 
@@ -292,6 +295,7 @@ export default function DiagnosticsPage() {
             onClick={() => refetch()}
             disabled={isFetching}
             className="gap-1.5"
+            data-testid="diagnostics-refresh-btn"
           >
             <RefreshCw className={cn("size-3.5", isFetching && "animate-spin")} />
             إعادة الفحص
@@ -301,6 +305,7 @@ export default function DiagnosticsPage() {
             onClick={() => remediate.mutate()}
             disabled={remediate.isPending || isLoading}
             className="gap-1.5"
+            data-testid="diagnostics-remediate-btn"
           >
             <Wrench className={cn("size-3.5", remediate.isPending && "animate-spin")} />
             إصلاح تلقائي
@@ -385,7 +390,7 @@ export default function DiagnosticsPage() {
               </CardHeader>
               <CardContent className="pt-0 space-y-2">
                 <p className="text-[13px]">{remediate.data.message_ar}</p>
-                {remediate.data.actions_taken.length > 0 && (
+                {Array.isArray(remediate.data.actions_taken) && remediate.data.actions_taken.length > 0 && (
                   <ul className="space-y-1">
                     {remediate.data.actions_taken.map((action, i) => (
                       <li key={i} className="flex items-start gap-2 text-[12px]">

@@ -111,6 +111,9 @@ class Settings(BaseSettings):
     s3_bucket: str = ""
     s3_access_key_id: str = ""
     s3_secret_access_key: str = ""
+    # Supabase Storage S3-compatible credentials are server-side only. Private
+    # media is returned through short-lived presigned GET URLs.
+    s3_signed_url_ttl_seconds: int = 900
 
     # outbox relay
     outbox_poll_interval_seconds: float = 0.5

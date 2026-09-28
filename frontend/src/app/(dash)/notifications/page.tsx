@@ -126,10 +126,12 @@ export default function NotificationsPage() {
   const summaryQuery = useNotificationSummary();
   const markRead = useMarkRead();
   const markMany = useMarkManyRead();
-  const markAll = useMarkAllRead();
-
-  const items = listQuery.data ?? [];
-  const summary = summaryQuery.data;
+  const rawItems = listQuery.data;
+  const items: Notification[] = Array.isArray(rawItems)
+    ? rawItems
+    : Array.isArray((rawItems as unknown as { items?: Notification[] })?.items)
+      ? ((rawItems as unknown as { items: Notification[] }).items)
+      : [];
   const unreadTotal = summary?.unread ?? 0;
 
   // Drop selections that are no longer on screen so the bulk action never

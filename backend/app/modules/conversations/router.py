@@ -208,6 +208,26 @@ async def list_messages(
         rows = rows[1:]  # drop the overflow row (oldest) from the display page
         boundary = rows[0]  # oldest displayed row = next page's keyset boundary
         next_cursor = encode_cursor(boundary.created_at, boundary.id)
+    storage_keys = await ConversationService.attachment_storage_keys(
+        ctx.session, ctx.tenant_id, [message.id for message in rows]
+    )
+    media_urls = {}
+    if storage_keys:
+        from app.core.storage import get_storage
+
+        storage = get_storage()
+        for message_id, key in storage_keys.items():
+            try:
+                media_urls[message_id] = storage.signed_url(key)
+            except Exception:
+                logger.exception(
+                    "media.signed_url_failed tenant=%s message=%s",
+                    ctx.tenant_id,
+                    message_id,
+                )
+                # A durable private object must never fall back to its expired
+                # provider URL when signing fails.
+                media_urls[message_id] = None
     return {
         "items": [
             {
@@ -215,7 +235,7 @@ async def list_messages(
                 "direction": m.direction,
                 "sender_type": m.sender_type,
                 "body": m.body,
-                "media_url": m.media_url,
+                "media_url": media_urls.get(m.id, m.media_url),
                 "media_type": m.media_type,
                 "status": m.status,
                 "created_at": m.created_at.isoformat(),

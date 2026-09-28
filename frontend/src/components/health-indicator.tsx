@@ -188,6 +188,7 @@ export function HealthIndicator() {
         <div className="p-1">
           <Link
             href="/diagnostics"
+            data-testid="health-open-diagnostics"
             className="flex items-center justify-center gap-2 w-full rounded-md bg-muted/60 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors text-center"
           >
             <Activity className="size-3.5 text-primary" />

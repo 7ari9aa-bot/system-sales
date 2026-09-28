@@ -123,14 +123,29 @@ export default function DashboardPage() {
     );
   }
 
-  const money = data.orders;
-  const currency = money.currency || tenantCurrency;
-  const lowStock = data.low_stock_count;
-  const soldOut = data.out_of_stock_count;
-  const sources = [...data.revenue_by_source]
-    .sort((a, b) => scaleOf(b.revenue) - scaleOf(a.revenue))
-    .slice(0, 5);
+  const money = data.orders ?? {
+    gross_revenue: "0",
+    net_revenue: "0",
+    refunded_amount: "0",
+    orders_count: 0,
+    net_aov: "0",
+    gross_aov: "0",
+    currency: tenantCurrency || "EGP",
+    refund_excess: "0",
+    timezone: "UTC",
+  };
+  const currency = money.currency || tenantCurrency || "EGP";
+  const lowStock = data.low_stock_count ?? 0;
+  const soldOut = data.out_of_stock_count ?? 0;
+  const sources = Array.isArray(data.revenue_by_source)
+    ? [...data.revenue_by_source]
+        .sort((a, b) => scaleOf(b.revenue) - scaleOf(a.revenue))
+        .slice(0, 5)
+    : [];
   const maxSource = Math.max(1, ...sources.map((s) => scaleOf(s.revenue)));
+
+  const unreadConversations = data.conversations?.unread ?? 0;
+  const openConversations = data.conversations?.open ?? 0;
 
   return (
     <div>
@@ -144,14 +159,14 @@ export default function DashboardPage() {
           <span className="text-xs text-muted-foreground">{t.today}</span>
         </CardHeader>
         <CardContent>
-          {data.conversations.unread === 0 && lowStock === 0 && soldOut === 0 ? (
+          {unreadConversations === 0 && lowStock === 0 && soldOut === 0 ? (
             <div className="flex items-center gap-2 text-sm text-success">
               <CircleCheck aria-hidden="true" className="size-4" />
               <span>{t.allClear}</span>
             </div>
           ) : (
             <div className="grid gap-2 sm:grid-cols-2">
-              {data.conversations.unread > 0 && (
+              {unreadConversations > 0 && (
                 <Link
                   href="/inbox"
                   data-testid="attention-unread"
@@ -159,7 +174,7 @@ export default function DashboardPage() {
                 >
                   <span className="flex items-center gap-2 text-sm font-semibold">
                     <span className="size-2 rounded-full bg-primary" aria-hidden="true" />
-                    {data.conversations.unread} {t.unread}
+                    {unreadConversations} {t.unread}
                   </span>
                   <ArrowUpRight aria-hidden="true" className="size-4 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
                 </Link>
@@ -221,8 +236,8 @@ export default function DashboardPage() {
         />
         <Stat
           label={t.openConversations}
-          value={data.conversations.open}
-          hint={`${data.conversations.unread} ${t.unread}`}
+          value={openConversations}
+          hint={`${unreadConversations} ${t.unread}`}
           testid="stat-conversations"
         />
         <Stat label={t.customers} value={data.customers} testid="stat-customers" />
@@ -296,7 +311,11 @@ export default function DashboardPage() {
             </span>
           </CardHeader>
           <CardContent>
-            <BarChart data={data.daily_orders} currency={currency} timezone={money.timezone} />
+            <BarChart
+              data={Array.isArray(data.daily_orders) ? data.daily_orders : []}
+              currency={currency}
+              timezone={money.timezone}
+            />
           </CardContent>
         </Card>
 

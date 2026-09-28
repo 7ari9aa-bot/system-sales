@@ -90,6 +90,7 @@ class ObjectStorage:
     def _s3(self):
         if self._client is None:
             import boto3  # lazy: only needed when storage is configured
+            from botocore.config import Config
 
             self._client = boto3.client(
                 "s3",
@@ -97,6 +98,8 @@ class ObjectStorage:
                 region_name=self._region or "us-east-1",
                 aws_access_key_id=self._key,
                 aws_secret_access_key=self._secret,
+                # Supabase Storage's S3 endpoint expects path-style requests.
+                config=Config(s3={"addressing_style": "path"}),
             )
         return self._client
 
@@ -104,6 +107,24 @@ class ObjectStorage:
         if self._endpoint:
             return f"{self._endpoint.rstrip('/')}/{self._bucket}/{key}"
         return f"https://{self._bucket}.s3.{self._region or 'us-east-1'}.amazonaws.com/{key}"
+
+    def signed_url(self, key: str, *, expires_in: int | None = None) -> str:
+        """Return a short-lived read URL for an object in the private bucket."""
+        if not self.configured:
+            raise RuntimeError("object storage is not configured")
+        settings = get_settings()
+        ttl = (
+            settings.s3_signed_url_ttl_seconds
+            if expires_in is None
+            else expires_in
+        )
+        if ttl < 1 or ttl > 7 * 24 * 60 * 60:
+            raise ValueError("signed URL lifetime must be between 1 second and 7 days")
+        return self._s3().generate_presigned_url(
+            "get_object",
+            Params={"Bucket": self._bucket, "Key": key},
+            ExpiresIn=ttl,
+        )
 
     MAX_REDIRECTS = 3
 
