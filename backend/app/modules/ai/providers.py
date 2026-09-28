@@ -19,6 +19,7 @@ import httpx
 from app.core.errors import ExternalProviderError
 
 _TIMEOUT_SECONDS = 120.0  # reasoning models with tool schemas can be slow
+_VISION_TIMEOUT_SECONDS = 15.0  # the image tool budget (§19) is 8s; transport headroom
 
 
 @dataclass(slots=True)
@@ -47,11 +48,14 @@ def _auth_headers(api_key: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
 
-def _acquire_client(_client: httpx.AsyncClient | None) -> tuple[httpx.AsyncClient, bool]:
+def _acquire_client(
+    _client: httpx.AsyncClient | None,
+    timeout: float = _TIMEOUT_SECONDS,
+) -> tuple[httpx.AsyncClient, bool]:
     """Return (client, owned) — owned clients must be closed by the caller."""
     if _client is not None:
         return _client, False
-    return httpx.AsyncClient(timeout=_TIMEOUT_SECONDS), True
+    return httpx.AsyncClient(timeout=timeout), True
 
 
 class AIProvider:
@@ -180,3 +184,177 @@ class EmbeddingProvider:
             raise
         except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as exc:
             raise ExternalProviderError(f"malformed embedding response: {exc}") from exc
+
+
+# --------------------------------------------------------------------------
+# Vision-stack transports (Customer Agent §12). These two are NOT
+# OpenAI-compatible: the vision embedding speaks DashScope's native schema and
+# the reranker speaks Jina's. Same discipline as above — build request, parse
+# response, raise ExternalProviderError — the vision pipeline's decision logic
+# lives in the agent package, never here.
+
+
+@dataclass(slots=True)
+class MultimodalContent:
+    """One embedding input item: text, image, or both together.
+
+    ``image`` is an https URL or a data URL — the provider fetches both, so
+    nothing here ever carries a local path or tenant storage credentials.
+    """
+
+    text: str | None = None
+    image: str | None = None
+
+    def payload(self) -> dict[str, str]:
+        item: dict[str, str] = {}
+        if self.text is not None:
+            item["text"] = self.text
+        if self.image is not None:
+            item["image"] = self.image
+        if not item:
+            raise ValueError("MultimodalContent needs a text or an image")
+        return item
+
+
+class MultimodalEmbeddingProvider:
+    """POST {base_url}/services/embeddings/multimodal-embedding/multimodal-embedding.
+
+    DashScope Model Studio native schema. ``tongyi-embedding-vision-flash``
+    answers text-only, image-only and image+text items alike with a fixed-width
+    vector (768 for this model) — one vector per input item, so a product image
+    and its caption can land in ONE vector space.
+    """
+
+    async def embed(
+        self,
+        *,
+        base_url: str,
+        api_key: str,
+        model: str,
+        contents: list[MultimodalContent],
+        expected_dimensions: int | None = None,
+        _client: httpx.AsyncClient | None = None,
+    ) -> list[list[float]]:
+        if not contents:
+            raise ValueError("contents must not be empty")
+        url = (
+            f"{base_url.rstrip('/')}"
+            "/services/embeddings/multimodal-embedding/multimodal-embedding"
+        )
+        payload = {
+            "model": model,
+            "input": {"contents": [item.payload() for item in contents]},
+        }
+
+        client, owned = _acquire_client(_client, _VISION_TIMEOUT_SECONDS)
+        try:
+            try:
+                response = await client.post(url, json=payload, headers=_auth_headers(api_key))
+            except httpx.HTTPError as exc:
+                raise ExternalProviderError(f"vision embedding request failed: {exc}") from exc
+        finally:
+            if owned:
+                await client.aclose()
+
+        if response.status_code >= 400:
+            # DashScope native errors carry {"code", "message"} — surface the
+            # message, "Model not exist." beats a bare status code.
+            try:
+                detail = response.json().get("message") or response.text[:200]
+            except ValueError:
+                detail = response.text[:200]
+            raise ExternalProviderError(
+                f"vision embedding failed with HTTP {response.status_code}: {detail}",
+                details={"status_code": response.status_code},
+            )
+
+        try:
+            body = response.json()
+            entries = body["output"]["embeddings"]
+            ordered = sorted(entries, key=lambda entry: int(entry.get("index") or 0))
+            vectors = [[float(x) for x in entry["embedding"]] for entry in ordered]
+            if len(vectors) != len(contents):
+                raise ValueError(f"expected {len(contents)} vectors, got {len(vectors)}")
+            if expected_dimensions is not None:
+                dims = {len(v) for v in vectors}
+                if dims != {expected_dimensions}:
+                    raise ValueError(
+                        f"expected {expected_dimensions}-dim vectors, got {sorted(dims)}"
+                    )
+            return vectors
+        except ExternalProviderError:
+            raise
+        except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ExternalProviderError(f"malformed vision embedding response: {exc}") from exc
+
+
+@dataclass(slots=True)
+class RerankResult:
+    """One scored document — ``index`` points into the CALLER's input order."""
+
+    index: int
+    score: float
+
+
+class RerankerProvider:
+    """POST {base_url}/rerank (Jina schema).
+
+    Query and documents may each be text or an image (https/data URL), so the
+    vision pipeline reranks the customer's photo against candidate product
+    photos directly — no OCR round-trip in between. Results come back scored
+    descending with their ORIGINAL input indexes preserved, because the caller
+    maps indexes back to product ids it fetched itself.
+    """
+
+    async def rerank(
+        self,
+        *,
+        base_url: str,
+        api_key: str,
+        model: str,
+        query: str,
+        documents: list[dict[str, str]],
+        top_n: int | None = None,
+        _client: httpx.AsyncClient | None = None,
+    ) -> list[RerankResult]:
+        if not documents:
+            raise ValueError("documents must not be empty")
+        url = f"{base_url.rstrip('/')}/rerank"
+        payload: dict = {"model": model, "query": query, "documents": documents}
+        if top_n is not None:
+            payload["top_n"] = top_n
+
+        client, owned = _acquire_client(_client, _VISION_TIMEOUT_SECONDS)
+        try:
+            try:
+                response = await client.post(url, json=payload, headers=_auth_headers(api_key))
+            except httpx.HTTPError as exc:
+                raise ExternalProviderError(f"rerank request failed: {exc}") from exc
+        finally:
+            if owned:
+                await client.aclose()
+
+        if response.status_code >= 400:
+            raise ExternalProviderError(
+                f"rerank failed with HTTP {response.status_code}: {response.text[:200]}",
+                details={"status_code": response.status_code},
+            )
+
+        try:
+            body = response.json()
+            results = [
+                RerankResult(index=int(entry["index"]), score=float(entry["relevance_score"]))
+                for entry in body["results"]
+            ]
+            # The decision engine reads the ABSOLUTE score of rank 1 and the gap
+            # to rank 2, so the ordering contract is enforced here, not hoped
+            # for — and scores outside [0, 1] would silently invalidate every
+            # threshold, so they fail loudly instead.
+            results.sort(key=lambda r: r.score, reverse=True)
+            if any(r.score < 0.0 or r.score > 1.0 for r in results):
+                raise ValueError("relevance_score outside [0, 1]")
+            return results
+        except ExternalProviderError:
+            raise
+        except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ExternalProviderError(f"malformed rerank response: {exc}") from exc

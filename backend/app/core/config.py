@@ -79,6 +79,18 @@ class Settings(BaseSettings):
     ai_api_key_primary: str = ""
     ai_base_url_primary: str = ""
 
+    # Customer Agent vision stack (§12): the multimodal embedding speaks
+    # DashScope's native (non-OpenAI) schema and the reranker speaks Jina's.
+    # tongyi-embedding-vision-flash emits fixed 768-dim vectors — verified
+    # 2026-09-29; a model change invalidates every stored vector (§12.6).
+    ai_embedding_vision_base_url: str = "https://dashscope-intl.aliyuncs.com/api/v1"
+    ai_embedding_vision_api_key: str = ""
+    ai_embedding_vision_model: str = "tongyi-embedding-vision-flash"
+    ai_embedding_vision_dimensions: int = 768
+    ai_reranker_base_url: str = "https://api.jina.ai/v1"
+    ai_reranker_api_key: str = ""
+    ai_reranker_model: str = "jina-reranker-m0"
+
     # §42: the monthly AI spend cap (USD) applied when a tenant has no
     # BudgetPolicy row. Configurable so an operator can change the ceiling
     # without a deploy; the default preserves the previous hard-coded constant.
