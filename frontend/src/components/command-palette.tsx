@@ -6,8 +6,6 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import {
   LayoutDashboard,
   MessagesSquare,
-  ListChecks,
-  ClipboardList,
   Bell,
   Users,
   ShoppingCart,
@@ -20,7 +18,6 @@ import {
   Search,
   CornerDownLeft,
   Scale,
-  RotateCcw,
   Receipt,
 } from "lucide-react";
 import { t } from "@/lib/t";
@@ -42,21 +39,19 @@ type CommandItem = {
    language without a page reload. */
 function buildNavItems(): CommandItem[] {
   return [
-    { id: "nav-dashboard", label: t.goDashboard, group: "nav", href: "/dashboard", icon: <LayoutDashboard aria-hidden="true" /> },
-    { id: "nav-my-work", label: t.myWork, group: "nav", href: "/my-work", icon: <ClipboardList aria-hidden="true" />, keywords: "شغلي مهامي my work" },
-    { id: "nav-notifications", label: t.notifications, group: "nav", href: "/notifications", icon: <Bell aria-hidden="true" />, keywords: "اشعارات تنبيهات" },
+    { id: "nav-dashboard", label: t.goDashboard, group: "nav", href: "/dashboard", icon: <LayoutDashboard aria-hidden="true" />, keywords: "شغلي نظرة عامة overview home" },
     { id: "nav-inbox", label: t.goInbox, group: "nav", href: "/inbox", icon: <MessagesSquare aria-hidden="true" />, keywords: "whatsapp telegram محادثة" },
-    { id: "nav-tasks", label: t.myTasks, group: "nav", href: "/tasks", icon: <ListChecks aria-hidden="true" />, keywords: "مهام" },
-    { id: "nav-customers", label: t.goCustomers, group: "nav", href: "/customers", icon: <Users aria-hidden="true" />, keywords: "عميل" },
+    { id: "nav-approvals", label: t.approvalsTitle, group: "nav", href: "/approvals", icon: <Scale aria-hidden="true" />, keywords: "موافقات اعتماد" },
+    { id: "nav-customers", label: t.goCustomers, group: "nav", href: "/customers", icon: <Users aria-hidden="true" />, keywords: "عميل ليد" },
     { id: "nav-orders", label: t.goOrders, group: "nav", href: "/orders", icon: <ShoppingCart aria-hidden="true" />, keywords: "طلب" },
     { id: "nav-products", label: t.goProducts, group: "nav", href: "/products", icon: <Package aria-hidden="true" />, keywords: "منتج" },
     { id: "nav-inventory", label: t.goInventory, group: "nav", href: "/inventory", icon: <Warehouse aria-hidden="true" />, keywords: "مخزون رصيد" },
-    { id: "nav-financial", label: t.financial, group: "nav", href: "/financial", icon: <Receipt aria-hidden="true" />, keywords: "مالية حسابات قيود ledger balance" },
     { id: "nav-marketing", label: t.goMarketing, group: "nav", href: "/marketing", icon: <Megaphone aria-hidden="true" />, keywords: "حملة اعلان" },
-    { id: "nav-ai", label: t.goAi, group: "nav", href: "/ai", icon: <Sparkles aria-hidden="true" />, keywords: "معرفة وكيل" },
-    { id: "nav-decisions", label: t.decisions, group: "nav", href: "/decisions", icon: <Scale aria-hidden="true" />, keywords: "قرارات حوكمة اعتماد decision" },
-    { id: "nav-effects", label: t.effects, group: "nav", href: "/effects", icon: <RotateCcw aria-hidden="true" />, keywords: "تسوية تأثيرات idempotency outbox" },
+    { id: "nav-financial", label: t.financial, group: "nav", href: "/financial", icon: <Receipt aria-hidden="true" />, keywords: "مالية حسابات قيود ledger balance" },
+    { id: "nav-ai", label: t.agentSettings, group: "nav", href: "/ai", icon: <Sparkles aria-hidden="true" />, keywords: "معرفة وكيل agent prompt" },
+    { id: "nav-analytics", label: t.dashboards, group: "nav", href: "/analytics", icon: <LayoutDashboard aria-hidden="true" />, keywords: "تحليلات بيانات analytics" },
     { id: "nav-settings", label: t.goSettings, group: "nav", href: "/settings", icon: <Settings aria-hidden="true" />, keywords: "اعدادات دعوة تكامل" },
+    { id: "nav-notifications", label: t.notifications, group: "nav", href: "/notifications", icon: <Bell aria-hidden="true" />, keywords: "اشعارات تنبيهات" },
   ];
 }
 

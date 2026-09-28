@@ -12,7 +12,6 @@ import {
   ArrowUpRight,
   Bookmark,
   Clock,
-  ListChecks,
   MessagesSquare,
   ShieldAlert,
   TriangleAlert,
@@ -23,12 +22,10 @@ import {
   useMe,
   useSavedViews,
   useSlaRisk,
-  useTasks,
   type Approval,
   type Conversation,
   type SavedView,
   type SlaRiskItem,
-  type Task,
 } from "@/lib/queries";
 import { t } from "@/lib/t";
 import { getLang } from "@/lib/i18n";
@@ -142,7 +139,6 @@ export function MyWorkSection() {
   const me = useMe();
   const slaQuery = useSlaRisk();
   const approvalsQuery = useApprovals("PENDING");
-  const tasksQuery = useTasks();
   const conversationsQuery = useConversations();
   const savedViewsQuery = useSavedViews(null);
   const savedViews = savedViewsQuery.data ?? [];
@@ -160,15 +156,6 @@ export function MyWorkSection() {
   }, [slaQuery.data]);
 
   const approvals = approvalsQuery.data?.items ?? [];
-
-  const myTasks = React.useMemo<Task[]>(() => {
-    if (!myId) return [];
-    return (tasksQuery.data ?? []).filter(
-      (task) =>
-        task.assignee_user_id === myId &&
-        (task.status === "todo" || task.status === "in_progress"),
-    );
-  }, [tasksQuery.data, myId]);
 
   const myConversations = React.useMemo<Conversation[]>(() => {
     if (!myId) return [];
@@ -252,7 +239,7 @@ export function MyWorkSection() {
         </Section>
 
         {/* 2 — My approvals */}
-        <Section title={t.myApprovals} hint={t.myApprovalsHint} href="/ai" linkLabel={t.ai}>
+        <Section title={t.myApprovals} hint={t.myApprovalsHint} href="/approvals" linkLabel={t.approvalsTitle}>
           {approvalsQuery.isLoading ? (
             <RowsSkeleton />
           ) : approvalsQuery.error ? (
@@ -282,42 +269,6 @@ export function MyWorkSection() {
                     {t.approvalRisk}: {riskLabel(approval.risk_level)}
                   </Badge>
                 </RowShell>
-              ))}
-            </div>
-          )}
-        </Section>
-
-        {/* 3 — My tasks */}
-        <Section title={t.myAssignedTasks} hint={t.myAssignedTasksHint} href="/tasks" linkLabel={t.myTasks}>
-          {me.isLoading || tasksQuery.isLoading ? (
-            <RowsSkeleton />
-          ) : tasksQuery.error ? (
-            <ErrorState message={(tasksQuery.error as Error).message} onRetry={() => tasksQuery.refetch()} />
-          ) : myTasks.length === 0 ? (
-            <EmptyState
-              icon={<ListChecks aria-hidden="true" />}
-              title={t.myAssignedTasksEmpty}
-              description={t.myAssignedTasksEmptyHint}
-              className="py-8"
-            />
-          ) : (
-            <div className="space-y-2">
-              {myTasks.map((task) => (
-                <Link
-                  key={task.id}
-                  href="/tasks"
-                  className="flex items-center justify-between gap-3 rounded-lg border border-border p-3 transition-colors hover:bg-muted"
-                >
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-semibold">{task.title}</div>
-                    <div className="mt-0.5 text-xs text-muted-foreground">
-                      {t.dueDate}: {task.due_date ? formatDateTime(task.due_date) : "—"}
-                    </div>
-                  </div>
-                  <Badge variant={task.status === "in_progress" ? "primary" : "default"}>
-                    {task.status === "in_progress" ? t.taskInProgress : t.taskTodo}
-                  </Badge>
-                </Link>
               ))}
             </div>
           )}
@@ -444,15 +395,15 @@ export function MyWorkSection() {
           href="/inbox"
           className="group inline-flex items-center gap-1.5 text-[13px] font-bold text-primary underline-offset-4 hover:underline"
         >
-          <TriangleAlert aria-hidden="true" className="size-3.5" />
+          <MessagesSquare aria-hidden="true" className="size-3.5" />
           {t.goInbox}
         </Link>
         <Link
-          href="/tasks"
+          href="/approvals"
           className="group inline-flex items-center gap-1.5 text-[13px] font-bold text-primary underline-offset-4 hover:underline"
         >
-          <ListChecks aria-hidden="true" className="size-3.5" />
-          {t.myTasks}
+          <ShieldAlert aria-hidden="true" className="size-3.5" />
+          {t.approvalsTitle}
         </Link>
       </div>
     </section>

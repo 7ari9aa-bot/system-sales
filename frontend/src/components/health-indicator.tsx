@@ -13,7 +13,8 @@
  * as "unknown" (a muted dot), never as "healthy" or as a broken widget.
  */
 
-import { AlertTriangle } from "lucide-react";
+import Link from "next/link";
+import { AlertTriangle, Activity } from "lucide-react";
 import { usePlatformHealth, type HealthStatus, type HealthSubsystem } from "@/lib/queries";
 import { t } from "@/lib/t";
 import { cn } from "@/lib/utils";
@@ -135,7 +136,7 @@ export function HealthIndicator() {
         </Button>
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent align="end" className="w-72" aria-label={t.healthLabel}>
+      <DropdownMenuContent align="end" className="w-80" aria-label={t.healthLabel}>
         <DropdownMenuLabel className="flex items-center justify-between gap-2">
           <span>{t.healthLabel}</span>
           <Badge variant={BADGE_VARIANT[status]}>{overallLabel(status)}</Badge>
@@ -147,7 +148,7 @@ export function HealthIndicator() {
             {t.healthUnknown}
           </p>
         ) : (
-          <ul className="py-0.5">
+          <ul className="py-0.5 space-y-1">
             <li className="px-2.5 pb-1 pt-1.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground/80">
               {t.healthSubsystems}
             </li>
@@ -156,21 +157,43 @@ export function HealthIndicator() {
               return (
                 <li
                   key={row.name}
-                  className="flex items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-[13px]"
+                  className="flex flex-col gap-1 rounded-lg px-2.5 py-1.5 text-[13px] hover:bg-muted/40 transition-colors"
                 >
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span
-                      className={cn("size-2 shrink-0 rounded-full", DOT_CLASS[rowStatus])}
-                      aria-hidden="true"
-                    />
-                    <span className="truncate font-medium">{subsystemLabel(row.name)}</span>
-                  </span>
-                  <Badge variant={BADGE_VARIANT[rowStatus]}>{subsystemStatusLabel(rowStatus)}</Badge>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span
+                        className={cn("size-2 shrink-0 rounded-full", DOT_CLASS[rowStatus])}
+                        aria-hidden="true"
+                      />
+                      <span className="truncate font-medium">{subsystemLabel(row.name)}</span>
+                    </span>
+                    <Badge variant={BADGE_VARIANT[rowStatus]}>{subsystemStatusLabel(rowStatus)}</Badge>
+                  </div>
+                  {row.detail && (
+                    <p
+                      className={cn(
+                        "text-[11px] leading-snug ps-4",
+                        rowStatus === "healthy" ? "text-muted-foreground" : "text-danger font-medium",
+                      )}
+                    >
+                      {row.detail}
+                    </p>
+                  )}
                 </li>
               );
             })}
           </ul>
         )}
+        <DropdownMenuSeparator />
+        <div className="p-1">
+          <Link
+            href="/diagnostics"
+            className="flex items-center justify-center gap-2 w-full rounded-md bg-muted/60 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors text-center"
+          >
+            <Activity className="size-3.5 text-primary" />
+            <span>مركز التشخيص والفحص الشامل</span>
+          </Link>
+        </div>
       </DropdownMenuContent>
     </DropdownMenu>
   );

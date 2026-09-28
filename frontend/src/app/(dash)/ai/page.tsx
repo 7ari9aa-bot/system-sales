@@ -1,12 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { BookOpen, Plus, Sparkles } from "lucide-react";
+import { BookOpen, Plus } from "lucide-react";
 import {
   useAddKnowledge,
   useAgents,
-  useAgentPrompt,
-  useUpdateAgentPrompt,
   useKnowledge,
   useKnowledgeSearch,
   useUsageSummary,
@@ -101,8 +99,8 @@ export default function AIPage() {
   return (
     <div>
       <PageHeader
-        title={t.ai}
-        description="قاعدة المعرفة والوكلاء والاستهلاك"
+        title={t.agentSettings}
+        description={t.agentSettingsHint}
         actions={
           <Button onClick={() => setAddOpen(true)} data-testid="open-knowledge-form">
             <Plus aria-hidden="true" />
@@ -130,7 +128,7 @@ export default function AIPage() {
             <StatCard label={t.agents} value={agents.length} />
           </div>
 
-          <Tabs defaultValue="knowledge">
+          <Tabs defaultValue="agent">
             <TabsList>
               <TabsTrigger value="agent">{t.agentSettings}</TabsTrigger>
               <TabsTrigger value="knowledge">{t.aiTabKnowledge}</TabsTrigger>

@@ -398,11 +398,11 @@ export default function NotificationsPage() {
       {/* §107 — never a dead end. */}
       <div className="mt-4">
         <Link
-          href="/my-work"
+          href="/dashboard"
           className="inline-flex items-center gap-1.5 text-[13px] font-bold text-primary underline-offset-4 hover:underline"
         >
           <Bell aria-hidden="true" className="size-3.5" />
-          {t.myWork}
+          {t.overview}
         </Link>
       </div>
     </div>

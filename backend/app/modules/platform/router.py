@@ -10,7 +10,7 @@ screen saves into, and the health surface is what the UI badges.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, Query, Request
@@ -559,8 +559,19 @@ async def _redis_subsystem() -> dict:
 
 
 async def _outbox_subsystem(ctx: TenantContext) -> dict:
-    """Age of the oldest unpublished outbox event — the relay's backlog."""
+    """Age of the oldest unpublished outbox event and count of stranded publishing events."""
     try:
+        # Check for stranded 'publishing' events (older than 5 minutes - silent failure trap)
+        stuck_cutoff = datetime.now(UTC) - timedelta(minutes=5)
+        stuck_count = (
+            await ctx.session.execute(
+                select(func.count(OutboxEvent.id)).where(
+                    OutboxEvent.status == "publishing",
+                    OutboxEvent.updated_at < stuck_cutoff,
+                )
+            )
+        ).scalar_one() or 0
+
         oldest = (
             await ctx.session.execute(
                 select(func.min(OutboxEvent.created_at)).where(
@@ -570,6 +581,10 @@ async def _outbox_subsystem(ctx: TenantContext) -> dict:
         ).scalar_one_or_none()
     except Exception as exc:  # noqa: BLE001
         return subsystem("outbox", "degraded", f"unknown ({type(exc).__name__})")
+
+    if stuck_count > 0:
+        return subsystem("outbox", "degraded", f"{stuck_count} event(s) stuck in publishing state")
+
     if oldest is None:
         return subsystem("outbox", "healthy", "no pending events")
     lag = max(int((datetime.now(UTC) - oldest).total_seconds()), 0)
@@ -680,6 +695,28 @@ async def health(ctx: TenantCtxDep):
         await _dr_subsystem(ctx),
     ]
     return build_health_response(subsystems)
+
+
+@router.get("/diagnostics", response_model=schemas.FullDiagnosticsOut)
+async def system_diagnostics(ctx: TenantCtxDep) -> schemas.FullDiagnosticsOut:
+    """Comprehensive system-wide diagnostic suite with root-cause analysis for every subsystem."""
+    from app.modules.platform.diagnostics import SystemDiagnosticsService
+
+    report = await SystemDiagnosticsService.run_full_diagnostics(
+        ctx.session, ctx.tenant_id
+    )
+    return schemas.FullDiagnosticsOut.model_validate(report)
+
+
+@router.post("/diagnostics/remediate", response_model=schemas.RemediationResultOut)
+async def remediate_system_issues(ctx: TenantCtxDep) -> schemas.RemediationResultOut:
+    """Instant auto-remediation for common silent failures (stuck outbox events, stranded workers)."""
+    from app.modules.platform.diagnostics import SystemDiagnosticsService
+
+    result = await SystemDiagnosticsService.auto_remediate(
+        ctx.session, ctx.tenant_id
+    )
+    return schemas.RemediationResultOut.model_validate(result)
 
 
 # ---------- Platform admin plane (§160) ----------

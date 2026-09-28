@@ -4,6 +4,7 @@ import * as React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { DirectionProvider } from "@radix-ui/react-direction";
 import { Toaster } from "@/components/ui/toast";
+import { ApiErrorInterceptor } from "@/components/api-error-interceptor";
 
 /** Providers العامة: RTL لـRadix + TanStack Query + Toaster. */
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -26,6 +27,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <QueryClientProvider client={queryClient}>
         {children}
         <Toaster />
+        <ApiErrorInterceptor />
       </QueryClientProvider>
     </DirectionProvider>
   );

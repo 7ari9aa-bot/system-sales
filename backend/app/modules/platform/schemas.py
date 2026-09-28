@@ -419,3 +419,41 @@ class SecurityEventListOut(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+# ------------------------------------------------ system diagnostics (§103/Anti-Silent-Failures)
+
+
+class DiagnosticItemOut(BaseModel):
+    id: str
+    category: str
+    name_ar: str
+    name_en: str
+    status: HealthStatus
+    latency_ms: float | None = None
+    error: str | None = None
+    root_cause: str | None = None
+    remediation: str | None = None
+    metrics: dict[str, Any] = Field(default_factory=dict)
+    timestamp: str
+
+
+class FullDiagnosticsOut(BaseModel):
+    overall_status: HealthStatus
+    summary_ar: str
+    summary_en: str
+    total_checks: int
+    passed_checks: int
+    issues_count: int
+    timestamp: str
+    checks: list[DiagnosticItemOut]
+
+
+class RemediationResultOut(BaseModel):
+    success: bool
+    message_ar: str
+    message_en: str
+    actions_taken: list[str]
+    reclaimed_outbox_events: int
+    timestamp: str
+

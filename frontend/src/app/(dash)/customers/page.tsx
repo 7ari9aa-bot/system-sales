@@ -211,6 +211,27 @@ export default function CustomersPage() {
   return (
     <div>
       <PageHeader title={t.customers} description="قاعدة عملائك، سجل الشراء، ومعلومات العميل الكاملة (360°)" />
+      <div className="mb-4 flex items-center gap-1 rounded-lg border border-border bg-muted/30 p-1 text-sm" role="tablist" aria-label={t.customers}>
+        <button
+          role="tab"
+          aria-selected={!leadFilter}
+          onClick={() => setUrlParams((params) => params.delete("filter"))}
+          className={`rounded-md px-3 py-1.5 transition-colors ${!leadFilter ? "bg-surface font-semibold shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+          data-testid="customers-tab-all"
+        >
+          {t.customers}
+        </button>
+        <button
+          role="tab"
+          aria-selected={leadFilter}
+          onClick={() => setUrlParams((params) => params.set("filter", "lead"))}
+          className={`rounded-md px-3 py-1.5 transition-colors ${leadFilter ? "bg-surface font-semibold shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+          data-testid="customers-tab-leads"
+          title={t.leadsViewHint}
+        >
+          {t.leadsView}
+        </button>
+      </div>
       <SavedViewsSelector
         entity="customers"
         currentFilters={{ q: activeQuery }}

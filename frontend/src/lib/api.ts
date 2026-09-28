@@ -67,13 +67,18 @@ export class ApiError extends Error {
   readonly status: number;
   readonly code: string | null;
   readonly retryable: boolean;
+  readonly requestId: string | null;
 
-  constructor(message: string, init: { status: number; code?: string | null; retryable?: boolean }) {
+  constructor(
+    message: string,
+    init: { status: number; code?: string | null; retryable?: boolean; requestId?: string | null },
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = init.status;
     this.code = init.code ?? null;
     this.retryable = init.retryable ?? false;
+    this.requestId = init.requestId ?? null;
   }
 }
 
@@ -222,6 +227,7 @@ export async function apiWithMeta<T = unknown>(
     let message = `خطأ ${res.status}`;
     let code: string | null = null;
     let retryable = false;
+    const requestId = res.headers.get("X-Request-ID") ?? null;
     try {
       const body = (await res.json()) as ErrorEnvelope;
       // Same precedence as before: the envelope's message, then FastAPI's
@@ -236,7 +242,20 @@ export async function apiWithMeta<T = unknown>(
     } catch {
       /* keep default */
     }
-    throw new ApiError(message, { status: res.status, code, retryable });
+    const error = new ApiError(message, { status: res.status, code, retryable, requestId });
+
+    // Anti-Silent-Failures: surface server errors (5xx) and network-level
+    // failures immediately via a global event so the error interceptor can
+    // render a toast even when the calling hook has no onError handler.
+    if (typeof window !== "undefined" && res.status >= 500) {
+      window.dispatchEvent(
+        new CustomEvent("api-error", {
+          detail: { message, status: res.status, code, requestId, path },
+        }),
+      );
+    }
+
+    throw error;
   }
   if (res.status === 204) return { data: undefined as T, status: res.status, replayed };
   return { data: (await res.json()) as T, status: res.status, replayed };

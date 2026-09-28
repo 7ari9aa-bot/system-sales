@@ -550,6 +550,40 @@ export type PlatformHealth = {
   subsystems: HealthSubsystem[];
 };
 
+export type DiagnosticItem = {
+  id: string;
+  category: string;
+  name_ar: string;
+  name_en: string;
+  status: HealthStatus;
+  latency_ms: number | null;
+  error: string | null;
+  root_cause: string | null;
+  remediation: string | null;
+  metrics: Record<string, unknown>;
+  timestamp: string;
+};
+
+export type FullDiagnostics = {
+  overall_status: HealthStatus;
+  summary_ar: string;
+  summary_en: string;
+  total_checks: number;
+  passed_checks: number;
+  issues_count: number;
+  timestamp: string;
+  checks: DiagnosticItem[];
+};
+
+export type RemediationResult = {
+  success: boolean;
+  message_ar: string;
+  message_en: string;
+  actions_taken: string[];
+  reclaimed_outbox_events: number;
+  timestamp: string;
+};
+
 /* ------------------------------------------------------------------ keys */
 
 export const qk = {
@@ -582,6 +616,7 @@ export const qk = {
   slaRisk: ["operations", "sla", "risk"] as QueryKey,
   approvals: (status: string) => ["ai", "approvals", status] as QueryKey,
   health: ["platform", "health"] as QueryKey,
+  diagnostics: ["platform", "diagnostics"] as QueryKey,
   savedViews: (entity: string) => ["platform", "saved-views", entity] as QueryKey,
 };
 
@@ -1002,6 +1037,46 @@ export function usePlatformHealth() {
     refetchInterval: 60_000,
     staleTime: 30_000,
     retry: false,
+  });
+}
+
+/** Anti-Silent-Failures (§103): full system diagnostics sweep across all layers. */
+export function useSystemDiagnostics() {
+  return useQuery({
+    queryKey: qk.diagnostics,
+    queryFn: () => api<FullDiagnostics>("/platform/diagnostics"),
+    refetchInterval: 30_000,
+    staleTime: 10_000,
+  });
+}
+
+/** Anti-Silent-Failures (§103): automated remediation of recoverable issues. */
+export function useAutoRemediate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      api<RemediationResult>("/platform/diagnostics/remediate", {
+        method: "POST",
+        idempotencyKey: newIdempotencyKey(),
+      }),
+    onSuccess: (data) => {
+      toast({
+        title: data.message_ar || "تم إجراء الإصلاح بنجاح",
+        description: data.actions_taken?.length
+          ? data.actions_taken.join(" • ")
+          : "النظام سليم ولا توجد أحداث عالقة للإصلاح",
+        variant: "success",
+      });
+      qc.invalidateQueries({ queryKey: qk.diagnostics });
+      qc.invalidateQueries({ queryKey: qk.health });
+    },
+    onError: (err) => {
+      toast({
+        title: t.somethingWentWrong,
+        description: errMessage(err),
+        variant: "danger",
+      });
+    },
   });
 }
 

@@ -206,7 +206,7 @@ def test_the_openapi_document_publishes_no_open_object_for_ai() -> None:
 
 def test_the_ai_surface_has_24_routes_to_cover() -> None:
     """Keeps the gate honest: a walk over an empty route list passes anything."""
-    assert len(_routes()) == 25, f"expected 25 AI routes, found {len(_routes())}"
+    assert len(_routes()) == 27, f"expected 27 AI routes, found {len(_routes())}"
 
 
 # ---------------------------------------------------------------------------
@@ -271,6 +271,21 @@ def test_agents_surface_declares_its_guardrails_and_withholds_its_prompt() -> No
     assert created.keys() == item.keys(), (
         "the create and list halves of one agent must describe it the same way"
     )
+
+
+def test_agent_detail_and_patch_surface_includes_prompt_and_version() -> None:
+    """ADR-060: GET /ai/agents/{agent_id}/prompt and PATCH /ai/agents/{agent_id}
+    expose the system_prompt and concurrency version for tenant agent configuration.
+    """
+    prompt_props = _properties("/api/v1/ai/agents/{agent_id}/prompt", "get")
+    assert "system_prompt" in prompt_props
+    assert "version" in prompt_props
+    assert "id" in prompt_props
+    assert "name" in prompt_props
+
+    patch_props = _properties("/api/v1/ai/agents/{agent_id}", "patch")
+    assert "system_prompt" in patch_props
+    assert "version" in patch_props
 
 
 def test_memory_review_state_is_typed_end_to_end() -> None:

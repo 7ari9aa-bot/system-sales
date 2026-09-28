@@ -11,11 +11,12 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
 from app.core.errors import NotFoundError
+from app.core.idempotency import IfMatch, apply_etag, apply_versioned_update
 from app.core.pagination import paginate
 from app.modules.ai import knowledge
 from app.modules.ai.approvals import ApprovalService
@@ -23,7 +24,9 @@ from app.modules.ai.models import Agent, AIUsage, KnowledgeItem, Memory
 from app.modules.ai.policy import AIProviderPolicyService
 from app.modules.ai.schemas import (
     AgentCreateRequest,
+    AgentDetailOut,
     AgentOut,
+    AgentUpdateRequest,
     ApprovalDecisionOut,
     ApprovalList,
     EvaluationList,
@@ -118,6 +121,49 @@ async def create_agent(ctx: SettingsCtx, body: AgentCreateRequest) -> AgentOut:
     ctx.session.add(agent)
     await ctx.session.flush()
     return AgentOut.model_validate(agent)
+
+
+@router.get("/agents/{agent_id}/prompt", response_model=AgentDetailOut)
+async def get_agent_detail(
+    agent_id: uuid.UUID,
+    ctx: TenantCtxDep,
+    response: Response,
+) -> AgentDetailOut:
+    """Fetch one agent including prompt — tenant-isolated by the WHERE clause and RLS."""
+    agent = (
+        await ctx.session.execute(
+            select(Agent).where(Agent.id == agent_id, Agent.tenant_id == ctx.tenant_id)
+        )
+    ).scalar_one_or_none()
+    if agent is None:
+        raise NotFoundError(f"agent {agent_id} not found")
+    apply_etag(response, agent.version)
+    return AgentDetailOut.model_validate(agent)
+
+
+@router.patch("/agents/{agent_id}", response_model=AgentDetailOut)
+async def update_agent(
+    agent_id: uuid.UUID,
+    body: AgentUpdateRequest,
+    ctx: SettingsCtx,
+    response: Response,
+    if_match: IfMatch = None,
+) -> AgentDetailOut:
+    """Tenant edits their own agent settings / prompt with optimistic concurrency (ADR-060)."""
+    agent = (
+        await ctx.session.execute(
+            select(Agent).where(Agent.id == agent_id, Agent.tenant_id == ctx.tenant_id)
+        )
+    ).scalar_one_or_none()
+    if agent is None:
+        raise NotFoundError(f"agent {agent_id} not found")
+
+    fields = body.model_dump(exclude_unset=True)
+    if fields:
+        await apply_versioned_update(ctx.session, agent, if_match, fields)
+
+    apply_etag(response, agent.version)
+    return AgentDetailOut.model_validate(agent)
 
 
 @router.get("/usage/summary", response_model=UsageSummaryOut)

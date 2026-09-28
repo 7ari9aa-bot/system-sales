@@ -616,15 +616,6 @@ function Customer360Content() {
         <TabsContent value="tasks" className="mt-4">
           <SectionCard
             title={t.c360Tasks}
-            action={
-              <Link
-                href="/tasks"
-                className="inline-flex items-center gap-1 text-xs font-bold text-primary underline-offset-4 hover:underline"
-              >
-                {t.myTasks}
-                <ExternalLink aria-hidden="true" className="size-3" />
-              </Link>
-            }
           >
             {record.tasks.length === 0 ? (
               <EmptyState

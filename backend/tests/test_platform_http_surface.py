@@ -46,7 +46,7 @@ USER = uuid.UUID("22222222-2222-2222-2222-222222222222")
 #: The measured size of the module's HTTP surface. A route added or removed
 #: here changes the gap-register claim P8 is written against, so it must be an
 #: explicit edit rather than a silent drift.
-PLATFORM_ROUTE_COUNT = 29
+PLATFORM_ROUTE_COUNT = 31
 
 
 # --------------------------------------------------------------------------- harness
@@ -212,7 +212,7 @@ def _webhook_event(**overrides: Any) -> WebhookEvent:
 # real, field-level schema in the rendered document.
 
 
-def test_the_platform_surface_is_the_measured_29_routes() -> None:
+def test_the_platform_surface_is_the_measured_routes() -> None:
     assert len(_platform_routes()) == PLATFORM_ROUTE_COUNT
 
 
