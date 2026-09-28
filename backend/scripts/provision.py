@@ -437,7 +437,7 @@ async def main() -> None:
         await seed(conn)
     finally:
         await conn.close()
-    _write_app_password(app_password)
+    _write_app_password(app_password, settings.database_url_admin or settings.database_url)
 
 
 def _random_password() -> str:
@@ -446,18 +446,42 @@ def _random_password() -> str:
     return secrets.token_urlsafe(24)
 
 
-def _write_app_password(password: str) -> None:
-    """Persist the app-role DSNs into .env so the runtime picks them up."""
-    env_path = Path(__file__).resolve().parent.parent / ".env"
-    ref = "iixxqitfopsgvaheedlg"
-    app_url = (
-        f"DATABASE_URL_APP=postgresql+asyncpg://sales_app.{ref}:{password}"
-        f"@aws-1-eu-west-1.pooler.supabase.com:6543/postgres\n"
-    )
-    admin_url = (
-        f"DATABASE_URL_APP_ADMIN=postgresql+asyncpg://sales_app.{ref}:{password}"
-        f"@aws-1-eu-west-1.pooler.supabase.com:5432/postgres\n"
-    )
+def _write_app_password(password: str, admin_url: str, env_path: Path | None = None) -> None:
+    """Persist the app-role DSNs into .env so the runtime picks them up.
+
+    The written URLs are DERIVED from the database that was just provisioned —
+    the admin URL's host, port and project ref — never from a hardcoded host.
+    The previous version stamped the production Supabase pooler into every
+    .env unconditionally, so provisioning a LOCAL database from a dev machine
+    repointed that machine's runtime at production; the only thing that ever
+    stopped a write was the password not existing there yet (see the
+    DATABASE_URL comment in .github/workflows/ci.yml).
+    """
+    from urllib.parse import urlsplit
+
+    env_path = env_path or Path(__file__).resolve().parent.parent / ".env"
+    parts = urlsplit(admin_url.replace("postgresql+asyncpg://", "postgresql://"))
+    host = parts.hostname or "localhost"
+    port = parts.port or 5432
+    username = parts.username or "postgres"
+    ref = username.split(".", 1)[1] if "." in username else ""
+    path = parts.path or "/postgres"
+
+    if host.endswith(".pooler.supabase.com"):
+        # Supavisor logins are <role>.<project-ref>@<pooler-host>:<port>. The
+        # runtime takes the transaction pooler (:6543); admin paths keep the
+        # session pooler (:5432) — RUNBOOK "Database roles"/"Migrations".
+        app_port, admin_port = 6543, 5432
+        app_user = f"sales_app.{ref}" if ref else "sales_app"
+    else:
+        app_port, admin_port = port, port
+        app_user = "sales_app"
+
+    def _dsn(user: str, dsn_port: int) -> str:
+        return f"postgresql+asyncpg://{user}:{password}@{host}:{dsn_port}{path}"
+
+    app_url = _dsn(app_user, app_port)
+    admin_role_url = _dsn(app_user, admin_port)
     lines = env_path.read_text().splitlines() if env_path.exists() else []
     lines = [
         line
@@ -465,9 +489,9 @@ def _write_app_password(password: str) -> None:
         if not line.startswith(("DATABASE_URL=", "DATABASE_URL_APP=", "DATABASE_URL_APP_ADMIN="))
     ]
     lines += [
-        f"DATABASE_URL={app_url.split('=', 1)[1]}",
-        app_url.rstrip("\n"),
-        admin_url.rstrip("\n"),
+        f"DATABASE_URL={app_url}",
+        f"DATABASE_URL_APP={app_url}",
+        f"DATABASE_URL_APP_ADMIN={admin_role_url}",
     ]
     env_path.write_text("\n".join(lines) + "\n")
     print("app role DSNs written to .env (DATABASE_URL_APP / DATABASE_URL_APP_ADMIN)")

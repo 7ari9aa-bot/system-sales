@@ -9,8 +9,9 @@
 
 ## Deploy
 
-- Frontend: Vercel via the dashboard (Root Directory = `frontend`). There is no
-  `vercel.json` in the repo — configure the project in the dashboard.
+- Frontend: Vercel via the dashboard (Root Directory = `frontend`). The
+  `/api/v1` → Railway rewrites live in `frontend/vercel.json` — changing the
+  backend domain means updating that file, and it deploys with the next push.
 - Backend: Railway from the root `railway.json` (Dockerfile build + uvicorn
   start command, `/healthz` healthcheck, ON_FAILURE restart policy).
 - Deploy order: migrate job (`alembic upgrade head`) -> api -> workers -> frontend.
