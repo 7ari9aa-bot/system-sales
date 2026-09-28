@@ -106,9 +106,22 @@ export default function DashboardPage() {
   const currencyQuery = useTenantCurrency();
   const tenantCurrency = currencyQuery.data?.currency ?? null;
 
-  if (error) return <ErrorState message={error.message} onRetry={() => refetch()} />;
+  // §106: the pulse read and the work queue are independent — a failing
+  // pulse renders its alert in ITS slot while My Work still answers. Gating
+  // the whole page on `error` made one dead endpoint hide the other's data.
+  const pulseError = error ? (
+    <ErrorState message={error.message} onRetry={() => refetch()} />
+  ) : null;
 
-  if (isLoading || !data) return <PageSkeleton />;
+  if (isLoading || !data) {
+    return (
+      <div>
+        <PageHeader title={t.overview} description={t.overviewDescription} />
+        <PageSkeleton />
+        <MyWorkSection />
+      </div>
+    );
+  }
 
   const money = data.orders;
   const currency = money.currency || tenantCurrency;
@@ -122,6 +135,8 @@ export default function DashboardPage() {
   return (
     <div>
       <PageHeader title={t.overview} description={t.overviewDescription} />
+
+      {pulseError}
 
       <Card className="mt-4" data-testid="needs-attention">
         <CardHeader className="flex-row items-center justify-between space-y-0">
