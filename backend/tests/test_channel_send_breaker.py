@@ -7,9 +7,8 @@ the process-wide `provider.whatsapp` / `provider.telegram` breaker, so once the
 breaker is OPEN the provider is not contacted and `CircuitOpenError` surfaces
 instead of a generic provider error.
 
-The registry is per-PROVIDER, not per-call-site: the direct Graph call and the
-n8n proxy both spend the same WhatsApp breaker, and a WhatsApp outage must not
-open the Telegram breaker.
+The registry is per-PROVIDER, not per-call-site: all WhatsApp sends spend the
+same breaker, and a WhatsApp outage must not open the Telegram breaker.
 
 DB-free: the adapters are driven through `httpx.MockTransport`, so this runs
 without Postgres locally and unchanged in CI.
@@ -34,7 +33,6 @@ from app.modules.conversations.gateway.telegram import telegram_adapter
 from app.modules.conversations.gateway.whatsapp import whatsapp_adapter
 
 _THRESHOLD = 2
-N8N_URL = "https://n8n.example.test/webhook/outbound"
 
 
 class _Settings:
@@ -79,16 +77,6 @@ def _outbound() -> OutboundMessage:
 
 def _direct_credentials() -> ProviderCredentials:
     return ProviderCredentials(config={"phone_number_id": "P", "access_token": "T"})
-
-
-def _n8n_credentials() -> ProviderCredentials:
-    return ProviderCredentials(
-        config={
-            "phone_number_id": "P",
-            "outbound_webhook_url": N8N_URL,
-            "n8n_service_token": "n8n-token",
-        }
-    )
 
 
 def _client(handler) -> httpx.AsyncClient:
@@ -138,19 +126,6 @@ async def test_whatsapp_send_is_refused_while_the_breaker_is_open() -> None:
     assert contacted["n"] == 0  # an OPEN breaker means the provider is not contacted
 
 
-async def test_whatsapp_n8n_send_is_refused_while_the_breaker_is_open() -> None:
-    """The n8n proxy delivers over the same provider, so it shares its breaker."""
-    contacted = {"n": 0}
-    await _trip(PROVIDER_WHATSAPP)
-
-    with pytest.raises(CircuitOpenError):
-        await whatsapp_adapter.send(
-            _n8n_credentials(), _outbound(), _client=_counting(contacted)
-        )
-
-    assert contacted["n"] == 0
-
-
 async def test_a_failing_whatsapp_send_trips_the_breaker() -> None:
     """Failures out of the wrapped request are accounted against the breaker."""
     breaker = get_breaker(PROVIDER_WHATSAPP)
@@ -180,35 +155,6 @@ async def test_a_rejecting_whatsapp_send_trips_the_breaker() -> None:
             )
 
     assert breaker.is_open, "a rejecting provider must count against the breaker"
-
-
-async def test_a_rejecting_n8n_send_trips_the_same_breaker() -> None:
-    """The n8n proxy has its own `_post`, so it needs its own coverage."""
-    breaker = get_breaker(PROVIDER_WHATSAPP)
-
-    for _ in range(_THRESHOLD):
-        with pytest.raises(ExternalProviderError):
-            await whatsapp_adapter.send(
-                _n8n_credentials(), _outbound(), _client=_failing()
-            )
-
-    assert breaker.is_open
-
-
-async def test_both_whatsapp_paths_share_one_breaker() -> None:
-    """Direct and n8n delivery are ONE provider: two calls total must open it."""
-    breaker = get_breaker(PROVIDER_WHATSAPP)
-
-    with pytest.raises(httpx.ConnectError):
-        await whatsapp_adapter.send(
-            _direct_credentials(), _outbound(), _client=_unreachable()
-        )
-    with pytest.raises(httpx.ConnectError):
-        await whatsapp_adapter.send(
-            _n8n_credentials(), _outbound(), _client=_unreachable()
-        )
-
-    assert breaker.is_open
 
 
 # ---------------------------------------------------------------- Telegram ---

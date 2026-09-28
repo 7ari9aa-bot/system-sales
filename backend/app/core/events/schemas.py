@@ -125,9 +125,6 @@ DOMAIN_EVENT_TYPES: tuple[str, ...] = (
     # §169: AI evaluation canary rollout lifecycle (ai/evaluation.py).
     "ai.canary_rolled_back",
     "ai.canary_started",
-    # §136: per-tenant n8n service-token lifecycle (issue / rotate / revoke).
-    "automation.service_token.issued",
-    "automation.service_token.revoked",
     # §175: campaign + journey execution lifecycle (marketing/). The
     # campaign.run.batch continuation is staged by the CampaignWorker with a
     # pacing not_before (§144 bulk tier).

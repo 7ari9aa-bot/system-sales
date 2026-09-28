@@ -77,7 +77,7 @@ Consequences, stated honestly:
 | §58 | Connection pooling | ✅ | `backend/app/core/db.py:52` `statement_cache_size=0` (transaction-pooler safe) |
 | §59 | Stateless API | ✅ | JWT-only auth (`backend/app/modules/identity/deps.py`); no server-side session store |
 | §60–61 | Realtime + scoped subscriptions | 🟡 | `backend/app/modules/realtime/router.py` (SSE + lifecycle gate) — no separate realtime gateway service |
-| §62 | n8n isolation (event-driven only) | ✅ | `infra/n8n/`; `docs/N8N_CONTRACT.md` |
+| §62 | Automation isolation | ✅ | FastAPI workflow engine + worker runtime; external n8n adapter retired |
 | §63–64 | Worker types + retry classification | ✅ | `backend/app/workers/run.py:27` `POOLS`; `workers/base.py:212` permanent-vs-transient |
 | §65–67 | Observability + audit + security events | 🟡 | `core/observability.py:19` structlog; `modules/platform/security_events.py:31`; `identity/service.py:67` emits — **no OTel export configured**, only an env mention |
 | §68–69 | SecretStorePort + rotation | ⬜ | `grep -rn "SecretStore" backend/app` → only a docstring (`platform/models.py:414`); no port, no Vault |
@@ -153,7 +153,7 @@ Consequences, stated honestly:
 | §173 | Guardrail chain | ✅ | `backend/app/core/guardrails.py` + `modules/ai/guardrails.py`; applied at send boundary (`runtime.py:372`) |
 | §174 | ADR index | ✅ | `docs/ADRS.md` is the single index, and it covers **both** ADR homes: `docs/adrs/` (47 files, `ADR-013`…`ADR-059` — of which `013`…`047` are the decision list §174 itself enumerates) and `docs/adr/` (5 bundles holding 25 decisions numbered `ADR-001`…`ADR-041`). Citation rule, since the two homes share a number space: a bare `ADR-0NN` means `docs/adrs/` (the project's live record); the bundled baseline is cited `SPEC ADR-0NN`. 13 numbers collide (`013`–`016`, `019`, `022`–`026`, `029`, `039`, `041`) and `docs/ADRS.md` §3 lists both titles side by side with the verified relationship per number. Neither family was renumbered |
 | §175 | *(no topic recoverable)* | ❓ | `grep -rn "§175\b" docs/ .workbuddy-ai/memory/` → nothing |
-| §176 | Pre-production gate | 🟡 | `backend/tests/gate/` — **14 files, 86 cases**: `test_gate.py` plus one dedicated file for each of the 13 scenarios this audit listed as missing (out-of-order receipts, stale-run cancellation, tool-scope attack, n8n outage, Redis outage, DLQ replay, payment UNKNOWN, oversell concurrency, tenant restore, noisy neighbour, realtime resync, event schema compat, duplicate tool call). 24 run anywhere; 67 need a database, so the pass/fail verdict is a CI fact and is recorded in `docs/ROADMAP_TO_90.md` §8 rather than asserted here |
+| §176 | Pre-production gate | 🟡 | `backend/tests/gate/` — active chaos scenarios cover out-of-order receipts, stale-run cancellation, tool-scope attack, workflow isolation, Redis outage, DLQ replay, payment UNKNOWN, oversell concurrency, tenant restore, noisy neighbour, realtime resync, event schema compatibility, and duplicate tool calls. Adapter-specific outage coverage was retired with the external adapter. Database-gated results remain a CI fact, recorded in `docs/ROADMAP_TO_90.md` §8. |
 | §177 | Non-negotiable rules | ❓ | `GAP_REGISTER.md:261` reports 14 PASS/11 PARTIAL/5 FAIL, but the 30 rules themselves are not in the repo, so the claim cannot be re-derived |
 
 ---

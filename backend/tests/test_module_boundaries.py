@@ -83,14 +83,8 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # 101 -> 102 on 2026-09-21: orders._default_warehouse delegates to
 # inventory's race-safe MAIN bootstrap (test_create_order_bootstraps_
 # main_warehouse contract) — orders never touches warehouse tables.
-# 102 -> 103 on 2026-09-22, one deliberate edge: automation -> platform.models.
-# §136 per-tenant n8n service tokens: the TenantServiceToken credential model
-# lives in platform alongside Integration (the other tenant-credential model),
-# and automation.tokens must hash/verify/rotate those rows. The alternative —
-# routing token verification through platform.service — would put an
-# auth-hot-path DB lookup behind a cross-module service call for zero
-# decoupling gain. Adds no cycle (platform never imports automation) and is
-# not a module-scope service import, so the two hard rules hold.
+# 102 -> 103 on 2026-09-22: the then-active external workflow adapter added a
+# token-model edge; the adapter has since been removed, so that edge is gone.
 # 103 -> 104 on 2026-09-22, one deliberate edge (wave-1 review B1):
 # platform.router.admin_update_tenant_status -> identity.service.
 # TenantLifecycleService.transition is the SINGLE writer of lifecycle_state

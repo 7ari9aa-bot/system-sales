@@ -13,7 +13,7 @@ mutation commits its outbox row in the SAME transaction as the change
 consumer watching ``order.events`` can rebuild an order's history from the
 stream alone. A corrected address that never reaches the stream is the one
 fact about a live order the stream does not carry, and anything downstream
-(the relay, the SSE client, an n8n automation re-printing a label) keeps
+(the relay, the SSE client, an automation re-printing a label) keeps
 shipping to the address the merchant just struck out.
 
 Structure: the first block is DB-free and runs locally; the rest is DB-backed

@@ -132,10 +132,7 @@ class Settings(BaseSettings):
     # CORS: comma-separated origins, "*" allows all (dev); set explicitly in prod
     cors_origins: str = "*"
 
-    # n8n adapter
-    n8n_base_url: str = ""
-
-    # internal service auth (n8n -> core)
+    # Internal service credential used by trusted metrics scrapers.
     service_token_internal: str = "change-me-too"
 
     # §68: at-rest envelope encryption of Integration.credentials

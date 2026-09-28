@@ -130,7 +130,7 @@ const ar = {
     flow: ["وصّل", "زامن", "نفّذ"],
     items: [
       ["Gemini", "النماذج اللغوية", "شغّال", true],
-      ["n8n", "الأتمتة والتكاملات", "شغّال", true],
+      ["workflows", "أتمتة داخلية", "شغّال", true],
       ["شات الموقع", "قناة مباشرة بدون اعتماديات", "شغّال", true],
       ["WhatsApp", "القناة الأهم للتجارة", "قريبًا", false],
       ["Telegram", "محادثات ومجتمعات", "قريبًا", false],
@@ -574,7 +574,7 @@ const en: typeof ar = {
     flow: ["Connect", "Sync", "Act"],
     items: [
       ["Gemini", "Language models", "Live", true],
-      ["n8n", "Automation & integrations", "Live", true],
+      ["workflows", "Internal automation", "Live", true],
       ["Website chat", "Direct channel, zero dependencies", "Live", true],
       ["WhatsApp", "The core commerce channel", "Soon", false],
       ["Telegram", "Chats & communities", "Soon", false],

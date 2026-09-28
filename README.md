@@ -2,7 +2,7 @@
 
 Multi-tenant SaaS: unified messaging (WhatsApp / Instagram / Messenger / Telegram / Webchat),
 AI agents, commerce (products / inventory / orders / payments), marketing attribution,
-analytics, and automation (n8n) — on the production-first architecture defined in
+analytics, and automation — on the production-first architecture defined in
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Repository layout
@@ -24,10 +24,10 @@ system-sales/
 
 ## Golden rules (short version)
 
-1. **PostgreSQL + Domain = the only source of truth.** LLM, n8n, Redis, and the
+1. **PostgreSQL + Domain = the only source of truth.** LLM, Redis, and the
    frontend never own business truth.
 2. **All mutations flow through Application/Domain services** — never raw SQL from
-   AI or n8n.
+   AI or external automation tools.
 3. **Events are emitted via the Outbox** inside the same transaction as the change.
 4. **Redis is transport, not truth** — durable state lives in Postgres first.
 5. **Tenant isolation is enforced twice**: app-layer authorization + Postgres RLS.
@@ -53,3 +53,10 @@ curl http://localhost:8000/readyz
 
 See [docs/BUILD_PLAN.md](docs/BUILD_PLAN.md) — the full-system build map
 (no feature cuts; stages are dependency order, not scope reduction).
+
+## WhatsApp Cloud API
+
+The WhatsApp webhook and outbound delivery run in FastAPI and its worker
+runtime. Provider setup, callback address, required environment variables, and
+the per-tenant integration contract are documented in
+[docs/WHATSAPP_FASTAPI.md](docs/WHATSAPP_FASTAPI.md).

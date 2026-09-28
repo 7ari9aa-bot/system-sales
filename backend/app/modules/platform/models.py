@@ -276,7 +276,7 @@ class NotificationPreference(TenantMixin, TimestampMixin, WorkspaceScopeMixin, B
 
 
 class Automation(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
-    """Event-triggered automation definitions (executed by workers/n8n)."""
+    """Event-triggered automation definitions (executed by internal workers)."""
 
     __tablename__ = "automations"
 
@@ -657,31 +657,3 @@ class SavedView(TenantMixin, TimestampMixin, Base):
     )
 
     __table_args__ = (Index("ix_saved_views_tenant_entity", "tenant_id", "entity"),)
-
-
-class TenantServiceToken(TenantMixin, TimestampMixin, Base):
-    """§136: per-tenant service credential for the n8n adapter.
-
-    Replaces the single global SERVICE_TOKEN_INTERNAL Bearer, which let any
-    tenant's automation act as any other tenant. Only the sha256 hex digest
-    of the presented token is stored — the plaintext is returned exactly
-    once at issuance and never persisted. Lives in platform alongside
-    Integration (the other tenant-credential model).
-    """
-
-    __tablename__ = "tenant_service_tokens"
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    name: Mapped[str] = mapped_column(String(127))  # human label, e.g. "n8n-outbound"
-    token_hash: Mapped[str] = mapped_column(String(64))  # sha256 hex — never plaintext
-    scopes: Mapped[list] = mapped_column(JSONB, server_default="[]")
-    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    rotated_from_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("tenant_service_tokens.id", ondelete="SET NULL"),
-    )
-    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-
-    __table_args__ = (Index("uq_tenant_service_tokens_hash", "token_hash", unique=True),)

@@ -53,7 +53,7 @@ Legend: ☐ pending · ◐ in progress · ☑ done
 - [ ] Circuit breaker utility (AI providers, channels)
 - [ ] Idempotency middleware for external webhooks
 - [ ] Versioned event schemas (pydantic) + event registry
-- [ ] Internal service tokens (n8n → core callbacks)
+- [ ] Service authentication for trusted operational consumers
 
 ## Stage 4 — Commerce Domain
 - [ ] Customers service + APIs (identities, tags, notes, events)
@@ -99,11 +99,11 @@ Legend: ☐ pending · ◐ in progress · ☑ done
 - [ ] Report workers (cold path only)
 
 ## Stage 9 — Integrations & Automation
-- [ ] n8n deployment (Railway) + webhook contract + service auth
+- [ ] FastAPI worker deployment + webhook contract + service auth
 - [ ] Integration workers: OAuth token refresh, provider sync
 - [ ] Notifications: email / SMS / push
 - [ ] Signed outbound webhooks (retried, audited)
-- [ ] CRM / Sheets connectors via n8n
+- [ ] CRM / Sheets connectors via FastAPI workers
 
 ## Stage 10 — Billing
 - [ ] Plans / subscriptions / entitlements + API-layer gating
@@ -127,6 +127,6 @@ Legend: ☐ pending · ◐ in progress · ☑ done
 | 0 | GitHub repo name (push approval), valid Railway token (deployment only) |
 | 5 | WhatsApp Business (Meta app, phone number, tokens); later Telegram/IG/Messenger apps |
 | 6 | AI provider API keys |
-| 9 | SMTP / SMS providers, n8n hosting |
+| 9 | SMTP / SMS provider credentials |
 | 10 | Stripe account |
 | 11 | Domain name, production Supabase plan, Railway token |

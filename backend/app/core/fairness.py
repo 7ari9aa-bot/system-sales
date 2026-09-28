@@ -130,8 +130,6 @@ DOMAIN_PRIORITIES: dict[str, EventPriority] = {
     "saga.failed": EventPriority.NORMAL_AUTOMATION,
     "journey.run.started": EventPriority.NORMAL_AUTOMATION,
     "journey.run.completed": EventPriority.NORMAL_AUTOMATION,
-    "automation.service_token.issued": EventPriority.NORMAL_AUTOMATION,
-    "automation.service_token.revoked": EventPriority.NORMAL_AUTOMATION,
     # Bulk / Campaign: the throttled tier.
     "campaign.run.started": EventPriority.BULK_CAMPAIGN,
     "campaign.run.batch": EventPriority.BULK_CAMPAIGN,

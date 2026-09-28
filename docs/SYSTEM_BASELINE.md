@@ -44,7 +44,7 @@ Related truth sources: `docs/COMPLIANCE_MATRIX.md` (spec §1–§177 verdicts),
   scheduled_jobs), FTS tsvector+GIN, ai_usage RANGE partitioning, contact backfill,
   restore_jobs, secret_values, MFA, service tokens.
 - Tests: **206 files / ~2,205 tests**; special suites: `tests/gate/` (17 chaos
-  scenarios: oversell, payment-UNKNOWN, n8n outage, Redis outage, DLQ replay,
+  scenarios: oversell, payment-UNKNOWN, provider outage, Redis outage, DLQ replay,
   out-of-order receipts, tenant restore, realtime resync, tool-scope attack, stale-run
   cancellation, duplicate tool call, event schema compat...), `tests/security/` (role
   authz matrix over the real route graph, DB-backed tenant access matrix), `tests/perf/`
@@ -96,7 +96,7 @@ build/host-scan; Rust fmt/clippy(-D warnings + unwrap/expect/panic denies)/test(
   exercised. Frontend `vercel.json` rewrites to a hardcoded production Railway URL.
 - Ops scripts (manual, idempotent): provision (RLS + sales_app role + seeds),
   smoke_production, backfill_metric_definitions, backfill_tenant_defaults,
-  export_openapi_lock, deploy_railway, deploy_n8n, configure_ai, e2e_ai_test,
+  export_openapi_lock, deploy_railway, configure_ai, e2e_ai_test,
   load_test (p95<800ms webchat), rls_smoke_test, seed_demo.
 - Config fails closed in secure environments (JWT ≥32B, no default service token,
   secrets master key required, CORS not `*`, Env secret store refused).

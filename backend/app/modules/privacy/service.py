@@ -190,8 +190,8 @@ class DeletionService:
                     step["error"] = error
                 report["steps"].append(step)
 
-        # §131: emit an event so n8n and other integrations can purge their
-        # own copies of this customer's data (CRM sync, marketing tools, etc.)
+        # §131: emit an event so downstream systems can purge their own copies
+        # of this customer's data (CRM sync, marketing tools, etc.).
         await add_outbox_event(
             session,
             aggregate_type="customer",

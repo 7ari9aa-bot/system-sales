@@ -19,7 +19,6 @@ deletion/retention behavior. Deletion propagation order follows §172.
 | Redis Streams | transport only | none persisted | maxlen + TTL | loss is harmless (§163) |
 | Search index | derived fields | derived | rebuildable | deletable per customer (§131) |
 | Vector store | embeddings | derived | rebuildable | deletable per customer |
-| n8n | minimal payload via webhook | minimal | per workflow policy | §62 isolation; credentials via SecretReference |
 | Backups | full DB copy | full | declared window (§70) | expires with backup rotation — documented, not individually editable |
 | Logs (structlog) | no raw PII by default | minimal | short | request_id correlation only |
 
@@ -29,7 +28,7 @@ deletion/retention behavior. Deletion propagation order follows §172.
 3. messages retention path
 4. derived: search/vector (rebuildable — flagged)
 5. audit: minimum-necessary entries preserved
-6. events: privacy.customer_deleted (n8n/automation react)
+6. events: privacy.customer_deleted (internal workers and registered integrations react)
 7. backups: covered by rotation window (documented RPO)
 
 ## Rules

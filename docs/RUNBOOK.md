@@ -46,8 +46,27 @@ DATABASE_URL_ADMIN=... .venv/bin/alembic upgrade head
 - Quarterly restore drill: restore a backup to a scratch project, run
   `scripts/rls_smoke_test.py` + `pytest -q` against it, verify tenant counts
   per `tenants` vs `customers` sample.
-- Redis is transport-only: losing it loses nothing durable. Replay = outbox
-  rows (`status='pending'/'publishing'`) re-published by the relay on boot.
+- Redis is transport-only, but a full Redis loss also removes entries whose
+  outbox rows already reached `published`. Pending/failed rows are retried by
+  the normal relay; published-but-unprocessed entries require the explicit
+  recovery command below. The recovery command previews by default and uses
+  `processed_events` plus the original outbox id to avoid replaying completed
+  work. For legacy `message.outbound` rows without a stable id, it uses the
+  outbox row id; other legacy events without a stable id are excluded. Do not
+  run it while consumers are active: replaying `message.events` can resume
+  queued customer messages.
+- After a Redis region move or full data loss: stop the worker consumers, run
+  `python -m app.workers.replay_outbox --stream message.events` to review the
+  eligible count, then run the same command with `--execute` only when resuming
+  the queued work is intended. Repeat for other supported streams as needed;
+  restart workers only after replay completes. Keep published outbox rows until
+  replay history has a complete, tested retention/recovery lifecycle.
+- Before relocating Railway services, inventory persistent state and take
+  restorable backups. The current Redis service has no attached volume, so
+  changing its region loses its local AOF/RDB files; follow the outbox recovery
+  procedure above after the replacement Redis is ready. Keep API and worker
+  regions aligned with Redis, then verify database connectivity, health checks,
+  and public domains after cutover.
 - DLQ inspection: `python -m app.workers.inspector list <stream>.dlq` /
   `requeue <stream> <entry_id>`.
 

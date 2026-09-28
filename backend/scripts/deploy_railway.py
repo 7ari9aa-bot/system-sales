@@ -1,4 +1,4 @@
-"""Full Railway deployment for Sales OS — Redis, API, Workers, n8n.
+"""Full Railway deployment for Sales OS — Redis, API, Workers.
 
 Works with TEAM-SCOPED API tokens (never queries `me`).
 
@@ -9,8 +9,7 @@ Creates (idempotent-ish: reuses project by name):
   - service redis  (redis:7-alpine, requirepass, AOF)
   - service api    (Dockerfile infra/Dockerfile.backend, runs migrations first)
   - service workers (same image; outbox relay + pools)
-  - service n8n    (n8nio/n8n)
-  - public domains for api + n8n
+  - public domain for api
 
 Code uploads happen separately via the Railway CLI (`railway up`) — this script
 prints the exact commands.
@@ -48,7 +47,6 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--token", required=True)
     parser.add_argument("--project", default="sales-os")
-    parser.add_argument("--skip-n8n", action="store_true")
     parser.add_argument("--env-file", default=None, help=".env with Supabase DSNs + JWT_SECRET")
     args = parser.parse_args()
 
@@ -205,24 +203,6 @@ def main() -> int:
         {"startCommand": "python -m app.workers.run", "dockerfilePath": "infra/Dockerfile.backend"},
     )
     print(f"workers service ready ({workers_id})")
-
-    # ---------- n8n ----------
-    n8n_url = ""
-    if not args.skip_n8n:
-        n8n_id = find_service("n8n") or create_service("n8n", "n8nio/n8n:latest")
-        n8n_password = secrets.token_urlsafe(10)
-        set_variables(
-            n8n_id,
-            {
-                "N8N_BASIC_AUTH_ACTIVE": "true",
-                "N8N_BASIC_AUTH_USER": "salesos",
-                "N8N_BASIC_AUTH_PASSWORD": n8n_password,
-                "N8N_ENCRYPTION_KEY": secrets.token_hex(16),
-                "GENERIC_TIMEZONE": "Africa/Cairo",
-            },
-        )
-        n8n_url = domain(n8n_id, 5678)
-        print(f"n8n ready → https://{n8n_url}  (user=salesos password={n8n_password})")
 
     print("\n=== NEXT: upload code with the Railway CLI ===")
     print("  npm i -g @railway/cli")

@@ -1,10 +1,8 @@
-"""AUTOMATION service (spec §136) — versioned workflows + execution.
+"""AUTOMATION service — versioned workflows executed by the internal engine.
 
-Creation is versioned (immutability). Execution runs through the configured
-backend: 'internal' executes the definition AST inline; 'n8n' POSTs the
-context to the n8n adapter webhook (SecretReference only — no raw creds).
-Execution is asynchronous by contract: the caller gets an execution id and
-the result lands on the WorkflowExecution row.
+Creation is versioned (immutability). Execution is asynchronous by contract:
+the caller gets an execution id and the result lands on the WorkflowExecution
+row. Domain side effects are staged in Postgres and delivered by workers.
 """
 
 from __future__ import annotations
@@ -12,14 +10,11 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import (
     ConflictError,
-    DomainError,
-    ExternalProviderError,
     NotFoundError,
     ValidationError,
 )
@@ -78,18 +73,12 @@ class WorkflowService:
         name: str,
         trigger_event: str,
         definition: dict,
-        execution_backend: str = "internal",
-        n8n_workflow_ref: str | None = None,
     ) -> Workflow:
-        if execution_backend not in ("internal", "n8n"):
-            raise ValidationError(f"unknown backend: {execution_backend}")
         _validate_definition(definition)
         workflow = Workflow(
             tenant_id=tenant_id,
             name=name,
             trigger_event=trigger_event,
-            execution_backend=execution_backend,
-            n8n_workflow_ref=n8n_workflow_ref,
             status="draft",
             current_version=1,
         )
@@ -267,12 +256,7 @@ class WorkflowService:
             )
 
         try:
-            if workflow.execution_backend == "n8n":
-                result = await WorkflowService._run_n8n(
-                    session, tenant_id, workflow, execution, version
-                )
-            else:
-                result = await WorkflowService._run_internal(session, tenant_id, execution, version)
+            result = await WorkflowService._run_internal(session, tenant_id, execution, version)
             execution.result = result
             execution.status = "completed"
         except Exception as exc:  # noqa: BLE001 — failures are recorded
@@ -283,7 +267,7 @@ class WorkflowService:
             # every workflow outage became the 5xx the router docstring promises
             # it is not, and the rollback took the execution row with it. Nothing
             # else in the suite ever ran this branch.
-            # §176 gate 12: tests/gate/test_gate_n8n_outage.py
+            # Workflow failures are durable and do not bubble into the caller.
             session.add(
                 WorkflowFailure(
                     tenant_id=tenant_id,
@@ -337,40 +321,3 @@ class WorkflowService:
             else:
                 raise ValidationError(f"unknown step action: {action}")
         return {"outputs": outputs, "context": context}
-
-    @staticmethod
-    async def _run_n8n(
-        session: AsyncSession,
-        tenant_id: uuid.UUID,
-        workflow: Workflow,
-        execution: WorkflowExecution,
-        version: WorkflowVersion,
-    ) -> dict:
-        """n8n execution adapter — POST context to the n8n webhook."""
-        from app.core.config import get_settings
-        from app.modules.automation.tokens import get_or_issue_outbound_token
-
-        settings = get_settings()
-        base = getattr(settings, "n8n_base_url", "")
-        if not base:
-            raise ExternalProviderError("n8n base url not configured")
-        # §136: per-tenant credential only — the global SERVICE_TOKEN_INTERNAL
-        # Bearer let any tenant act as any other tenant and must never be sent
-        # again. Issuance failure is a hard DomainError, never a fallback.
-        try:
-            token = await get_or_issue_outbound_token(session, tenant_id)
-        except DomainError:
-            raise
-        except Exception as exc:  # noqa: BLE001 — re-raised as a domain error
-            raise ExternalProviderError(
-                f"n8n service token issuance failed: {str(exc)[:200]}"
-            ) from exc
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.post(
-                f"{base}/webhook/{workflow.n8n_workflow_ref or 'default'}",
-                json={"execution_id": str(execution.id), "context": execution.context},
-                headers={"Authorization": f"Bearer {token}"},
-            )
-        if response.status_code >= 400:
-            raise ExternalProviderError(f"n8n execution failed: {response.status_code}")
-        return response.json() if response.content else {}

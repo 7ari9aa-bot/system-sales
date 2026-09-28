@@ -47,7 +47,7 @@ Spec date: 2026-09-18. Status legend: ✅ compliant · 🟡 partial · ❌ missi
 | 58 | Pooling | ✅ | Supavisor + statement_cache_size=0 |
 | 59 | Stateless API | ✅ | |
 | 60–61 | Realtime + scoped subscriptions | 🟡 | SSE exists; scope keys + realtime gateway → W5 |
-| 62 | n8n isolation | ✅ | Event-driven only |
+| 62 | Automation isolation | ✅ | Internal workflow engine + worker runtime |
 | 63–64 | Worker types + retry classification | 🟡 | Pools exist; transient/permanent retry classes → W1 |
 | 65–67 | Observability + audit + security events | 🟡 | structlog done; security_events table → W6 |
 | 68–69 | SecretStorePort + rotation | ❌ | ADR-002: Supabase Vault behind SecretStorePort → W6 (critical before production WhatsApp tokens) |

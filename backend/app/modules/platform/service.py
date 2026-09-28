@@ -2,7 +2,7 @@
 
 Notifications and webhooks are event-driven: the API (or a service) queues a
 row + writes an outbox event; the relay forwards to Redis Streams; workers
-deliver with retries. If n8n/SMTP/SMS providers are down, the core keeps
+deliver with retries. If external providers are down, the core keeps
 working (failure isolation). Jobs are different: ``JobService.create`` only
 writes the durable record — the ``job-runner`` worker pool executes it, never
 the request path.

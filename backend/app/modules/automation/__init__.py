@@ -1,1 +1,1 @@
-"""AUTOMATION domain — workflows as source of truth; n8n as adapter only."""
+"""AUTOMATION domain — tenant-owned versioned workflows and executions."""

@@ -13,8 +13,8 @@ raised (``docs/GAP_REGISTER.md`` wave review #3).
 Requirements asserted here, in the words of the spec and the module's own
 contract:
 
-* §136 — the tenant Workflow + its Versions are canonical truth; n8n is only an
-  adapter. So the definition a version snapshot carries must be one the ENGINE
+* The tenant Workflow + its Versions are canonical truth. So the definition a
+  version snapshot carries must be one the ENGINE
   can execute, at publish time, not discovered at run time.
 * §66 — every critical mutation is auditable (§136's status ladder grants a
   workflow the power to mutate tenant data on events, so it qualifies).
@@ -134,7 +134,6 @@ def _workflow(
     *,
     tenant_id: uuid.UUID = TENANT,
     status: str = "active",
-    backend: str = "internal",
     current_version: int = 1,
     version: int = 1,
 ) -> Workflow:
@@ -144,7 +143,6 @@ def _workflow(
         name="wf",
         trigger_event="order.created",
         status=status,
-        execution_backend=backend,
         current_version=current_version,
         version=version,
         created_at=_now(),
@@ -577,41 +575,12 @@ async def test_an_unknown_step_action_fails_the_run_and_is_recorded(monkeypatch)
     )
 
 
-# ----------------------------------------------------- n8n is only an adapter --
-
-
-def _code_lines(fn) -> str:
-    """A function's source with COMMENT lines removed.
-
-    §136's ban is on CODE that reads the global token; the reason the ban
-    exists is written in comments, and a naive substring scan over the whole
-    module would fail on the explanation rather than the violation.
-    """
-    return "\n".join(
-        line for line in inspect.getsource(fn).splitlines() if not line.strip().startswith("#")
+def test_the_run_reads_our_snapshot() -> None:
+    """The engine executes OUR ``WorkflowVersion`` pinned by the run row."""
+    source = "\n".join(
+        line
+        for line in inspect.getsource(WorkflowService.run_execution).splitlines()
+        if not line.strip().startswith("#")
     )
-
-
-def test_the_adapter_carries_a_per_tenant_credential_never_the_global_one() -> None:
-    """§136: n8n is an adapter, and the token on the wire is tenant-scoped.
-
-    ``_run_n8n`` must take its Bearer from ``automation.tokens`` (digest-stored,
-    revocable, one per tenant) and must not reach for a process-wide service
-    secret — that is the exact escalation §136's isolation rule names ("لا يملك
-    token global unrestricted").
-    """
-    source = _code_lines(WorkflowService._run_n8n)
-    assert "get_or_issue_outbound_token" in source
-    for banned in ("settings.service_token", "SERVICE_TOKEN"):
-        assert banned not in source, f"the n8n adapter reads a global secret: {banned}"
-
-
-def test_the_run_reads_our_snapshot_not_a_remote_definition() -> None:
-    """§136 canonical-truth rule: the engine executes OUR ``WorkflowVersion``.
-
-    A run that fetched the definition from n8n would make the adapter the
-    source of truth the moment anybody edited it there.
-    """
-    source = _code_lines(WorkflowService.run_execution)
     assert "WorkflowVersion" in source
     assert "workflow_version" in source, "the run must pin the version the row recorded"

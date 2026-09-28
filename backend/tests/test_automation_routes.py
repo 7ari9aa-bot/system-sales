@@ -122,7 +122,6 @@ def _workflow(
         description=None,
         trigger_event="order.created",
         status=status,
-        execution_backend="internal",
         current_version=current_version,
         version=version,
         created_at=_now(),

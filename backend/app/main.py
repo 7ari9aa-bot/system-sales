@@ -169,7 +169,7 @@ class _RequestIDMiddleware:
         req_token = request_id_contextvar.set(request_id)
         cor_token = correlation_id_contextvar.set(correlation_id)
         # §66: actor kind for the audit source column — an internal service
-        # token (n8n -> core) marks the request "automation", everything else
+        # token marks a trusted service request "automation", everything else
         # is a "human" request. Workers set their own kind outside HTTP. This
         # is a label for audit lineage, NOT an auth check (that lives in deps).
         service_token = get_settings().service_token_internal

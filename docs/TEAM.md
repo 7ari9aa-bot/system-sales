@@ -87,9 +87,6 @@ paid for in real failures — respect it.
 - Private registry credentials = Pro plan only → deploy from **GitHub repo
   source** instead (works on trial)
 - Pre-deploy: `alembic upgrade head` via preDeployCommand
-- n8n: https://n8n-production-4204.up.railway.app (user=salesos /
-  aZ9aAsPQuhwmhA)
-
 ### Vercel (project sales-os, prj_WKQgVoldP72yfvzhUSAloYNseCaQ)
 - Env: NEXT_PUBLIC_API_URL=https://api-production-81629.up.railway.app
 - CLI works with the token; env API needs `"type":"plain"`
@@ -118,5 +115,4 @@ cd ../backend && .venv/bin/python scripts/rls_smoke_test.py   # 7/7 PASS
 |---|---|
 | Dashboard | https://sales-os-three-bay.vercel.app |
 | API | https://api-production-81629.up.railway.app |
-| n8n | https://n8n-production-4204.up.railway.app |
 | Demo login | demo@salesos-demo.com / Demo-1234 |

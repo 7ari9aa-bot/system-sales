@@ -492,16 +492,16 @@ async def test_gate_ai_tool_scope(db, tenant_ctx):
     assert verdict.decision in ("block", "handover")
 
 
-# --- 17. n8n outage resilience (§62) ---
-async def test_gate_n8n_isolation():
-    """Messaging core must function without n8n — no synchronous dependency."""
+# --- 17. Workflow isolation ---
+async def test_gate_automation_isolation():
+    """The message request path does not synchronously execute workflows."""
     import inspect
 
     from app.modules.conversations.service import ConversationService
 
-    # Verify add_message does NOT import or call n8n synchronously
+    # Workflow execution remains outside the synchronous message path.
     source = inspect.getsource(ConversationService.add_message)
-    assert "n8n" not in source.lower(), "ConversationService.add_message must not reference n8n"
+    assert "WorkflowService" not in source
 
 
 # --- 18. Redis outage/replay (§163) ---

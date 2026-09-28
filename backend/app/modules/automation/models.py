@@ -1,7 +1,5 @@
-"""AUTOMATION domain (spec §136) — our Workflow is the source of truth.
+"""AUTOMATION domain — tenant-owned workflows run in our internal engine.
 
-Tenant Workflow definitions + versions live HERE. n8n (or the internal
-engine) is only an EXECUTION adapter — n8n never owns business truth.
 Every execution records a WorkflowExecution row; failures land in
 WorkflowFailure for retry/compensation.
 """
@@ -47,11 +45,6 @@ class Workflow(TenantMixin, TimestampMixin, VersionMixin, WorkspaceScopeMixin, B
     trigger_event: Mapped[str] = mapped_column(String(127))  # e.g. order.created
     # allowed: draft | active | paused | archived
     status: Mapped[str] = mapped_column(String(15), server_default="draft")
-    # execution backend: internal (our engine) | n8n (adapter) — definition
-    # stays HERE either way; n8n never owns the workflow.
-    execution_backend: Mapped[str] = mapped_column(String(15), server_default="internal")
-    # n8n adapter: remote workflow reference (secret refs only, never creds)
-    n8n_workflow_ref: Mapped[str | None] = mapped_column(String(255))
     current_version: Mapped[int] = mapped_column(Integer, server_default="1")
 
     __table_args__ = (

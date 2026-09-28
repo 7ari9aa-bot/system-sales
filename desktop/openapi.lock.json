@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 287,
-    "sha256": "07b1d5392a1309a610978e6911f9bfd8a25b8c5760e51495dcec6e304d11e61c",
-    "typed_operations": 191
+    "operations": 291,
+    "sha256": "aadb459e66a2095d3f6c91e047cc55a2b3dcf8cc929cfaef0d116ee733407428",
+    "typed_operations": 195
   },
   "spec": {
     "components": {
@@ -360,6 +360,69 @@
           "title": "AgentCreateRequest",
           "type": "object"
         },
+        "AgentDetailOut": {
+          "description": "The settings:write view of one agent — the only contract that may carry\nthe system_prompt (a business secret; AgentOut omits it on purpose because\nGET /ai/agents is tenant-readable by every member). ``version`` is the\noptimistic-concurrency token the PATCH round-trips.",
+          "properties": {
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            },
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "is_active": {
+              "title": "Is Active",
+              "type": "boolean"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "system_prompt": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "System Prompt"
+            },
+            "version": {
+              "title": "Version",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "is_active",
+            "version"
+          ],
+          "title": "AgentDetailOut",
+          "type": "object"
+        },
         "AgentOut": {
           "description": "One agent, as the tenant surface describes it.\n\nTwo halves, both load-bearing. The guardrail block MUST be reachable:\n``run_limits`` is the per-agent execution ceiling (§44/§135),\n``temperature``/``max_output_tokens`` shape every call, ``is_active`` is the\nkill switch and ``version`` is the concurrency token — ``is_active`` alone is\nnot \"the governance state of this agent\".\n\n``system_prompt`` MUST NOT be: ``GET /ai/agents`` is gated on tenant\nauthentication only, not on ``settings:write``, so anything in this model is\nreadable by every member of the tenant. The prompt is a business secret, not\ngovernance state, so it stays on the row and off the contract.",
           "properties": {
@@ -436,6 +499,72 @@
             "version"
           ],
           "title": "AgentOut",
+          "type": "object"
+        },
+        "AgentUpdateRequest": {
+          "description": "PATCH /ai/agents/{id} — the tenant edits ITS OWN agent (ADR-060).\n\nThe prompt is the tenant's business secret and their lever on the agent's\nbehavior: editing is settings:write gated, tenant-scoped by the same WHERE\nthe read uses, versioned, and audited.",
+          "properties": {
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            },
+            "is_active": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Active"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "maxLength": 127,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name"
+            },
+            "system_prompt": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "System Prompt"
+            }
+          },
+          "title": "AgentUpdateRequest",
           "type": "object"
         },
         "AlertDestination": {
@@ -4929,6 +5058,98 @@
           "title": "DependencyRecord",
           "type": "object"
         },
+        "DiagnosticItemOut": {
+          "properties": {
+            "category": {
+              "title": "Category",
+              "type": "string"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            },
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "latency_ms": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Latency Ms"
+            },
+            "metrics": {
+              "additionalProperties": true,
+              "title": "Metrics",
+              "type": "object"
+            },
+            "name_ar": {
+              "title": "Name Ar",
+              "type": "string"
+            },
+            "name_en": {
+              "title": "Name En",
+              "type": "string"
+            },
+            "remediation": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Remediation"
+            },
+            "root_cause": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Root Cause"
+            },
+            "status": {
+              "enum": [
+                "healthy",
+                "degraded",
+                "down"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "timestamp": {
+              "title": "Timestamp",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "category",
+            "name_ar",
+            "name_en",
+            "status",
+            "timestamp"
+          ],
+          "title": "DiagnosticItemOut",
+          "type": "object"
+        },
         "DigestGroup": {
           "properties": {
             "count": {
@@ -6378,6 +6599,62 @@
             }
           },
           "title": "FlagUpsert",
+          "type": "object"
+        },
+        "FullDiagnosticsOut": {
+          "properties": {
+            "checks": {
+              "items": {
+                "$ref": "#/components/schemas/DiagnosticItemOut"
+              },
+              "title": "Checks",
+              "type": "array"
+            },
+            "issues_count": {
+              "title": "Issues Count",
+              "type": "integer"
+            },
+            "overall_status": {
+              "enum": [
+                "healthy",
+                "degraded",
+                "down"
+              ],
+              "title": "Overall Status",
+              "type": "string"
+            },
+            "passed_checks": {
+              "title": "Passed Checks",
+              "type": "integer"
+            },
+            "summary_ar": {
+              "title": "Summary Ar",
+              "type": "string"
+            },
+            "summary_en": {
+              "title": "Summary En",
+              "type": "string"
+            },
+            "timestamp": {
+              "title": "Timestamp",
+              "type": "string"
+            },
+            "total_checks": {
+              "title": "Total Checks",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "overall_status",
+            "summary_ar",
+            "summary_en",
+            "total_checks",
+            "passed_checks",
+            "issues_count",
+            "timestamp",
+            "checks"
+          ],
+          "title": "FullDiagnosticsOut",
           "type": "object"
         },
         "HTTPValidationError": {
@@ -9227,6 +9504,47 @@
             "password"
           ],
           "title": "RegisterRequest",
+          "type": "object"
+        },
+        "RemediationResultOut": {
+          "properties": {
+            "actions_taken": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Actions Taken",
+              "type": "array"
+            },
+            "message_ar": {
+              "title": "Message Ar",
+              "type": "string"
+            },
+            "message_en": {
+              "title": "Message En",
+              "type": "string"
+            },
+            "reclaimed_outbox_events": {
+              "title": "Reclaimed Outbox Events",
+              "type": "integer"
+            },
+            "success": {
+              "title": "Success",
+              "type": "boolean"
+            },
+            "timestamp": {
+              "title": "Timestamp",
+              "type": "string"
+            }
+          },
+          "required": [
+            "success",
+            "message_ar",
+            "message_en",
+            "actions_taken",
+            "reclaimed_outbox_events",
+            "timestamp"
+          ],
+          "title": "RemediationResultOut",
           "type": "object"
         },
         "RetentionPolicyChoice": {
@@ -13708,24 +14026,6 @@
               ],
               "title": "Description"
             },
-            "execution_backend": {
-              "default": "internal",
-              "pattern": "^(internal|n8n)$",
-              "title": "Execution Backend",
-              "type": "string"
-            },
-            "n8n_workflow_ref": {
-              "anyOf": [
-                {
-                  "maxLength": 255,
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "N8N Workflow Ref"
-            },
             "name": {
               "maxLength": 255,
               "minLength": 1,
@@ -14088,6 +14388,248 @@
             }
           },
           "summary": "Create Agent",
+          "tags": [
+            "ai"
+          ]
+        }
+      },
+      "/api/v1/ai/agents/{agent_id}": {
+        "patch": {
+          "description": "Tenant edits their own agent settings / prompt with optimistic concurrency (ADR-060).",
+          "operationId": "update_agent_api_v1_ai_agents__agent_id__patch",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "agent_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Agent Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "header",
+              "name": "If-Match",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "If-Match"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentUpdateRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AgentDetailOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Update Agent",
+          "tags": [
+            "ai"
+          ]
+        }
+      },
+      "/api/v1/ai/agents/{agent_id}/prompt": {
+        "get": {
+          "description": "Fetch one agent including prompt — tenant-isolated by the WHERE clause and RLS.",
+          "operationId": "get_agent_detail_api_v1_ai_agents__agent_id__prompt_get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "agent_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Agent Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AgentDetailOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get Agent Detail",
           "tags": [
             "ai"
           ]
@@ -35589,6 +36131,202 @@
           ]
         }
       },
+      "/api/v1/platform/diagnostics": {
+        "get": {
+          "description": "Comprehensive system-wide diagnostic suite with root-cause analysis for every subsystem.",
+          "operationId": "system_diagnostics_api_v1_platform_diagnostics_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/FullDiagnosticsOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "System Diagnostics",
+          "tags": [
+            "platform"
+          ]
+        }
+      },
+      "/api/v1/platform/diagnostics/remediate": {
+        "post": {
+          "description": "Instant auto-remediation for common silent failures (stuck events, workers).",
+          "operationId": "remediate_system_issues_api_v1_platform_diagnostics_remediate_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/RemediationResultOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Remediate System Issues",
+          "tags": [
+            "platform"
+          ]
+        }
+      },
       "/api/v1/platform/flags": {
         "get": {
           "description": "Every feature flag configured for the caller's tenant.\n\nOrdered by ``feature``, which is unique per tenant\n(``uq_feature_flags_tenant_feature``) — a total order, so the list is\nreproducible without a page. Flags are tenant configuration, not a growing\nuser dataset, so this route carries no ``limit``: the row count is bounded by\nthe number of switches an operator can name.",
@@ -44555,7 +45293,7 @@
       },
       "/api/v1/workflows/executions/{execution_id}/run": {
         "post": {
-          "description": "Run one existing execution against its pinned workflow version.\n\nExecution runs through the workflow's configured backend (the internal\nengine or the n8n adapter). Failures are recorded on the execution row and\nin ``workflow_failures`` — they are not surfaced as a 5xx.",
+          "description": "Run one existing execution against its pinned workflow version.\n\nExecution runs through the internal engine. Failures are recorded on the\nexecution row and in ``workflow_failures`` — they are not surfaced as a 5xx.",
           "operationId": "run_workflow_execution_api_v1_workflows_executions__execution_id__run_post",
           "parameters": [
             {

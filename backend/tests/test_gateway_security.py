@@ -48,7 +48,6 @@ from app.modules.conversations.gateway.telegram import telegram_adapter
 from app.modules.conversations.gateway.whatsapp import whatsapp_adapter
 
 _THRESHOLD = 2
-N8N_URL = "https://n8n.example.test/webhook/outbound"
 
 
 class _Settings:
@@ -83,16 +82,6 @@ def _outbound() -> OutboundMessage:
 
 def _direct_credentials() -> ProviderCredentials:
     return ProviderCredentials(config={"phone_number_id": "P", "access_token": "T"})
-
-
-def _n8n_credentials() -> ProviderCredentials:
-    return ProviderCredentials(
-        config={
-            "phone_number_id": "P",
-            "outbound_webhook_url": N8N_URL,
-            "n8n_service_token": "n8n-token",
-        }
-    )
 
 
 def _tg_credentials() -> ProviderCredentials:
@@ -275,15 +264,6 @@ async def test_whatsapp_error_shaped_200_is_a_provider_error():
             _direct_credentials(),
             _outbound(),
             _client=_always(httpx.Response(200, json={"error": {"message": "rate limited"}})),
-        )
-
-
-async def test_whatsapp_n8n_non_json_success_body_is_a_provider_error():
-    with pytest.raises(ExternalProviderError):
-        await whatsapp_adapter.send(
-            _n8n_credentials(),
-            _outbound(),
-            _client=_always(httpx.Response(200, text="not json")),
         )
 
 

@@ -9,7 +9,7 @@ and this file disagree, this file wins.
 EXPERIENCE  →  APPLICATION  →  DOMAIN  →  DATA  →  INFRASTRUCTURE
 ```
 
-AI, n8n, and channel adapters are actors **above** the Domain — they consume it,
+AI runtimes and channel adapters are actors **above** the Domain — they consume it,
 they never define business logic.
 
 ## Golden rule
@@ -18,7 +18,7 @@ they never define business logic.
 PostgreSQL + Domain/Business Rules = SOURCE OF TRUTH
 ```
 
-LLM, n8n, Redis, conversation history, and the frontend do **not** own base truth.
+LLM, Redis, conversation history, and the frontend do **not** own base truth.
 
 ## Component responsibilities
 
@@ -32,7 +32,7 @@ LLM, n8n, Redis, conversation history, and the frontend do **not** own base trut
 | Outbox | Business transactions commit their events atomically; a relay publishes them after COMMIT |
 | Workers | Separate pools: message / AI / notification / integration / analytics / embedding / sync / report |
 | AI Platform | Gateway, model router, agents, runtime, tools + tool policies, memory, knowledge, usage & cost |
-| n8n | Integrations + automation only, event-driven: `FastAPI → DB → Event → n8n` (never `FastAPI → n8n → DB`) |
+| Workflow engine | Internal automation runs in FastAPI workers from versioned definitions and durable Postgres events |
 | Realtime | Event bus → realtime gateway → WebSocket/SSE → frontend |
 
 ## Key flows
@@ -42,6 +42,12 @@ LLM, n8n, Redis, conversation history, and the frontend do **not** own base trut
 Message → Channel Gateway → verify → normalize → idempotency → **durable write to
 Postgres** → Redis Stream → Message Worker → Conversation Core → AI → Domain → DB →
 Outbound queue → Channel Gateway → customer.
+
+For WhatsApp, Meta calls `GET` and `POST /api/v1/webhooks/whatsapp` on FastAPI.
+The POST route verifies the raw-body signature, persists the delivery, and queues
+`webhook.ingest`; the platform worker normalizes it off the request path. Outbound
+messages are queued as `message.outbound` and the message worker calls the WhatsApp
+Cloud API directly using the tenant's encrypted integration credentials.
 
 Durable ingestion is explicit: the raw inbound message is persisted first; the
 stream entry is a trigger. If Redis is lost, we replay from Postgres.
@@ -74,7 +80,7 @@ Prevents "order created / event lost".
 ## Hot vs cold path
 
 Hot: inbound/outbound messages, conversation, AI replies.
-Cold (workers / n8n only): analytics, reports, embeddings, CRM/ad sync, bulk
+Cold (workers only): analytics, reports, embeddings, CRM/ad sync, bulk
 messages, exports, long jobs. Cold work never blocks the messaging path.
 
 ## Reliability baseline (from day one)
@@ -82,15 +88,15 @@ messages, exports, long jobs. Cold work never blocks the messaging path.
 Idempotency · retries · exponential backoff + jitter · DLQ · circuit breaker ·
 audit logs · concurrency control · outbox · tenant isolation.
 
-Failure isolation: AI provider down → core still works; n8n down → core still
-works; WhatsApp down → queue + retry.
+Failure isolation: AI provider down → core still works; WhatsApp down → queue +
+retry; workflow failures are recorded and retried by the worker runtime.
 
 ## Stack
 
 Frontend: Next.js + TS · Core: FastAPI + Python · DB: PostgreSQL (Supabase,
 pgvector) · Cache/Queue/Streams: Redis (Railway) · Workers: Python runtime ·
 Storage: S3-compatible · Vectors: pgvector · AI: gateway + model router ·
-Automation: n8n · Realtime: WebSocket/SSE · Observability: OpenTelemetry ·
+Automation: FastAPI + worker runtime · Realtime: WebSocket/SSE · Observability: OpenTelemetry ·
 Deployment: containers (Railway) + horizontal scaling.
 
 ## Construction principle

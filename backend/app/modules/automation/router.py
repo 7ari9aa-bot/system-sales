@@ -1,7 +1,6 @@
-"""AUTOMATION routes — versioned workflows + executions (§136).
+"""AUTOMATION routes — versioned internal workflows + executions.
 
-Our Workflow is the source of truth; n8n is only an execution adapter. A
-workflow's definition is versioned (immutable snapshots) and each execution
+A workflow's definition is versioned (immutable snapshots) and each execution
 pins the version it ran. Writes require ``settings:write`` (automation is
 tenant configuration — no new permission codes are invented); reads use plain
 ``TenantCtxDep``.
@@ -50,8 +49,6 @@ class WorkflowCreate(BaseModel):
     trigger_event: str = Field(min_length=1, max_length=127)
     definition: dict
     description: str | None = None
-    execution_backend: str = Field(default="internal", pattern="^(internal|n8n)$")
-    n8n_workflow_ref: str | None = Field(default=None, max_length=255)
 
 
 class WorkflowStatusUpdate(BaseModel):
@@ -69,8 +66,6 @@ def _workflow_dict(workflow: Workflow) -> dict:
         "description": workflow.description,
         "trigger_event": workflow.trigger_event,
         "status": workflow.status,
-        "execution_backend": workflow.execution_backend,
-        "n8n_workflow_ref": workflow.n8n_workflow_ref,
         "current_version": workflow.current_version,
         "version": workflow.version,  # §17 CAS token (mirrors the ETag)
         "created_at": workflow.created_at.isoformat(),
@@ -122,8 +117,6 @@ async def create_workflow(ctx: WriteCtx, body: WorkflowCreate):
         name=body.name,
         trigger_event=body.trigger_event,
         definition=body.definition,
-        execution_backend=body.execution_backend,
-        n8n_workflow_ref=body.n8n_workflow_ref,
     )
     if body.description is not None:
         workflow.description = body.description
@@ -139,7 +132,6 @@ async def create_workflow(ctx: WriteCtx, body: WorkflowCreate):
             "name": workflow.name,
             "trigger_event": workflow.trigger_event,
             "status": workflow.status,
-            "execution_backend": workflow.execution_backend,
             "current_version": workflow.current_version,
         },
     )
@@ -150,9 +142,8 @@ async def create_workflow(ctx: WriteCtx, body: WorkflowCreate):
 async def run_workflow_execution(ctx: WriteCtx, execution_id: uuid.UUID):
     """Run one existing execution against its pinned workflow version.
 
-    Execution runs through the workflow's configured backend (the internal
-    engine or the n8n adapter). Failures are recorded on the execution row and
-    in ``workflow_failures`` — they are not surfaced as a 5xx.
+    Execution runs through the internal engine. Failures are recorded on the
+    execution row and in ``workflow_failures`` — they are not surfaced as a 5xx.
     """
     execution = await WorkflowService.run_execution(ctx.session, ctx.tenant_id, execution_id)
     await write_audit_row(

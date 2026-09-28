@@ -70,16 +70,7 @@ async def test_segment_preview_rejects_bad_dsl_before_touching_the_session() -> 
 # --------------------------------------------- service-level validation ------
 
 
-async def test_workflow_create_rejects_bad_backend_and_definition_without_db() -> None:
-    with pytest.raises(ValidationError):
-        await WorkflowService.create(
-            None,  # type: ignore[arg-type] — raises before the session is used
-            uuid.uuid4(),
-            name="wf",
-            trigger_event="order.created",
-            definition={"steps": []},
-            execution_backend="bogus",
-        )
+async def test_workflow_create_rejects_bad_definition_without_db() -> None:
     with pytest.raises(ValidationError):
         await WorkflowService.create(
             None,  # type: ignore[arg-type]
