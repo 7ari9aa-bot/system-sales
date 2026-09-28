@@ -24,10 +24,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.redis import get_redis
-from app.modules.ai.models import Agent
-from app.modules.inventory.models import InventoryItem
-from app.modules.orders.models import Order
 from app.modules.platform.models import Integration, OutboxEvent
+
+# Checks outside the platform module read sibling tables with parameter-bound
+# SQL, never their ORM models — a module-scope model import here re-merges the
+# cross-module cycle the boundary ratchet keeps split (see tests/
+# test_module_boundaries.py), and this engine only needs counts and names.
 
 
 class SystemDiagnosticsService:
@@ -463,13 +465,18 @@ class SystemDiagnosticsService:
         )
 
         try:
-            agents = (
+            agent_rows = (
                 await session.execute(
-                    select(Agent).where(Agent.tenant_id == tenant_id, Agent.is_active == True)  # noqa: E712
+                    text(
+                        "SELECT id, name, system_prompt FROM agents "
+                        "WHERE tenant_id = :tid AND is_active = true "
+                        "ORDER BY created_at"
+                    ),
+                    {"tid": tenant_id},
                 )
-            ).scalars().all()
+            ).all()
 
-            if not agents:
+            if not agent_rows:
                 return {
                     "id": "ai_agent_status",
                     "category": "ai",
@@ -484,8 +491,10 @@ class SystemDiagnosticsService:
                 }
 
             # Check if primary agent has a prompt
-            primary_agent = agents[0]
-            if not (primary_agent.system_prompt and primary_agent.system_prompt.strip()):
+            primary_agent = agent_rows[0]
+            primary_name = primary_agent.name
+            primary_prompt = primary_agent.system_prompt
+            if not (primary_prompt and primary_prompt.strip()):
                 return {
                     "id": "ai_agent_status",
                     "category": "ai",
@@ -494,7 +503,7 @@ class SystemDiagnosticsService:
                     "status": "degraded",
                     "error": "Agent system prompt is empty",
                     "root_cause": (
-                        f"الوكيل '{primary_agent.name}' لا يملك برومبت توجيهي (System Prompt)."
+                        f"الوكيل '{primary_name}' لا يملك برومبت توجيهي (System Prompt)."
                     ),
                     "remediation": (
                         "اكتب برومبت توجيهي للوكيل في صفحة 'الوكيل الذكي' ليعرف كيف يرد."
@@ -503,7 +512,7 @@ class SystemDiagnosticsService:
                         "provider": provider,
                         "has_api_key": has_key,
                         "agent_id": str(primary_agent.id),
-                        "agent_name": primary_agent.name,
+                        "agent_name": primary_name,
                     },
                     "timestamp": datetime.now(UTC).isoformat(),
                 }
@@ -520,8 +529,8 @@ class SystemDiagnosticsService:
                 "metrics": {
                     "provider": provider,
                     "has_api_key": has_key,
-                    "active_agents": len(agents),
-                    "primary_agent_name": primary_agent.name,
+                    "active_agents": len(agent_rows),
+                    "primary_agent_name": primary_name,
                 },
                 "timestamp": datetime.now(UTC).isoformat(),
             }
@@ -624,25 +633,28 @@ class SystemDiagnosticsService:
         try:
             anomalies: list[str] = []
 
-            # 1. Negative available inventory items
+            # 1. Negative available inventory: available = on_hand - reserved.
             negative_inventory = (
                 await session.execute(
-                    select(func.count(InventoryItem.id))
-                    .where(InventoryItem.tenant_id == tenant_id, InventoryItem.available < 0)
+                    text(
+                        "SELECT count(*) FROM inventory_balances "
+                        "WHERE tenant_id = :tid AND (on_hand - reserved) < 0"
+                    ),
+                    {"tid": tenant_id},
                 )
             ).scalar_one() or 0
             if negative_inventory > 0:
                 anomalies.append(f"{negative_inventory} منتج بمخزون سالب أقل من الصفر")
 
-            # 2. Orders with negative revenue (not refunded)
+            # 2. Orders with negative revenue (not refunded, not tombstoned).
             invalid_orders = (
                 await session.execute(
-                    select(func.count(Order.id))
-                    .where(
-                        Order.tenant_id == tenant_id,
-                        Order.status.notin_(["cancelled"]),
-                        Order.total_amount < 0,
-                    )
+                    text(
+                        "SELECT count(*) FROM orders "
+                        "WHERE tenant_id = :tid AND status <> 'cancelled' "
+                        "AND grand_total < 0 AND deleted_at IS NULL"
+                    ),
+                    {"tid": tenant_id},
                 )
             ).scalar_one() or 0
             if invalid_orders > 0:

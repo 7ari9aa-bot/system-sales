@@ -299,7 +299,7 @@ test("an untouched dialog posts the pre-money body byte-for-byte, with one idemp
   await page.goto("/orders");
   await openDialogAndPickOne(page);
   await page.getByTestId("submit-order").click();
-  await expect(page.getByText("Order created")).toBeVisible();
+  await expect(page.getByText("Order created", { exact: true })).toBeVisible();
 
   expect(sent).toHaveLength(1);
   expect(sent[0].body).toBe(
@@ -321,7 +321,7 @@ test("typed money reaches the wire as strings beside the fields the server names
   await page.getByTestId("order-money-shipping").fill("15");
   await page.getByTestId("order-money-tax").fill("5.5");
   await page.getByTestId("submit-order").click();
-  await expect(page.getByText("Order created")).toBeVisible();
+  await expect(page.getByText("Order created", { exact: true })).toBeVisible();
 
   expect(sent).toHaveLength(1);
   expect(JSON.parse(sent[0].body)).toEqual({
@@ -351,7 +351,7 @@ test("a corrected retry after a 4xx reuses the dialog's key, as the guard's rele
   await expect(page.getByTestId("order-money-tax")).toHaveValue("7");
 
   await page.getByTestId("submit-order").click();
-  await expect(page.getByText("Order created")).toBeVisible();
+  await expect(page.getByText("Order created", { exact: true })).toBeVisible();
 
   expect(sent).toHaveLength(2);
   expect(sent[0].key).toBeTruthy();
@@ -371,7 +371,10 @@ test("a 500 keeps the key too, and the guard's own terminal 409 then stops the d
   await openDialogAndPickOne(page);
 
   await page.getByTestId("submit-order").click();
-  await expect(page.getByText("upstream failure")).toBeVisible();
+  // exact: the diagnostics toast carries the same message plus the request
+  // path ("upstream failure\nالمسار: /orders"), so a bare getByText matches
+  // two elements and strict mode refuses.
+  await expect(page.getByText("upstream failure", { exact: true })).toBeVisible();
   await expect(page.getByTestId("order-idempotency-conflict")).toHaveCount(0);
 
   await page.getByTestId("submit-order").click();
@@ -388,8 +391,16 @@ test("a replayed answer is reported as a replay, not as a second creation", asyn
   await openDialogAndPickOne(page);
   await page.getByTestId("submit-order").click();
 
-  await expect(page.getByText("Order already created")).toBeVisible();
-  await expect(page.getByText(/the order was not created twice/)).toBeVisible();
+  await expect(page.getByText("Order already created", { exact: true })).toBeVisible();
+  // The replay reason lives in the toast DESCRIPTION; Radix's hidden announcer
+  // echoes title+description behind a "Notification " prefix, so a bare regex
+  // resolves to two elements. Match the description element exactly (the mock
+  // order number is deterministic).
+  await expect(
+    page.getByText("#ORD-1002 — The first response was replayed — the order was not created twice.", {
+      exact: true,
+    }),
+  ).toBeVisible();
   expect(sent).toHaveLength(1);
 });
 
@@ -424,7 +435,9 @@ test("closing after a 409 and reopening is a new intent with a new key", async (
   await page.getByTestId("toggle-order-form").click();
   await expect(page.getByTestId("submit-order")).toBeEnabled();
   await page.getByTestId("submit-order").click();
-  await expect(page.getByText("Order created")).toBeVisible();
+  // exact: the a11y announcer echoes the same words with the order number
+  // ("Notification Order created#ORD-…"), which a bare getByText also matches.
+  await expect(page.getByText("Order created", { exact: true })).toBeVisible();
 
   expect(sent).toHaveLength(2);
   expect(sent[0].key).not.toBe(sent[1].key);

@@ -137,7 +137,13 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # hard rules hold. `customers -> conversations.inbox` (the 360 now reads the
 # same read model instead of calling `list_inbox`) is a re-point of the existing
 # `customers -> conversations.service` edge, not a new coupling.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 101
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 99
+# 101 -> 99 on 2026-09-29: the diagnostics engine (platform/diagnostics.py) had
+# module-scope imports of `ai.models.Agent`, `inventory.models` and
+# `orders.models` — three edges that re-merged the eleven-module SCC blob the
+# wave-3 work had split. The engine now reads `agents`, `inventory_balances`
+# and `orders` with parameter-bound SQL (the customers/timeline read-model
+# precedent), deleting all three edges: 102 (the drifted real count) -> 99.
 # 2026-09-27: +2 for Wave A — decisions and evidence each import
 # identity.deps exactly once (the same router edge platform already has).
 # The ratchet exists to stop GROWTH INSIDE a module, not to forbid new

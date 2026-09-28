@@ -37,7 +37,9 @@ test("an API that fails every endpoint does not crash the shell", async ({ page 
 
   // Owner IA 2026-09-27: the dashboard nav item is now "Overview".
   await expect(page.getByTestId("nav-overview")).toBeVisible();
-  await expect(page.getByTestId("error-state")).toBeVisible();
+  // The Overview is a composite: every widget owns its own error state, so a
+  // full outage surfaces several alerts at once — one suffices for this claim.
+  await expect(page.getByTestId("error-state").first()).toBeVisible();
   await expect(page.getByTestId("health-indicator")).toBeVisible();
 });
 

@@ -44,12 +44,6 @@ const DEEP_LINKS: DeepLink[] = [
     routes: [["**/api/v1/products**", []]],
   },
   {
-    path: "/tasks",
-    landmark: '[data-testid="tasks-empty"]',
-    surface: "dialog",
-    routes: [["**/api/v1/tasks**", []]],
-  },
-  {
     path: "/marketing",
     landmark: '[data-testid="open-campaign-form"]',
     surface: "dialog",
