@@ -231,6 +231,7 @@ export function createReact() {
     now: () => state.now,
     pendingTimers: () => state.timers.size,
     scheduleTimer,
+    scheduleInterval,
     clearTimer,
     advance,
     timers: state.timers,

@@ -13,7 +13,6 @@ import Link from "next/link";
 import {
   Bell,
   BellOff,
-  Check,
   CheckCheck,
   ExternalLink,
   Inbox,
@@ -27,6 +26,7 @@ import {
   useNotifications,
   type Notification,
 } from "@/lib/queries";
+import { Check } from "lucide-react";
 import { t } from "@/lib/t";
 import { getLang } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -124,14 +124,17 @@ export default function NotificationsPage() {
 
   const listQuery = useNotifications({ unread_only: unreadOnly, kind, limit: 100 });
   const summaryQuery = useNotificationSummary();
+  const summary = summaryQuery.data;
   const markRead = useMarkRead();
+  const markAll = useMarkAllRead();
   const markMany = useMarkManyRead();
   const rawItems = listQuery.data;
-  const items: Notification[] = Array.isArray(rawItems)
-    ? rawItems
-    : Array.isArray((rawItems as unknown as { items?: Notification[] })?.items)
-      ? ((rawItems as unknown as { items: Notification[] }).items)
-      : [];
+  const items: Notification[] = React.useMemo(() => {
+    if (Array.isArray(rawItems)) return rawItems;
+    if (Array.isArray((rawItems as unknown as { items?: Notification[] })?.items))
+      return (rawItems as unknown as { items: Notification[] }).items;
+    return [];
+  }, [rawItems]);
   const unreadTotal = summary?.unread ?? 0;
 
   // Drop selections that are no longer on screen so the bulk action never

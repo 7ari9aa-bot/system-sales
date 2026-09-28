@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
@@ -9,13 +8,31 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState, ErrorState, PageHeader } from "@/components/ui/states";
 import { apiClient } from "@/lib/api";
 
+interface HealthSubsystem {
+  name: string;
+  status: string;
+  detail?: string;
+  error_rate?: number;
+}
+
+interface HealthEvent {
+  message: string;
+  timestamp: string | number | Date;
+}
+
+interface HealthData {
+  subsystems?: HealthSubsystem[];
+  systems?: HealthSubsystem[];
+  events?: HealthEvent[];
+}
+
 export default function LivePage() {
   const { data: dataRaw, isLoading, isError } = useQuery({
     queryKey: ["live"],
     queryFn: () => apiClient.get("/api/v1/platform/health"),
     refetchInterval: 10000,
   });
-  const data = dataRaw as any;
+  const data = dataRaw as HealthData | undefined;
 
   if (isError) return <ErrorState message={t.somethingWentWrong} />;
   if (isLoading) return <LiveSkeleton />;
@@ -27,7 +44,7 @@ export default function LivePage() {
       <PageHeader title={t.health} description="Real-time system health" />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {systems.map((s: any) => (
+        {systems.map((s) => (
           <Card key={s.name}>
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
@@ -62,7 +79,7 @@ export default function LivePage() {
             <EmptyState title={t.allClear} />
           ) : (
             <div className="space-y-2">
-              {(data?.events ?? []).map((e: any, i: number) => (
+              {(data?.events ?? []).map((e, i) => (
                 <div key={i} className="flex items-center justify-between border-b last:border-0 pb-2 last:pb-0">
                   <span className="text-sm">{e.message}</span>
                   <span className="text-xs text-muted-foreground" dir="ltr">

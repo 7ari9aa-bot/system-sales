@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
@@ -9,20 +8,31 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState, ErrorState, PageHeader } from "@/components/ui/states";
 import { apiClient } from "@/lib/api";
 
+interface SLAItem {
+  id?: string;
+  conversation_id?: string;
+  customer_name?: string;
+  status: string;
+}
+
+interface SLAData {
+  items?: SLAItem[];
+}
+
 export default function SLAPage() {
   const { data: dataRaw, isLoading, isError } = useQuery({
     queryKey: ["sla-risk"],
     queryFn: () => apiClient.get("/api/v1/sla/risk"),
     refetchInterval: 15000,
   });
-  const data = dataRaw as any;
+  const data = dataRaw as SLAData | undefined;
 
   if (isError) return <ErrorState message={t.somethingWentWrong} />;
   if (isLoading) return <SLASkeleton />;
 
-  const items = Array.isArray(data?.items) ? data.items : [];
-  const atRisk = items.filter((i: any) => i.status === "at_risk" || i.status === "warning").length;
-  const breached = items.filter((i: any) => i.status === "breached" || i.status === "danger").length;
+  const items: SLAItem[] = Array.isArray(data?.items) ? data.items : [];
+  const atRisk = items.filter((i) => i.status === "at_risk" || i.status === "warning").length;
+  const breached = items.filter((i) => i.status === "breached" || i.status === "danger").length;
 
   return (
     <div className="space-y-6">
@@ -66,7 +76,7 @@ export default function SLAPage() {
             <EmptyState title={t.slaRiskEmpty} />
           ) : (
             <div className="space-y-2">
-              {items.map((c: any) => (
+              {items.map((c) => (
                 <div key={c.conversation_id ?? c.id} className="flex items-center justify-between border-b last:border-0 pb-2 last:pb-0">
                   <span className="text-sm font-medium">{c.customer_name ?? c.conversation_id ?? "—"}</span>
                   <Badge variant={c.status === "breached" ? "danger" : c.status === "at_risk" ? "warning" : "outline"}>

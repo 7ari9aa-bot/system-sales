@@ -1123,7 +1123,7 @@ export function useCreateSavedView() {
 export function useDeleteSavedView() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, entity }: { id: string; entity: string }) =>
+    mutationFn: ({ id }: { id: string; entity: string }) =>
       api<void>(`/platform/saved-views/${id}`, { method: "DELETE" }),
     onSuccess: (_data, { entity }) => {
       toast({ title: "تم حذف العرض" });

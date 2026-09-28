@@ -19,10 +19,11 @@ import uuid
 # Add backend directory to sys.path if needed
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+from sqlalchemy import select
+
 from app.core.db import SessionLocal
 from app.modules.identity.models import Tenant
 from app.modules.platform.diagnostics import SystemDiagnosticsService
-from sqlalchemy import select
 
 # Terminal colors
 GREEN = "\033[92m"
@@ -57,7 +58,11 @@ async def main() -> int:
 
     print(f"الحالة العامة: {status_badge}")
     print(f"ملخص الفحص:  {report['summary_ar']}\n")
-    print(f"إجمالي الفحوصات: {report['total_checks']} | الناجحة: {report['passed_checks']} | المشاكل المرصودة: {report['issues_count']}\n")
+    print(
+        f"إجمالي الفحوصات: {report['total_checks']} | "
+        f"الناجحة: {report['passed_checks']} | "
+        f"المشاكل المرصودة: {report['issues_count']}\n"
+    )
 
     print(f"{'المكون / Subsystem':<35} {'الحالة / Status':<18} {'زمن الاستجابة':<15}")
     print("-" * 72)

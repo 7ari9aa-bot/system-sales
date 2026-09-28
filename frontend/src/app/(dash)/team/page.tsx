@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
@@ -9,17 +8,27 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState, ErrorState, PageHeader } from "@/components/ui/states";
 import { apiClient } from "@/lib/api";
 
+interface TeamMember {
+  id: string;
+  email?: string;
+  name?: string;
+  role?: string;
+  status?: string;
+}
+
+type TeamData = TeamMember[] | { items?: TeamMember[] };
+
 export default function TeamPage() {
   const { data: dataRaw, isLoading, isError } = useQuery({
     queryKey: ["invitations"],
     queryFn: () => apiClient.get("/api/v1/invitations"),
   });
-  const data = dataRaw as any;
+  const data = dataRaw as TeamData | undefined;
 
   if (isError) return <ErrorState message={t.somethingWentWrong} />;
   if (isLoading) return <TeamSkeleton />;
 
-  const members = Array.isArray(data) ? data : data?.items ?? [];
+  const members: TeamMember[] = Array.isArray(data) ? data : data?.items ?? [];
 
   return (
     <div className="space-y-6">
@@ -34,7 +43,7 @@ export default function TeamPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {members.map((m: any) => (
+              {members.map((m) => (
                 <div key={m.id} className="flex items-center justify-between border-b last:border-0 pb-3 last:pb-0">
                   <div className="flex items-center gap-3">
                     <div className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-sm font-medium">

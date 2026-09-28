@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
@@ -9,17 +8,27 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState, ErrorState, PageHeader } from "@/components/ui/states";
 import { apiClient } from "@/lib/api";
 
+interface IntegrationItem {
+  id: string;
+  provider?: string;
+  type?: string;
+  status: string;
+  last_synced_at?: string;
+}
+
+type IntegrationData = IntegrationItem[] | { items?: IntegrationItem[] };
+
 export default function IntegrationsPage() {
   const { data: dataRaw, isLoading, isError } = useQuery({
     queryKey: ["integrations"],
     queryFn: () => apiClient.get("/api/v1/integrations"),
   });
-  const data = dataRaw as any;
+  const data = dataRaw as IntegrationData | undefined;
 
   if (isError) return <ErrorState message={t.somethingWentWrong} />;
   if (isLoading) return <IntegrationsSkeleton />;
 
-  const integrations = Array.isArray(data) ? data : data?.items ?? [];
+  const integrations: IntegrationItem[] = Array.isArray(data) ? data : data?.items ?? [];
 
   return (
     <div className="space-y-6">
@@ -29,7 +38,7 @@ export default function IntegrationsPage() {
         <EmptyState title={t.noIntegrations} />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {integrations.map((item: any) => (
+          {integrations.map((item) => (
             <Card key={item.id}>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">

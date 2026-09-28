@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
@@ -9,18 +8,29 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState, ErrorState, PageHeader } from "@/components/ui/states";
 import { apiClient } from "@/lib/api";
 
+interface QueueJob {
+  id: string | number;
+  kind?: string;
+  name?: string;
+  status: string;
+  attempts?: number;
+  error?: string;
+}
+
+type QueueData = QueueJob[] | { items?: QueueJob[] };
+
 export default function QueuesPage() {
   const { data: dataRaw, isLoading, isError } = useQuery({
     queryKey: ["jobs"],
     queryFn: () => apiClient.get("/api/v1/jobs"),
     refetchInterval: 10000,
   });
-  const data = dataRaw as any;
+  const data = dataRaw as QueueData | undefined;
 
   if (isError) return <ErrorState message={t.somethingWentWrong} />;
   if (isLoading) return <QueuesSkeleton />;
 
-  const jobs = Array.isArray(data) ? data : data?.items ?? [];
+  const jobs: QueueJob[] = Array.isArray(data) ? data : data?.items ?? [];
 
   return (
     <div className="space-y-6">
@@ -30,7 +40,7 @@ export default function QueuesPage() {
         <EmptyState title={t.allClear} />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {jobs.map((q: any) => (
+          {jobs.map((q) => (
             <Card key={q.id}>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">

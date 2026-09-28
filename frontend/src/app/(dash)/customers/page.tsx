@@ -34,7 +34,7 @@ export default function CustomersPage() {
 
   // §95 — العرض المحفوظ يحمل فلاتره؛ عند تفعيله نقود بها حالة الجدول
   const viewsQuery = useSavedViews("customers");
-  const views = viewsQuery.data ?? [];
+  const views = React.useMemo(() => viewsQuery.data ?? [], [viewsQuery.data]);
   const activeView = React.useMemo(
     () => views.find((v) => v.id === activeViewId) ?? null,
     [views, activeViewId],

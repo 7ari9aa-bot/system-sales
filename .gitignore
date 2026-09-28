@@ -63,5 +63,11 @@ website-builder/
 # --- scratch workspace for the builder tooling (temp diffs, no project data) ---
 .builder/
 .zcode/
+.zcodeignore
 .wave-f-hold/
 vibe_images/
+
+# --- agent / tool workspace (auto-generated, never source) ---
+.codebuddy/
+.red-a2/
+.kilo/

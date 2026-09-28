@@ -710,7 +710,7 @@ async def system_diagnostics(ctx: TenantCtxDep) -> schemas.FullDiagnosticsOut:
 
 @router.post("/diagnostics/remediate", response_model=schemas.RemediationResultOut)
 async def remediate_system_issues(ctx: TenantCtxDep) -> schemas.RemediationResultOut:
-    """Instant auto-remediation for common silent failures (stuck outbox events, stranded workers)."""
+    """Instant auto-remediation for common silent failures (stuck events, workers)."""
     from app.modules.platform.diagnostics import SystemDiagnosticsService
 
     result = await SystemDiagnosticsService.auto_remediate(

@@ -4,12 +4,12 @@
  *  ملفات الـpage.tsx (server) بتصدر metadata وتستدعي الجسم من هنا. */
 
 import Link from "next/link";
+import Image from "next/image";
 import { useI18n } from "@/components/public/i18n";
 import { Reveal } from "@/components/public/reveal";
 import {
   PageHero,
   FeatureList,
-  StepsRow,
   ContextGraph,
   FaqList,
   PolicyBody,
@@ -36,7 +36,14 @@ export function ProductBody() {
       <section className="fh-section">
         <div className="fh-container">
           <Reveal>
-            <img className="fh-section-img" src="https://media.base44.com/images/public/6ab00dcc41a53757c2f8a0b1/fe56c85ba_generated_image.png" alt={p.title} loading="lazy" />
+            <Image
+              className="fh-section-img"
+              src="https://media.base44.com/images/public/6ab00dcc41a53757c2f8a0b1/fe56c85ba_generated_image.png"
+              alt={p.title}
+              width={1200}
+              height={675}
+              unoptimized
+            />
           </Reveal>
           <div className="fh-product-deep">
             <Reveal className="fh-product-graph">
@@ -56,7 +63,14 @@ export function ProductBody() {
       <section className="fh-section fh-section-alt">
         <div className="fh-container">
           <Reveal>
-            <img className="fh-section-img fh-section-img-wide" src="https://media.base44.com/images/public/6ab00dcc41a53757c2f8a0b1/0bc824d23_generated_image.png" alt={p.forWho.title} loading="lazy" />
+            <Image
+              className="fh-section-img fh-section-img-wide"
+              src="https://media.base44.com/images/public/6ab00dcc41a53757c2f8a0b1/0bc824d23_generated_image.png"
+              alt={p.forWho.title}
+              width={1200}
+              height={675}
+              unoptimized
+            />
           </Reveal>
           <Reveal className="fh-section-head">
             <h2>{p.forWho.title}</h2>

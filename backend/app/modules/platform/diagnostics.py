@@ -12,7 +12,6 @@ Deep self-inspection across all architectural layers:
 
 from __future__ import annotations
 
-import asyncio
 import os
 import time
 import uuid
@@ -24,12 +23,8 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.core.db import get_engine
 from app.core.redis import get_redis
 from app.modules.ai.models import Agent
-from app.modules.conversations.models import Conversation
-from app.modules.customers.models import Customer
-from app.modules.identity.deps import TenantContext
 from app.modules.inventory.models import InventoryItem
 from app.modules.orders.models import Order
 from app.modules.platform.models import Integration, OutboxEvent
@@ -115,7 +110,9 @@ class SystemDiagnosticsService:
                     "latency_ms": latency,
                     "error": "Query returned unexpected value",
                     "root_cause": "PostgreSQL returned an invalid result on SELECT 1.",
-                    "remediation": "Check database server integrity and restart the instance if necessary.",
+                    "remediation": (
+                        "Check database server integrity and restart the instance if necessary."
+                    ),
                     "metrics": {"latency_ms": latency},
                     "timestamp": datetime.now(UTC).isoformat(),
                 }
@@ -125,7 +122,11 @@ class SystemDiagnosticsService:
                 if latency > 800
                 else None
             )
-            remediation = "قم بفحص استهلاك المعالج والذاكرة لقاعدة البيانات." if latency > 800 else None
+            remediation = (
+                "قم بفحص استهلاك المعالج والذاكرة لقاعدة البيانات."
+                if latency > 800
+                else None
+            )
             return {
                 "id": "db_connection",
                 "category": "database",
@@ -150,7 +151,9 @@ class SystemDiagnosticsService:
                 "latency_ms": latency,
                 "error": f"{type(exc).__name__}: {exc}",
                 "root_cause": "تعذر الاتصال بخادم PostgreSQL (انقطاع الاتصال أو خادم متوقف).",
-                "remediation": "تحقق من متغير DATABASE_URL وتأكد من أن خدمة PostgreSQL قيد التشغيل.",
+                "remediation": (
+                    "تحقق من متغير DATABASE_URL وتأكد من أن خدمة PostgreSQL قيد التشغيل."
+                ),
                 "metrics": {"latency_ms": latency},
                 "timestamp": datetime.now(UTC).isoformat(),
             }
@@ -172,8 +175,13 @@ class SystemDiagnosticsService:
                     "name_en": "Database Migrations",
                     "status": "degraded",
                     "error": "No version recorded in alembic_version table",
-                    "root_cause": "جدول إصدارات الهجرة فارغ، مما يشير إلى عدم اكتمال أمر alembic upgrade head.",
-                    "remediation": "قم بتشغيل 'alembic upgrade head' في بيئة التشغيل لتطبيق آخر الهجرات.",
+                    "root_cause": (
+                        "جدول إصدارات الهجرة فارغ، مما يشير إلى عدم اكتمال "
+                        "أمر alembic upgrade head."
+                    ),
+                    "remediation": (
+                        "قم بتشغيل 'alembic upgrade head' في بيئة التشغيل لتطبيق آخر الهجرات."
+                    ),
                     "metrics": {"current_version": None},
                     "timestamp": datetime.now(UTC).isoformat(),
                 }
@@ -221,7 +229,9 @@ class SystemDiagnosticsService:
                 "latency_ms": latency,
                 "error": None,
                 "root_cause": f"استجابة Redis بطيئة ({latency}ms)" if latency > 300 else None,
-                "remediation": "افحص استهلاك الذاكرة والشبكة لخادم Redis." if latency > 300 else None,
+                "remediation": (
+                    "افحص استهلاك الذاكرة والشبكة لخادم Redis." if latency > 300 else None
+                ),
                 "metrics": {"latency_ms": latency},
                 "timestamp": datetime.now(UTC).isoformat(),
             }
@@ -267,12 +277,19 @@ class SystemDiagnosticsService:
                 remediation = None
             elif lag_seconds > 300:
                 status = "down"
-                root_cause = f"يوجد {pending_count} حدث قيد الانتظار، وأقدم حدث متأخر منذ {lag_seconds} ثانية! معالج الأحداث متوقف تماماً."
-                remediation = "تحقق من تشغيل عملية المعالجة بالخلفية (Outbox Worker) وافحص سجلات الأخطاء."
+                root_cause = (
+                    f"يوجد {pending_count} حدث قيد الانتظار، وأقدم حدث متأخر منذ {lag_seconds} "
+                    "ثانية! معالج الأحداث متوقف تماماً."
+                )
+                remediation = (
+                    "تحقق من تشغيل عملية المعالجة بالخلفية (Outbox Worker) وافحص سجلات الأخطاء."
+                )
             elif lag_seconds > 30:
                 status = "degraded"
                 root_cause = f"تراكم في الأحداث ({pending_count} حدث، تأخر {lag_seconds} ثانية)."
-                remediation = "تأكد من أن عمال الخلفية (Workers) قادرون على مواكبة معدل إدخال الأحداث."
+                remediation = (
+                    "تأكد من أن عمال الخلفية (Workers) قادرون على مواكبة معدل إدخال الأحداث."
+                )
             else:
                 status = "healthy"
                 root_cause = None
@@ -306,13 +323,18 @@ class SystemDiagnosticsService:
 
     @classmethod
     async def check_outbox_stuck_events(cls, session: AsyncSession) -> dict[str, Any]:
-        """Detect events stuck in 'publishing' or events that exhausted attempts (SILENT FAILURE TRAP)."""
+        """Detect events stuck in 'publishing' or events with exhausted attempts."""
         try:
             # Events in 'publishing' whose lease expired (> 5 minutes ago)
             threshold = datetime.now(UTC) - timedelta(minutes=5)
             stuck_rows = (
                 await session.execute(
-                    select(OutboxEvent.id, OutboxEvent.stream, OutboxEvent.attempts, OutboxEvent.last_error)
+                    select(
+                        OutboxEvent.id,
+                        OutboxEvent.stream,
+                        OutboxEvent.attempts,
+                        OutboxEvent.last_error,
+                    )
                     .where(OutboxEvent.status == "publishing", OutboxEvent.updated_at < threshold)
                     .limit(10)
                 )
@@ -328,10 +350,12 @@ class SystemDiagnosticsService:
             if stuck_count > 0:
                 status = "degraded"
                 root_cause = (
-                    f"تم اكتشاف {stuck_count} حدث عالق في حالة 'قيد النشر' (publishing) لأكثر من 5 دقائق! "
-                    "حدث هذا غالباً بسبب إعادة تشغيل الخادم أثناء المعالجة أو إيقاف مفاجئ لـ Worker."
+                    f"تم اكتشاف {stuck_count} حدث عالق في حالة 'قيد النشر' (publishing) "
+                    "لأكثر من 5 دقائق! حدث هذا غالباً بسبب إعادة تشغيل الخادم أثناء المعالجة."
                 )
-                remediation = "قم بتشغيل أداة الإصلاح التلقائي (Remediate) لإعادة الأحداث العالقة لطابور الانتظار."
+                remediation = (
+                    "قم بتشغيل أداة الإصلاح التلقائي (Remediate) لإعادة الأحداث العالقة للانتظار."
+                )
             elif failed_count > 0:
                 status = "degraded"
                 root_cause = f"يوجد {failed_count} حدث في حالة فشل نهائي (failed)."
@@ -386,7 +410,9 @@ class SystemDiagnosticsService:
 
             if depth >= 50:
                 status = "down"
-                root_cause = f"طابور الرسائل الميتة (DLQ) يحتوي على {depth} رسالة متعثرة تجاوزت محاولات المعالجة!"
+                root_cause = (
+                    f"طابور الرسائل الميتة (DLQ) يحتوي على {depth} رسالة متعثرة تجاوزت المحاولات!"
+                )
                 remediation = "قم بفحص سبب استبعاد الرسائل في DLQ وحل خطأ المعالج."
             elif depth > 0:
                 status = "degraded"
@@ -409,7 +435,7 @@ class SystemDiagnosticsService:
                 "metrics": {"dlq_depth": depth},
                 "timestamp": datetime.now(UTC).isoformat(),
             }
-        except Exception as exc:
+        except Exception:
             return {
                 "id": "dlq_depth",
                 "category": "outbox",
@@ -467,8 +493,12 @@ class SystemDiagnosticsService:
                     "name_en": "AI Agent & Gateway",
                     "status": "degraded",
                     "error": "Agent system prompt is empty",
-                    "root_cause": f"الوكيل '{primary_agent.name}' لا يملك برومبت توجيهي (System Prompt).",
-                    "remediation": "اكتب برومبت توجيهي للوكيل في صفحة 'الوكيل الذكي' ليعرف كيف يرد على العملاء.",
+                    "root_cause": (
+                        f"الوكيل '{primary_agent.name}' لا يملك برومبت توجيهي (System Prompt)."
+                    ),
+                    "remediation": (
+                        "اكتب برومبت توجيهي للوكيل في صفحة 'الوكيل الذكي' ليعرف كيف يرد."
+                    ),
                     "metrics": {
                         "provider": provider,
                         "has_api_key": has_key,
@@ -540,13 +570,21 @@ class SystemDiagnosticsService:
             for provider, status, wh in rows:
                 health_dict = wh or {}
                 consecutive_fail = health_dict.get("consecutive_failures", 0)
-                if status in ("disconnected", "restricted", "reauth_required") or consecutive_fail >= 3:
+                if (
+                    status in ("disconnected", "restricted", "reauth_required")
+                    or consecutive_fail >= 3
+                ):
                     failing_list.append(f"{provider} (حالة: {status}، إخفاقات: {consecutive_fail})")
 
             if failing_list:
                 status_val = "degraded"
-                root_cause = f"توجد قنوات مراسلة متعثرة أو تتطلب إعادة تسجيل الدخول: {', '.join(failing_list)}."
-                remediation = "توجه إلى الإعدادات -> التكاملات وقم بإعادة ربط القناة وتحديث الرموز السرية."
+                root_cause = (
+                    "توجد قنوات مراسلة متعثرة أو تتطلب إعادة تسجيل الدخول: "
+                    f"{', '.join(failing_list)}."
+                )
+                remediation = (
+                    "توجه إلى الإعدادات -> التكاملات وقم بإعادة ربط القناة وتحديث الرموز السرية."
+                )
             else:
                 status_val = "healthy"
                 root_cause = None
@@ -639,7 +677,7 @@ class SystemDiagnosticsService:
                 "metrics": {"negative_inventory": 0, "invalid_orders": 0},
                 "timestamp": datetime.now(UTC).isoformat(),
             }
-        except Exception as exc:
+        except Exception:
             return {
                 "id": "data_integrity",
                 "category": "data_integrity",
@@ -671,7 +709,9 @@ class SystemDiagnosticsService:
                 "status": "down",
                 "error": f"Missing critical environment variables: {', '.join(missing)}",
                 "root_cause": "المفتاح السري لتوقيع الجلسات JWT_SECRET مفقود أو غير مضبوط.",
-                "remediation": "قم بضبط متغير البيئة JWT_SECRET في ملف .env أو إعدادات السيرفر فوراً.",
+                "remediation": (
+                    "قم بضبط متغير البيئة JWT_SECRET في ملف .env أو إعدادات السيرفر فوراً."
+                ),
                 "metrics": {"missing_keys": missing},
                 "timestamp": datetime.now(UTC).isoformat(),
             }
@@ -717,7 +757,8 @@ class SystemDiagnosticsService:
         reclaimed_count = len(reclaimed_ids)
         if reclaimed_count > 0:
             actions_taken.append(
-                f"تم تحرير {reclaimed_count} حدث عالق في حالة 'publishing' وإعادته لطابور الانتظار (pending)."
+                f"تم تحرير {reclaimed_count} حدث عالق في حالة 'publishing' "
+                "وإعادته لطابور الانتظار (pending)."
             )
 
         await session.flush()

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
@@ -9,17 +8,28 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState, ErrorState, PageHeader } from "@/components/ui/states";
 import { apiClient } from "@/lib/api";
 
+interface JourneyItem {
+  id: string;
+  name: string;
+  status: string;
+  description?: string;
+  steps?: unknown[];
+  runs_count?: number;
+}
+
+type JourneyData = JourneyItem[] | { items?: JourneyItem[] };
+
 export default function JourneysPage() {
   const { data: dataRaw, isLoading, isError } = useQuery({
     queryKey: ["workflows"],
     queryFn: () => apiClient.get("/api/v1/workflows"),
   });
-  const data = dataRaw as any;
+  const data = dataRaw as JourneyData | undefined;
 
   if (isError) return <ErrorState message={t.somethingWentWrong} />;
   if (isLoading) return <JourneysSkeleton />;
 
-  const journeys = Array.isArray(data) ? data : data?.items ?? [];
+  const journeys: JourneyItem[] = Array.isArray(data) ? data : data?.items ?? [];
 
   return (
     <div className="space-y-6">
@@ -29,7 +39,7 @@ export default function JourneysPage() {
         <EmptyState title={t.noCampaigns} />
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
-          {journeys.map((journey: any) => (
+          {journeys.map((journey) => (
             <Card key={journey.id}>
               <CardHeader>
                 <div className="flex items-center justify-between">

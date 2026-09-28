@@ -29,7 +29,7 @@
  */
 
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, join, sep } from "node:path";
+import { join, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import ts from "typescript";

@@ -3,9 +3,10 @@
 /** أقسام الصفحة الرئيسية + العناصر المشتركة بينها وبين صفحات المنتج. */
 
 import Link from "next/link";
+import Image from "next/image";
 import { useI18n } from "@/components/public/i18n";
 import { Reveal } from "@/components/public/reveal";
-import { StepsRow, ContextGraph, FeatureList, FaqList } from "@/components/public/blocks";
+import { ContextGraph, FaqList } from "@/components/public/blocks";
 import { BentoFeatures } from "@/components/public/bento-features";
 
 /* ---------- قسم موحّد: إزاي بيشتغل + سياق العمل ---------- */
@@ -84,7 +85,14 @@ export function AutomationSection() {
         </Reveal>
 
         <Reveal>
-          <img className="fh-section-img" src="https://media.base44.com/images/public/6ab00dcc41a53757c2f8a0b1/73aa727d1_generated_image.png" alt={t.automation.title} loading="lazy" />
+          <Image
+            className="fh-section-img"
+            src="https://media.base44.com/images/public/6ab00dcc41a53757c2f8a0b1/73aa727d1_generated_image.png"
+            alt={t.automation.title}
+            width={1200}
+            height={675}
+            unoptimized
+          />
         </Reveal>
 
         <Reveal className="fh-pipeline fh-pipeline-compact" stagger aria-label={t.automation.title}>
@@ -222,7 +230,14 @@ export function FeaturesSection() {
           <p>{t.features.sub}</p>
         </Reveal>
         <Reveal>
-          <img className="fh-section-img fh-section-img-wide" src="https://media.base44.com/images/public/6ab00dcc41a53757c2f8a0b1/0bc824d23_generated_image.png" alt={t.features.title} loading="lazy" />
+          <Image
+            className="fh-section-img fh-section-img-wide"
+            src="https://media.base44.com/images/public/6ab00dcc41a53757c2f8a0b1/0bc824d23_generated_image.png"
+            alt={t.features.title}
+            width={1200}
+            height={675}
+            unoptimized
+          />
         </Reveal>
         <Reveal stagger>
           <BentoFeatures items={t.features.items as [string, string][]} />

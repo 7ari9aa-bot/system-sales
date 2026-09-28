@@ -13,7 +13,7 @@
 import * as React from "react";
 import { useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, Check, CheckCheck, Info, ShoppingCart, MessageCircle, AlertCircle } from "lucide-react";
+import { Bell, CheckCheck, Info, ShoppingCart, MessageCircle, AlertCircle } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useNotifications,
