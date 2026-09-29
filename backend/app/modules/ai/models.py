@@ -22,6 +22,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     Numeric,
     String,
     Text,
@@ -523,3 +524,106 @@ class AIBudgetReservation(TenantMixin, AppendOnlyCreatedAtMixin, Base):
     __table_args__ = (
         Index("ix_ai_budget_reservations_active", "tenant_id", "status"),
     )
+
+
+class ProductEmbedding(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
+    """Spec §12.6/§20: one vision vector per approved product image.
+
+    The spec names the source table ``product_media``; the catalog's
+    append-only gallery is ``product_images`` and is the same thing —
+    approved, ordered product photos. model + model_version ride every row
+    so a provider-model change is a full re-index by construction: the
+    UNIQUE constraint makes mixed-model vectors impossible, and the HNSW
+    index answers the retrieval path's cosine top-k.
+    """
+
+    __tablename__ = "product_embeddings"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    product_image_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("product_images.id", ondelete="CASCADE")
+    )
+    # Denormalized from the image's product so retrieval filters by product
+    # liveness without a join inside the vector query.
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("products.id", ondelete="CASCADE")
+    )
+    vector = mapped_column(Vector(768), nullable=False)
+    model: Mapped[str] = mapped_column(String(127))
+    model_version: Mapped[str] = mapped_column(String(63), server_default="1")
+    # allowed: image | image+text — what the item embedded carried.
+    content_kind: Mapped[str] = mapped_column(String(15), server_default="image")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "product_image_id",
+            "model",
+            "model_version",
+            name="uq_product_embeddings_image_model_version",
+        ),
+        Index(
+            "ix_product_embeddings_vector_hnsw",
+            "vector",
+            postgresql_using="hnsw",
+            postgresql_ops={"vector": "vector_cosine_ops"},
+        ),
+        Index("ix_product_embeddings_tenant_product", "tenant_id", "product_id"),
+    )
+
+
+class ProductAttribute(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
+    """Spec §12.6: Qwen-derived structured attributes per product.
+
+    Pre-filter inputs and the attribute-consistency factor of the vision
+    Decision Engine read these; the agent never writes them at reply time —
+    the indexer derives them offline, like the embeddings.
+    """
+
+    __tablename__ = "product_attributes"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("products.id", ondelete="CASCADE")
+    )
+    color: Mapped[str | None] = mapped_column(String(63))
+    material: Mapped[str | None] = mapped_column(String(63))
+    style: Mapped[str | None] = mapped_column(String(63))
+    category: Mapped[str | None] = mapped_column(String(63))
+    model: Mapped[str] = mapped_column(String(127))
+    model_version: Mapped[str] = mapped_column(String(63), server_default="1")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "product_id",
+            "model",
+            "model_version",
+            name="uq_product_attributes_product_model_version",
+        ),
+    )
+
+
+class ConversationAgentState(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
+    """Spec §8/§20: the per-conversation agent state the system owns.
+
+    The model proposes a state_patch; the validator applies it atomically
+    against state_version (optimistic concurrency). shown_items/sent_media
+    power the Referent Resolver ("التاني", reply-on-image) and the
+    no-resend rule for media.
+    """
+
+    __tablename__ = "conversation_agent_states"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("conversations.id", ondelete="CASCADE"), unique=True
+    )
+    state: Mapped[dict] = mapped_column(JSONB, server_default="{}")
+    shown_items: Mapped[list] = mapped_column(JSONB, server_default="[]")
+    sent_media: Mapped[list] = mapped_column(JSONB, server_default="[]")
+    state_version: Mapped[int] = mapped_column(Integer, server_default="1")
