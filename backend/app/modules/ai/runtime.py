@@ -19,6 +19,7 @@ from typing import Any
 
 from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import DomainError, NotFoundError
@@ -836,21 +837,47 @@ class AgentRunner:
                     )
                 else:
                     duration_ms = int((datetime.now(UTC) - started).total_seconds() * 1000)
-        session.add(
-            ToolCall(
-                tenant_id=tenant_id,
-                run_id=run.id,
-                agent_tool_id=agent_tool.id if agent_tool else None,
-                name=request.name,
-                args=request.arguments or {},
-                result=result,
-                idempotency_key=idempotency_key,
-                status=status,
-                error=error,
-                duration_ms=duration_ms if status == "ok" else None,
-            )
-        )
-        await session.flush()
+        try:
+            # The savepoint mirrors the ProcessedEvent consumer-inbox pattern:
+            # a loser of the (tenant_id, idempotency_key) insert race rolls its
+            # own row back without poisoning the run's transaction.
+            async with session.begin_nested():
+                session.add(
+                    ToolCall(
+                        tenant_id=tenant_id,
+                        run_id=run.id,
+                        agent_tool_id=agent_tool.id if agent_tool else None,
+                        name=request.name,
+                        args=request.arguments or {},
+                        result=result,
+                        idempotency_key=idempotency_key,
+                        status=status,
+                        error=error,
+                        duration_ms=duration_ms if status == "ok" else None,
+                    )
+                )
+                await session.flush()
+        except IntegrityError:
+            # Lost the insert race. The unique index blocked THIS insert until
+            # the winner's transaction resolved, so by now the winning row is
+            # committed and readable — return ITS outcome, the same contract
+            # the pre-check above serves. The conversation lease makes this
+            # unreachable for conversation runs; a conversation-less caller
+            # (no lease) is where the race actually lives.
+            prior = (
+                await session.execute(
+                    select(ToolCall).where(
+                        ToolCall.tenant_id == tenant_id,
+                        ToolCall.idempotency_key == idempotency_key,
+                    )
+                )
+            ).scalar_one()
+            return {
+                "name": prior.name,
+                "status": prior.status,
+                "error": prior.error,
+                "result": prior.result,
+            }
 
         if status == "denied":
             result = {"error": error}

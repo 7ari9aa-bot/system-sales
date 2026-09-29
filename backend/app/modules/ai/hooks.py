@@ -1,10 +1,13 @@
 """AI integration hooks for the message worker.
 
-``maybe_auto_reply`` is called after a conversation ingest; it must NEVER
-break the ingest path, so the whole body is wrapped in a catch-all that only
-logs. The AI answer is posted through ConversationService (application
-service, never raw SQL) and the outbound event is staged via the outbox
-writer inside the same transaction.
+``maybe_auto_reply`` runs after a conversation ingest. It must never break
+ingest SILENTLY: the auto-reply itself is allowed to fail loudly so the worker
+runtime rolls the event back and retries (a swallowed error used to ack the
+event with NO reply and NO retry — a silent customer-facing loss), while the
+optional context lookups (knowledge, memories) degrade on purpose. The AI
+answer is posted through ConversationService (application service, never raw
+SQL) and the outbound event is staged via the outbox writer inside the same
+transaction.
 """
 
 from __future__ import annotations
