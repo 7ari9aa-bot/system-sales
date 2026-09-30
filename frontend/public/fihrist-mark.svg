@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="FIHRIST">
+  <rect width="120" height="120" rx="24" fill="#0E6B63"/>
+  <path d="M27 28 58 40v54L27 82zM65 40l28-12v54L65 94z" fill="#F7F4EE"/>
+  <path d="M58 40h7v54h-7z" fill="#0E6B63"/>
+  <circle cx="88" cy="57" r="9" fill="#D9785B"/>
+</svg>
