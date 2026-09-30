@@ -1,6 +1,6 @@
 """A3 — how a `messages` row becomes a turn the provider sees.
 
-``_conversation_history`` mapped a row to a role from ONE column:
+``_conversation_context`` maps a row to a role from ONE column:
 ``role = "assistant" if direction == "outbound" else "user"``. That is wrong in
 four ways the tests below pin:
 
@@ -239,7 +239,7 @@ async def test_the_fetched_history_deduplicates_the_current_message(
         body="how much is the blue widget?",
     )
 
-    history = await AgentRunner._conversation_history(
+    history, _image_key = await AgentRunner._conversation_context(
         db,
         tenant_ctx.tenant_id,
         conversation.id,

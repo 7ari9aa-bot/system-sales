@@ -13,6 +13,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
@@ -20,7 +21,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import DomainError, NotFoundError, ValidationError
 from app.core.sql import LIKE_ESCAPE, like_pattern
-from app.modules.catalog.models import Product, ProductVariant
+from app.modules.ai.agents.customer.vision.schemas import ImageKind
+from app.modules.catalog.models import Product, ProductImage, ProductVariant
 from app.modules.inventory.models import InventoryBalance
 
 # (session, tenant_id, **validated kwargs) -> JSON-safe result dict
@@ -110,6 +112,18 @@ def _order_deps():
     from app.modules.orders.service import SELLABLE_PRODUCT_STATUSES, OrderService
 
     return OrderService, SELLABLE_PRODUCT_STATUSES
+
+
+def sellable_product_statuses() -> frozenset[str]:
+    """The checkout gate's sellable vocabulary, for in-module readers.
+
+    The vision verifier (agents/customer/vision/verifier.py) needs the SAME
+    statuses; a second lazy import there would cost a NEW ratchet site, so
+    it reads through this accessor and the ONE import site above stays the
+    only one.
+    """
+    _, statuses = _order_deps()
+    return statuses
 
 
 def _order_service():
@@ -457,6 +471,89 @@ async def _search_knowledge(
     }
 
 
+# ------------------------------------------------------------------- vision --
+
+class FindProductByImageArgs(BaseModel):
+    image_kind: ImageKind
+    hints: str | None = Field(default=None, max_length=500)
+
+
+async def _find_product_by_image(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    image_kind: ImageKind,
+    hints: str | None = None,
+    context: dict | None = None,
+) -> dict:
+    """Identify a product from the customer's photo (§12).
+
+    The photo itself is SERVER-BOUND: the runtime injects the signed URL of
+    the customer's last inbound image attachment into the context (§132 —
+    same rule as the customer binding), so the model names only what it
+    proposes (the kind) and can never point this tool at an arbitrary URL.
+    The classifier DECIDES what the proposed kind may do: only product
+    photos run the pipeline; a payment proof or a damage photo is a handover
+    with the reason attached (rule 07 — no confirmation of payment can ever
+    come from an image).
+    """
+    from app.modules.ai.agents.customer.vision.classifier import classify
+    from app.modules.ai.agents.customer.vision.pipeline import run_vision_match
+
+    allowed, handoff_reason = classify(image_kind)
+    if not allowed:
+        raise DomainError(f"image requires handover: {handoff_reason}")
+    image_url = (context or {}).get("customer_image")
+    if not image_url:
+        raise DomainError("no customer image in this turn")
+
+    result = await run_vision_match(
+        session, tenant_id, image_url=image_url, text_hint=hints
+    )
+    return {
+        "confidence": result.confidence.value,
+        "candidates": result.candidates,
+        "reason": result.reason,
+    }
+
+
+class ResolveProductMediaArgs(BaseModel):
+    product_id: uuid.UUID
+    selection: Literal["primary", "all"] = "primary"
+
+
+async def _resolve_product_media(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    product_id: uuid.UUID,
+    selection: Literal["primary", "all"] = "primary",
+) -> dict:
+    """The gallery image ids of one product — ids ONLY, never URLs (§13).
+
+    URLs are minted server-side by the runner when it collects the media
+    into the outbound result; handing the model raw URLs would let a prompt
+    injection relay tenant storage links into the customer's chat.
+    """
+    stmt = (
+        select(ProductImage.id, ProductImage.alt, ProductImage.position)
+        .where(
+            ProductImage.tenant_id == tenant_id,
+            ProductImage.product_id == product_id,
+        )
+        .order_by(ProductImage.position.asc(), ProductImage.id.asc())
+    )
+    if selection == "primary":
+        stmt = stmt.limit(1)
+    rows = (await session.execute(stmt)).all()
+    return {
+        "media": [
+            {"image_id": str(image_id), "alt": alt, "position": position}
+            for image_id, alt, position in rows
+        ]
+    }
+
+
 # ----------------------------------------------------------- write: tasks ----
 
 class AddTaskArgs(BaseModel):
@@ -520,6 +617,34 @@ async def _add_tag(
     customer_id = _bound_customer_id(context)
     created = await _customer_service().add_tag(session, tenant_id, customer_id, tag)
     return {"customer_id": str(customer_id), "tag": created.name}
+
+
+async def media_payload_for_ids(
+    session: AsyncSession, tenant_id: uuid.UUID, image_ids: list[str]
+) -> list[dict]:
+    """``{image_id, image_url, alt}`` for gallery ids — URLs minted HERE (§13).
+
+    The runner's server-side collector turns the ids the model saw into
+    deliverable attachments; the model itself never receives these URLs
+    (resolve_product_media returns ids only), so a prompt injection cannot
+    relay tenant storage links into the customer's chat.
+    """
+    if not image_ids:
+        return []
+    rows = (
+        await session.execute(
+            select(ProductImage.id, ProductImage.url, ProductImage.alt)
+            .where(
+                ProductImage.tenant_id == tenant_id,
+                ProductImage.id.in_([uuid.UUID(str(i)) for i in image_ids]),
+            )
+            .order_by(ProductImage.position.asc(), ProductImage.id.asc())
+        )
+    ).all()
+    return [
+        {"image_id": str(image_id), "image_url": url, "alt": alt}
+        for image_id, url, alt in rows
+    ]
 
 
 # ---------------------------------------------------------------- registry ---
@@ -611,6 +736,32 @@ def _bootstrap() -> None:
             handler=_add_tag,
             tags=["customers"],
             risk_level="MEDIUM",  # mutates the customer record
+        )
+    )
+    register_tool(
+        ToolSpec(
+            name="find_product_by_image",
+            description=(
+                "Identify a product from the customer's latest photo. Pass the "
+                "kind you believe the photo is; the server attaches the photo "
+                "itself. Non-product photos are refused with a handover reason."
+            ),
+            args_schema=FindProductByImageArgs,
+            handler=_find_product_by_image,
+            tags=["catalog", "vision"],
+        )
+    )
+    register_tool(
+        ToolSpec(
+            name="resolve_product_media",
+            description=(
+                "List one product's gallery image ids (primary image or all). "
+                "Returns ids only — the server attaches the actual images to "
+                "the reply."
+            ),
+            args_schema=ResolveProductMediaArgs,
+            handler=_resolve_product_media,
+            tags=["catalog", "vision"],
         )
     )
 

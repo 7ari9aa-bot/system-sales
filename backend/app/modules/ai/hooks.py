@@ -225,3 +225,83 @@ async def _do_auto_reply(
         # aggregate version is the constant 1 (created once, never mutated).
         aggregate_version=1,
     )
+
+    if not result.media:
+        return
+
+    async def send_media() -> None:
+        """§13: deliver the collected product photos after the text reply.
+
+        One outbound message per image, ONE outbox event per message, and
+        the sent_media ledger updated so no image is ever re-sent in this
+        conversation. Only runs once the text went out — a photo without
+        its sentence reads as spam.
+        """
+        from app.modules.ai.models import ConversationAgentState
+
+        state = (
+            await session.execute(
+                select(ConversationAgentState).where(
+                    ConversationAgentState.tenant_id == tenant_id,
+                    ConversationAgentState.conversation_id == conversation_id,
+                )
+            )
+        ).scalar_one_or_none()
+        sent: list[str] = list(state.sent_media or []) if state else []
+        newly_sent: list[str] = []
+        for item in result.media:
+            if item["image_id"] in sent:
+                continue  # §13: the no-resend rule
+            try:
+                media_message = await ConversationService.add_message(
+                    session,
+                    tenant_id,
+                    conversation_id=conversation_id,
+                    direction="outbound",
+                    sender_type="ai",
+                    media_url=item["image_url"],
+                    media_type="image",
+                    content_type="image",
+                )
+            except OutboundBlockedError as exc:
+                # The text went out; the window closed mid-delivery. Stop
+                # sending photos rather than retrying into a closed window.
+                logger.warning(
+                    "ai.media_send_blocked conversation=%s reason=%s",
+                    conversation_id,
+                    exc.message,
+                )
+                break
+            await add_outbox_event(
+                session,
+                aggregate_type="message",
+                aggregate_id=media_message.id,
+                event_type="message.outbound",
+                tenant_id=tenant_id,
+                payload={
+                    "message_id": str(media_message.id),
+                    "conversation_id": str(conversation_id),
+                },
+                aggregate_version=1,
+            )
+            sent.append(item["image_id"])
+            newly_sent.append(item["image_id"])
+
+        if state is None:
+            if newly_sent or result.shown_product_ids:
+                session.add(
+                    ConversationAgentState(
+                        tenant_id=tenant_id,
+                        conversation_id=conversation_id,
+                        state={},
+                        shown_items=result.shown_product_ids,
+                        sent_media=newly_sent,
+                        state_version=1,
+                    )
+                )
+        elif newly_sent:
+            state.sent_media = sent
+            state.shown_items = result.shown_product_ids or state.shown_items
+            state.state_version = (state.state_version or 1) + 1
+
+    await send_media()

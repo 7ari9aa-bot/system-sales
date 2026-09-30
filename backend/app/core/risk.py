@@ -90,6 +90,9 @@ class RiskAssessment:
 _REGISTRY: dict[str, RiskLevel] = {
     # V12 §16 examples
     "search_products": RiskLevel.LOW,
+    # Customer Agent vision tools (§12): read-only, ids never URLs
+    "find_product_by_image": RiskLevel.LOW,
+    "resolve_product_media": RiskLevel.LOW,
     "add_to_cart": RiskLevel.MEDIUM,
     "create_order": RiskLevel.HIGH,
     "send_campaign": RiskLevel.HIGH,

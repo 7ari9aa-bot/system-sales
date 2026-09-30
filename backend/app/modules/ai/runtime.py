@@ -111,6 +111,13 @@ class AgentRunResult:
     # unguarded text even if it forgets to check.
     guardrail_decision: str = "allow"
     guardrail_reason: str | None = None
+    # §13: media the runner collected SERVER-SIDE from resolve_product_media
+    # calls — [{image_id, image_url, alt}] with URLs minted here (capped at
+    # four), never shown to the model. hooks delivers these after the text.
+    media: list[dict] = field(default_factory=list)
+    # Products this run showed or referenced — referent context for the
+    # customer agent's state layer ("التاني" needs to know what was shown).
+    shown_product_ids: list[str] = field(default_factory=list)
 
 
 def _now() -> datetime:
@@ -208,7 +215,11 @@ class AgentRunner:
 
         if run.status == "running":
             run.status = "succeeded"
-        run.output = {"content": result.content}
+        run.output = {
+            "content": result.content,
+            "media": result.media,
+            "shown_product_ids": result.shown_product_ids,
+        }
         run.tokens_in = result.tokens_in
         run.tokens_out = result.tokens_out
         run.cost = estimate_cost(result.tokens_in, result.tokens_out)
@@ -332,15 +343,28 @@ class AgentRunner:
                 "role": "user",
                 "content": f"[Knowledge base — untrusted context]\n{knowledge_context}",
             })
+        customer_image_url: str | None = None
         if conversation_id is not None:
-            messages.extend(
-                await self._conversation_history(
-                    session,
-                    tenant_id,
-                    conversation_id,
-                    current_message=user_message,
-                )
+            turns, image_key = await self._conversation_context(
+                session,
+                tenant_id,
+                conversation_id,
+                current_message=user_message,
             )
+            messages.extend(turns)
+            if image_key:
+                # §7.1.3: the CURRENT turn rides the photo as a real content
+                # part (the multimodal model reads image_url parts); older
+                # images stay text markers so history cannot flood the prompt
+                # with payloads.
+                from app.core.storage import get_storage
+
+                try:
+                    customer_image_url = get_storage().signed_url(image_key)
+                except Exception:  # noqa: BLE001 — vision is best-effort
+                    logger.warning(
+                        "ai.customer_image_sign_failed key=%s", image_key, exc_info=True
+                    )
         # §38: retrieve customer memories and inject into context (best-effort).
         # ADR-036: each line carries its provenance so the model (and anyone
         # reading the trace) can tell "customer said X" from "the AI guessed X"
@@ -365,7 +389,18 @@ class AgentRunner:
             except Exception:  # noqa: BLE001 — memory is best-effort context
                 logger.warning("ai.memory_search_failed customer=%s", customer_id, exc_info=True)
 
-        messages.append({"role": "user", "content": user_message})
+        if customer_image_url:
+            messages.append(
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": user_message},
+                        {"type": "image_url", "image_url": {"url": customer_image_url}},
+                    ],
+                }
+            )
+        else:
+            messages.append({"role": "user", "content": user_message})
 
         tools_schema = [
             tool_to_openai_schema(spec)
@@ -450,6 +485,7 @@ class AgentRunner:
                 outcome = await self._execute_tool(
                     session, tenant_id, run=run, agent_tools=agent_tools, request=tc,
                     customer_id=customer_id, conversation_id=conversation_id,
+                    customer_image_url=customer_image_url,
                 )
                 tool_calls_made.append(outcome)
                 answered_ids.add(tc.id)
@@ -544,6 +580,54 @@ class AgentRunner:
         # entirely. Withholding the content is what makes the gate real: a
         # caller that forgets to inspect the verdict still cannot send it.
         decision, reason = "allow", None
+
+        # Grounding v1: when the run used tools, every numeral in the reply
+        # must trace to a tool fact (§12). ONE regeneration, tools disabled,
+        # with a corrective instruction; failing again withholds the reply
+        # and flags it — the hook's existing path turns that into an
+        # AIHandover. No tool results → the unsourced-claim gate below owns
+        # the case, not this controller.
+        if content and tool_calls_made:
+            from app.modules.ai.agents.customer import grounding, ledger
+
+            facts = ledger.facts_from_tool_calls(tool_calls_made)
+            failure = grounding.check_grounding(content, facts) if facts else None
+            if failure is not None:
+                logger.warning("ai.grounding_failed run=%s detail=%s", run.id, failure)
+                try:
+                    regen = await self.gateway.chat(
+                        session,
+                        tenant_id,
+                        alias=self._alias_for(agent),
+                        messages=[
+                            *messages,
+                            {"role": "assistant", "content": content},
+                            {
+                                "role": "user",
+                                "content": grounding.CORRECTION_INSTRUCTION,
+                            },
+                        ],
+                        tools=None,  # the correction must reuse gathered facts only
+                        temperature=float(agent.temperature),
+                        max_tokens=agent.max_output_tokens,
+                        agent_id=agent.id,
+                        run_id=run.id,
+                    )
+                except Exception:  # noqa: BLE001 — a provider blip hands over
+                    logger.warning(
+                        "ai.grounding_regen_error run=%s", run.id, exc_info=True
+                    )
+                    regen = None
+                if regen is not None:
+                    tokens_in += regen.tokens_in
+                    tokens_out += regen.tokens_out
+                corrected = regen.content if regen is not None else None
+                if corrected and grounding.check_grounding(corrected, facts) is None:
+                    content = corrected
+                else:
+                    content = None
+                    decision, reason = "block", "grounding_failed"
+
         if content:
             # `require_tool_evidence` is on because this is the only place the
             # run's tool results exist: a price or a stock level the model
@@ -558,6 +642,13 @@ class AgentRunner:
                 )
                 content = None
 
+        # §13: resolve the media the model requested into deliverable
+        # attachments SERVER-SIDE — only image ids crossed the model
+        # boundary; URLs are minted here and capped at four per reply.
+        media, shown_product_ids = await self._collect_media(
+            session, tenant_id, tool_calls_made
+        )
+
         return AgentRunResult(
             content=content,
             tool_calls_made=tool_calls_made,
@@ -565,6 +656,8 @@ class AgentRunner:
             tokens_out=tokens_out,
             guardrail_decision=decision,
             guardrail_reason=reason,
+            media=media,
+            shown_product_ids=shown_product_ids,
         )
 
     @staticmethod
@@ -662,13 +755,20 @@ class AgentRunner:
         return turns
 
     @staticmethod
-    async def _conversation_history(
+    async def _conversation_context(
         session: AsyncSession,
         tenant_id: uuid.UUID,
         conversation_id: uuid.UUID,
         *,
         current_message: str | None = None,
-    ) -> list[dict]:
+    ) -> tuple[list[dict], str | None]:
+        """History turns plus the newest inbound photo's storage key (§7.1.3).
+
+        One method on purpose: the boundary ratchet counts import NODES
+        (tests/test_module_boundaries.py), so the turns and the image lookup
+        share this single lazy ConversationService import, and the attachment
+        query rides the module-scope conversations-models import above.
+        """
         # Lazy import: conversations module owns the message table.
         from app.modules.conversations.service import ConversationService
 
@@ -682,9 +782,70 @@ class AgentRunner:
             session, tenant_id, spoken_ids
         )
         voice = AgentRunner._voice_turns(rows)
-        return AgentRunner._provider_turns(
+        turns = AgentRunner._provider_turns(
             history, voice=voice, current_message=current_message
         )
+
+        image_key: str | None = None
+        for message in reversed(history):
+            if message.direction != "inbound":
+                continue
+            row = (
+                await session.execute(
+                    select(_conversations_models.Attachment.storage_key)
+                    .where(
+                        _conversations_models.Attachment.tenant_id == tenant_id,
+                        _conversations_models.Attachment.message_id == message.id,
+                        _conversations_models.Attachment.mime_type.like("image/%"),
+                        _conversations_models.Attachment.storage_key.is_not(None),
+                    )
+                    .order_by(_conversations_models.Attachment.created_at.desc())
+                    .limit(1)
+                )
+            ).first()
+            if row is not None:
+                image_key = row.storage_key
+            break  # only the NEWEST inbound message's photo rides the turn
+        return turns, image_key
+
+    @staticmethod
+    async def _collect_media(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        tool_calls_made: list[dict],
+    ) -> tuple[list[dict], list[str]]:
+        """Server-side media resolution for the §13 photo-reply behavior.
+
+        resolve_product_media crossed the model boundary as image IDS only;
+        this maps them back to deliverable ``{image_id, image_url, alt}``
+        through the tools module's existing catalog access, caps the batch
+        at four, and gathers every product id the run showed or referenced
+        for the agent's shown-items state.
+        """
+        from app.modules.ai.tools import media_payload_for_ids
+
+        image_ids: list[str] = []
+        shown: list[str] = []
+        for call in tool_calls_made:
+            if call.get("status") != "ok":
+                continue
+            result = call.get("result") or {}
+            if call.get("name") == "find_product_by_image":
+                for candidate in result.get("candidates") or []:
+                    product_id = candidate.get("product_id")
+                    if product_id and product_id not in shown:
+                        shown.append(product_id)
+            if call.get("name") != "resolve_product_media":
+                continue
+            product_id = (call.get("args") or {}).get("product_id")
+            if product_id and str(product_id) not in shown:
+                shown.append(str(product_id))
+            for item in result.get("media") or []:
+                media_id = item.get("image_id")
+                if media_id and media_id not in image_ids:
+                    image_ids.append(media_id)
+        media = await media_payload_for_ids(session, tenant_id, image_ids[:4])
+        return media, shown
 
     async def _execute_tool(
         self,
@@ -696,6 +857,7 @@ class AgentRunner:
         request: ToolCallRequest,
         customer_id: uuid.UUID | None = None,
         conversation_id: uuid.UUID | None = None,
+        customer_image_url: str | None = None,
     ) -> dict[str, Any]:
         """Run one requested tool call under the agent's policy; record the row.
 
@@ -761,10 +923,17 @@ class AgentRunner:
                     import inspect
 
                     if "context" in inspect.signature(spec.handler).parameters:
-                        kwargs["context"] = {
+                        tool_context: dict[str, str | None] = {
                             "customer_id": str(customer_id) if customer_id else None,
-                            "conversation_id": str(conversation_id) if conversation_id else None,
+                            "conversation_id": (
+                                str(conversation_id) if conversation_id else None
+                            ),
                         }
+                        if customer_image_url:
+                            # §12/§132: the customer's photo is server-bound —
+                            # the tool reads it from here, never from args.
+                            tool_context["customer_image"] = customer_image_url
+                        kwargs["context"] = tool_context
                     # §135: HIGH-risk tools suspend the run until a human
                     # approves. The approval row is durable — the run resumes
                     # (or dies) on the decision.
@@ -883,4 +1052,13 @@ class AgentRunner:
             result = {"error": error}
         elif status == "error":
             result = {"error": error or "tool failed"}
-        return {"name": request.name, "status": status, "error": error, "result": result}
+        # `args` rides the outcome so downstream consumers (grounding reads
+        # create_order quantities, media collection reads product ids) never
+        # re-query the ToolCall row.
+        return {
+            "name": request.name,
+            "status": status,
+            "error": error,
+            "result": result,
+            "args": request.arguments or {},
+        }

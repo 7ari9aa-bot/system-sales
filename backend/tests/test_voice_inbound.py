@@ -2,7 +2,7 @@
 
 `conversations/voice.py` implemented STT/TTS but nothing ever called it: every
 real WhatsApp voice note landed as an Attachment with `transcription_status`
-NULL, no transcript anywhere queryable, and `AgentRunner._conversation_history`
+NULL, no transcript anywhere queryable, and `AgentRunner._conversation_context`
 skips messages with an empty body — so the agent saw *nothing at all* for a
 customer who spoke.
 
@@ -299,7 +299,10 @@ async def _voice_transcript_in_history(db, tenant_ctx, *, transcript: str | None
         attachment.transcription_status = "completed"
         attachment.transcript_text = transcript
     await db.flush()
-    return await AgentRunner._conversation_history(db, tenant_id, conversation.id)
+    turns, _image_key = await AgentRunner._conversation_context(
+        db, tenant_id, conversation.id
+    )
+    return turns
 
 
 async def test_voice_transcript_becomes_the_customer_turn(db, tenant_ctx) -> None:
@@ -338,7 +341,9 @@ async def test_text_message_still_becomes_its_own_body(db, tenant_ctx) -> None:
         channel_message_id=f"wamid-{uuid.uuid4().hex[:12]}",
     )
 
-    history = await AgentRunner._conversation_history(db, tenant_id, conversation.id)
+    history, _image_key = await AgentRunner._conversation_context(
+        db, tenant_id, conversation.id
+    )
     assert history[-1] == {"role": "user", "content": "سعر اللون الأزرق؟"}
 
 
