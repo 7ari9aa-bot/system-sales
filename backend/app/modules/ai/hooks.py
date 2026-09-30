@@ -232,21 +232,14 @@ async def _do_auto_reply(
     async def send_media() -> None:
         """§13: deliver the collected product photos after the text reply.
 
-        One outbound message per image, ONE outbox event per message, and
-        the sent_media ledger updated so no image is ever re-sent in this
-        conversation. Only runs once the text went out — a photo without
-        its sentence reads as spam.
+        One outbound message per image, ONE outbox event per message, and the
+        state engine's sent_media ledger updated so no image is ever re-sent
+        in this conversation. Only runs once the text went out — a photo
+        without its sentence reads as spam.
         """
-        from app.modules.ai.models import ConversationAgentState
+        from app.modules.ai.agents.customer.state import apply_patch, load_state
 
-        state = (
-            await session.execute(
-                select(ConversationAgentState).where(
-                    ConversationAgentState.tenant_id == tenant_id,
-                    ConversationAgentState.conversation_id == conversation_id,
-                )
-            )
-        ).scalar_one_or_none()
+        state = await load_state(session, tenant_id, conversation_id)
         sent: list[str] = list(state.sent_media or []) if state else []
         newly_sent: list[str] = []
         for item in result.media:
@@ -287,21 +280,13 @@ async def _do_auto_reply(
             sent.append(item["image_id"])
             newly_sent.append(item["image_id"])
 
-        if state is None:
-            if newly_sent or result.shown_product_ids:
-                session.add(
-                    ConversationAgentState(
-                        tenant_id=tenant_id,
-                        conversation_id=conversation_id,
-                        state={},
-                        shown_items=result.shown_product_ids,
-                        sent_media=newly_sent,
-                        state_version=1,
-                    )
-                )
-        elif newly_sent:
-            state.sent_media = sent
-            state.shown_items = result.shown_product_ids or state.shown_items
-            state.state_version = (state.state_version or 1) + 1
+        # The state engine owns the row: closed vocabulary, append-dedupe,
+        # and a version bump ONLY when something actually grew.
+        await apply_patch(
+            session,
+            tenant_id,
+            conversation_id,
+            {"shown_items": result.shown_product_ids, "sent_media": newly_sent},
+        )
 
     await send_media()

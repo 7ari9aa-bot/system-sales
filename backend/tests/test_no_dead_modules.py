@@ -75,6 +75,19 @@ ROOT_MODULES: frozenset[str] = frozenset(
 # Nothing here sits in a path owned by a concurrent agent: each is a feature
 # genuinely awaiting its caller, honestly recorded rather than deleted.
 KNOWN_DEAD_MODULES: dict[str, str] = {
+    # Customer Agent M2 foundations (§8 build order). The state engine IS
+    # wired (hooks' photo delivery); the referent resolver and turn intake
+    # are the next wave's caller surface — the turn coordinator wires them
+    # into AgentRunner alongside the existing context builder. Unit-tested
+    # and awaiting that caller, honestly recorded rather than half-wired.
+    "app.modules.ai.agents.customer.referents": (
+        "§8 referent resolver (التاني/اللي فات over shown_items) — unit-"
+        "tested; the M2 turn coordinator is its caller, next wave."
+    ),
+    "app.modules.ai.agents.customer.intake": (
+        "§8 turn intake/normalization (text/photo/voice into InboundTurn) — "
+        "unit-tested; the M2 turn coordinator is its caller, next wave."
+    ),
     # §166 / ADR-042 storm-suppression write path. Wiring it correctly is a
     # feature, not a one-line call: NotificationService.create() returns the
     # Notification row every caller already depends on, and the aggregator's
