@@ -16,17 +16,39 @@ import {
 import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import Logo from "@/components/dashboard/Logo";
+import useSalesStats from "@/hooks/useSalesStats";
+import { apiCached } from "@/lib/api";
 
 export default function Sidebar({ open, onClose, collapsed = false }) {
   const { pathname } = useLocation();
   const t = useT();
 
+  // شارات حقيقية: غير المقروء من read model السيرفر، والمخزون من
+  // النطاقين المنفصلين (منخفض + نافد) — بدل أرقام ثابتة.
+  const live = useSalesStats("30d");
+  const unread = live?.unread ?? 0;
+  const stockIssues = (live?.lowStock ?? 0) + (live?.outOfStock ?? 0);
+
+  // الحساب الحقيقي من /auth/me بدل اسم مكتوب يدويًا
+  const [email, setEmail] = React.useState("");
+  React.useEffect(() => {
+    let alive = true;
+    apiCached("/auth/me", { ttlMs: 60_000 })
+      .then((me) => alive && setEmail(me?.email || ""))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const displayName = email ? email.split("@")[0].replace(/[._-]+/g, " ").trim() : "—";
+  const initials = (email.slice(0, 2) || "·").toUpperCase();
+
   const NAV = [
-    { section: t("nav.workspace"), items: [{ to: "/", label: t("nav.home"), icon: LayoutDashboard, end: true }] },
+    { section: t("nav.workspace"), items: [{ to: "/dashboard", label: t("nav.home"), icon: LayoutDashboard, end: true }] },
     {
       section: t("nav.engage"),
       items: [
-        { to: "/inbox", label: t("nav.inbox"), icon: Inbox, badge: 8 },
+        { to: "/inbox", label: t("nav.inbox"), icon: Inbox, badge: unread },
         { to: "/customers", label: t("nav.customers"), icon: Users },
       ],
     },
@@ -35,7 +57,7 @@ export default function Sidebar({ open, onClose, collapsed = false }) {
       items: [
         { to: "/orders", label: t("nav.orders"), icon: ShoppingBag },
         { to: "/products", label: t("nav.products"), icon: Package },
-        { to: "/inventory", label: t("nav.inventory"), icon: Boxes, badge: 5 },
+        { to: "/inventory", label: t("nav.inventory"), icon: Boxes, badge: stockIssues },
       ],
     },
     {
@@ -136,11 +158,11 @@ export default function Sidebar({ open, onClose, collapsed = false }) {
             )}
           >
             <div className="h-9 w-9 rounded-full bg-accent/15 text-accent grid place-items-center text-[12px] font-semibold shrink-0">
-              AH
+              {initials}
             </div>
             {!collapsed && (
               <div className="leading-tight flex-1 min-w-0 text-left">
-                <div className={cn("text-[13px] font-medium whitespace-nowrap truncate", pathname.startsWith("/settings") ? "text-primary" : "text-foreground")}>Ahmed Hassan</div>
+                <div className={cn("text-[13px] font-medium whitespace-nowrap truncate", pathname.startsWith("/settings") ? "text-primary" : "text-foreground")} dir="ltr">{displayName}</div>
                 <div className="text-[11px] text-muted-foreground whitespace-nowrap truncate">{t("sidebar.role")}</div>
               </div>
             )}

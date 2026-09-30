@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Search, Bell, CircleHelp, Menu, ChevronDown, Check, Sun, Moon, Languages, BookOpen, LifeBuoy, Keyboard, Settings2, PanelLeft } from "lucide-react";
 import { useDashboard } from "@/lib/dashboardContext";
 import { DATE_RANGES } from "@/lib/dashboardData";
+import { apiCached } from "@/lib/api";
 import { useT, useI18n } from "@/lib/i18n";
 import { useTheme } from "@/lib/themeContext";
 import { cn } from "@/lib/utils";
@@ -41,13 +42,6 @@ function Dropdown({ trigger, children, align = "left", width = "w-52" }) {
   );
 }
 
-const NOTIFICATIONS = [
-  { id: "approval", to: "/ai", tone: "primary" },
-  { id: "order", to: "/orders", tone: "success" },
-  { id: "stock", to: "/inventory", tone: "warning" },
-  { id: "message", to: "/inbox", tone: "primary" },
-];
-
 const HELP_ITEMS = [
   { id: "docs", to: "/settings", icon: BookOpen },
   { id: "shortcuts", to: "/settings", icon: Keyboard },
@@ -70,6 +64,31 @@ export default function Header({ onMenu, collapsed = false, onToggleCollapse }) 
   const { lang, setLang } = useI18n();
   const [searchOpen, setSearchOpen] = useState(false);
   const currentRange = DATE_RANGES.find((r) => r.id === range) || DATE_RANGES[3];
+
+  // إشعارات حقيقية من /notifications — بدل القائمة الثابتة
+  const [notifications, setNotifications] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    apiCached("/notifications", { ttlMs: 15_000 })
+      .then((d) => alive && setNotifications(Array.isArray(d) ? d : []))
+      .catch(() => alive && setNotifications([]));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // اسم المستخدم الحقيقي من /auth/me — بدل الاسم المكتوب يدويًا
+  const [meEmail, setMeEmail] = useState("");
+  useEffect(() => {
+    let alive = true;
+    apiCached("/auth/me", { ttlMs: 60_000 })
+      .then((me) => alive && setMeEmail(me?.email || ""))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const displayName = meEmail ? meEmail.split("@")[0].replace(/[._-]+/g, " ").trim() : "";
 
   return (
     <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-md border-b border-border">
@@ -174,20 +193,26 @@ export default function Header({ onMenu, collapsed = false, onToggleCollapse }) 
                   </button>
                 </div>
                 <div className="max-h-80 overflow-y-auto scrollbar-thin">
-                  {NOTIFICATIONS.map((n, i) => (
-                    <a
-                      key={i}
-                      href={n.to}
-                      onClick={(e) => { e.preventDefault(); close(); navigate(n.to); }}
-                      className="flex gap-2.5 px-2.5 py-2 rounded-lg hover:bg-surface"
-                    >
-                      <span className={cn("mt-1 h-1.5 w-1.5 rounded-full shrink-0", n.tone === "primary" ? "bg-primary" : n.tone === "warning" ? "bg-warning" : "bg-success")} />
-                      <div className="min-w-0">
-                        <div className="text-[12.5px] font-medium leading-snug">{t(`notifications.item.${n.id}.title`)}</div>
-                        <div className="text-[11.5px] text-muted-foreground leading-snug">{t(`notifications.item.${n.id}.body`)}</div>
-                      </div>
-                    </a>
-                  ))}
+                  {(notifications || []).length === 0 ? (
+                    <div className="px-2.5 py-3 text-[12.5px] text-muted-foreground">
+                      {t("notifications.empty")}
+                    </div>
+                  ) : (
+                    (notifications || []).map((n) => (
+                      <a
+                        key={n.id}
+                        href={n.action_url || "#"}
+                        onClick={(e) => { e.preventDefault(); close(); navigate(n.action_url || "/notifications"); }}
+                        className={cn("flex gap-2.5 px-2.5 py-2 rounded-lg hover:bg-surface", n.read_at == null && "bg-primary/5")}
+                      >
+                        <span className={cn("mt-1.5 h-1.5 w-1.5 rounded-full shrink-0", n.read_at == null ? "bg-primary" : "bg-muted-foreground/40")} />
+                        <div className="min-w-0">
+                          <div className="text-[12.5px] font-medium leading-snug">{n.title || n.kind}</div>
+                          <div className="text-[11.5px] text-muted-foreground leading-snug">{n.body}</div>
+                        </div>
+                      </a>
+                    ))
+                  )}
                 </div>
               </>
             )}
@@ -223,7 +248,7 @@ export default function Header({ onMenu, collapsed = false, onToggleCollapse }) 
         {/* Greeting — far right */}
         <div className="hidden md:block shrink-0 w-[210px] text-right">
           <div className="font-display text-[17px] font-semibold leading-tight whitespace-nowrap truncate">
-            {greeting(t)}, Ahmed
+            {greeting(t)}{displayName ? `, ${displayName}` : ""}
           </div>
           <div className="text-[12px] text-muted-foreground leading-tight whitespace-nowrap truncate">
             {t("header.greetingUser")}

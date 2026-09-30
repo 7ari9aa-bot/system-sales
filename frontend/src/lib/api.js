@@ -2,6 +2,9 @@
  *  التوكنات في localStorage مع refresh تلقائي عند 401/403.
  *  الفلوس بتوصل نصوص Decimal فلازم تتطبع زي ما هي — مفيش floats. */
 
+/** نظام الحارس — ضد الأخطاء الصامتة (مراجع نصي: lib/guardian.js). */
+import { guardianReport } from "./guardian";
+
 const API = import.meta.env.VITE_API_URL ?? "/api/v1";
 
 export const API_PREFIX = "/api/v1";
@@ -61,15 +64,28 @@ async function refreshTokens() {
 /** نداء API عام — يرمي ApiError، ويجدد التوكن مرة واحدة عند انتهائه. */
 export async function api(path, { method = "GET", body, retry = true, headers = {} } = {}) {
   const tokens = getTokens();
-  const res = await fetch(apiUrl(path), {
-    method,
-    headers: {
-      ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
-      ...(tokens?.access_token ? { Authorization: `Bearer ${tokens.access_token}` } : {}),
-      ...headers,
-    },
-    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-  });
+  let res;
+  try {
+    res = await fetch(apiUrl(path), {
+      method,
+      headers: {
+        ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+        ...(tokens?.access_token ? { Authorization: `Bearer ${tokens.access_token}` } : {}),
+        ...headers,
+      },
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    });
+  } catch (networkErr) {
+    // فشل الشبكة (الخادم وايقف، انقطاع نت، اعتراض) — أخطر أنواع الفشل
+    // الصامت لأن مفيش status أصلاً: لازم يتسجل زي أي قراءة فاشلة.
+    const err = new ApiError("تعذّر الوصول إلى الخادم (شبكة)", {
+      status: 0,
+      code: "network",
+      retryable: true,
+    });
+    if (method === "GET" && !path.startsWith("/auth/")) reportFailure(path, err);
+    throw err;
+  }
 
   if ((res.status === 401 || res.status === 403) && retry && tokens?.refresh_token) {
     const ok = await refreshTokens();
@@ -88,7 +104,14 @@ export async function api(path, { method = "GET", body, retry = true, headers = 
     } catch {
       /* بدون جسم JSON */
     }
-    throw new ApiError(message, { status: res.status, code, retryable: res.status >= 500 });
+    // قاعدة الحارس: أي قراءة (GET) فاشلة برا مسار المصادقة مش بتنطّي —
+    // بتتسجل في الحارس حتى لو المُستهلك قبض الخطأ وعرض صفير فاضي.
+    // فشل المصادقة المتوقع (بيانات دخول غلط) بيتعرض في الفورم نفسه.
+    const err = new ApiError(message, { status: res.status, code, retryable: res.status >= 500 });
+    if (method === "GET" && !path.startsWith("/auth/")) {
+      reportFailure(path, err);
+    }
+    throw err;
   }
   if (res.status === 204) return null;
   return res.json();
@@ -103,6 +126,16 @@ const cache = new Map(); // path -> { data, at }
 const inflight = new Map(); // path -> Promise
 
 export const DEFAULT_TTL_MS = 20_000;
+
+/** الفشل في أي قراءة بيتسجل في الحارس قبل ما يرجع للمُستهلك —
+ *  الـhooks اللي بتقبض الخطأ في catch بتاعها مش بتقدر تخفيه. */
+function reportFailure(path, err) {
+  guardianReport({
+    kind: "api",
+    source: path,
+    message: err?.message || String(err),
+  });
+}
 
 export function invalidateCache(prefix) {
   for (const key of cache.keys()) {
@@ -125,7 +158,10 @@ export function prefetchDashboard() {
     "/marketing/campaigns",
     "/analytics/summary",
   ];
-  for (const p of paths) void apiCached(p);
+  for (const p of paths) {
+    // .catch هنا مقصود: الفشل مسجّل في الحارس من api() نفسها
+    apiCached(p).catch(() => {});
+  }
 }
 
 export function apiCached(path, { ttlMs = DEFAULT_TTL_MS } = {}) {
@@ -143,11 +179,9 @@ export function apiCached(path, { ttlMs = DEFAULT_TTL_MS } = {}) {
   inflight.set(path, promise);
   promise.finally(() => inflight.delete(path)).catch(() => {});
 
-  // stale-while-revalidate: القديمة بترجع فورًا والجديدة بتوصل بعدها
-  if (fresh) return hit.data;
-  if (hit) {
-    return promise.then((data) => data);
-  }
+  // العقد: Promise دايمًا. الطازة بتحل فورًا بالكاش (الـhooks بترسم
+ // اللحظة من peekCache)، والباقي بيتحقق من جديد في الخلفية.
+  if (fresh) return Promise.resolve(hit.data);
   return promise;
 }
 

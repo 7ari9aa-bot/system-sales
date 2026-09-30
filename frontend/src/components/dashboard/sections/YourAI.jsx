@@ -7,6 +7,7 @@ import { useT } from "@/lib/i18n";
 import useSalesStats from "@/hooks/useSalesStats";
 import useUsageSummary from "@/hooks/useUsageSummary";
 import useApprovals from "@/hooks/useApprovals";
+import { apiCached, peekCache } from "@/lib/api";
 
 function Stat({ icon: Icon, label, value, tone }) {
   const toneClass = {
@@ -40,11 +41,11 @@ export default function YourAI() {
 
   React.useEffect(() => {
     let alive = true;
-    import("@/lib/api").then(({ api }) =>
-      api("/ai/agents")
-        .then((rows) => alive && setAgents(Array.isArray(rows) ? rows : []))
-        .catch(() => alive && setAgents([])),
-    );
+    const cached = peekCache("/ai/agents");
+    if (cached) setAgents(Array.isArray(cached) ? cached : []);
+    apiCached("/ai/agents")
+      .then((rows) => alive && setAgents(Array.isArray(rows) ? rows : []))
+      .catch(() => alive && setAgents([]));
     return () => {
       alive = false;
     };

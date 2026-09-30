@@ -4,6 +4,7 @@ import { SectionCard, Skeleton } from "@/components/dashboard/ui";
 import { formatCurrency } from "@/lib/dashboardData";
 import { useT } from "@/lib/i18n";
 import useSalesStats from "@/hooks/useSalesStats";
+import { apiCached, peekCache } from "@/lib/api";
 
 export function InventorySnapshot() {
   const t = useT();
@@ -59,12 +60,16 @@ export function MarketingSnapshot() {
 
   React.useEffect(() => {
     let alive = true;
+    const cachedSummary = peekCache("/analytics/summary");
+    if (cachedSummary) setSummary(cachedSummary);
+    const cachedCampaigns = peekCache("/marketing/campaigns");
+    if (cachedCampaigns) setCampaigns(Array.isArray(cachedCampaigns?.items) ? cachedCampaigns.items : []);
     Promise.all([
-      import("@/lib/api").then(({ api }) => api("/analytics/summary").catch(() => null)),
-      import("@/lib/api").then(({ api }) => api("/marketing/campaigns").catch(() => ({ items: [] }))),
+      apiCached("/analytics/summary").catch(() => null),
+      apiCached("/marketing/campaigns").catch(() => ({ items: [] })),
     ]).then(([s, c]) => {
       if (!alive) return;
-      setSummary(s);
+      if (s) setSummary(s);
       setCampaigns(Array.isArray(c?.items) ? c.items : []);
     });
     return () => {

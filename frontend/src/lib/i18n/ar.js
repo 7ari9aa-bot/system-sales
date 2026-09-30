@@ -620,4 +620,6 @@ export default {
   "ai.stat.tokens": "توكنز مستهلكة",
   "notfound.title": "الصفحة دي مش موجودة",
   "notfound.back": "ارجع للرئيسية",
+"notifications.empty": "مفيش إشعارات.",
+  "common.loading": "جار التحميل…",
 };
