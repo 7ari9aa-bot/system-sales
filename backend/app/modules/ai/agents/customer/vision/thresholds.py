@@ -30,7 +30,7 @@ class VisionThresholds:
     # top-N for the two retrievers to count as agreeing.
     agreement_top_n: int = 3
 
-    DEFAULT: "VisionThresholds" = None  # set below; frozen dataclass singleton
+    DEFAULT: VisionThresholds | None = None  # set below; frozen dataclass singleton
 
 
 VisionThresholds.DEFAULT = VisionThresholds()

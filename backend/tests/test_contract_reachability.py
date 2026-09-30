@@ -516,6 +516,10 @@ _READ_CALLS = frozenset({"select", "update", "delete", "insert", "get"})
 #: built. Wiring a reader for one means DELETING its entry here — the positive
 #: assertion then keeps it read.
 TABLES_NEVER_READ: dict[str, str] = {
+    # §12.6 vision attributes — written by the indexer wave, but the READER
+    # is the M2 Decision Engine's attribute-consistency factor; naming the
+    # wait here until that factor lands and deletes this entry.
+    "ProductAttribute": "Customer Agent §12.2 factor 4 — reader lands in M2.",
     # No writer and no reader: the schema exists, the feature does not.
     "Prompt": "§38 prompt registry — dead schema, zero references outside the model.",
     "AISession": "conversations — dead schema, zero references outside the model.",
