@@ -93,3 +93,61 @@ export async function api(path, { method = "GET", body, retry = true, headers = 
   if (res.status === 204) return null;
   return res.json();
 }
+
+/* ---------------------------------------------------------- الكاش اللحظي */
+
+/** كاش stale-while-revalidate في الميموري: البيانات بتترسم من الكاش
+ *  في أجزاء من الثانية على أي تنقل، والتحديث بيحصل صامت في الخلفية.
+ *  النداءات المتكررة لنفس المسار بتتجمع في نداء واحد (in-flight dedupe). */
+const cache = new Map(); // path -> { data, at }
+const inflight = new Map(); // path -> Promise
+
+export const DEFAULT_TTL_MS = 20_000;
+
+export function invalidateCache(prefix) {
+  for (const key of cache.keys()) {
+    if (!prefix || key.startsWith(prefix)) cache.delete(key);
+  }
+}
+
+/** قراءة لحظية من الكاش — بترجع data أو null. */
+export function peekCache(path) {
+  return cache.get(path)?.data ?? null;
+}
+
+export function prefetchDashboard() {
+  const paths = [
+    "/analytics/dashboard",
+    "/analytics/overview?days=30",
+    "/ai/usage/summary",
+    "/ai/approvals?status=PENDING",
+    "/ai/agents",
+    "/marketing/campaigns",
+    "/analytics/summary",
+  ];
+  for (const p of paths) void apiCached(p);
+}
+
+export function apiCached(path, { ttlMs = DEFAULT_TTL_MS } = {}) {
+  const hit = cache.get(path);
+  const fresh = hit && Date.now() - hit.at < ttlMs;
+
+  if (inflight.has(path)) return inflight.get(path);
+
+  const promise = (async () => {
+    const data = await api(path);
+    cache.set(path, { data, at: Date.now() });
+    return data;
+  })();
+
+  inflight.set(path, promise);
+  promise.finally(() => inflight.delete(path)).catch(() => {});
+
+  // stale-while-revalidate: القديمة بترجع فورًا والجديدة بتوصل بعدها
+  if (fresh) return hit.data;
+  if (hit) {
+    return promise.then((data) => data);
+  }
+  return promise;
+}
+

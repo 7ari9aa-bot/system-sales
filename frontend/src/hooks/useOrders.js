@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { api } from "@/lib/api";
+import { apiCached, peekCache } from "@/lib/api";
 import { useFormatters } from "@/lib/dates";
 
 /** طلبات حقيقية من GET /orders، مع ربط اسم العميل من /customers.
@@ -12,10 +12,14 @@ export default function useOrders() {
 
   useEffect(() => {
     let alive = true;
-    api("/orders?limit=200")
+    const cached = peekCache("/orders?limit=200");
+    if (cached) setRows(cached?.items ?? (Array.isArray(cached) ? cached : []));
+    const cachedC = peekCache("/customers?limit=200");
+    if (cachedC) setCustomers(cachedC?.items ?? (Array.isArray(cachedC) ? cachedC : []));
+    apiCached("/orders?limit=200")
       .then((d) => alive && setRows(d?.items ?? (Array.isArray(d) ? d : [])))
       .catch(() => alive && setRows([]));
-    api("/customers?limit=200")
+    apiCached("/customers?limit=200")
       .then((d) => alive && setCustomers(d?.items ?? (Array.isArray(d) ? d : [])))
       .catch(() => alive && setCustomers([]));
     return () => {

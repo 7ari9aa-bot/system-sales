@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { api } from "@/lib/api";
+import { apiCached, peekCache } from "@/lib/api";
 import { useFormatters } from "@/lib/dates";
 
 /** عملاء حقيقيون من GET /customers. بيرجع null أثناء التحميل.
@@ -11,7 +11,9 @@ export default function useCustomers() {
 
   useEffect(() => {
     let alive = true;
-    api("/customers?limit=200")
+    const cached = peekCache("/customers?limit=200");
+    if (cached) setRows(cached?.items ?? (Array.isArray(cached) ? cached : []));
+    apiCached("/customers?limit=200")
       .then((d) => alive && setRows(d?.items ?? (Array.isArray(d) ? d : [])))
       .catch(() => alive && setRows([]));
     return () => {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { api } from "@/lib/api";
+import { apiCached, peekCache } from "@/lib/api";
 
 const DAYS = { today: 1, yesterday: 2, "7d": 7, "30d": 30, "90d": 90, custom: 30 };
 
@@ -32,7 +32,9 @@ export default function useSalesStats(range) {
 
   useEffect(() => {
     let alive = true;
-    api("/analytics/dashboard")
+    const cached = peekCache("/analytics/dashboard");
+    if (cached) setDash(cached);
+    apiCached("/analytics/dashboard")
       .then((d) => alive && setDash(d))
       .catch(() => alive && setDash(null));
     return () => {
@@ -42,8 +44,11 @@ export default function useSalesStats(range) {
 
   useEffect(() => {
     let alive = true;
-    setOverview(null);
-    api(`/analytics/overview?days=${days}`)
+    const path = `/analytics/overview?days=${days}`;
+    const cached = peekCache(path);
+    if (cached) setOverview(cached);
+    else setOverview(null);
+    apiCached(path)
       .then((d) => alive && setOverview(d))
       .catch(() => alive && setOverview(null));
     return () => {

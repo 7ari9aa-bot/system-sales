@@ -2,7 +2,7 @@ import React from "react";
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from "recharts";
-import { SectionCard, Delta } from "@/components/dashboard/ui";
+import { SectionCard, Delta, Skeleton } from "@/components/dashboard/ui";
 import { useDashboard } from "@/lib/dashboardContext";
 import { formatCurrency } from "@/lib/dashboardData";
 import useSalesStats from "@/hooks/useSalesStats";
@@ -72,8 +72,8 @@ export default function SalesPerformance() {
 
       <div className="h-[200px] -mx-1">
         {data.length === 0 ? (
-          <div className="grid h-full place-items-center text-[12.5px] text-muted-foreground">
-            {t("common.loading")}
+          <div className="h-full">
+            <Skeleton className="h-[150px] w-full" />
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">

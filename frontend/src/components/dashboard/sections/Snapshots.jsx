@@ -1,6 +1,6 @@
 import React from "react";
 import { Boxes, Megaphone, PackageX, AlertTriangle } from "lucide-react";
-import { SectionCard } from "@/components/dashboard/ui";
+import { SectionCard, Skeleton } from "@/components/dashboard/ui";
 import { formatCurrency } from "@/lib/dashboardData";
 import { useT } from "@/lib/i18n";
 import useSalesStats from "@/hooks/useSalesStats";

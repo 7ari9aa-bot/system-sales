@@ -3,6 +3,25 @@ import { Link } from "react-router-dom";
 import { ArrowRight, ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+/** هيكل عظمي بلمعان — مكان مؤشر التحميل: الشاشة بتترسم بشكلها النهائي
+ *  فورًا والبيانات بتملا مكانها في أجزاء من الثانية. */
+export function Skeleton({ className }) {
+  return <div aria-hidden="true" className={cn("skeleton rounded-xl", className)} />;
+}
+
+export function KpiSkeleton() {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-5">
+      <div className="flex items-center justify-between">
+        <Skeleton className="h-3.5 w-20" />
+        <Skeleton className="h-7 w-7 rounded-lg" />
+      </div>
+      <Skeleton className="mt-3 h-6 w-28" />
+      <Skeleton className="mt-3 h-3 w-16" />
+    </div>
+  );
+}
+
 export function Delta({ value, className }) {
   const positive = value >= 0;
   const Icon = positive ? ArrowUpRight : ArrowDownRight;

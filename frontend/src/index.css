@@ -543,3 +543,9 @@ html[lang="en"] .app :where(h1,h2,h3,h4,p,li,small,b,strong,label,option,.kicker
 .live-bg-grid{position:absolute;inset:0;opacity:.5;background-image:linear-gradient(var(--line,#1F2022) 1px,transparent 1px),linear-gradient(90deg,var(--line,#1F2022) 1px,transparent 1px);background-size:48px 48px;-webkit-mask-image:radial-gradient(ellipse 80% 60% at 50% 0%,#000,transparent 75%);mask-image:radial-gradient(ellipse 80% 60% at 50% 0%,#000,transparent 75%)}
 .live-bg-orb{position:absolute;border-radius:50%;filter:blur(60px);opacity:.55;animation:orb-float linear infinite;will-change:transform}
 @keyframes orb-float{0%{transform:translate(0,0) scale(1)}50%{transform:translate(40px,-30px) scale(1.08)}100%{transform:translate(0,0) scale(1)}}
+
+/* ===== هيكل عظمي بلمعان (حالة التحميل الشيك) ===== */
+.skeleton{position:relative;overflow:hidden;background:hsl(var(--muted));opacity:.9}
+.skeleton::after{content:"";position:absolute;inset:0;transform:translateX(-100%);background:linear-gradient(90deg,transparent,hsl(var(--background)/.65),transparent);animation:skeleton-shimmer 1.4s ease-in-out infinite}
+@keyframes skeleton-shimmer{100%{transform:translateX(100%)}}
+@media (prefers-reduced-motion: reduce){.skeleton::after{animation:none}}

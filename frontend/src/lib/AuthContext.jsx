@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, getTokens, setTokens } from "@/lib/api";
+import { api, getTokens, setTokens, prefetchDashboard } from "@/lib/api";
 
 /** مصادقة حقيقية على /auth/* — login و register و logout و me.
  *  بيتحمل مرة واحدة: لو فيه توكنات بيجيب /auth/me، ولو فشلت بيمسح
@@ -25,6 +25,7 @@ export function AuthProvider({ children }) {
       const me = await api("/auth/me");
       setUser(me);
       setAuthError(null);
+      prefetchDashboard(); // بيانات الداشبورد تتجهز أول ما الجلسة تفتح
       return true;
     } catch {
       setTokens(null);
@@ -46,6 +47,7 @@ export function AuthProvider({ children }) {
     const me = await api("/auth/me");
     setUser(me);
     setAuthError(null);
+    prefetchDashboard(); // بعد الدخول: البيانات بتتحمل قبل ما الداشبورد يفتح
     return me;
   }, []);
 

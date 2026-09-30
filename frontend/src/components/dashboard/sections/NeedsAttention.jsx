@@ -1,7 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, Boxes, CheckCircle2, MessageSquare, ShieldCheck, ShoppingBag } from "lucide-react";
-import { SectionCard } from "@/components/dashboard/ui";
+import { SectionCard, Skeleton } from "@/components/dashboard/ui";
 import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import useSalesStats from "@/hooks/useSalesStats";
@@ -68,7 +68,19 @@ export default function NeedsAttention() {
 
   return (
     <SectionCard title={t("home.needsAttention.title")} testid="needs-attention">
-      {items.length === 0 ? (
+      {!live && approvals == null ? (
+        <div className="space-y-3 py-2">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="flex items-center gap-3.5">
+              <Skeleton className="h-9 w-9 rounded-lg" />
+              <div className="flex-1 space-y-1.5">
+                <Skeleton className="h-3.5 w-2/5" />
+                <Skeleton className="h-3 w-3/5" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : items.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-8 text-center">
           <CheckCircle2 className="h-9 w-9 text-success mb-2" />
           <p className="font-display text-[15px] font-semibold">{t("home.allCaughtUp")}</p>

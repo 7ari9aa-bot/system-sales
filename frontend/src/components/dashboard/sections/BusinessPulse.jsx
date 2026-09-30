@@ -1,6 +1,6 @@
 import React from "react";
 import { DollarSign, ShoppingBag, Sparkles, TrendingUp, Users } from "lucide-react";
-import { KpiCard } from "@/components/dashboard/ui";
+import { KpiCard, KpiSkeleton } from "@/components/dashboard/ui";
 import { useDashboard } from "@/lib/dashboardContext";
 import { formatCurrency } from "@/lib/dashboardData";
 import { useT } from "@/lib/i18n";
@@ -22,6 +22,14 @@ export default function BusinessPulse() {
   const customers = live?.customers ?? 0;
   const aiOrders = live?.aiOrders ?? 0;
   const aiCost = usage?.totals?.cost ?? null;
+
+  if (!live) {
+    return (
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3.5" data-testid="dash-pulse">
+        {[0, 1, 2, 3, 4].map((i) => <KpiSkeleton key={i} />)}
+      </div>
+    );
+  }
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3.5" data-testid="dash-pulse">
