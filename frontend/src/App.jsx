@@ -105,22 +105,24 @@ const DashboardRoutes = () => (
 );
 
 function App() {
+  // الـRouter لازم يكون بره AuthProvider — لأن المصادقة بتستخدم
+  // useNavigate جواها، وuseNavigate بتشتغل بس جوه سياق Router.
   return (
-    <AuthProvider>
-      <ThemeProvider>
-        <I18nProvider>
-          <RegionalProvider>
-            <QueryClientProvider client={queryClientInstance}>
-              <Router>
+    <Router>
+      <AuthProvider>
+        <ThemeProvider>
+          <I18nProvider>
+            <RegionalProvider>
+              <QueryClientProvider client={queryClientInstance}>
                 <ScrollToTop />
                 <PathRouter />
-              </Router>
-              <Toaster />
-            </QueryClientProvider>
-          </RegionalProvider>
-        </I18nProvider>
-      </ThemeProvider>
-    </AuthProvider>
+                <Toaster />
+              </QueryClientProvider>
+            </RegionalProvider>
+          </I18nProvider>
+        </ThemeProvider>
+      </AuthProvider>
+    </Router>
   )
 }
 

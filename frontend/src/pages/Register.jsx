@@ -7,7 +7,6 @@ import { Label } from "@/components/ui/label";
 import { UserPlus, Mail, Lock, Loader2 } from "lucide-react";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import AuthLayout from "@/components/AuthLayout";
-import GoogleIcon from "@/components/GoogleIcon";
 import { toast } from "@/components/ui/use-toast";
 import { safeReturnTo } from "@/lib/authReturnTo";
 
@@ -57,11 +56,7 @@ export default function Register() {
         </>
       }
     >
-      <Button variant="outline" className="auth-btn-google" onClick={handleGoogle}>
-        <GoogleIcon className="w-5 h-5 mr-2" />
-        {tx(c("المتابعة عبر Google", "Continue with Google"), locale)}
-      </Button>
-      <div className="auth-divider"><span>{tx(c("أو", "or"), locale)}</span></div>
+            <div className="auth-divider"><span>{tx(c("أو", "or"), locale)}</span></div>
       {error && <div className="auth-error" dir="auto">{error}</div>}
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-2">
