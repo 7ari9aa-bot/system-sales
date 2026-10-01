@@ -116,6 +116,79 @@ def compile_metric(
     return sql, params
 
 
+_BREAKDOWN_STATEMENTS: dict[str, tuple[str, str]] = {
+    # name → (statement, dimension column) — v1: channel only.
+    "orders_placed": (
+        "SELECT COALESCE(o.channel, 'unknown') AS channel_key, "
+        "COUNT(*) AS value, 0 AS money_value "
+        "FROM orders o "
+        "WHERE o.tenant_id = :tenant_id AND o.deleted_at IS NULL "
+        "AND COALESCE(o.placed_at, o.created_at) >= :start "
+        "AND COALESCE(o.placed_at, o.created_at) < :end "
+        "GROUP BY channel_key",
+        "channel",
+    ),
+    "delivered_revenue": (
+        "SELECT COALESCE(o.channel, 'unknown') AS channel_key, "
+        "COUNT(DISTINCT o.id) AS value, "
+        "COALESCE(SUM(o.grand_total), 0) AS money_value "
+        "FROM shipments s JOIN orders o ON o.id = s.order_id "
+        "WHERE o.tenant_id = :tenant_id AND o.deleted_at IS NULL "
+        "AND s.tenant_id = :tenant_id AND s.status = 'delivered' "
+        "AND s.delivered_at >= :start AND s.delivered_at < :end "
+        "GROUP BY channel_key",
+        "channel",
+    ),
+}
+
+
+def compile_breakdown(
+    name: str,
+    tenant_id: uuid.UUID,
+    period: AnalysisPeriod,
+    *,
+    dimension: str,
+) -> tuple[str, dict]:
+    """Compile a GROUP-BY breakdown; unknown dimensions refuse loudly."""
+    definition = metric(name)
+    if dimension not in definition.dimensions_allowed:
+        raise UnsupportedFilter(f"metric {name} cannot break down by {dimension}")
+    if name not in _BREAKDOWN_STATEMENTS:
+        raise UnsupportedFilter(f"metric {name} has no {dimension} breakdown path")
+    sql, column = _BREAKDOWN_STATEMENTS[name]
+    _assert_scoped(sql)
+    params: dict = {
+        "tenant_id": str(tenant_id),
+        "start": period.start,
+        "end": period.end,
+    }
+    return sql, params
+
+
+async def compute_breakdown(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    name: str,
+    period: AnalysisPeriod,
+    *,
+    dimension: str,
+) -> list[tuple[str, Decimal, int]]:
+    """(key, money_or_count_value, count) rows — values are money when the
+    metric is money-valued, else raw counts."""
+    definition = metric(name)
+    sql, params = compile_breakdown(name, tenant_id, period, dimension=dimension)
+    rows = (await session.execute(text(sql), params)).all()
+    is_money = definition.semantic_type == "money"
+    return [
+        (
+            row.channel_key,
+            Decimal(str(row.money_value if is_money else row.value)),
+            int(row.value),
+        )
+        for row in rows
+    ]
+
+
 def _maturity_for(definition: MetricDefinition) -> MaturityStatus:
     if definition.maturity_policy.kind == "immediate":
         return MaturityStatus.MATURE

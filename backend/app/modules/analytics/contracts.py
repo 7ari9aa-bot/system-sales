@@ -217,6 +217,27 @@ class AnswerDraft(BaseModel):
     clarification: str | None = None
 
 
+class CapabilityCost(BaseModel):
+    """§4.1 — what an investigation cost the store's database."""
+
+    rows_scanned: int = 0
+    duration_ms: int = 0
+
+
+class CapabilityResult(BaseModel):
+    """§4.1 — every capability returns this shape. Status is honest:
+    unsupported/no_data are VALID outcomes naming their reason."""
+
+    capability: str
+    status: Literal["ok", "partial", "unsupported", "no_data", "error"]
+    evidence_ids: list[str] = Field(default_factory=list)
+    summary: dict = Field(default_factory=dict)
+    data_quality: DataQuality
+    limitations: list[str] = Field(default_factory=list)
+    assumptions: list[Assumption] = Field(default_factory=list)
+    cost: CapabilityCost = Field(default_factory=CapabilityCost)
+
+
 class Outcome(StrEnum):
     """§2.5 — terminal outcomes are VALID results, not failures."""
 

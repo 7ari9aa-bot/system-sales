@@ -91,6 +91,9 @@ KNOWN_DEAD_MODULES: dict[str, str] = {
     "app.modules.analytics.semantic": "SI Phase 3 registry — the compiler consumes it (same wave).",
     "app.modules.analytics.compiler": "SI Phase 4 compiler — the capability layer lands next.",
     "app.modules.analytics.engines": "SI Phase 5 anomaly engine — the capability layer lands next.",
+    "app.modules.analytics.capabilities": "SI Phase 6 capabilities — the agent loop lands next.",
+    "app.modules.analytics.evidence": "SI Phase 6 pack builder — the agent loop lands next.",
+    "app.modules.analytics.findings": "SI Phase 8 builder — the agent loop lands next.",
     # Customer Agent M2 foundations (§8 build order). The state engine IS
     # wired (hooks' photo delivery); the referent resolver and turn intake
     # are the next wave's caller surface — the turn coordinator wires them
