@@ -184,13 +184,14 @@ export function Workflow({ locale, compact = false, steps: customSteps, descs: c
     : ['A message arrives from any channel—no copy-paste', 'The system reads intent: question, order, complaint', 'Every thread gets an owner and response window', 'A reminder and reply draft before the lead goes cold', 'The outcome becomes data for the next round']
   const steps = customSteps || defaultSteps
   const descs = customDescs || defaultDescs
+  const localized = (value) => (typeof value === 'string' ? value : tx(value, locale))
   return (
     <div className={`workflow ${compact ? 'compact' : ''}`}>
       {steps.map((step, i) => (
-        <div className="workflow-step" key={step}>
+        <div className="workflow-step" key={i}>
           <span className="step-number">0{i + 1}</span>
-          <span>{step}</span>
-          {!compact && <small className="step-desc">{descs[i]}</small>}
+          <span>{localized(step)}</span>
+          {!compact && <small className="step-desc">{localized(descs[i])}</small>}
           {i < steps.length - 1 && <span className="step-line" />}
         </div>
       ))}

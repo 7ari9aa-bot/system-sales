@@ -18,7 +18,7 @@ function stockStatus(stock, threshold) {
 function toProduct(product, balances, threshold) {
   const variants = Array.isArray(product.variants) ? product.variants : [];
   const primaryVariant = variants.find((variant) => variant.is_active) || variants[0] || null;
-  const stock = balances == null
+  const stock = balances == null || variants.length === 0
     ? null
     : variants.reduce((total, variant) => total + balances
       .filter((balance) => balance.variant_id === variant.id)
