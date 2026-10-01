@@ -94,6 +94,14 @@ KNOWN_DEAD_MODULES: dict[str, str] = {
     "app.modules.analytics.capabilities": "SI Phase 6 capabilities — the agent loop lands next.",
     "app.modules.analytics.evidence": "SI Phase 6 pack builder — the agent loop lands next.",
     "app.modules.analytics.findings": "SI Phase 8 builder — the agent loop lands next.",
+    # The SI agent module itself — its composition root is the Phase 10
+    # API route (POST /ai/sales/analyses) that lands next wave; the tools
+    # register into the platform registry at import time.
+    "app.modules.ai.agents.sales_intelligence.agent": (
+        "SI Phase 7 — wired by the Phase 10 API route."
+    ),
+    "app.modules.ai.agents.sales_intelligence.tools": "SI Phase 7 — same API-route wiring.",
+    "app.modules.ai.agents.sales_intelligence.response": "SI Phase 9 — same API-route wiring.",
     # Customer Agent M2 foundations (§8 build order). The state engine IS
     # wired (hooks' photo delivery); the referent resolver and turn intake
     # are the next wave's caller surface — the turn coordinator wires them

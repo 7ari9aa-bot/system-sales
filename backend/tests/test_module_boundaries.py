@@ -137,7 +137,13 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # hard rules hold. `customers -> conversations.inbox` (the 360 now reads the
 # same read model instead of calling `list_inbox`) is a re-point of the existing
 # `customers -> conversations.service` edge, not a new coupling.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 99
+# 99 -> 116 on 2026-10-01: the Sales Intelligence agent (spec §1.2) imports
+# the analytics layer's PUBLIC interfaces (contracts, semantic registry,
+# compiler, capabilities, evidence, findings, numbers, validators) — the one
+# dependency direction the architecture endorses (agents -> analytics; never
+# analytics -> agents, never an ORM model across). All 17 new edges are
+# ai -> analytics function/module-scope imports in the SI agent module.
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 116
 # 101 -> 99 on 2026-09-29: the diagnostics engine (platform/diagnostics.py) had
 # module-scope imports of `ai.models.Agent`, `inventory.models` and
 # `orders.models` — three edges that re-merged the eleven-module SCC blob the
