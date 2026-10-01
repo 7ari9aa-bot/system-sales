@@ -8,6 +8,7 @@ import { Badge } from "@/components/dashboard/ui";
 
 export default function ChannelsSettings() {
   const t = useT();
+  const channels = useRealChannels();
   return (
     <SettingsShell title={t("channels.title")} subtitle={t("channels.subtitle")}>
       <SettingCard>

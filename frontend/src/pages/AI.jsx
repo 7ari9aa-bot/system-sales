@@ -115,21 +115,25 @@ export default function AI() {
       </div>
 
       <div className="mt-5">
-        <SectionCard title={t("ai.usage.title")} action={t("common.managePlan")} actionTo="/settings/billing">
+        <SectionCard title={t("ai.usage.title")} bodyClassName="pt-3">
           <div className="grid sm:grid-cols-2 gap-5">
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[13px] font-medium">{t("ai.usage.credits")}</span>
-                <span className="text-[12.5px] tabular-nums text-muted-foreground">{USAGE.aiUsage.used.toLocaleString()} / {USAGE.aiUsage.limit.toLocaleString()}</span>
+            <div className="flex items-center gap-3.5">
+              <span className="h-11 w-11 rounded-xl bg-accent/10 text-accent grid place-items-center text-[13px] font-bold tabular-nums" dir="ltr">
+                {a.tokensUsed == null ? "—" : a.tokensUsed >= 1000 ? `${(a.tokensUsed / 1000).toFixed(1)}K` : a.tokensUsed}
+              </span>
+              <div>
+                <div className="text-[13px] font-medium">{t("ai.stat.tokens")}</div>
+                <div className="text-[12px] text-muted-foreground">{t("ai.usage.thisCycle")}</div>
               </div>
-              <ProgressBar used={USAGE.aiUsage.used} limit={USAGE.aiUsage.limit} tone="accent" />
             </div>
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[13px] font-medium">{t("ai.usage.spend")}</span>
-                <span className="text-[12.5px] tabular-nums text-muted-foreground"><span className="bdi">{formatCurrency(USAGE.spend)}</span> {t("ai.usage.thisCycle")}</span>
+            <div className="flex items-center gap-3.5">
+              <span className="h-11 w-11 rounded-xl bg-warning/15 text-warning grid place-items-center font-display text-[15px] font-bold">
+                {a.spendThisMonth ? formatCurrency(a.spendThisMonth) : "—"}
+              </span>
+              <div>
+                <div className="text-[13px] font-medium">{t("ai.usage.spend")}</div>
+                <div className="text-[12px] text-muted-foreground">{t("ai.usage.thisCycle")}</div>
               </div>
-              <ProgressBar used={USAGE.spend} limit={100} tone="warning" />
             </div>
           </div>
         </SectionCard>

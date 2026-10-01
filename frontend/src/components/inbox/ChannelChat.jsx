@@ -59,7 +59,14 @@ export default function ChannelChat({ channel, conversation, t, onSend, onApprov
 
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto scrollbar-thin px-4 py-4 space-y-2">
-        {conversation.messages.map((m, i) =>
+        {/* المحادثات الحقيقية من القائمة ما بتوصلش برسايلها الكاملة —
+            الرسايل بتتجيب عند فتح المحادثة؛ هنا معاينة آمنة فاضية */}
+        {(conversation.messages || []).length === 0 && (
+          <div className="py-10 text-center text-[12.5px] text-muted-foreground">
+            {t("inbox.previewOnly")}
+          </div>
+        )}
+        {(conversation.messages || []).map((m, i) =>
         <Bubble key={i} m={m} isApp={isApp} th={th} t={t} />
         )}
         {conversation.status === "approval" &&

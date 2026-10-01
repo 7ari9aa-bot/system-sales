@@ -46,7 +46,8 @@ export default function Products() {
 
   async function remove(p) {
     if (!window.confirm(t("products.deleteConfirm"))) return;
-    await api(`/products/${p.id}`, { method: 'DELETE' });
+    // الباك إند مش بيمسح منتجات — بيثبّتها (archive) حفاظًا على سلامة الطلبات القديمة
+    await api(`/products/${p.id}/archive`, { method: "POST" });
     load();
   }
 

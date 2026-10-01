@@ -10,12 +10,7 @@ import { formatCurrency } from "@/lib/dashboardData";
 import useSalesStats from "@/hooks/useSalesStats";
 import { useT } from "@/lib/i18n";
 
-const CHANNEL_SPLIT = [
-  { name: "WhatsApp", value: 58, color: "hsl(var(--chart-1))" },
-  { name: "Instagram", value: 22, color: "hsl(var(--chart-2))" },
-  { name: "Messenger", value: 12, color: "hsl(var(--chart-4))" },
-  { name: "Webchat", value: 8, color: "hsl(var(--chart-3))" },
-];
+const SOURCE_COLORS = ["hsl(var(--chart-1))", "hsl(var(--chart-2))", "hsl(var(--chart-4))", "hsl(var(--chart-3))"];
 
 function ChartTooltip({ active, payload, label, t }) {
   if (!active || !payload?.length) return null;
@@ -47,19 +42,24 @@ export default function Analytics() {
   };
   const sources = live?.sources || [];
 
-  // "What changed" — the few movements that matter
+  // "What changed" — أرقام حقيقية بدون دلتا وهمية: الـbackend مش بينشر مقارنات فترات
   const changes = [
-    { label: t("analytics.kpi.netSales"), value: formatCurrency(s.netSales.value, true), delta: s.netSales.delta, icon: ShoppingBag },
-    { label: t("analytics.kpi.orders"), value: s.orders.value.toLocaleString(), delta: s.orders.delta, icon: TrendingUp },
-    { label: t("analytics.kpi.conversion"), value: `${s.conversion.value}%`, delta: s.conversion.delta, icon: Sparkles },
+    { label: t("analytics.kpi.netSales"), value: formatCurrency(s.netSales.value, true), icon: ShoppingBag },
+    { label: t("analytics.kpi.orders"), value: s.orders.value.toLocaleString(), icon: TrendingUp },
+    { label: t("home.customers"), value: s.customers.value.toLocaleString(), icon: Package },
   ];
 
-  // "What to do next" — recommended actions, each linking somewhere
-  const next = [
-    { icon: Package, tone: "warning", title: t("analytics.insight.restock", { name: "Brass Desk Lamp" }), action: t("analytics.action.restock"), to: "/inventory" },
-    { icon: Clock, tone: "primary", title: t("analytics.insight.followup", { n: 2 }), action: t("analytics.action.viewOrders"), to: "/orders" },
-    { icon: TrendingUp, tone: "success", title: t("analytics.insight.sources[0]", { name: sources[0].name }), action: t("analytics.action.viewProduct"), to: "/products" },
-  ];
+  // "What to do next" — إجراءات مشتقة من أرقام حقيقية فقط، وبتظهر لما يكون سببها موجود
+  const next = [];
+  if ((live?.lowStock ?? 0) + (live?.outOfStock ?? 0) > 0) {
+    next.push({ icon: Package, tone: "warning", title: t("insight.stock.title", { n: live.lowStock }), action: t("common.review"), to: "/inventory" });
+  }
+  if ((live?.unread ?? 0) > 0) {
+    next.push({ icon: Clock, tone: "primary", title: t("home.attention.inbox.title", { n: live.unread }), action: t("home.attention.inbox.action"), to: "/inbox" });
+  }
+  if (sources.length) {
+    next.push({ icon: TrendingUp, tone: "success", title: t("insight.source.title", { name: sources[0].source }), action: t("home.viewAnalytics"), to: "/marketing" });
+  }
   const NEXT_TONE = {
     warning: "bg-warning/15 text-warning",
     primary: "bg-primary/10 text-primary",
@@ -83,10 +83,6 @@ export default function Analytics() {
                   <div className="flex-1">
                     <div className="text-[12px] text-muted-foreground">{c.label}</div>
                     <div className="font-display text-[18px] font-semibold tabular-nums">{c.value}</div>
-                  </div>
-                  <div className="text-right">
-                    <Delta value={c.delta} />
-                    <div className="text-[11px] text-muted-foreground mt-0.5">{t("analytics.vsLast")}</div>
                   </div>
                 </div>
               );
@@ -145,19 +141,23 @@ export default function Analytics() {
           </div>
         </SectionCard>
 
-        <SectionCard title={t("analytics.revenueByChannel")} bodyClassName="pt-2">
+        <SectionCard title={t("analytics.attributedTitle")} bodyClassName="pt-2">
           <div className="h-[220px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={CHANNEL_SPLIT} dataKey="value" nameKey="name" innerRadius={50} outerRadius={78} paddingAngle={2}>
-                  {CHANNEL_SPLIT.map((c) => (
-                    <Cell key={c.name} fill={c.color} stroke="hsl(var(--card))" strokeWidth={2} />
-                  ))}
-                </Pie>
-                <Tooltip content={<ChartTooltip t={t} />} />
-                <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
-              </PieChart>
-            </ResponsiveContainer>
+            {sources.length === 0 ? (
+              <div className="grid h-full place-items-center text-[13px] text-muted-foreground">{t("insight.empty")}</div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={sources.map((src, i) => ({ name: src.source, value: Number(src.revenue) || 0, color: SOURCE_COLORS[i % SOURCE_COLORS.length] }))} dataKey="value" nameKey="name" innerRadius={50} outerRadius={78} paddingAngle={2}>
+                    {sources.map((src, i) => (
+                      <Cell key={src.source} fill={SOURCE_COLORS[i % SOURCE_COLORS.length]} stroke="hsl(var(--card))" strokeWidth={2} />
+                    ))}
+                  </Pie>
+                  <Tooltip content={<ChartTooltip t={t} />} />
+                  <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </SectionCard>
       </div>

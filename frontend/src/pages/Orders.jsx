@@ -111,7 +111,12 @@ export default function Orders() {
                   </td>
                   <td className="px-5 py-3 text-right text-[13.5px] tabular-nums">{o.items}</td>
                   <td className="px-5 py-3 text-right text-[13.5px] font-semibold tabular-nums">{formatCurrency(o.total)}</td>
-                  <td className="px-5 py-3"><Badge tone={STATUS[o.status].tone}>{STATUS[o.status].label}</Badge></td>
+                  <td className="px-5 py-3">
+                    {(() => {
+                      const st = STATUS[o.status] || { tone: "muted", label: o.status };
+                      return <Badge tone={st.tone}>{st.label}</Badge>;
+                    })()}
+                  </td>
                   <td className="px-5 py-3 text-[12.5px] text-muted-foreground">{o.date}</td>
                 </tr>
               ))}

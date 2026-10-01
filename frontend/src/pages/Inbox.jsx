@@ -177,7 +177,10 @@ export default function Inbox() {
                     </div>
                     <p className="text-[12px] text-muted-foreground truncate mt-0.5">{c.preview}</p>
                     <div className="flex items-center gap-1.5 mt-1.5">
-                      <Badge tone={STATUS[c.status].tone}>{STATUS[c.status].label}</Badge>
+                      {(() => {
+                        const st = STATUS[c.status] || { tone: "muted", label: c.status };
+                        return <Badge tone={st.tone}>{st.label}</Badge>;
+                      })()}
                       {c.unread > 0 && (
                         <span className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-primary text-primary-foreground tabular-nums">
                           {c.unread}
