@@ -1,9 +1,10 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Search, Bell, CircleHelp, Menu, ChevronDown, Check, Sun, Moon, Languages, BookOpen, LifeBuoy, Keyboard, Settings2, PanelLeft } from "lucide-react";
 import { useDashboard } from "@/lib/dashboardContext";
 import { DATE_RANGES } from "@/lib/dashboardData";
-import { apiCached } from "@/lib/api";
+import { api, apiCached } from "@/lib/api";
+import { useAuth } from "@/lib/AuthContext";
 import { useT, useI18n } from "@/lib/i18n";
 import { useTheme } from "@/lib/themeContext";
 import { cn } from "@/lib/utils";
@@ -60,6 +61,7 @@ export default function Header({ onMenu, collapsed = false, onToggleCollapse }) 
   const { range, setRange } = useDashboard();
   const navigate = useNavigate();
   const t = useT();
+  const { user } = useAuth();
   const { theme, setTheme } = useTheme();
   const { lang, setLang } = useI18n();
   const [searchOpen, setSearchOpen] = useState(false);
@@ -67,28 +69,65 @@ export default function Header({ onMenu, collapsed = false, onToggleCollapse }) 
 
   // إشعارات حقيقية من /notifications — بدل القائمة الثابتة
   const [notifications, setNotifications] = useState(null);
-  useEffect(() => {
-    let alive = true;
-    apiCached("/notifications", { ttlMs: 15_000 })
-      .then((d) => alive && setNotifications(Array.isArray(d) ? d : []))
-      .catch(() => alive && setNotifications([]));
-    return () => {
-      alive = false;
-    };
+  const [unreadCount, setUnreadCount] = useState(null);
+  const [notificationError, setNotificationError] = useState("");
+  const [updatingNotifications, setUpdatingNotifications] = useState(false);
+  const loadNotifications = useCallback(async () => {
+    setNotificationError("");
+    const [listResult, countResult] = await Promise.allSettled([
+      apiCached("/notifications?limit=50", { ttlMs: 15_000 }),
+      apiCached("/notifications/unread-count", { ttlMs: 15_000 }),
+    ]);
+    const errors = [];
+    if (listResult.status === "fulfilled") {
+      setNotifications(Array.isArray(listResult.value) ? listResult.value : []);
+    } else {
+      errors.push(listResult.reason?.message || "Could not load notifications");
+    }
+    if (countResult.status === "fulfilled") {
+      setUnreadCount(Number(countResult.value?.count) || 0);
+    } else {
+      errors.push(countResult.reason?.message || "Could not load unread count");
+    }
+    setNotificationError(errors.join(" · "));
   }, []);
 
-  // اسم المستخدم الحقيقي من /auth/me — بدل الاسم المكتوب يدويًا
-  const [meEmail, setMeEmail] = useState("");
   useEffect(() => {
-    let alive = true;
-    apiCached("/auth/me", { ttlMs: 60_000 })
-      .then((me) => alive && setMeEmail(me?.email || ""))
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, []);
-  const displayName = meEmail ? meEmail.split("@")[0].replace(/[._-]+/g, " ").trim() : "";
+    void loadNotifications();
+  }, [loadNotifications]);
+
+  async function markAllNotificationsRead() {
+    if (unreadCount == null || !unreadCount || updatingNotifications) return;
+    setUpdatingNotifications(true);
+    setNotificationError("");
+    try {
+      await api("/notifications/mark-all-read", { method: "POST" });
+      const readAt = new Date().toISOString();
+      setNotifications((rows) => (rows || []).map((item) => ({ ...item, read_at: item.read_at || readAt })));
+      setUnreadCount(0);
+    } catch (error) {
+      setNotificationError(error?.message || "Unable to update notifications");
+    } finally {
+      setUpdatingNotifications(false);
+    }
+  }
+
+  async function openNotification(notification, close) {
+    close();
+    setNotificationError("");
+    if (!notification.read_at) {
+      try {
+        const updated = await api(`/notifications/${notification.id}/read`, { method: "PATCH" });
+        setNotifications((rows) => (rows || []).map((item) => item.id === notification.id ? updated : item));
+        setUnreadCount((count) => count == null ? count : Math.max(0, count - 1));
+      } catch (error) {
+        setNotificationError(error?.message || "Unable to update notification");
+      }
+    }
+    if (notification.action_url) navigate(notification.action_url);
+  }
+
+  const displayName = user?.full_name || user?.email?.split("@")[0]?.replace(/[._-]+/g, " ").trim() || "";
 
   return (
     <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-md border-b border-border">
@@ -177,7 +216,11 @@ export default function Header({ onMenu, collapsed = false, onToggleCollapse }) 
             trigger={() => (
               <span className="h-9 w-9 grid place-items-center rounded-lg hover:bg-surface text-muted-foreground relative cursor-pointer">
                 <Bell className="h-[18px] w-[18px]" />
-                <span className="absolute top-2 right-2.5 h-1.5 w-1.5 rounded-full bg-primary" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-primary text-primary-foreground text-[9px] leading-4 text-center">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
               </span>
             )}
           >
@@ -186,31 +229,44 @@ export default function Header({ onMenu, collapsed = false, onToggleCollapse }) 
                 <div className="px-2.5 py-1.5 flex items-center justify-between">
                   <span className="text-[13px] font-semibold">{t("notifications.title")}</span>
                   <button
-                    onClick={close}
-                    className="text-[11.5px] text-primary font-medium hover:underline"
+                    onClick={markAllNotificationsRead}
+                    disabled={unreadCount == null || !unreadCount || updatingNotifications}
+                    className="text-[11.5px] text-primary font-medium hover:underline disabled:opacity-50 disabled:no-underline"
                   >
-                    {t("notifications.markAll")}
+                    {updatingNotifications ? "…" : t("notifications.markAll")}
                   </button>
                 </div>
+                {notificationError && (
+                  <div role="alert" className="mx-2.5 mb-1 flex items-center justify-between gap-2 rounded-md bg-destructive/10 px-2 py-1 text-[11px] text-destructive">
+                    <span className="min-w-0">{notificationError}</span>
+                    <button type="button" onClick={() => void loadNotifications()} className="shrink-0 font-medium underline">
+                      {t("common.retry", "Retry")}
+                    </button>
+                  </div>
+                )}
                 <div className="max-h-80 overflow-y-auto scrollbar-thin">
-                  {(notifications || []).length === 0 ? (
+                  {notifications == null ? (
+                    <div className="px-2.5 py-3 text-[12.5px] text-muted-foreground">
+                      {notificationError ? t("notifications.loadError", "Could not load notifications.") : t("common.loading", "Loading…")}
+                    </div>
+                  ) : notifications.length === 0 ? (
                     <div className="px-2.5 py-3 text-[12.5px] text-muted-foreground">
                       {t("notifications.empty")}
                     </div>
                   ) : (
                     (notifications || []).map((n) => (
-                      <a
+                      <button
                         key={n.id}
-                        href={n.action_url || "#"}
-                        onClick={(e) => { e.preventDefault(); close(); navigate(n.action_url || "/notifications"); }}
-                        className={cn("flex gap-2.5 px-2.5 py-2 rounded-lg hover:bg-surface", n.read_at == null && "bg-primary/5")}
+                        type="button"
+                        onClick={() => openNotification(n, close)}
+                        className={cn("w-full text-left flex gap-2.5 px-2.5 py-2 rounded-lg hover:bg-surface", n.read_at == null && "bg-primary/5")}
                       >
                         <span className={cn("mt-1.5 h-1.5 w-1.5 rounded-full shrink-0", n.read_at == null ? "bg-primary" : "bg-muted-foreground/40")} />
                         <div className="min-w-0">
                           <div className="text-[12.5px] font-medium leading-snug">{n.title || n.kind}</div>
                           <div className="text-[11.5px] text-muted-foreground leading-snug">{n.body}</div>
                         </div>
-                      </a>
+                      </button>
                     ))
                   )}
                 </div>

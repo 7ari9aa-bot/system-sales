@@ -1,7 +1,7 @@
 import React from "react";
 import { Boxes, Megaphone, PackageX, AlertTriangle } from "lucide-react";
 import { SectionCard, Skeleton } from "@/components/dashboard/ui";
-import { formatCurrency } from "@/lib/dashboardData";
+import { formatCurrency } from "@/lib/regional";
 import { useT } from "@/lib/i18n";
 import useSalesStats from "@/hooks/useSalesStats";
 import { apiCached, peekCache } from "@/lib/api";
@@ -56,7 +56,9 @@ export function InventorySnapshot() {
 export function MarketingSnapshot() {
   const t = useT();
   const [summary, setSummary] = React.useState(null);
-  const [campaigns, setCampaigns] = React.useState([]);
+  const [campaigns, setCampaigns] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState("");
 
   React.useEffect(() => {
     let alive = true;
@@ -64,20 +66,25 @@ export function MarketingSnapshot() {
     if (cachedSummary) setSummary(cachedSummary);
     const cachedCampaigns = peekCache("/marketing/campaigns");
     if (cachedCampaigns) setCampaigns(Array.isArray(cachedCampaigns?.items) ? cachedCampaigns.items : []);
-    Promise.all([
-      apiCached("/analytics/summary").catch(() => null),
-      apiCached("/marketing/campaigns").catch(() => ({ items: [] })),
-    ]).then(([s, c]) => {
+    Promise.allSettled([
+      apiCached("/analytics/summary"),
+      apiCached("/marketing/campaigns"),
+    ]).then(([summaryResult, campaignResult]) => {
       if (!alive) return;
-      if (s) setSummary(s);
-      setCampaigns(Array.isArray(c?.items) ? c.items : []);
+      const errors = [];
+      if (summaryResult.status === "fulfilled") setSummary(summaryResult.value);
+      else errors.push(summaryResult.reason?.message);
+      if (campaignResult.status === "fulfilled") setCampaigns(Array.isArray(campaignResult.value?.items) ? campaignResult.value.items : []);
+      else errors.push(campaignResult.reason?.message);
+      setError(errors.filter(Boolean).join(" · "));
+      setLoading(false);
     });
     return () => {
       alive = false;
     };
   }, []);
 
-  const active = campaigns.filter((x) => (x.status || "").toLowerCase() === "active").length;
+  const active = campaigns?.filter((x) => (x.status || "").toLowerCase() === "active").length ?? null;
   const top = summary?.revenue_by_source?.[0] ?? null;
 
   return (
@@ -91,8 +98,9 @@ export function MarketingSnapshot() {
       action={t("common.review")}
       actionTo="/marketing"
     >
+      {error && <div role="status" className="mb-2 text-[11px] text-muted-foreground">{error}</div>}
       <div className="flex items-baseline gap-2">
-        <span className="font-display text-[28px] font-semibold tabular-nums leading-none">{active}</span>
+        <span className="font-display text-[28px] font-semibold tabular-nums leading-none">{loading ? "…" : (active ?? "—")}</span>
         <span className="text-[12.5px] text-muted-foreground">{t("marketing.activeCampaigns")}</span>
       </div>
       <div className="mt-4 space-y-2.5">

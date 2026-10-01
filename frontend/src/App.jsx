@@ -16,6 +16,7 @@ import Login from '@/pages/Login';
 import Register from '@/pages/Register';
 import ForgotPassword from '@/pages/ForgotPassword';
 import ResetPassword from '@/pages/ResetPassword';
+import AcceptInvitation from '@/pages/AcceptInvitation';
 import Home from '@/pages/Home';
 import Inbox from '@/pages/Inbox';
 import Customers from '@/pages/Customers';
@@ -28,7 +29,6 @@ import MarketingAudience from '@/pages/marketing/Audience';
 import MarketingAutomation from '@/pages/marketing/Automation';
 import AI from '@/pages/AI';
 import Analytics from '@/pages/Analytics';
-import Settings from '@/pages/Settings';
 import Usage from '@/pages/Usage';
 import SettingsLayout from '@/components/settings/SettingsLayout';
 import ProfileSettings from '@/pages/settings/ProfileSettings';
@@ -55,6 +55,7 @@ const MarketingRoutes = () => (
       <Route path="/terms" element={<Fihrist />} />
       <Route path="/contact-sales" element={<Fihrist />} />
       <Route path="/support" element={<Fihrist />} />
+      <Route path="*" element={<PageNotFound />} />
     </Routes>
   </LanguageProvider>
 );
@@ -66,13 +67,15 @@ const AuthRoutes = () => (
       <Route path="/register" element={<Register />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/accept-invitation" element={<AcceptInvitation />} />
+      <Route path="*" element={<PageNotFound />} />
     </Routes>
   </LanguageProvider>
 );
 
 const DashboardRoutes = () => (
   <Routes>
-    <Route element={<ProtectedRoute unauthenticatedElement={<AuthRoutes />} />}>
+    <Route element={<ProtectedRoute />}>
       <Route element={<DashboardLayout />}>
         <Route path="/dashboard" element={<Home />} />
         <Route path="/inbox" element={<Inbox />} />
@@ -89,7 +92,7 @@ const DashboardRoutes = () => (
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/usage" element={<Usage />} />
       </Route>
-      <Route element={<ProtectedRoute unauthenticatedElement={<AuthRoutes />} />}>
+      <Route element={<ProtectedRoute />}>
         <Route element={<SettingsLayout />}>
           <Route path="/settings" element={<ProfileSettings />} />
           <Route path="/settings/channels" element={<ChannelsSettings />} />
@@ -132,14 +135,12 @@ function App() {
 function PathRouter() {
   const location = useLocation();
   const path = location.pathname;
-  if (path.startsWith('/dashboard') || path.startsWith('/inbox') || path.startsWith('/customers') ||
-      path.startsWith('/orders') || path.startsWith('/products') || path.startsWith('/inventory') ||
-      path.startsWith('/marketing') || path.startsWith('/ai') || path.startsWith('/analytics') ||
-      path.startsWith('/usage') || path.startsWith('/settings')) {
+  const under = (base) => path === base || path.startsWith(`${base}/`);
+  if (['/dashboard', '/inbox', '/customers', '/orders', '/products', '/inventory',
+    '/marketing', '/ai', '/analytics', '/usage', '/settings'].some(under)) {
     return <DashboardRoutes />;
   }
-  if (path.startsWith('/login') || path.startsWith('/register') ||
-      path.startsWith('/forgot-password') || path.startsWith('/reset-password')) {
+  if (['/login', '/register', '/forgot-password', '/reset-password', '/accept-invitation'].some(under)) {
     return <AuthRoutes />;
   }
   return <MarketingRoutes />;

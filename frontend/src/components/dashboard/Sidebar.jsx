@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -12,36 +12,46 @@ import {
   BarChart3,
   Gauge,
   ChevronDown,
+  LogOut,
 } from "lucide-react";
-import { useT } from "@/lib/i18n";
+import { useI18n, useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/AuthContext";
+import { useNavigate } from "react-router-dom";
 import Logo from "@/components/dashboard/Logo";
 import useSalesStats from "@/hooks/useSalesStats";
-import { apiCached } from "@/lib/api";
 
 export default function Sidebar({ open, onClose, collapsed = false }) {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
   const t = useT();
+  const { lang } = useI18n();
+  const { user, logout } = useAuth();
+  const [loggingOut, setLoggingOut] = React.useState(false);
 
   // شارات حقيقية: غير المقروء من read model السيرفر، والمخزون من
   // النطاقين المنفصلين (منخفض + نافد) — بدل أرقام ثابتة.
   const live = useSalesStats("30d");
-  const unread = live?.unread ?? 0;
-  const stockIssues = (live?.lowStock ?? 0) + (live?.outOfStock ?? 0);
+  const unread = live?.unread ?? null;
+  const stockIssues = live?.lowStock == null || live?.outOfStock == null
+    ? null
+    : live.lowStock + live.outOfStock;
 
-  // الحساب الحقيقي من /auth/me بدل اسم مكتوب يدويًا
-  const [email, setEmail] = React.useState("");
-  React.useEffect(() => {
-    let alive = true;
-    apiCached("/auth/me", { ttlMs: 60_000 })
-      .then((me) => alive && setEmail(me?.email || ""))
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, []);
-  const displayName = email ? email.split("@")[0].replace(/[._-]+/g, " ").trim() : "—";
-  const initials = (email.slice(0, 2) || "·").toUpperCase();
+  const displayName = user?.full_name || user?.email?.split("@")[0]?.replace(/[._-]+/g, " ").trim() || "—";
+  const initials = displayName.split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "·";
+  const logoutLabel = lang === "ar" ? "تسجيل الخروج" : "Sign out";
+
+  async function handleLogout() {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    onClose?.();
+    try {
+      await logout();
+      navigate("/login", { replace: true });
+    } finally {
+      setLoggingOut(false);
+    }
+  }
 
   const NAV = [
     { section: t("nav.workspace"), items: [{ to: "/dashboard", label: t("nav.home"), icon: LayoutDashboard, end: true }] },
@@ -168,6 +178,20 @@ export default function Sidebar({ open, onClose, collapsed = false }) {
             )}
             {!collapsed && <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />}
           </Link>
+          <button
+            type="button"
+            disabled={loggingOut}
+            onClick={() => { void handleLogout(); }}
+            title={collapsed ? logoutLabel : undefined}
+            aria-label={logoutLabel}
+            className={cn(
+              "mt-1 flex w-full items-center rounded-lg text-[13px] font-medium text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-60",
+              collapsed ? "justify-center px-0 py-2" : "gap-2.5 px-3 py-2"
+            )}
+          >
+            <LogOut className="h-[17px] w-[17px] shrink-0" />
+            {!collapsed && <span className="truncate">{loggingOut ? (lang === "ar" ? "جارٍ تسجيل الخروج…" : "Signing out…") : logoutLabel}</span>}
+          </button>
         </div>
       </aside>
     </>

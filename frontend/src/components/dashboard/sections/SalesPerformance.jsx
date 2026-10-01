@@ -2,12 +2,11 @@ import React from "react";
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from "recharts";
-import { SectionCard, Delta, Skeleton } from "@/components/dashboard/ui";
+import { SectionCard, Skeleton } from "@/components/dashboard/ui";
 import { useDashboard } from "@/lib/dashboardContext";
 import { formatCurrency } from "@/lib/dashboardData";
 import useSalesStats from "@/hooks/useSalesStats";
 import { useT } from "@/lib/i18n";
-import { cn } from "@/lib/utils";
 
 function ChartTooltip({ active, payload, t }) {
   if (!active || !payload?.length) return null;
@@ -37,8 +36,8 @@ export default function SalesPerformance() {
   const t = useT();
   const live = useSalesStats(range);
   const data = live?.trend || [];
-  const netSales = live?.netSales ?? 0;
-  const orders = live?.orders ?? 0;
+  const netSales = live?.netSales ?? null;
+  const orders = live?.orders ?? null;
   const sources = (live?.sources ?? []).slice(0, 4);
 
   return (
@@ -58,23 +57,34 @@ export default function SalesPerformance() {
           <div>
             <div className="text-[11px] text-muted-foreground">{t("chart.revenue")}</div>
             <div className="font-display text-[18px] font-semibold tabular-nums leading-none">
-              {formatCurrency(netSales, true)}
+              {netSales == null ? "—" : formatCurrency(netSales, true)}
             </div>
           </div>
           <div className="hidden sm:block">
             <div className="text-[11px] text-muted-foreground">{t("home.avgOrder")}</div>
             <div className="font-display text-[18px] font-semibold tabular-nums leading-none">
-              {formatCurrency(orders ? Math.round(netSales / orders) : 0)}
+              {netSales == null || orders == null ? "—" : formatCurrency(orders ? Math.round(netSales / orders) : 0)}
             </div>
           </div>
         </div>
       </div>
 
       <div className="h-[200px] -mx-1">
-        {data.length === 0 ? (
+        {!live ? (
           <div className="h-full">
             <Skeleton className="h-[150px] w-full" />
           </div>
+        ) : live.dashboardError || live.overviewError ? (
+          <div role="alert" className="grid h-full place-items-center gap-2 px-4 text-center text-[12px] text-muted-foreground">
+            <span>{live.dashboardError || live.overviewError}</span>
+            <button type="button" onClick={live.dashboardError ? live.retryDashboard : live.retryOverview} className="text-primary hover:underline">{t("common.retry", "Retry")}</button>
+          </div>
+        ) : data.length === 0 && live.overviewLoading ? (
+          <div className="h-full">
+            <Skeleton className="h-[150px] w-full" />
+          </div>
+        ) : data.length === 0 ? (
+          <div role="status" className="grid h-full place-items-center px-4 text-center text-[12px] text-muted-foreground">{t("analytics.noData", "No sales in this period.")}</div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={data} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>

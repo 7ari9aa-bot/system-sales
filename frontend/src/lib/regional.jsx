@@ -104,18 +104,18 @@ export function setRegionalConfig({ currency, dateLocale } = {}) {
 
 // Locale-aware currency formatter. No hardcoded symbols.
 // Uses Latin digits for stable layout in both languages (LTR always).
-export function formatCurrency(n, compact = false) {
+export function formatCurrency(n, compact = false, currency = activeCurrency) {
   const opts = compact
     ? { notation: "compact", maximumFractionDigits: 1 }
     : { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 };
   try {
     return new Intl.NumberFormat(activeLocale, {
       style: "currency",
-      currency: activeCurrency,
+      currency,
       ...opts,
     }).format(n);
   } catch {
-    return `${activeCurrency} ${n.toLocaleString(activeLocale)}`;
+    return `${currency} ${n.toLocaleString(activeLocale)}`;
   }
 }
 

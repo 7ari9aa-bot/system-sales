@@ -23,6 +23,8 @@ export default function GlobalSearch({ autoFocus, className, onPick }) {
   const [active, setActive] = useState(0);
   const [hits, setHits] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
   const wrapRef = useRef(null);
   const seqRef = useRef(0);
 
@@ -36,27 +38,32 @@ export default function GlobalSearch({ autoFocus, className, onPick }) {
 
   useEffect(() => {
     const term = q.trim();
+    const seq = ++seqRef.current;
     if (term.length < 2) {
       setHits(null);
       setBusy(false);
+      setError("");
       return;
     }
-    const seq = ++seqRef.current;
     setBusy(true);
+    setHits(null);
+    setError("");
     const id = window.setTimeout(() => {
       api(`/search?q=${encodeURIComponent(term)}&limit=8`)
         .then((rows) => {
           if (seqRef.current === seq) setHits(Array.isArray(rows) ? rows : []);
         })
-        .catch(() => {
-          if (seqRef.current === seq) setHits([]);
+        .catch((requestError) => {
+          if (seqRef.current !== seq) return;
+          setHits([]);
+          setError(requestError?.message || t("search.loadError", "Could not search right now."));
         })
         .finally(() => {
           if (seqRef.current === seq) setBusy(false);
         });
     }, 250);
     return () => window.clearTimeout(id);
-  }, [q]);
+  }, [q, attempt, t]);
 
   const flat = useMemo(() => hits ?? [], [hits]);
 
@@ -107,7 +114,18 @@ export default function GlobalSearch({ autoFocus, className, onPick }) {
 
       {open && q.trim().length >= 2 && (
         <div className="absolute inset-x-0 top-full z-50 mt-2 max-h-80 overflow-y-auto rounded-xl border border-border bg-popover p-1.5 shadow-lg animate-fade-in scrollbar-thin">
-          {flat.length === 0 ? (
+          {error ? (
+            <div className="px-2.5 py-3 text-[12.5px] text-destructive" role="alert">
+              <span>{error}</span>
+              <button
+                type="button"
+                onClick={() => setAttempt((value) => value + 1)}
+                className="ml-2 text-primary hover:underline"
+              >
+                {t("common.retry", "Retry")}
+              </button>
+            </div>
+          ) : flat.length === 0 ? (
             <div className="px-2.5 py-3 text-[12.5px] text-muted-foreground">
               {busy ? t("common.loading") : t("search.noResults")}
             </div>
@@ -117,6 +135,7 @@ export default function GlobalSearch({ autoFocus, className, onPick }) {
               return (
                 <button
                   key={`${hit.entity_type}-${hit.entity_id}`}
+                  type="button"
                   onClick={() => pick(hit)}
                   onMouseEnter={() => setActive(i)}
                   className={cn(

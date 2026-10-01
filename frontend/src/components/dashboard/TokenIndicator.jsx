@@ -42,6 +42,10 @@ export default function TokenIndicator() {
           <div className="flex items-center justify-between mb-1">
             <span className="text-[12.5px] font-semibold">AI tokens used</span>
           </div>
+          {usage?.error && <div role="status" className="mb-2 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+            <span>{usage.error}</span>
+            <button type="button" onClick={usage.retry} className="shrink-0 text-primary hover:underline">Retry</button>
+          </div>}
           <div className="flex items-center justify-between text-[12px]">
             <span className="text-muted-foreground">Used</span>
             <span className="tabular-nums font-medium bdi">
@@ -51,7 +55,7 @@ export default function TokenIndicator() {
           <div className="mt-3 pt-2 border-t border-border flex items-center justify-between text-[11.5px] text-muted-foreground">
             <span>Spent this cycle</span>
             <span className="tabular-nums font-medium text-foreground bdi">
-              {cost == null ? "—" : formatCurrency(Number(cost))}
+              {cost == null ? "—" : formatCurrency(Number(cost), false, "USD")}
             </span>
           </div>
         </div>

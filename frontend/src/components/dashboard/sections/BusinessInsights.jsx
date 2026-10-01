@@ -1,10 +1,11 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, TrendingUp, AlertTriangle, Sparkles } from "lucide-react";
-import { SectionCard } from "@/components/dashboard/ui";
+import { SectionCard, Skeleton } from "@/components/dashboard/ui";
 import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import useSalesStats from "@/hooks/useSalesStats";
+import { formatCurrency } from "@/lib/regional";
 
 const TONE = {
   success: { icon: TrendingUp, ring: "bg-success/15 text-success" },
@@ -24,7 +25,7 @@ export default function BusinessInsights() {
     insights.push({
       id: "i1", tone: "success",
       title: t("insight.source.title", { name: top.source }),
-      body: t("insight.source.body", { money: formatMoneyShort(top.revenue), n: top.conversions }),
+      body: t("insight.source.body", { money: formatCurrency(Number(top.revenue), true), n: top.conversions }),
       actionKey: t("home.viewAnalytics"), to: "/analytics",
     });
   }
@@ -50,7 +51,17 @@ export default function BusinessInsights() {
 
   return (
     <SectionCard title={t("home.businessInsights.title")} action={t("home.exploreAnalytics")} actionTo="/analytics">
-      {insights.length === 0 ? (
+      {live?.dashboardError ? (
+        <div role="alert" className="flex items-center justify-between gap-3 py-4 text-[12.5px] text-muted-foreground">
+          <span>{live.dashboardError}</span>
+          <button type="button" onClick={live.retryDashboard} className="shrink-0 text-primary hover:underline">{t("common.retry", "Retry")}</button>
+        </div>
+      ) : !live ? (
+        <div className="space-y-3 py-2" role="status" aria-label={t("common.loading")}>
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-full" />
+        </div>
+      ) : insights.length === 0 ? (
         <p className="py-6 text-center text-[12.5px] text-muted-foreground">{t("insight.empty")}</p>
       ) : (
         <div className="space-y-2.5">
@@ -81,9 +92,4 @@ export default function BusinessInsights() {
       )}
     </SectionCard>
   );
-}
-
-function formatMoneyShort(v) {
-  const n = Number(v ?? 0);
-  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(n);
 }

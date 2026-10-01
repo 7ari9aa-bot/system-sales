@@ -2,6 +2,7 @@ import React from "react";
 import { PageHeader, SectionCard, Badge, ProgressBar } from "@/components/dashboard/ui";
 import ChannelIcon from "@/components/dashboard/ChannelIcon";
 import { useRealUsage } from "@/hooks/useRealData";
+import { CHANNELS } from "@/lib/channels";
 import { User, Bell, Shield, Plug, CreditCard, Palette } from "lucide-react";
 
 function Row({ icon: Icon, title, desc, children }) {

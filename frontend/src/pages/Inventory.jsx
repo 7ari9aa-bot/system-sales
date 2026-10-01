@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Plus, AlertTriangle, PackageX, Boxes, Minus, Loader2 } from "lucide-react";
 import { api, apiCached, peekCache } from "@/lib/api";
 import { PageHeader, Badge } from "@/components/dashboard/ui";
@@ -17,14 +17,38 @@ export default function Inventory() {
   const [items, setItems] = useState(() => peekCache(BALANCES_PATH));
   const [adjusting, setAdjusting] = useState(null);
   const [error, setError] = useState(null);
+  const [metadata, setMetadata] = useState({ products: [], warehouses: [] });
+  const [loading, setLoading] = useState(() => peekCache(BALANCES_PATH) == null);
 
   const load = useCallback(async () => {
+    setLoading(true);
     try {
-      const list = await apiCached(BALANCES_PATH);
+      const [list, products, warehouses] = await Promise.all([
+        apiCached(BALANCES_PATH),
+        apiCached("/products?limit=200&offset=0").catch(() => []),
+        apiCached("/warehouses?limit=200&offset=0").catch(() => []),
+      ]);
       setItems(Array.isArray(list) ? list : []);
+      const productRows = Array.isArray(products) ? products : [];
+      const variantNames = new Map();
+      for (const product of productRows) {
+        for (const variant of product.variants || []) {
+          variantNames.set(variant.id, {
+            product: product.title,
+            variant: variant.title || variant.sku || "",
+          });
+        }
+      }
+      setMetadata({
+        variantNames,
+        warehouses: new Map((Array.isArray(warehouses) ? warehouses : []).map((row) => [row.id, row.name])),
+      });
       setError(null);
-    } catch {
-      setItems((prev) => (Array.isArray(prev) ? prev : []));
+    } catch (e) {
+      setError(e?.message || "Could not load inventory balances.");
+      setItems((prev) => (Array.isArray(prev) ? prev : null));
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -33,12 +57,12 @@ export default function Inventory() {
   }, [load]);
 
   const list = items || [];
-  const out = list.filter((b) => Number(b.on_hand) <= 0).length;
+  const out = list.filter((b) => (Number(b.on_hand) || 0) - (Number(b.reserved) || 0) <= 0).length;
   const totalReserved = list.reduce((s, b) => s + (Number(b.reserved) || 0), 0);
   const totalOnHand = list.reduce((s, b) => s + (Number(b.on_hand) || 0), 0);
 
   async function adjust(b, delta) {
-    setAdjusting(b.variant_id);
+    setAdjusting(`${b.variant_id}-${b.warehouse_id}`);
     setError(null);
     try {
       await api("/inventory/movements", {
@@ -54,9 +78,15 @@ export default function Inventory() {
       await load();
     } catch (e) {
       setError(e?.message || "—");
+    } finally {
       setAdjusting(null);
     }
   }
+
+  const metadataMaps = useMemo(() => ({
+    variantNames: metadata.variantNames || new Map(),
+    warehouses: metadata.warehouses || new Map(),
+  }), [metadata]);
 
   return (
     <div>
@@ -70,14 +100,17 @@ export default function Inventory() {
       </div>
 
       {error && (
-        <div className="mb-4 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-[13px] text-destructive">
-          {t("inventory.adjustError")}: {error}
+        <div role="alert" className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-[13px] text-destructive">
+          <span>{error}</span>
+          {items === null && <button type="button" onClick={() => void load()} disabled={loading} className="shrink-0 underline disabled:opacity-60">{t("common.retry", "Retry")}</button>}
         </div>
       )}
 
       <div className="rounded-2xl bg-card border border-border overflow-hidden">
-        {items === null ? (
+        {loading && items === null ? (
           <div className="py-16 grid place-items-center text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin" /></div>
+        ) : error && items === null ? (
+          <div className="py-12 text-center text-[13.5px] text-destructive">{error}</div>
         ) : list.length === 0 ? (
           <div className="py-12 text-center text-[13.5px] text-muted-foreground">{t("products.empty")}</div>
         ) : (
@@ -100,11 +133,16 @@ export default function Inventory() {
               <tbody className="divide-y divide-border">
                 {list.map((b) => {
                   const onHand = Number(b.on_hand) || 0;
-                  const outNow = onHand <= 0;
+                  const available = onHand - (Number(b.reserved) || 0);
+                  const outNow = available <= 0;
+                  const rowKey = `${b.variant_id}-${b.warehouse_id}`;
+                  const names = metadataMaps.variantNames.get(b.variant_id);
+                  const variantLabel = names ? [names.product, names.variant].filter(Boolean).join(" · ") : `${b.variant_id?.slice(0, 8)}…`;
+                  const warehouseLabel = metadataMaps.warehouses.get(b.warehouse_id) || `${b.warehouse_id?.slice(0, 8)}…`;
                   return (
-                    <tr key={`${b.variant_id}-${b.warehouse_id}`} className="hover:bg-surface/50 transition-colors">
-                      <td className="px-5 py-3 text-[12.5px] font-medium tabular-nums" dir="ltr">{b.variant_id?.slice(0, 8)}…</td>
-                      <td className="px-5 py-3 text-[12.5px] text-muted-foreground tabular-nums" dir="ltr">{b.warehouse_id?.slice(0, 8)}…</td>
+                    <tr key={rowKey} className="hover:bg-surface/50 transition-colors">
+                      <td className="px-5 py-3 text-[12.5px] font-medium" dir="auto">{variantLabel}</td>
+                      <td className="px-5 py-3 text-[12.5px] text-muted-foreground" dir="auto">{warehouseLabel}</td>
                       <td className="px-5 py-3 text-center text-[13.5px] font-semibold tabular-nums" dir="ltr">{onHand}</td>
                       <td className="px-5 py-3 text-center text-[13.5px] tabular-nums text-muted-foreground" dir="ltr">{Number(b.reserved) || 0}</td>
                       <td className="px-5 py-3">
@@ -116,8 +154,8 @@ export default function Inventory() {
                       </td>
                       <td className="px-5 py-3">
                         <div className="flex items-center justify-center gap-1.5">
-                          <button onClick={() => adjust(b, -1)} disabled={adjusting === b.variant_id} className="h-7 w-7 grid place-items-center rounded-lg border border-border hover:bg-surface disabled:opacity-50"><Minus className="h-3.5 w-3.5" /></button>
-                          <button onClick={() => adjust(b, 1)} disabled={adjusting === b.variant_id} className="h-7 w-7 grid place-items-center rounded-lg border border-border hover:bg-surface disabled:opacity-50"><Plus className="h-3.5 w-3.5" /></button>
+                          <button type="button" aria-label={t("inventory.decrease", "Decrease stock")} onClick={() => adjust(b, -1)} disabled={adjusting === rowKey || outNow} className="h-8 w-8 grid place-items-center rounded-lg border border-border hover:bg-surface disabled:opacity-50"><Minus className="h-3.5 w-3.5" /></button>
+                          <button type="button" aria-label={t("inventory.increase", "Increase stock")} onClick={() => adjust(b, 1)} disabled={adjusting === rowKey} className="h-8 w-8 grid place-items-center rounded-lg border border-border hover:bg-surface disabled:opacity-50"><Plus className="h-3.5 w-3.5" /></button>
                         </div>
                       </td>
                     </tr>

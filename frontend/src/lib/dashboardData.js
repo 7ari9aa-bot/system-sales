@@ -7,7 +7,6 @@ export const DATE_RANGES = [
   { id: "7d", label: "Last 7 days" },
   { id: "30d", label: "Last 30 days" },
   { id: "90d", label: "Last 90 days" },
-  { id: "custom", label: "Custom" },
 ];
 
 export const LOCATIONS = [

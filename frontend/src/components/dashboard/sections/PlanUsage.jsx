@@ -4,7 +4,6 @@ import { Link } from "react-router-dom";
 import { SectionCard, ProgressBar } from "@/components/dashboard/ui";
 import { useRealUsage } from "@/hooks/useRealData";
 import { formatCurrency } from "@/lib/regional";
-import { formatCurrency } from "@/lib/regional";
 
 function UsageRow({ icon: Icon, label, used, limit, tone, unit }) {
   const pct = Math.round((used / limit) * 100);
@@ -36,7 +35,7 @@ export default function PlanUsage() {
           </span>
           <div>
             <div className="font-display text-[16px] font-semibold leading-none">{u.plan ?? "Early access"} plan</div>
-            <div className="text-[12px] text-muted-foreground mt-1"><span className="bdi">{formatCurrency(u.spend)}</span> spent this cycle</div>
+            <div className="text-[12px] text-muted-foreground mt-1"><span className="bdi">{u.spend == null ? "—" : formatCurrency(u.spend, false, "USD")}</span> spent this cycle</div>
           </div>
         </div>
         <Link to="/billing" className="inline-flex items-center gap-1 text-[12.5px] font-medium text-primary hover:gap-1.5 transition-all">

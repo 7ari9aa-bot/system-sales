@@ -4,7 +4,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LogIn, Mail, Lock, Loader2 } from "lucide-react";
+import { LogIn, Mail, Lock, Loader2, ShieldCheck } from "lucide-react";
 import AuthLayout from "@/components/AuthLayout";
 import { safeReturnTo } from "@/lib/authReturnTo";
 
@@ -16,7 +16,10 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const { login } = useAuth();
+  const [challengeId, setChallengeId] = useState("");
+  const [mfaCode, setMfaCode] = useState("");
+  const [useBackupCode, setUseBackupCode] = useState(false);
+  const { login, verifyMfa } = useAuth();
   const [loading, setLoading] = useState(false);
   const returnTo = safeReturnTo();
 
@@ -25,7 +28,16 @@ export default function Login() {
     setError("");
     setLoading(true);
     try {
-      await login(email, password);
+      if (challengeId) {
+        await verifyMfa(challengeId, mfaCode.trim());
+      } else {
+        const result = await login(email, password);
+        if (result?.requiresMfa) {
+          setChallengeId(result.challengeId);
+          setMfaCode("");
+          return;
+        }
+      }
       window.location.href = returnTo;
     } catch (err) {
       setError(err.message || tx(c("بريد إلكتروني أو كلمة مرور غير صحيحة", "Invalid email or password"), locale));
@@ -49,7 +61,7 @@ export default function Login() {
     >
             <div className="auth-divider"><span>{tx(c("أو", "or"), locale)}</span></div>
       {error && <div className="auth-error" dir="auto">{error}</div>}
-      <form onSubmit={handleSubmit} className="space-y-4">
+      {!challengeId ? <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-2">
           <Label htmlFor="email" dir="auto">{tx(c("البريد الإلكتروني", "Email"), locale)}</Label>
           <div className="relative">
@@ -70,7 +82,39 @@ export default function Login() {
         <Button type="submit" className="auth-btn-primary" disabled={loading}>
           {loading ? (<><Loader2 className="w-4 h-4 mr-2 animate-spin" />{tx(c("جارٍ الدخول...", "Logging in..."), locale)}</>) : tx(c("تسجيل الدخول", "Log in"), locale)}
         </Button>
-      </form>
+      </form> : (
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="rounded-lg border border-border bg-surface/50 p-3 text-[12px] text-muted-foreground">
+            <ShieldCheck className="mr-1 inline h-4 w-4" />
+            {tx(c("أدخل رمز تطبيق المصادقة أو رمز استرداد لمرة واحدة.", "Enter an authenticator code or a one-time recovery code."), locale)}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="mfa-code">{tx(c("رمز التحقق", "Verification code"), locale)}</Label>
+            <Input
+              id="mfa-code"
+              inputMode={useBackupCode ? "text" : "numeric"}
+              autoComplete={useBackupCode ? "off" : "one-time-code"}
+              pattern={useBackupCode ? "[a-fA-F0-9]{16}" : "[0-9]{6}"}
+              maxLength={useBackupCode ? 16 : 6}
+              required
+              autoFocus
+              value={mfaCode}
+              onChange={(event) => setMfaCode(useBackupCode ? event.target.value.replace(/[^a-fA-F0-9]/g, "").slice(0, 16) : event.target.value.replace(/\D/g, ""))}
+              className="auth-input"
+              dir="ltr"
+            />
+          </div>
+          <button type="button" onClick={() => { setUseBackupCode((value) => !value); setMfaCode(""); }} className="text-xs text-primary hover:underline">
+            {useBackupCode ? tx(c("استخدام رمز تطبيق المصادقة", "Use authenticator code"), locale) : tx(c("استخدام رمز استرداد", "Use recovery code"), locale)}
+          </button>
+          <Button type="submit" className="auth-btn-primary w-full" disabled={loading || mfaCode.length !== (useBackupCode ? 16 : 6)}>
+            {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{tx(c("جارٍ التحقق...", "Verifying..."), locale)}</> : tx(c("تأكيد وتسجيل الدخول", "Verify and log in"), locale)}
+          </Button>
+          <button type="button" onClick={() => { setChallengeId(""); setMfaCode(""); setError(""); }} className="w-full text-center text-xs text-muted-foreground hover:text-foreground">
+            {tx(c("العودة إلى تسجيل الدخول", "Back to log in"), locale)}
+          </button>
+        </form>
+      )}
     </AuthLayout>
   );
 }

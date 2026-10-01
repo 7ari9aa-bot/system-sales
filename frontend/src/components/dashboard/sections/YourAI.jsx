@@ -37,22 +37,31 @@ export default function YourAI() {
   const live = useSalesStats("30d");
   const usage = useUsageSummary();
   const approvals = useApprovals();
-  const [agents, setAgents] = React.useState([]);
+  const [agents, setAgents] = React.useState(null);
+  const [agentError, setAgentError] = React.useState("");
+  const [agentAttempt, setAgentAttempt] = React.useState(0);
 
   React.useEffect(() => {
     let alive = true;
     const cached = peekCache("/ai/agents");
     if (cached) setAgents(Array.isArray(cached) ? cached : []);
     apiCached("/ai/agents")
-      .then((rows) => alive && setAgents(Array.isArray(rows) ? rows : []))
-      .catch(() => alive && setAgents([]));
+      .then((rows) => {
+        if (!alive) return;
+        setAgents(Array.isArray(rows) ? rows : []);
+        setAgentError("");
+      })
+      .catch((error) => {
+        if (!alive) return;
+        setAgentError(error?.message || "Could not load AI agents");
+      });
     return () => {
       alive = false;
     };
-  }, []);
+  }, [agentAttempt]);
 
-  const pending = approvals?.items?.length ?? 0;
-  const activeAgents = agents.filter((a) => a.is_active).length;
+  const pending = approvals?.items?.length ?? null;
+  const activeAgents = agents?.filter((a) => a.is_active).length ?? null;
   const tokens = usage?.totals ? (usage.totals.tokens_in ?? 0) + (usage.totals.tokens_out ?? 0) : null;
   const cost = usage?.totals?.cost ?? null;
 
@@ -67,13 +76,22 @@ export default function YourAI() {
       action={t("home.manageAI")}
       actionTo="/ai"
     >
+      {(live?.dashboardError || usage?.error || approvals?.error || agentError) && <div role="status" className="mb-3 flex flex-wrap items-center justify-between gap-2 text-[11.5px] text-muted-foreground">
+        <span>{live?.dashboardError || usage?.error || approvals?.error || agentError}</span>
+        <span className="flex items-center gap-3">
+          {live?.dashboardError && <button type="button" onClick={live.retryDashboard} className="text-primary hover:underline">{t("common.retry", "Retry")}</button>}
+          {usage?.error && <button type="button" onClick={usage.retry} className="text-primary hover:underline">{t("common.retry", "Retry")}</button>}
+          {approvals?.error && <button type="button" onClick={approvals.retry} className="text-primary hover:underline">{t("common.retry", "Retry")}</button>}
+          {agentError && <button type="button" onClick={() => setAgentAttempt((attempt) => attempt + 1)} className="text-primary hover:underline">{t("common.retry", "Retry")}</button>}
+        </span>
+      </div>}
       <div className="grid grid-cols-2 gap-x-4 gap-y-4">
-        <Stat icon={MessageSquare} label={t("ai.stat.openConversations")} value={(live?.openConversations ?? 0).toLocaleString()} tone="accent" />
-        <Stat icon={ShoppingBag} label={t("home.aiOrdersHint")} value={(live?.aiOrders ?? 0).toLocaleString()} tone="primary" />
-        <Stat icon={ShieldCheck} label={t("ai.stat.pendingApprovals")} value={pending.toLocaleString()} tone="warning" />
-        <Stat icon={Users} label={t("ai.stat.activeAgents")} value={activeAgents.toLocaleString()} tone="accent" />
+        <Stat icon={MessageSquare} label={t("ai.stat.openConversations")} value={live?.openConversations == null ? "—" : live.openConversations.toLocaleString()} tone="accent" />
+        <Stat icon={ShoppingBag} label={t("home.aiOrdersHint")} value={live?.aiOrders == null ? "—" : live.aiOrders.toLocaleString()} tone="primary" />
+        <Stat icon={ShieldCheck} label={t("ai.stat.pendingApprovals")} value={pending == null || approvals?.error ? "—" : `${pending.toLocaleString()}${approvals?.truncated ? "+" : ""}`} tone="warning" />
+        <Stat icon={Users} label={t("ai.stat.activeAgents")} value={activeAgents == null ? "—" : activeAgents.toLocaleString()} tone="accent" />
         <Stat icon={ListChecks} label={t("ai.stat.tokens")} value={tokens == null ? "—" : tokens.toLocaleString()} tone="primary" />
-        <Stat icon={DollarSign} label={t("home.aiSpend")} value={cost == null ? "—" : formatCurrency(Number(cost))} tone="muted" />
+        <Stat icon={DollarSign} label={t("home.aiSpend")} value={cost == null ? "—" : formatCurrency(Number(cost), false, "USD")} tone="muted" />
       </div>
 
       <div className="mt-4 pt-4 border-t border-border flex items-center justify-between gap-3">
@@ -83,13 +101,13 @@ export default function YourAI() {
           </span>
           <div>
             <div className="font-display text-[16px] font-semibold tabular-nums leading-none bdi">
-              {cost == null ? "—" : formatCurrency(Number(cost))}
+              {cost == null ? "—" : formatCurrency(Number(cost), false, "USD")}
             </div>
-            <div className="text-[12px] text-muted-foreground mt-1">{t("home.usedThisMonth")}</div>
+            <div className="text-[12px] text-muted-foreground mt-1">{t("ai.usage.thisCycle")}</div>
           </div>
         </div>
         <Link to="/ai" className="shrink-0 whitespace-nowrap inline-flex items-center gap-1 text-[12.5px] font-medium text-primary hover:gap-1.5 transition-all">
-          {t("home.approvalsWaiting", { n: pending })}
+          {pending == null || approvals?.error ? "—" : t("home.approvalsWaiting", { n: approvals?.truncated ? `${pending}+` : pending })}
           <ArrowRight className="h-3.5 w-3.5" />
         </Link>
       </div>

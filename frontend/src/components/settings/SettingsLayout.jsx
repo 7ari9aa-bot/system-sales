@@ -1,10 +1,11 @@
 import React, { useState } from "react";
-import { Link, Outlet, useLocation } from "react-router-dom";
+import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
-  ArrowLeft, User, MessageSquare, Wallet, Users, ShieldCheck, AlertTriangle, Menu, X,
+  ArrowLeft, LogOut, User, MessageSquare, Wallet, Users, ShieldCheck, AlertTriangle, Menu, X,
 } from "lucide-react";
-import { useT } from "@/lib/i18n";
+import { useI18n, useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/AuthContext";
 import Logo from "@/components/dashboard/Logo";
 
 // Settings is an exceptional full-screen workspace: the dashboard shell is
@@ -20,8 +21,32 @@ const NAV = [
 
 export default function SettingsLayout() {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
   const t = useT();
+  const { lang } = useI18n();
+  const { user, logout } = useAuth();
   const [open, setOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const displayName = user?.full_name || user?.email?.split("@")[0] || "—";
+  const initials = displayName
+    .split(/[\s@._-]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase() || "·";
+  const logoutLabel = lang === "ar" ? "تسجيل الخروج" : "Sign out";
+
+  async function handleLogout() {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await logout();
+      navigate("/login", { replace: true });
+    } finally {
+      setLoggingOut(false);
+    }
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -74,16 +99,26 @@ export default function SettingsLayout() {
 
         <div className="border-t border-sidebar-border p-3">
           <Link
-            to="/"
+            to="/dashboard"
+            onClick={() => setOpen(false)}
             className="flex items-center gap-3 px-3 py-2 rounded-lg text-[13.5px] font-medium text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
           >
             <ArrowLeft className="h-[17px] w-[17px] shrink-0 text-muted-foreground" />
             <span className="flex-1 min-w-0 truncate">{t("settings.backToApp")}</span>
           </Link>
+          <button
+            type="button"
+            disabled={loggingOut}
+            onClick={() => { void handleLogout(); }}
+            className="mt-1 flex w-full items-center gap-3 px-3 py-2 rounded-lg text-[13.5px] font-medium text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-60"
+          >
+            <LogOut className="h-[17px] w-[17px] shrink-0" />
+            <span className="flex-1 min-w-0 truncate text-left">{loggingOut ? (lang === "ar" ? "جارٍ تسجيل الخروج…" : "Signing out…") : logoutLabel}</span>
+          </button>
           <div className="mt-3 px-3 flex items-center gap-2.5">
-            <div className="h-8 w-8 rounded-full bg-accent/15 text-accent grid place-items-center text-[12px] font-semibold">AH</div>
+            <div className="h-8 w-8 rounded-full bg-accent/15 text-accent grid place-items-center text-[12px] font-semibold">{initials}</div>
             <div className="leading-tight flex-1 min-w-0">
-              <div className="text-[12.5px] font-medium text-foreground whitespace-nowrap truncate">Ahmed Hassan</div>
+              <div className="text-[12.5px] font-medium text-foreground whitespace-nowrap truncate">{displayName}</div>
               <div className="text-[11px] text-muted-foreground whitespace-nowrap truncate">{t("sidebar.role")}</div>
             </div>
           </div>

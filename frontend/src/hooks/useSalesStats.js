@@ -1,88 +1,163 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiCached, peekCache } from "@/lib/api";
+import { setRegionalConfig, useRegional } from "@/lib/regional";
 
-const DAYS = { today: 1, yesterday: 2, "7d": 7, "30d": 30, "90d": 90, custom: 30 };
+const DAYS = { "7d": 7, "30d": 30, "90d": 90 };
 
-function startOfDay(d) {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
+function zonedParts(date, timezone) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  return Object.fromEntries(parts.map(({ type, value }) => [type, value]));
 }
 
-const fmts = {};
-function fmtFor(lang) {
-  if (!fmts[lang]) {
-    fmts[lang] = new Intl.DateTimeFormat(lang === "ar" ? "ar-EG" : "en-US", {
-      month: "short",
-      day: "numeric",
-    });
+function zonedMidnightToUtc({ year, month, day }, timezone) {
+  const target = { year: Number(year), month: Number(month), day: Number(day), hour: 0, minute: 0, second: 0 };
+  const desiredUtc = Date.UTC(target.year, target.month - 1, target.day);
+  let guess = desiredUtc;
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  });
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const parts = Object.fromEntries(formatter.formatToParts(new Date(guess)).map(({ type, value }) => [type, value]));
+    const observedUtc = Date.UTC(
+      Number(parts.year), Number(parts.month) - 1, Number(parts.day),
+      Number(parts.hour), Number(parts.minute), Number(parts.second),
+    );
+    const delta = desiredUtc - observedUtc;
+    if (delta === 0) break;
+    guess += delta;
   }
-  return fmts[lang];
+  return new Date(guess);
+}
+
+function overviewPath(range, timezone) {
+  const params = new URLSearchParams();
+  if (range === "today" || range === "yesterday") {
+    const now = new Date();
+    const todayParts = zonedParts(now, timezone);
+    const todayStart = zonedMidnightToUtc(todayParts, timezone);
+    if (range === "today") {
+      params.set("since", todayStart.toISOString());
+      params.set("until", now.toISOString());
+    } else {
+      const previousDay = new Date(Date.UTC(Number(todayParts.year), Number(todayParts.month) - 1, Number(todayParts.day) - 1));
+      const previousParts = {
+        year: previousDay.getUTCFullYear(),
+        month: previousDay.getUTCMonth() + 1,
+        day: previousDay.getUTCDate(),
+      };
+      params.set("since", zonedMidnightToUtc(previousParts, timezone).toISOString());
+      params.set("until", todayStart.toISOString());
+    }
+    params.set("timezone", timezone);
+  } else {
+    params.set("days", String(DAYS[range] || DAYS["30d"]));
+    params.set("timezone", timezone);
+  }
+  return `/analytics/overview?${params.toString()}`;
 }
 
 /** أرقام المبيعات الحقيقية لنطاق الداشبورد — من read models السيرفر:
- *  GET /analytics/dashboard للبطاقات (صافي بعد المرتجعات) و
- *  GET /analytics/overview?days=N للسلسلة اليومية بخانة اليوم
- *  التجاري للمستأجر. بيرجع null أثناء التحميل. */
+ *  GET /analytics/dashboard للبيانات المساندة وGET /analytics/overview
+ *  للنطاق المحدد، مع حدود اليوم المحلي في إعداد المنطقة الزمنية. */
 export default function useSalesStats(range) {
-  const [dash, setDash] = useState(null);
-  const [overview, setOverview] = useState(null);
-  const lang = (typeof window !== "undefined" && window.localStorage.getItem("fihrist.locale")) || "ar";
-  const days = DAYS[range] || 30;
+  const [dash, setDash] = useState(() => peekCache("/analytics/dashboard") || null);
+  const [overviewState, setOverviewState] = useState({ path: null, data: null });
+  const [overviewFailure, setOverviewFailure] = useState({ path: null, error: "" });
+  const [dashboardError, setDashboardError] = useState("");
+  const [dashboardAttempt, setDashboardAttempt] = useState(0);
+  const [overviewAttempt, setOverviewAttempt] = useState(0);
+  const { country } = useRegional();
+  const timezone = dash?.orders?.timezone || country.timezone;
+  const path = useMemo(() => overviewPath(range, timezone), [range, timezone]);
+  const overview = overviewState.path === path ? overviewState.data : null;
+  const overviewError = overviewFailure.path === path ? overviewFailure.error : "";
+  const currency = overview?.currency || dash?.orders?.currency;
+
+  const retryDashboard = useCallback(() => setDashboardAttempt((attempt) => attempt + 1), []);
+  const retryOverview = useCallback(() => setOverviewAttempt((attempt) => attempt + 1), []);
+
+  useEffect(() => {
+    if (currency) setRegionalConfig({ currency });
+  }, [currency]);
 
   useEffect(() => {
     let alive = true;
     const cached = peekCache("/analytics/dashboard");
     if (cached) setDash(cached);
+    setDashboardError("");
     apiCached("/analytics/dashboard")
-      .then((d) => alive && setDash(d))
-      .catch(() => alive && setDash(null));
+      .then((d) => {
+        if (!alive) return;
+        setDash(d);
+        setDashboardError("");
+      })
+      .catch((error) => {
+        if (!alive) return;
+        setDashboardError(error?.message || "Could not load dashboard data");
+      });
     return () => {
       alive = false;
     };
-  }, []);
+  }, [dashboardAttempt]);
 
   useEffect(() => {
     let alive = true;
-    const path = `/analytics/overview?days=${days}`;
     const cached = peekCache(path);
-    if (cached) setOverview(cached);
-    else setOverview(null);
+    setOverviewState({ path, data: cached || null });
+    setOverviewFailure({ path, error: "" });
     apiCached(path)
-      .then((d) => alive && setOverview(d))
-      .catch(() => alive && setOverview(null));
+      .then((d) => alive && setOverviewState({ path, data: d }))
+      .catch((error) => {
+        if (!alive) return;
+        setOverviewState({ path, data: null });
+        setOverviewFailure({ path, error: error?.message || "Could not load sales overview" });
+      });
     return () => {
       alive = false;
     };
-  }, [days]);
+  }, [path, overviewAttempt]);
 
   return useMemo(() => {
-    if (!dash) return null;
-    const orders = dash.orders ?? {};
-    const netSales = Number(orders.net_revenue ?? 0);
-    const ordersCount = orders.orders_count ?? 0;
-    const customers = dash.customers ?? 0;
-    const fmt = fmtFor(lang);
+    if (!dash) {
+      return dashboardError
+        ? { dashboardError, retryDashboard, overviewError, retryOverview }
+        : null;
+    }
+    const customers = dash.customers ?? null;
     const trend = (overview?.daily_series ?? []).map((r) => ({
       label: r.day,
       revenue: Number(r.net_revenue ?? 0),
       orders: r.orders_count ?? 0,
     }));
-    const shown = overview?.daily_series?.length
-      ? overview
-      : { orders_count: ordersCount, net_revenue: orders.net_revenue };
     return {
-      netSales,
-      orders: shown?.orders_count ?? ordersCount,
+      netSales: overview == null ? null : Number(overview.net_revenue ?? 0),
+      orders: overview == null ? null : overview.orders_count ?? 0,
       customers,
-      aiOrders: dash.ai_orders_30d ?? 0,
-      activeProducts: dash.products_active ?? 0,
-      unread: dash.conversations?.unread ?? 0,
-      openConversations: dash.conversations?.open ?? 0,
-      lowStock: dash.low_stock_count ?? 0,
-      outOfStock: dash.out_of_stock_count ?? 0,
-      sources: dash.revenue_by_source ?? [],
+      aiOrders: dash.ai_orders_30d ?? null,
+      activeProducts: dash.products_active ?? null,
+      unread: dash.conversations?.unread ?? null,
+      openConversations: dash.conversations?.open ?? null,
+      lowStock: dash.low_stock_count ?? null,
+      outOfStock: dash.out_of_stock_count ?? null,
+      sources: dash.revenue_by_source ?? null,
       trend: trend.length ? trend : [],
+      overviewLoading: overview == null && !overviewError,
+      overviewError,
+      dashboardError,
+      retryDashboard,
+      retryOverview,
     };
-  }, [dash, overview, lang]);
+  }, [dash, overview, dashboardError, overviewError, retryDashboard, retryOverview]);
 }

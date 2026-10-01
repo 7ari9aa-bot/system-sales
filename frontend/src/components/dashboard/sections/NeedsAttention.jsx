@@ -23,11 +23,11 @@ export default function NeedsAttention() {
   const approvals = useApprovals();
 
   const items = [];
-  const pending = approvals?.items?.length ?? 0;
+  const pending = approvals?.error ? null : approvals?.items?.length ?? null;
   if (pending > 0) {
     items.push({
       id: "ap1", type: "approval", tone: "primary",
-      title: t("home.attention.approvals.title", { n: pending }),
+      title: t("home.attention.approvals.title", { n: approvals?.truncated ? `${pending}+` : pending }),
       detailKey: t("home.attention.approvals.detail"),
       actionKey: t("home.attention.approvals.action"), to: "/ai",
     });
@@ -65,6 +65,11 @@ export default function NeedsAttention() {
     primary: "bg-primary/10 text-primary",
     destructive: "bg-destructive/10 text-destructive",
   };
+  const loadError = live?.dashboardError || approvals?.error;
+  const retryUnavailable = () => {
+    if (live?.dashboardError) live.retryDashboard();
+    if (approvals?.error) approvals.retry();
+  };
 
   return (
     <SectionCard title={t("home.needsAttention.title")} testid="needs-attention">
@@ -80,6 +85,13 @@ export default function NeedsAttention() {
             </div>
           ))}
         </div>
+      ) : !live || approvals == null ? (
+        <div role="status" className="py-6 text-center text-[12.5px] text-muted-foreground">{t("common.loading", "Loading current signals…")}</div>
+      ) : items.length === 0 && loadError ? (
+        <div role="alert" className="flex flex-col items-center gap-2 py-6 text-center text-[12.5px] text-muted-foreground">
+          <span>{loadError}</span>
+          <button type="button" onClick={retryUnavailable} className="text-primary hover:underline">{t("common.retry", "Retry")}</button>
+        </div>
       ) : items.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-8 text-center">
           <CheckCircle2 className="h-9 w-9 text-success mb-2" />
@@ -87,6 +99,11 @@ export default function NeedsAttention() {
           <p className="text-[12.5px] text-muted-foreground mt-0.5">{t("home.allCaughtUpDesc")}</p>
         </div>
       ) : (
+        <>
+        {loadError && <p role="status" className="mb-2 flex items-center justify-between gap-2 text-[11.5px] text-muted-foreground">
+          <span>{loadError}</span>
+          <button type="button" onClick={retryUnavailable} className="shrink-0 text-primary hover:underline">{t("common.retry", "Retry")}</button>
+        </p>}
         <ul className="divide-y divide-border">
           {items.map((item) => {
             const Icon = ICONS[item.type] || MessageSquare;
@@ -112,6 +129,7 @@ export default function NeedsAttention() {
             );
           })}
         </ul>
+        </>
       )}
     </SectionCard>
   );

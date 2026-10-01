@@ -1,11 +1,24 @@
 import React, { useState, useRef, useEffect } from "react";
-import { ArrowUpRight, Sparkles, Check, CheckCheck, Phone, Video, MoreVertical } from "lucide-react";
+import { ArrowUpRight, Sparkles, Check, CheckCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // A themed chat pane that renders in the selected channel's real look.
 // Brand channels (WhatsApp/Instagram/Messenger/Telegram/Facebook) keep their
 // authentic light theme; the "app" theme channel follows the dashboard.
-export default function ChannelChat({ channel, conversation, t, onSend, onApprove, onDecline }) {
+export default function ChannelChat({
+  channel,
+  conversation,
+  approval,
+  loadingMessages = false,
+  messagesError = "",
+  onRetryMessages,
+  sending = false,
+  pendingDecision = false,
+  t,
+  onSend,
+  onApprove,
+  onDecline,
+}) {
   const [text, setText] = useState("");
   const scrollRef = useRef(null);
   const isApp = channel.theme === "app";
@@ -14,6 +27,17 @@ export default function ChannelChat({ channel, conversation, t, onSend, onApprov
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [conversation?.id, conversation?.messages?.length]);
+
+  useEffect(() => {
+    setText("");
+  }, [conversation?.id]);
+
+  async function submitMessage() {
+    const body = text.trim();
+    if (!body || sending || !conversation) return;
+    const sent = await onSend?.(conversation.id, body);
+    if (sent !== false) setText("");
+  }
 
   if (!conversation) {
     return (
@@ -48,28 +72,30 @@ export default function ChannelChat({ channel, conversation, t, onSend, onApprov
           <div className={cn("text-[14px] font-semibold truncate", isApp ? "text-foreground" : "")}>{conversation.customer}</div>
           <div className={cn("text-[11.5px] truncate", isApp ? "text-muted-foreground" : "opacity-80")}>{channel.name}</div>
         </div>
-        {!isApp &&
-        <div className="flex items-center gap-1 opacity-90">
-            <button className="h-8 w-8 grid place-items-center rounded-full hover:bg-white/10"><Video className="h-4 w-4" /></button>
-            <button className="h-8 w-8 grid place-items-center rounded-full hover:bg-white/10"><Phone className="h-4 w-4" /></button>
-            <button className="h-8 w-8 grid place-items-center rounded-full hover:bg-white/10"><MoreVertical className="h-4 w-4" /></button>
-          </div>
-        }
       </div>
 
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto scrollbar-thin px-4 py-4 space-y-2">
-        {/* المحادثات الحقيقية من القائمة ما بتوصلش برسايلها الكاملة —
-            الرسايل بتتجيب عند فتح المحادثة؛ هنا معاينة آمنة فاضية */}
-        {(conversation.messages || []).length === 0 && (
+        {loadingMessages && (conversation.messages || []).length === 0 && (
+          <div className="py-10 text-center text-[12.5px] text-muted-foreground">{t("common.loading")}</div>
+        )}
+        {messagesError && (
+          <div role="alert" className="mx-auto mb-3 max-w-lg rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-center text-[12.5px] text-destructive">
+            <span>{messagesError}</span>
+            <button type="button" onClick={onRetryMessages} className="ml-2 font-medium underline">
+              {t("common.retry", "Retry")}
+            </button>
+          </div>
+        )}
+        {!loadingMessages && !messagesError && (conversation.messages || []).length === 0 && (
           <div className="py-10 text-center text-[12.5px] text-muted-foreground">
-            {t("inbox.previewOnly")}
+            {t("inbox.noMessages", "No messages are available for this conversation yet.")}
           </div>
         )}
         {(conversation.messages || []).map((m, i) =>
         <Bubble key={i} m={m} isApp={isApp} th={th} t={t} />
         )}
-        {conversation.status === "approval" &&
+        {approval &&
         <div
           className="mt-2 rounded-xl px-3.5 py-3 text-[12.5px]"
           style={isApp ?
@@ -77,15 +103,24 @@ export default function ChannelChat({ channel, conversation, t, onSend, onApprov
           { background: "#FFF8E1", border: "1px solid #FFE082", color: "#8a6d00" }}>
           
             <div className="font-medium mb-1">{t("inbox.approval.title")}</div>
-            <p className="opacity-90">{t("inbox.approval.body")}</p>
+            <p className="opacity-90">{approval.action}</p>
+            {approval.payload?.arguments && (
+              <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-black/5 p-2 text-[11px]">
+                {JSON.stringify(approval.payload.arguments, null, 2)}
+              </pre>
+            )}
             <div className="flex gap-2 mt-2.5">
               <button
+                type="button"
+                disabled={pendingDecision}
                 onClick={() => onApprove?.(conversation.id)}
                 className="h-8 px-3 rounded-lg text-[12px] font-medium text-white"
                 style={{ background: "#16a34a" }}>
                 {t("inbox.approve")}
               </button>
               <button
+                type="button"
+                disabled={pendingDecision}
                 onClick={() => onDecline?.(conversation.id)}
                 className="h-8 px-3 rounded-lg text-[12px] font-medium"
                 style={{ background: isApp ? "hsl(var(--surface))" : "#fff", border: "1px solid #e5e7eb" }}>
@@ -107,21 +142,19 @@ export default function ChannelChat({ channel, conversation, t, onSend, onApprov
           <input
             value={text}
             onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && text.trim()) { onSend?.(conversation.id, text.trim()); setText(""); } }}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void submitMessage(); } }}
             placeholder={t("inbox.typeMessage")}
+            aria-label={t("inbox.typeMessage")}
+            disabled={sending}
             className="flex-1 bg-transparent text-[13px] focus:outline-none"
             style={isApp ? undefined : { color: "#111" }} />
-
           <button
-            onClick={() => { if (text.trim()) { onSend?.(conversation.id, text.trim()); setText(""); } }}
-            className="h-7 w-7 grid place-items-center rounded-full text-muted-foreground hover:text-foreground"
-            title={t("inbox.ai")}>
-            <Sparkles className="h-4 w-4" style={!isApp ? { color: channel.accent } : undefined} />
-          </button>
-          <button
-            onClick={() => { if (text.trim()) { onSend?.(conversation.id, text.trim()); setText(""); } }}
+            type="button"
+            onClick={() => { void submitMessage(); }}
+            disabled={!text.trim() || sending}
+            aria-label={t("inbox.send")}
             className="h-8 w-8 grid place-items-center rounded-full text-white shrink-0"
-            style={{ background: channel.accent }}
+            style={{ background: channel.accent, opacity: !text.trim() || sending ? 0.55 : 1 }}
             title={t("inbox.send")}>
 
             <ArrowUpRight className="h-4 w-4" />
