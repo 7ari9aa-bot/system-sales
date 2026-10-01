@@ -24,7 +24,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <GuardianErrorBoundary>
       <App />
-      <Guardian />
+      {import.meta.env.DEV && <Guardian />}
     </GuardianErrorBoundary>
   </React.StrictMode>
 )

@@ -184,9 +184,9 @@ export async function api(path, { method = "GET", body, retry = true, headers = 
 
 /* ---------------------------------------------------------- الكاش اللحظي */
 
-/** كاش stale-while-revalidate في الميموري: البيانات بتترسم من الكاش
- *  في أجزاء من الثانية على أي تنقل، والتحديث بيحصل صامت في الخلفية.
- *  النداءات المتكررة لنفس المسار بتتجمع في نداء واحد (in-flight dedupe). */
+/** كاش بمدة صلاحية في الذاكرة: الاستجابة الحديثة تُستخدم مباشرة، وبعد
+ *  انتهاء المدة يبدأ طلب جديد. النداءات المتزامنة لنفس المسار تتجمع
+ *  في طلب واحد (in-flight dedupe). */
 const cache = new Map(); // path -> { data, at }
 const inflight = new Map(); // path -> Promise
 let cacheGeneration = 0;
@@ -241,6 +241,9 @@ export function apiCached(path, { ttlMs = DEFAULT_TTL_MS } = {}) {
   const hit = cache.get(path);
   const fresh = hit && Date.now() - hit.at < ttlMs;
 
+  // Do not start a background request for a cache hit: callers receive the
+  // cached value immediately and otherwise cannot observe that revalidation.
+  if (fresh) return Promise.resolve(hit.data);
   if (inflight.has(path)) return inflight.get(path);
 
   const generation = cacheGeneration;
@@ -255,8 +258,6 @@ export function apiCached(path, { ttlMs = DEFAULT_TTL_MS } = {}) {
     if (inflight.get(path) === promise) inflight.delete(path);
   }).catch(() => {});
 
-  // العقد: Promise دايمًا. الطازة بتحل فورًا بالكاش (الـhooks بترسم
- // اللحظة من peekCache)، والباقي بيتحقق من جديد في الخلفية.
-  if (fresh) return Promise.resolve(hit.data);
+  // The caller receives fresh server data whenever the cached response expires.
   return promise;
 }

@@ -19,10 +19,10 @@ export default function ContactSales({ locale }) {
         <section className="section contact-section" id="form">
           <div className="container form-success">
             <span className="success-mark"><Check size={22}/></span>
-            <span className="kicker">{tx(c('تم حفظ الطلب', 'Request saved'), locale)}</span>
-            <h2>{tx(c('سنبدأ من السياق الذي اخترته.', 'We will start with the context you chose.'), locale)}</h2>
-            <p>{tx(c('هذه تجربة واجهة فقط. لا يتم إرسال بيانات إلى أي نظام خارجي.', 'This is an interface demo only. No information is sent to an external system.'), locale)}</p>
-            <button className="btn btn-secondary" onClick={() => setSent(false)}>{tx(c('إرسال طلب آخر', 'Send another request'), locale)}</button>
+            <span className="kicker">{tx(c('انتهت معاينة النموذج', 'Form preview complete'), locale)}</span>
+            <h2>{tx(c('الطلب لم يُرسل.', 'Your request was not sent.'), locale)}</h2>
+            <p>{tx(c('هذه معاينة فقط؛ لم يتم حفظ بريدك أو ملاحظتك أو إرسالها.', 'This is only a preview. Your email and note were not saved or sent.'), locale)}</p>
+            <button className="btn btn-secondary" onClick={() => setSent(false)}>{tx(c('معاينة النموذج مرة أخرى', 'Preview the form again'), locale)}</button>
           </div>
         </section>
 
@@ -63,10 +63,10 @@ export default function ContactSales({ locale }) {
               <textarea rows={3} placeholder={tx(c('ما الذي تريد أن تراه في الجلسة؟', 'What should we cover?'), locale)} />
             </label>
             <button className="btn btn-primary" type="submit">
-              {tx(c('احجز جلسة تجريبية', 'Book a demo session'), locale)}
+              {tx(c('معاينة النموذج', 'Preview the form'), locale)}
               <ArrowRight size={16}/>
             </button>
-            <small>{tx(c('محتوى تجريبي · لا توجد تكاملات إنتاجية', 'Demo content · no production integrations'), locale)}</small>
+            <small>{tx(c('المحتوى المعروض توضيحي', 'Displayed content is illustrative'), locale)}</small>
           </form>
         </div>
       </section>

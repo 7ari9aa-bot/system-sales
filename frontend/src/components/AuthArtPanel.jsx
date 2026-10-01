@@ -169,7 +169,7 @@ export default function AuthArtPanel({ locale }) {
           ))}
         </div>
         <div className="auth-art-footnote">
-          <span className="demo-dot" /> {tx(c('محتوى تجريبي · لا توجد تكاملات إنتاجية', 'Demo content · no production integrations'), locale)}
+          <span className="demo-dot" /> {tx(c('نماذج توضيحية · بيانات مساحة العمل من الخادم بعد تسجيل الدخول', 'Illustrative examples · workspace data loads from the backend after sign-in'), locale)}
         </div>
       </div>
     </div>
