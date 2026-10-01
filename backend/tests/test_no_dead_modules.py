@@ -75,6 +75,19 @@ ROOT_MODULES: frozenset[str] = frozenset(
 # Nothing here sits in a path owned by a concurrent agent: each is a feature
 # genuinely awaiting its caller, honestly recorded rather than deleted.
 KNOWN_DEAD_MODULES: dict[str, str] = {
+    # Sales Intelligence analytics layer (spec §5-11) — pure, LLM-free
+    # contracts and math: the metric contracts, the exact midpoint drivers,
+    # the maturity classifier, the number policy, the confidence engine, and
+    # the two validators. Unit-tested; their CALLERS are the query compiler
+    # and the sales-intelligence agent loop (next phase), per the spec's
+    # dependency order (Phase 1 contracts before Phase 4+ engines).
+    "app.modules.analytics.contracts": "SI Phase 1 contracts — compiler lands next.",
+    "app.modules.analytics.drivers": "SI Phase 5 engine — compiler + agent land later.",
+    "app.modules.analytics.maturity": "SI Phase 3/6 — maturity curves consumer lands later.",
+    "app.modules.analytics.numbers": "SI Phase 9 number policy — response path lands later.",
+    "app.modules.analytics.confidence": "SI Phase 8 engine — findings builder lands later.",
+    "app.modules.analytics.validators": "SI Phase 8/9 gates — builders land later.",
+    "app.modules.analytics.coverage": "SI Phase 7 controller — agent loop lands later.",
     # Customer Agent M2 foundations (§8 build order). The state engine IS
     # wired (hooks' photo delivery); the referent resolver and turn intake
     # are the next wave's caller surface — the turn coordinator wires them
