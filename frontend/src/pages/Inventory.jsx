@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { Plus, AlertTriangle, PackageX, Boxes, Minus, Loader2 } from "lucide-react";
+import { Plus, PackageX, Boxes, Minus, Loader2 } from "lucide-react";
 import { api, apiCached, peekCache } from "@/lib/api";
 import { PageHeader, Badge } from "@/components/dashboard/ui";
 import { useT } from "@/lib/i18n";
@@ -17,19 +17,35 @@ export default function Inventory() {
   const [items, setItems] = useState(() => peekCache(BALANCES_PATH));
   const [adjusting, setAdjusting] = useState(null);
   const [error, setError] = useState(null);
+  const [metadataError, setMetadataError] = useState("");
   const [metadata, setMetadata] = useState({ products: [], warehouses: [] });
   const [loading, setLoading] = useState(() => peekCache(BALANCES_PATH) == null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [list, products, warehouses] = await Promise.all([
+      const [balancesResult, productsResult, warehousesResult] = await Promise.allSettled([
         apiCached(BALANCES_PATH),
-        apiCached("/products?limit=200&offset=0").catch(() => []),
-        apiCached("/warehouses?limit=200&offset=0").catch(() => []),
+        apiCached("/products?limit=200&offset=0"),
+        apiCached("/warehouses?limit=200&offset=0"),
       ]);
+      if (balancesResult.status === "rejected") throw balancesResult.reason;
+      if (!Array.isArray(balancesResult.value)) throw new Error("The server returned invalid inventory balances.");
+      const list = balancesResult.value;
+      const productRows = productsResult.status === "fulfilled" && Array.isArray(productsResult.value)
+        ? productsResult.value
+        : [];
+      const warehouseRows = warehousesResult.status === "fulfilled" && Array.isArray(warehousesResult.value)
+        ? warehousesResult.value
+        : [];
+      const metadataWarnings = [];
+      if (productsResult.status === "rejected" || !Array.isArray(productsResult.value)) {
+        metadataWarnings.push(t("inventory.productNamesUnavailable", "Product names could not be loaded."));
+      }
+      if (warehousesResult.status === "rejected" || !Array.isArray(warehousesResult.value)) {
+        metadataWarnings.push(t("inventory.warehouseNamesUnavailable", "Warehouse names could not be loaded."));
+      }
       setItems(Array.isArray(list) ? list : []);
-      const productRows = Array.isArray(products) ? products : [];
       const variantNames = new Map();
       for (const product of productRows) {
         for (const variant of product.variants || []) {
@@ -41,8 +57,9 @@ export default function Inventory() {
       }
       setMetadata({
         variantNames,
-        warehouses: new Map((Array.isArray(warehouses) ? warehouses : []).map((row) => [row.id, row.name])),
+        warehouses: new Map(warehouseRows.map((row) => [row.id, row.name])),
       });
+      setMetadataError(metadataWarnings.join(" "));
       setError(null);
     } catch (e) {
       setError(e?.message || "Could not load inventory balances.");
@@ -50,7 +67,7 @@ export default function Inventory() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     load();
@@ -103,6 +120,13 @@ export default function Inventory() {
         <div role="alert" className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-[13px] text-destructive">
           <span>{error}</span>
           {items === null && <button type="button" onClick={() => void load()} disabled={loading} className="shrink-0 underline disabled:opacity-60">{t("common.retry", "Retry")}</button>}
+        </div>
+      )}
+
+      {metadataError && (
+        <div role="status" className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-warning/30 bg-warning/10 px-4 py-2.5 text-[12px] text-muted-foreground">
+          <span>{metadataError} {t("inventory.namesFallbackHint", "IDs may appear instead of names.")}</span>
+          <button type="button" onClick={() => void load()} disabled={loading} className="shrink-0 underline disabled:opacity-60">{t("common.retry", "Retry")}</button>
         </div>
       )}
 

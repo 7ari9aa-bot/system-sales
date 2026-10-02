@@ -45,8 +45,9 @@ export default function ProductDialog({ open, product, onClose, onSaved }) {
     event?.preventDefault();
     const title = form.title.trim();
     const slug = (form.slug || slugFromTitle(title)).trim();
-    const price = Number(form.price);
-    if (!title || !slug || !Number.isFinite(price) || price <= 0) {
+    const price = form.price.trim();
+    const numericPrice = Number(price);
+    if (!title || !slug || !Number.isFinite(numericPrice) || numericPrice <= 0) {
       setErr(t("products.required"));
       return;
     }
@@ -61,7 +62,7 @@ export default function ProductDialog({ open, product, onClose, onSaved }) {
         if (form.variant_id) {
           await api(`/variants/${form.variant_id}`, {
             method: "PATCH",
-            body: { sku: form.sku.trim() || null, price },
+          body: { sku: form.sku.trim() || null, price },
           });
         } else {
           await api(`/products/${product.id}/variants`, {

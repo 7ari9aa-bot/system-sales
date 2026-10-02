@@ -488,7 +488,18 @@ async def list_integrations(ctx: SettingsReadCtx):
         .all()
     )
     return [
-        {"id": str(i.id), "provider": i.provider, "kind": i.kind, "status": i.status} for i in rows
+        {
+            "id": str(i.id),
+            "provider": i.provider,
+            "kind": i.kind,
+            "status": i.status,
+            "public_key": (
+                (i.config or {}).get("public_key")
+                if i.provider == "webchat" and i.kind == "channel"
+                else None
+            ),
+        }
+        for i in rows
     ]
 
 

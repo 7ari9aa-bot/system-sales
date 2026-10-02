@@ -10,6 +10,7 @@ const PAGE_SIZE = 100;
 export default function useOrders() {
   const [rows, setRows] = useState(null);
   const [customers, setCustomers] = useState([]);
+  const [customerError, setCustomerError] = useState("");
   const [nextCursor, setNextCursor] = useState(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
@@ -24,15 +25,32 @@ export default function useOrders() {
   useEffect(() => {
     let alive = true;
     setError(null);
-    Promise.all([
+    Promise.allSettled([
       api(`/orders?limit=${PAGE_SIZE}`),
-      api("/customers?limit=200").catch(() => ({ items: [] })),
-    ]).then(([ordersResponse, customersResponse]) => {
+      api("/customers?limit=200"),
+    ]).then(([ordersResult, customersResult]) => {
       if (!alive) return;
-      setRows(Array.isArray(ordersResponse?.items) ? ordersResponse.items : []);
-      setNextCursor(ordersResponse?.next_cursor || null);
-      setCustomers(Array.isArray(customersResponse?.items) ? customersResponse.items : []);
-    }).catch((e) => alive && setError(e?.message || "Could not load orders."));
+      if (ordersResult.status === "rejected") {
+        setError(ordersResult.reason?.message || "Could not load orders.");
+      } else {
+        const ordersResponse = ordersResult.value;
+        if (!Array.isArray(ordersResponse?.items)) {
+          setError("The server returned an invalid order list.");
+        } else {
+          setRows(ordersResponse.items);
+          setNextCursor(ordersResponse.next_cursor || null);
+          setError(null);
+        }
+      }
+
+      if (customersResult.status === "rejected") {
+        setCustomers([]);
+        setCustomerError(customersResult.reason?.message || "Could not load customer names.");
+      } else {
+        setCustomers(Array.isArray(customersResult.value?.items) ? customersResult.value.items : []);
+        setCustomerError("");
+      }
+    });
     return () => { alive = false; };
   }, [reloadAttempt]);
 
@@ -75,5 +93,6 @@ export default function useOrders() {
     loadMore,
     reload,
     error,
+    customerError,
   };
 }

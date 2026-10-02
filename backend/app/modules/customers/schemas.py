@@ -329,6 +329,9 @@ class IntegrationOut(BaseModel):
     provider: str
     kind: str
     status: str
+    # The webchat widget key is public by design. Keep every other integration
+    # setting and all provider credentials out of this response.
+    public_key: str | None = None
 
 
 class IntegrationUpserted(BaseModel):

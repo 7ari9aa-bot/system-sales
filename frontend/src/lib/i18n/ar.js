@@ -215,6 +215,11 @@ export default {
   "channels.connect": "ربط",
   "channels.reconnect": "إعادة ربط",
   "channels.manage": "إدارة",
+  "channel.facebook": "فيسبوك",
+  "orders.customerLookupError": "تعذر تحميل أسماء العملاء؛ ما زالت سجلات الطلبات متاحة.",
+  "inventory.productNamesUnavailable": "تعذر تحميل أسماء المنتجات.",
+  "inventory.warehouseNamesUnavailable": "تعذر تحميل أسماء المخازن.",
+  "inventory.namesFallbackHint": "قد تظهر المعرّفات بدل الأسماء.",
 
   // Members
   "members.title": "الأعضاء والأدوار",

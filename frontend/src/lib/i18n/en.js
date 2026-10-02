@@ -215,6 +215,11 @@ export default {
   "channels.connect": "Connect",
   "channels.reconnect": "Reconnect",
   "channels.manage": "Manage",
+  "channel.facebook": "Facebook",
+  "orders.customerLookupError": "Customer names could not be loaded; order records are still available.",
+  "inventory.productNamesUnavailable": "Product names could not be loaded.",
+  "inventory.warehouseNamesUnavailable": "Warehouse names could not be loaded.",
+  "inventory.namesFallbackHint": "IDs may appear instead of names.",
 
   // Members
   "members.title": "Members & roles",

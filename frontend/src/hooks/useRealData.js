@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiCached, peekCache } from "@/lib/api";
 import { CHANNELS } from "@/lib/channels";
 
@@ -10,64 +10,82 @@ import { CHANNELS } from "@/lib/channels";
 
 export function useRealUsage() {
   const [usage, setUsage] = useState(null);
+  const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  const retry = useCallback(() => setAttempt((current) => current + 1), []);
+
   useEffect(() => {
     let alive = true;
-    apiCached("/ai/usage/summary")
+    apiCached("/ai/usage/summary", { ttlMs: 0 })
       .then((d) => {
         if (!alive) return;
-        const totals = d?.totals ?? null;
-        const tokens = totals ? (totals.tokens_in ?? 0) + (totals.tokens_out ?? 0) : 0;
-        setUsage({
-          plan: null,
-          aiUsage: { used: tokens, limit: null },
-          conversations: { used: null, limit: null },
-          team: { used: null, limit: null },
-          spend: totals ? Number(totals.cost ?? 0) : null,
-        });
+        setUsage(d);
+        setError("");
       })
-      .catch(() => {});
+      .catch((loadError) => {
+        if (alive) setError(loadError?.message || "Could not load AI usage.");
+      });
     return () => {
       alive = false;
     };
-  }, []);
-  return usage ?? { plan: null, aiUsage: { used: 0, limit: null }, conversations: { used: null, limit: null }, team: { used: null, limit: null }, spend: null };
+  }, [attempt]);
+
+  return { data: usage, loading: usage == null && !error, error, retry };
 }
 
 export function useRealChannels() {
   const [state, setState] = useState({ channels: null, loading: true, error: "" });
-  useEffect(() => {
-    let alive = true;
-    const cached = peekCache("/integrations");
-    if (Array.isArray(cached)) {
-      const connected = new Map(cached.map((row) => [row.provider, row]));
-      const rows = CHANNELS.map((channel) => {
-        const integration = connected.get(channel.id);
-        const status = integration?.status || "not_connected";
-        return { ...channel, status, connected: status === "connected" || status === "active" };
-      });
-      setState({ channels: rows, loading: false, error: "" });
-    }
-    apiCached("/integrations", { ttlMs: 15_000 })
-      .then((rows) => {
-        if (!alive) return;
-        const integrations = new Map((Array.isArray(rows) ? rows : []).map((row) => [row.provider, row]));
-        const mappedChannels = CHANNELS.map((channel) => {
-          const integration = integrations.get(channel.id);
-          const status = integration?.status || "not_connected";
-          return { ...channel, status, connected: status === "connected" || status === "active" };
-        });
+  const requestId = useRef(0);
+  const mounted = useRef(false);
+
+  const mapIntegrations = useCallback((rows) => {
+    const integrations = new Map((Array.isArray(rows) ? rows : []).map((row) => [row.provider, row]));
+    return CHANNELS.map((channel) => {
+      const integration = integrations.get(channel.id);
+      const status = integration?.status || "not_connected";
+      return {
+        ...channel,
+        integrationId: integration?.id ?? null,
+        publicKey: integration?.public_key ?? null,
+        status,
+        connected: status === "connected" || status === "active",
+      };
+    });
+  }, []);
+
+  const reload = useCallback(async () => {
+    const currentRequestId = ++requestId.current;
+    setState((current) => ({ ...current, loading: current.channels == null, error: "" }));
+    try {
+      const rows = await apiCached("/integrations", { ttlMs: 0 });
+      const mappedChannels = mapIntegrations(rows);
+      if (mounted.current && currentRequestId === requestId.current) {
         setState({ channels: mappedChannels, loading: false, error: "" });
-      })
-      .catch((error) => {
-        if (alive) setState((current) => ({
+      }
+      return mappedChannels;
+    } catch (error) {
+      if (mounted.current && currentRequestId === requestId.current) {
+        setState((current) => ({
           ...current,
           loading: false,
           error: error?.message || "Could not load channel connections",
         }));
-      });
+      }
+      throw error;
+    }
+  }, [mapIntegrations]);
+
+  useEffect(() => {
+    mounted.current = true;
+    const cached = peekCache("/integrations");
+    if (Array.isArray(cached)) {
+      setState({ channels: mapIntegrations(cached), loading: false, error: "" });
+    }
+    void reload().catch(() => {});
     return () => {
-      alive = false;
+      mounted.current = false;
+      requestId.current += 1;
     };
-  }, []);
-  return { ...state, channels: state.channels ?? [] };
+  }, [mapIntegrations, reload]);
+  return { ...state, channels: state.channels ?? [], reload };
 }

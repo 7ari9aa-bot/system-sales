@@ -55,6 +55,7 @@ from app.modules.customers.router import router as customers_router
 from app.modules.customers.service import CustomerService
 from app.modules.customers.timeline import Customer360Service
 from app.modules.identity.deps import AuthedUser, TenantContext, get_db, get_tenant_ctx
+from app.modules.platform.models import Integration
 
 TENANT = uuid.UUID("11111111-1111-1111-1111-111111111111")
 USER = uuid.UUID("22222222-2222-2222-2222-222222222222")
@@ -779,6 +780,43 @@ async def test_the_same_read_reaches_the_handler_for_its_holder(
         f"{method} {path} refused a caller holding '{code}' with "
         f"{response.status_code}: {response.text[:200]}"
     )
+
+
+async def test_integration_list_exposes_only_the_public_webchat_key() -> None:
+    widget_key = "wchat_test_public_key"
+    rows = [
+        Integration(
+            id=uuid.uuid4(),
+            tenant_id=TENANT,
+            provider="webchat",
+            kind="channel",
+            status="active",
+            config={"public_key": widget_key, "private_setting": "must-not-leak"},
+            credentials={"access_token": "must-not-leak"},
+        ),
+        Integration(
+            id=uuid.uuid4(),
+            tenant_id=TENANT,
+            provider="whatsapp",
+            kind="channel",
+            status="active",
+            config={"private_setting": "must-not-leak"},
+            credentials={"access_token": "must-not-leak"},
+        ),
+    ]
+
+    response, _ = await _call(
+        "GET", "/api/v1/integrations", rows=rows, permissions={"settings:read"}
+    )
+
+    assert response.status_code == 200, response.text
+    webchat, whatsapp = response.json()
+    assert webchat["public_key"] == widget_key
+    assert whatsapp["public_key"] is None
+    for item in (webchat, whatsapp):
+        assert "credentials" not in item
+        assert "config" not in item
+        assert "must-not-leak" not in str(item)
 
 
 def test_every_customers_route_declares_exactly_one_permission_code() -> None:

@@ -113,6 +113,13 @@ export default function Orders() {
         </div>
       )}
 
+      {orderState.customerError && (
+        <div role="status" className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-muted-foreground">
+          <span>{t("orders.customerLookupError", "Customer names could not be loaded; order records are still available.")}</span>
+          <button type="button" disabled={orderState.loading} onClick={orderState.reload} className="shrink-0 underline disabled:opacity-60">{t("common.retry", "Retry")}</button>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 mb-5">
         <KpiCard label={t("orders.kpi.netSales")} value={live?.netSales == null ? "—" : formatCurrency(live.netSales, true)} to="/orders" accent={{ icon: <DollarSign />, bg: "bg-primary/10", color: "text-primary" }} />
         <KpiCard label={t("orders.kpi.orders")} value={orderCount == null ? "—" : orderCount.toLocaleString()} to="/orders" accent={{ icon: <ShoppingBag />, bg: "bg-accent/10", color: "text-accent" }} />
