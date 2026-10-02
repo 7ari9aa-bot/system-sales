@@ -83,6 +83,12 @@ KNOWN_DEAD_MODULES: dict[str, str] = {
     # dependency order (Phase 1 contracts before Phase 4+ engines).
     "app.modules.analytics.coverage": "SI Phase 7 controller — agent loop lands later.",
     "app.modules.analytics.engines": "SI Phase 5 anomaly engine — the capability layer lands next.",
+    "app.modules.analytics.evaluation.synthetic": (
+        "SI Phase 2 generator — the eval-harness runner (script) lands next."
+    ),
+    "app.modules.analytics.evaluation.golden": (
+        "SI Phase 2 golden runner — same eval-harness wave."
+    ),
     # The SI agent module itself — its composition root is the Phase 10
     # API route (POST /ai/sales/analyses) that lands next wave; the tools
     # register into the platform registry at import time.
