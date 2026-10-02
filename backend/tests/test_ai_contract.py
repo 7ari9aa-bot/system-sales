@@ -206,7 +206,7 @@ def test_the_openapi_document_publishes_no_open_object_for_ai() -> None:
 
 def test_the_ai_surface_has_24_routes_to_cover() -> None:
     """Keeps the gate honest: a walk over an empty route list passes anything."""
-    assert len(_routes()) == 27, f"expected 27 AI routes, found {len(_routes())}"
+    assert len(_routes()) == 28, f"expected 28 AI routes, found {len(_routes())}"
 
 
 # ---------------------------------------------------------------------------

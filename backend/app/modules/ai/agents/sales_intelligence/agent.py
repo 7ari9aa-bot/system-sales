@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
 
+from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.ai.agents.sales_intelligence import (
@@ -31,7 +33,7 @@ from app.modules.ai.agents.sales_intelligence.response import (
     safe_response,
     validate_answer,
 )
-from app.modules.analytics.capabilities import EvidenceStore
+from app.modules.analytics.capabilities import CapabilityContext, EvidenceStore
 from app.modules.analytics.contracts import (
     AnalysisPeriod,
     DataQuality,
@@ -69,11 +71,68 @@ class AnalysisResult:
     answer: str
     findings: list[Finding] = field(default_factory=list)
     facts: list[dict] = field(default_factory=list)
+    evidence_hash: str | None = None
     tool_calls_made: list[dict] = field(default_factory=list)
     data_quality: DataQuality = field(
         default_factory=lambda: DataQuality(status=DataQualityStatus.COMPLETE)
     )
     guardrail_reason: str | None = None
+
+
+class AnalysisRequest(BaseModel):
+    """§12.1 — AnalysisInput v1: one question, no session chain yet."""
+
+    question: str = Field(min_length=1, max_length=2000)
+    agent_id: uuid.UUID | None = None
+
+
+class FindingOut(BaseModel):
+    statement: str
+    type: str
+    relationship: str
+    confidence: str
+    confidence_reasons: list[str] = Field(default_factory=list)
+    evidence_refs: list[str] = Field(default_factory=list)
+
+
+class AnalysisOut(BaseModel):
+    """§12.2 — the rendered result the dashboard consumes."""
+
+    outcome: str
+    answer: str
+    findings: list[FindingOut]
+    facts: list[dict]
+    data_quality_status: str
+    guardrail_reason: str | None = None
+
+
+async def ensure_si_tools(
+    session: AsyncSession, tenant_id: uuid.UUID, agent_id: uuid.UUID
+) -> None:
+    """Idempotently attach the six SI tools to the agent (§4.4). Read-only
+    tools on the owner's own agent — no policy surface is bypassed."""
+    from app.modules.ai.agents.sales_intelligence.tools import SI_TOOLS
+    from app.modules.ai.models import AgentTool
+
+    existing = {
+        row.name
+        for row in (
+            await session.execute(
+                select(AgentTool).where(
+                    AgentTool.tenant_id == tenant_id,
+                    AgentTool.agent_id == agent_id,
+                    AgentTool.name.in_(SI_TOOLS),
+                )
+            )
+        ).scalars()
+    }
+    for name in SI_TOOLS:
+        if name in existing:
+            continue
+        session.add(
+            AgentTool(tenant_id=tenant_id, agent_id=agent_id, name=name, policy={})
+        )
+    await session.flush()
 
 
 def _rebuild_facts(tool_calls_made: list[dict]) -> list[dict]:
@@ -142,11 +201,21 @@ async def run_sales_analysis(
     allowed = allowed_numbers_from_facts(payloads)
     facts_contracts = _facts_to_contracts(payloads)
 
+    from app.modules.analytics.evidence import build_pack
     from app.modules.analytics.findings import build_findings
 
     findings = build_findings(
         _store_from(facts_contracts),
     ) if facts_contracts else []
+    evidence_hash = (
+        build_pack(
+            _store_from(facts_contracts),
+            CapabilityContext(tenant_id=tenant_id),
+            question=question,
+        ).content_hash
+        if facts_contracts
+        else None
+    )
 
     if result.content:
         problems = validate_answer(result.content, allowed, findings)
@@ -159,6 +228,7 @@ async def run_sales_analysis(
                 answer=safe_response(findings, {}),
                 findings=findings,
                 facts=payloads,
+                evidence_hash=evidence_hash,
                 tool_calls_made=result.tool_calls_made,
                 guardrail_reason="si_response_invalid",
             )
@@ -167,6 +237,7 @@ async def run_sales_analysis(
             answer=result.content,
             findings=findings,
             facts=payloads,
+            evidence_hash=evidence_hash,
             tool_calls_made=result.tool_calls_made,
         )
 
@@ -178,6 +249,7 @@ async def run_sales_analysis(
         answer=safe_response(findings, {}),
         findings=findings,
         facts=payloads,
+        evidence_hash=evidence_hash,
         tool_calls_made=result.tool_calls_made,
         guardrail_reason=result.guardrail_reason,
     )

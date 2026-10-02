@@ -19,6 +19,15 @@ from app.core.errors import NotFoundError
 from app.core.idempotency import IfMatch, apply_etag, apply_versioned_update
 from app.core.pagination import paginate
 from app.modules.ai import knowledge
+from app.modules.ai.agents.sales_intelligence.agent import (
+    AnalysisOut as SalesAnalysisOut,
+)
+from app.modules.ai.agents.sales_intelligence.agent import (
+    AnalysisRequest as SalesAnalysisRequest,
+)
+from app.modules.ai.agents.sales_intelligence.agent import (
+    FindingOut,
+)
 from app.modules.ai.approvals import ApprovalService
 from app.modules.ai.models import Agent, AIUsage, KnowledgeItem, Memory
 from app.modules.ai.policy import AIProviderPolicyService
@@ -107,6 +116,60 @@ async def list_agents(ctx: TenantCtxDep) -> list[AgentOut]:
         )
     ).scalars()
     return [AgentOut.model_validate(agent) for agent in rows]
+
+
+@router.post("/sales/analyses")
+async def create_sales_analysis(
+    ctx: TenantCtxDep, body: SalesAnalysisRequest
+) -> SalesAnalysisOut:
+    """§12.1 — one sales question → one evidence-backed analysis.
+
+    The store's first active agent runs the investigation with the SI tools
+    attached idempotently; the SI gates hold before anything reaches the
+    merchant."""
+    from app.modules.ai.agents.sales_intelligence.agent import (
+        ensure_si_tools,
+        run_sales_analysis,
+    )
+
+    agent = (
+        await ctx.session.execute(
+            select(Agent)
+            .where(
+                Agent.tenant_id == ctx.tenant_id,
+                Agent.is_active.is_(True),
+            )
+            .order_by(Agent.created_at.asc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if agent is None:
+        from app.core.errors import NotFoundError
+
+        raise NotFoundError("no active agent for this tenant")
+
+    await ensure_si_tools(ctx.session, ctx.tenant_id, agent.id)
+    result = await run_sales_analysis(
+        ctx.session, ctx.tenant_id, agent_id=agent.id, question=body.question
+    )
+    return SalesAnalysisOut(
+        outcome=result.outcome.value,
+        answer=result.answer,
+        findings=[
+            FindingOut(
+                statement=f.statement,
+                type=f.type,
+                relationship=f.relationship.value,
+                confidence=f.confidence,
+                confidence_reasons=f.confidence_reasons,
+                evidence_refs=f.evidence_refs,
+            )
+            for f in result.findings
+        ],
+        facts=result.facts,
+        data_quality_status=result.data_quality.status.value,
+        guardrail_reason=result.guardrail_reason,
+    )
 
 
 @router.post("/agents", status_code=201)

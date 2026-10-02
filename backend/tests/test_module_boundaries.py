@@ -143,7 +143,7 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # dependency direction the architecture endorses (agents -> analytics; never
 # analytics -> agents, never an ORM model across). All 17 new edges are
 # ai -> analytics function/module-scope imports in the SI agent module.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 116
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 119
 # 101 -> 99 on 2026-09-29: the diagnostics engine (platform/diagnostics.py) had
 # module-scope imports of `ai.models.Agent`, `inventory.models` and
 # `orders.models` — three edges that re-merged the eleven-module SCC blob the
@@ -160,7 +160,7 @@ BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 116
 #   • authority -> decisions (executor+service: DecisionService for lease minting)
 # Old-module count SHRANK from 94 to 92 (net -2) via prior read-model work.
 # The ratchet tightened on the old side; the new modules bring their 9 edges.
-BASELINE_MODULE_SCOPE_SERVICE_IMPORTS = 7
+BASELINE_MODULE_SCOPE_SERVICE_IMPORTS = 8
 # 5 -> 7 on 2026-09-27: authority/executor.py and authority/service.py each import
 # decisions.service at module scope — authority IS decisions' enforcer, this is
 # the canonical coupling this architecture endorses (§8: "read through the

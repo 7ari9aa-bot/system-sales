@@ -170,8 +170,8 @@ def test_the_three_new_revisions_exist_and_chain_from_the_head() -> None:
     # exactly one revision nobody points at
     pointed_to = {parent for _, parent in ids.values() if parent}
     tail = set(ids) - pointed_to
-    assert tail == {"b4c5d6e7f8a9"}, (
-        f"expected one linear head b4c5d6e7f8a9, found {sorted(tail)} — "
+    assert tail == {"db6022a13691"}, (
+        f"expected one linear head db6022a13691, found {sorted(tail)} — "
         "two heads break `alembic upgrade head` for every environment"
     )
 
@@ -789,7 +789,7 @@ def test_alembic_still_reports_a_single_head() -> None:
     lines = [line for line in out.stdout.splitlines() if line.strip()]
     assert out.returncode == 0, out.stderr
     assert len(lines) == 1, f"multiple heads would break the build: {lines}"
-    assert lines[0].startswith("b4c5d6e7f8a9"), lines
+    assert lines[0].startswith("db6022a13691"), lines
 
 
 # ------------------------------------------- DB-backed: CI-only, not watched

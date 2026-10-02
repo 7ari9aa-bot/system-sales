@@ -24,6 +24,7 @@ VERSIONS_DIR = Path(__file__).resolve().parent.parent / "migrations" / "versions
 HARDENING_MIGRATION = (
     VERSIONS_DIR / "b2c3d4e5f6a7_hardening_rls_segments_worker_columns.py"
 )
+CHANNEL_IDENTITY_MIGRATION = VERSIONS_DIR / "db6022a13691_secure_channel_identity_routing.py"
 
 
 class _RecordingOp:
@@ -273,6 +274,21 @@ def test_resolver_sql_matches_between_migration_and_provision() -> None:
                     provision_sql = ast.literal_eval(node.value)
     assert provision_sql is not None, "CHANNEL_TENANT_FN_SQL not found in provision.py"
     assert _effective_sql(provision_sql) == _effective_sql(module._CHANNEL_TENANT_FN)
+
+
+def test_channel_identity_migration_parses_and_fails_closed_on_duplicates() -> None:
+    pglast = pytest.importorskip("pglast", reason="pglast is a dev-only parser")
+    module, captured = _load_migration(CHANNEL_IDENTITY_MIGRATION)
+    module.upgrade()
+
+    assert len(captured) == 3
+    for sql in captured:
+        pglast.parser.parse_sql(sql)
+    assert "CREATE UNIQUE INDEX uq_integrations_active_channel_identity" in captured[1]
+    assert "HAVING count(*) > 1" in captured[0]
+    assert "reconcile integrations before deploying" in captured[0]
+    assert "NOT EXISTS" in captured[2]
+    assert "ORDER BY i.created_at" not in captured[2]
 
 
 def _declared_columns() -> dict[str, set[str]]:

@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 291,
-    "sha256": "aadb459e66a2095d3f6c91e047cc55a2b3dcf8cc929cfaef0d116ee733407428",
-    "typed_operations": 195
+    "operations": 292,
+    "sha256": "924bc0faa3e1d146e8018483b7d6daf7e97cafc8767335f05705c43112b00434",
+    "typed_operations": 196
   },
   "spec": {
     "components": {
@@ -583,6 +583,86 @@
             "target"
           ],
           "title": "AlertDestination",
+          "type": "object"
+        },
+        "AnalysisOut": {
+          "description": "§12.2 — the rendered result the dashboard consumes.",
+          "properties": {
+            "answer": {
+              "title": "Answer",
+              "type": "string"
+            },
+            "data_quality_status": {
+              "title": "Data Quality Status",
+              "type": "string"
+            },
+            "facts": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "title": "Facts",
+              "type": "array"
+            },
+            "findings": {
+              "items": {
+                "$ref": "#/components/schemas/FindingOut"
+              },
+              "title": "Findings",
+              "type": "array"
+            },
+            "guardrail_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Guardrail Reason"
+            },
+            "outcome": {
+              "title": "Outcome",
+              "type": "string"
+            }
+          },
+          "required": [
+            "outcome",
+            "answer",
+            "findings",
+            "facts",
+            "data_quality_status"
+          ],
+          "title": "AnalysisOut",
+          "type": "object"
+        },
+        "AnalysisRequest": {
+          "description": "§12.1 — AnalysisInput v1: one question, no session chain yet.",
+          "properties": {
+            "agent_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent Id"
+            },
+            "question": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Question",
+              "type": "string"
+            }
+          },
+          "required": [
+            "question"
+          ],
+          "title": "AnalysisRequest",
           "type": "object"
         },
         "AnalyticsOverviewOut": {
@@ -6473,6 +6553,48 @@
           "title": "FairnessCheckResult",
           "type": "object"
         },
+        "FindingOut": {
+          "properties": {
+            "confidence": {
+              "title": "Confidence",
+              "type": "string"
+            },
+            "confidence_reasons": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Confidence Reasons",
+              "type": "array"
+            },
+            "evidence_refs": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Evidence Refs",
+              "type": "array"
+            },
+            "relationship": {
+              "title": "Relationship",
+              "type": "string"
+            },
+            "statement": {
+              "title": "Statement",
+              "type": "string"
+            },
+            "type": {
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "statement",
+            "type",
+            "relationship",
+            "confidence"
+          ],
+          "title": "FindingOut",
+          "type": "object"
+        },
         "FlagCheckOut": {
           "description": "``GET /platform/flags/{feature}/check``: the decision for THIS caller.",
           "properties": {
@@ -6817,6 +6939,17 @@
             "provider": {
               "title": "Provider",
               "type": "string"
+            },
+            "public_key": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Public Key"
             },
             "status": {
               "title": "Status",
@@ -16773,6 +16906,114 @@
             }
           },
           "summary": "Upsert Provider Policy",
+          "tags": [
+            "ai"
+          ]
+        }
+      },
+      "/api/v1/ai/sales/analyses": {
+        "post": {
+          "description": "§12.1 — one sales question → one evidence-backed analysis.\n\nThe store's first active agent runs the investigation with the SI tools\nattached idempotently; the SI gates hold before anything reaches the\nmerchant.",
+          "operationId": "create_sales_analysis_api_v1_ai_sales_analyses_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AnalysisOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Create Sales Analysis",
           "tags": [
             "ai"
           ]

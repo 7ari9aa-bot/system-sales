@@ -93,6 +93,13 @@ _REGISTRY: dict[str, RiskLevel] = {
     # Customer Agent vision tools (§12): read-only, ids never URLs
     "find_product_by_image": RiskLevel.LOW,
     "resolve_product_media": RiskLevel.LOW,
+    # Sales Intelligence tools (read-only analytics; §14 read-only agent)
+    "si_get_metric": RiskLevel.LOW,
+    "si_compare_periods": RiskLevel.LOW,
+    "si_breakdown": RiskLevel.LOW,
+    "si_analyze_drivers": RiskLevel.LOW,
+    "si_explain_metric": RiskLevel.LOW,
+    "si_data_status": RiskLevel.LOW,
     "add_to_cart": RiskLevel.MEDIUM,
     "create_order": RiskLevel.HIGH,
     "send_campaign": RiskLevel.HIGH,
