@@ -158,7 +158,7 @@ def _rls_statements() -> list[str]:
 # is acknowledged while ingesting nothing. SECURITY DEFINER runs the lookup as
 # the table owner and returns ONLY the tenant id, so provider credentials in
 # integrations.config never leave the table. search_path is pinned — mandatory
-# for SECURITY DEFINER. Kept identical to migration b2c3d4e5f6a7 so an
+# for SECURITY DEFINER. Kept identical to migration c0a2026f0199 so an
 # already-provisioned database converges.
 CHANNEL_TENANT_FN_SQL = """
 CREATE OR REPLACE FUNCTION public.resolve_channel_tenant(p_provider text, p_key text)
@@ -173,13 +173,30 @@ AS $fn$
      WHERE i.provider = p_provider
        AND i.kind = 'channel'
        AND i.status IN ('active', 'connected')
-       AND p_key IN (
-             i.config->>'phone_number_id',
-             i.config->>'bot_id',
-             i.config->>'public_key',
-             i.config->>'account_id'
+       AND p_key = CASE p_provider
+             WHEN 'whatsapp' THEN i.config->>'phone_number_id'
+             WHEN 'telegram' THEN i.config->>'public_key'
+             WHEN 'messenger' THEN i.config->>'account_id'
+             WHEN 'instagram' THEN i.config->>'account_id'
+             WHEN 'webchat' THEN i.config->>'public_key'
+             ELSE NULL
+           END
+       AND NOT EXISTS (
+             SELECT 1
+               FROM public.integrations duplicate
+              WHERE duplicate.id <> i.id
+                AND duplicate.provider = i.provider
+                AND duplicate.kind = 'channel'
+                AND duplicate.status IN ('active', 'connected')
+                AND p_key = CASE p_provider
+                      WHEN 'whatsapp' THEN duplicate.config->>'phone_number_id'
+                      WHEN 'telegram' THEN duplicate.config->>'public_key'
+                      WHEN 'messenger' THEN duplicate.config->>'account_id'
+                      WHEN 'instagram' THEN duplicate.config->>'account_id'
+                      WHEN 'webchat' THEN duplicate.config->>'public_key'
+                      ELSE NULL
+                    END
            )
-     ORDER BY i.created_at
      LIMIT 1
 $fn$;
 """

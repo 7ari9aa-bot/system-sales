@@ -1,6 +1,6 @@
 import React from "react";
 import { Boxes, Megaphone, PackageX, AlertTriangle } from "lucide-react";
-import { SectionCard, Skeleton } from "@/components/dashboard/ui";
+import { SectionCard } from "@/components/dashboard/ui";
 import { formatCurrency } from "@/lib/regional";
 import { useT } from "@/lib/i18n";
 import useSalesStats from "@/hooks/useSalesStats";
@@ -20,6 +20,14 @@ export function InventorySnapshot() {
       action={t("common.review")}
       actionTo="/inventory"
     >
+      {live?.dashboardError && (
+        <div role="alert" className="mb-2 flex items-center justify-between gap-2 text-[11.5px] text-destructive">
+          <span>{live.dashboardError}</span>
+          <button type="button" onClick={live.retryDashboard} className="shrink-0 underline">
+            {t("common.retry", "Retry")}
+          </button>
+        </div>
+      )}
       <div className="grid grid-cols-3 gap-3 mt-2">
         <div className="rounded-xl border border-border bg-surface p-3">
           <div className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
@@ -27,7 +35,7 @@ export function InventorySnapshot() {
             {t("inventory.active")}
           </div>
           <div className="mt-1 font-display text-[20px] font-semibold tabular-nums" data-testid="inventory-active">
-            {live?.activeProducts ?? "—"}
+            {live ? (live.activeProducts ?? "—") : "…"}
           </div>
         </div>
         <div className="rounded-xl border border-border bg-surface p-3">
@@ -36,7 +44,7 @@ export function InventorySnapshot() {
             {t("inventory.low")}
           </div>
           <div className="mt-1 font-display text-[20px] font-semibold tabular-nums" data-testid="inventory-low">
-            {live?.lowStock ?? "—"}
+            {live ? (live.lowStock ?? "—") : "…"}
           </div>
         </div>
         <div className="rounded-xl border border-border bg-surface p-3">
@@ -45,7 +53,7 @@ export function InventorySnapshot() {
             {t("inventory.out")}
           </div>
           <div className="mt-1 font-display text-[20px] font-semibold tabular-nums" data-testid="inventory-out">
-            {live?.outOfStock ?? "—"}
+            {live ? (live.outOfStock ?? "—") : "…"}
           </div>
         </div>
       </div>
@@ -59,6 +67,7 @@ export function MarketingSnapshot() {
   const [campaigns, setCampaigns] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState("");
+  const [attempt, setAttempt] = React.useState(0);
 
   React.useEffect(() => {
     let alive = true;
@@ -82,7 +91,7 @@ export function MarketingSnapshot() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [attempt]);
 
   const active = campaigns?.filter((x) => (x.status || "").toLowerCase() === "active").length ?? null;
   const top = summary?.revenue_by_source?.[0] ?? null;
@@ -98,7 +107,14 @@ export function MarketingSnapshot() {
       action={t("common.review")}
       actionTo="/marketing"
     >
-      {error && <div role="status" className="mb-2 text-[11px] text-muted-foreground">{error}</div>}
+      {error && (
+        <div role="status" className="mb-2 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+          <span>{error}</span>
+          <button type="button" onClick={() => setAttempt((current) => current + 1)} className="shrink-0 text-primary hover:underline">
+            {t("common.retry", "Retry")}
+          </button>
+        </div>
+      )}
       <div className="flex items-baseline gap-2">
         <span className="font-display text-[28px] font-semibold tabular-nums leading-none">{loading ? "…" : (active ?? "—")}</span>
         <span className="text-[12.5px] text-muted-foreground">{t("marketing.activeCampaigns")}</span>

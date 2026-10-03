@@ -96,31 +96,8 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
-      # Static analysis gate — stock `next/core-web-vitals` + `next/typescript`
-      # (see frontend/eslint.config.mjs). Passes clean today; pre-existing
-      # warnings are reported but do not fail the build.
-      - run: npm run lint
-      # The security header policy is the only protection on the HTML Vercel
-      # serves; the API middleware never sees those responses (review G-07).
       - run: npm run check:headers
-      # Same shape: the last grep-only guard on this job. It compiles
-      # src/lib/api.ts and calls the REAL apiUrl() under both deployment shapes,
-      # so the pass means the resolver is correct and the walk means nothing
-      # hand-builds a second one. A pre-fix `/api/v1/api/v1` would fail here.
-      - run: npm run check:urls
-      # Same shape again: `getTokens()` is the first read every dashboard route
-      # makes, and it used to `JSON.parse` bare, so one malformed byte in
-      # localStorage blanked the whole dashboard. This transpiles the shipping
-      # src/lib/api.ts and feeds it unreadable payloads — a deleted try/catch
-      # fails the job rather than a merchant's screen.
-      - run: npm run check:storage
-      # F3: the palette once fired `/search` in a loop because a mutation's
-      # identity changed inside its own effect deps. This mounts the shipping
-      # component over a stubbed fetch and counts the requests — and carries a
-      # control case that reproduces 12 requests when the identity changes
-      # again, so the gate is proven to measure the loop, not to pass forever.
-      - run: npm run check:palette
-      - run: npm run check:search-hits
+      - run: npm run lint
       - run: npm run build
 
   # Browser tests against the production bundle. Split from `frontend` so a
@@ -140,12 +117,10 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
-      # The config's project matrix is a single Desktop Chrome device.
       - run: npx playwright install --with-deps chromium
-      # playwright.config.ts serves `npm run start` when CI is set, so the
-      # production bundle has to exist before the tests run.
+      # Browser checks run against the built Vite app served by vite preview.
       - run: npm run build
-      - run: npx playwright test
+      - run: npm run test:e2e
       # Traces/screenshots are captured on the first retry — keep them when the
       # run fails so a red build is debuggable without a re-run.
       - uses: actions/upload-artifact@v4

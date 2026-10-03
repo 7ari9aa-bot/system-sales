@@ -93,7 +93,7 @@ export default function ChannelChat({
           </div>
         )}
         {(conversation.messages || []).map((m, i) =>
-        <Bubble key={i} m={m} isApp={isApp} th={th} t={t} />
+        <Bubble key={i} m={m} isApp={isApp} th={th} />
         )}
         {approval &&
         <div
@@ -165,7 +165,7 @@ export default function ChannelChat({
 
 }
 
-function Bubble({ m, isApp, th, t }) {
+function Bubble({ m, isApp, th }) {
   const out = m.side === "out";
   const showTail = !isApp && th?.tail;
 
@@ -179,7 +179,7 @@ function Bubble({ m, isApp, th, t }) {
           )}>
           
           {m.text}
-          <Foot m={m} isApp={isApp} t={t} />
+          <Foot m={m} isApp={isApp} />
         </div>
       </div>);
 
@@ -192,13 +192,13 @@ function Bubble({ m, isApp, th, t }) {
         style={{ background: out ? th.out : th.in, color: out ? th.outText : th.inText }}>
         
         {m.text}
-        <Foot m={m} isApp={isApp} th={th} t={t} />
+        <Foot m={m} isApp={isApp} th={th} />
       </div>
     </div>);
 
 }
 
-function Foot({ m, isApp, th, t }) {
+function Foot({ m, isApp, th }) {
   return (
     <span className="inline-flex items-center gap-1 ml-2 align-bottom text-[10px] opacity-60">
       {m.time}

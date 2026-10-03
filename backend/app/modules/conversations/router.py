@@ -7,11 +7,12 @@ import json
 import logging
 import time
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.core.errors import ConflictError, NotFoundError, PermissionDeniedError, ValidationError
@@ -29,7 +30,7 @@ from app.modules.identity.deps import (
     TenantCtxDep,
     require_permission,
 )
-from app.modules.platform.models import WebhookEvent
+from app.modules.platform.models import Integration, WebhookEvent
 
 logger = logging.getLogger(__name__)
 
@@ -469,6 +470,29 @@ async def channel_webhook(channel: str, request: Request, session: DbSession):
     # rejected every ingress row and the audit trail the table was built for
     # silently never materialized.)
     await bind_tenant(session, tenant_id)
+
+    # This is transport health, not a claim that the event was processed. The
+    # durable WebhookEvent/outbox path below tracks processing independently.
+    integration = (
+        await session.execute(
+            select(Integration).where(
+                Integration.tenant_id == tenant_id,
+                Integration.provider == channel,
+                Integration.kind == "channel",
+                Integration.status.in_(("active", "connected")),
+            )
+        )
+    ).scalar_one_or_none()
+    if integration is not None:
+        health = dict(integration.webhook_health or {})
+        health.update(
+            {
+                "last_webhook_at": datetime.now(UTC).isoformat(),
+                "consecutive_failures": 0,
+            }
+        )
+        health.pop("last_error", None)
+        integration.webhook_health = health
 
     # S10: durable ingress record + replay rejection. Both providers sign a
     # STATIC HMAC over the raw body — neither contract carries a timestamp or

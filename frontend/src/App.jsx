@@ -1,3 +1,4 @@
+import { Suspense, lazy } from 'react';
 import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
@@ -11,32 +12,32 @@ import { ThemeProvider } from '@/lib/themeContext';
 import { I18nProvider } from '@/lib/i18n';
 import { RegionalProvider } from '@/lib/regional';
 import ProtectedRoute from '@/components/ProtectedRoute';
-import Fihrist from '@/pages/Fihrist';
-import Login from '@/pages/Login';
-import Register from '@/pages/Register';
-import ForgotPassword from '@/pages/ForgotPassword';
-import ResetPassword from '@/pages/ResetPassword';
-import AcceptInvitation from '@/pages/AcceptInvitation';
-import Home from '@/pages/Home';
-import Inbox from '@/pages/Inbox';
-import Customers from '@/pages/Customers';
-import Orders from '@/pages/Orders';
-import Products from '@/pages/Products';
-import Inventory from '@/pages/Inventory';
-import Marketing from '@/pages/Marketing';
-import MarketingCampaigns from '@/pages/marketing/Campaigns';
-import MarketingAudience from '@/pages/marketing/Audience';
-import MarketingAutomation from '@/pages/marketing/Automation';
-import AI from '@/pages/AI';
-import Analytics from '@/pages/Analytics';
-import Usage from '@/pages/Usage';
+const Fihrist = lazy(() => import('@/pages/Fihrist'));
+const Login = lazy(() => import('@/pages/Login'));
+const Register = lazy(() => import('@/pages/Register'));
+const ForgotPassword = lazy(() => import('@/pages/ForgotPassword'));
+const ResetPassword = lazy(() => import('@/pages/ResetPassword'));
+const AcceptInvitation = lazy(() => import('@/pages/AcceptInvitation'));
+const Home = lazy(() => import('@/pages/Home'));
+const Inbox = lazy(() => import('@/pages/Inbox'));
+const Customers = lazy(() => import('@/pages/Customers'));
+const Orders = lazy(() => import('@/pages/Orders'));
+const Products = lazy(() => import('@/pages/Products'));
+const Inventory = lazy(() => import('@/pages/Inventory'));
+const Marketing = lazy(() => import('@/pages/Marketing'));
+const MarketingCampaigns = lazy(() => import('@/pages/marketing/Campaigns'));
+const MarketingAudience = lazy(() => import('@/pages/marketing/Audience'));
+const MarketingAutomation = lazy(() => import('@/pages/marketing/Automation'));
+const AI = lazy(() => import('@/pages/AI'));
+const Analytics = lazy(() => import('@/pages/Analytics'));
+const Usage = lazy(() => import('@/pages/Usage'));
 import SettingsLayout from '@/components/settings/SettingsLayout';
-import ProfileSettings from '@/pages/settings/ProfileSettings';
-import MembersSettings from '@/pages/settings/MembersSettings';
-import ChannelsSettings from '@/pages/settings/ChannelsSettings';
-import SecuritySettings from '@/pages/settings/SecuritySettings';
-import BillingSettings from '@/pages/settings/BillingSettings';
-import DangerZoneSettings from '@/pages/settings/DangerZoneSettings';
+const ProfileSettings = lazy(() => import('@/pages/settings/ProfileSettings'));
+const MembersSettings = lazy(() => import('@/pages/settings/MembersSettings'));
+const ChannelsSettings = lazy(() => import('@/pages/settings/ChannelsSettings'));
+const SecuritySettings = lazy(() => import('@/pages/settings/SecuritySettings'));
+const BillingSettings = lazy(() => import('@/pages/settings/BillingSettings'));
+const DangerZoneSettings = lazy(() => import('@/pages/settings/DangerZoneSettings'));
 
 /** الموقع العام (الماركتنج) — عام للزوار، بدون مصادقة.
  *  Fihrist بيقرأ المسار بنفسه ويرسم الصفحة المناسبة داخل Layout الموحد. */
@@ -118,7 +119,9 @@ function App() {
             <RegionalProvider>
               <QueryClientProvider client={queryClientInstance}>
                 <ScrollToTop />
-                <PathRouter />
+                <Suspense fallback={<div role="status" className="grid min-h-[50vh] place-items-center text-sm text-muted-foreground">Loading…</div>}>
+                  <PathRouter />
+                </Suspense>
                 <Toaster />
               </QueryClientProvider>
             </RegionalProvider>

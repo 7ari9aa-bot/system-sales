@@ -71,7 +71,7 @@ LTV = Decimal("999999999999.99")
 #: here changes the gap-register claim P8 is written against, so it must be an
 #: explicit edit rather than a silent drift.
 CUSTOMERS_ROUTE_COUNT = 15
-PLATFORM_ROUTE_COUNT = 4
+PLATFORM_ROUTE_COUNT = 6
 
 #: Routes that answer 204 and therefore have NO body to type. Enumerated by
 #: path+method rather than filtered by status code, so a new 204 has to be
@@ -106,6 +106,8 @@ GATED_WRITES: dict[str, str] = {
     "GET /customers/contact-data-issues": "customers:write",
     "POST /customers/{customer_id}/contact-issue/resolve": "customers:write",
     "POST /integrations": "settings:write",
+    "POST /integrations/connect": "settings:write",
+    "POST /integrations/{integration_id}/verify": "settings:write",
     "GET /invitations": "settings:write",
     "DELETE /invitations/{invitation_id}": "settings:write",
 }

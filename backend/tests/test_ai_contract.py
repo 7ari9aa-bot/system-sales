@@ -204,9 +204,44 @@ def test_the_openapi_document_publishes_no_open_object_for_ai() -> None:
     )
 
 
-def test_the_ai_surface_has_24_routes_to_cover() -> None:
+def test_the_ai_surface_has_29_routes_to_cover() -> None:
     """Keeps the gate honest: a walk over an empty route list passes anything."""
-    assert len(_routes()) == 28, f"expected 28 AI routes, found {len(_routes())}"
+    assert len(_routes()) == 29, f"expected 29 AI routes, found {len(_routes())}"
+
+
+def test_persisted_sales_analysis_publishes_its_evidence_and_findings() -> None:
+    """The stored detail route must keep the complete evidence contract typed."""
+    document = _app().openapi()
+    properties = _properties("/api/v1/ai/sales/analyses/{analysis_id}", "get")
+    expected = {
+        "analysis_id",
+        "run_id",
+        "question",
+        "outcome",
+        "content_hash",
+        "model",
+        "prompt_version",
+        "created_at",
+        "pack",
+        "findings",
+    }
+    assert expected <= set(properties), properties
+
+    pack = _resolve(document, properties["pack"])
+    assert {"question", "periods", "facts", "data_quality", "content_hash"} <= set(
+        pack.get("properties", {})
+    )
+
+    finding = _resolve(document, properties["findings"])
+    assert {
+        "statement",
+        "type",
+        "relationship",
+        "confidence",
+        "confidence_reasons",
+        "evidence_refs",
+        "materiality",
+    } <= set(finding.get("properties", {}))
 
 
 # ---------------------------------------------------------------------------

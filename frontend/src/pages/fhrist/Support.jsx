@@ -1,5 +1,5 @@
 import React from 'react'
-import { CircleHelp, Phone, UserPlus, Clock, AlertCircle, LifeBuoy, Mail, MessageCircle, Gauge } from 'lucide-react'
+import { CircleHelp, Phone, UserPlus, Clock } from 'lucide-react'
 import { c, DetailHero, SectionIntro, FeatureGrid, DetailPoints } from '@/components/fihrist/Shared'
 
 const quickStarts = [

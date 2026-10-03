@@ -82,14 +82,14 @@ function Hero() {
             </div>
           </div>
 
-          <div className="lg:order-1"><ProductFrame variant="inbox" /></div>
+          <div className="lg:order-1"><ProductFrame /></div>
         </div>
       </div>
     </section>
   );
 }
 
-function ProductFrame({ variant = 'inbox' }) {
+function ProductFrame() {
   const { locale } = useI18n();
   const isAr = locale === 'ar';
   const [activeThread, setActiveThread] = useState(0);
@@ -170,7 +170,7 @@ function ProductFrame({ variant = 'inbox' }) {
           </div>
           <div className="grid grid-cols-[0.9fr_1.2fr] gap-3">
             <div className="surface-inset overflow-hidden">
-              {visible.map(([name, preview, badge], vi) => {
+              {visible.map(([name, preview], vi) => {
                 const i = filter === 'unread' ? vi + 1 : vi;
                 return (
                   <button
@@ -314,11 +314,7 @@ function Features() {
 
 function Proof() {
   const { locale } = useI18n();
-  const stats = [
-    ['proof.stat1.v', 'proof.stat1'],
-    ['proof.stat2.v', 'proof.stat2'],
-    ['proof.stat3.v', 'proof.stat3'],
-  ];
+  const proofPoints = ['proof.stat1', 'proof.stat2', 'proof.stat3'];
   return (
     <section className="py-28 border-t-[0.5px] border-[var(--line)]">
       <div className="max-w-[1240px] mx-auto px-6 grid lg:grid-cols-[0.8fr_1.2fr] gap-16 items-center">
@@ -332,9 +328,9 @@ function Proof() {
         </Reveal>
         <Reveal>
           <div className="grid grid-cols-3 gap-4">
-            {stats.map(([v, label]) => (
+            {proofPoints.map((label, index) => (
               <div key={label} className="surface-card aspect-square flex flex-col items-center justify-center text-center p-5">
-                <span className="num text-[clamp(28px,3.5vw,42px)] text-[var(--ink)]"><T k={v} /></span>
+                <span className="num text-[clamp(28px,3.5vw,42px)] text-[var(--ink)]">{String(index + 1).padStart(2, '0')}</span>
                 <span className="mt-3 text-[12px] text-[var(--ink-3)]" dir={locale === 'ar' ? 'rtl' : 'ltr'}><T k={label} /></span>
               </div>
             ))}

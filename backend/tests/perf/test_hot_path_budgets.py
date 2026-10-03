@@ -30,15 +30,25 @@ tests/conftest.py::db_url) and RUN in CI's backend job (ci.yml provisions the
 ``sales_app`` role + schema). They are safe in CI: every write happens inside the
 per-test transaction that conftest rolls back, so nothing persists and the timing
 loop never contends another tenant's rows.
+
+These budgets are meaningful only when a database round trip is small relative
+to a hot-path budget. Local databases reached through a VM or port-forward can
+add tens of milliseconds of fixed transport delay. Outside GitHub Actions, this
+test measures SELECT 1 first and skips when its median round-trip exceeds 10 ms.
+GitHub Actions never takes that skip path; its service-container run remains the
+required performance gate.
 """
 
 from __future__ import annotations
 
+import os
 import time
 import uuid
 from collections.abc import Callable, Coroutine
 from typing import Any
 
+import pytest
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.analytics.service import revenue_summary
@@ -59,6 +69,7 @@ BUDGET_GET_360_MS = 150.0
 CREATE_ITERS = 25
 READ_ITERS = 40
 WARMUP_ITERS = 3
+LOCAL_DB_RTT_LIMIT_MS = 10.0
 
 
 def _percentile(samples: list[float], q: float) -> float:
@@ -137,6 +148,21 @@ async def test_hot_path_latency_budgets(db, tenant_ctx) -> None:  # noqa: ANN001
     measuring them against the freshly-written data is the same shape a merchant
     dashboard hits seconds after a checkout.
     """
+    if os.getenv("GITHUB_ACTIONS", "").lower() != "true":
+        round_trip_samples = await _measure(
+            "database_round_trip",
+            lambda: db.scalar(text("SELECT 1")),
+            iters=7,
+        )
+        round_trip_p50 = _percentile(round_trip_samples, 0.50)
+        if round_trip_p50 > LOCAL_DB_RTT_LIMIT_MS:
+            pytest.skip(
+                "local PostgreSQL round-trip baseline is "
+                f"{round_trip_p50:.1f}ms (limit {LOCAL_DB_RTT_LIMIT_MS:.0f}ms); "
+                "run in the GitHub Actions service-container job for the "
+                "authoritative latency gate"
+            )
+
     tenant_id = tenant_ctx.tenant_id
     customer, variant = await _seed_orderable_stock(db, tenant_id)
 

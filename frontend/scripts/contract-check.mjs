@@ -1,5 +1,19 @@
-// فحص شامل: كل endpoint بتقرأه شاشات الفرونت ضد الـbackend المنشور
-const API = "https://api-production-81629.up.railway.app";
+// Read-only contract smoke check against a test backend. Credentials and the
+// target origin must be supplied by the operator; never commit test accounts.
+const API = process.env.CONTRACT_API_ORIGIN || "http://127.0.0.1:8000";
+const EMAIL = process.env.CONTRACT_LOGIN_EMAIL;
+const PASSWORD = process.env.CONTRACT_LOGIN_PASSWORD;
+
+if (!EMAIL || !PASSWORD) {
+  console.error("Set CONTRACT_LOGIN_EMAIL and CONTRACT_LOGIN_PASSWORD for a test account.");
+  process.exit(2);
+}
+
+const origin = new URL(API);
+if (origin.protocol !== "https:" && origin.hostname !== "127.0.0.1" && origin.hostname !== "localhost") {
+  console.error("CONTRACT_API_ORIGIN must use HTTPS outside localhost.");
+  process.exit(2);
+}
 
 const REQUIRED = {
   "/auth/me": ["id", "email", "tenants"],
@@ -34,10 +48,10 @@ function get(obj, path) {
   return path.split(".").reduce((acc, k) => (acc == null ? undefined : acc[k]), obj);
 }
 
-const login = await fetch(`${API}/api/v1/auth/login`, {
+const login = await fetch(`${origin.origin}/api/v1/auth/login`, {
   method: "POST",
   headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ email: "qa.check@fihrist.app", password: "QaCheck#2026x" }),
+  body: JSON.stringify({ email: EMAIL, password: PASSWORD }),
 }).then((r) => r.json());
 
 const token = login.access_token;
@@ -52,7 +66,7 @@ for (const [path, fields] of Object.entries(REQUIRED)) {
   let status = 0;
   let body = null;
   try {
-    const res = await fetch(`${API}/api/v1${path.startsWith("/") ? path : "/" + path}`, {
+    const res = await fetch(`${origin.origin}/api/v1${path.startsWith("/") ? path : "/" + path}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     status = res.status;

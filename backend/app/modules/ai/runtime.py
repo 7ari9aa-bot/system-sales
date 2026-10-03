@@ -103,6 +103,7 @@ def _tool_for(agent_tool: AgentTool):
 @dataclass(slots=True)
 class AgentRunResult:
     content: str | None
+    run_id: uuid.UUID | None = None
     tool_calls_made: list[dict] = field(default_factory=list)
     tokens_in: int = 0
     tokens_out: int = 0
@@ -651,6 +652,7 @@ class AgentRunner:
 
         return AgentRunResult(
             content=content,
+            run_id=run.id,
             tool_calls_made=tool_calls_made,
             tokens_in=tokens_in,
             tokens_out=tokens_out,

@@ -1,5 +1,5 @@
 import React from "react";
-import { Sparkles, ArrowRight, ShieldCheck, Users, ListChecks, ShoppingBag, Repeat, DollarSign, MessageSquare } from "lucide-react";
+import { Sparkles, ArrowRight, ShieldCheck, Users, ListChecks, ShoppingBag, DollarSign, MessageSquare } from "lucide-react";
 import { Link } from "react-router-dom";
 import { SectionCard } from "@/components/dashboard/ui";
 import { formatCurrency } from "@/lib/regional";

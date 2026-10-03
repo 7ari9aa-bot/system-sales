@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
+const apiProxyTarget = process.env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:8000';
 
 // الفرونت إند الجديد (بدون Base44) — alias @ على src، وفي التطوير
 // طلبات /api و /auth بتتوجه للـbackend المحلي على :8000 عشان مفيش CORS.
@@ -15,8 +16,8 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
-      '/api': { target: 'http://localhost:8000', changeOrigin: true },
-      '/auth': { target: 'http://localhost:8000', changeOrigin: true },
+      '/api': { target: apiProxyTarget, changeOrigin: true },
+      '/auth': { target: apiProxyTarget, changeOrigin: true },
     },
   },
 });

@@ -143,7 +143,10 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # dependency direction the architecture endorses (agents -> analytics; never
 # analytics -> agents, never an ORM model across). All 17 new edges are
 # ai -> analytics function/module-scope imports in the SI agent module.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 119
+# 117 -> 121 on 2026-10-02: the SI analysis persistence (analytics.persistence
+# + analytics.models imported by the agent orchestrator and the GET route) —
+# the same endorsed ai -> analytics public-interface direction.
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 121
 # 101 -> 99 on 2026-09-29: the diagnostics engine (platform/diagnostics.py) had
 # module-scope imports of `ai.models.Agent`, `inventory.models` and
 # `orders.models` — three edges that re-merged the eleven-module SCC blob the

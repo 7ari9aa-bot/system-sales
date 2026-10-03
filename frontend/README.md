@@ -1,62 +1,37 @@
-# Base44 Project
+# FIHRIST Web
 
-Use this repository to run and edit the app locally, then publish changes back through Base44.
+React 18 + Vite frontend for the FIHRIST sales platform. Business data and mutations go through the authenticated FastAPI API; the browser does not connect directly to Supabase or own business data.
 
-Any change pushed to the repo will also be reflected in the Base44 Builder.
+## Local development
 
-## Prerequisites
+Start the local services and backend first, following the repository root [README](../README.md). The backend should listen on `http://localhost:8000` and use a local PostgreSQL database and Redis instance.
 
-1. Clone the repository using the project's Git URL.
-2. Navigate to the project directory.
-3. Install dependencies: `npm install`.
-4. Install the Base44 CLI: `npm install -g base44@latest`.
-5. Install [Deno](https://docs.deno.com/runtime/getting_started/installation/) — the local Base44 backend runs on it.
-
-Run `base44 --help` (or see the [CLI reference](https://docs.base44.com/developers/references/cli/commands/introduction)) for the full command surface.
-
-## Run Locally
-
-Three commands, from the project root:
+Then run the frontend:
 
 ```bash
-base44 login   # one-time per machine
-base44 link    # one-time per clone
-base44 dev     # local backend + frontend together
+npm ci
+npm run dev
 ```
 
-Open the frontend URL that `base44 dev` prints (typically `http://localhost:5173`).
+Vite serves the app at `http://localhost:3000` and proxies `/api` and `/auth` to `http://127.0.0.1:8000` by default. Set `VITE_API_PROXY_TARGET` to a different backend origin if that port is already in use. To bypass the proxy, set `VITE_API_URL` to the backend's `/api/v1` URL; that API must allow the frontend origin through CORS.
 
-Notes:
+## API and deployment environments
 
-- **Every fresh clone needs `base44 link`.** It writes `base44/.app.jsonc` (the app-id pointer), which is deliberately gitignored. Your app id is in the Builder URL (`app.base44.com/apps/<id>/...`); `base44 link --help` shows the non-interactive flags.
-- **`base44 dev` runs the frontend for you** (via `site.serveCommand` in this repo's `base44/config.jsonc`) — never run `npm run dev` yourself: alone it serves a UI with no backend behind it (`[base44] Proxy not enabled`, every `/api` call fails), and alongside `base44 dev` the second Vite silently takes the next port and you end up looking at the wrong one.
-- **The app must be published at least once for the UI to load under `base44 dev`.** The frontend boots by fetching app settings from the hosted app; before the first publish that fails and every page redirects to login. The local API works regardless.
-- Entities, functions, and auth run locally — entity data is **in-memory only**, wiped when `base44 dev` restarts. Everything else (Core integrations, OAuth login) is forwarded to your deployed app. Full breakdown: [Local development overview](https://docs.base44.com/developers/backend/overview/local-dev/local-development-overview).
+`src/lib/api.js` defaults to the same-origin `/api/v1` path. Vercel proxies that path to the backend, so bearer tokens and API requests remain same-origin in the browser.
 
-## Frontend Only, Hosted Backend
+The Vercel config uses `VERCEL_ENV` and the optional `BACKEND_API_ORIGIN`:
 
-To work on just the frontend against your app's live hosted backend:
+- Production uses the current production API origin unless a Production-only `BACKEND_API_ORIGIN` overrides it.
+- Preview deployments do not proxy API requests by default. They must not use production data for QA.
+- When a staging backend is available, set `BACKEND_API_ORIGIN` for the Vercel Preview environment to that HTTPS origin. The config rejects the production API origin in non-production environments.
+
+Do not put API credentials, Supabase keys, or service-role values in `VITE_*` variables or frontend source. Only public origins belong in `BACKEND_API_ORIGIN`.
+
+## Checks
 
 ```bash
-base44 dev --remote
+npm run check:headers
+npm run lint
+npm run build
+npm run test:e2e
 ```
-
-⚠️ In this mode writes go to your app's **production data** — plain `base44 dev` keeps everything local.
-
-## Publish Your Changes
-
-After pushing your changes to git, open the Base44 dashboard and publish the app:
-
-```bash
-base44 dashboard open
-```
-
-This repo syncs to Base44 through git, so publish from the dashboard rather than `base44 deploy` — a CLI deploy ships your local tree directly, bypassing the sync, and the deployed state silently diverges from the repo.
-
-## Docs & Support
-
-GitHub integration: [https://docs.base44.com/developers/app-code/local-development/github](https://docs.base44.com/developers/app-code/local-development/github)
-
-Local development: [https://docs.base44.com/developers/backend/overview/local-dev/local-development-overview](https://docs.base44.com/developers/backend/overview/local-dev/local-development-overview)
-
-Support: [https://app.base44.com/support](https://app.base44.com/support)

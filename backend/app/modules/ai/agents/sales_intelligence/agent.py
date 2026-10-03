@@ -38,6 +38,7 @@ from app.modules.analytics.contracts import (
     AnalysisPeriod,
     DataQuality,
     DataQualityStatus,
+    EvidencePack,
     Finding,
     MaturityPolicy,
     MaturityStatus,
@@ -72,6 +73,7 @@ class AnalysisResult:
     findings: list[Finding] = field(default_factory=list)
     facts: list[dict] = field(default_factory=list)
     evidence_hash: str | None = None
+    analysis_id: uuid.UUID | None = None
     tool_calls_made: list[dict] = field(default_factory=list)
     data_quality: DataQuality = field(
         default_factory=lambda: DataQuality(status=DataQualityStatus.COMPLETE)
@@ -95,9 +97,38 @@ class FindingOut(BaseModel):
     evidence_refs: list[str] = Field(default_factory=list)
 
 
+class FindingStoredOut(BaseModel):
+    """A stored finding as the GET route returns it."""
+
+    statement: str
+    type: str
+    relationship: str
+    confidence: str
+    confidence_reasons: list[str] = Field(default_factory=list)
+    evidence_refs: list[str] = Field(default_factory=list)
+    materiality: str
+
+
+class AnalysisStoredOut(BaseModel):
+    """§12.4 — a stored analysis as the GET route returns it (typed: the
+    AI contract refuses open bodies on the ai surface)."""
+
+    analysis_id: uuid.UUID
+    run_id: uuid.UUID | None = None
+    question: str
+    outcome: str
+    content_hash: str
+    model: str | None = None
+    prompt_version: str | None = None
+    created_at: str
+    pack: EvidencePack
+    findings: list[FindingStoredOut]
+
+
 class AnalysisOut(BaseModel):
     """§12.2 — the rendered result the dashboard consumes."""
 
+    analysis_id: uuid.UUID | None = None
     outcome: str
     answer: str
     findings: list[FindingOut]
@@ -207,15 +238,27 @@ async def run_sales_analysis(
     findings = build_findings(
         _store_from(facts_contracts),
     ) if facts_contracts else []
-    evidence_hash = (
-        build_pack(
+    evidence_hash = None
+    analysis_id = None
+    if facts_contracts:
+        pack = build_pack(
             _store_from(facts_contracts),
             CapabilityContext(tenant_id=tenant_id),
             question=question,
-        ).content_hash
-        if facts_contracts
-        else None
-    )
+        )
+        evidence_hash = pack.content_hash
+        from app.modules.analytics.persistence import save_analysis
+
+        analysis_id = await save_analysis(
+            session,
+            tenant_id,
+            question=question,
+            outcome=Outcome.ANSWERED.value,
+            pack=pack,
+            findings=findings,
+            run_id=result.run_id,
+            model=result.raw_model if hasattr(result, "raw_model") else None,
+        )
 
     if result.content:
         problems = validate_answer(result.content, allowed, findings)
@@ -229,6 +272,7 @@ async def run_sales_analysis(
                 findings=findings,
                 facts=payloads,
                 evidence_hash=evidence_hash,
+                analysis_id=analysis_id,
                 tool_calls_made=result.tool_calls_made,
                 guardrail_reason="si_response_invalid",
             )
@@ -238,6 +282,7 @@ async def run_sales_analysis(
             findings=findings,
             facts=payloads,
             evidence_hash=evidence_hash,
+            analysis_id=analysis_id,
             tool_calls_made=result.tool_calls_made,
         )
 
@@ -250,6 +295,7 @@ async def run_sales_analysis(
         findings=findings,
         facts=payloads,
         evidence_hash=evidence_hash,
+        analysis_id=analysis_id,
         tool_calls_made=result.tool_calls_made,
         guardrail_reason=result.guardrail_reason,
     )

@@ -1,5 +1,5 @@
 import React from 'react'
-import { FileText, UserPlus, KeyRound, Ban, Database, FileClock, XCircle, RotateCcw, Download } from 'lucide-react'
+import { FileText } from 'lucide-react'
 import { c, DetailHero, SectionIntro, DetailPoints } from '@/components/fihrist/Shared'
 
 const accountPoints = [

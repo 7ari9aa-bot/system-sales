@@ -489,8 +489,12 @@ class ConversationService:
         # rewriting inbound rows here would corrupt that state machine. The
         # ``select(Message)`` this used to run returned rows into the void: one
         # round trip per mark-read, no effect. InboxQuery reads this column live,
-        # so the badge is correct the moment this transaction commits.
+        # so the badge is correct the moment this transaction commits. Flush the
+        # zero before returning: InboxQuery uses a textual SELECT, which does not
+        # trigger SQLAlchemy's ORM autoflush and would otherwise observe the old
+        # database value if the same request reads the inbox again.
         conversation.unread_count = 0
+        await session.flush()
         return conversation
 
     @staticmethod

@@ -1,5 +1,5 @@
 import React from 'react'
-import { Workflow as WorkflowIcon, Zap, Clock, Pause, RotateCcw, FileClock } from 'lucide-react'
+import { Workflow as WorkflowIcon, Zap, Clock } from 'lucide-react'
 import { c, DetailHero, SectionIntro, Workflow, FeatureGrid, DetailPoints } from '@/components/fihrist/Shared'
 
 const ruleSteps = [

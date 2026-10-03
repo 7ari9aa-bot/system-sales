@@ -1,14 +1,11 @@
 import React, { useState, useEffect } from "react";
 import AuthArtPanel from "@/components/AuthArtPanel";
 
-const c = (ar, en) => ({ ar, en });
-const tx = (copy, locale) => copy[locale];
-
 export default function AuthLayout({ icon: Icon, title, subtitle, footer, children }) {
   const [locale, setLocale] = useState(() => {
     try { return window.localStorage.getItem("fh_locale") === "en" ? "en" : "ar" } catch { return "ar" }
   });
-  const [theme, setTheme] = useState(() => {
+  const [theme] = useState(() => {
     try { const s = window.localStorage.getItem("fh_theme"); if (s) return s; return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light" } catch { return "light" }
   });
 

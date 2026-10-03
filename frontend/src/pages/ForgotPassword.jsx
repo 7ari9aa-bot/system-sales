@@ -2,7 +2,7 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { KeyRound } from "lucide-react";
 import AuthLayout from "@/components/AuthLayout";
-import { useI18n, T } from "@/lib/marketing-i18n";
+import { useI18n } from "@/lib/marketing-i18n";
 
 const c = (ar, en) => ({ ar, en });
 const tx = (copy, locale) => copy[locale];

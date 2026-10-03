@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 292,
-    "sha256": "924bc0faa3e1d146e8018483b7d6daf7e97cafc8767335f05705c43112b00434",
-    "typed_operations": 196
+    "operations": 295,
+    "sha256": "fd0bb96535f37a441074d1f334fb34e53daba41e46ef0cda52d8f04548ee60eb",
+    "typed_operations": 199
   },
   "spec": {
     "components": {
@@ -588,6 +588,18 @@
         "AnalysisOut": {
           "description": "§12.2 — the rendered result the dashboard consumes.",
           "properties": {
+            "analysis_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Analysis Id"
+            },
             "answer": {
               "title": "Answer",
               "type": "string"
@@ -637,6 +649,64 @@
           "title": "AnalysisOut",
           "type": "object"
         },
+        "AnalysisPeriod": {
+          "description": "§6.5 — a resolved period. Natural language NEVER resolves here: the\nsystem resolves it from the store calendar and the model receives it.",
+          "properties": {
+            "attribution_basis": {
+              "title": "Attribution Basis",
+              "type": "string"
+            },
+            "data_as_of": {
+              "format": "date-time",
+              "title": "Data As Of",
+              "type": "string"
+            },
+            "end": {
+              "format": "date-time",
+              "title": "End",
+              "type": "string"
+            },
+            "maturity_policy": {
+              "$ref": "#/components/schemas/MaturityPolicy"
+            },
+            "maturity_ratio": {
+              "anyOf": [
+                {
+                  "maximum": 1.0,
+                  "minimum": 0.0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Maturity Ratio"
+            },
+            "maturity_status": {
+              "$ref": "#/components/schemas/MaturityStatus"
+            },
+            "start": {
+              "format": "date-time",
+              "title": "Start",
+              "type": "string"
+            },
+            "timezone": {
+              "title": "Timezone",
+              "type": "string"
+            }
+          },
+          "required": [
+            "start",
+            "end",
+            "timezone",
+            "attribution_basis",
+            "maturity_policy",
+            "maturity_status",
+            "data_as_of"
+          ],
+          "title": "AnalysisPeriod",
+          "type": "object"
+        },
         "AnalysisRequest": {
           "description": "§12.1 — AnalysisInput v1: one question, no session chain yet.",
           "properties": {
@@ -663,6 +733,87 @@
             "question"
           ],
           "title": "AnalysisRequest",
+          "type": "object"
+        },
+        "AnalysisStoredOut": {
+          "description": "§12.4 — a stored analysis as the GET route returns it (typed: the\nAI contract refuses open bodies on the ai surface).",
+          "properties": {
+            "analysis_id": {
+              "format": "uuid",
+              "title": "Analysis Id",
+              "type": "string"
+            },
+            "content_hash": {
+              "title": "Content Hash",
+              "type": "string"
+            },
+            "created_at": {
+              "title": "Created At",
+              "type": "string"
+            },
+            "findings": {
+              "items": {
+                "$ref": "#/components/schemas/FindingStoredOut"
+              },
+              "title": "Findings",
+              "type": "array"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model"
+            },
+            "outcome": {
+              "title": "Outcome",
+              "type": "string"
+            },
+            "pack": {
+              "$ref": "#/components/schemas/EvidencePack"
+            },
+            "prompt_version": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Prompt Version"
+            },
+            "question": {
+              "title": "Question",
+              "type": "string"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            }
+          },
+          "required": [
+            "analysis_id",
+            "question",
+            "outcome",
+            "content_hash",
+            "created_at",
+            "pack",
+            "findings"
+          ],
+          "title": "AnalysisStoredOut",
           "type": "object"
         },
         "AnalyticsOverviewOut": {
@@ -765,6 +916,46 @@
             "stock"
           ],
           "title": "AnalyticsOverviewOut",
+          "type": "object"
+        },
+        "AnomalyResult": {
+          "properties": {
+            "baseline": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "title": "Baseline",
+              "type": "string"
+            },
+            "key": {
+              "title": "Key",
+              "type": "string"
+            },
+            "minimum_volume_ok": {
+              "title": "Minimum Volume Ok",
+              "type": "boolean"
+            },
+            "observed": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "title": "Observed",
+              "type": "string"
+            },
+            "residual_z": {
+              "title": "Residual Z",
+              "type": "number"
+            },
+            "seasonality_checked": {
+              "title": "Seasonality Checked",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "key",
+            "observed",
+            "baseline",
+            "residual_z",
+            "minimum_volume_ok",
+            "seasonality_checked"
+          ],
+          "title": "AnomalyResult",
           "type": "object"
         },
         "ApprovalDecisionOut": {
@@ -1204,6 +1395,24 @@
             }
           },
           "title": "AssignRequest",
+          "type": "object"
+        },
+        "Assumption": {
+          "properties": {
+            "key": {
+              "title": "Key",
+              "type": "string"
+            },
+            "statement": {
+              "title": "Statement",
+              "type": "string"
+            }
+          },
+          "required": [
+            "key",
+            "statement"
+          ],
+          "title": "Assumption",
           "type": "object"
         },
         "AttributedByCampaignOut": {
@@ -2613,6 +2822,47 @@
             "period_end"
           ],
           "title": "ClosePeriodRequest",
+          "type": "object"
+        },
+        "Comparison": {
+          "properties": {
+            "delta": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "title": "Delta",
+              "type": "string"
+            },
+            "delta_pct": {
+              "anyOf": [
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Delta Pct"
+            },
+            "label": {
+              "title": "Label",
+              "type": "string"
+            },
+            "left_fact_id": {
+              "title": "Left Fact Id",
+              "type": "string"
+            },
+            "right_fact_id": {
+              "title": "Right Fact Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "label",
+            "left_fact_id",
+            "right_fact_id",
+            "delta"
+          ],
+          "title": "Comparison",
           "type": "object"
         },
         "ConsentGrant": {
@@ -4322,6 +4572,37 @@
           "title": "DashboardOut",
           "type": "object"
         },
+        "DataQuality": {
+          "properties": {
+            "status": {
+              "$ref": "#/components/schemas/DataQualityStatus"
+            },
+            "warnings": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Warnings",
+              "type": "array"
+            }
+          },
+          "required": [
+            "status"
+          ],
+          "title": "DataQuality",
+          "type": "object"
+        },
+        "DataQualityStatus": {
+          "enum": [
+            "COMPLETE",
+            "PARTIAL",
+            "IMMATURE",
+            "STALE",
+            "INSUFFICIENT",
+            "CONFLICTING"
+          ],
+          "title": "DataQualityStatus",
+          "type": "string"
+        },
         "DataRequestCreate": {
           "properties": {
             "customer_id": {
@@ -5260,6 +5541,105 @@
           "title": "DigestGroup",
           "type": "object"
         },
+        "DimensionBreakdown": {
+          "description": "§5.1 — ONE independent decomposition of the total delta. Two\ndecompositions are never summed together; every pack says so.",
+          "properties": {
+            "dimension": {
+              "title": "Dimension",
+              "type": "string"
+            },
+            "entries": {
+              "items": {
+                "$ref": "#/components/schemas/DimensionEntry"
+              },
+              "title": "Entries",
+              "type": "array"
+            },
+            "note": {
+              "default": "independent decomposition — do not sum across dimensions",
+              "title": "Note",
+              "type": "string"
+            }
+          },
+          "required": [
+            "dimension",
+            "entries"
+          ],
+          "title": "DimensionBreakdown",
+          "type": "object"
+        },
+        "DimensionEntry": {
+          "properties": {
+            "bucket": {
+              "enum": [
+                "existing",
+                "new",
+                "discontinued"
+              ],
+              "title": "Bucket",
+              "type": "string"
+            },
+            "delta": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "title": "Delta",
+              "type": "string"
+            },
+            "key": {
+              "title": "Key",
+              "type": "string"
+            },
+            "label": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Label"
+            }
+          },
+          "required": [
+            "key",
+            "delta",
+            "bucket"
+          ],
+          "title": "DimensionEntry",
+          "type": "object"
+        },
+        "DriverResult": {
+          "properties": {
+            "aov_contribution": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "title": "Aov Contribution",
+              "type": "string"
+            },
+            "kind": {
+              "const": "orders_vs_aov",
+              "title": "Kind",
+              "type": "string"
+            },
+            "orders_contribution": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "title": "Orders Contribution",
+              "type": "string"
+            },
+            "total_delta": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "title": "Total Delta",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "orders_contribution",
+            "aov_contribution",
+            "total_delta"
+          ],
+          "title": "DriverResult",
+          "type": "object"
+        },
         "DropGateOut": {
           "description": "The shared-month gate, in the only form it may be published.\n\nCounts and the longest horizon, and NOTHING else: §56 partitions by time, so\na month belongs to every tenant and one tenant may not see another's policy,\nstore or existence by name.",
           "properties": {
@@ -5983,6 +6363,96 @@
           "title": "EvaluationUpdateRequest",
           "type": "object"
         },
+        "EvidencePack": {
+          "description": "§8.1 — the immutable, content-hashed analytical record of one run.",
+          "properties": {
+            "anomalies": {
+              "items": {
+                "$ref": "#/components/schemas/AnomalyResult"
+              },
+              "title": "Anomalies",
+              "type": "array"
+            },
+            "assumptions": {
+              "items": {
+                "$ref": "#/components/schemas/Assumption"
+              },
+              "title": "Assumptions",
+              "type": "array"
+            },
+            "comparisons": {
+              "items": {
+                "$ref": "#/components/schemas/Comparison"
+              },
+              "title": "Comparisons",
+              "type": "array"
+            },
+            "content_hash": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Content Hash"
+            },
+            "data_quality": {
+              "$ref": "#/components/schemas/DataQuality"
+            },
+            "dimensions": {
+              "items": {
+                "$ref": "#/components/schemas/DimensionBreakdown"
+              },
+              "title": "Dimensions",
+              "type": "array"
+            },
+            "drivers": {
+              "items": {
+                "$ref": "#/components/schemas/DriverResult"
+              },
+              "title": "Drivers",
+              "type": "array"
+            },
+            "facts": {
+              "items": {
+                "$ref": "#/components/schemas/MetricFact"
+              },
+              "title": "Facts",
+              "type": "array"
+            },
+            "limitations": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Limitations",
+              "type": "array"
+            },
+            "periods": {
+              "items": {
+                "$ref": "#/components/schemas/AnalysisPeriod"
+              },
+              "title": "Periods",
+              "type": "array"
+            },
+            "question": {
+              "title": "Question",
+              "type": "string"
+            },
+            "scope": {
+              "additionalProperties": true,
+              "title": "Scope",
+              "type": "object"
+            }
+          },
+          "required": [
+            "question",
+            "data_quality"
+          ],
+          "title": "EvidencePack",
+          "type": "object"
+        },
         "ExecuteCommandRequest": {
           "description": "Payload to execute an approved command via an Authority Lease.",
           "properties": {
@@ -6595,6 +7065,54 @@
           "title": "FindingOut",
           "type": "object"
         },
+        "FindingStoredOut": {
+          "description": "A stored finding as the GET route returns it.",
+          "properties": {
+            "confidence": {
+              "title": "Confidence",
+              "type": "string"
+            },
+            "confidence_reasons": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Confidence Reasons",
+              "type": "array"
+            },
+            "evidence_refs": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Evidence Refs",
+              "type": "array"
+            },
+            "materiality": {
+              "title": "Materiality",
+              "type": "string"
+            },
+            "relationship": {
+              "title": "Relationship",
+              "type": "string"
+            },
+            "statement": {
+              "title": "Statement",
+              "type": "string"
+            },
+            "type": {
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "statement",
+            "type",
+            "relationship",
+            "confidence",
+            "materiality"
+          ],
+          "title": "FindingStoredOut",
+          "type": "object"
+        },
         "FlagCheckOut": {
           "description": "``GET /platform/flags/{feature}/check``: the decision for THIS caller.",
           "properties": {
@@ -6901,6 +7419,39 @@
           "title": "IntegrationBody",
           "type": "object"
         },
+        "IntegrationConnectBody": {
+          "description": "Credentials are accepted only by the server-side verifier.",
+          "properties": {
+            "config": {
+              "additionalProperties": true,
+              "title": "Config",
+              "type": "object"
+            },
+            "credentials": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "title": "Credentials",
+              "type": "object"
+            },
+            "provider": {
+              "enum": [
+                "whatsapp",
+                "instagram",
+                "messenger",
+                "telegram",
+                "webchat"
+              ],
+              "title": "Provider",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider"
+          ],
+          "title": "IntegrationConnectBody",
+          "type": "object"
+        },
         "IntegrationHealthOut": {
           "description": "One integration's rolled-up webhook status.\n\nDeliberately only ``provider`` + ``status``: ``webhook_health`` may carry a\n``last_error`` string with a URL in it, and nothing like that leaves the\nhealth surface.",
           "properties": {
@@ -6927,6 +7478,22 @@
         },
         "IntegrationOut": {
           "properties": {
+            "credentials_verified": {
+              "default": false,
+              "title": "Credentials Verified",
+              "type": "boolean"
+            },
+            "display_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Display Name"
+            },
             "id": {
               "format": "uuid",
               "title": "Id",
@@ -6935,6 +7502,17 @@
             "kind": {
               "title": "Kind",
               "type": "string"
+            },
+            "last_webhook_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Webhook At"
             },
             "provider": {
               "title": "Provider",
@@ -6954,13 +7532,40 @@
             "status": {
               "title": "Status",
               "type": "string"
+            },
+            "verified_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Verified At"
+            },
+            "webhook_status": {
+              "title": "Webhook Status",
+              "type": "string"
+            },
+            "webhook_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Webhook Url"
             }
           },
           "required": [
             "id",
             "provider",
             "kind",
-            "status"
+            "status",
+            "webhook_status"
           ],
           "title": "IntegrationOut",
           "type": "object"
@@ -6982,6 +7587,79 @@
             "status"
           ],
           "title": "IntegrationUpserted",
+          "type": "object"
+        },
+        "IntegrationVerificationOut": {
+          "properties": {
+            "credentials_verified": {
+              "title": "Credentials Verified",
+              "type": "boolean"
+            },
+            "display_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Display Name"
+            },
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "message": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Message"
+            },
+            "provider": {
+              "title": "Provider",
+              "type": "string"
+            },
+            "public_key": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Public Key"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            },
+            "verified_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Verified At"
+            }
+          },
+          "required": [
+            "id",
+            "provider",
+            "status",
+            "credentials_verified"
+          ],
+          "title": "IntegrationVerificationOut",
           "type": "object"
         },
         "InvitationOut": {
@@ -8013,6 +8691,47 @@
           "title": "MarketingSummaryOut",
           "type": "object"
         },
+        "MaturityPolicy": {
+          "description": "How fast a metric settles to its final value for this store.",
+          "properties": {
+            "kind": {
+              "enum": [
+                "immediate",
+                "fast",
+                "carrier_curve",
+                "long_tail",
+                "composite"
+              ],
+              "title": "Kind",
+              "type": "string"
+            },
+            "settle_days": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Settle Days"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "title": "MaturityPolicy",
+          "type": "object"
+        },
+        "MaturityStatus": {
+          "enum": [
+            "MATURE",
+            "PARTIALLY_MATURE",
+            "IMMATURE"
+          ],
+          "title": "MaturityStatus",
+          "type": "string"
+        },
         "MemoryCreateRequest": {
           "properties": {
             "confidence": {
@@ -8470,6 +9189,87 @@
             "drifted"
           ],
           "title": "MetricDefinitionsOut",
+          "type": "object"
+        },
+        "MetricFact": {
+          "description": "§8.1 — one measured number. Every value in an answer must trace to\none of these; the fact carries its own birth certificate.",
+          "properties": {
+            "computed_at": {
+              "format": "date-time",
+              "title": "Computed At",
+              "type": "string"
+            },
+            "data_as_of": {
+              "format": "date-time",
+              "title": "Data As Of",
+              "type": "string"
+            },
+            "filters": {
+              "additionalProperties": true,
+              "title": "Filters",
+              "type": "object"
+            },
+            "formula_version": {
+              "default": "1",
+              "title": "Formula Version",
+              "type": "string"
+            },
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "maturity_status": {
+              "$ref": "#/components/schemas/MaturityStatus"
+            },
+            "metric": {
+              "title": "Metric",
+              "type": "string"
+            },
+            "metric_version": {
+              "default": "1",
+              "title": "Metric Version",
+              "type": "string"
+            },
+            "period": {
+              "$ref": "#/components/schemas/AnalysisPeriod"
+            },
+            "relationship": {
+              "$ref": "#/components/schemas/Relationship",
+              "default": "OBSERVED"
+            },
+            "source": {
+              "title": "Source",
+              "type": "string"
+            },
+            "unit": {
+              "enum": [
+                "count",
+                "money",
+                "pct",
+                "ratio",
+                "days"
+              ],
+              "title": "Unit",
+              "type": "string"
+            },
+            "value": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "title": "Value",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "metric",
+            "value",
+            "unit",
+            "period",
+            "source",
+            "computed_at",
+            "data_as_of",
+            "maturity_status"
+          ],
+          "title": "MetricFact",
           "type": "object"
         },
         "MetricListOut": {
@@ -9638,6 +10438,17 @@
           ],
           "title": "RegisterRequest",
           "type": "object"
+        },
+        "Relationship": {
+          "description": "§9.2 — how strongly the evidence supports the claim. The wording\nladder enforces: temporal alignment alone may never read as cause.",
+          "enum": [
+            "OBSERVED",
+            "TEMPORAL_ASSOCIATION",
+            "CORRELATION",
+            "CAUSAL"
+          ],
+          "title": "Relationship",
+          "type": "string"
         },
         "RemediationResultOut": {
           "properties": {
@@ -17014,6 +17825,114 @@
             }
           },
           "summary": "Create Sales Analysis",
+          "tags": [
+            "ai"
+          ]
+        }
+      },
+      "/api/v1/ai/sales/analyses/{analysis_id}": {
+        "get": {
+          "description": "§12.4 — a stored analysis: the immutable pack plus its graded findings.",
+          "operationId": "get_sales_analysis_api_v1_ai_sales_analyses__analysis_id__get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "analysis_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Analysis Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AnalysisStoredOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get Sales Analysis",
           "tags": [
             "ai"
           ]
@@ -29785,7 +30704,7 @@
           ]
         },
         "post": {
-          "description": "Register/refresh a channel integration (WhatsApp/Telegram/webchat keys).",
+          "description": "Register a non-channel integration through the generic lifecycle API.",
           "operationId": "upsert_integration_api_v1_integrations_post",
           "parameters": [
             {
@@ -29886,6 +30805,222 @@
             }
           },
           "summary": "Upsert Integration",
+          "tags": [
+            "platform"
+          ]
+        }
+      },
+      "/api/v1/integrations/connect": {
+        "post": {
+          "description": "Verify credentials before persisting a channel as active.",
+          "operationId": "connect_integration_api_v1_integrations_connect_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationConnectBody"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/IntegrationVerificationOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Connect Integration",
+          "tags": [
+            "platform"
+          ]
+        }
+      },
+      "/api/v1/integrations/{integration_id}/verify": {
+        "post": {
+          "description": "Recheck a saved connection without returning its encrypted credentials.",
+          "operationId": "verify_integration_api_v1_integrations__integration_id__verify_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "integration_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Integration Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/IntegrationVerificationOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Verify Integration",
           "tags": [
             "platform"
           ]

@@ -3,14 +3,18 @@
 
 from __future__ import annotations
 
+import uuid
+from datetime import UTC, datetime
 from typing import Annotated
+from urllib.parse import urlencode, urlparse
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.core.contact_norm import normalize_email, normalize_phone
-from app.core.errors import NotFoundError, ValidationError
+from app.core.errors import ConflictError, ExternalProviderError, NotFoundError, ValidationError
 from app.core.idempotency import (
     IfMatch,
     apply_etag,
@@ -34,7 +38,13 @@ from app.modules.customers.service import CustomerService
 from app.modules.customers.timeline import Customer360Service
 from app.modules.identity.deps import TenantContext, require_permission
 from app.modules.identity.models import Invitation, Role
+from app.modules.platform.integration_verifier import (
+    configure_telegram_webhook,
+    telegram_webhook_secret_configured,
+    verify_channel_credentials,
+)
 from app.modules.platform.models import Integration
+from app.modules.platform.service import IntegrationCredentialsService
 
 router = APIRouter(tags=["customers"])
 platform_router = APIRouter(tags=["platform"])
@@ -428,6 +438,166 @@ async def add_customer_note(
 # mapping — otherwise every re-registration of a legacy row would look like
 # a jump from a state the lifecycle table does not name.
 _LEGACY_STATUS_ALIASES = {"connected": "active", "error": "reauth_required"}
+_CHANNEL_PROVIDERS = frozenset({"whatsapp", "instagram", "messenger", "telegram", "webchat"})
+_CHANNEL_CREDENTIAL_FIELDS = {
+    "whatsapp": frozenset({"access_token"}),
+    "instagram": frozenset({"api_key"}),
+    "messenger": frozenset({"api_key"}),
+    "telegram": frozenset({"bot_token"}),
+    "webchat": frozenset(),
+}
+_CHANNEL_CONFIG_FIELDS = {
+    "whatsapp": frozenset({"phone_number_id"}),
+    "instagram": frozenset({"account_id"}),
+    "messenger": frozenset(),
+    "telegram": frozenset(),
+    "webchat": frozenset(),
+}
+_SIGNED_WEBHOOK_PROVIDERS = frozenset({"whatsapp", "instagram", "messenger", "telegram"})
+
+
+def _last_webhook_at(integration: Integration) -> str | None:
+    health = integration.webhook_health
+    value = health.get("last_webhook_at") if isinstance(health, dict) else None
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return value if isinstance(value, str) else None
+
+
+def _webhook_status(integration: Integration) -> str:
+    if integration.provider == "webchat":
+        config = integration.config if isinstance(integration.config, dict) else {}
+        connection = config.get("_connection")
+        verified = isinstance(connection, dict) and bool(connection.get("verified_at"))
+        connected = integration.status in {"active", "connected"}
+        return "ready" if verified and connected else "server_setup_required"
+
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    public_api_configured = _telegram_webhook_base_url() is not None
+    configured = {
+        "whatsapp": public_api_configured
+        and bool(settings.whatsapp_app_secret and settings.whatsapp_verify_token),
+        "messenger": public_api_configured
+        and bool(settings.messenger_app_secret and settings.messenger_verify_token),
+        "instagram": public_api_configured
+        and bool(settings.instagram_app_secret and settings.instagram_verify_token),
+        "telegram": public_api_configured and telegram_webhook_secret_configured(),
+    }.get(integration.provider, False)
+    if not configured:
+        return "server_setup_required"
+    if integration.provider == "telegram":
+        connection = (
+            integration.config.get("_connection")
+            if isinstance(integration.config, dict)
+            else None
+        )
+        if not isinstance(connection, dict) or not connection.get("webhook_configured_at"):
+            return "server_setup_required"
+    return "receiving" if _last_webhook_at(integration) else "awaiting_first_event"
+
+
+def _telegram_webhook_base_url() -> str | None:
+    from app.core.config import get_settings
+
+    base = get_settings().api_public_base_url.strip().rstrip("/")
+    parsed = urlparse(base)
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path
+        or parsed.query
+        or parsed.fragment
+    ):
+        return None
+    return base
+
+
+def _telegram_webhook_url(public_key: str) -> str:
+    base = _telegram_webhook_base_url()
+    if base is None:
+        raise ExternalProviderError(
+            "Telegram webhook setup requires the server's canonical HTTPS API URL.",
+            retryable=False,
+        )
+    route = f"{base}/api/v1/webhooks/telegram"
+    return f"{route}?{urlencode({'tenant_key': public_key})}"
+
+
+def _provider_webhook_url(provider: str) -> str | None:
+    if provider not in _SIGNED_WEBHOOK_PROVIDERS:
+        return None
+    if provider == "telegram":
+        return None
+    base = _telegram_webhook_base_url()
+    if base is None:
+        return None
+    return f"{base}/api/v1/webhooks/{provider}"
+
+
+def _integration_output(integration: Integration) -> dict:
+    config = integration.config if isinstance(integration.config, dict) else {}
+    connection = config.get("_connection")
+    if not isinstance(connection, dict):
+        connection = {}
+    verified_at = connection.get("verified_at")
+    if not isinstance(verified_at, str):
+        verified_at = None
+    display_name = connection.get("display_name")
+    if not isinstance(display_name, str):
+        display_name = None
+    public_key = (
+        config.get("public_key")
+        if integration.provider in {"webchat", "telegram"}
+        and integration.kind == "channel"
+        else None
+    )
+    webhook_url = (
+        _telegram_webhook_url(public_key)
+        if integration.provider == "telegram" and public_key and _telegram_webhook_base_url()
+        else _provider_webhook_url(integration.provider)
+    )
+    return {
+        "id": str(integration.id),
+        "provider": integration.provider,
+        "kind": integration.kind,
+        "status": integration.status,
+        "credentials_verified": bool(verified_at)
+        and integration.status in {"active", "connected"},
+        "display_name": display_name,
+        "verified_at": verified_at,
+        "webhook_status": _webhook_status(integration),
+        "last_webhook_at": _last_webhook_at(integration),
+        "webhook_url": webhook_url,
+        "public_key": public_key if integration.provider == "webchat" else None,
+    }
+
+
+def _activate_verified_channel(integration: Integration) -> None:
+    """Apply the legal lifecycle path after provider verification succeeds."""
+    current = _LEGACY_STATUS_ALIASES.get(integration.status, integration.status)
+    if current == "active":
+        integration.status = "active"
+        return
+    if current in {"pending", "reauth_required", "disconnected"}:
+        Integration.validate_transition(current, "connecting")
+        integration.status = "connecting"
+        current = "connecting"
+    if current != "active":
+        Integration.validate_transition(current, "active")
+    integration.status = "active"
+
+
+def _verification_metadata(
+    *, verified_at: str | None, display_name: str | None, failure: str | None = None
+) -> dict:
+    result = {"verified_at": verified_at, "display_name": display_name}
+    if failure:
+        result["last_failure"] = failure
+    return result
 
 
 @platform_router.get("/invitations", response_model=list[schemas.PlatformInvitation])
@@ -487,20 +657,197 @@ async def list_integrations(ctx: SettingsReadCtx):
         .scalars()
         .all()
     )
-    return [
-        {
-            "id": str(i.id),
-            "provider": i.provider,
-            "kind": i.kind,
-            "status": i.status,
-            "public_key": (
-                (i.config or {}).get("public_key")
-                if i.provider == "webchat" and i.kind == "channel"
-                else None
-            ),
+    return [_integration_output(i) for i in rows]
+
+
+@platform_router.post(
+    "/integrations/connect",
+    status_code=201,
+    response_model=schemas.IntegrationVerificationOut,
+)
+async def connect_integration(
+    body: schemas.IntegrationConnectBody,
+    ctx: TenantContext = Depends(require_permission("settings:write")),
+):
+    """Verify credentials before persisting a channel as active."""
+    provider = body.provider
+    unexpected = set(body.credentials) - _CHANNEL_CREDENTIAL_FIELDS[provider]
+    if unexpected:
+        raise ValidationError("Unexpected credential fields for this provider.")
+    unexpected_config = set(body.config) - _CHANNEL_CONFIG_FIELDS[provider]
+    if unexpected_config:
+        raise ValidationError("Unexpected channel configuration fields for this provider.")
+    credentials = {key: value.strip() for key, value in body.credentials.items()}
+
+    existing = (
+        await ctx.session.execute(
+            select(Integration).where(
+                Integration.tenant_id == ctx.tenant_id,
+                Integration.provider == provider,
+                Integration.kind == "channel",
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None and existing.status == "disabled":
+        raise ValidationError("This channel was permanently disabled and cannot be reconnected.")
+    if existing is None:
+        await EntitlementService.ensure_channel_allowed(ctx.session, ctx.tenant_id, provider)
+
+    verification_config = (
+        dict(existing.config)
+        if existing and isinstance(existing.config, dict)
+        else {}
+    )
+    verification_config.update(body.config)
+    verified = await verify_channel_credentials(provider, credentials, verification_config)
+    verified_at = datetime.now(UTC).isoformat()
+    integration_config = {
+        **verified.identity_config,
+        "_connection": _verification_metadata(
+            verified_at=verified_at, display_name=verified.display_name
+        ),
+    }
+
+    if existing is None:
+        integration = Integration(
+            id=uuid.uuid4(),
+            tenant_id=ctx.tenant_id,
+            provider=provider,
+            kind="channel",
+            config=integration_config,
+            credentials=encrypt_credentials_dict(credentials),
+            status="pending",
+        )
+        _activate_verified_channel(integration)
+        ctx.session.add(integration)
+    else:
+        _activate_verified_channel(existing)
+        existing.config = integration_config
+        existing.credentials = encrypt_credentials_dict(credentials)
+        integration = existing
+
+    try:
+        await ctx.session.flush()
+    except IntegrityError:
+        # The partial unique index covers provider identity across tenants.
+        # Never expose the conflicting tenant or any provider account details.
+        raise ConflictError(
+            "This provider account is already connected to another workspace."
+        ) from None
+
+    if provider == "telegram":
+        await configure_telegram_webhook(
+            credentials,
+            _telegram_webhook_url(integration_config["public_key"]),
+        )
+        connection_metadata = dict(integration_config["_connection"])
+        connection_metadata["webhook_configured_at"] = datetime.now(UTC).isoformat()
+        integration_config = {**integration_config, "_connection": connection_metadata}
+        integration.config = integration_config
+        await ctx.session.flush()
+
+    return {
+        "id": str(integration.id),
+        "provider": provider,
+        "status": integration.status,
+        "credentials_verified": True,
+        "display_name": verified.display_name,
+        "verified_at": verified_at,
+        "public_key": integration_config.get("public_key") if provider == "webchat" else None,
+    }
+
+
+@platform_router.post(
+    "/integrations/{integration_id}/verify",
+    response_model=schemas.IntegrationVerificationOut,
+)
+async def verify_integration(
+    integration_id: UUID,
+    ctx: TenantContext = Depends(require_permission("settings:write")),
+):
+    """Recheck a saved connection without returning its encrypted credentials."""
+    integration = (
+        await ctx.session.execute(
+            select(Integration).where(
+                Integration.id == integration_id,
+                Integration.tenant_id == ctx.tenant_id,
+                Integration.kind == "channel",
+            )
+        )
+    ).scalar_one_or_none()
+    if integration is None:
+        raise NotFoundError("channel integration not found")
+    if integration.provider not in _CHANNEL_PROVIDERS:
+        raise ValidationError("This channel provider cannot be verified.")
+    if integration.status == "disabled":
+        raise ValidationError("This channel was permanently disabled.")
+
+    credentials = await IntegrationCredentialsService.decrypt(ctx.session, integration)
+    try:
+        verified = await verify_channel_credentials(
+            integration.provider, credentials, integration.config or {}
+        )
+    except ValidationError as exc:
+        current = _LEGACY_STATUS_ALIASES.get(integration.status, integration.status)
+        if current == "active":
+            Integration.validate_transition(current, "reauth_required")
+            integration.status = "reauth_required"
+        config = dict(integration.config or {})
+        config["_connection"] = _verification_metadata(
+            verified_at=None,
+            display_name=(config.get("_connection") or {}).get("display_name"),
+            failure="credentials_rejected",
+        )
+        integration.config = config
+        await ctx.session.flush()
+        return {
+            "id": str(integration.id),
+            "provider": integration.provider,
+            "status": integration.status,
+            "credentials_verified": False,
+            "display_name": (config.get("_connection") or {}).get("display_name"),
+            "verified_at": None,
+            "public_key": config.get("public_key") if integration.provider == "webchat" else None,
+            "message": exc.message,
         }
-        for i in rows
-    ]
+
+    _activate_verified_channel(integration)
+    verified_at = datetime.now(UTC).isoformat()
+    integration.config = {
+        **verified.identity_config,
+        "_connection": _verification_metadata(
+            verified_at=verified_at, display_name=verified.display_name
+        ),
+    }
+    try:
+        await ctx.session.flush()
+    except IntegrityError:
+        raise ConflictError(
+            "This provider account is already connected to another workspace."
+        ) from None
+    if integration.provider == "telegram":
+        await configure_telegram_webhook(
+            credentials,
+            _telegram_webhook_url(integration.config["public_key"]),
+        )
+        connection_metadata = dict(integration.config["_connection"])
+        connection_metadata["webhook_configured_at"] = datetime.now(UTC).isoformat()
+        integration.config = {
+            **integration.config,
+            "_connection": connection_metadata,
+        }
+        await ctx.session.flush()
+    return {
+        "id": str(integration.id),
+        "provider": integration.provider,
+        "status": integration.status,
+        "credentials_verified": True,
+        "display_name": verified.display_name,
+        "verified_at": verified_at,
+        "public_key": integration.config.get("public_key")
+        if integration.provider == "webchat"
+        else None,
+    }
 
 
 @platform_router.post(
@@ -512,7 +859,9 @@ async def upsert_integration(
     body: IntegrationBody,
     ctx: TenantContext = Depends(require_permission("settings:write")),
 ):
-    """Register/refresh a channel integration (WhatsApp/Telegram/webchat keys)."""
+    """Register a non-channel integration through the generic lifecycle API."""
+    if body.kind == "channel" and body.provider in _CHANNEL_PROVIDERS:
+        raise ValidationError("Use POST /integrations/connect to verify channel credentials.")
     existing = (
         await ctx.session.execute(
             select(Integration).where(

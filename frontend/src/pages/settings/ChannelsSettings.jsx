@@ -26,20 +26,6 @@ const CONNECTION_FIELDS = {
 };
 
 const ATTENTION_STATES = new Set(["reauth_required", "restricted", "disconnected", "degraded", "error"]);
-const CONNECTING_STATES = new Set(["pending", "connecting"]);
-
-function createPublicWidgetKey() {
-  const bytes = new Uint8Array(24);
-  window.crypto.getRandomValues(bytes);
-  return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
-}
-
-function postIntegration(provider, { credentials = {}, config = {}, status = "active" } = {}) {
-  return api("/integrations", {
-    method: "POST",
-    body: { provider, kind: "channel", credentials, config, status },
-  });
-}
 
 export default function ChannelsSettings() {
   const t = useT();
@@ -49,25 +35,21 @@ export default function ChannelsSettings() {
   const [editingId, setEditingId] = React.useState("");
   const [values, setValues] = React.useState({});
   const [saving, setSaving] = React.useState(false);
+  const [verifyingId, setVerifyingId] = React.useState("");
   const [formError, setFormError] = React.useState("");
   const [notice, setNotice] = React.useState("");
-  const [copied, setCopied] = React.useState(false);
+  const [copiedTarget, setCopiedTarget] = React.useState("");
 
   const editing = channels.find((channel) => channel.id === editingId) || null;
 
   function openConnection(channel) {
     setFormError("");
     setNotice("");
-    setCopied(false);
+    setCopiedTarget("");
     setEditingId(channel.id);
     setValues(channel.id === "webchat"
-      ? { public_key: channel.publicKey || (channel.integrationId ? "" : createPublicWidgetKey()) }
+      ? { public_key: channel.publicKey || "" }
       : {});
-    if (channel.id === "webchat" && channel.integrationId && !channel.publicKey) {
-      setFormError(isAr
-        ? "تعذر قراءة مفتاح الودجت الحالي من الـAPI؛ أعد تحميل الصفحة قبل تعديل الاتصال."
-        : "The API did not return the existing widget key. Reload before changing this connection.");
-    }
   }
 
   function closeConnection() {
@@ -84,34 +66,25 @@ export default function ChannelsSettings() {
     setFormError("");
     setNotice("");
 
-    const credentials = Object.fromEntries(
-      CONNECTION_FIELDS[editing.id]
-        .map(({ name }) => [name, String(values[name] || "").trim()])
-        .filter(([, value]) => value),
-    );
-    const config = editing.id === "webchat"
-      ? { public_key: String(values.public_key || "").trim() }
-      : {};
-    const existing = Boolean(editing.integrationId);
-    const body = { credentials, config };
+    const channelConfig = {};
+    const credentials = {};
+    if (editing.id === "whatsapp") {
+      channelConfig.phone_number_id = String(values.phone_number_id || "").trim();
+      credentials.access_token = String(values.access_token || "").trim();
+    } else if (editing.id === "instagram") {
+      channelConfig.account_id = String(values.account_id || "").trim();
+      credentials.api_key = String(values.api_key || "").trim();
+    } else if (editing.id === "messenger") {
+      credentials.api_key = String(values.api_key || "").trim();
+    } else if (editing.id === "telegram") {
+      credentials.bot_token = String(values.bot_token || "").trim();
+    }
 
     try {
-      if (!existing) {
-        // Use the backend lifecycle from its first state instead of creating a
-        // channel directly in its final state.
-        await postIntegration(editing.id, { ...body, status: "pending" });
-        await postIntegration(editing.id, { config, status: "connecting" });
-        await postIntegration(editing.id, { config, status: "active" });
-      } else if (CONNECTING_STATES.has(editing.status)) {
-        // The API enforces pending/disconnected -> connecting -> active.
-        await postIntegration(editing.id, { ...body, status: "connecting" });
-        await postIntegration(editing.id, { config, status: "active" });
-      } else {
-        await postIntegration(editing.id, {
-          ...body,
-          status: "active",
-        });
-      }
+      await api("/integrations/connect", {
+        method: "POST",
+        body: { provider: editing.id, credentials, config: channelConfig },
+      });
     } catch (saveError) {
       setFormError(saveError?.message || (isAr ? "تعذر حفظ إعدادات القناة." : "Could not save channel settings."));
       await reload().catch(() => {});
@@ -123,7 +96,9 @@ export default function ChannelsSettings() {
     setValues({});
     try {
       await reload();
-      setNotice(isAr ? "تم حفظ إعدادات القناة." : "Channel settings were saved.");
+      setNotice(isAr
+        ? "تم التحقق من بيانات الحساب وحفظ الاتصال. حالة استقبال الرسائل موضحة بجوار القناة."
+        : "Provider credentials were verified and saved. Webhook reception is shown beside the channel.");
     } catch {
       setNotice(isAr
         ? "تم الحفظ، لكن تعذر تحديث حالة القناة. أعد تحميل الصفحة."
@@ -133,11 +108,31 @@ export default function ChannelsSettings() {
     }
   }
 
-  async function copyWidgetKey() {
-    if (!values.public_key) return;
+  async function verifyConnection(channel) {
+    if (!channel.integrationId || verifyingId) return;
+    setVerifyingId(channel.id);
+    setFormError("");
+    setNotice("");
     try {
-      await navigator.clipboard.writeText(values.public_key);
-      setCopied(true);
+      const result = await api(`/integrations/${encodeURIComponent(channel.integrationId)}/verify`, {
+        method: "POST",
+      });
+      await reload();
+      setNotice(result.credentials_verified
+        ? (isAr ? "بيانات الحساب صالحة وتم تحديث التحقق." : "Credentials are valid and verification was refreshed.")
+        : (result.message || (isAr ? "بيانات الحساب مرفوضة؛ أعد ربط القناة." : "The provider rejected these credentials. Reconnect the channel.")));
+    } catch (verifyError) {
+      setFormError(verifyError?.message || (isAr ? "تعذر التحقق من القناة." : "Could not verify the channel."));
+    } finally {
+      setVerifyingId("");
+    }
+  }
+
+  async function copyValue(value, target) {
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedTarget(target);
       setFormError("");
     } catch {
       setFormError(isAr
@@ -148,16 +143,30 @@ export default function ChannelsSettings() {
 
   function statusFor(channel) {
     if (channel.connected) return t("channels.connected");
+    if (channel.integrationId && ["active", "connected"].includes(channel.status) && !channel.credentialsVerified) {
+      return isAr ? "يتطلب اختبار الاتصال" : "Verification required";
+    }
+    if (["pending", "connecting"].includes(channel.status)) return isAr ? "جارٍ الإعداد" : "Connecting";
     if (ATTENTION_STATES.has(channel.status)) return t("channels.needsAttention");
-    if (CONNECTING_STATES.has(channel.status)) return isAr ? "جارٍ الإعداد" : "Connecting";
     if (channel.status === "disabled") return isAr ? "معطّل نهائيًا" : "Permanently disabled";
     return t("channels.notConnected");
+  }
+
+  function webhookStatusFor(channel) {
+    const statuses = {
+      ready: isAr ? "جاهز لاستقبال رسائل الموقع" : "Ready for website chat",
+      receiving: isAr ? "يستقبل Webhooks" : "Receiving webhooks",
+      awaiting_first_event: isAr ? "لم يصل أول Webhook بعد" : "Waiting for the first webhook",
+      server_setup_required: isAr ? "إعداد Webhook على الخادم مطلوب" : "Server webhook setup required",
+    };
+    return statuses[channel.webhookStatus] || "";
   }
 
   return (
     <SettingsShell title={t("channels.title")} subtitle={t("channels.subtitle")}>
       <SettingCard>
         {error && <div role="alert" className="mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-[12px] text-destructive">{error}</div>}
+        {formError && !editingId && <div role="alert" className="mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-[12px] text-destructive">{formError}</div>}
         {notice && <div role="status" className="mb-3 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-[12px] text-primary">{notice}</div>}
 
         {loading && channels.length === 0 ? (
@@ -167,6 +176,7 @@ export default function ChannelsSettings() {
             {channels.map((channel) => {
               const status = statusFor(channel);
               const needsAttention = ATTENTION_STATES.has(channel.status);
+              const needsVerification = channel.integrationId && ["active", "connected"].includes(channel.status) && !channel.credentialsVerified;
               const unsupported = channel.id === "facebook";
               const terminal = channel.status === "disabled";
               const fields = CONNECTION_FIELDS[channel.id];
@@ -178,8 +188,15 @@ export default function ChannelsSettings() {
                     <div className="min-w-0 flex-1">
                       <div className="text-[13.5px] font-medium">{t(`channel.${channel.id}`)}</div>
                       <div className="text-[12px] text-muted-foreground">{status}</div>
+                      {channel.displayName && <div className="text-[11px] text-muted-foreground">{channel.displayName}</div>}
+                      {channel.integrationId && (
+                        <div className="mt-1 text-[11px] text-muted-foreground">
+                          {webhookStatusFor(channel)}
+                          {channel.lastWebhookAt && ` · ${new Intl.DateTimeFormat(isAr ? "ar-EG" : "en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(channel.lastWebhookAt))}`}
+                        </div>
+                      )}
                     </div>
-                    <Badge tone={channel.connected ? "success" : needsAttention ? "warning" : "muted"}>{status}</Badge>
+                    <Badge tone={channel.connected || channel.webhookStatus === "receiving" ? "success" : needsAttention || needsVerification ? "warning" : "muted"}>{status}</Badge>
                     {unsupported ? (
                       <span className="text-[11px] text-muted-foreground">
                         {isAr ? "رسائل صفحات فيسبوك تمر عبر تكامل Messenger؛ لا يوجد موصل Facebook منفصل بعد." : "Facebook Page messages use the Messenger integration; a separate Facebook connector is not available yet."}
@@ -189,19 +206,46 @@ export default function ChannelsSettings() {
                         {isAr ? "لا يتيح الـAPI الحالي إعادة تفعيل اتصال معطّل نهائيًا." : "The current API cannot reactivate a permanently disabled connection."}
                       </span>
                     ) : (
-                      <button
-                        type="button"
-                        onClick={() => editingId === channel.id ? closeConnection() : openConnection(channel)}
-                        disabled={saving || !fields}
-                        className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[12px] font-medium text-foreground hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {editingId === channel.id ? <Unplug className="h-3.5 w-3.5" /> : <PlugZap className="h-3.5 w-3.5" />}
-                        {editingId === channel.id
-                          ? (isAr ? "إلغاء" : "Cancel")
-                          : channel.connected || needsAttention
-                            ? t("channels.reconnect")
-                            : t("channels.connect")}
-                      </button>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {channel.integrationId && (
+                          <button
+                            type="button"
+                            onClick={() => verifyConnection(channel)}
+                            disabled={saving || Boolean(verifyingId)}
+                            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[12px] font-medium text-foreground hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {verifyingId === channel.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+                            {isAr ? "اختبار الاتصال" : "Verify"}
+                          </button>
+                        )}
+                        {(channel.publicKey || channel.webhookUrl) && (
+                          <button
+                            type="button"
+                            onClick={() => copyValue(channel.webhookUrl || channel.publicKey, channel.id)}
+                            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[12px] font-medium text-foreground hover:bg-surface"
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                            {copiedTarget === channel.id
+                              ? (isAr ? "تم النسخ" : "Copied")
+                              : channel.webhookUrl
+                                ? (isAr ? "نسخ رابط Webhook" : "Copy webhook URL")
+                                : (isAr ? "نسخ مفتاح الودجت" : "Copy widget key")}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => editingId === channel.id ? closeConnection() : openConnection(channel)}
+                          disabled={saving || !fields}
+                          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[12px] font-medium text-foreground hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {editingId === channel.id ? <Unplug className="h-3.5 w-3.5" /> : <PlugZap className="h-3.5 w-3.5" />}
+                          {editingId === channel.id
+                            ? (isAr ? "إلغاء" : "Cancel")
+                            : channel.connected || needsAttention || needsVerification
+                              ? t("channels.reconnect")
+                              : t("channels.connect")}
+                        </button>
+                      </div>
                     )}
                   </div>
 
@@ -215,17 +259,17 @@ export default function ChannelsSettings() {
                           <div className="flex gap-2">
                             <input
                               id="webchat-public-key"
-                              value={values.public_key || ""}
+                              value={values.public_key || editing.publicKey || ""}
                               readOnly
                               dir="ltr"
                               className="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-3 font-mono text-[12px]"
                             />
-                            <button type="button" onClick={copyWidgetKey} className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border px-3 text-[12px] hover:bg-background">
-                              <Copy className="h-3.5 w-3.5" />{copied ? (isAr ? "تم النسخ" : "Copied") : (isAr ? "نسخ" : "Copy")}
+                            <button type="button" onClick={() => copyValue(values.public_key || editing.publicKey, "webchat-form")} disabled={!values.public_key && !editing.publicKey} className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border px-3 text-[12px] hover:bg-background disabled:opacity-50">
+                              <Copy className="h-3.5 w-3.5" />{copiedTarget === "webchat-form" ? (isAr ? "تم النسخ" : "Copied") : (isAr ? "نسخ" : "Copy")}
                             </button>
                           </div>
                           <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
-                            {isAr ? "هذا معرّف عام للودجت، وليس سرًا. بعد الحفظ استخدمه في إعداد ويدجت الموقع." : "This is a public widget identifier, not a secret. Save it, then use it in your website chat widget."}
+                            {isAr ? "المفتاح العام لا يُعد سرًا. عند أول حفظ ينشئه الخادم، وبعدها انسخه من صف القناة." : "The public key is not a secret. The server creates it on first save; copy it from the channel row afterward."}
                           </p>
                         </div>
                       ) : fields.map((field) => (
@@ -259,7 +303,7 @@ export default function ChannelsSettings() {
                         <button type="button" onClick={closeConnection} disabled={saving} className="h-8 rounded-lg border border-border px-3 text-[12px] hover:bg-background disabled:opacity-50">
                           {isAr ? "إلغاء" : "Cancel"}
                         </button>
-                        <button type="submit" disabled={saving || (channel.id === "webchat" && !values.public_key?.trim())} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-[12px] font-medium text-primary-foreground disabled:opacity-60">
+                        <button type="submit" disabled={saving} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-[12px] font-medium text-primary-foreground disabled:opacity-60">
                           {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                           {saving ? (isAr ? "جارٍ الحفظ…" : "Saving…") : (isAr ? "حفظ وربط" : "Save and connect")}
                         </button>
@@ -274,8 +318,8 @@ export default function ChannelsSettings() {
 
         <p className="mt-3 border-t border-border pt-3 text-[11.5px] leading-relaxed text-muted-foreground">
           {isAr
-            ? "حالات الاتصال وعمليات الحفظ تأتي من الـBackend. أسرار واتساب وإنستجرام وماسنجر وتيليجرام تُرسل للخادم فقط وتُشفّر قبل تخزينها في قاعدة البيانات. إعداد Webhook لدى مزود القناة يظل مطلوبًا لتلقي الرسائل."
-            : "Connection status and saves come from the backend. WhatsApp, Instagram, Messenger, and Telegram secrets are sent only to the server and encrypted before database storage. The channel provider's webhook still needs to be configured to receive messages."}
+            ? "يختبر الخادم بيانات الاعتماد قبل تفعيل القناة ويخزنها مشفّرة. يسجل Webhook تيليجرام تلقائيًا؛ أما واتساب وإنستجرام وماسنجر فتحتاج إعداد رابط Callback وApp Secret وVerify Token في Meta Developer Console والخادم. استقبال الرسائل حالة مستقلة ويعرض آخر Webhook موثّق وصل فعلًا."
+            : "The server verifies credentials before activation and encrypts them at rest. Telegram webhooks are registered automatically. WhatsApp, Instagram, and Messenger require a callback URL plus an app secret and verify token configured in Meta Developer Console and the backend. Reception is tracked separately and shows the last authenticated event."}
         </p>
       </SettingCard>
     </SettingsShell>

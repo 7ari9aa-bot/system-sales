@@ -3,7 +3,7 @@ import { PageHeader, SectionCard, Badge, ProgressBar } from "@/components/dashbo
 import ChannelIcon from "@/components/dashboard/ChannelIcon";
 import { useRealUsage } from "@/hooks/useRealData";
 import { CHANNELS } from "@/lib/channels";
-import { User, Bell, Shield, Plug, CreditCard, Palette } from "lucide-react";
+import { User, Bell, Shield, CreditCard, Palette } from "lucide-react";
 
 function Row({ icon: Icon, title, desc, children }) {
   return (

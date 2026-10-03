@@ -1,5 +1,5 @@
 import React from 'react'
-import { Bot, Sparkles, Target, MessageCircle, Ban, ShieldCheck, Eye } from 'lucide-react'
+import { Bot, Sparkles, Target, MessageCircle } from 'lucide-react'
 import { c, DetailHero, SectionIntro, FeatureGrid, DetailPoints, Workflow } from '@/components/fihrist/Shared'
 
 const doesFeatures = [

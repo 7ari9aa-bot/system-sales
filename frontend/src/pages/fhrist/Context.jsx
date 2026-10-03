@@ -1,5 +1,5 @@
 import React from 'react'
-import { Database, Clock, Eye, ShieldCheck, UserCog, FileClock, LockKeyhole } from 'lucide-react'
+import { Database, Clock, Eye, FileClock } from 'lucide-react'
 import { c, DetailHero, SectionIntro, DetailPoints, FeatureGrid } from '@/components/fihrist/Shared'
 
 const timelinePoints = [

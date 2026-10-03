@@ -1,6 +1,6 @@
 import React from 'react'
-import { ShieldCheck, LockKeyhole, Clock, Trash2, UserCog, FileClock, Eye } from 'lucide-react'
-import { c, DetailHero, SectionIntro, DetailPoints, FeatureGrid, PrincipleCard } from '@/components/fihrist/Shared'
+import { ShieldCheck, UserCog, FileClock, Eye } from 'lucide-react'
+import { c, DetailHero, SectionIntro, DetailPoints, FeatureGrid } from '@/components/fihrist/Shared'
 
 const lifecyclePoints = [
   { title: c('التشفير', 'Encryption'), body: c('بياناتك مشفرة أثناء النقل (TLS) والتخزين (AES-256).', 'Your data is encrypted in transit (TLS) and at rest (AES-256).') },

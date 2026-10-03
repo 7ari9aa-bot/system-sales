@@ -117,7 +117,7 @@ export function ProductFrame({ variant = 'inbox', locale }) {
               </div>
               <div className="inbox-layout">
                 <div className="thread-list">
-                  {visibleThreads.map(([name, preview, badge], visibleIndex) => {
+                  {visibleThreads.map(([name, preview], visibleIndex) => {
                     const i = filter === 'unread' ? visibleIndex + 1 : visibleIndex
                     return (
                       <button className={`thread ${i === activeThread ? 'active' : ''}`} key={name} onClick={() => setActiveThread(i)} aria-pressed={i === activeThread}>

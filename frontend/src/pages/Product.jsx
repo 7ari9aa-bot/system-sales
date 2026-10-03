@@ -1,6 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Inbox, Database, Sparkles, Workflow as WorkflowIcon, Check } from 'lucide-react';
+import { ArrowRight, Inbox, Database, Sparkles, Workflow as WorkflowIcon } from 'lucide-react';
 import { useI18n, T } from '@/lib/marketing-i18n';
 
 function Reveal({ children, className = '' }) {

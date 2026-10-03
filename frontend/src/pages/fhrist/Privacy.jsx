@@ -1,5 +1,5 @@
 import React from 'react'
-import { LockKeyhole, User, MessageCircle, BarChart3, Server, ShieldCheck, Download, Trash2 } from 'lucide-react'
+import { LockKeyhole, BarChart3, Server, ShieldCheck } from 'lucide-react'
 import { c, DetailHero, SectionIntro, DetailPoints, FeatureGrid } from '@/components/fihrist/Shared'
 
 const dataPoints = [

@@ -227,6 +227,24 @@ _PRIVILEGED_ROUTES: list[tuple[str, str, str, str | None, dict]] = [
         {"provider": "whatsapp"},
     ),
     (
+        "connect_integration",
+        "POST",
+        "/api/v1/integrations/connect",
+        "settings:write",
+        {
+            "provider": "whatsapp",
+            "credentials": {"access_token": "test-token"},
+            "config": {"phone_number_id": "12345"},
+        },
+    ),
+    (
+        "verify_integration",
+        "POST",
+        f"/api/v1/integrations/{uuid.uuid4()}/verify",
+        "settings:write",
+        {},
+    ),
+    (
         "delete_ai_memory",
         "DELETE",
         f"/api/v1/ai/memories/{uuid.uuid4()}",

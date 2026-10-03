@@ -30,6 +30,7 @@ serializing a refusal, turning a privacy rule into a 500.
 
 from __future__ import annotations
 
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -76,6 +77,25 @@ class IntegrationBody(BaseModel):
     config: dict = {}
     credentials: dict = {}
     status: str = "connected"
+
+
+class IntegrationConnectBody(BaseModel):
+    """Credentials are accepted only by the server-side verifier."""
+
+    provider: Literal["whatsapp", "instagram", "messenger", "telegram", "webchat"]
+    credentials: dict[str, str] = Field(default_factory=dict)
+    config: dict[str, Any] = Field(default_factory=dict)
+
+
+class IntegrationVerificationOut(BaseModel):
+    id: UUID
+    provider: str
+    status: str
+    credentials_verified: bool
+    display_name: str | None = None
+    verified_at: str | None = None
+    public_key: str | None = None
+    message: str | None = None
 
 
 # -------------------------------------------------------------- list envelopes
@@ -329,8 +349,14 @@ class IntegrationOut(BaseModel):
     provider: str
     kind: str
     status: str
-    # The webchat widget key is public by design. Keep every other integration
-    # setting and all provider credentials out of this response.
+    credentials_verified: bool = False
+    display_name: str | None = None
+    verified_at: str | None = None
+    webhook_status: str
+    last_webhook_at: str | None = None
+    webhook_url: str | None = None
+    # The webchat/Telegram routing identifiers are public by design. Provider
+    # credentials and all other configuration stay server-side.
     public_key: str | None = None
 
 

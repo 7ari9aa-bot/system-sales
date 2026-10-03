@@ -33,7 +33,9 @@ from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 from app.modules.platform.models import Integration
 
 PROVIDER = "whatsapp"
-KIND = "channel"
+# This suite pins the generic integration lifecycle independently from the
+# provider-verified channel endpoint. Channel rows must use /integrations/connect.
+KIND = "oauth"
 
 
 def _app(db: AsyncSession, tenant_ctx) -> object:

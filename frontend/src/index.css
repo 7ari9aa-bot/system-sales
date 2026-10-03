@@ -635,6 +635,8 @@ html[lang="en"] .app :where(h1,h2,h3,h4,p,li,small,b,strong,label,option,.kicker
 @media (max-width: 600px) {
   .section { padding: 76px 0; }
   .hero { padding: 56px 0 52px; }
+  .header-actions > .login-link,
+  .header-actions > .btn { display: none; }
   .hero-visual { min-height: 270px; }
   .hero h1,
   .detail-hero h1 { font-size: clamp(36px, 10vw, 52px); }

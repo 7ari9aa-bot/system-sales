@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     database_url_app_admin: str = ""
     sales_app_db_password: str = ""
     redis_url: str = "redis://localhost:6379/0"
+    # Canonical HTTPS origin used to register provider callbacks. Do not infer
+    # it from an untrusted inbound Host header.
+    api_public_base_url: str = ""
 
     # auth
     jwt_secret: str = "change-me"

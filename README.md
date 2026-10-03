@@ -16,7 +16,7 @@ system-sales/
 │   │   │             inventory, orders, marketing, ai, platform, billing)
 │   │   └── workers/  stream worker runtime + worker pools
 │   └── tests/
-├── frontend/         Next.js + TypeScript (dashboard / inbox / realtime)
+├── frontend/         React + Vite SPA (dashboard / inbox / channel settings)
 ├── infra/            docker-compose (local), deployment templates
 ├── docs/             ARCHITECTURE.md (canonical rules), BUILD_PLAN.md (full build map)
 └── .github/          CI
@@ -60,3 +60,11 @@ The WhatsApp webhook and outbound delivery run in FastAPI and its worker
 runtime. Provider setup, callback address, required environment variables, and
 the per-tenant integration contract are documented in
 [docs/WHATSAPP_FASTAPI.md](docs/WHATSAPP_FASTAPI.md).
+
+Telegram channel connection is verified and its webhook is registered by the
+backend. Production must set `API_PUBLIC_BASE_URL` to the canonical HTTPS API
+origin and `TELEGRAM_WEBHOOK_SECRET` to a 16–256-character value using only
+letters, digits, `_` and `-`. The callback URL uses that configured origin
+rather than a request's Host header. Existing Telegram connections created
+before bot identity verification will require a one-time verification after
+the migration before message reception resumes.

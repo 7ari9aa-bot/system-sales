@@ -1,34 +1,22 @@
-# AGENTS.md
+# Frontend project instructions
 
-## Project Context
+## Project context
 
-This is a Base44 app repository. Treat it as user-owned application code, keep changes focused on the user's request, and preserve existing project conventions.
+This directory contains the React 18 + Vite frontend for FIHRIST. The FastAPI backend and PostgreSQL/Supabase database are the source of business truth. Keep requests and mutations behind the existing authenticated API client in `src/lib/api.js`; do not add direct browser access to Supabase or local business-data substitutes.
 
-Start with `README.md` for local setup, environment variables, and publish workflow.
+Locale and page-direction choices are intentional. Preserve them unless the user asks to change them.
 
-## Base44 References
+## Before changing the app
 
-- CLI overview: https://docs.base44.com/developers/references/cli/get-started/overview.md
-- Agent skills: https://docs.base44.com/developers/backend/overview/skills.md
+- Read the repository root `README.md` for architecture and local service setup.
+- Read this directory's `README.md` for frontend API and deployment environment configuration.
+- Inspect the existing route, API schema, and shared component patterns before changing a page.
+- Do not report an API mutation as successful until the backend response confirms it.
 
-If your agent supports Agent Skills, install or update Base44 skills before Base44-specific work:
+## Local workflow
 
-```bash
-npx skills add base44/skills
-```
+Run PostgreSQL, Redis, and the FastAPI backend before using the frontend for authenticated workflows. `npm run dev` serves Vite on port 3000 and proxies `/api` and `/auth` to `http://localhost:8000`.
 
-## Key Files
+## Verification
 
-- `src/`: frontend application source.
-- `src/api/base44Client.js`: frontend Base44 SDK client.
-- `vite.config.js`: Vite config and Base44 Vite plugin setup.
-- `.env.local`: local-only environment values; never commit secrets.
-
-## Working Notes
-
-- Use `base44 dev` as the default local development command when you need the local Base44 backend. It can run the backend and frontend together.
-- When docs or code mention the frontend being started automatically, that usually means the Base44 project config includes `site.serveCommand`, for example `"serveCommand": "npm run dev"` in `base44/config.jsonc`.
-- Use `npm run dev` only for frontend-only work against the hosted Base44 backend.
-- Prefer the existing Base44 CLI workflow over adding new npm scripts for Base44-specific tasks.
-- Reuse the existing SDK client and Vite plugin patterns before adding new Base44 integration paths.
-- Run the relevant checks from `package.json` before finishing code changes.
+Run the relevant scripts in `package.json` after frontend changes. Browser checks use Playwright against the production Vite build; authenticated integration checks require an explicitly configured non-production backend and account.

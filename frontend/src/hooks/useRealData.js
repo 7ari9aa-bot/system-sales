@@ -47,8 +47,16 @@ export function useRealChannels() {
         ...channel,
         integrationId: integration?.id ?? null,
         publicKey: integration?.public_key ?? null,
+        displayName: integration?.display_name ?? null,
+        credentialsVerified: integration?.credentials_verified === true,
+        verifiedAt: integration?.verified_at ?? null,
+        webhookStatus: integration?.webhook_status ?? "not_configured",
+        lastWebhookAt: integration?.last_webhook_at ?? null,
+        webhookUrl: integration?.webhook_url ?? null,
         status,
-        connected: status === "connected" || status === "active",
+        connected:
+          (status === "connected" || status === "active") &&
+          integration?.credentials_verified === true,
       };
     });
   }, []);

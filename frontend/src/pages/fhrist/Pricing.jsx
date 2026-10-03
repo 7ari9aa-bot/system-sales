@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
-import { Target, Check, ArrowRight } from 'lucide-react'
-import { c, tx, DetailHero, SectionIntro, DemoBadge, Button } from '@/components/fihrist/Shared'
+import { Target, Check } from 'lucide-react'
+import { c, tx, DetailHero, DemoBadge, Button } from '@/components/fihrist/Shared'
 
 const plans = [
   { name: c('Starter', 'Starter'), body: c('للفريق الذي يريد أول Workflow واضح.', 'For a team that wants its first clear workflow.'), features: [c('حتى 5 مستخدمين', 'Up to 5 users'), c('Inbox تجريبي', 'Illustrative inbox'), c('قالب متابعة واحد', 'One follow-up template')] },

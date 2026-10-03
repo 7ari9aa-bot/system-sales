@@ -1,9 +1,7 @@
 import React from "react";
-import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 export default function SettingsShell({ title, subtitle, children, actions }) {
-  const t = useT();
   return (
     <div className="space-y-5 animate-fade-in">
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">

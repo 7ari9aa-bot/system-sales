@@ -24,6 +24,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -175,6 +176,26 @@ class Integration(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __table_args__ = (
         UniqueConstraint(
             "tenant_id", "provider", "kind", name="uq_integrations_tenant_provider_kind"
+        ),
+        Index(
+            "uq_integrations_active_channel_identity",
+            "provider",
+            text(
+                "CASE "
+                "WHEN provider = 'whatsapp' THEN config->>'phone_number_id' "
+                "WHEN provider IN ('messenger', 'instagram') THEN config->>'account_id' "
+                "WHEN provider = 'telegram' THEN config->>'bot_id' "
+                "WHEN provider = 'webchat' THEN config->>'public_key' "
+                "END"
+            ),
+            unique=True,
+            postgresql_where=text(
+                "kind = 'channel' AND status IN ('active', 'connected') AND ("
+                "(provider = 'whatsapp' AND config->>'phone_number_id' IS NOT NULL) OR "
+                "(provider IN ('messenger', 'instagram') AND config->>'account_id' IS NOT NULL) OR "
+                "(provider = 'telegram' AND config->>'bot_id' IS NOT NULL) OR "
+                "(provider = 'webchat' AND config->>'public_key' IS NOT NULL))"
+            ),
         ),
     )
 

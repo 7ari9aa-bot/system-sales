@@ -25,6 +25,13 @@ HARDENING_MIGRATION = (
     VERSIONS_DIR / "b2c3d4e5f6a7_hardening_rls_segments_worker_columns.py"
 )
 CHANNEL_IDENTITY_MIGRATION = VERSIONS_DIR / "db6022a13691_secure_channel_identity_routing.py"
+TELEGRAM_BOT_IDENTITY_MIGRATION = VERSIONS_DIR / "fbc2a817d901_telegram_bot_identity_uniqueness.py"
+TELEGRAM_LEGACY_PAUSE_MIGRATION = (
+    VERSIONS_DIR / "a8f41c9d07e2_pause_unverified_telegram_channels.py"
+)
+CHANNEL_TENANT_ROUTING_MIGRATION = (
+    VERSIONS_DIR / "c0a2026f0199_provider_specific_channel_tenant_routing.py"
+)
 
 
 class _RecordingOp:
@@ -229,7 +236,7 @@ def test_channel_tenant_resolver_is_security_definer() -> None:
     (the mandatory hardening for SECURITY DEFINER functions).
     """
     pglast = pytest.importorskip("pglast", reason="pglast is a dev-only parser")
-    module, _ = _load_migration(HARDENING_MIGRATION)
+    module, _ = _load_migration(CHANNEL_TENANT_ROUTING_MIGRATION)
 
     sql = module._CHANNEL_TENANT_FN
     assert "SECURITY DEFINER" in sql
@@ -239,6 +246,9 @@ def test_channel_tenant_resolver_is_security_definer() -> None:
     assert "credentials" not in sql
     # Both the current lifecycle value and the legacy one must resolve.
     assert "'active', 'connected'" in sql
+    assert "WHEN 'telegram' THEN i.config->>'public_key'" in sql
+    assert "NOT EXISTS" in sql
+    assert "ORDER BY i.created_at" not in sql
     pglast.parser.parse_sql(sql)
 
 
@@ -262,7 +272,7 @@ def test_resolver_sql_matches_between_migration_and_provision() -> None:
     """
     import ast
 
-    module, _ = _load_migration(HARDENING_MIGRATION)
+    module, _ = _load_migration(CHANNEL_TENANT_ROUTING_MIGRATION)
     provision_source = (
         VERSIONS_DIR.parent.parent / "scripts" / "provision.py"
     ).read_text(encoding="utf-8")
@@ -289,6 +299,46 @@ def test_channel_identity_migration_parses_and_fails_closed_on_duplicates() -> N
     assert "reconcile integrations before deploying" in captured[0]
     assert "NOT EXISTS" in captured[2]
     assert "ORDER BY i.created_at" not in captured[2]
+
+
+def test_telegram_bot_identity_migration_preflights_and_indexes_bot_id() -> None:
+    pglast = pytest.importorskip("pglast", reason="pglast is a dev-only parser")
+    module, captured = _load_migration(TELEGRAM_BOT_IDENTITY_MIGRATION)
+    module.upgrade()
+
+    assert len(captured) == 3
+    for sql in captured:
+        pglast.parser.parse_sql(sql)
+    assert "config->>'bot_id'" in captured[0]
+    assert "HAVING count(*) > 1" in captured[0]
+    assert "DROP INDEX IF EXISTS public.uq_integrations_active_channel_identity" in captured[1]
+    assert "CREATE UNIQUE INDEX uq_integrations_active_channel_identity" in captured[2]
+    assert "WHEN provider = 'telegram' THEN config->>'bot_id'" in captured[2]
+    assert "provider = 'telegram' AND config->>'bot_id' IS NOT NULL" in captured[2]
+
+    from app.modules.platform.models import Integration
+
+    model_index = next(
+        index
+        for index in Integration.__table__.indexes
+        if index.name == "uq_integrations_active_channel_identity"
+    )
+    assert "WHEN provider = 'telegram' THEN config->>'bot_id'" in str(model_index.expressions[1])
+    assert "provider = 'telegram' AND config->>'bot_id' IS NOT NULL" in str(
+        model_index.dialect_options["postgresql"]["where"]
+    )
+
+
+def test_unverified_legacy_telegram_channels_are_paused_until_identity_check() -> None:
+    pglast = pytest.importorskip("pglast", reason="pglast is a dev-only parser")
+    module, captured = _load_migration(TELEGRAM_LEGACY_PAUSE_MIGRATION)
+    module.upgrade()
+
+    assert len(captured) == 1
+    pglast.parser.parse_sql(captured[0])
+    assert "status = 'reauth_required'" in captured[0]
+    assert "status IN ('active', 'connected')" in captured[0]
+    assert "config->>'bot_id' IS NULL" in captured[0]
 
 
 def _declared_columns() -> dict[str, set[str]]:

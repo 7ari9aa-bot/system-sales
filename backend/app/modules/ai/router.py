@@ -26,7 +26,11 @@ from app.modules.ai.agents.sales_intelligence.agent import (
     AnalysisRequest as SalesAnalysisRequest,
 )
 from app.modules.ai.agents.sales_intelligence.agent import (
+    AnalysisStoredOut as SalesAnalysisStoredOut,
+)
+from app.modules.ai.agents.sales_intelligence.agent import (
     FindingOut,
+    FindingStoredOut,
 )
 from app.modules.ai.approvals import ApprovalService
 from app.modules.ai.models import Agent, AIUsage, KnowledgeItem, Memory
@@ -169,6 +173,40 @@ async def create_sales_analysis(
         facts=result.facts,
         data_quality_status=result.data_quality.status.value,
         guardrail_reason=result.guardrail_reason,
+    )
+
+
+@router.get("/sales/analyses/{analysis_id}", response_model=SalesAnalysisStoredOut)
+async def get_sales_analysis(ctx: TenantCtxDep, analysis_id: uuid.UUID) -> SalesAnalysisStoredOut:
+    """§12.4 — a stored analysis: the immutable pack plus its graded findings."""
+    from app.core.errors import NotFoundError
+    from app.modules.analytics.persistence import load_analysis
+
+    stored = await load_analysis(ctx.session, ctx.tenant_id, analysis_id)
+    if stored is None:
+        raise NotFoundError(f"analysis {analysis_id} not found")
+    return SalesAnalysisStoredOut(
+        analysis_id=stored["analysis_id"],
+        run_id=stored["run_id"],
+        question=stored["question"],
+        outcome=stored["outcome"],
+        content_hash=stored["content_hash"],
+        model=stored["model"],
+        prompt_version=stored["prompt_version"],
+        created_at=stored["created_at"],
+        pack=stored["pack"],
+        findings=[
+            FindingStoredOut(
+                statement=f["statement"],
+                type=f["type"],
+                relationship=f["relationship"],
+                confidence=f["confidence"],
+                confidence_reasons=f["confidence_reasons"],
+                evidence_refs=f["evidence_refs"],
+                materiality=f["materiality"],
+            )
+            for f in stored["findings"]
+        ],
     )
 
 

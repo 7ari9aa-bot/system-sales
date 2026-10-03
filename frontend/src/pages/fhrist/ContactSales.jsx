@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { MessageCircle, Check, ArrowRight } from 'lucide-react'
-import { c, tx, DetailHero, SectionIntro, DemoBadge } from '@/components/fihrist/Shared'
+import { c, tx, DetailHero } from '@/components/fihrist/Shared'
 
 export default function ContactSales({ locale }) {
   const [sent, setSent] = useState(false)
