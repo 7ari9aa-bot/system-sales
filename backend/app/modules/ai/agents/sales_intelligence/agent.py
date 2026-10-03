@@ -74,6 +74,7 @@ class AnalysisResult:
     facts: list[dict] = field(default_factory=list)
     evidence_hash: str | None = None
     analysis_id: uuid.UUID | None = None
+    saved_evidence_id: uuid.UUID | None = None
     tool_calls_made: list[dict] = field(default_factory=list)
     data_quality: DataQuality = field(
         default_factory=lambda: DataQuality(status=DataQualityStatus.COMPLETE)
@@ -220,6 +221,16 @@ async def run_sales_analysis(
     from app.modules.ai.runtime import AgentRunner
 
     runner = runner or AgentRunner(gateway=AIGateway())
+    analysis_id = uuid.uuid4()
+    from app.modules.analytics.events import emit_analysis_event
+
+    await emit_analysis_event(
+        session, tenant_id,
+        event_type="ai.analysis.started",
+        analysis_id=analysis_id,
+        run_id=None,
+        payload={"question": question},
+    )
     result = await runner.run(
         session,
         tenant_id,
@@ -228,6 +239,7 @@ async def run_sales_analysis(
         system_prompt=SI_SYSTEM_PROMPT,
     )
 
+    run_id = result.run_id
     payloads = _rebuild_facts(result.tool_calls_made)
     allowed = allowed_numbers_from_facts(payloads)
     facts_contracts = _facts_to_contracts(payloads)
@@ -239,7 +251,7 @@ async def run_sales_analysis(
         _store_from(facts_contracts),
     ) if facts_contracts else []
     evidence_hash = None
-    analysis_id = None
+    saved_evidence_id = None
     if facts_contracts:
         pack = build_pack(
             _store_from(facts_contracts),
@@ -249,7 +261,7 @@ async def run_sales_analysis(
         evidence_hash = pack.content_hash
         from app.modules.analytics.persistence import save_analysis
 
-        analysis_id = await save_analysis(
+        saved_evidence_id = await save_analysis(
             session,
             tenant_id,
             question=question,
@@ -266,6 +278,14 @@ async def run_sales_analysis(
             logger.warning(
                 "si.answer_rejected tenant=%s problems=%s", tenant_id, problems
             )
+            await emit_analysis_event(
+                session, tenant_id,
+                event_type="ai.analysis.completed",
+                analysis_id=analysis_id,
+                run_id=run_id,
+                payload={"outcome": "ANSWERED", "findings": len(findings),
+                         "safe_response": True},
+            )
             return AnalysisResult(
                 outcome=Outcome.ANSWERED,
                 answer=safe_response(findings, {}),
@@ -273,9 +293,17 @@ async def run_sales_analysis(
                 facts=payloads,
                 evidence_hash=evidence_hash,
                 analysis_id=analysis_id,
+                saved_evidence_id=saved_evidence_id,
                 tool_calls_made=result.tool_calls_made,
                 guardrail_reason="si_response_invalid",
             )
+        await emit_analysis_event(
+            session, tenant_id,
+            event_type="ai.analysis.completed",
+            analysis_id=analysis_id,
+            run_id=run_id,
+            payload={"outcome": "ANSWERED", "findings": len(findings)},
+        )
         return AnalysisResult(
             outcome=Outcome.ANSWERED,
             answer=result.content,
@@ -283,6 +311,7 @@ async def run_sales_analysis(
             facts=payloads,
             evidence_hash=evidence_hash,
             analysis_id=analysis_id,
+            saved_evidence_id=saved_evidence_id,
             tool_calls_made=result.tool_calls_made,
         )
 
@@ -296,6 +325,7 @@ async def run_sales_analysis(
         facts=payloads,
         evidence_hash=evidence_hash,
         analysis_id=analysis_id,
+        saved_evidence_id=saved_evidence_id,
         tool_calls_made=result.tool_calls_made,
         guardrail_reason=result.guardrail_reason,
     )

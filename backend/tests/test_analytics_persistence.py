@@ -11,6 +11,8 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
+from sqlalchemy import select
+
 from app.modules.analytics.contracts import (
     AnalysisPeriod,
     DataQuality,
@@ -101,3 +103,30 @@ async def test_foreign_tenant_loads_nothing(db, tenant_ctx):
 
 async def test_missing_analysis_returns_none(db, tenant_ctx):
     assert await load_analysis(db, tenant_ctx.tenant_id, uuid.uuid4()) is None
+
+
+async def test_analysis_events_staged_through_the_outbox(db, tenant_ctx):
+    """§12.3 — real runtime events, staged in the same transaction."""
+    from app.modules.analytics.events import emit_analysis_event
+    from app.modules.platform.models import OutboxEvent
+
+    analysis_id = uuid.uuid4()
+    await emit_analysis_event(
+        db,
+        tenant_ctx.tenant_id,
+        event_type="ai.analysis.started",
+        analysis_id=analysis_id,
+        run_id=None,
+        payload={"question": "كام المبيعات؟"},
+    )
+    events = (
+        await db.execute(
+            select(OutboxEvent).where(
+                OutboxEvent.aggregate_id == analysis_id,
+            )
+        )
+    ).scalars().all()
+    assert len(events) == 1
+    assert events[0].payload["event_type"] == "ai.analysis.started"
+    assert events[0].payload["analysis_id"] == str(analysis_id)
+    assert events[0].meta["tenant_id"] == str(tenant_ctx.tenant_id)

@@ -123,6 +123,10 @@ class EventEnvelope(BaseModel):
 # this import runs (or replace the base registration) — see register_event.
 DOMAIN_EVENT_TYPES: tuple[str, ...] = (
     # §169: AI evaluation canary rollout lifecycle (ai/evaluation.py).
+    # Sales Intelligence analysis lifecycle (analytics/events.py) — real
+    # runtime events for the dashboard stream (spec §12.3).
+    "ai.analysis.completed",
+    "ai.analysis.started",
     "ai.canary_rolled_back",
     "ai.canary_started",
     # §175: campaign + journey execution lifecycle (marketing/). The

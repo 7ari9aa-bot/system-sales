@@ -117,6 +117,10 @@ DOMAIN_PRIORITIES: dict[str, EventPriority] = {
     "tenant.restore.completed": EventPriority.CRITICAL_SYSTEM,
     "ai.canary_started": EventPriority.CRITICAL_SYSTEM,
     "ai.canary_rolled_back": EventPriority.CRITICAL_SYSTEM,
+    # Sales Intelligence analysis lifecycle (§12.3): the merchant is
+    # watching the stream — interactive-tier, not bulk.
+    "ai.analysis.started": EventPriority.AI_RESPONSE,
+    "ai.analysis.completed": EventPriority.AI_RESPONSE,
     # Customer Webhooks: provider deliveries (§22 ingress, §24 replay,
     # outbound deliveries) outrank automation but not interactive paths.
     "webhook.ingest": EventPriority.CUSTOMER_WEBHOOK,
