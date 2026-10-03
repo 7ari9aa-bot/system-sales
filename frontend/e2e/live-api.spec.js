@@ -7,7 +7,7 @@ test("real registration, dashboard reads, orders, and logout work end to end", a
   page.on("pageerror", (error) => pageErrors.push(error.message));
 
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-  const email = `live-e2e-${suffix}@example.test`;
+  const email = `live-e2e-${suffix}@example.com`;
   const password = `Live-e2e-${suffix}!`;
 
   await page.goto("/register");
@@ -30,7 +30,8 @@ test("real registration, dashboard reads, orders, and logout work end to end", a
 
   await page.getByRole("button", { name: /إنشاء الحساب|create account/i }).click();
 
-  expect((await registerResponsePromise).status()).toBe(201);
+  const registerResponse = await registerResponsePromise;
+  expect(registerResponse.status(), await registerResponse.text()).toBe(201);
   expect((await loginResponsePromise).status()).toBe(200);
   await expect(page).toHaveURL(/\/dashboard$/);
 
