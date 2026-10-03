@@ -55,6 +55,45 @@ test("protected dashboard and settings deep links return an anonymous user to lo
   }
 });
 
+test("an invalid bearer token returned as 403 refreshes once then clears the session", async ({ page }) => {
+  let refreshRequests = 0;
+  const authFailure = {
+    error: {
+      code: "permission_denied",
+      message: "invalid token",
+      retryable: false,
+      request_id: "e2e-auth-expired",
+    },
+  };
+
+  await page.addInitScript(() => {
+    localStorage.setItem("fihrist_tokens", JSON.stringify({
+      access_token: "expired-access-token",
+      refresh_token: "expired-refresh-token",
+    }));
+  });
+  await page.route("**/api/v1/auth/me", (route) => route.fulfill({
+    status: 403,
+    contentType: "application/json",
+    body: JSON.stringify(authFailure),
+  }));
+  await page.route("**/api/v1/auth/refresh", (route) => {
+    refreshRequests += 1;
+    return route.fulfill({
+      status: 403,
+      contentType: "application/json",
+      body: JSON.stringify(authFailure),
+    });
+  });
+
+  await page.goto("/dashboard");
+
+  await expect(page).toHaveURL(/\/login\?returnTo=%2Fdashboard/);
+  await expect(page.getByRole("heading", { name: /مرحباً بعودتك|welcome back/i })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("fihrist_tokens"))).toBeNull();
+  expect(refreshRequests).toBe(1);
+});
+
 test("login and pricing fit a mobile viewport without horizontal scrolling", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   for (const route of ["/login", "/pricing"]) {

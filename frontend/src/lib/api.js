@@ -59,6 +59,23 @@ export class ApiError extends Error {
 
 let refreshInFlight = null;
 
+// The production API currently serializes missing/invalid bearer credentials
+// as 403 `permission_denied`. Keep this compatibility mapping narrow so real
+// role/permission denials remain 403 and do not trigger a token refresh.
+const AUTHENTICATION_DENIAL_MESSAGES = new Set([
+  "missing bearer token",
+  "wrong token type",
+  "invalid token",
+  "account is inactive",
+]);
+
+function isAuthenticationFailure(status, code, message) {
+  if (status === 401 || code === "unauthorized") return true;
+  return status === 403
+    && code === "permission_denied"
+    && AUTHENTICATION_DENIAL_MESSAGES.has(String(message ?? "").trim().toLowerCase());
+}
+
 async function refreshTokens() {
   if (refreshInFlight) return refreshInFlight;
   const task = (async () => {
@@ -133,7 +150,25 @@ export async function api(path, { method = "GET", body, retry = true, headers = 
     throw err;
   }
 
-  if (res.status === 401 && retry && tokens?.refresh_token) {
+  let errorMessage = `HTTP ${res.status}`;
+  let errorCode = null;
+  let errorDetails = null;
+  if (!res.ok) {
+    try {
+      const data = await res.json();
+      const raw = data?.error?.message ?? data?.detail;
+      if (typeof raw === "string") errorMessage = raw;
+      errorCode = data?.error?.code ?? null;
+      errorDetails = data?.error?.details ?? data?.details ?? null;
+    } catch {
+      /* بدون جسم JSON */
+    }
+  }
+
+  const authenticationFailure = isAuthenticationFailure(res.status, errorCode, errorMessage);
+  const inactiveAccount = errorMessage.trim().toLowerCase() === "account is inactive";
+
+  if (authenticationFailure && retry && tokens?.refresh_token && !inactiveAccount) {
     let ok;
     try {
       ok = await refreshTokens();
@@ -153,23 +188,23 @@ export async function api(path, { method = "GET", body, retry = true, headers = 
     setTokens(null);
   }
 
+  // Missing credentials, a rejected refresh token, or an inactive account
+  // must become a terminal auth state. AuthContext handles 401/unauthorized
+  // by clearing the session and returning the user to the login route.
+  if (authenticationFailure && (!retry || !tokens?.refresh_token || inactiveAccount)) {
+    setTokens(null);
+  }
+
   if (!res.ok) {
-    let message = `HTTP ${res.status}`;
-    let code = null;
-    let details = null;
-    try {
-      const data = await res.json();
-      const raw = data?.error?.message ?? data?.detail;
-      if (typeof raw === "string") message = raw;
-      code = data?.error?.code ?? null;
-      details = data?.error?.details ?? data?.details ?? null;
-    } catch {
-      /* بدون جسم JSON */
-    }
     // قاعدة الحارس: أي قراءة (GET) فاشلة برا مسار المصادقة مش بتنطّي —
     // بتتسجل في الحارس حتى لو المُستهلك قبض الخطأ وعرض صفير فاضي.
     // فشل المصادقة المتوقع (بيانات دخول غلط) بيتعرض في الفورم نفسه.
-    const err = new ApiError(message, { status: res.status, code, retryable: res.status >= 500, details });
+    const err = new ApiError(errorMessage, {
+      status: authenticationFailure ? 401 : res.status,
+      code: authenticationFailure ? "unauthorized" : errorCode,
+      retryable: res.status >= 500,
+      details: errorDetails,
+    });
     if (method === "GET" && !path.startsWith("/auth/")) {
       reportFailure(path, err);
     }
