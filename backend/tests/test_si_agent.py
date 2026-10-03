@@ -68,7 +68,7 @@ async def test_si_tools_registered_in_the_platform_registry():
     from app.modules.ai.tools import TOOLS
 
     si_tools = sorted(n for n in TOOLS if n.startswith("si_"))
-    assert len(si_tools) == 6
+    assert len(si_tools) == 9
 
 
 async def test_orchestrator_rejects_a_free_number_with_the_safe_response(

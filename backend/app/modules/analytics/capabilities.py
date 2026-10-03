@@ -35,6 +35,12 @@ from app.modules.analytics.contracts import (
     MetricFact,
 )
 from app.modules.analytics.drivers import orders_vs_aov
+from app.modules.analytics.engines import (
+    customer_split,
+    fulfillment_by_carrier,
+    seasonality_explains,
+    weekday_profile,
+)
 from app.modules.analytics.semantic import StoreMetricProfile, metric
 
 
@@ -354,3 +360,77 @@ def get_data_status() -> CapabilityResult:
 
 def unknown_metric_metric_guard(metric_name: str) -> None:
     metric(metric_name)  # KeyError escapes loudly to the caller
+
+
+def analyze_seasonality(
+    daily_current: dict,
+    daily_previous: dict,
+) -> CapabilityResult:
+    """§5.3 — is the change explained by the weekday mix? Plus the profile."""
+    explained, gap = seasonality_explains(daily_current, daily_previous)
+    return CapabilityResult(
+        capability="analyze_seasonality",
+        status="ok" if gap is not None else "no_data",
+        evidence_ids=[],
+        summary={
+            "seasonality_explains_change": explained,
+            "unexplained_share": gap,
+            "weekday_profile": weekday_profile(daily_current),
+        },
+        data_quality=DataQuality(status=DataQualityStatus.COMPLETE),
+        limitations=[
+            "business calendar events (Ramadan/Eids) join in a later wave — "
+            "v1 reads weekday shape only"
+        ],
+    )
+
+
+def analyze_customers(
+    orders: list[dict], *, window_start: datetime
+) -> CapabilityResult:
+    """§5.4 — new vs returning in the window (identity v1: raw customer ids)."""
+    split = customer_split(orders, window_start)
+    total = split["new"] + split["returning"]
+    return CapabilityResult(
+        capability="analyze_customers",
+        status="ok" if total else "no_data",
+        evidence_ids=[],
+        summary={
+            "new": split["new"],
+            "returning": split["returning"],
+            "identity_quality": "raw customer ids — unification lands later",
+        },
+        data_quality=DataQuality(status=DataQualityStatus.COMPLETE),
+        limitations=[
+            "identity resolution not applied — near-duplicate customers may split"
+        ],
+    )
+
+
+def analyze_fulfillment(
+    shipments: list[dict], *, minimum_volume: int = 10
+) -> CapabilityResult:
+    """§5.7 — carrier performance from real shipment statuses."""
+    carriers = fulfillment_by_carrier(shipments, minimum_volume=minimum_volume)
+    return CapabilityResult(
+        capability="analyze_fulfillment",
+        status="ok" if carriers else "no_data",
+        evidence_ids=[],
+        summary={
+            "carriers": [
+                {
+                    "carrier": c.carrier,
+                    "total": c.total,
+                    "delivered": c.delivered,
+                    "rejected": c.rejected,
+                    "in_flight": c.in_flight,
+                    "avg_days_to_deliver": c.avg_days_to_deliver,
+                }
+                for c in carriers
+            ]
+        },
+        data_quality=DataQuality(status=DataQualityStatus.COMPLETE),
+        limitations=[
+            f"carriers under the {minimum_volume}-shipment minimum are omitted"
+        ],
+    )

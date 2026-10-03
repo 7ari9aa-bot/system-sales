@@ -12,9 +12,10 @@ can rebuild evidence without re-querying.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from pydantic import BaseModel, Field
+from sqlalchemy import text as _sql
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.ai.tools import ToolSpec, register_tool
@@ -242,12 +243,154 @@ def register_si_tools() -> None:
             handler=_si_data_status,
             tags=["sales-intelligence"],
         ),
+        ToolSpec(
+            name="si_analyze_seasonality",
+            description="Does the weekday mix explain the change? Daily revenue shape.",
+            args_schema=SISeasonalityArgs,
+            handler=_si_analyze_seasonality,
+            tags=["sales-intelligence"],
+        ),
+        ToolSpec(
+            name="si_analyze_customers",
+            description="New vs returning customers in the window.",
+            args_schema=SICustomersArgs,
+            handler=_si_analyze_customers,
+            tags=["sales-intelligence"],
+        ),
+        ToolSpec(
+            name="si_analyze_fulfillment",
+            description="Carrier delivery/rejection rates (minimum volume applies).",
+            args_schema=SIFulfillmentArgs,
+            handler=_si_analyze_fulfillment,
+            tags=["sales-intelligence"],
+        ),
     ]
     from app.modules.ai.tools import get_tool
 
     for spec in specs:
         if get_tool(spec.name) is None:
             register_tool(spec)
+
+
+class SISeasonalityArgs(BaseModel):
+    days: int = Field(default=30, ge=1, le=90)
+
+
+async def _si_analyze_seasonality(
+    session: AsyncSession, tenant_id: uuid.UUID, *, days: int = 30,
+    context: dict | None = None,
+) -> dict:
+    """§5.3 v1 — reads the store's REAL daily revenue and checks whether
+    the weekday mix explains the change."""
+    from decimal import Decimal
+
+    from app.modules.analytics.capabilities import analyze_seasonality
+
+    current = _resolve_window(days)
+    previous_start = current.start - timedelta(days=days)
+
+    rows = (
+        await session.execute(
+            _sql(
+                "SELECT COALESCE(o.placed_at, o.created_at)::date AS day, "
+                "SUM(o.grand_total) AS revenue "
+                "FROM orders o WHERE o.tenant_id = :tenant_id "
+                "AND o.deleted_at IS NULL "
+                "AND COALESCE(o.placed_at, o.created_at) >= :start "
+                "AND COALESCE(o.placed_at, o.created_at) < :end "
+                "GROUP BY day ORDER BY day"
+            ),
+            {"tenant_id": str(tenant_id), "start": previous_start, "end": current.end},
+        )
+    ).all()
+    daily = {r.day: Decimal(str(r.revenue)) for r in rows}
+    split_point = current.start.date()
+    daily_current = {d: v for d, v in daily.items() if d >= split_point}
+    daily_previous = {d: v for d, v in daily.items() if d < split_point}
+    season = analyze_seasonality(daily_current, daily_previous)
+    return {
+        "capability": season.capability,
+        "status": season.status,
+        "summary": season.summary,
+        "limitations": season.limitations,
+    }
+
+
+class SICustomersArgs(BaseModel):
+    days: int = Field(default=30, ge=1, le=90)
+
+
+async def _si_analyze_customers(
+    session: AsyncSession, tenant_id: uuid.UUID, *, days: int = 30,
+    context: dict | None = None,
+) -> dict:
+    """§5.4 v1 — new vs returning from the store's real orders."""
+
+    from app.modules.analytics.capabilities import analyze_customers
+
+    current = _resolve_window(days)
+    rows = (
+        await session.execute(
+            _sql(
+                "SELECT customer_id::text AS customer_id, "
+                "COALESCE(placed_at, created_at) AS placed_at "
+                "FROM orders o WHERE o.tenant_id = :tenant_id "
+                "AND o.deleted_at IS NULL "
+                "AND COALESCE(placed_at, created_at) >= :start "
+                "AND COALESCE(placed_at, created_at) < :end + interval '60 days' "
+                "ORDER BY COALESCE(placed_at, created_at)"
+            ),
+            {"tenant_id": str(tenant_id), "start": current.start, "end": current.end},
+        )
+    ).all()
+    orders = [
+        {"customer_id": r.customer_id, "placed_at": r.placed_at} for r in rows
+    ]
+    result = analyze_customers(orders, window_start=current.start)
+    return {
+        "capability": result.capability,
+        "status": result.status,
+        "summary": result.summary,
+        "limitations": result.limitations,
+    }
+
+
+class SIFulfillmentArgs(BaseModel):
+    days: int = Field(default=30, ge=1, le=90)
+    minimum_volume: int = Field(default=10, ge=1, le=100)
+
+
+async def _si_analyze_fulfillment(
+    session: AsyncSession, tenant_id: uuid.UUID, *, days: int = 30,
+    minimum_volume: int = 10, context: dict | None = None,
+) -> dict:
+    """§5.7 v1 — carrier performance from the store's real shipments."""
+
+    from app.modules.analytics.capabilities import analyze_fulfillment
+
+    current = _resolve_window(days)
+    rows = (
+        await session.execute(
+            _sql(
+                "SELECT s.carrier, s.status, s.shipped_at, s.delivered_at "
+                "FROM shipments s WHERE s.tenant_id = :tenant_id "
+                "AND s.delivered_at >= :start AND s.delivered_at < :end"
+            ),
+            {"tenant_id": str(tenant_id), "start": current.start, "end": current.end},
+        )
+    ).all()
+    shipments = [
+        {"carrier": r.carrier, "status": r.status,
+         "shipped_at": r.shipped_at, "delivered_at": r.delivered_at}
+        for r in rows
+    ]
+    result = analyze_fulfillment(shipments, minimum_volume=minimum_volume)
+    return {
+        "capability": result.capability,
+        "status": result.status,
+        "summary": result.summary,
+        "limitations": result.limitations,
+    }
 
 
 register_si_tools()
