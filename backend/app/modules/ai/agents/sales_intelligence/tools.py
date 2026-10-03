@@ -198,6 +198,21 @@ async def _si_data_status(
     }
 
 
+#: The SI tool names in one place — the configure script and the orchestrator
+#: read this tuple instead of re-listing them.
+SI_TOOLS: tuple[str, ...] = (
+    "si_get_metric",
+    "si_compare_periods",
+    "si_breakdown",
+    "si_analyze_drivers",
+    "si_explain_metric",
+    "si_data_status",
+    "si_analyze_seasonality",
+    "si_analyze_customers",
+    "si_analyze_fulfillment",
+)
+
+
 def register_si_tools() -> None:
     """Idempotent registration into the platform registry."""
     specs = [

@@ -26,7 +26,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.ai.agents.sales_intelligence import (
-    tools as _si_tools,  # noqa: F401 — registers the SI tools
+    tools as _si_tools,  # noqa: F401 — registers the SI tools at import
 )
 from app.modules.ai.agents.sales_intelligence.response import (
     allowed_numbers_from_facts,
@@ -53,16 +53,6 @@ SI_SYSTEM_PROMPT = (
     "قبل ما تجاوب، وكل رقم في إجابتك لازم يكون من نتيجة أداة. "
     "لو البيانات مش كفاية قول كده بصراحة. التوصيات اقتراحات مراجعة مش أفعال."
 )
-
-SI_TOOLS = (
-    "si_get_metric",
-    "si_compare_periods",
-    "si_breakdown",
-    "si_analyze_drivers",
-    "si_explain_metric",
-    "si_data_status",
-)
-
 
 @dataclass(slots=True)
 class AnalysisResult:
