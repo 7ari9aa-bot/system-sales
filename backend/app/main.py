@@ -414,11 +414,15 @@ def create_app() -> FastAPI:
     app.add_middleware(RateLimitMiddleware)
     app.add_middleware(BodySizeLimitMiddleware)
     app.add_middleware(_RequestIDMiddleware)
+    # The method/header lists are the ones the FIRST-PARTY frontend actually
+    # sends (api.js: Content-Type + Bearer Authorization; AI page: If-Match
+    # for ETag optimistic concurrency). Wildcards would let a compromised
+    # origin probe verb/header combinations the app never uses.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[o.strip() for o in settings.cors_origins.split(",")],
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "If-Match"],
     )
     app.add_middleware(SecurityHeadersMiddleware)
 

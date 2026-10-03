@@ -38,6 +38,7 @@ dependencies = [
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.23",
+    "pytest-cov>=5.0",
     "ruff>=0.5",
     "fakeredis[lua]>=2.21",  # Lua script tests (sliding-window ratelimit) need lupa
     "pglast>=6.0",  # real PostgreSQL parser: validates generated migration SQL offline
