@@ -82,6 +82,46 @@ jobs:
       # a silently-skipped RLS test is indistinguishable from a passing one —
       # which is exactly how a FORCE-RLS production bug went unnoticed.
       - run: pytest -q -rs
+      # Exercise the built frontend against this job's disposable PostgreSQL +
+      # Redis and a real FastAPI process. The browser creates its own test user,
+      # reads dashboard/orders, and logs out; no production data or credentials.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Install Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - name: Start API for the real-data browser flow
+        run: |
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/fihrist-api.log 2>&1 &
+          for attempt in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:8000/readyz; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat /tmp/fihrist-api.log
+          exit 1
+      - name: Build frontend bundle
+        working-directory: frontend
+        run: npm run build
+      - name: Verify real registration, dashboard, orders, and logout in Chromium
+        working-directory: frontend
+        env:
+          E2E_LIVE_API: "1"
+        run: npx playwright test e2e/live-api.spec.js
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: live-api-playwright-results
+          path: frontend/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
 
   frontend:
     runs-on: ubuntu-24.04
