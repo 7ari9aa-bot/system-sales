@@ -81,9 +81,9 @@ jobs:
       # -rs prints the reason for every skip. Without it a skip is invisible, and
       # a silently-skipped RLS test is indistinguishable from a passing one —
       # which is exactly how a FORCE-RLS production bug went unnoticed.
-      # Coverage measurement (audit P0): the gate number lands in a follow-up
-      # commit once the runner reports the baseline — measured, not guessed.
-      - run: pytest -q -rs --cov=app --cov-report=term
+      # Coverage gate (audit P0): 80% measured on the runner 2026-10-03
+      # (21,910 statements, 84%). Lowering this number requires an ADR.
+      - run: pytest -q -rs --cov=app --cov-report=term --cov-fail-under=80
       # Exercise the built frontend against this job's disposable PostgreSQL +
       # Redis and a real FastAPI process. The browser creates its own test user,
       # reads dashboard/orders, and logs out; no production data or credentials.

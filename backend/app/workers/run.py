@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import signal
 
 from app.core.events.bus import RedisStreamsBus
 from app.core.events.outbox import OutboxRelay
@@ -71,17 +72,63 @@ POOLS: dict[str, type[StreamWorker]] = {
 }
 
 
-async def main(pools: list[str]) -> None:
+#: Seconds a draining worker gets to finish its in-flight event before the
+#: task is cancelled. At-least-once redelivery covers whatever an overrun
+#: leaves behind, so this bounds deploy/scale-down stalls, not correctness.
+DRAIN_GRACE_SECONDS = 15.0
+
+
+def install_signal_handlers(stop: asyncio.Event) -> None:
+    """SIGTERM (platform deploys) and SIGINT (Ctrl+C) request a drain.
+
+    Windows dev loops raise NotImplementedError for add_signal_handler —
+    there the default KeyboardInterrupt path applies and tests skip.
+    """
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            loop.add_signal_handler(sig, stop.set)
+        except NotImplementedError:
+            logger.warning("signal handler unavailable for %s", sig.name)
+
+
+async def main(pools: list[str], *, stop: asyncio.Event | None = None) -> None:
+    stop = stop or asyncio.Event()
     bus = RedisStreamsBus(get_redis())
-    tasks = [asyncio.create_task(OutboxRelay(bus).run(), name="outbox-relay")]
+    relay = OutboxRelay(bus)
+    tasks = [asyncio.create_task(relay.run(), name="outbox-relay")]
+    workers: list = []
     try:
         for pool in pools:
             worker_cls = POOLS.get(pool)
             if worker_cls is None:
                 raise SystemExit(f"unknown pool: {pool} (available: {', '.join(POOLS)})")
-            tasks.append(asyncio.create_task(worker_cls(bus).run(), name=pool))
+            worker = worker_cls(bus)
+            workers.append(worker)
+            tasks.append(asyncio.create_task(worker.run(), name=pool))
         logger.info("workers.running pools=%s", pools)
-        await asyncio.gather(*tasks)
+        install_signal_handlers(stop)
+        stop_task = asyncio.create_task(stop.wait(), name="shutdown-signal")
+        # A crashed pool task fires FIRST_COMPLETED too: its exception is
+        # re-raised below — crash-only supervision, the platform restarts.
+        await asyncio.wait([*tasks, stop_task], return_when=asyncio.FIRST_COMPLETED)
+        if stop.is_set():
+            logger.info(
+                "workers.draining pools=%s grace_seconds=%s", pools, DRAIN_GRACE_SECONDS
+            )
+            for worker in workers:
+                worker.stop()
+            relay.stop()
+            stop_wait = asyncio.create_task(asyncio.sleep(DRAIN_GRACE_SECONDS))
+            await asyncio.wait([*tasks, stop_wait], timeout=DRAIN_GRACE_SECONDS)
+            stop_wait.cancel()
+        for task in tasks:
+            if task.done() and not task.cancelled() and task.exception() is not None:
+                raise task.exception()
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
     finally:
         await close_redis()
 
