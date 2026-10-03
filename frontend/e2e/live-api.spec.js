@@ -52,7 +52,7 @@ test("real registration, dashboard reads, orders, and logout work end to end", a
       && url.searchParams.get("limit") === "100"
       && response.request().method() === "GET";
   });
-  await page.getByRole("link", { name: /^orders$|^الطلبات$/i }).click();
+  await page.getByRole("navigation").locator('a[href="/orders"]').click();
   await expect(page).toHaveURL(/\/orders$/);
   const ordersResponse = await ordersResponsePromise;
   expect(ordersResponse.status()).toBe(200);
