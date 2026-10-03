@@ -20,12 +20,12 @@ export default function ResetPassword() {
         locale
       )}
     >
-      <p className="text-[13.5px] leading-[1.8]">
-        {tx(
-          c("كلمنا على البريد وهنرجعلك بحسابك: 7ari9aa@gmail.com", "Email us and we'll restore your access: 7ari9aa@gmail.com"),
-          locale
-        )}
-      </p>
+      <div className="text-[13.5px] leading-[1.8]">
+        <p>{tx(c("كلمنا على البريد وهنساعدك ترجع لحسابك:", "Email us and we'll help you recover your account:"), locale)}</p>
+        <a href="mailto:7ari9aa@gmail.com" className="auth-link inline-flex mt-2" dir="ltr">
+          7ari9aa@gmail.com
+        </a>
+      </div>
       <Link to="/login" className="auth-link inline-flex mt-4">
         {tx(c("رجوع لتسجيل الدخول", "Back to sign in"), locale)}
       </Link>
