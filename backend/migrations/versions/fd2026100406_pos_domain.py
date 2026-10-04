@@ -21,20 +21,6 @@ _TENANT_GUARD = "NULLIF(current_setting('app.tenant_id', true), '')::uuid"
 _TABLES = ("pos_registers", "pos_sessions", "pos_cash_movements", "pos_receipts")
 
 
-def _base_columns() -> list[sa.Column]:
-    return [
-        sa.Column("id", sa.Uuid(), primary_key=True),
-        sa.Column(
-            "tenant_id",
-            sa.Uuid(),
-            sa.ForeignKey("tenants.id", ondelete="CASCADE"),
-            nullable=False,
-        ),
-        sa.Column("workspace_id", sa.Uuid(), nullable=True),
-        sa.Column("location_id", sa.Uuid(), nullable=True),
-    ]
-
-
 def _scope_fks(table: str) -> None:
     op.create_foreign_key(
         f"fk_{table}_workspace_id", table, "workspaces", ["workspace_id"], ["id"],
@@ -49,7 +35,15 @@ def _scope_fks(table: str) -> None:
 def upgrade() -> None:
     op.create_table(
         "pos_registers",
-        *_base_columns(),
+        sa.Column("id", sa.Uuid(), primary_key=True),
+        sa.Column(
+            "tenant_id",
+            sa.Uuid(),
+            sa.ForeignKey("tenants.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column("workspace_id", sa.Uuid(), nullable=True),
+        sa.Column("location_id", sa.Uuid(), nullable=True),
         sa.Column("name", sa.String(127), nullable=False),
         sa.Column("code", sa.String(31), nullable=False),
         sa.Column(
@@ -73,7 +67,15 @@ def upgrade() -> None:
 
     op.create_table(
         "pos_sessions",
-        *_base_columns(),
+        sa.Column("id", sa.Uuid(), primary_key=True),
+        sa.Column(
+            "tenant_id",
+            sa.Uuid(),
+            sa.ForeignKey("tenants.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column("workspace_id", sa.Uuid(), nullable=True),
+        sa.Column("location_id", sa.Uuid(), nullable=True),
         sa.Column(
             "register_id",
             sa.Uuid(),
@@ -133,7 +135,15 @@ def upgrade() -> None:
 
     op.create_table(
         "pos_cash_movements",
-        *_base_columns(),
+        sa.Column("id", sa.Uuid(), primary_key=True),
+        sa.Column(
+            "tenant_id",
+            sa.Uuid(),
+            sa.ForeignKey("tenants.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column("workspace_id", sa.Uuid(), nullable=True),
+        sa.Column("location_id", sa.Uuid(), nullable=True),
         sa.Column(
             "session_id",
             sa.Uuid(),
@@ -176,7 +186,15 @@ def upgrade() -> None:
 
     op.create_table(
         "pos_receipts",
-        *_base_columns(),
+        sa.Column("id", sa.Uuid(), primary_key=True),
+        sa.Column(
+            "tenant_id",
+            sa.Uuid(),
+            sa.ForeignKey("tenants.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column("workspace_id", sa.Uuid(), nullable=True),
+        sa.Column("location_id", sa.Uuid(), nullable=True),
         sa.Column(
             "order_id",
             sa.Uuid(),

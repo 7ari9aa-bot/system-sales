@@ -540,6 +540,10 @@ TABLES_NEVER_READ: dict[str, str] = {
     "Assignment": "conversations/service writes assignments; no read model serves them.",
     "TemplateApproval": "§templates — approval rows never checked at send.",
     "IdentityMergeEvent": "customers/service writes the merge trail; no API reads it.",
+    # Commerce Core v1.0 (§189): _issue_receipt writes the row at session close
+    # and returns its id/number in the response — the row itself has no reader
+    # until the receipt detail/print surface lands with the rest of POS.
+    "PosReceipt": "POS — written at session close; the receipt reader route lands with POS P6 follow-up.",
 }
 
 

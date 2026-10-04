@@ -86,6 +86,11 @@ class _FakeResult:
     def scalar_one_or_none(self):
         return self._value
 
+    def one_or_none(self):
+        # The stream gate reads (is_active, auth_version) as a row since the
+        # password-reset revocation check landed — same shape, different read.
+        return self._value
+
 
 class _FakeSession:
     def __init__(self, *, is_active, member, lifecycle_state) -> None:
@@ -111,7 +116,11 @@ class _FakeSession:
         if "lifecycle_state" in sql:
             return _FakeResult(self.lifecycle_state)
         if "is_active" in sql:
-            return _FakeResult(self.is_active)
+            # The gate selects a ROW now: (is_active, auth_version). The fake
+            # mints the token without an auth_version claim, so 0 matches 0.
+            return _FakeResult(
+                SimpleNamespace(is_active=self.is_active, auth_version=0)
+            )
         return _FakeResult(None)
 
 
