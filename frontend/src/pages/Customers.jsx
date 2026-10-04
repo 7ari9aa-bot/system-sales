@@ -71,7 +71,7 @@ export default function Customers() {
             onChange={(event) => setQuery(event.target.value)}
             aria-label={t("customers.search")}
             placeholder={t("customers.search")}
-            className="h-9 w-56 pl-9 pr-3 rounded-lg bg-card border border-border text-[13px] placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/30"
+            className="h-9 w-56 pl-9 pr-3 rounded-lg bg-card border border-border text-[13px] placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-ring/30"
           />
         </div>
       } />

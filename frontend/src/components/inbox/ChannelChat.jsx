@@ -146,7 +146,7 @@ export default function ChannelChat({
             placeholder={t("inbox.typeMessage")}
             aria-label={t("inbox.typeMessage")}
             disabled={sending}
-            className="flex-1 bg-transparent text-[13px] focus:outline-none"
+            className="flex-1 bg-transparent text-[13px] focus:outline-hidden"
             style={isApp ? undefined : { color: "#111" }} />
           <button
             type="button"

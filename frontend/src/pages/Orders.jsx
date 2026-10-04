@@ -135,7 +135,7 @@ export default function Orders() {
           </div>
           <div className="relative sm:ml-auto sm:w-56">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} aria-label={t("orders.search")} placeholder={t("orders.search")} className="w-full h-9 pl-9 pr-3 rounded-lg bg-surface border border-border text-[13px] placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/30" />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} aria-label={t("orders.search")} placeholder={t("orders.search")} className="w-full h-9 pl-9 pr-3 rounded-lg bg-surface border border-border text-[13px] placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-ring/30" />
           </div>
         </div>
         <div className="overflow-x-auto">

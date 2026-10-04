@@ -1,10 +1,107 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss" source(none);
+@plugin "tailwindcss-animate";
+@source "../index.html";
+@source "./**/*.{ts,tsx,js,jsx}";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  /* Design tokens: the HSL triplets live in the :root / .dark blocks below. */
+  --color-background: hsl(var(--background));
+  --color-surface: hsl(var(--surface));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-primary-soft: hsl(var(--primary-soft));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-accent-soft: hsl(var(--accent-soft));
+  --color-warning: hsl(var(--warning));
+  --color-warning-soft: hsl(var(--warning-soft));
+  --color-success: hsl(var(--success));
+  --color-success-soft: hsl(var(--success-soft));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-chart-1: hsl(var(--chart-1));
+  --color-chart-2: hsl(var(--chart-2));
+  --color-chart-3: hsl(var(--chart-3));
+  --color-chart-4: hsl(var(--chart-4));
+  --color-chart-5: hsl(var(--chart-5));
+  --color-sidebar: hsl(var(--sidebar-background));
+  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
+  --color-sidebar-primary: hsl(var(--sidebar-primary));
+  --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
+  --color-sidebar-accent: hsl(var(--sidebar-accent));
+  --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
+  --color-sidebar-border: hsl(var(--sidebar-border));
+  --color-sidebar-ring: hsl(var(--sidebar-ring));
+
+  /* Self-referential on purpose (inline): resolves to the :root vars below. */
+  --font-heading: var(--font-heading);
+  --font-body: var(--font-body);
+  --font-display: var(--font-display);
+  --font-mono: var(--font-mono);
+}
+
+/*
+ * v3-compatible scale pins. The shadcn base radius moved from --radius to
+ * --base-radius because v4 owns --radius as the bare `rounded` value.
+ * --shadow-sm and --blur-sm keep the v3 values (v4 renamed those values to
+ * shadow-xs / backdrop-blur-xs, which this codebase does not use).
+ */
+@theme {
+  --radius: 0.25rem;
+  --radius-sm: calc(var(--base-radius) - 6px);
+  --radius-md: calc(var(--base-radius) - 2px);
+  --radius-lg: var(--base-radius);
+  --radius-xl: calc(var(--base-radius) + 4px);
+  --radius-2xl: calc(var(--base-radius) + 10px);
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --blur-sm: 4px;
+
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+  --animate-fade-in: fade-in 0.4s ease-out;
+
+  @keyframes accordion-down {
+    from { height: 0; }
+    to { height: var(--radix-accordion-content-height); }
+  }
+  @keyframes accordion-up {
+    from { height: var(--radix-accordion-content-height); }
+    to { height: 0; }
+  }
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}
 
 @layer base {
+  /* v3 preflight pins: v3 reset h1-h2 only and kept UA cursor:pointer on
+     buttons; v4 resets h1-h6 and drops the button cursor. */
+  h3, h4, h5, h6 {
+    font-size: revert;
+    font-weight: revert;
+  }
+
+  button, [role="button"] {
+    cursor: pointer;
+  }
+
   :root {
     /* Light — calibrated against GitHub Primer */
     --background: 0 0% 100%;
@@ -39,7 +136,7 @@
     --chart-3: 40 90% 45%;
     --chart-4: 200 70% 50%;
     --chart-5: 340 70% 55%;
-    --radius: 0.625rem;
+    --base-radius: 0.625rem;
     --font-heading: 'Inter', 'IBM Plex Sans Arabic', ui-sans-serif, system-ui, sans-serif;
     --font-body: 'Inter', 'IBM Plex Sans Arabic', ui-sans-serif, system-ui, sans-serif;
     --font-display: 'Inter', 'IBM Plex Sans Arabic', ui-sans-serif, system-ui, sans-serif;

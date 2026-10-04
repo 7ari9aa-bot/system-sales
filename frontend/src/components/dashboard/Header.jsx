@@ -25,7 +25,7 @@ function Dropdown({ trigger, children, align = "left", width = "w-52" }) {
 
   return (
     <div className="relative" ref={ref}>
-      <button onClick={() => setOpen((v) => !v)} className="outline-none">
+      <button onClick={() => setOpen((v) => !v)} className="outline-hidden">
         {trigger(open)}
       </button>
       {open && (

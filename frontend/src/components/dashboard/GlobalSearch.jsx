@@ -107,7 +107,7 @@ export default function GlobalSearch({ autoFocus, className, onPick }) {
           onKeyDown={onKey}
           placeholder={t("header.search")}
           aria-label={t("header.search")}
-          className="h-full min-w-0 flex-1 bg-transparent text-[13px] text-foreground outline-none placeholder:text-muted-foreground"
+          className="h-full min-w-0 flex-1 bg-transparent text-[13px] text-foreground outline-hidden placeholder:text-muted-foreground"
         />
         {busy && <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />}
       </div>

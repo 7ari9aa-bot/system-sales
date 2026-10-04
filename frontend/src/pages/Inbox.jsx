@@ -325,7 +325,7 @@ export default function Inbox() {
                 onChange={(event) => setQuery(event.target.value)}
                 aria-label={t("inbox.search")}
                 placeholder={t("inbox.search")}
-                className="w-full h-9 pl-9 pr-3 rounded-lg bg-surface border border-border text-[13px] placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/30"
+                className="w-full h-9 pl-9 pr-3 rounded-lg bg-surface border border-border text-[13px] placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-ring/30"
               />
             </div>
             <div className="flex gap-1">

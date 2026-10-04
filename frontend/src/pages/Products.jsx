@@ -122,7 +122,7 @@ export default function Products() {
       <div className="flex flex-col sm:flex-row gap-2.5 mb-4">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <input value={query} onChange={(event) => setQuery(event.target.value)} aria-label={t("products.search")} placeholder={t("products.search")} className="w-full h-9 pl-9 pr-3 rounded-lg bg-card border border-border text-[13px] placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/30" />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} aria-label={t("products.search")} placeholder={t("products.search")} className="w-full h-9 pl-9 pr-3 rounded-lg bg-card border border-border text-[13px] placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-ring/30" />
         </div>
         <div className="flex gap-1">
           {filters.map((item) => (

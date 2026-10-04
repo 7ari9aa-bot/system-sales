@@ -143,7 +143,7 @@ export default function ProductDialog({ open, product, onClose, onSaved }) {
   );
 }
 
-const inputCls = "w-full rounded-lg bg-surface border border-border px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-ring/30";
+const inputCls = "w-full rounded-lg bg-surface border border-border px-3 py-2 text-[13px] focus:outline-hidden focus:ring-2 focus:ring-ring/30";
 
 function Field({ label, children }) {
   return (
