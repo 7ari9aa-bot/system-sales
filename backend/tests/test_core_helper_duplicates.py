@@ -93,7 +93,13 @@ async def test_get_db_opens_one_transaction_around_the_session(
         def begin(self) -> _Transaction:
             return _Transaction()
 
-    monkeypatch.setattr(deps, "SessionLocal", lambda: _FakeSession())
+    # get_db resolves the factory through app.core.db.get_sessionmaker PER
+    # CALL (not an import-time binding) — that per-call resolution is what
+    # lets conftest bind the app's sessions to a test transaction, so this
+    # guard patches the same seam the binding does.
+    monkeypatch.setattr(
+        "app.core.db.get_sessionmaker", lambda: (lambda: _FakeSession())
+    )
 
     dependency = deps.get_db()
     session = await dependency.__anext__()

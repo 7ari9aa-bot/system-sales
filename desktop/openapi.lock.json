@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 314,
-    "sha256": "ce98a51f0c9c1eef01fbb6ac375e13c13e095b40e5bc8e922b50877a6537e9e7",
+    "sha256": "dc3ab60800fda0d9f8a22cc328b20f92c59ed002b1ec1b61c58f4abf8cacc8b2",
     "typed_operations": 200
   },
   "spec": {
@@ -10554,13 +10554,17 @@
         "RefreshRequest": {
           "properties": {
             "refresh_token": {
-              "title": "Refresh Token",
-              "type": "string"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refresh Token"
             }
           },
-          "required": [
-            "refresh_token"
-          ],
           "title": "RefreshRequest",
           "type": "object"
         },
@@ -12652,8 +12656,15 @@
           "description": "§125: tenancy is the request context's, never a URL parameter.\n\nThe target tenant rides the typed body — a query string is logged, cached\nand echoed by every hop between here and the user's finger — and the\nservice still verifies membership server-side before minting anything.",
           "properties": {
             "refresh_token": {
-              "title": "Refresh Token",
-              "type": "string"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refresh Token"
             },
             "tenant_id": {
               "format": "uuid",
@@ -12662,7 +12673,6 @@
             }
           },
           "required": [
-            "refresh_token",
             "tenant_id"
           ],
           "title": "SwitchTenantRequest",
