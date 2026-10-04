@@ -1,5 +1,6 @@
 """JWT + password primitives (Stage 2 builds the full auth flows on these)."""
 
+import asyncio
 import hashlib
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -28,6 +29,17 @@ def _bcrypt_material(password: str) -> bytes:
 def hash_password(password: str) -> str:
     encoded_hash = bcrypt.hashpw(_bcrypt_material(password), bcrypt.gensalt()).decode()
     return f"{_BCRYPT_SHA256_PREFIX}{encoded_hash}"
+
+
+async def hash_password_async(password: str) -> str:
+    """hash_password off the event loop: one bcrypt call costs ~100-300ms,
+    and four concurrent logins used to stall every request behind them."""
+    return await asyncio.to_thread(hash_password, password)
+
+
+async def verify_password_async(password: str, password_hash: str) -> bool:
+    """The verify half of hash_password_async — see there."""
+    return await asyncio.to_thread(verify_password, password, password_hash)
 
 
 def verify_password(password: str, password_hash: str) -> bool:

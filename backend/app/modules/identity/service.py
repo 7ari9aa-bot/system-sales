@@ -31,8 +31,8 @@ from app.core.security import (
     create_access_token,
     create_refresh_token,
     decode_token,
-    hash_password,
-    verify_password,
+    hash_password_async,
+    verify_password_async,
 )
 from app.modules.identity.models import (
     Invitation,
@@ -147,7 +147,7 @@ def _hash_token(token: str) -> str:
 
 
 @lru_cache(maxsize=1)
-def _dummy_password_hash() -> str:
+async def _dummy_password_hash() -> str:
     """A real bcrypt hash used when the account does not exist.
 
     Login used to short-circuit on `user is None` BEFORE hashing, so a missing
@@ -155,7 +155,7 @@ def _dummy_password_hash() -> str:
     that enumerates registered emails (S12). Comparing against this hash makes
     both paths cost the same bcrypt work.
     """
-    return hash_password("not-a-real-password")
+    return await hash_password_async("not-a-real-password")
 
 
 class AuthService:
@@ -180,7 +180,9 @@ class AuthService:
         full_name = full_name or display_name
 
         existing_email = (
-            await session.execute(select(User).where(User.email == email))
+            await session.execute(
+                select(User).where(User.email == email.strip().lower())
+            )
         ).scalar_one_or_none()
         if existing_email is not None:
             raise ConflictError("email already registered")
@@ -210,7 +212,11 @@ class AuthService:
             await session.execute(select(Role).where(Role.code == "owner"))
         ).scalar_one()
         tenant = Tenant(slug=tenant_slug, name=tenant_name)
-        user = User(email=email, password_hash=hash_password(password), full_name=full_name)
+        user = User(
+            email=email.strip().lower(),
+            password_hash=await hash_password_async(password),
+            full_name=full_name,
+        )
         session.add_all([tenant, user])
         await session.flush()
         # Bind the user GUC so the self-access policy on tenant_users allows
@@ -285,12 +291,15 @@ class AuthService:
         ip: str | None = None,
     ) -> tuple[TokenPair, User, uuid.UUID | None]:
         user = (
-            await session.execute(select(User).where(User.email == email))
+            await session.execute(
+                select(User).where(User.email == email.strip().lower())
+            )
         ).scalar_one_or_none()
         # S12: hash even when the account is missing, so the response time does
         # not reveal whether the email is registered (timing oracle).
-        password_ok = verify_password(
-            password, user.password_hash if user is not None else _dummy_password_hash()
+        password_ok = await verify_password_async(
+            password,
+            user.password_hash if user is not None else await _dummy_password_hash(),
         )
         if user is None or not password_ok:
             # §67: security event — login failure (no PII; domain + ip only).
@@ -384,8 +393,17 @@ class AuthService:
         session, *, refresh_token: str, user_agent: str | None = None, ip: str | None = None
     ) -> tuple[TokenPair, User, uuid.UUID | None]:
         token_hash = _hash_token(refresh_token)
+        # FOR UPDATE serializes two concurrent refreshes of the SAME token:
+        # without it both read `active`, both rotate, and two valid pairs
+        # exist (verified experimentally). With it, the loser re-reads the
+        # consumed row and hits the reuse path — exactly the documented
+        # single-use semantics.
         row = (
-            await session.execute(select(RefreshToken).where(RefreshToken.token_hash == token_hash))
+            await session.execute(
+                select(RefreshToken)
+                .where(RefreshToken.token_hash == token_hash)
+                .with_for_update()
+            )
         ).scalar_one_or_none()
         if row is None:
             raise PermissionDeniedError("invalid refresh token")
@@ -424,8 +442,17 @@ class AuthService:
     @staticmethod
     async def logout(session, *, refresh_token: str) -> None:
         token_hash = _hash_token(refresh_token)
+        # FOR UPDATE serializes two concurrent refreshes of the SAME token:
+        # without it both read `active`, both rotate, and two valid pairs
+        # exist (verified experimentally). With it, the loser re-reads the
+        # consumed row and hits the reuse path — exactly the documented
+        # single-use semantics.
         row = (
-            await session.execute(select(RefreshToken).where(RefreshToken.token_hash == token_hash))
+            await session.execute(
+                select(RefreshToken)
+                .where(RefreshToken.token_hash == token_hash)
+                .with_for_update()
+            )
         ).scalar_one_or_none()
         if row is not None and row.revoked_at is None:
             row.revoked_at = _now()
@@ -441,7 +468,9 @@ class AuthService:
         now = _now()
         user = (
             await session.execute(
-                select(User).where(User.email == email).with_for_update()
+                select(User)
+                .where(User.email == email.strip().lower())
+                .with_for_update()
             )
         ).scalar_one_or_none()
         if user is None or not user.is_active:
@@ -512,7 +541,7 @@ class AuthService:
         if user is None or not user.is_active:
             raise ValidationError("password reset link is invalid or expired")
 
-        user.password_hash = hash_password(password)
+        user.password_hash = await hash_password_async(password)
         user.auth_version = int(user.auth_version or 0) + 1
         row.consumed_at = now
         row.encrypted_token = ""
@@ -648,6 +677,10 @@ class TenantService:
     async def invite(
         session, *, tenant_id: uuid.UUID, email: str, role_code: str, invited_by: uuid.UUID
     ) -> Invitation:
+        # Case-fold at the boundary: the users table matches on lower(email)
+        # everywhere, so an invitation stored in mixed case would silently
+        # miss the account it names.
+        email = email.strip().lower()
         role = (
             await session.execute(select(Role).where(Role.code == role_code))
         ).scalar_one_or_none()
@@ -724,7 +757,9 @@ class TenantService:
             )
             raise ValidationError("invitation expired")
         existing = (
-            await session.execute(select(User).where(User.email == invitation.email))
+            await session.execute(
+                select(User).where(User.email == invitation.email.strip().lower())
+            )
         ).scalar_one_or_none()
 
         async def _bind_self_guc(uid: uuid.UUID) -> None:
@@ -750,8 +785,10 @@ class TenantService:
                 raise ConflictError("already a member of this tenant")
         else:
             user = User(
-                email=invitation.email,
-                password_hash=hash_password(password),
+                # case-fold defensively: pre-normalization invitation rows
+                # may carry mixed case, and users match on lower(email) now
+                email=invitation.email.strip().lower(),
+                password_hash=await hash_password_async(password),
                 full_name=full_name,
             )
             session.add(user)

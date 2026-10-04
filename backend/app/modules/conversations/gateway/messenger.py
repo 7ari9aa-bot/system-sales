@@ -62,7 +62,7 @@ class MessengerAdapter(ChannelAdapter):
         expected = "sha256=" + hmac.new(
             self._app_secret.encode(), body, hashlib.sha256
         ).hexdigest()
-        return hmac.compare_digest(signature, expected)
+        return hmac.compare_digest(signature[7:], expected)
 
     def verify_request(self, query_params: dict[str, str]) -> str | None:
         """Meta webhook subscription handshake (GET hub.challenge)."""
@@ -83,7 +83,7 @@ class MessengerAdapter(ChannelAdapter):
         if not signature.startswith("sha256="):
             return False
         expected = hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
-        return hmac.compare_digest(signature, expected)
+        return hmac.compare_digest(signature[7:], expected)
 
     def resolve_tenant_key(self, payload: dict) -> str | None:
         """Meta routes by the page / IG account id in entry[0].id."""

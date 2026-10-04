@@ -9,6 +9,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
+import sqlalchemy as sa
 from sqlalchemy import (
     Boolean,
     Column,
@@ -85,10 +86,17 @@ class Tenant(TimestampMixin, Base):
 class User(TimestampMixin, Base):
     __tablename__ = "users"
 
+
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
+    # Case-folded uniqueness: identity writes lower(email) everywhere, and
+    # the schema enforces it so two case-variant accounts can never exist.
+    __table_args__ = (
+        sa.Index("ix_users_email_lower", sa.func.lower(email), unique=True),
+    )
+
     password_hash: Mapped[str] = mapped_column(String(255))
     full_name: Mapped[str] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(Boolean, server_default="true")

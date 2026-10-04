@@ -234,10 +234,10 @@ async def mfa_enroll(body: MfaEnrollRequest, user: CurrentUserDep, session: DbSe
     a stolen access token cannot be used to bind an attacker's authenticator.
     """
     from app.core.mfa import enroll_mfa
-    from app.core.security import verify_password
+    from app.core.security import verify_password_async
 
     row = await service.UserService.get(session, user.id)
-    if not verify_password(body.password, row.password_hash):
+    if not await verify_password_async(body.password, row.password_hash):
         raise PermissionDeniedError("password step-up failed — re-authenticate first")
 
     enrolled = await enroll_mfa(session, user_id=user.id)

@@ -205,3 +205,46 @@ async def test_register_minimal_slug_collision_dedupes(db):
     )
     assert t1.slug != t2.slug
     assert t2.slug.startswith(t1.slug)  # نفس الأساس + لاحقة تفريد
+
+
+async def test_email_is_case_folded_end_to_end(db):
+    """Ali.Hassan@Example.COM and ali.hassan@example.com are ONE account.
+
+    Registration, login and the duplicate check all fold to lower(email),
+    and the schema's unique index on lower(email) backs the service layer:
+    a case-variant of an existing address is refused, never a second user
+    (mixed case used to mint two accounts — confirmed experimentally).
+    """
+    email = f"Case.Fold-{uuid.uuid4().hex[:8]}@Example.COM"
+    folded = email.lower()
+    user, _tenant = await AuthService.register(
+        db,
+        tenant_name="Case Tenant",
+        tenant_slug=f"case-{uuid.uuid4().hex[:8]}",
+        email=email,
+        password="strong-password-1",
+        full_name="Case Owner",
+    )
+    assert user.email == folded
+
+    # A case-variant of the same address is a duplicate, not a second user.
+    with pytest.raises(ConflictError):
+        await AuthService.register(
+            db,
+            tenant_name="Case Tenant 2",
+            tenant_slug=f"case-{uuid.uuid4().hex[:8]}",
+            email=email.upper(),
+            password="strong-password-1",
+            full_name="Case Owner",
+        )
+
+    # Login matches case-insensitively.
+    pair, logged_in, _tenant_id = await AuthService.login(
+        db,
+        email=folded.upper(),
+        password="strong-password-1",
+        ip="127.0.0.1",
+        user_agent="test",
+    )
+    assert logged_in.email == folded
+    assert pair.access_token

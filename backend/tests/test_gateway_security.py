@@ -55,6 +55,8 @@ class _Settings:
 
     whatsapp_app_secret = "app-secret"
     whatsapp_verify_token = "verify-token"
+    instagram_app_secret = "ig-secret"
+    messenger_app_secret = "msgr-secret"
     telegram_webhook_secret = "tg-secret"
     circuit_breaker_failure_threshold = _THRESHOLD
     circuit_breaker_recovery_seconds = 30.0
@@ -125,6 +127,40 @@ def test_whatsapp_signature_is_hmac_over_the_raw_body(monkeypatch):
     # Signature computed over the wrong secret.
     assert (
         whatsapp_adapter.check_signature(
+            {"x-hub-signature-256": _wa_sign("attacker", raw)}, raw
+        )
+        is False
+    )
+
+
+@pytest.mark.parametrize("adapter_name", ["instagram", "messenger"])
+def test_meta_channel_signature_is_hmac_over_the_bare_digest(
+    monkeypatch, adapter_name
+):
+    """Instagram and Messenger validate the same way WhatsApp does: the hex
+    digest is compared WITHOUT the `sha256=` prefix. These two channels
+    shipped comparing the PREFIXED header against the bare digest — every
+    genuine Meta delivery failed closed (403) and the channels were dead
+    while the WhatsApp-only tests stayed green."""
+    import importlib
+
+    module = importlib.import_module(
+        f"app.modules.conversations.gateway.{adapter_name}"
+    )
+    adapter = getattr(module, f"{adapter_name}_adapter")
+    monkeypatch.setattr(
+        f"app.modules.conversations.gateway.{adapter_name}.get_settings",
+        lambda: _Settings(),
+    )
+    raw = json.dumps({"entry": [{"id": "acc-1", "changes": []}]}).encode()
+    secret = getattr(_Settings, f"{adapter_name}_app_secret")
+    headers = {"x-hub-signature-256": _wa_sign(secret, raw)}
+    assert adapter.check_signature(headers, raw) is True
+
+    tampered = raw.replace(b"changes", b"changed")
+    assert adapter.check_signature(headers, tampered) is False
+    assert (
+        adapter.check_signature(
             {"x-hub-signature-256": _wa_sign("attacker", raw)}, raw
         )
         is False
