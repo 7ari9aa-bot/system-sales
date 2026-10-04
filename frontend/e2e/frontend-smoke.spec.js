@@ -55,7 +55,7 @@ test("protected dashboard and settings deep links return an anonymous user to lo
   }
 });
 
-test("an invalid bearer token returned as 403 refreshes once then clears the session", async ({ page }) => {
+test("an invalid cookie session refreshes once then clears the session", async ({ page, context }) => {
   let refreshRequests = 0;
   const authFailure = {
     error: {
@@ -66,12 +66,14 @@ test("an invalid bearer token returned as 403 refreshes once then clears the ses
     },
   };
 
-  await page.addInitScript(() => {
-    localStorage.setItem("fihrist_tokens", JSON.stringify({
-      access_token: "expired-access-token",
-      refresh_token: "expired-refresh-token",
-    }));
-  });
+  // The cookie session is HttpOnly: seeded via the browser context, not JS —
+  // since the cookie wave there is nothing in localStorage to forge.
+  const domain = new URL(process.env.BASE_URL || "http://127.0.0.1:4173").hostname;
+  await context.addCookies([
+    { name: "access_token", value: "expired-access-token", domain, path: "/", httpOnly: true },
+    { name: "refresh_token", value: "expired-refresh-token", domain, path: "/", httpOnly: true },
+    { name: "csrf_token", value: "e2e-csrf-value", domain, path: "/" },
+  ]);
   await page.route("**/api/v1/auth/me", (route) => route.fulfill({
     status: 403,
     contentType: "application/json",
