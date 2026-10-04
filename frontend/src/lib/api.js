@@ -276,6 +276,24 @@ function reportFailure(path, err) {
   });
 }
 
+/** تبليغ عن فشل خلفي — طلبات الـprefetch وإعادة التحقق اللي بتشتغل
+ *  ورا ظهر الكاش. المُستهلك مش شايف الطلب ده أصلًا، فلو فشل لازم
+ *  يوصل للحارس بدل ما ينطّي من غير أي أثر. فيها تهدئة لكل مسار:
+ *  مسار بيفشل مرار في حلقة ضيقة بيتبلّغ مرة واحدة في النافذة، عشان
+ *  الكونسول وشارة الحارس ما يغرقوش في تكرار لنفس الخبر. التبليغ هنا
+ *  طبقة ضمان مش اعتماد على شروط التسجيل جوة الدالة api نفسها،
+ *  فأي فشل بيعدي من هنا حتى لو اتغيرت شروط التسجيل دي، والحارس
+ *  بيدمج الأحداث المكررة لوحده فمفيش ضغط على الشارة. */
+const BACKGROUND_REPORT_COOLDOWN_MS = 30_000;
+const backgroundReportAt = new Map(); // path -> last report timestamp
+
+function reportBackgroundFailure(path, err) {
+  const now = Date.now();
+  if (now - (backgroundReportAt.get(path) ?? 0) < BACKGROUND_REPORT_COOLDOWN_MS) return;
+  backgroundReportAt.set(path, now);
+  reportFailure(path, err);
+}
+
 export function invalidateCache(prefix) {
   // A pre-mutation GET may still be pending. Invalidate its generation and
   // detach it so the next consumer starts a fresh request instead of reusing
@@ -305,8 +323,9 @@ export function prefetchDashboard() {
     "/analytics/summary",
   ];
   for (const p of paths) {
-    // .catch هنا مقصود: الفشل مسجّل في الحارس من api() نفسها
-    apiCached(p).catch(() => {});
+    // الـprefetch خلفي بحت: فشله مينفعش يكسر التحميل الأولي للبيانات،
+    // بس لازم يتشاف — التبليغ بيمر على الحارس بتهدئة لكل مسار.
+    apiCached(p).catch((err) => reportBackgroundFailure(p, err));
   }
 }
 
@@ -329,7 +348,7 @@ export function apiCached(path, { ttlMs = DEFAULT_TTL_MS } = {}) {
   inflight.set(path, promise);
   promise.finally(() => {
     if (inflight.get(path) === promise) inflight.delete(path);
-  }).catch(() => {});
+  }).catch((err) => reportBackgroundFailure(path, err));
 
   // The caller receives fresh server data whenever the cached response expires.
   return promise;
