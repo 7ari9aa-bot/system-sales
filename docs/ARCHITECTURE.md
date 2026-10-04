@@ -93,7 +93,7 @@ retry; workflow failures are recorded and retried by the worker runtime.
 
 ## Stack
 
-Frontend: Next.js + TS · Core: FastAPI + Python · DB: PostgreSQL (Supabase,
+Frontend: Vite SPA (React 18 + TS) · Core: FastAPI + Python · DB: PostgreSQL (Supabase,
 pgvector) · Cache/Queue/Streams: Redis (Railway) · Workers: Python runtime ·
 Storage: S3-compatible · Vectors: pgvector · AI: gateway + model router ·
 Automation: FastAPI + worker runtime · Realtime: WebSocket/SSE · Observability: OpenTelemetry ·
