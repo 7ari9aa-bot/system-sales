@@ -13,9 +13,11 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     DateTime,
     ForeignKey,
+    Identity,
     Index,
     Integer,
     String,
@@ -98,6 +100,12 @@ class InventoryMovement(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMix
     # Always the on-hand position after this row — unchanged on a hold/release
     # row, which moves availability, not stock.
     balance_after: Mapped[int] = mapped_column(Integer)
+    # Total order within a ledger pair. created_at is the TRANSACTION time, so
+    # rows written in one transaction share it and the uuid4 id is not an
+    # order — without this sequence a ledger replay could reorder those rows
+    # and invent a discrepancy that never happened (§181: a replayable ledger
+    # needs a replay order).
+    ledger_seq: Mapped[int] = mapped_column(BigInteger, Identity(), nullable=False)
 
     __table_args__ = (
         Index("ix_inv_mov_tenant_variant_created", "tenant_id", "variant_id", "created_at"),
@@ -159,4 +167,60 @@ class InventoryReservation(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdM
     __table_args__ = (
         Index("ix_inv_res_tenant_variant_status", "tenant_id", "variant_id", "status"),
         Index("ix_inv_res_status_expires", "status", "expires_at"),
+    )
+
+
+class InventoryReconciliationFinding(
+    TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, IdMixin, Base
+):
+    """A ledger↔projection discrepancy, recorded — never silently fixed (§188).
+
+    check = 'chain'      : a movement row's replayed position ≠ balance_after
+                           (a forged or corrupted ledger row).
+    check = 'projection' : the balance row drifted from the ledger's last
+                           position (someone wrote the projection by hand).
+    Resolution is operator work; the service moves OPEN → RESOLVED only.
+    """
+
+    __tablename__ = "inventory_reconciliation_findings"
+
+    warehouse_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("warehouses.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    variant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("product_variants.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    # allowed: chain | projection — named check_kind because `check` is a
+    # reserved word that makes raw SQL over this table a quoting trap.
+    check_kind: Mapped[str] = mapped_column(String(15))
+    # For a chain finding: the offending ledger row. No FK on purpose — the
+    # ledger is append-only history and the finding must outlive nothing of it.
+    movement_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    expected: Mapped[int] = mapped_column(BigInteger)
+    actual: Mapped[int] = mapped_column(BigInteger)
+    # allowed: OPEN | RESOLVED
+    status: Mapped[str] = mapped_column(String(15), server_default="OPEN")
+    resolved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    resolved_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (
+        Index(
+            "ix_inv_rec_tenant_status_created",
+            "tenant_id",
+            "status",
+            "created_at",
+        ),
     )

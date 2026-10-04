@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
+from app.modules.inventory.reconciliation import InventoryReconciliationService
 from app.modules.inventory.service import (
     MOVEMENT_DIRECTION_PATTERN,
     MOVEMENT_REASON_FILTER_PATTERN,
@@ -107,3 +108,49 @@ async def record_movement(
         "id": str(movement.id),
         "balance_after": movement.balance_after,
     }
+
+
+def _finding_out(f) -> dict:
+    return {
+        "id": str(f.id),
+        "check": f.check_kind,
+        "warehouse_id": str(f.warehouse_id) if f.warehouse_id else None,
+        "variant_id": str(f.variant_id) if f.variant_id else None,
+        "movement_id": str(f.movement_id) if f.movement_id else None,
+        "expected": f.expected,
+        "actual": f.actual,
+        "status": f.status,
+        "note": f.note,
+        "created_at": f.created_at.isoformat(),
+    }
+
+
+@router.get("/reconciliation/findings")
+async def list_reconciliation_findings(ctx: TenantCtxDep, status: str = "OPEN"):
+    """§188: discrepancies are records, not log lines. OPEN by default."""
+    rows = await InventoryReconciliationService.list_findings(
+        ctx.session, ctx.tenant_id, status=status
+    )
+    return [_finding_out(f) for f in rows]
+
+
+class ResolveFindingRequest(BaseModel):
+    note: str | None = Field(default=None, max_length=2000)
+
+
+@router.post("/reconciliation/findings/{finding_id}/resolve")
+async def resolve_reconciliation_finding(
+    finding_id: uuid.UUID,
+    body: ResolveFindingRequest,
+    ctx: TenantContext = Depends(require_permission("inventory:write")),
+):
+    """OPEN → RESOLVED, once. Resolving says "I looked and this is fine" —
+    it never edits the ledger or the balance."""
+    finding = await InventoryReconciliationService.resolve_finding(
+        ctx.session,
+        ctx.tenant_id,
+        finding_id,
+        resolved_by=ctx.user.id,
+        note=body.note,
+    )
+    return _finding_out(finding)

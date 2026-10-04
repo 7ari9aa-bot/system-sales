@@ -42,6 +42,9 @@ _HANDLERS: dict[str, Callable] = {}
 RECURRING_JOBS: dict[str, tuple[timedelta, dict]] = {
     "reconcile_unknown_messages": (timedelta(minutes=5), {"threshold_minutes": 15}),
     "reconcile_payments": (timedelta(minutes=15), {"threshold_minutes": 15}),
+    # §188: ledger ≟ projection — a discrepancy becomes a finding row, never
+    # a silent fix. Half-hourly is cheap: the checks are two indexed queries.
+    "reconcile_inventory": (timedelta(minutes=30), {}),
     "expire_reservations": (timedelta(minutes=5), {}),
     # §135: a PENDING approval past its TTL must not stay decidable forever —
     # the parked run would hang indefinitely otherwise.
@@ -70,6 +73,27 @@ RECURRING_JOBS: dict[str, tuple[timedelta, dict]] = {
     # recompute could never run ("built, tested in isolation, never called").
     # This sweep is that producer: per tenant, it ENQUEUES the runner job.
     "segments.recompute": (timedelta(hours=6), {}),
+}
+
+
+async def _deliver_password_reset_email() -> int:
+    from app.modules.identity.email_delivery import PasswordResetEmailDelivery
+
+    return await PasswordResetEmailDelivery.run_once()
+
+
+async def _purge_expired_offboarding_tenants() -> int:
+    from app.workers.retention_worker import OffboardingWorker
+
+    return await OffboardingWorker.sweep_expired()
+
+
+# Global maintenance tasks cannot be represented as ScheduledJob rows because
+# that table is tenant-scoped and recurring-job seeding only sees active
+# tenants. Each function owns its own durable claim/transaction semantics.
+GLOBAL_SWEEPERS: dict[str, tuple[timedelta, Callable[[], object]]] = {
+    "password_reset_email": (timedelta(seconds=5), _deliver_password_reset_email),
+    "offboarding.purge": (timedelta(hours=1), _purge_expired_offboarding_tenants),
 }
 
 
@@ -102,6 +126,15 @@ async def _handle_reconcile_payments(session, tenant_id, payload: dict) -> dict:
 
 
 register_job_handler("reconcile_payments", _handle_reconcile_payments)
+
+
+async def _handle_reconcile_inventory(session, tenant_id, payload: dict) -> dict:
+    from app.modules.inventory.reconciliation import InventoryReconciliationService
+
+    return await InventoryReconciliationService.reconcile_tenant(session, tenant_id)
+
+
+register_job_handler("reconcile_inventory", _handle_reconcile_inventory)
 
 
 async def _handle_expire_reservations(session, tenant_id, payload: dict) -> dict:
@@ -332,6 +365,10 @@ class SchedulerWorker(StreamWorker):
     #: healthy poll loop over an empty table — which is how the RLS bug survived.
     bootstrap_done: bool = False
 
+    def __init__(self, bus) -> None:
+        super().__init__(bus)
+        self._global_sweeper_last_run: dict[str, float] = {}
+
     async def handle(self, event: Event) -> None:
         # The scheduler does not consume stream events; run() drives polling.
         return
@@ -356,10 +393,29 @@ class SchedulerWorker(StreamWorker):
             except Exception:  # noqa: BLE001 — scheduler must survive anything
                 logger.exception("scheduler.poll_failed")
                 processed = 0
+            processed += await self._run_global_sweepers()
             if not processed:
                 import asyncio
 
                 await asyncio.sleep(self.poll_interval)
+
+    async def _run_global_sweepers(self) -> int:
+        import time
+
+        now_monotonic = time.monotonic()
+        processed = 0
+        for name, (interval, handler) in GLOBAL_SWEEPERS.items():
+            last_run = self._global_sweeper_last_run.get(name)
+            if last_run is not None and now_monotonic - last_run < interval.total_seconds():
+                continue
+            # Mark due before calling. A failing maintenance action must not
+            # create a hot loop; the normal interval retries it.
+            self._global_sweeper_last_run[name] = now_monotonic
+            try:
+                processed += int(await handler() or 0)
+            except Exception:  # noqa: BLE001 — one global task cannot kill scheduling
+                logger.exception("scheduler.global_sweeper_failed name=%s", name)
+        return processed
 
     async def _poll_once(self) -> int:
         """Claim and run due jobs for every active tenant.

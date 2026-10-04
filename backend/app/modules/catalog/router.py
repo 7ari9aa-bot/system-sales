@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from app.core.errors import ValidationError
+from app.core.errors import NotFoundError, ValidationError
 from app.core.middleware import MAX_BODY_BYTES
 from app.modules.catalog.external.csv_import import CSVImportService
 from app.modules.catalog.service import CatalogService
@@ -96,6 +96,27 @@ class SetPriceRequest(BaseModel):
     min_quantity: int = Field(default=1, ge=1)
 
 
+class AddIdentifierRequest(BaseModel):
+    """§179: one closed-vocabulary scan code on one sellable unit."""
+
+    identifier_type: str = Field(pattern="^(gtin|ean|upc|barcode|qr_token|external)$")
+    value: str = Field(min_length=1, max_length=127)
+
+
+class AddOptionRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=63)
+
+
+class AddOptionValueRequest(BaseModel):
+    value: str = Field(min_length=1, max_length=127)
+
+
+class SetVariantOptionsRequest(BaseModel):
+    """§179/P2: replace-all — one value per option axis on the variant."""
+
+    option_values: dict[str, str]
+
+
 class CreateBrandRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
 
@@ -108,15 +129,35 @@ class CreateCategoryRequest(BaseModel):
 class AddImageRequest(BaseModel):
     url: str = Field(min_length=1, max_length=2048)
     alt: str | None = Field(default=None, max_length=255)
+    # §179/P3: bind the shot to one sellable unit; absent = product-level.
+    variant_id: UUID | None = None
 
 
 def _image_out(image) -> dict:
     return {
         "id": str(image.id),
         "product_id": str(image.product_id),
+        "variant_id": str(image.variant_id) if image.variant_id else None,
         "url": image.url,
         "alt": image.alt,
         "position": image.position,
+    }
+
+
+def _option_out(option, values) -> dict:
+    return {
+        "id": str(option.id),
+        "name": option.name,
+        "values": [{"id": str(v.id), "value": v.value} for v in values],
+    }
+
+
+def _identifier_out(row) -> dict:
+    return {
+        "id": str(row.id),
+        "variant_id": str(row.variant_id),
+        "identifier_type": row.type,
+        "value": row.value,
     }
 
 
@@ -242,10 +283,94 @@ async def update_variant(variant_id: UUID, body: UpdateVariantRequest, ctx: Writ
     return _variant_out(variant)
 
 
+@router.post("/variants/{variant_id}/identifiers", status_code=201)
+async def add_variant_identifier(
+    variant_id: UUID, body: AddIdentifierRequest, ctx: WriteCtx
+):
+    """§179: register a scan code on one sellable unit.
+
+    (tenant, type, value) is unique, so the §179 resolver can promise exactly
+    one variant per scan. POS (§189) resolves through this surface.
+    """
+    row = await CatalogService.add_identifier(
+        ctx.session, ctx.tenant_id, variant_id, body.identifier_type, body.value
+    )
+    return _identifier_out(row)
+
+
+@router.get("/variants/{variant_id}/identifiers")
+async def list_variant_identifiers(variant_id: UUID, ctx: TenantCtxDep):
+    rows = await CatalogService.list_identifiers(ctx.session, ctx.tenant_id, variant_id)
+    return [_identifier_out(r) for r in rows]
+
+
+@router.get("/identifiers/{identifier_type}/{value}")
+async def resolve_identifier(identifier_type: str, value: str, ctx: TenantCtxDep):
+    """§179: the only scan-entry point — one active variant or 404.
+
+    Sellability of the variant's product stays the caller's check, exactly as
+    with price_for.
+    """
+    variant = await CatalogService.resolve_identifier(
+        ctx.session, ctx.tenant_id, identifier_type, value
+    )
+    if variant is None:
+        raise NotFoundError("no active variant for identifier")
+    return _variant_out(variant)
+
+
+@router.post("/products/{product_id}/options", status_code=201)
+async def add_product_option(
+    product_id: UUID, body: AddOptionRequest, ctx: WriteCtx
+):
+    """§179/P2: one option axis on a product ("size", "color", ...)."""
+    option = await CatalogService.add_option(
+        ctx.session, ctx.tenant_id, product_id, body.name
+    )
+    return _option_out(option, [])
+
+
+@router.get("/products/{product_id}/options")
+async def list_product_options(product_id: UUID, ctx: TenantCtxDep):
+    pairs = await CatalogService.list_product_options(
+        ctx.session, ctx.tenant_id, product_id
+    )
+    return [_option_out(o, vs) for o, vs in pairs]
+
+
+@router.post("/options/{option_id}/values", status_code=201)
+async def add_option_value(option_id: UUID, body: AddOptionValueRequest, ctx: WriteCtx):
+    value = await CatalogService.add_option_value(
+        ctx.session, ctx.tenant_id, option_id, body.value
+    )
+    return {"id": str(value.id), "option_id": str(value.option_id), "value": value.value}
+
+
+@router.post("/variants/{variant_id}/options")
+async def set_variant_options(
+    variant_id: UUID, body: SetVariantOptionsRequest, ctx: WriteCtx
+):
+    """§179/P2: replace-all option graph for one variant.
+
+    Missing option/value rows are created; the JSONB read model and the
+    relational graph are written by the same service call in the same
+    transaction, so the storefront dict and the queryable graph agree.
+    """
+    variant = await CatalogService.set_variant_options(
+        ctx.session, ctx.tenant_id, variant_id, body.option_values
+    )
+    return _variant_out(variant)
+
+
 @router.post("/products/{product_id}/images", status_code=201)
 async def add_product_image(product_id: UUID, body: AddImageRequest, ctx: WriteCtx):
     image = await CatalogService.add_image(
-        ctx.session, ctx.tenant_id, product_id, url=body.url, alt=body.alt
+        ctx.session,
+        ctx.tenant_id,
+        product_id,
+        url=body.url,
+        alt=body.alt,
+        variant_id=body.variant_id,
     )
     return _image_out(image)
 

@@ -96,6 +96,7 @@ from app.modules.operations.router import (
 )
 from app.modules.orders.router import router as orders_router
 from app.modules.platform.router import router as platform_module_router
+from app.modules.pos.router import router as pos_router
 from app.modules.privacy.router import router as privacy_router
 from app.modules.realtime.router import router as realtime_router
 from app.modules.segments.router import router as segments_router
@@ -461,6 +462,7 @@ def create_app() -> FastAPI:
         authority_router,
         effects_router,
         financial_router,
+        pos_router,
     ):
         api_v1.include_router(router)
     app.include_router(api_v1)

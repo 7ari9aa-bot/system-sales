@@ -146,6 +146,9 @@ DOMAIN_EVENT_TYPES: tuple[str, ...] = (
     "order.refunded",
     "order.shipping_updated",
     "order.status_changed",
+    # §189: the POS session close is the cash reconciliation record — the
+    # variance rides the event so analytics never reads the session mid-shift.
+    "pos.session.closed",
     # §69: master-key rotation emits this through the outbox (durable audit of
     # a security-relevant event — see app.core.secrets.rotate_master_key).
     "platform.secret_rotated",

@@ -627,3 +627,67 @@ metering pipeline, platform-admin plane, tenant lifecycle.
 
 Every phase keeps the existing golden rules: outbox-first, RLS double-enforcement,
 worker taxonomy, error contract v2.
+
+## Commerce Core v1.0 audit (2026-10-04)
+
+Measured by reading the code for ADR-061 (narrative: `COMMERCE_CORE_ARCHITECTURE.md`,
+spec §178–§190). These are the deltas between the adopted v1.0 target and the code.
+
+### CC1. Products have no identifiers — GTIN/EAN/UPC/barcode/QR/external id exist nowhere
+`backend/app/modules/catalog/models.py:57-141` — no identifier table or column in the
+whole catalog; every scan-based flow (POS §189, warehouse picking) has no entry point.
+Fix: `product_identifiers` (variant-scoped, closed type vocabulary, unique
+`(tenant_id, type, value)`) + resolver service + routes. **CLOSED 2026-10-04** —
+migration `fd2026100402`, `CatalogService.add_identifier/resolve_identifier`, routes
+`POST /variants/{id}/identifiers` + `GET /identifiers/{type}/{value}`;
+`tests/test_catalog_identifiers*.py` (guard failed before, passed after).
+
+### CC2. Variant options are a JSONB blob, not relational entities
+`backend/app/modules/catalog/models.py:105` — `option_values` JSONB; no
+ProductOption/OptionValue/VariantOptionValue rows, so faceting/filtering across
+option values is lossy and unenforceable.
+Fix: relational options with a JSONB backfill migration. **CLOSED 2026-10-04** —
+migration `fd2026100403` (option graph + idempotent backfill), `CatalogService
+.add_option/add_option_value/set_variant_options`, `add_variant`/`update_variant`
+write graph + JSONB in one transaction; `tests/test_catalog_options*.py`.
+
+### CC3. Media binds to product only, never to a variant
+`backend/app/modules/catalog/models.py:118` — `product_images.product_id` only; a
+variant-specific shot (color-accurate listing) cannot be attached.
+Fix: optional `variant_id` on media. **CLOSED 2026-10-04** — migration
+`fd2026100404`, same-product validation in `add_image`, wire field on
+`POST /products/{id}/images`; pinned in `tests/test_catalog_options.py`.
+
+### CC4. The ledger≈balance invariant has no runtime reconciliation
+`backend/app/modules/inventory/service.py:126` (settlement check) and tests assert
+`on_hand == Σ movements` — but no scheduled job compares ledger to projection in
+production, so silent drift is undetected until a settlement refuses.
+Fix: scheduler job producing explicit findings. **CLOSED 2026-10-04** —
+`inventory_reconciliation_findings` (`fd2026100405`), chain (LAG replay over
+`ledger_seq`) + projection checks, `reconcile_inventory` in `RECURRING_JOBS`,
+findings read/resolve routes; `tests/test_inventory_reconciliation*.py`. Side
+fix: `inventory_movements.ledger_seq` identity column gives the ledger a true
+replay order (created_at is transaction time; uuid4 id is not an order).
+
+### CC5. State machines are six duplicated dicts with no shared guard
+`backend/app/modules/orders/service.py:53,114,132`; `automation/service.py:38`;
+`conversations/templates.py:47`; `decisions/service.py:68`; `identity/service.py:992`;
+`platform/models.py:135` — same pattern, no shared engine; vocabularies can drift.
+Fix: one `core/` transition-guard helper, mechanical migration, no behaviour change. **CLOSED 2026-10-04 as a decision, not a defer** — `core/transitions.py`
+(`require_transition`) is the standard guard; the orders machines (status/
+shipment/saga) migrated byte-identically, and POS rides the service-open check.
+The four remaining sites (automation, conversations/templates, decisions,
+identity) keep richer, test-pinned contracts — allowed-state hints or
+structured `details` — so forcing the uniform message would change pinned
+error contracts for zero behavioural gain. New machines use the helper.
+
+### CC6. POS does not exist in spec or code
+Zero hits for point-of-sale/Register/Session/CashMovement in `backend/app` and in
+`docs/spec/` — §189 is the first governing text (this wave).
+Fix: POS adapter domain spec first, gated on CC1. **CLOSED 2026-10-04** —
+`app/modules/pos` (registers/sessions/cash movements/receipts, migration
+`fd2026100406` with the one-OPEN-session-per-register partial index), sell =
+CreateOrder(channel='pos') → capture → §140 settlement → cash row + receipt;
+session close computes expected cash and stores the variance as a record and
+publishes `pos.session.closed` (P7). `tests/test_pos_spec.py` +
+`tests/test_pos_flow.py`. POS cash refunds stay on the orders refund path.

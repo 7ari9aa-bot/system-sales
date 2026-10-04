@@ -1,0 +1,98 @@
+ARCHITECTURE PATCH — COMMERCE CORE (§178–§190)
+Adopted 2026-10-04 · decision ADR-061 · narrative: docs/COMMERCE_CORE_ARCHITECTURE.md
+Patch rules as before: later sections win conflicts; §n references are never renumbered.
+
+§178 COMMERCE CORE BOUNDARY
+Catalog, Inventory and Commerce form one bounded domain — the Commerce Core —
+behind published application APIs. The agent platform, dashboard, channels and
+analytics depend on the Core; the Core depends on nothing above it. No caller
+outside the Core may write InventoryBalance, InventoryMovement, Order.status,
+Order.process_state, OrderPayment.status or any ledger row. The Agent reaches the
+Core only through Capabilities → Application APIs, never through a direct DB path.
+
+§179 CATALOG SELLABLE UNIT
+The ProductVariant is the only sellable unit. Inventory balances, movements,
+reservations, order lines, prices and identifiers reference a variant_id, never a
+product_id. Options and option values are first-class relational entities
+(Product → Options → OptionValues; Variant → VariantOptionValues). A product
+identifier is a (variant, type, value) row with type from the closed vocabulary
+{gtin, ean, upc, barcode, qr_token, external}; (tenant_id, type, value) is unique;
+the identifier resolver is the only scan-entry point and resolves to exactly one
+active variant or returns nothing.
+
+§180 PRICE TRUTH
+The variant carries the base price; product_prices is the append-only quantity
+ladder and currency history. The order line (OrderItem) freezes title, sku and
+unit_price at purchase time and is the only purchase-time price snapshot; no
+separate snapshot table is added. No sales/revenue aggregate may be stored in
+transaction tables as source of truth.
+
+§181 INVENTORY LEDGER
+InventoryMovement (append-only) is the source of truth; InventoryBalance is a
+projection updated in the same transaction. Every mutation follows:
+lock balance → validate preconditions → append movement → update projection →
+commit. Direct counter updates are forbidden. Invariants: on_hand == Σ signed
+physical movements; available == on_hand − reserved ≥ 0 at reserve time; every
+movement carries reason from the closed vocabulary and balance_after.
+
+§182 RESERVATION STATE MACHINE
+Reservation states: ACTIVE → {CONVERTED, RELEASED, EXPIRED, CANCELLED}; terminal
+states are final. Payment-capture settlement moves reserved and on_hand in one
+transaction and refuses when on_hand drifted below the hold instead of clamping.
+Expiry is a scheduled sweep, never an implicit read-time rule.
+
+§183 ORDER STATE MACHINES
+Order.status and Order.process_state (§139 saga) are two machines with closed
+vocabularies; transitions are validated in exactly one guarded place per machine,
+under row lock, and append an OrderStatusHistory row. Returned/refunded statuses
+are reachable only through the return saga / register_refund path. No service may
+assign a status string directly.
+
+§184 PAYMENT STATE MACHINE
+Payment states follow §141 (pending/authorized/captured/failed/unknown/refunded/
+partially_refunded). The monotone rule (reconciliation_refusal) holds: no state
+may move backwards except through the refund ledger rows (ADR-054). UNKNOWN is
+resolved only by reconciliation.
+
+§185 CHANNEL-AGNOSTIC ORDERS
+Every sales source (WhatsApp, Instagram, Messenger, Telegram, webchat, website,
+POS, API, Agent) produces the same CreateOrder command and rides the identical
+commerce lifecycle. The source is recorded only as Order.channel from the closed
+vocabulary; no source-specific order path exists.
+
+§186 TRANSACTION BOUNDARY
+Every critical mutation traverses: Application layer → Domain Service →
+Policy/Preconditions/Idempotency → one DB transaction (ledger mutation + state
+transition + outbox event) → commit. Services are flush-only; the caller owns the
+transaction. Lock ordering: order row before payment rows; balance row before
+movement append. There is no side path.
+
+§187 IDEMPOTENCY CLASSIFICATION
+Exactly-once effects are owned by one of three declared layers: the HTTP
+idempotency middleware for command endpoints; the consumer inbox (claim before
+effect, ADR-058) for event consumers; deterministic effect keys with
+reconciliation for provider callbacks. Every new commerce mutation documents
+which layer owns its idempotency.
+
+§188 RECONCILIATION
+Four reconciliations are first-class: inventory (ledger ≟ balance), payments
+(orders ≟ payments ≟ captured amounts), POS cash (session ≟ expected ≟ actual,
+after POS exists), and cross-domain reservation/hold pairing. Any discrepancy
+becomes an explicit finding/exception record. Silent correction of a discrepancy
+is forbidden; the only permitted self-healing is an explicitly ordered, audited
+sweep (e.g. stuck UNKNOWN payments).
+
+§189 POS ADAPTER
+POS is an interface/adapter domain above the Commerce Core, not a new sales
+engine. Its own state (Register, Session, CashDrawer, CashMovement, Employee,
+Receipt) is POS-domain state. POS flow: scan → identifier resolve (§179) →
+variant → cart → CreateOrder → Payment → inventory settlement → Receipt. POS
+issues commerce and inventory commands; it never writes balances, movements or
+order state directly.
+
+§190 ANALYTICS DECOUPLING
+Analytics, search indexing and notification/integration fan-out consume Domain
+Events from the Outbox; they never join a core transaction, never query the
+ledger as part of a write path, and store no derived sales columns in core
+tables. Money-derived aggregates are computed by the approved pure functions in
+the orders domain (money.py), not re-implemented per consumer.

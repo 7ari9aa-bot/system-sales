@@ -25,6 +25,7 @@ from app.core.audit import write_audit_row
 from app.core.events.writer import add_outbox_event
 from app.core.idempotency import apply_versioned_update, require_version  # §17
 from app.core.sql import LIKE_ESCAPE, like_pattern
+from app.core.transitions import require_transition  # §183
 from app.modules.errors import ConflictError, NotFoundError, ValidationError
 from app.modules.orders.models import (
     Order,
@@ -667,11 +668,7 @@ class OrderService:
         # §17: fast-fail a stale If-Match before doing any work.
         if expected_version is not None:
             require_version(expected_version, order.version)
-        allowed = TRANSITIONS.get(order.status, set())
-        if to_status not in allowed:
-            raise ConflictError(
-                f"illegal transition {order.status} -> {to_status}"
-            )
+        require_transition(TRANSITIONS, order.status, to_status)
         if to_status == "returned":
             # "returned" is a STOCK claim, not a label: the goods are back in the
             # warehouse. Running it by hand would close the order while the
@@ -1247,11 +1244,12 @@ class OrderService:
             )
         ).scalar_one()
 
-        allowed = SHIPMENT_TRANSITIONS.get(shipment.status, set())
-        if new_status not in allowed:
-            raise ConflictError(
-                f"illegal shipment transition {shipment.status} -> {new_status}"
-            )
+        require_transition(
+            SHIPMENT_TRANSITIONS,
+            shipment.status,
+            new_status,
+            noun="shipment transition",
+        )
         shipment.status = new_status
         if new_status == "delivered":
             shipment.delivered_at = shipment.delivered_at or _now()
@@ -1424,9 +1422,9 @@ class OrderService:
             session, tenant_id, order_id, with_items=False, for_update=True
         )
         current = order.process_state or "created"
-        allowed = _PROCESS_TRANSITIONS.get(current, set())
-        if new_state not in allowed:
-            raise ConflictError(f"illegal saga transition {current} -> {new_state}")
+        require_transition(
+            _PROCESS_TRANSITIONS, current, new_state, noun="saga transition"
+        )
         order.process_state = new_state
         await session.flush()
         return order

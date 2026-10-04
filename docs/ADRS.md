@@ -82,10 +82,14 @@ or no `**Spec:**` line, that is written out rather than inferred.
 
 | ADR-059 | The desktop's network calls leave from Rust, so the API needs no CORS change | 2026-09-25 | **Accepted** (Session A confirmed decision 3 the same day) | desktop mission §2, §3.2, §3.6, §5 | Every desktop request — including the SSE stream, which carries `Authorization: Bearer` — is issued by the Rust process behind the `http` port, so the webview never makes a cross-origin call and `CORS_ORIGINS` gains no Tauri origin. The boundary lint is what enforces it (`config/check-platform-boundary.mjs` fails the build if the React tree calls `fetch`). The ADR's separate request that the server narrow `?token=` (R5) is open. |
 
-Coverage: 47 files in `docs/adrs/`, 47 rows above. Verified with
+| ADR-060 | V12 adopted in place: the authority chain covers human actors too, payments stay provider-agnostic, the three-phase program replaces the §42 restructure | 2026-09-26 | Accepted | SALES OS V12 (62 invariants) vs `docs/SYSTEM_BASELINE.md` | The V12 authority-centered program is adopted without a restructure: Decision → Capability → Authority Lease → Atomic Execution covers human and AI actors alike, payments remain behind a provider-agnostic port, and the remaining invariants land as the three-phase V12 program. |
+
+| ADR-061 | The Commerce Core is a bounded domain the platform depends on, not the reverse | 2026-10-04 | Accepted | §178–§190 | Catalog/Inventory/Commerce are formalized as one bounded Core with the binding dependency rule (Agent → Capabilities → Application APIs; Analytics ← events only); the existing inventory ledger, order/payment machines and idempotency layers are adopted as the v1.0 semantics; catalog identifiers land before any POS work; discrepancies are findings, never silent fixes. Narrative: `docs/COMMERCE_CORE_ARCHITECTURE.md`. |
+
+Coverage: 49 files in `docs/adrs/`, 49 rows above. Verified with
 `ls docs/adrs | wc -l` == `awk '/^## 1\./,/^## 2\./' docs/ADRS.md | grep -c "^| ADR-"`.
 (The row prefix `^| ADR-` also opens the §3 collision and §4 caveat tables, so an
-unscoped `grep -c` over the whole file counts 57 and verifies nothing — that is how
+unscoped `grep -c` over the whole file counts more and verifies nothing — that is how
 this line read 46 == 46 while §1 held 46 rows and the count had already moved on.)
 
 ---

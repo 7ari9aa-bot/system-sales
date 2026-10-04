@@ -9,7 +9,7 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,13 +17,21 @@ from app.modules.catalog.models import (
     Brand,
     Category,
     Product,
+    ProductIdentifier,
     ProductImage,
+    ProductOption,
+    ProductOptionValue,
     ProductPrice,
     ProductVariant,
+    ProductVariantOptionValue,
 )
 from app.modules.errors import ConflictError, NotFoundError, ValidationError
 
 _PRODUCT_STATUSES = {"draft", "active", "archived"}
+
+# §179 closed vocabulary — one importer cannot invent "EAN13" while another
+# writes "ean-13" and split the same barcode across two rows.
+IDENTIFIER_TYPES = {"gtin", "ean", "upc", "barcode", "qr_token", "external"}
 
 
 def _to_decimal(value: object, field: str) -> Decimal:
@@ -380,6 +388,11 @@ class CatalogService:
         except IntegrityError:
             # Lost an SKU race with a concurrent request.
             raise ConflictError(f"variant SKU '{sku}' already exists") from None
+        # §179: every variant write also writes the relational option graph —
+        # the JSONB dict never becomes the only representation again.
+        await CatalogService._sync_variant_option_links(
+            session, tenant_id, variant.id, product_id, option_values or {}
+        )
         return variant
 
     @staticmethod
@@ -431,6 +444,10 @@ class CatalogService:
         for key, value in fields.items():
             setattr(variant, key, value)
         await session.flush()
+        if "option_values" in fields:
+            await CatalogService._sync_variant_option_links(
+                session, tenant_id, variant.id, variant.product_id, variant.option_values or {}
+            )
         return variant
 
     # ------------------------------------------------------------ prices ----
@@ -581,13 +598,24 @@ class CatalogService:
         *,
         url: str,
         alt: str | None = None,
+        variant_id: UUID | None = None,
     ) -> ProductImage:
         """Append one gallery image, positioned after the product's last one.
 
         The position is derived, not supplied: two merchandisers posting in a row
-        must not both count the same slot.
+        must not both count the same slot. ``variant_id`` binds the shot to one
+        sellable unit (§179/P3); it must belong to the same product.
         """
         await CatalogService.get_product(session, tenant_id, product_id)
+        bound_variant = None
+        if variant_id is not None:
+            bound_variant = await CatalogService.get_variant(
+                session, tenant_id, variant_id, include_inactive=True
+            )
+            if bound_variant.product_id != product_id:
+                raise ValidationError(
+                    "variant does not belong to this product"
+                )
         highest = (
             await session.execute(
                 select(func.max(ProductImage.position)).where(
@@ -599,6 +627,7 @@ class CatalogService:
         image = ProductImage(
             tenant_id=tenant_id,
             product_id=product_id,
+            variant_id=bound_variant.id if bound_variant is not None else None,
             url=url,
             alt=alt,
             position=0 if highest is None else highest + 1,
@@ -702,3 +731,318 @@ class CatalogService:
             )
         ).scalars().all()
         return {p.id: p for p in rows}
+
+    # -------------------------------------------------------- identifiers ----
+
+    @staticmethod
+    def _clean_identifier(identifier_type: str, value: str) -> str:
+        if identifier_type not in IDENTIFIER_TYPES:
+            raise ValidationError(
+                f"identifier type must be one of {sorted(IDENTIFIER_TYPES)}"
+            )
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValidationError("identifier value must not be empty")
+        if len(cleaned) > 127:
+            raise ValidationError("identifier value must be at most 127 characters")
+        return cleaned
+
+    @staticmethod
+    async def add_identifier(
+        session: AsyncSession,
+        tenant_id: UUID,
+        variant_id: UUID,
+        identifier_type: str,
+        value: str,
+    ) -> ProductIdentifier:
+        """Register one scan code on a variant (§179).
+
+        Uniqueness is per (tenant, type, value): the resolver must return
+        exactly one sellable unit or nothing — never two candidates.
+        """
+        cleaned = CatalogService._clean_identifier(identifier_type, value)
+        variant = await CatalogService.get_variant(session, tenant_id, variant_id)
+        row = ProductIdentifier(
+            tenant_id=tenant_id,
+            variant_id=variant.id,
+            type=identifier_type,
+            value=cleaned,
+        )
+        session.add(row)
+        try:
+            async with session.begin_nested():
+                await session.flush()
+        except IntegrityError:
+            raise ConflictError(
+                f"identifier {identifier_type}:{cleaned} already registered"
+            ) from None
+        return row
+
+    @staticmethod
+    async def resolve_identifier(
+        session: AsyncSession, tenant_id: UUID, identifier_type: str, value: str
+    ) -> ProductVariant | None:
+        """The only scan-entry point (§179): one ACTIVE variant, or None.
+
+        Sellability of the variant's product is the caller's check — the same
+        discipline as price_for. An unknown or inactive variant resolves to
+        None, never to a half-answer.
+        """
+        cleaned = CatalogService._clean_identifier(identifier_type, value)
+        row = (
+            await session.execute(
+                select(ProductIdentifier).where(
+                    ProductIdentifier.tenant_id == tenant_id,
+                    ProductIdentifier.type == identifier_type,
+                    ProductIdentifier.value == cleaned,
+                )
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            return None
+        variant = (
+            await session.execute(
+                select(ProductVariant).where(
+                    ProductVariant.tenant_id == tenant_id,
+                    ProductVariant.id == row.variant_id,
+                    ProductVariant.is_active.is_(True),
+                )
+            )
+        ).scalar_one_or_none()
+        return variant
+
+    @staticmethod
+    async def list_identifiers(
+        session: AsyncSession, tenant_id: UUID, variant_id: UUID
+    ) -> list[ProductIdentifier]:
+        rows = (
+            await session.execute(
+                select(ProductIdentifier)
+                .where(
+                    ProductIdentifier.tenant_id == tenant_id,
+                    ProductIdentifier.variant_id == variant_id,
+                )
+                .order_by(ProductIdentifier.created_at, ProductIdentifier.id)
+            )
+        ).scalars().all()
+        return list(rows)
+
+    @staticmethod
+    async def remove_identifier(
+        session: AsyncSession, tenant_id: UUID, identifier_id: UUID
+    ) -> None:
+        row = (
+            await session.execute(
+                select(ProductIdentifier).where(
+                    ProductIdentifier.tenant_id == tenant_id,
+                    ProductIdentifier.id == identifier_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            raise NotFoundError(f"identifier {identifier_id} not found")
+        await session.delete(row)
+
+    # ------------------------------------------------- option graph (P2) ----
+
+    @staticmethod
+    async def _sync_variant_option_links(
+        session: AsyncSession,
+        tenant_id: UUID,
+        variant_id: UUID,
+        product_id: UUID,
+        options: dict,
+    ) -> dict[str, str]:
+        """Write the relational option graph for one variant (§179, P2).
+
+        Replace-all semantics: link rows are rebuilt to match ``options``,
+        missing option/value rows are auto-created, and the variant's JSONB
+        read model is rewritten to the same dict. The two representations
+        cannot drift because one service writes both in one transaction.
+        """
+        cleaned: dict[str, str] = {}
+        for raw_name, raw_value in (options or {}).items():
+            name = str(raw_name).strip()
+            value = str(raw_value).strip()
+            if not name or not value:
+                raise ValidationError("option name and value must not be empty")
+            if len(name) > 63:
+                raise ValidationError("option name must be at most 63 characters")
+            if len(value) > 127:
+                raise ValidationError("option value must be at most 127 characters")
+            cleaned[name] = value
+
+        await session.execute(
+            delete(ProductVariantOptionValue).where(
+                ProductVariantOptionValue.tenant_id == tenant_id,
+                ProductVariantOptionValue.variant_id == variant_id,
+            )
+        )
+        for name, value in cleaned.items():
+            option = (
+                await session.execute(
+                    select(ProductOption).where(
+                        ProductOption.tenant_id == tenant_id,
+                        ProductOption.product_id == product_id,
+                        ProductOption.name == name,
+                    )
+                )
+            ).scalar_one_or_none()
+            if option is None:
+                option = ProductOption(tenant_id=tenant_id, product_id=product_id, name=name)
+                session.add(option)
+                try:
+                    async with session.begin_nested():
+                        await session.flush()
+                except IntegrityError:
+                    # Lost a creation race with a concurrent variant write —
+                    # both writers meant the same option row.
+                    option = (
+                        await session.execute(
+                            select(ProductOption).where(
+                                ProductOption.tenant_id == tenant_id,
+                                ProductOption.product_id == product_id,
+                                ProductOption.name == name,
+                            )
+                        )
+                    ).scalar_one()
+            value_row = (
+                await session.execute(
+                    select(ProductOptionValue).where(
+                        ProductOptionValue.tenant_id == tenant_id,
+                        ProductOptionValue.option_id == option.id,
+                        ProductOptionValue.value == value,
+                    )
+                )
+            ).scalar_one_or_none()
+            if value_row is None:
+                value_row = ProductOptionValue(
+                    tenant_id=tenant_id, option_id=option.id, value=value
+                )
+                session.add(value_row)
+                try:
+                    async with session.begin_nested():
+                        await session.flush()
+                except IntegrityError:
+                    value_row = (
+                        await session.execute(
+                            select(ProductOptionValue).where(
+                                ProductOptionValue.tenant_id == tenant_id,
+                                ProductOptionValue.option_id == option.id,
+                                ProductOptionValue.value == value,
+                            )
+                        )
+                    ).scalar_one()
+            session.add(
+                ProductVariantOptionValue(
+                    tenant_id=tenant_id,
+                    variant_id=variant_id,
+                    option_id=option.id,
+                    option_value_id=value_row.id,
+                )
+            )
+        variant = await CatalogService.get_variant(
+            session, tenant_id, variant_id, include_inactive=True
+        )
+        variant.option_values = cleaned
+        await session.flush()
+        return cleaned
+
+    @staticmethod
+    async def set_variant_options(
+        session: AsyncSession, tenant_id: UUID, variant_id: UUID, option_values: dict
+    ) -> ProductVariant:
+        """Replace a variant's option graph — one value per option (§179)."""
+        variant = await CatalogService.get_variant(
+            session, tenant_id, variant_id, include_inactive=True
+        )
+        await CatalogService._sync_variant_option_links(
+            session, tenant_id, variant.id, variant.product_id, option_values
+        )
+        return variant
+
+    @staticmethod
+    async def add_option(
+        session: AsyncSession, tenant_id: UUID, product_id: UUID, name: str
+    ) -> ProductOption:
+        await CatalogService.get_product(session, tenant_id, product_id)
+        cleaned = str(name).strip()
+        if not cleaned:
+            raise ValidationError("option name must not be empty")
+        if len(cleaned) > 63:
+            raise ValidationError("option name must be at most 63 characters")
+        row = ProductOption(tenant_id=tenant_id, product_id=product_id, name=cleaned)
+        session.add(row)
+        try:
+            async with session.begin_nested():
+                await session.flush()
+        except IntegrityError:
+            raise ConflictError(
+                f"option '{cleaned}' already exists on this product"
+            ) from None
+        return row
+
+    @staticmethod
+    async def add_option_value(
+        session: AsyncSession, tenant_id: UUID, option_id: UUID, value: str
+    ) -> ProductOptionValue:
+        option = (
+            await session.execute(
+                select(ProductOption).where(
+                    ProductOption.tenant_id == tenant_id,
+                    ProductOption.id == option_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if option is None:
+            raise NotFoundError(f"option {option_id} not found")
+        cleaned = str(value).strip()
+        if not cleaned:
+            raise ValidationError("option value must not be empty")
+        if len(cleaned) > 127:
+            raise ValidationError("option value must be at most 127 characters")
+        row = ProductOptionValue(tenant_id=tenant_id, option_id=option.id, value=cleaned)
+        session.add(row)
+        try:
+            async with session.begin_nested():
+                await session.flush()
+        except IntegrityError:
+            raise ConflictError(
+                f"value '{cleaned}' already exists on this option"
+            ) from None
+        return row
+
+    @staticmethod
+    async def list_product_options(
+        session: AsyncSession, tenant_id: UUID, product_id: UUID
+    ) -> list[tuple[ProductOption, list[ProductOptionValue]]]:
+        """The product's option axes with their values, in creation order."""
+        await CatalogService.get_product(session, tenant_id, product_id)
+        options = (
+            await session.execute(
+                select(ProductOption)
+                .where(
+                    ProductOption.tenant_id == tenant_id,
+                    ProductOption.product_id == product_id,
+                )
+                .order_by(ProductOption.created_at.asc(), ProductOption.id.asc())
+            )
+        ).scalars().all()
+        option_ids = [o.id for o in options]
+        values_by_option: dict[UUID, list[ProductOptionValue]] = {}
+        if option_ids:
+            values = (
+                await session.execute(
+                    select(ProductOptionValue)
+                    .where(
+                        ProductOptionValue.tenant_id == tenant_id,
+                        ProductOptionValue.option_id.in_(option_ids),
+                    )
+                    .order_by(
+                        ProductOptionValue.created_at.asc(), ProductOptionValue.id.asc()
+                    )
+                )
+            ).scalars().all()
+            for v in values:
+                values_by_option.setdefault(v.option_id, []).append(v)
+        return [(o, values_by_option.get(o.id, [])) for o in options]

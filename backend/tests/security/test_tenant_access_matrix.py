@@ -70,6 +70,11 @@ _ALLOWED_PUBLIC_ROUTES: frozenset[str] = frozenset(
         "POST /api/v1/auth/mfa/confirm",
         "POST /api/v1/auth/mfa/disable",
         "POST /api/v1/invitations/accept",
+        # account-global recovery (docs/ACCOUNT_RECOVERY.md): password reset
+        # runs BEFORE any tenant scope exists; the token row is account-scoped
+        # and inaccessible to Supabase public roles by migration.
+        "POST /api/v1/auth/password-reset/request",
+        "POST /api/v1/auth/password-reset/confirm",
         # SEC-1: mints a 5-minute stream-scoped credential from the caller's
         # OWN authed identity — reads no tenant-scoped row, binds no GUC.
         "POST /api/v1/realtime/stream-token",
