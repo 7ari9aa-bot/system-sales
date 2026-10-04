@@ -152,7 +152,11 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # two function-scope edges — analytics.persistence (the pending shell) and
 # platform.service (the Job control surface). Same endorsed direction; the
 # worker-side handler lives in app/workers, outside this counter's scan.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 127
+# 127 -> 131 on 2026-10-04: the POS domain (Commerce Core v1.0 §189) reaches
+# the core through its PUBLIC surface only — identity.deps, orders.money,
+# inventory.service, orders.service (attribution by counting d85c113 vs the
+# commerce-core tree). Adapter -> core services is the endorsed direction.
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 131
 # 101 -> 99 on 2026-09-29: the diagnostics engine (platform/diagnostics.py) had
 # module-scope imports of `ai.models.Agent`, `inventory.models` and
 # `orders.models` — three edges that re-merged the eleven-module SCC blob the

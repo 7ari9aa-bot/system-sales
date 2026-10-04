@@ -458,6 +458,14 @@ async def test_not_null_server_defaults_exist_in_the_database(db) -> None:
                 continue
             if column.nullable:
                 continue
+            # An IDENTITY column is database-supplied by construction: the
+            # INSERT may omit it exactly like a server default, and
+            # information_schema's column_default is NULL for it because
+            # identity generation is a separate mechanism. Exempting it does
+            # not weaken the guard — the AST check above still requires the
+            # migration to have created the column.
+            if column.identity is not None:
+                continue
             key = (table_name, column.name)
             if key in db_columns and db_columns[key] is None:
                 problems.append(f"{table_name}.{column.name}")

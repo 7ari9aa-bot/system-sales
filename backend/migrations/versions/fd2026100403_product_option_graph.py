@@ -14,8 +14,8 @@ guarded by a sales_app role-exists DO block.
 
 from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision: str = "fd2026100403"
 down_revision: str | None = "fd2026100402"
@@ -27,9 +27,25 @@ _TENANT_GUARD = "NULLIF(current_setting('app.tenant_id', true), '')::uuid"
 _TABLES = ("product_options", "product_option_values", "product_variant_option_values")
 
 
-def _tenant_table(name: str) -> None:
+def _tenant_fks(name: str) -> None:
+    """The workspace/location FK pair. NOT inlined per table on purpose — the
+    test_migrations column parser only traces literal ``create_table`` /
+    ``add_column`` calls, so the CREATE TABLE statements below are written
+    out with literal names and column names; foreign keys are invisible to
+    it and may stay shared."""
+    op.create_foreign_key(
+        f"fk_{name}_workspace_id", name, "workspaces", ["workspace_id"], ["id"],
+        ondelete="SET NULL",
+    )
+    op.create_foreign_key(
+        f"fk_{name}_location_id", name, "locations", ["location_id"], ["id"],
+        ondelete="SET NULL",
+    )
+
+
+def upgrade() -> None:
     op.create_table(
-        name,
+        "product_options",
         sa.Column("id", sa.Uuid(), primary_key=True),
         sa.Column(
             "tenant_id",
@@ -46,18 +62,7 @@ def _tenant_table(name: str) -> None:
             nullable=False,
         ),
     )
-    op.create_foreign_key(
-        f"fk_{name}_workspace_id", name, "workspaces", ["workspace_id"], ["id"],
-        ondelete="SET NULL",
-    )
-    op.create_foreign_key(
-        f"fk_{name}_location_id", name, "locations", ["location_id"], ["id"],
-        ondelete="SET NULL",
-    )
-
-
-def upgrade() -> None:
-    _tenant_table("product_options")
+    _tenant_fks("product_options")
     op.add_column(
         "product_options",
         sa.Column(
@@ -79,7 +84,25 @@ def upgrade() -> None:
         ["tenant_id", "product_id"],
     )
 
-    _tenant_table("product_option_values")
+    op.create_table(
+        "product_option_values",
+        sa.Column("id", sa.Uuid(), primary_key=True),
+        sa.Column(
+            "tenant_id",
+            sa.Uuid(),
+            sa.ForeignKey("tenants.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column("workspace_id", sa.Uuid(), nullable=True),
+        sa.Column("location_id", sa.Uuid(), nullable=True),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
+    )
+    _tenant_fks("product_option_values")
     op.add_column(
         "product_option_values",
         sa.Column(
@@ -98,7 +121,25 @@ def upgrade() -> None:
         ["tenant_id", "option_id", "value"],
     )
 
-    _tenant_table("product_variant_option_values")
+    op.create_table(
+        "product_variant_option_values",
+        sa.Column("id", sa.Uuid(), primary_key=True),
+        sa.Column(
+            "tenant_id",
+            sa.Uuid(),
+            sa.ForeignKey("tenants.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column("workspace_id", sa.Uuid(), nullable=True),
+        sa.Column("location_id", sa.Uuid(), nullable=True),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
+    )
+    _tenant_fks("product_variant_option_values")
     op.add_column(
         "product_variant_option_values",
         sa.Column(
