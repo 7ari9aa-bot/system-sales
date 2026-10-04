@@ -128,6 +128,14 @@ class AnalysisOut(BaseModel):
     guardrail_reason: str | None = None
 
 
+class DeepAnalysisQueuedOut(BaseModel):
+    """§13 — the 202 body: what was queued and where to poll."""
+
+    job_id: uuid.UUID
+    analysis_id: uuid.UUID
+    status: str
+
+
 async def ensure_si_tools(
     session: AsyncSession, tenant_id: uuid.UUID, agent_id: uuid.UUID
 ) -> None:

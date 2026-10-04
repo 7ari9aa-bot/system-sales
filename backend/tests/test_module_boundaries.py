@@ -148,7 +148,11 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # the same endorsed ai -> analytics public-interface direction.
 # 121 -> 124 on 2026-10-03: the seasonality/customers/fulfillment tools
 # (same endorsed ai -> analytics direction) + the channel-routing work.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 125
+# 125 -> 127 on 2026-10-04: the §13 deep-analysis route (ai/router.py) adds
+# two function-scope edges — analytics.persistence (the pending shell) and
+# platform.service (the Job control surface). Same endorsed direction; the
+# worker-side handler lives in app/workers, outside this counter's scan.
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 127
 # 101 -> 99 on 2026-09-29: the diagnostics engine (platform/diagnostics.py) had
 # module-scope imports of `ai.models.Agent`, `inventory.models` and
 # `orders.models` — three edges that re-merged the eleven-module SCC blob the

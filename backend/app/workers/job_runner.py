@@ -187,6 +187,73 @@ async def _materialize_segments(session: AsyncSession, job: Job) -> dict:
     return {"segments": total, "counts": counts}
 
 
+@register_job_handler("si.deep_analysis")
+async def _si_deep_analysis(session: AsyncSession, job: Job) -> dict:
+    """Sales Intelligence deep analysis (spec §13) — the durable background run.
+
+    The question lives on the pending analysis_evidence shell the API created
+    (correlation_id links job → shell). Runs the FULL interactive pipeline
+    with the tenant's strong model, persists its own evidence + findings, and
+    writes the summary into the shell + the job result. A failed run marks
+    the shell FAILED — the merchant sees the honest outcome, never silence.
+    """
+    from app.modules.ai.agents.sales_intelligence.agent import run_sales_analysis
+    from app.modules.ai.models import Agent
+    from app.modules.analytics.persistence import load_analysis
+
+    shell = await load_analysis(session, job.tenant_id, uuid.UUID(job.correlation_id))
+    if shell is None:
+        raise ValueError(f"deep analysis shell missing: {job.correlation_id}")
+    question = shell["question"]
+
+    agent = (
+        await session.execute(
+            select(Agent).where(
+                Agent.tenant_id == job.tenant_id,
+                Agent.is_active.is_(True),
+            )
+        )
+    ).scalars().first()
+    if agent is None:
+        raise ValueError("no active agent for deep analysis")
+
+    try:
+        result = await run_sales_analysis(
+            session, job.tenant_id, agent_id=agent.id, question=question
+        )
+    except Exception as exc:  # noqa: BLE001 — the outcome is the deliverable
+        logger.exception("si.deep_analysis.failed job=%s", job.id)
+        from sqlalchemy import update as _update
+
+        from app.modules.analytics.models import AnalysisEvidence
+
+        await session.execute(
+            _update(AnalysisEvidence)
+            .where(AnalysisEvidence.id == uuid.UUID(job.correlation_id))
+            .values(outcome="FAILED")
+        )
+        return {"outcome": "FAILED", "error": str(exc)}
+
+    from sqlalchemy import update as _update
+
+    from app.modules.analytics.models import AnalysisEvidence
+
+    await session.execute(
+        _update(AnalysisEvidence)
+        .where(AnalysisEvidence.id == uuid.UUID(job.correlation_id))
+        .values(
+            outcome=result.outcome.value,
+            model=agent.model,
+        )
+    )
+    return {
+        "outcome": result.outcome.value,
+        "answer": result.answer,
+        "findings": len(result.findings),
+        "facts": len(result.facts),
+    }
+
+
 # -------------------------------------------------------------- claiming ----
 
 

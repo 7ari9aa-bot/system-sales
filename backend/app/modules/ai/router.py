@@ -29,6 +29,9 @@ from app.modules.ai.agents.sales_intelligence.agent import (
     AnalysisStoredOut as SalesAnalysisStoredOut,
 )
 from app.modules.ai.agents.sales_intelligence.agent import (
+    DeepAnalysisQueuedOut as SalesDeepAnalysisQueuedOut,
+)
+from app.modules.ai.agents.sales_intelligence.agent import (
     FindingOut,
     FindingStoredOut,
 )
@@ -173,6 +176,54 @@ async def create_sales_analysis(
         facts=result.facts,
         data_quality_status=result.data_quality.status.value,
         guardrail_reason=result.guardrail_reason,
+    )
+
+
+@router.post(
+    "/sales/deep-analyses",
+    status_code=202,
+    response_model=SalesDeepAnalysisQueuedOut,
+)
+async def create_deep_analysis(
+    ctx: TenantCtxDep, body: SalesAnalysisRequest
+) -> SalesDeepAnalysisQueuedOut:
+    """§13 — queue a DEEP analysis: durable background job, streamed progress.
+
+    The shell row stores the question (the one input a background handler
+    cannot otherwise receive); the Job row is the control surface the
+    dashboard polls. 202 Accepted — the analysis has NOT run yet."""
+    from app.modules.ai.agents.sales_intelligence.agent import ensure_si_tools
+    from app.modules.analytics.persistence import create_pending_analysis
+    from app.modules.platform.service import JobService
+
+    agent = (
+        await ctx.session.execute(
+            select(Agent)
+            .where(
+                Agent.tenant_id == ctx.tenant_id,
+                Agent.is_active.is_(True),
+            )
+            .order_by(Agent.created_at.asc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if agent is None:
+        raise NotFoundError("no active agent for this tenant")
+
+    await ensure_si_tools(ctx.session, ctx.tenant_id, agent.id)
+    analysis_id = await create_pending_analysis(
+        ctx.session, ctx.tenant_id, question=body.question
+    )
+    job = await JobService.create(
+        ctx.session,
+        ctx.tenant_id,
+        kind="si.deep_analysis",
+        actor_user_id=ctx.user.id,
+        correlation_id=str(analysis_id),
+    )
+    await ctx.session.commit()
+    return SalesDeepAnalysisQueuedOut(
+        job_id=job.id, analysis_id=analysis_id, status="queued"
     )
 
 

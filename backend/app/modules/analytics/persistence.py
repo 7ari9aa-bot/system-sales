@@ -113,3 +113,23 @@ async def load_analysis(
             for f in finding_rows
         ],
     }
+
+
+async def create_pending_analysis(
+    session: AsyncSession, tenant_id: uuid.UUID, *, question: str
+) -> uuid.UUID:
+    """The shell a deep analysis fills in: question stored, outcome PENDING.
+
+    The Job row (platform) carries the control surface; this row carries the
+    question — the one input a background handler cannot otherwise receive.
+    """
+    row = AnalysisEvidence(
+        tenant_id=tenant_id,
+        question=question,
+        outcome="PENDING",
+        pack={},
+        content_hash="pending",
+    )
+    session.add(row)
+    await session.flush()
+    return row.id
