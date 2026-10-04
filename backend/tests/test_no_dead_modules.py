@@ -102,6 +102,11 @@ KNOWN_DEAD_MODULES: dict[str, str] = {
         "§8 turn intake/normalization (text/photo/voice into InboundTurn) — "
         "unit-tested; the M2 turn coordinator is its caller, next wave."
     ),
+    "app.modules.ai.agents.customer.turn": (
+        "§8 M2 turn coordinator (intake→state→referents→vision→runner→"
+        "grounding→patch) — unit-tested with an injected fake runner; the "
+        "message-worker hook adopts it as the customer-agent path next wave."
+    ),
     # §166 / ADR-042 storm-suppression write path. Wiring it correctly is a
     # feature, not a one-line call: NotificationService.create() returns the
     # Notification row every caller already depends on, and the aggregator's
