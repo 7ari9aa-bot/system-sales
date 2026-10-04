@@ -19,10 +19,11 @@ from fastapi import Depends, Header, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.db import SessionLocal, bind_scope, bind_tenant
+from app.core.db import bind_scope, bind_tenant
 from app.core.errors import NotFoundError, PermissionDeniedError
 from app.core.security import decode_token
 from app.core.tenancy import DEFAULT_CURRENCY, set_current_scope, set_current_tenant
+from app.modules.identity import cookies
 from app.modules.identity.models import (
     Location,
     Permission,
@@ -98,6 +99,12 @@ def tenant_may_use_api(state: str | None) -> bool:
 
 async def get_db() -> AsyncSession:
     """One session per request, one transaction: commit on success."""
+    # Lazy: app.core.db resolves SessionLocal through __getattr__ PER ACCESS,
+    # so tests can bind the app's sessions to the test transaction
+    # (conftest's app_sessions_on_test_connection). An import-time binding
+    # would freeze the pre-patch factory and break that binding forever.
+    from app.core.db import SessionLocal
+
     async with SessionLocal() as session:
         async with session.begin():
             yield session
@@ -113,6 +120,24 @@ class AuthedUser:
     role_code: str | None
     is_platform_admin: bool = False  # §146: break-glass claim from JWT
     auth_version: int = 0
+    # DB-verified per request (the deps query reads it alongside auth_version):
+    # services reached with an AuthedUser may rely on it instead of re-querying.
+    is_active: bool = False
+
+
+def _extract_access_token(request: Request, authorization: str | None) -> tuple[str, bool]:
+    """The access token + whether it arrived by COOKIE (vs the Bearer header).
+
+    Header wins. The cookie fallback powers the HttpOnly delivery path; the
+    boolean drives the CSRF gate, which only cookie callers owe (a Bearer
+    header cannot be attached by a cross-site form, so it needs no CSRF).
+    """
+    if authorization and authorization.lower().startswith("bearer "):
+        return authorization.split(" ", 1)[1].strip(), False
+    cookie_token = request.cookies.get(cookies.ACCESS_COOKIE)
+    if cookie_token:
+        return cookie_token, True
+    raise PermissionDeniedError("missing bearer token")
 
 
 async def get_current_user(
@@ -120,9 +145,9 @@ async def get_current_user(
     session: DbSession,
     authorization: Annotated[str | None, Header()] = None,
 ) -> AuthedUser:
-    if not authorization or not authorization.lower().startswith("bearer "):
-        raise PermissionDeniedError("missing bearer token")
-    token = authorization.split(" ", 1)[1].strip()
+    token, cookie_authenticated = _extract_access_token(request, authorization)
+    if not cookies.csrf_satisfied(request, cookie_authenticated=cookie_authenticated):
+        raise PermissionDeniedError("missing or mismatched csrf token")
     try:
         payload = decode_token(token)
         if payload.get("type") != "access":
@@ -148,6 +173,7 @@ async def get_current_user(
             role_code=payload.get("role"),
             is_platform_admin=bool(payload.get("is_platform_admin", False)),  # §146
             auth_version=int(auth_state.auth_version or 0),
+            is_active=bool(auth_state.is_active),
         )
     except PermissionDeniedError:
         raise
@@ -387,7 +413,7 @@ async def get_optional_user(
     authorization: Annotated[str | None, Header()] = None,
 ) -> AuthedUser | None:
     """Auth that tolerates anonymous callers (webchat, public webhooks)."""
-    if not authorization or not authorization.lower().startswith("bearer "):
+    if not authorization and not request.cookies.get(cookies.ACCESS_COOKIE):
         return None
     try:
         return await get_current_user(request, session, authorization)

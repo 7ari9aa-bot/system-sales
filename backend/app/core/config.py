@@ -4,7 +4,7 @@ import logging
 from functools import lru_cache
 from urllib.parse import urlsplit
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
@@ -65,6 +65,11 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_ttl_seconds: int = 60 * 30
     refresh_token_ttl_seconds: int = 60 * 60 * 24 * 14
+    # HttpOnly cookie auth (the XSS-hardening wave). None means AUTO:
+    # secure everywhere except ENVIRONMENT=local, whose dashboard runs on
+    # plain http. Set AUTH_COOKIE_SECURE explicitly in staging/production if
+    # the dashboard ever serves over http behind a trusted proxy.
+    auth_cookie_secure: bool | None = None
     # Webchat visitor sessions are long-lived by nature (a returning visitor
     # keeps the same conversation) but are still server-signed (S2).
     webchat_session_ttl_seconds: int = 60 * 60 * 24 * 30
@@ -157,6 +162,17 @@ class Settings(BaseSettings):
 
     # Internal service credential used by trusted metrics scrapers.
     service_token_internal: str = "change-me-too"
+
+    # Website Platform integration (external presentation plane): per-tenant
+    # keys for the catalog exposure endpoint. JSON of tenant_id -> key.
+    # Example: WEBSITE_PLATFORM_TENANT_KEYS='{"<tenant-uuid>":"wpk-tenant-secret"}'
+    website_platform_tenant_keys: dict[str, str] = Field(default_factory=dict)
+
+    # Where the external Website Platform lives (API + Studio), used by the
+    # website-builder integration module for SSO deep links.
+    website_platform_api_url: str = "https://wp-platform-hamedadel7744-9853.vercel.app"
+    website_platform_studio_url: str = "https://wp-studio-hamedadel7744-9853.vercel.app"
+    website_platform_api_key: str = ""
 
     # §68: at-rest envelope encryption of Integration.credentials
     # (app.core.secrets.EnvelopeSecretStore). Base64-encoded; must decode to

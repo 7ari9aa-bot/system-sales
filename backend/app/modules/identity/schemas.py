@@ -41,7 +41,9 @@ class TokenPair(BaseModel):
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: str
+    # Optional since the cookie wave: the refresh cookie (path=/api/v1/auth)
+    # supplies the token when the body omits it — the browser flow's shape.
+    refresh_token: str | None = None
 
 
 class SwitchTenantRequest(RefreshRequest):

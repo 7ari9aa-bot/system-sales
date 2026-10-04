@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.errors import PermissionDeniedError, ValidationError
 from app.modules.billing.service import EntitlementService
-from app.modules.identity import schemas, service
+from app.modules.identity import cookies, schemas, service
 from app.modules.identity.deps import (
     CurrentUserDep,
     DbSession,
@@ -87,11 +87,16 @@ async def register(body: schemas.RegisterRequest, session: DbSession):
 
 
 @router.post("/auth/login", response_model=schemas.TokenPair)
-async def login(body: schemas.LoginRequest, request: Request, session: DbSession):
+async def login(
+    body: schemas.LoginRequest, request: Request, session: DbSession, response: Response
+):
     user_agent, ip = _client_meta(request)
     pair, _user, _tenant_id = await service.AuthService.login(
         session, email=body.email, password=body.password, user_agent=user_agent, ip=ip
     )
+    # The pair still rides the body (desktop/Bearer flow unchanged); the
+    # cookies are the XSS-hardened delivery the dashboard adopts.
+    cookies.set_auth_cookies(response, pair.access_token, pair.refresh_token)
     return pair
 
 
@@ -128,17 +133,28 @@ async def confirm_password_reset(
 
 
 @router.post("/auth/refresh", response_model=schemas.TokenPair)
-async def refresh(body: schemas.RefreshRequest, request: Request, session: DbSession):
+async def refresh(
+    body: schemas.RefreshRequest, request: Request, session: DbSession, response: Response
+):
     user_agent, ip = _client_meta(request)
+    refresh_token = body.refresh_token or request.cookies.get(cookies.REFRESH_COOKIE)
+    if not refresh_token:
+        raise PermissionDeniedError("no refresh token supplied")
     pair, _user, _tenant_id = await service.AuthService.refresh(
-        session, refresh_token=body.refresh_token, user_agent=user_agent, ip=ip
+        session, refresh_token=refresh_token, user_agent=user_agent, ip=ip
     )
+    cookies.set_auth_cookies(response, pair.access_token, pair.refresh_token)
     return pair
 
 
 @router.post("/auth/logout", status_code=204)
-async def logout(body: schemas.RefreshRequest, session: DbSession, response: Response):
-    await service.AuthService.logout(session, refresh_token=body.refresh_token)
+async def logout(
+    body: schemas.RefreshRequest, request: Request, session: DbSession, response: Response
+):
+    refresh_token = body.refresh_token or request.cookies.get(cookies.REFRESH_COOKIE)
+    if refresh_token:
+        await service.AuthService.logout(session, refresh_token=refresh_token)
+    cookies.clear_auth_cookies(response)
     response.status_code = 204
     return None
 
@@ -164,11 +180,16 @@ async def me(user: CurrentUserDep, session: DbSession):
 
 @router.post("/auth/switch-tenant", response_model=schemas.TokenPair)
 async def switch_tenant(
-    body: schemas.SwitchTenantRequest, user: CurrentUserDep, session: DbSession
+    body: schemas.SwitchTenantRequest,
+    user: CurrentUserDep,
+    session: DbSession,
+    response: Response,
 ):
-    return await service.AuthService.switch_tenant(
+    pair = await service.AuthService.switch_tenant(
         session, user=user, tenant_id=body.tenant_id, refresh_token=body.refresh_token
     )
+    cookies.set_auth_cookies(response, pair.access_token, pair.refresh_token)
+    return pair
 
 
 # ---------- §146 MFA (TOTP) ----------
@@ -213,7 +234,9 @@ class MfaDisableRequest(BaseModel):
 
 
 @router.post("/auth/mfa/verify", response_model=schemas.TokenPair)
-async def mfa_verify(body: MfaVerifyRequest, request: Request, session: DbSession):
+async def mfa_verify(
+    body: MfaVerifyRequest, request: Request, session: DbSession, response: Response
+):
     """§146: complete an MFA-challenged login (challenge is single-use)."""
     user_agent, ip = _client_meta(request)
     pair, _user, _tenant_id = await service.AuthService.mfa_verify(
@@ -223,6 +246,7 @@ async def mfa_verify(body: MfaVerifyRequest, request: Request, session: DbSessio
         user_agent=user_agent,
         ip=ip,
     )
+    cookies.set_auth_cookies(response, pair.access_token, pair.refresh_token)
     return pair
 
 
