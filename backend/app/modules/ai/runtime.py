@@ -973,7 +973,12 @@ class AgentRunner:
                             granted = None
                         if granted is not None:
                             await ApprovalService.consume(session, granted)
-                            result = await spec.handler(session, tenant_id, **kwargs)
+                            # The savepoint wraps the HANDLER ONLY: if it fails,
+                            # its partial writes roll back but the approval
+                            # stays consumed — a retry needs a fresh human
+                            # grant instead of silently re-using this one.
+                            async with session.begin_nested():
+                                result = await spec.handler(session, tenant_id, **kwargs)
                         else:
                             # The action has NOT happened. Park the run and
                             # return WITHOUT calling the handler — executing
@@ -995,14 +1000,29 @@ class AgentRunner:
                             status = "awaiting_approval"
                             result = {"awaiting_approval": True}
                     else:
-                        result = await spec.handler(session, tenant_id, **kwargs)
+                        # Same containment for the no-approval path: a failing
+                        # tool must not poison the run's transaction — the
+                        # failed ToolCall row below has to be writable.
+                        async with session.begin_nested():
+                            result = await spec.handler(session, tenant_id, **kwargs)
                 except PydanticValidationError as exc:
                     status = "error"
                     error = f"invalid tool arguments: {exc.errors()[0].get('msg', str(exc))}"
-                except Exception as exc:
+                except DomainError as exc:
+                    # Designed outcome: a tool MEANT to say this (insufficient
+                    # stock, unknown id, duplicate SKU). The message is data
+                    # the model may act on — it never carries internals.
                     status = "error"
                     error = str(exc)
-                    logger.warning(
+                except Exception:
+                    # Unexpected failure. The exception text may carry SQL
+                    # fragments, connection strings, filesystem paths, keys
+                    # or provider bodies — NONE of it enters the model's
+                    # context; the model gets the fixed generic outcome and
+                    # the full traceback goes to the logs for a human.
+                    status = "error"
+                    error = "tool failed unexpectedly"
+                    logger.exception(
                         "ai tool call failed",
                         extra={"tool": request.name, "run_id": str(run.id)},
                     )
