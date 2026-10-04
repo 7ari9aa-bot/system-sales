@@ -444,3 +444,56 @@ async def test_insufficient_stock_aborts_order_atomically(
     balance = await _balance(db, tenant_id, variant.id, wh.id)
     assert balance.reserved == 0
     await db.flush()
+
+
+async def test_checkout_reserves_in_variant_id_order(
+    db: AsyncSession, tenant_ctx, monkeypatch
+):
+    """The reserve loop walks variants in VARIANT-ID order, never the cart's.
+
+    Two concurrent checkouts holding the same variants in opposite line orders
+    deadlock on the FOR UPDATE row locks when reservation follows the
+    customer's line order (reproduced 25/25 pre-fix). The line order is data;
+    the lock order is a global rule — asserted here by recording the calls.
+    """
+    from app.modules.catalog.service import CatalogService
+    from app.modules.inventory.service import InventoryService
+
+    tenant_id = tenant_ctx.tenant_id
+    customer, variant_a, wh = await _customer_and_variant(db, tenant_id, stock=10)
+    variant_b = await CatalogService.add_variant(
+        db,
+        tenant_id,
+        variant_a.product_id,
+        sku=f"WGT-{uuid.uuid4().hex[:6].upper()}",
+        price="30.00",
+    )
+    await InventoryService.move(
+        db, tenant_id, variant_b.id, wh.id, direction="in", quantity=10, reason="purchase"
+    )
+    await db.flush()
+
+    calls: list[uuid.UUID] = []
+    real_reserve = InventoryService.reserve
+
+    async def spy(session, tid, variant_id, warehouse_id, quantity):
+        calls.append(variant_id)
+        return await real_reserve(session, tid, variant_id, warehouse_id, quantity)
+
+    monkeypatch.setattr(InventoryService, "reserve", staticmethod(spy))
+
+    # The cart lists the HIGHER id first — the customer's order must not
+    # decide the lock order.
+    first, second = sorted([variant_a, variant_b], key=lambda v: v.id)
+    await OrderService.create_order(
+        db,
+        tenant_id,
+        customer.id,
+        [
+            {"variant_id": str(second.id), "quantity": 1},
+            {"variant_id": str(first.id), "quantity": 1},
+        ],
+        channel="whatsapp",
+    )
+
+    assert calls == [first.id, second.id]

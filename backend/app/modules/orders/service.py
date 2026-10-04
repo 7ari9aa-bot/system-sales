@@ -484,8 +484,12 @@ class OrderService:
                     f"{refusal} (variant {variant.sku or variant.id})"
                 )
 
-        # Reserve first — insufficient stock aborts the whole order.
-        for variant, quantity, _price in prepared:
+        # Reserve first — insufficient stock aborts the whole order. The loop
+        # walks variants in VARIANT-ID order, never the customer's line order:
+        # two concurrent orders holding the same variants in opposite orders
+        # otherwise deadlock on the FOR UPDATE row locks. The customer's line
+        # order is data; the lock order must be a global rule.
+        for variant, quantity, _price in sorted(prepared, key=lambda item: item[0].id):
             await InventoryService.reserve(
                 session, tenant_id, variant.id, warehouse.id, quantity
             )
