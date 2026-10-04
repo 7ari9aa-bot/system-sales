@@ -12,9 +12,78 @@
 - Frontend: Vercel via the dashboard (Root Directory = `frontend`). The
   `/api/v1` → Railway rewrites live in `frontend/vercel.json` — changing the
   backend domain means updating that file, and it deploys with the next push.
-- Backend: Railway from the root `railway.json` (Dockerfile build + uvicorn
-  start command, `/healthz` healthcheck, ON_FAILURE restart policy).
-- Deploy order: migrate job (`alembic upgrade head`) -> api -> workers -> frontend.
+- Backend: Railway IaC in `.railway/railway.ts` (replaces the root
+  `railway.json`, which was deleted — Railway retires config-as-code
+  `railway.json`/`railway.toml` on 2026-12-01). The IaC CLI needs the SDK at
+  the repo root: `npm install railway` (one time; `railway/iac` resolves
+  against it). Project name in the file is `sales-os` — it must match the
+  linked Railway project and the service names must match the dashboard
+  (`api`, `workers`), or `railway config plan` shows unexpected creates.
+- Topology — both services build the SAME image from `infra/Dockerfile.backend`
+  with the repo root as build context (the Dockerfile COPYs `backend/...`, so
+  no `rootDirectory` anywhere):
+  - `api` — uvicorn `--workers 2` (staging: `--workers 1 --log-level debug`),
+    pre-deploy `alembic upgrade head`, healthcheck `/healthz`, restart
+    ON_FAILURE (production max 5, staging max 3). Migrations run ONLY here:
+    once per deploy, before the new container takes traffic.
+  - `workers` — `python -m app.workers.run` (no arguments = the outbox relay
+    plus every pool: messages, notifications, webhooks, campaigns, scheduler,
+    jobs). Without this service nothing is sent or processed — messages die in
+    the outbox. No healthcheck (no HTTP server to probe) and no pre-deploy
+    (two concurrent alembic runs would race). Restart ON_FAILURE max 5
+    (declared; the dashboard default is ON_FAILURE max 10).
+- Dockerfile-path migration bug: when Railway migrates a service from
+  config-as-code to IaC, a CUSTOM dockerfilePath can be IGNORED and the build
+  falls back to the repo root — where no Dockerfile exists here. The IaC
+  asserts `builder: "DOCKERFILE"` + `dockerfilePath: "infra/Dockerfile.backend"`
+  explicitly on both services. After the first apply, read the deploy build
+  log: it must run THIS Dockerfile's steps (`pip install` from
+  `backend/pyproject.toml`), not a root build.
+- Variables: the IaC declares every known variable as `preserve()` — keep the
+  value already stored in Railway — because the old file's `deploy.env` blocks
+  were never a supported config-as-code key (absent from both published
+  schemas) and never reached the services; the live values were always set in
+  the dashboard or by `backend/scripts/deploy_railway.py`. A variable the IaC
+  does not mention plans as a DESTRUCTIVE delete, hence the full list. The
+  `${{...}}` wiring INTENT from the deleted file, for reference (never
+  applied, values live in Railway):
+  - staging: `DATABASE_URL` ← `STAGING_DATABASE_URL`, `DATABASE_URL_ADMIN` ←
+    `STAGING_DATABASE_URL_ADMIN`, `REDIS_URL`/`SUPABASE_URL`/
+    `SUPABASE_ANON_KEY`/`SUPABASE_SERVICE_ROLE_KEY`/`JWT_SECRET`/
+    `WHATSAPP_APP_SECRET`/`OPENAI_API_KEY`/`CORS_ORIGINS`/
+    `FRONTEND_PUBLIC_URL`/`RESEND_API_KEY`/`EMAIL_FROM`/
+    `EMAIL_DELIVERY_ENABLED` and every `S3_*` ← the matching `STAGING_*` key,
+    `OTEL_EXPORTER_OTLP_ENDPOINT` ← `STAGING_OTEL_ENDPOINT`;
+    `FEATURE_FLAGS=voice.enabled=false,ai.new_router.enabled=true,new_search.enabled=false`.
+  - production: same-key identity mappings (`JWT_SECRET` ← `JWT_SECRET`, …)
+    plus `OTEL_EXPORTER_OTLP_ENDPOINT` ← `OTEL_ENDPOINT`.
+- Cutover (first apply only; the repo may carry no `railway.json` while the
+  services still read it — Railway blocks IaC plans for CaC-managed services):
+  1. `railway link` the project; in each service's Settings confirm the config
+     file path no longer points at `railway.json` (clear it if set).
+  2. Select the environment, then `railway config plan`. A good plan shows
+     only build/start/preDeploy/healthcheck/restart updates on api and workers
+     (workers may show a `restartPolicyMaxRetries` change, 10 → 5). It must
+     NOT show service deletes or variable deletes — stop and reconcile if it
+     does. Repeat for the other environment, then `railway config apply`.
+  3. Between the `railway.json` deletion and the apply, deploys fall back to
+     each service's dashboard Settings: production settings already match the
+     IaC (they were provisioned by `deploy_railway.py`), but a STAGING deploy
+     in that window loses the `--workers 1 --log-level debug` override. Apply
+     promptly and re-verify staging after.
+- The `redis` service stays dashboard-owned and is NOT declared in the IaC:
+  it is a plain `redis:7-alpine` image with a custom `requirepass`+AOF start
+  command; declaring it as a Railway `redis()` database would change the
+  product. Its variables (`REDIS_PASSWORD`, `REDIS_URL`) are preserved by not
+  touching the service.
+- Follow-up (separate task): point the `railway` topology in
+  `backend/tests/test_worker_deployment_declaration.py` at
+  `.railway/railway.ts`, delete its `TOPOLOGY_START_GAPS["railway"]` entry,
+  and refresh the stale `railway.json` comment in
+  `infra/docker-compose.yml` — that test predates the IaC and cannot scan it
+  yet, so the worker command is guarded only by compose until then.
+- Deploy order: api (its pre-deploy runs `alembic upgrade head`) -> workers ->
+  frontend.
 
 ## Database roles
 
