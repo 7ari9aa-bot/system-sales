@@ -34,7 +34,8 @@ services:
   # ---------------------------------------------------------- app processes --
   # Two process classes, deliberately two services.
   #
-  # The API must NOT host a worker pool: `railway.json` runs it as
+  # The API must NOT host a worker pool: `.railway/railway.ts` — the Railway
+  # IaC that replaced the deleted `railway.json` — runs its api service as
   # `uvicorn --workers 2`, so anything the app lifespan boots runs once per HTTP
   # worker — N consumers claiming the same non-leased work. That rule is
   # machine-checked by backend/tests/test_worker_deployment_declaration.py,

@@ -112,6 +112,9 @@ RESOLVED (deploy hardening): one root `railway.json` now carries build + deploy
 deleted — frontend deploys on Vercel via dashboard (root=frontend), backend on
 Railway; `pyproject-prod.toml` deleted; Dockerfile prod-extra fallback replaced
 by a non-editable install with a non-root USER and a HEALTHCHECK.
+SUPERSEDED 2026-10-04: Railway retired config-as-code, so that root
+`railway.json` was deleted and replaced by the IaC file `.railway/railway.ts`
+(api + workers services; see docs/RUNBOOK.md Deploy).
 
 ## 3. HIGH — correctness, security, and product gaps (top 45)
 

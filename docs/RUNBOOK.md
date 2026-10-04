@@ -76,12 +76,6 @@
   command; declaring it as a Railway `redis()` database would change the
   product. Its variables (`REDIS_PASSWORD`, `REDIS_URL`) are preserved by not
   touching the service.
-- Follow-up (separate task): point the `railway` topology in
-  `backend/tests/test_worker_deployment_declaration.py` at
-  `.railway/railway.ts`, delete its `TOPOLOGY_START_GAPS["railway"]` entry,
-  and refresh the stale `railway.json` comment in
-  `infra/docker-compose.yml` — that test predates the IaC and cannot scan it
-  yet, so the worker command is guarded only by compose until then.
 - Deploy order: api (its pre-deploy runs `alembic upgrade head`) -> workers ->
   frontend.
 

@@ -33,7 +33,9 @@ to edit is the same bug in a different file. Instead:
    scheduler dispatches by ``job_type`` (``scheduler_worker._HANDLERS``, read
    out of the handler's own bytecode constants — the registration is the
    declaration). Both at once is a double-start.
-3. **The artifacts are the real files**, parsed as text: ``railway.json``,
+3. **The artifacts are the real files**, parsed as text: ``.railway/railway.ts``
+   (the Railway IaC file — TypeScript, scanned as text; see
+   ``_railway_service_bodies`` for why that is deliberate and what it costs),
    ``infra/Dockerfile.backend``, ``infra/docker-compose.yml``,
    ``.github/workflows/*.yml``, ``app/main.py``. A start command that names no
    pool means "all of them" (``run.py``'s argparse default).
@@ -41,8 +43,12 @@ to edit is the same bug in a different file. Instead:
 Rule 3 is what this file was written because of: before it, the only thing in
 the repo that ever ran ``python -m app.workers.run`` was
 ``backend/scripts/deploy_railway.py`` — a manual provisioning script that no CI
-job executes and that ``railway.json`` does not reference. Every declarative
-artifact started the API and nothing started a worker.
+job executes and that no declarative artifact referenced. Every declarative
+artifact started the API and nothing started a worker. That is closed at the
+declaration layer now: Railway retired config-as-code (``railway.json``), and
+the IaC file that replaced it, ``.railway/railway.ts``, declares the dedicated
+``workers`` service the single-service file never could — so the topology this
+guard scans finally boots what the code ships.
 
 Intended vs declared
 --------------------
@@ -104,17 +110,25 @@ REPO_ROOT = BACKEND_ROOT.parent
 
 WORKER_PACKAGE = "app.workers"
 
+#: The Railway IaC file that replaced the deleted root ``railway.json``. It is
+#: TypeScript (Railway's IaC SDK), so the guard scans it as text instead of
+#: importing it — see ``_railway_service_bodies`` for the anchors that make
+#: that safe and for the failure mode when they go stale.
+RAILWAY_IAC = REPO_ROOT / ".railway" / "railway.ts"
+
 #: Deployment artifacts a deploy actually reads, grouped by the RUNTIME
 #: topology each one produces. Coverage of the pools is asserted against these:
 #: a start command living only in a hand-run script is not a deployment, it is
 #: an instruction to whoever remembers to run it.
 #:
-#: ``infra/Dockerfile.backend`` sits in the Railway topology because that is
-#: what builds it and inherits its CMD as the container's default command; the
-#: compose services set ``command`` explicitly, so the default is not theirs.
+#: The Railway topology's declaration is ``.railway/railway.ts``, which declares
+#: BOTH services (api and workers). ``infra/Dockerfile.backend`` sits in the
+#: same topology because that is what builds them and inherits its CMD as the
+#: container's default command; the compose services set ``command`` explicitly,
+#: so the default is not theirs.
 DECLARATIVE_TOPOLOGIES: dict[str, tuple[pathlib.Path, ...]] = {
     "railway": (
-        REPO_ROOT / "railway.json",
+        RAILWAY_IAC,
         REPO_ROOT / "infra" / "Dockerfile.backend",
     ),
     "compose": (REPO_ROOT / "infra" / "docker-compose.yml",),
@@ -143,7 +157,7 @@ OPERATIONAL_ARTIFACTS: tuple[pathlib.Path, ...] = (
 #: Artifacts whose start command boots the API tier. None of them may also boot
 #: a pool — see ``test_the_api_process_starts_no_worker_and_no_relay``.
 API_ARTIFACTS: tuple[pathlib.Path, ...] = (
-    REPO_ROOT / "railway.json",
+    RAILWAY_IAC,
     REPO_ROOT / "infra" / "Dockerfile.backend",
     REPO_ROOT / "infra" / "docker-compose.yml",
     BACKEND_ROOT / "scripts" / "deploy_railway.py",
@@ -254,24 +268,14 @@ UNDISPATCHED_WORKERS: dict[str, str] = {
 #: ``test_each_topology_starts_every_pool_or_records_why_not`` red and forces
 #: the excuse to be deleted. It is never a licence to leave a pool undeclared
 #: everywhere: that is what the coverage test above fails on.
-TOPOLOGY_START_GAPS: dict[str, str] = {
-    # A Railway `railway.json` describes exactly ONE service, and the one this
-    # repo carries is the API — which must stay pool-free, because
-    # `startCommand` runs `uvicorn --workers 2` and every pool booted from the
-    # API process runs once per HTTP worker. So the worker tier cannot be
-    # declared in this file at all; it needs its own service, which Railway
-    # takes from the project settings or from
-    # `backend/scripts/deploy_railway.py:205` — a script no CI job runs.
-    # Closing this for real means the worker tier's start command reaching a
-    # committed artifact Railway reads — a second service config, not an edit to
-    # this test.
-    "railway": (
-        "railway.json can only carry the API service, and the API tier must "
-        "start no pool (uvicorn --workers 2 => one copy per HTTP worker). The "
-        "worker service exists only in the manual "
-        "backend/scripts/deploy_railway.py:205. G-04's external half."
-    ),
-}
+#:
+#: The "railway" entry that lived here from the start is deleted, exactly the
+#: way the mechanism says it must go: Railway retired config-as-code, and the
+#: IaC file that replaced ``railway.json`` — ``.railway/railway.ts`` — declares
+#: the dedicated ``workers`` service the old single-service file could not
+#: express, so the topology now starts every pool and there is nothing left to
+#: excuse.
+TOPOLOGY_START_GAPS: dict[str, str] = {}
 
 
 # =========================================================== worker × start ==
@@ -341,9 +345,10 @@ def test_a_pool_name_binds_one_worker_class(pool: str) -> None:
 
 
 def test_the_api_process_starts_no_worker_and_no_relay() -> None:
-    """The API must not boot a pool. ``railway.json:8`` runs ``uvicorn
-    --workers 2``, so anything started from the app lifespan runs once per HTTP
-    worker — two copies claiming the same work inside one deployment.
+    """The API must not boot a pool. The api service declared in
+    ``.railway/railway.ts`` runs ``uvicorn --workers 2``, so anything started
+    from the app lifespan runs once per HTTP worker — two copies claiming the
+    same work inside one deployment.
 
     Same for the outbox relay: run.py starts it once per worker process, and a
     relay duplicated into the API tier is a duplicated publisher.
@@ -386,10 +391,16 @@ def _pools_started_by(text: str) -> list[str]:
 
     No pool arguments means every pool, which is exactly ``run.py``'s argparse
     default. Returned as a list so a start command that names one pool twice is
-    still visible to the caller.
+    still visible to the caller. Comment lines are skipped: the artifacts are
+    parsed as text, and a comment that mentions the command while listing the
+    pool names (the ``.railway/railway.ts`` header does exactly that) is
+    documentation, not a start command — counting it would double-report pools
+    the real command already covers.
     """
     started: list[str] = []
     for line in text.splitlines():
+        if line.lstrip().startswith(("#", "//", "*")):
+            continue
         if WORKER_ENTRYPOINT not in line:
             continue
         tokens = set(re.split(r"[^A-Za-z0-9_.-]+", line)) & set(worker_run.POOLS)
@@ -412,10 +423,10 @@ def test_every_pool_is_started_by_a_declarative_artifact() -> None:
     """A pool nothing deploys is a feature nobody shipped.
 
     This is the assertion G-04 can make internally: for every entry in POOLS
-    some committed, machine-read deployment file (railway.json / the compose
-    stack / a workflow) issues the start command for it. A start command that
-    exists only inside a manual provisioning script does not count — nothing
-    runs that script, so it proved nothing about deployment.
+    some committed, machine-read deployment file (``.railway/railway.ts`` / the
+    compose stack / a workflow) issues the start command for it. A start
+    command that exists only inside a manual provisioning script does not count
+    — nothing runs that script, so it proved nothing about deployment.
     """
     commands = _artifact_start_commands()
     declarative = {
@@ -514,6 +525,122 @@ def test_no_api_start_command_hides_a_worker_pool() -> None:
     assert not offenders, (
         "start command runs the API and a worker pool on the same line, so the "
         "pool never starts:\n  " + "\n  ".join(offenders)
+    )
+
+
+# ================================================== railway IaC, as text ====
+
+
+#: One ``service("NAME", { ... })`` block in ``.railway/railway.ts``. Anchored
+#: on the shape the file itself commits to: every service is a top-level
+#: ``service("<name>", {`` call closed by a ``});`` at exactly two-space
+#: indentation — the nesting inside a block closes with ``}),`` at deeper
+#: indentation, so the lazy match cannot stop early. If the file's shape
+#: drifts, the match fails and the tests below fail loudly; a guard must never
+#: pass because it found nothing to look at.
+_RAILWAY_SERVICE_BLOCK = re.compile(
+    r'service\("([a-z0-9_-]+)",\s*\{(.*?)\n  \}\);',
+    re.DOTALL,
+)
+
+
+def _railway_service_bodies() -> dict[str, str]:
+    """Service name -> source text of its block in ``.railway/railway.ts``.
+
+    The IaC file is TypeScript, and giving pytest a real TS parser would drag a
+    Node toolchain into a Python suite this repo runs everywhere — so the file
+    is scanned as text, with the anchors pinned to the declaration shape above
+    and every extracted claim checked against the ``start`` command literals
+    the file documents. The tradeoff is stated rather than hidden: this scan
+    can be fooled by prose that imitates the declaration shape, and the tests
+    that use it accept that in exchange for zero non-Python dependencies.
+    """
+    text = RAILWAY_IAC.read_text(encoding="utf-8")
+    bodies = dict(_RAILWAY_SERVICE_BLOCK.findall(text))
+    missing = {"api", "workers"} - set(bodies)
+    assert not missing, (
+        f".railway/railway.ts no longer declares {sorted(missing)} as a "
+        'service("NAME", { ... }) block the scan can anchor on — either a '
+        "service was dropped from the IaC, or its shape changed and the "
+        "anchors above are stale. Both are declarations this guard depends on."
+    )
+    return bodies
+
+
+def _railway_project_resources() -> str:
+    """The identifier list inside ``project(..., { resources: [...] })``."""
+    text = RAILWAY_IAC.read_text(encoding="utf-8")
+    match = re.search(r"resources:\s*\[([^\]]*)\]", text)
+    assert match, (
+        ".railway/railway.ts has no `resources: [ ... ]` inside its "
+        "project(...) call — there is no project for the services to join"
+    )
+    return match.group(1)
+
+
+def test_railway_iac_declares_a_workers_service_that_boots_every_pool() -> None:
+    """The worker tier is a first-class Railway service, not a script.
+
+    This is the declaration the deleted ``TOPOLOGY_START_GAPS["railway"]`` entry
+    was waiting for: ``railway.json`` could carry exactly one service (the
+    API), so the worker tier lived only in ``deploy_railway.py``. The IaC file
+    that replaced it declares a ``workers`` service whose start command is the
+    bare ``python -m app.workers.run`` — no pool arguments, which is
+    ``run.py``'s argparse default and therefore the outbox relay plus every
+    pool, so a pool added to POOLS deploys without anyone editing this command.
+    """
+    workers = _railway_service_bodies()["workers"]
+    start = re.search(r'start:\s*"([^"]*)"', workers)
+    assert start is not None, (
+        'the workers service block in .railway/railway.ts has no `start: "..."` '
+        "literal — a service with no start command deploys nothing"
+    )
+    command = start.group(1)
+    assert command == "python -m app.workers.run", (
+        f"the workers service start command is {command!r}; expected the bare "
+        "`python -m app.workers.run` (no pool arguments — pinning pools here "
+        "would silently drop every pool added to POOLS afterwards)"
+    )
+    assert set(_pools_started_by(command)) == set(worker_run.POOLS), (
+        f"the workers start command {command!r} does not resolve to every pool"
+    )
+
+    # Declared is not deployed: the service identifiers must reach the project's
+    # resource list, or the block is a definition nothing instantiates.
+    resources = _railway_project_resources()
+    identifiers = set(re.findall(r"[A-Za-z_][A-Za-z0-9_]*", resources))
+    unattached = {"api", "workers"} - identifiers
+    assert not unattached, (
+        f".railway/railway.ts defines {sorted(unattached)} but never attaches "
+        "it to project(...)'s resources list — a service defined and not "
+        "instantiated deploys nothing"
+    )
+
+
+def test_railway_iac_api_service_starts_no_pool() -> None:
+    """The Railway api service is the uvicorn tier and nothing else.
+
+    Its production start runs ``uvicorn --workers 2``, so anything the api
+    service's app lifespan booted would run one copy per HTTP worker; the pools
+    belong to the separate ``workers`` service (checked above). Machine-checked
+    at the declaration level: no line of the api block may name the worker
+    entrypoint, and every start command the block carries (the staging and
+    production arms of the ternary) must be uvicorn against ``app.main:app``.
+    """
+    api = _railway_service_bodies()["api"]
+    assert WORKER_ENTRYPOINT not in api, (
+        f"the api service block in .railway/railway.ts names {WORKER_ENTRYPOINT} "
+        "— uvicorn runs multiple HTTP workers, so a pool started there is one "
+        "copy per worker; pools belong to the workers service"
+    )
+    start_commands = re.findall(r'"(uvicorn[^"]*)"', api)
+    assert start_commands, (
+        "no uvicorn start command found in the api service block — either the "
+        "scan anchors are stale or the api service stopped being the HTTP tier"
+    )
+    wrong = [cmd for cmd in start_commands if API_ENTRYPOINT not in cmd]
+    assert not wrong, (
+        f"api service start command(s) not against {API_ENTRYPOINT}: {wrong}"
     )
 
 
