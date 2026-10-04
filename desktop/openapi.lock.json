@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 295,
-    "sha256": "fd0bb96535f37a441074d1f334fb34e53daba41e46ef0cda52d8f04548ee60eb",
-    "typed_operations": 199
+    "operations": 296,
+    "sha256": "57926439923dc100129ee4e89398e615d6569afc087b3429361ddcc19914f51e",
+    "typed_operations": 200
   },
   "spec": {
     "components": {
@@ -5110,6 +5110,32 @@
             "risk_level"
           ],
           "title": "DecisionPropose",
+          "type": "object"
+        },
+        "DeepAnalysisQueuedOut": {
+          "description": "§13 — the 202 body: what was queued and where to poll.",
+          "properties": {
+            "analysis_id": {
+              "format": "uuid",
+              "title": "Analysis Id",
+              "type": "string"
+            },
+            "job_id": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          "required": [
+            "job_id",
+            "analysis_id",
+            "status"
+          ],
+          "title": "DeepAnalysisQueuedOut",
           "type": "object"
         },
         "DependencyListOut": {
@@ -17933,6 +17959,114 @@
             }
           },
           "summary": "Get Sales Analysis",
+          "tags": [
+            "ai"
+          ]
+        }
+      },
+      "/api/v1/ai/sales/deep-analyses": {
+        "post": {
+          "description": "§13 — queue a DEEP analysis: durable background job, streamed progress.\n\nThe shell row stores the question (the one input a background handler\ncannot otherwise receive); the Job row is the control surface the\ndashboard polls. 202 Accepted — the analysis has NOT run yet.",
+          "operationId": "create_deep_analysis_api_v1_ai_sales_deep_analyses_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "202": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/DeepAnalysisQueuedOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Create Deep Analysis",
           "tags": [
             "ai"
           ]
