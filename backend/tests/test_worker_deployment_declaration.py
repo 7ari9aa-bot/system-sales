@@ -67,9 +67,10 @@ What this file found the first time it ran
 * ``journey.resume`` was produced by ``marketing/journey.py:_handle_delay`` with
   NO handler registered, so every delayed journey step was claimed and written
   back ``failed / "no handler for journey.resume"``.
-* ``OffboardingWorker.run_once`` — the final tenant data purge — had no caller
-  and no artifact; it is now recorded with the reason it cannot simply be
-  scheduled.
+* ``OffboardingWorker.run_once`` is dispatched by a global, hourly sweep. It
+  enumerates only matured offboarding tenants, binds each tenant, and commits
+  each cascade independently; a lifecycle reactivation and the purge serialize
+  on the tenant row lock.
 * Nothing declarative started any pool. Every artifact started the API; the only
   worker start command in the repo sat inside a manual provisioning script.
 
@@ -231,6 +232,10 @@ def _start_paths() -> dict[str, list[str]]:
         for name in _handler_referred_classes(handler):
             if name in _classes_defined_in_workers():
                 paths.setdefault(name, []).append(f"job_type:{job_type}")
+    for sweep_name, (_interval, handler) in scheduler.GLOBAL_SWEEPERS.items():
+        for name in _handler_referred_classes(handler):
+            if name in _classes_defined_in_workers():
+                paths.setdefault(name, []).append(f"global_sweep:{sweep_name}")
     return {name: sorted(set(p)) for name, p in paths.items()}
 
 
@@ -240,22 +245,6 @@ def _start_paths() -> dict[str, list[str]]:
 #: one turns ``test_recorded_undispatched_workers_are_still_undispatched`` red,
 #: which is the guard telling its author to delete the entry.
 UNDISPATCHED_WORKERS: dict[str, str] = {
-    # §49-50. ``OffboardingWorker.export_data`` IS live (the API route at
-    # app/modules/identity/router.py:475 calls it); ``run_once`` — the final
-    # hard delete after the offboarding window — has no caller at all, even
-    # though retention_worker.py:153 documents "a scheduled job calls
-    # finalize_offboarding()". It cannot be wired as a recurring sweep with the
-    # scheduler as built: ``ensure_recurring_jobs`` and ``_poll_once`` both
-    # enumerate ``Tenant.is_active``, and identity/models.py:34 states
-    # is_active is True ONLY for operational states, so an offboarding tenant
-    # never gets a row and no other process starts one either. Attaching a
-    # CASCADE delete of a tenant's entire data to a job type nobody produced is
-    # a change that needs its owner, not a one-line registration here.
-    "OffboardingWorker": (
-        "§49-50 final offboarding purge. run_once() has ZERO callers. Needs a "
-        "cross-tenant (not per-active-tenant) sweep primitive before it can be "
-        "scheduled; the destructive half must not be wired by a guard test."
-    ),
 }
 
 #: A topology whose declarative artifacts do not start every pool, and why that
@@ -679,12 +668,11 @@ def test_the_detector_actually_distinguishes_started_from_dead() -> None:
     assert "inspector" not in worker_run.POOLS
     assert not {"list_dlq", "requeue"} & discovered, "the DLQ inspector is not a worker"
 
-    # The recorded, genuinely undispatched half: found as a class, has no path.
+    # Global maintenance sweeps are started by SchedulerWorker, outside the
+    # tenant-scoped ScheduledJob queue.
     assert "OffboardingWorker" in _classes_defined_in_workers()
-    assert not paths.get("OffboardingWorker"), (
-        "OffboardingWorker now has a start path — delete its UNDISPATCHED_WORKERS "
-        "entry instead of leaving this assertion to fail"
-    )
+    assert paths.get("OffboardingWorker") == ["global_sweep:offboarding.purge"]
+    assert "password_reset_email" in scheduler.GLOBAL_SWEEPERS
 
     # An absent name is not "started": the predicate is not always-true.
     assert not paths.get("WorkerThatDoesNotExist")

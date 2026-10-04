@@ -113,13 +113,15 @@ async def _sse_auth(
     async with SessionLocal() as session:
         async with session.begin():
             # `users` is global (no RLS) so this runs before any tenant GUC.
-            is_active = (
+            auth_state = (
                 await session.execute(
-                    sa_select(User.is_active).where(User.id == user_id)
+                    sa_select(User.is_active, User.auth_version).where(User.id == user_id)
                 )
-            ).scalar_one_or_none()
-            if not is_active:
+            ).one_or_none()
+            if auth_state is None or not auth_state.is_active:
                 raise PermissionDeniedError("account is inactive")
+            if int(payload.get("auth_version", 0)) != int(auth_state.auth_version or 0):
+                raise PermissionDeniedError("session revoked by password reset")
 
             # Bind the user GUC so the tenant_users self-access policy exposes
             # the membership row for the check below.
@@ -215,7 +217,9 @@ async def mint_stream_token(user: CurrentUserDep) -> StreamTokenOut:
     if not user.tenant_id:
         raise PermissionDeniedError("stream tokens require a tenant context")
     return StreamTokenOut(
-        stream_token=create_stream_token(str(user.id), str(user.tenant_id)),
+        stream_token=create_stream_token(
+            str(user.id), str(user.tenant_id), auth_version=user.auth_version
+        ),
         expires_in=STREAM_TOKEN_TTL_SECONDS,
     )
 
