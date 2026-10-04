@@ -33,6 +33,11 @@ SECURE = {
     "jwt_secret": "k" * 40,
     "service_token_internal": "internal-token-" + "v" * 24,
     "cors_origins": "https://app.example.com",
+    "s3_endpoint": "https://project-ref.supabase.co/storage/v1/s3",
+    "s3_region": "eu-west-1",
+    "s3_bucket": "sales-media",
+    "s3_access_key_id": "test-access-key",
+    "s3_secret_access_key": "test-secret-key",
     # §68: secure environments also refuse to boot without a master key that
     # base64-decodes to >= 32 bytes.
     "secrets_master_key": base64.b64encode(b"m" * 32).decode(),
@@ -47,7 +52,13 @@ INSECURE = {
 def _build(environment: str, **overrides) -> Settings:
     """Always pass the security fields explicitly so an ambient env var in the
     test process cannot make these assertions lie."""
-    return Settings(environment=environment, **{**SECURE, **overrides})
+    values = {**SECURE, **overrides}
+    if environment.lower() not in {"local", "test"}:
+        values.setdefault("email_delivery_enabled", True)
+        values.setdefault("resend_api_key", "re_test_key")
+        values.setdefault("email_from", "security@app.example.com")
+        values.setdefault("frontend_public_url", "https://app.example.com")
+    return Settings(environment=environment, **values)
 
 
 # ------------------------------------------------- development is exempt --
@@ -111,6 +122,43 @@ def test_an_explicit_origin_list_is_accepted() -> None:
     assert settings.is_secure_environment is True
 
 
+def test_secure_environment_requires_configured_password_reset_delivery() -> None:
+    with pytest.raises(ValidationError, match="EMAIL_DELIVERY_ENABLED"):
+        _build("production", email_delivery_enabled=False)
+
+
+def test_secure_environment_requires_durable_media_storage() -> None:
+    with pytest.raises(ValidationError, match="durable S3-compatible media storage"):
+        _build(
+            "production",
+            s3_endpoint="",
+            s3_region="",
+            s3_bucket="",
+            s3_access_key_id="",
+            s3_secret_access_key="",
+        )
+
+
+def test_secure_environment_refuses_http_object_storage() -> None:
+    with pytest.raises(ValidationError, match="S3_ENDPOINT"):
+        _build("staging", s3_endpoint="http://project-ref.supabase.co/storage/v1/s3")
+
+
+def test_secure_environment_refuses_partial_object_storage_configuration() -> None:
+    with pytest.raises(ValidationError, match="must be configured together"):
+        _build("production", s3_secret_access_key="")
+
+
+def test_password_reset_frontend_url_cannot_contain_credentials_or_fragments() -> None:
+    with pytest.raises(ValidationError, match="FRONTEND_PUBLIC_URL"):
+        _build("staging", frontend_public_url="https://user:pass@app.example.com/#token")
+
+
+def test_secure_cors_origins_must_be_https_origins_without_paths() -> None:
+    with pytest.raises(ValidationError, match="CORS_ORIGINS"):
+        _build("production", cors_origins="https://app.example.com/dashboard")
+
+
 # ------------------------------------------------ is_secure_environment ----
 
 
@@ -170,7 +218,14 @@ def test_debug_off_outside_development_is_silent(
 def test_an_unset_environment_defaults_to_production(monkeypatch) -> None:
     monkeypatch.delenv("ENVIRONMENT", raising=False)
 
-    settings = Settings(_env_file=None, **SECURE)
+    settings = Settings(
+        _env_file=None,
+        **SECURE,
+        email_delivery_enabled=True,
+        resend_api_key="re_test_key",
+        email_from="security@app.example.com",
+        frontend_public_url="https://app.example.com",
+    )
 
     assert settings.environment == "production", (
         "an unset ENVIRONMENT must default to the SECURE environment, not a dev one"

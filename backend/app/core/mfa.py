@@ -294,13 +294,18 @@ async def start_challenge(
     user_id: uuid.UUID,
     tenant_id: uuid.UUID | None = None,
     *,
+    auth_version: int = 0,
     redis=None,
 ) -> str:
     """Create the opaque challenge an MFA-enabled account gets after password success."""
     client = redis if redis is not None else get_redis()
     challenge_id = py_secrets.token_urlsafe(24)
     payload = json.dumps(
-        {"user_id": str(user_id), "tenant_id": str(tenant_id) if tenant_id else None}
+        {
+            "user_id": str(user_id),
+            "tenant_id": str(tenant_id) if tenant_id else None,
+            "auth_version": int(auth_version),
+        }
     )
     await client.set(_challenge_key(challenge_id), payload, ex=CHALLENGE_TTL_SECONDS)
     return challenge_id
@@ -398,6 +403,14 @@ async def check_challenge_code(
         # Lost a consume race — one challenge MUST NOT mint two token pairs.
         raise PermissionDeniedError("MFA challenge already used")
     await client.delete(_failures_key(challenge_id))
+    current_auth_version = (
+        await session.execute(select(User.auth_version).where(User.id == user_id))
+    ).scalar_one_or_none()
+    if (
+        current_auth_version is None
+        or int(payload.get("auth_version", 0)) != int(current_auth_version or 0)
+    ):
+        raise PermissionDeniedError("login challenge was revoked by a credential change")
     tenant_raw = payload.get("tenant_id")
     return user_id, uuid.UUID(str(tenant_raw)) if tenant_raw else None
 

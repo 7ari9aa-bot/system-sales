@@ -30,6 +30,7 @@ RLS_EXEMPT_TABLES: frozenset[str] = frozenset(
         "idempotency_keys",
         "plans",
         "refresh_tokens",
+        "password_reset_tokens",
         "webhook_events",
         "scheduled_jobs",
         "audit_logs",

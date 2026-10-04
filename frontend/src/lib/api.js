@@ -57,6 +57,43 @@ export class ApiError extends Error {
   }
 }
 
+/** Public auth requests intentionally omit a saved bearer token and refresh. */
+export async function publicApi(path, { method = "POST", body } = {}) {
+  let res;
+  try {
+    res = await fetch(apiUrl(path), {
+      method,
+      cache: "no-store",
+      headers: body !== undefined ? { "Content-Type": "application/json" } : {},
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    });
+  } catch {
+    throw new ApiError("تعذّر الوصول إلى الخادم (شبكة)", {
+      status: 0,
+      code: "network",
+      retryable: true,
+    });
+  }
+
+  if (res.status === 204) return null;
+  let data = null;
+  try {
+    data = await res.json();
+  } catch {
+    /* Empty/non-JSON responses are handled by the status below. */
+  }
+  if (!res.ok) {
+    const raw = data?.error?.message ?? data?.detail;
+    throw new ApiError(typeof raw === "string" ? raw : `HTTP ${res.status}`, {
+      status: res.status,
+      code: data?.error?.code ?? null,
+      retryable: data?.error?.retryable ?? res.status >= 500,
+      details: data?.error?.details ?? data?.details ?? null,
+    });
+  }
+  return data;
+}
+
 let refreshInFlight = null;
 
 // The production API currently serializes missing/invalid bearer credentials
@@ -67,6 +104,7 @@ const AUTHENTICATION_DENIAL_MESSAGES = new Set([
   "wrong token type",
   "invalid token",
   "account is inactive",
+  "session revoked by password reset",
 ]);
 
 function isAuthenticationFailure(status, code, message) {

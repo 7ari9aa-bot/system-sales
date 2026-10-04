@@ -84,6 +84,9 @@ def test_recovery_paths_cover_the_escape_hatches() -> None:
         "/api/v1/billing/subscription",
         "/api/v1/privacy/requests",
         "/api/v1/notifications",
+        "/api/v1/tenants/00000000-0000-0000-0000-000000000001/lifecycle",
+        "/api/v1/tenants/00000000-0000-0000-0000-000000000001/offboarding/export",
+        "/api/v1/tenants/00000000-0000-0000-0000-000000000001/offboarding/status",
         "/healthz",
     ):
         assert _tenant_recovery_path(path), path
@@ -98,6 +101,7 @@ def test_business_routes_are_not_recovery_paths() -> None:
         "/api/v1/tasks",
         "/api/v1/products",
         "/api/v1/ai/agents",
+        "/api/v1/tenants/00000000-0000-0000-0000-000000000001/timezone",
     ):
         assert not _tenant_recovery_path(path), path
 

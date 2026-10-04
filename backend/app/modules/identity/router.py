@@ -7,6 +7,7 @@ from dataclasses import asdict
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.errors import PermissionDeniedError, ValidationError
@@ -92,6 +93,38 @@ async def login(body: schemas.LoginRequest, request: Request, session: DbSession
         session, email=body.email, password=body.password, user_agent=user_agent, ip=ip
     )
     return pair
+
+
+@router.post("/auth/password-reset/request", status_code=202)
+async def request_password_reset(
+    body: schemas.PasswordResetRequest,
+    session: DbSession,
+    response: Response,
+):
+    """Queue a single-use account recovery email.
+
+    The same 202 response is returned for known, unknown, inactive, and
+    recently-throttled accounts to avoid an email-address enumeration oracle.
+    """
+    await service.AuthService.request_password_reset(session, email=str(body.email))
+    response.headers["Cache-Control"] = "no-store"
+    return {
+        "message": "If the account exists, password reset instructions will be sent shortly."
+    }
+
+
+@router.post("/auth/password-reset/confirm", status_code=204)
+async def confirm_password_reset(
+    body: schemas.PasswordResetConfirmRequest,
+    session: DbSession,
+    response: Response,
+):
+    """Consume a reset link and revoke all sessions issued before the reset."""
+    await service.AuthService.reset_password(
+        session, token=body.token, password=body.password
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return Response(status_code=204, headers={"Cache-Control": "no-store"})
 
 
 @router.post("/auth/refresh", response_model=schemas.TokenPair)
@@ -474,7 +507,17 @@ async def export_tenant_data(
         )
     from app.workers.retention_worker import OffboardingWorker
 
-    return await OffboardingWorker.export_data(ctx.session, tenant_id)
+    export = await OffboardingWorker.export_data(ctx.session, tenant_id)
+    return JSONResponse(
+        content=export,
+        headers={
+            "Cache-Control": "no-store",
+            "Content-Disposition": (
+                f'attachment; filename="sales-os-export-{tenant_id}.json"'
+            ),
+            "X-Export-Schema-Version": "1.0",
+        },
+    )
 
 
 @tenants_router.get("/{tenant_id}/offboarding/status")

@@ -19,6 +19,7 @@ app with ``get_tenant_ctx`` overridden.
 from __future__ import annotations
 
 import uuid
+from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI
@@ -61,12 +62,16 @@ class _FakeResult:
     def scalar_one_or_none(self):
         return self._value
 
+    def one_or_none(self):
+        return self._value
+
 
 class _FakeSession:
-    def __init__(self, *, is_active, member, lifecycle_state) -> None:
+    def __init__(self, *, is_active, member, lifecycle_state, auth_version=0) -> None:
         self.is_active = is_active
         self.member = member
         self.lifecycle_state = lifecycle_state
+        self.auth_version = auth_version
 
     async def __aenter__(self) -> _FakeSession:
         return self
@@ -86,13 +91,23 @@ class _FakeSession:
         if "lifecycle_state" in sql:
             return _FakeResult(self.lifecycle_state)
         if "is_active" in sql:
-            return _FakeResult(self.is_active)
+            return _FakeResult(
+                SimpleNamespace(
+                    is_active=self.is_active,
+                    auth_version=self.auth_version,
+                )
+            )
         return _FakeResult(None)
 
 
-def _install_fake_sessions(monkeypatch) -> None:
+def _install_fake_sessions(monkeypatch, *, auth_version=0) -> None:
     def _factory() -> _FakeSession:
-        return _FakeSession(is_active=True, member=uuid.uuid4(), lifecycle_state="active")
+        return _FakeSession(
+            is_active=True,
+            member=uuid.uuid4(),
+            lifecycle_state="active",
+            auth_version=auth_version,
+        )
 
     monkeypatch.setattr("app.core.db.get_sessionmaker", lambda: _factory)
 
@@ -117,6 +132,13 @@ async def test_a_stream_token_opens_the_fallback(monkeypatch) -> None:
 
     assert str(user.id) == str(USER_ID)
     assert str(user.tenant_id) == str(TENANT_ID)
+
+
+async def test_password_reset_invalidates_pre_reset_stream_tokens(monkeypatch) -> None:
+    _install_fake_sessions(monkeypatch, auth_version=1)
+    stream = create_stream_token(str(USER_ID), str(TENANT_ID), auth_version=0)
+    with pytest.raises(PermissionDeniedError, match="session revoked"):
+        await _sse_auth(_request(query_token=stream), token=stream)
 
 
 async def test_an_expired_stream_token_is_refused(monkeypatch) -> None:
@@ -150,4 +172,5 @@ async def test_the_mint_route_binds_the_callers_own_tenant() -> None:
     assert payload["type"] == "stream"
     assert payload["sub"] == str(USER_ID)
     assert payload["tenant_id"] == str(TENANT_ID)
+    assert payload["auth_version"] == 0
     assert body["expires_in"] == 300

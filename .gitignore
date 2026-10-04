@@ -71,3 +71,7 @@ vibe_images/
 .codebuddy/
 .red-a2/
 .kilo/
+
+# pytest scratch dirs (unreadable under lock on Windows)
+.pytest-temp-*/
+pytest-of-*/

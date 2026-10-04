@@ -25,7 +25,30 @@ export default function DangerZoneSettings() {
   const tenantId = activeTenantId(user);
   const [lifecycle, setLifecycle] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
+  const [exporting, setExporting] = React.useState(false);
   const [error, setError] = React.useState("");
+
+  const downloadExport = async () => {
+    if (!tenantId || lifecycle?.lifecycle_state !== "offboarding" || exporting) return;
+    setError("");
+    setExporting(true);
+    try {
+      const data = await api(`/tenants/${tenantId}/offboarding/export`, { method: "POST" });
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `sales-os-export-${tenantId}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err) {
+      setError(err?.message || (isAr ? "تعذر تنزيل بيانات مساحة العمل." : "Could not download workspace data."));
+    } finally {
+      setExporting(false);
+    }
+  };
 
   React.useEffect(() => {
     let alive = true;
@@ -53,9 +76,15 @@ export default function DangerZoneSettings() {
               <div className="mt-1"><Badge tone={lifecycle?.lifecycle_state === "active" || lifecycle?.lifecycle_state === "trial" ? "success" : "warning"}>{loading ? "…" : lifecycle?.lifecycle_state || "—"}</Badge></div>
               <p className="mt-2 text-[11.5px] leading-relaxed text-muted-foreground">
                 {isAr
-                  ? "تعطيل مساحة العمل وتصديرها غير متاحين من الواجهة حاليًا؛ مسارات الباك إند تمنع طلبات الحالة والتصدير بعد بدء الإنهاء."
-                  : "Workspace offboarding and export are unavailable from the UI right now: the backend currently blocks lifecycle and export requests after offboarding starts."}
+                  ? "تظل مساحة العمل قابلة للتصدير خلال فترة الاحتفاظ بعد بدء الإنهاء. بعد انتهاء المهلة تُحذف بياناتها نهائيًا."
+                  : "The workspace can be exported during its retention period after offboarding begins. Its data is permanently deleted when that period ends."}
               </p>
+              {lifecycle?.deletion_scheduled_at && (
+                <p className="mt-2 text-[11.5px] text-muted-foreground">
+                  {isAr ? "موعد الحذف المجدول: " : "Scheduled deletion: "}
+                  <time dateTime={lifecycle.deletion_scheduled_at}>{new Date(lifecycle.deletion_scheduled_at).toLocaleString(isAr ? "ar-EG" : "en-US")}</time>
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -65,15 +94,22 @@ export default function DangerZoneSettings() {
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-surface text-muted-foreground"><Download className="h-4 w-4" /></span>
             <div className="min-w-0 flex-1">
               <div className="text-[13.5px] font-medium">{t("danger.export")}</div>
-              <div className="mt-1 text-[12px] text-muted-foreground">{isAr ? "يتطلب التصدير مسار استرداد يعمل أثناء فترة الإنهاء." : "Export requires a recovery route that remains available during offboarding."}</div>
+              <div className="mt-1 text-[12px] text-muted-foreground">{isAr ? "يتضمن التصدير بيانات مساحة العمل وسجلاتها، مع استبعاد أسرار التكامل. ملفات الوسائط نفسها تظل في التخزين." : "The export includes workspace records and history, with integration secrets removed. Binary media files remain in object storage."}</div>
             </div>
-            <button type="button" disabled aria-disabled="true" className="h-8 shrink-0 rounded-lg border border-border px-3 text-[12.5px] text-muted-foreground opacity-50">{t("danger.export")}</button>
+            <button
+              type="button"
+              disabled={loading || exporting || lifecycle?.lifecycle_state !== "offboarding"}
+              onClick={downloadExport}
+              className="h-8 shrink-0 rounded-lg border border-border px-3 text-[12.5px] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {exporting ? (isAr ? "جارٍ التصدير..." : "Exporting...") : t("danger.export")}
+            </button>
           </div>
         </div>
 
         <div className="mt-4 flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-[11.5px] leading-relaxed text-warning">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>{isAr ? "لم أعرض بدء الإنهاء أو الحذف كأزرار قابلة للتنفيذ إلى أن يسمح الباك إند بتصدير البيانات والرجوع بأمان." : "Offboarding and deletion controls are withheld until the backend supports data export and recovery throughout the lifecycle."}</span>
+          <span>{isAr ? "يبدأ الإنهاء من إعدادات الحساب/الدعم. بعد بدء المهلة، نزّل نسخة البيانات قبل موعد الحذف النهائي." : "Offboarding is started through account support. Download an export before the scheduled permanent deletion."}</span>
         </div>
       </SettingCard>
     </SettingsShell>

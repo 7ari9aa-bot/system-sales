@@ -37,6 +37,7 @@ from app.core.security import (
 from app.modules.identity.models import (
     Invitation,
     Location,
+    PasswordResetToken,
     RefreshToken,
     Role,
     Tenant,
@@ -339,7 +340,9 @@ class AuthService:
         from app.core.mfa import MfaRequiredError, is_mfa_enabled, start_challenge
 
         if await is_mfa_enabled(session, user_id=user.id):
-            challenge_id = await start_challenge(user.id, tenant_id)
+            challenge_id = await start_challenge(
+                user.id, tenant_id, auth_version=getattr(user, "auth_version", 0)
+            )
             raise MfaRequiredError(challenge_id)
         pair = AuthService._issue_pair(session, user, tenant_id, user_agent=user_agent, ip=ip)
         return pair, user, tenant_id
@@ -428,6 +431,115 @@ class AuthService:
             row.revoked_at = _now()
 
     @staticmethod
+    async def request_password_reset(session, *, email: str) -> None:
+        """Queue an account-recovery email without exposing account existence.
+
+        The endpoint always returns the same response. Only a known, active
+        account creates a token row. The raw token is encrypted at rest while
+        queued; only its SHA-256 digest is used to validate a reset attempt.
+        """
+        now = _now()
+        user = (
+            await session.execute(
+                select(User).where(User.email == email).with_for_update()
+            )
+        ).scalar_one_or_none()
+        if user is None or not user.is_active:
+            return
+
+        recent = (
+            await session.execute(
+                select(PasswordResetToken.id)
+                .where(
+                    PasswordResetToken.user_id == user.id,
+                    PasswordResetToken.requested_at > now - timedelta(seconds=60),
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if recent is not None:
+            return
+
+        # A newer request invalidates previous links immediately, including a
+        # message that is still leased by the sender worker.
+        await session.execute(
+            sa.update(PasswordResetToken)
+            .where(
+                PasswordResetToken.user_id == user.id,
+                PasswordResetToken.consumed_at.is_(None),
+            )
+            .values(consumed_at=now, encrypted_token="", lease_expires_at=None)
+        )
+
+        from app.core.secrets import get_envelope_store
+
+        token = secrets.token_urlsafe(32)
+        session.add(
+            PasswordResetToken(
+                user_id=user.id,
+                token_hash=_hash_token(token),
+                encrypted_token=get_envelope_store().encrypt(token),
+                requested_at=now,
+                expires_at=now + timedelta(hours=1),
+                next_attempt_at=now,
+            )
+        )
+        await session.flush()
+
+    @staticmethod
+    async def reset_password(session, *, token: str, password: str) -> None:
+        """Consume one valid recovery link and invalidate every old session."""
+        now = _now()
+        row = (
+            await session.execute(
+                select(PasswordResetToken)
+                .where(PasswordResetToken.token_hash == _hash_token(token))
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if (
+            row is None
+            or row.consumed_at is not None
+            or row.expires_at <= now
+        ):
+            raise ValidationError("password reset link is invalid or expired")
+
+        user = (
+            await session.execute(
+                select(User).where(User.id == row.user_id).with_for_update()
+            )
+        ).scalar_one_or_none()
+        if user is None or not user.is_active:
+            raise ValidationError("password reset link is invalid or expired")
+
+        user.password_hash = hash_password(password)
+        user.auth_version = int(user.auth_version or 0) + 1
+        row.consumed_at = now
+        row.encrypted_token = ""
+        row.lease_expires_at = None
+
+        # A password reset must end all sessions immediately. Access JWTs are
+        # rejected by auth_version; refresh tokens are revoked in the database.
+        await session.execute(
+            sa.update(RefreshToken)
+            .where(
+                RefreshToken.user_id == user.id,
+                RefreshToken.revoked_at.is_(None),
+            )
+            .values(revoked_at=now)
+        )
+        await session.execute(
+            sa.update(PasswordResetToken)
+            .where(
+                PasswordResetToken.user_id == user.id,
+                PasswordResetToken.id != row.id,
+                PasswordResetToken.consumed_at.is_(None),
+            )
+            .values(consumed_at=now, encrypted_token="", lease_expires_at=None)
+        )
+        await session.flush()
+
+    @staticmethod
     async def switch_tenant(
         session, *, user: User, tenant_id: uuid.UUID, refresh_token: str
     ) -> TokenPair:
@@ -487,6 +599,7 @@ class AuthService:
     ) -> TokenPair:
         settings = get_settings()
         claims: dict = {"tenant_id": str(tenant_id)} if tenant_id else {}
+        claims["auth_version"] = int(getattr(user, "auth_version", 0) or 0)
         # §146: is_platform_admin in JWT — the break-glass claim. The
         # middleware checks this to grant platform-level access (cross-tenant
         # admin, billing, audit). The claim is set from the user row, not
@@ -993,10 +1106,13 @@ class TenantLifecycleService:
     """Owns the §48 tenant lifecycle: transitions, timestamps and audit."""
 
     @staticmethod
-    async def get(session, tenant_id: uuid.UUID) -> Tenant:
-        tenant = (
-            await session.execute(select(Tenant).where(Tenant.id == tenant_id))
-        ).scalar_one_or_none()
+    async def get(
+        session, tenant_id: uuid.UUID, *, for_update: bool = False
+    ) -> Tenant:
+        statement = select(Tenant).where(Tenant.id == tenant_id)
+        if for_update:
+            statement = statement.with_for_update()
+        tenant = (await session.execute(statement)).scalar_one_or_none()
         if tenant is None:
             raise NotFoundError("tenant not found")
         return tenant
@@ -1038,7 +1154,9 @@ class TenantLifecycleService:
         if target in _REASON_REQUIRED and not (reason or "").strip():
             raise ValidationError(f"a reason is required to move a tenant to {target}")
 
-        tenant = await TenantLifecycleService.get(session, tenant_id)
+        # Serialize lifecycle transitions against each other and the final
+        # offboarding cascade, so a concurrent reactivation cannot race purge.
+        tenant = await TenantLifecycleService.get(session, tenant_id, for_update=True)
         current = tenant.lifecycle_state
         allowed = ALLOWED_TRANSITIONS.get(current, frozenset())
         if target not in allowed:

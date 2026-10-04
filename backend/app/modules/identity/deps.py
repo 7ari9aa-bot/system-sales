@@ -51,7 +51,16 @@ _TENANT_RECOVERY_PREFIXES: tuple[str, ...] = (
 
 
 def _tenant_recovery_path(path: str) -> bool:
-    return path.startswith(_TENANT_RECOVERY_PREFIXES)
+    if path.startswith(_TENANT_RECOVERY_PREFIXES):
+        return True
+    # Workspace recovery must remain reachable after offboarding starts, but
+    # do not exempt the whole tenants API from the lifecycle gate.
+    parts = path.rstrip("/").strip("/").split("/")
+    if len(parts) == 5 and parts[:3] == ["api", "v1", "tenants"]:
+        return parts[4] == "lifecycle"
+    if len(parts) == 6 and parts[:3] == ["api", "v1", "tenants"]:
+        return parts[4] == "offboarding" and parts[5] in {"export", "status"}
+    return False
 
 
 def _policy_for(state: str):
@@ -103,6 +112,7 @@ class AuthedUser:
     tenant_id: uuid.UUID | None
     role_code: str | None
     is_platform_admin: bool = False  # §146: break-glass claim from JWT
+    auth_version: int = 0
 
 
 async def get_current_user(
@@ -123,16 +133,21 @@ async def get_current_user(
         # user left them fully operational until expiry. One primary-key lookup
         # per request; `users` is a global table with no RLS, so this runs
         # before any tenant GUC is bound.
-        is_active = (
-            await session.execute(select(User.is_active).where(User.id == user_id))
-        ).scalar_one_or_none()
-        if not is_active:
+        auth_state = (
+            await session.execute(
+                select(User.is_active, User.auth_version).where(User.id == user_id)
+            )
+        ).one_or_none()
+        if auth_state is None or not auth_state.is_active:
             raise PermissionDeniedError("account is inactive")
+        if int(payload.get("auth_version", 0)) != int(auth_state.auth_version or 0):
+            raise PermissionDeniedError("session revoked by password reset")
         return AuthedUser(
             id=user_id,
             tenant_id=uuid.UUID(payload["tenant_id"]) if payload.get("tenant_id") else None,
             role_code=payload.get("role"),
             is_platform_admin=bool(payload.get("is_platform_admin", False)),  # §146
+            auth_version=int(auth_state.auth_version or 0),
         )
     except PermissionDeniedError:
         raise

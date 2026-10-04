@@ -1,5 +1,6 @@
 """JWT + password primitives (Stage 2 builds the full auth flows on these)."""
 
+import hashlib
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -9,15 +10,38 @@ import jwt
 
 from app.core.config import get_settings
 
+_BCRYPT_SHA256_PREFIX = "bcrypt-sha256-v1$"
+
+
+def _bcrypt_material(password: str) -> bytes:
+    """Pre-hash UTF-8 passwords so bcrypt's 72-byte input limit is explicit.
+
+    The bcrypt salt and cost still protect every stored hash. Domain separation
+    prevents this digest from being reused as an unrelated application hash.
+    """
+    digest = hashlib.sha256(
+        b"sales-os:password:v1\0" + password.encode("utf-8")
+    ).hexdigest()
+    return digest.encode("ascii")
+
 
 def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    encoded_hash = bcrypt.hashpw(_bcrypt_material(password), bcrypt.gensalt()).decode()
+    return f"{_BCRYPT_SHA256_PREFIX}{encoded_hash}"
 
 
 def verify_password(password: str, password_hash: str) -> bool:
     try:
-        return bcrypt.checkpw(password.encode(), password_hash.encode())
-    except ValueError:
+        if password_hash.startswith(_BCRYPT_SHA256_PREFIX):
+            material = _bcrypt_material(password)
+            stored_hash = password_hash[len(_BCRYPT_SHA256_PREFIX) :]
+        else:
+            # Legacy hashes used raw bcrypt input. Preserve the historical
+            # 72-byte truncation semantics for those rows during migration.
+            material = password.encode("utf-8")[:72]
+            stored_hash = password_hash
+        return bcrypt.checkpw(material, stored_hash.encode())
+    except (ValueError, TypeError):
         return False
 
 
@@ -59,7 +83,11 @@ STREAM_TOKEN_TTL_SECONDS = 300
 
 
 def create_stream_token(
-    user_id: str, tenant_id: str, ttl_seconds: int = STREAM_TOKEN_TTL_SECONDS
+    user_id: str,
+    tenant_id: str,
+    ttl_seconds: int = STREAM_TOKEN_TTL_SECONDS,
+    *,
+    auth_version: int = 0,
 ) -> str:
     """A short-lived, stream-only credential (SEC-1 / ADR-059 R5).
 
@@ -68,7 +96,12 @@ def create_stream_token(
     single-purpose token sitting in a server access log is noise; a
     30-minute access token there is a replayable credential.
     """
-    return _create_token(user_id, ttl_seconds, "stream", {"tenant_id": tenant_id})
+    return _create_token(
+        user_id,
+        ttl_seconds,
+        "stream",
+        {"tenant_id": tenant_id, "auth_version": int(auth_version)},
+    )
 
 
 def decode_token(token: str) -> dict[str, Any]:

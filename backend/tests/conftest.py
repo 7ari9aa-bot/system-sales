@@ -29,6 +29,8 @@ from collections.abc import AsyncIterator
 # still point it at "staging" deliberately. Must run before `get_settings()` is
 # first called, because it is lru_cached.
 os.environ.setdefault("ENVIRONMENT", "local")
+# Keep token primitives realistic in tests without reusing a deployment key.
+os.environ.setdefault("JWT_SECRET", "pytest-only-hmac-key-longer-than-thirty-two-bytes")
 
 import pytest
 import sqlalchemy as sa

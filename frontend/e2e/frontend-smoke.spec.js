@@ -107,3 +107,53 @@ test("login and pricing fit a mobile viewport without horizontal scrolling", asy
     );
   }
 });
+
+test("password-reset request stays generic and sends no saved bearer token", async ({ page }) => {
+  let requestBody;
+  let authorizationHeader;
+
+  await page.route("**/api/v1/auth/password-reset/request", async (route) => {
+    requestBody = route.request().postDataJSON();
+    authorizationHeader = route.request().headers().authorization;
+    await route.fulfill({
+      status: 202,
+      contentType: "application/json",
+      headers: { "cache-control": "no-store" },
+      body: JSON.stringify({ message: "If the account exists, instructions will be sent." }),
+    });
+  });
+
+  await page.goto("/forgot-password");
+  // A stale browser session must not be attached to public recovery requests.
+  await page.evaluate(() => localStorage.setItem("fihrist_tokens", JSON.stringify({
+    access_token: "stale-access-token",
+    refresh_token: "stale-refresh-token",
+  })));
+  await page.getByLabel(/البريد الإلكتروني|email/i).fill("virtual-user@example.test");
+  await page.getByRole("button", { name: /إرسال رابط الاستعادة|send reset link/i }).click();
+
+  await expect(page.getByRole("status")).toBeVisible();
+  await expect(page.getByRole("status")).toContainText(/مرتبطًا بحساب|associated with that email/i);
+  expect(requestBody).toEqual({ email: "virtual-user@example.test" });
+  expect(authorizationHeader).toBeUndefined();
+});
+
+test("password-reset link is removed from the URL and submits one new password", async ({ page }) => {
+  const resetToken = "virtual-reset-token-0123456789abcdef0123456789abcdef";
+  let requestBody;
+
+  await page.route("**/api/v1/auth/password-reset/confirm", async (route) => {
+    requestBody = route.request().postDataJSON();
+    await route.fulfill({ status: 204 });
+  });
+
+  await page.goto(`/reset-password#token=${resetToken}`);
+  await expect(page.locator("#new-password")).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.location.hash)).toBe("");
+  await page.getByLabel(/كلمة المرور الجديدة|new password/i).fill("Virtual-pass-2026!");
+  await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill("Virtual-pass-2026!");
+  await page.getByRole("button", { name: /حفظ كلمة المرور|save new password/i }).click();
+
+  await expect(page.getByRole("status")).toContainText(/تم تحديث كلمة المرور|password has been updated/i);
+  expect(requestBody).toEqual({ token: resetToken, password: "Virtual-pass-2026!" });
+});

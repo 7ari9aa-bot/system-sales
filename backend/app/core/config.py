@@ -2,6 +2,7 @@ import base64
 import binascii
 import logging
 from functools import lru_cache
+from urllib.parse import urlsplit
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -51,6 +52,13 @@ class Settings(BaseSettings):
     # Canonical HTTPS origin used to register provider callbacks. Do not infer
     # it from an untrusted inbound Host header.
     api_public_base_url: str = ""
+
+    # Account recovery email. Delivery stays disabled until the operator has
+    # verified a sending domain and configured these server-only values.
+    resend_api_key: str = ""
+    email_from: str = ""
+    frontend_public_url: str = ""
+    email_delivery_enabled: bool = False
 
     # auth
     jwt_secret: str = "change-me"
@@ -171,6 +179,30 @@ class Settings(BaseSettings):
         """
         return self.environment not in _DEV_ENVIRONMENTS
 
+    @property
+    def auth_email_delivery_configured(self) -> bool:
+        """Whether the durable auth-email worker is allowed to contact Resend."""
+        return bool(
+            self.email_delivery_enabled
+            and self.resend_api_key.strip()
+            and self.email_from.strip()
+            and self.frontend_public_url.strip()
+        )
+
+    @property
+    def object_storage_configured(self) -> bool:
+        """Whether durable media storage has a complete S3-compatible setup."""
+        return all(
+            value.strip()
+            for value in (
+                self.s3_endpoint,
+                self.s3_region,
+                self.s3_bucket,
+                self.s3_access_key_id,
+                self.s3_secret_access_key,
+            )
+        )
+
     @model_validator(mode="after")
     def _refuse_insecure_configuration(self) -> "Settings":
         """Fail fast (H2, review G-05): refuse insecure settings outside local/test.
@@ -212,6 +244,87 @@ class Settings(BaseSettings):
             )
         if self.cors_origins.strip() == "*":
             raise ValueError(f"CORS_ORIGINS must not be * {where}")
+
+        storage_values = (
+            self.s3_endpoint,
+            self.s3_region,
+            self.s3_bucket,
+            self.s3_access_key_id,
+            self.s3_secret_access_key,
+        )
+        if any(value.strip() for value in storage_values) and not self.object_storage_configured:
+            raise ValueError(
+                "S3_ENDPOINT, S3_REGION, S3_BUCKET, S3_ACCESS_KEY_ID and "
+                f"S3_SECRET_ACCESS_KEY must be configured together {where}"
+            )
+        if self.is_secure_environment and not self.object_storage_configured:
+            raise ValueError(
+                f"durable S3-compatible media storage must be configured {where}"
+            )
+        if self.object_storage_configured:
+            storage_endpoint = urlsplit(self.s3_endpoint)
+            if (
+                storage_endpoint.scheme not in {"https", "http"}
+                or not storage_endpoint.netloc
+                or storage_endpoint.username is not None
+                or storage_endpoint.password is not None
+                or storage_endpoint.query
+                or storage_endpoint.fragment
+                or (self.is_secure_environment and storage_endpoint.scheme != "https")
+            ):
+                raise ValueError(
+                    f"S3_ENDPOINT must be an HTTPS S3-compatible endpoint {where}"
+                )
+        if not 1 <= self.s3_signed_url_ttl_seconds <= 7 * 24 * 60 * 60:
+            raise ValueError("S3_SIGNED_URL_TTL_SECONDS must be between 1 and 604800")
+
+        cors_values = [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+        if not cors_values or "*" in cors_values:
+            raise ValueError(f"CORS_ORIGINS must list explicit origins {where}")
+        for origin in cors_values:
+            parsed_origin = urlsplit(origin)
+            if (
+                not parsed_origin.netloc
+                or parsed_origin.username is not None
+                or parsed_origin.password is not None
+                or parsed_origin.path
+                or parsed_origin.query
+                or parsed_origin.fragment
+                or parsed_origin.scheme not in {"http", "https"}
+                or (self.is_secure_environment and parsed_origin.scheme != "https")
+            ):
+                raise ValueError(
+                    f"CORS_ORIGINS entries must be HTTPS origins in secure environments {where}"
+                )
+
+        if self.is_secure_environment and not self.email_delivery_enabled:
+            raise ValueError(
+                f"EMAIL_DELIVERY_ENABLED must be true in secure environments {where}"
+            )
+
+        if self.email_delivery_enabled:
+            if not self.resend_api_key.strip():
+                raise ValueError(
+                    f"RESEND_API_KEY is required when email delivery is enabled {where}"
+                )
+            if not self.email_from.strip() or "@" not in self.email_from:
+                raise ValueError(f"EMAIL_FROM must be a verified sender address {where}")
+            if any(char in self.email_from for char in "\r\n"):
+                raise ValueError(f"EMAIL_FROM must be a single address {where}")
+            parsed_frontend_url = urlsplit(self.frontend_public_url)
+            if (
+                not parsed_frontend_url.netloc
+                or parsed_frontend_url.username is not None
+                or parsed_frontend_url.password is not None
+                or parsed_frontend_url.path not in {"", "/"}
+                or parsed_frontend_url.query
+                or parsed_frontend_url.fragment
+            ):
+                raise ValueError(f"FRONTEND_PUBLIC_URL must be an absolute public URL {where}")
+            if self.is_secure_environment and parsed_frontend_url.scheme != "https":
+                raise ValueError(f"FRONTEND_PUBLIC_URL must use HTTPS {where}")
+            if parsed_frontend_url.scheme not in {"http", "https"}:
+                raise ValueError(f"FRONTEND_PUBLIC_URL must use HTTP or HTTPS {where}")
 
         # DEBUG is NOT a hard failure: it only controls the log level, and
         # refusing to boot over log verbosity would take a running deployment

@@ -14,9 +14,13 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    Index,
+    Integer,
     String,
     Table,
+    Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -89,6 +93,50 @@ class User(TimestampMixin, Base):
     full_name: Mapped[str] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(Boolean, server_default="true")
     is_platform_admin: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    # Bumped by password-reset and other account-wide credential changes.
+    # Access JWTs carry this value, so a password reset immediately invalidates
+    # already-issued access tokens as well as the refresh-token family.
+    auth_version: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)
+
+
+class PasswordResetToken(TimestampMixin, Base):
+    """Single-use reset token plus its encrypted, retryable delivery payload.
+
+    The hash is used for validation. The raw token is only retained encrypted
+    while delivery is pending; successful/terminal delivery clears it.
+    """
+
+    __tablename__ = "password_reset_tokens"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    encrypted_token: Mapped[str] = mapped_column(Text)
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    delivery_failed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    attempts: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)
+    next_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(String(255))
+
+    __table_args__ = (
+        Index("ix_password_reset_user_requested", "user_id", "requested_at"),
+        Index(
+            "ix_password_reset_delivery_due",
+            "next_attempt_at",
+            "lease_expires_at",
+            postgresql_where=text(
+                "sent_at IS NULL AND consumed_at IS NULL AND delivery_failed_at IS NULL"
+            ),
+        ),
+    )
 
 
 class UserMfaSecret(TimestampMixin, Base):
