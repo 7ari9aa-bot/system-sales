@@ -1,5 +1,6 @@
 /** عميل الـAPI الحقيقي — بيتكلم مع الـFastAPI backend (نفس عقود /api/v1).
- *  التوكنات في localStorage مع refresh تلقائي عند 401.
+ *  الجلسة بتعيش في HttpOnly cookies (XSS مش شايفها) وبتتجدد تلقائياً عند
+ *  401 — الجافاسكريبت مش بتمسك التوكنات أصلاً، بس بتردد قيمة الـcsrf.
  *  الفلوس بتوصل نصوص Decimal فلازم تتطبع زي ما هي — مفيش floats. */
 
 /** نظام الحارس — ضد الأخطاء الصامتة (مراجع نصي: lib/guardian.js). */
@@ -22,26 +23,24 @@ export function apiUrl(path) {
   return `${parsed.origin}${apiPath}${rel}`;
 }
 
-const TOKENS_KEY = "fihrist_tokens";
+/** الجلسة تعيش في HttpOnly cookies يمسحها logout على السيرفر — الجافاسكريبت
+ *  مش شايفة غير csrf_token (مش HttpOnly) عشان تردده كعنوان X-CSRF-Token.
+ *  وجوده = فيه جلسة؛ وgetTokens/setTokens بفضلوا بنفس الأسماء عشان
+ *  AuthContext ما يتغيرش مفهومياً: بيلقوا الجلسة وبيمسحوها. */
+function hasSessionCookie() {
+  return /(?:^|;\s*)csrf_token=[^;]+/.test(document.cookie);
+}
+
+function clearSessionCookie() {
+  document.cookie = "csrf_token=; Max-Age=0; path=/api/v1";
+}
 
 export function getTokens() {
-  try {
-    const raw = window.localStorage.getItem(TOKENS_KEY);
-    if (!raw) return null;
-    const t = JSON.parse(raw);
-    return t?.access_token && t?.refresh_token ? t : null;
-  } catch {
-    return null;
-  }
+  return hasSessionCookie() ? { session: true } : null;
 }
 
 export function setTokens(tokens) {
-  try {
-    if (tokens) window.localStorage.setItem(TOKENS_KEY, JSON.stringify(tokens));
-    else window.localStorage.removeItem(TOKENS_KEY);
-  } catch {
-    /* private mode */
-  }
+  if (!tokens) clearSessionCookie();
   // Never let a response cached under one session survive a session change.
   invalidateCache();
 }
@@ -64,6 +63,7 @@ export async function publicApi(path, { method = "POST", body } = {}) {
     res = await fetch(apiUrl(path), {
       method,
       cache: "no-store",
+      credentials: "include", // الـSet-Cookie بتاع الدخول مالوش لازمة من غيره
       headers: body !== undefined ? { "Content-Type": "application/json" } : {},
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
@@ -94,6 +94,14 @@ export async function publicApi(path, { method = "POST", body } = {}) {
   return data;
 }
 
+/** قيمة الـcsrf من document.cookie — نفس اللي السيرفر حطه في الكوكي،
+ *  وبتتردد كعنوان X-CSRF-Token على كل طلب تعديل (double-submit):
+ *  مصادقة الكوكي بتعيد فتح باب CSRF، والعنوان ده هو الباب المقفول. */
+function csrfToken() {
+  const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 let refreshInFlight = null;
 
 // The production API currently serializes missing/invalid bearer credentials
@@ -117,14 +125,14 @@ function isAuthenticationFailure(status, code, message) {
 async function refreshTokens() {
   if (refreshInFlight) return refreshInFlight;
   const task = (async () => {
-    const tokens = getTokens();
-    if (!tokens?.refresh_token) return false;
+    if (!hasSessionCookie()) return false;
     let res;
     try {
       res = await fetch(apiUrl("/auth/refresh"), {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refresh_token: tokens.refresh_token }),
+        body: JSON.stringify({}), // الكوكي هو اللي بيمرر التوكن
       });
     } catch {
       throw new ApiError("تعذّر تجديد الجلسة بسبب مشكلة في الشبكة", {
@@ -144,7 +152,8 @@ async function refreshTokens() {
     try {
       const data = await res.json();
       if (!data?.access_token) return false;
-      setTokens({ access_token: data.access_token, refresh_token: data.refresh_token ?? tokens.refresh_token });
+      // الكوكي الجديدة نزلت مع الرد (Set-Cookie) — invalidateCache بس
+      setTokens(null);
       return true;
     } catch {
       throw new ApiError("استجابة تجديد الجلسة غير صالحة", {
@@ -164,14 +173,16 @@ async function refreshTokens() {
 
 /** نداء API عام — يرمي ApiError، ويجدد التوكن مرة واحدة عند انتهائه. */
 export async function api(path, { method = "GET", body, retry = true, headers = {} } = {}) {
-  const tokens = getTokens();
+  const isMutation = method !== "GET";
+  const csrf = isMutation ? csrfToken() : null;
   let res;
   try {
     res = await fetch(apiUrl(path), {
       method,
+      credentials: "include", // كوكي الجلسة (HttpOnly) بتمشي مع كل طلب
       headers: {
         ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
-        ...(tokens?.access_token ? { Authorization: `Bearer ${tokens.access_token}` } : {}),
+        ...(csrf ? { "X-CSRF-Token": csrf } : {}),
         ...headers,
       },
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
@@ -206,30 +217,22 @@ export async function api(path, { method = "GET", body, retry = true, headers = 
   const authenticationFailure = isAuthenticationFailure(res.status, errorCode, errorMessage);
   const inactiveAccount = errorMessage.trim().toLowerCase() === "account is inactive";
 
-  if (authenticationFailure && retry && tokens?.refresh_token && !inactiveAccount) {
+  if (authenticationFailure && retry && !inactiveAccount) {
     let ok;
     try {
       ok = await refreshTokens();
     } catch (refreshError) {
-      const current = getTokens();
-      if (current?.access_token && current.access_token !== tokens.access_token) {
-        return api(path, { method, body, retry: false, headers });
-      }
       if (method === "GET" && !path.startsWith("/auth/")) reportFailure(path, refreshError);
       throw refreshError;
     }
     if (ok) return api(path, { method, body, retry: false, headers });
-    const current = getTokens();
-    if (current?.access_token && current.access_token !== tokens.access_token) {
-      return api(path, { method, body, retry: false, headers });
-    }
     setTokens(null);
   }
 
   // Missing credentials, a rejected refresh token, or an inactive account
   // must become a terminal auth state. AuthContext handles 401/unauthorized
   // by clearing the session and returning the user to the login route.
-  if (authenticationFailure && (!retry || !tokens?.refresh_token || inactiveAccount)) {
+  if (authenticationFailure && (!retry || inactiveAccount)) {
     setTokens(null);
   }
 

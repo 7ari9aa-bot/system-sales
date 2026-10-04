@@ -105,13 +105,12 @@ export function AuthProvider({ children }) {
   }, []);
 
   const logout = useCallback(async () => {
-    const tokens = getTokens();
-    if (tokens?.refresh_token) {
-      try {
-        await api("/auth/logout", { method: "POST", body: { refresh_token: tokens.refresh_token } });
-      } catch {
-        /* الشبكة غير متاحة — نكمل الخروج */
-      }
+    // كوكي الـrefresh هي اللي بتعرف السيرفر بالجلسة — الجسم فاضي، والسيرفر
+    // بيلغي عائلة التوكن ويمسح الكوكي بنفسه. الشبكة الواقعة ما تمنعش الخروج.
+    try {
+      await api("/auth/logout", { method: "POST", body: {} });
+    } catch {
+      /* الشبكة غير متاحة — نكمل الخروج */
     }
     setTokens(null);
     setUser(null);
