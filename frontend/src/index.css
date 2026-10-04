@@ -280,8 +280,11 @@ html[lang="en"] .app :where(h1,h2,h3,h4,p,li,small,b,strong,label,option,.kicker
   --sand:#0F1011;
   --mist:#161718;
   --line:#1F2022;
+  color:var(--ink);
+  background:var(--canvas);
   color-scheme:dark
 }
+.app.theme-dark .route-shell{background:var(--canvas);color:var(--ink)}
 /* Header & footer */
 .app.theme-dark .site-header{background:rgba(8,9,10,.88);border-color:var(--line);backdrop-filter:blur(16px)}
 .app.theme-dark .site-footer{background:linear-gradient(to bottom,#0A1A17,#08090A)}
@@ -291,7 +294,7 @@ html[lang="en"] .app :where(h1,h2,h3,h4,p,li,small,b,strong,label,option,.kicker
 .app.theme-dark :is(.nav a,.login-link):hover{color:var(--teal)}
 /* Section backgrounds — layered near-black, not colored */
 .app.theme-dark :is(.hero,.section-features,.section-ba,.section-faq){background:var(--canvas)}
-.app.theme-dark :is(.section-workflow,.section-audience,.section-scenario,.pricing-section){background:linear-gradient(to bottom,#08090A,#0C0D0E 80px,#0C0D0E)}.app.theme-dark .detail-hero{background:transparent}
+.app.theme-dark :is(.section-workflow,.section-audience,.section-scenario,.pricing-section){background:linear-gradient(to bottom,#08090A,#0C0D0E 80px,#0C0D0E)}.app.theme-dark .detail-hero{background:var(--canvas)}
 .app.theme-dark :is(.section-proof,.section-dark){background:linear-gradient(to bottom,#0C0D0E,#0A1A17 80px,#0A1A17)}
 .app.theme-dark .final-cta{background:linear-gradient(to bottom,#08090A,#0F1A17 60px,#0A0B0C)}
 .app.theme-dark .final-cta .eyebrow{color:var(--teal)}
