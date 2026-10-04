@@ -167,11 +167,14 @@ def test_the_three_new_revisions_exist_and_chain_from_the_head() -> None:
     orphan_roots = roots - {"0b79f7470c1a"}
     assert not orphan_roots, f"extra chain root(s) would fork the history: {orphan_roots}"
 
-    # exactly one revision nobody points at
+    # exactly one revision nobody points at. The pin moves with every wave
+    # that extends the chain (the Commerce Core batch carried it from
+    # e8f9a0b1c2d3 to fd2026100406): the head is a fact of the current
+    # chain, and this guard pins it so a fork is caught the day it lands.
     pointed_to = {parent for _, parent in ids.values() if parent}
     tail = set(ids) - pointed_to
-    assert tail == {"e8f9a0b1c2d3"}, (
-        f"expected one linear head e8f9a0b1c2d3, found {sorted(tail)} — "
+    assert tail == {"fd2026100406"}, (
+        f"expected one linear head fd2026100406, found {sorted(tail)} — "
         "two heads break `alembic upgrade head` for every environment"
     )
 
@@ -789,7 +792,7 @@ def test_alembic_still_reports_a_single_head() -> None:
     lines = [line for line in out.stdout.splitlines() if line.strip()]
     assert out.returncode == 0, out.stderr
     assert len(lines) == 1, f"multiple heads would break the build: {lines}"
-    assert lines[0].startswith("e8f9a0b1c2d3"), lines
+    assert lines[0].startswith("fd2026100406"), lines
 
 
 # ------------------------------------------- DB-backed: CI-only, not watched

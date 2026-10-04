@@ -58,7 +58,14 @@ class TestChallengeStore:
         uid, tid = uuid.uuid4(), uuid.uuid4()
         cid = await mfa.start_challenge(uid, tid, redis=redis_client)
         payload = await mfa.load_challenge(cid, redis=redis_client)
-        assert payload == {"user_id": str(uid), "tenant_id": str(tid)}
+        # start_challenge snapshots auth_version (default 0) so a password
+        # reset mid-challenge can invalidate it — same contract as the stream
+        # gate's revocation check.
+        assert payload == {
+            "user_id": str(uid),
+            "tenant_id": str(tid),
+            "auth_version": 0,
+        }
         consumed = await mfa.consume_challenge(cid, redis=redis_client)
         assert consumed is not None
         # GETDEL: the second consume gets nothing — no double token minting.
