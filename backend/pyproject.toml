@@ -12,7 +12,11 @@ dependencies = [
     "uvicorn[standard]>=0.30",
     "pydantic>=2.8",
     "pydantic-settings>=2.4",
-    "sqlalchemy[asyncio]>=2.0.31",
+    # <2.1: the 2.1 series changed async Result/session semantics — it broke
+    # real-DB tests in CI the moment it floated in (coroutine-never-awaited in
+    # the compiler, test fakes missing Result methods). Adopt deliberately:
+    # audit the async paths, migrate the fakes, then raise this ceiling.
+    "sqlalchemy[asyncio]>=2.0.31,<2.1",
     "asyncpg>=0.29",
     "alembic>=1.13",
     "redis>=5.0",

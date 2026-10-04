@@ -72,7 +72,11 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
-      - run: pip install -e ".[dev]"
+      # constraints.txt pins the exact dependency closure the full local suite
+      # was verified against — without it every CI run floats on the newest
+      # satisfying versions and a release can break on an unrelated push.
+      # Update policy: bump deliberately, verify locally, re-pin (see file).
+      - run: pip install -e ".[dev]" -c constraints.txt
       - run: ruff check app tests scripts
       - run: alembic upgrade head
       # Seeds roles/permissions/plans + applies RLS — tests rely on the seeded
