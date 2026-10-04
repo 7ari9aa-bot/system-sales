@@ -64,7 +64,7 @@ test("real registration, dashboard reads, orders, and logout work end to end", a
   });
   await page.getByRole("button", { name: /تسجيل الخروج|sign out/i }).click();
   expect((await logoutResponsePromise).status()).toBe(204);
-  # v7 note: after logout the guard's redirect wins — /login?returnTo=<where you were>.
+  // v7 note: after logout the guard's redirect wins — /login?returnTo=<where you were>.
   await expect(page).toHaveURL(/\/login(\?|$)/);
   await expect.poll(() => page.evaluate(() => localStorage.getItem("fihrist_tokens"))).toBeNull();
 
