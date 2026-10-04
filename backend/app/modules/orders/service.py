@@ -455,16 +455,49 @@ class OrderService:
         # currency, not from the bare variant price. A merchant who publishes
         # "6 units at 85" is quoting that tier, and a USD tier sitting on an EGP
         # shop is a different shop — it prices nothing here.
-        prepared: list[tuple[Any, int, Decimal]] = []
+        # The reads are batched; the refusals are NOT. The per-line loop used
+        # to check each item in cart order (id parse -> variant exists and is
+        # active -> quantity), so a mixed cart heard about its FIRST bad line,
+        # not about whichever problem the batch happens to find first. Parse
+        # and lookup failures are therefore recorded while batching and raised
+        # by the walk below in exactly that per-line order.
+        line_ids: list[UUID | None] = []
+        parse_errors: list[Exception | None] = []
         for item in items:
             try:
-                variant_id = UUID(str(item["variant_id"]))
+                line_ids.append(UUID(str(item["variant_id"])))
+                parse_errors.append(None)
             except (KeyError, ValueError) as exc:
-                raise ValueError("each item needs a valid variant_id") from exc
-            variant = await CatalogService.get_variant(session, tenant_id, variant_id)
+                line_ids.append(None)
+                parse_errors.append(exc)
+
+        # Two reads for the whole cart, whatever its size: the old per-line
+        # loop spent 2+ queries per item (the variant, then its price tier)
+        # before reserving anything. Duplicate lines share the fetched rows,
+        # and each is still priced for its OWN quantity off the shared ladder.
+        fetch_ids = sorted({vid for vid in line_ids if vid is not None})
+        variants = await CatalogService.get_variants_by_ids(
+            session, tenant_id, fetch_ids
+        )
+        ladders = await CatalogService.price_tiers_for_many(
+            session, tenant_id, fetch_ids, currency=currency
+        )
+
+        prepared: list[tuple[Any, int, Decimal]] = []
+        for item, variant_id, parse_error in zip(
+            items, line_ids, parse_errors, strict=True
+        ):
+            if parse_error is not None:
+                raise ValueError("each item needs a valid variant_id") from parse_error
+            # A line whose id parsed (parse_error is None) always has it here.
+            variant = variants.get(variant_id) if variant_id is not None else None
+            # get_variant's refusal, replayed: an absent row and an inactive
+            # one are the same NotFound, worded with the REQUESTED id.
+            if variant is None or not variant.is_active:
+                raise NotFoundError(f"variant {variant_id} not found")
             quantity = _positive_int(item.get("quantity"))
-            unit_price = await CatalogService.price_for(
-                session, tenant_id, variant, currency=currency, quantity=quantity
+            unit_price = CatalogService.tiered_unit_price(
+                variant.price, ladders.get(variant.id, []), quantity
             )
             prepared.append((variant, quantity, to_money(unit_price, "unit_price")))
 

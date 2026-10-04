@@ -547,6 +547,94 @@ class CatalogService:
         ).scalars().first()
         return variant.price if tier is None else tier
 
+    @staticmethod
+    async def get_variants_by_ids(
+        session: AsyncSession,
+        tenant_id: UUID,
+        variant_ids: list[UUID] | set[UUID],
+    ) -> dict[UUID, ProductVariant]:
+        """Batch-fetch variants by ID — a whole cart in one query.
+
+        Checkout's prepared phase used to read one variant per line (two
+        queries per line counting the price). Mirrors ``get_products_by_ids``:
+        rows come back regardless of ``is_active`` and the CALLER applies
+        sellability, because the caller raises its refusals in per-line order —
+        the same split as ``get_variant``'s ``include_inactive`` flag.
+        """
+        if not variant_ids:
+            return {}
+        rows = (
+            await session.execute(
+                select(ProductVariant).where(
+                    ProductVariant.tenant_id == tenant_id,
+                    ProductVariant.id.in_(variant_ids),
+                )
+            )
+        ).scalars().all()
+        return {v.id: v for v in rows}
+
+    @staticmethod
+    async def price_tiers_for_many(
+        session: AsyncSession,
+        tenant_id: UUID,
+        variant_ids: list[UUID] | set[UUID],
+        *,
+        currency: str,
+    ) -> dict[UUID, list[tuple[int, Decimal]]]:
+        """Every price ladder for many variants, in ONE query.
+
+        Widens ``price_for``'s single-tier query (tenant + currency filter,
+        ``min_quantity`` DESC, row id as tiebreak) to an ``IN`` over the cart,
+        and drops the per-line ``min_quantity <= quantity`` predicate — each
+        line carries its own quantity, so that step happens in memory in
+        ``tiered_unit_price``. Ladders come back deepest-tier-first, so the
+        first tier a quantity fits is exactly the row the old LIMIT 1 picked.
+        """
+        if not variant_ids:
+            return {}
+        rows = (
+            await session.execute(
+                select(
+                    ProductPrice.variant_id,
+                    ProductPrice.min_quantity,
+                    ProductPrice.unit_price,
+                )
+                .where(
+                    ProductPrice.tenant_id == tenant_id,
+                    ProductPrice.variant_id.in_(variant_ids),
+                    ProductPrice.currency == currency.upper(),
+                )
+                .order_by(
+                    ProductPrice.variant_id,
+                    ProductPrice.min_quantity.desc(),
+                    ProductPrice.id,
+                )
+            )
+        ).all()
+        ladders: dict[UUID, list[tuple[int, Decimal]]] = {}
+        for variant_id, min_quantity, unit_price in rows:
+            ladders.setdefault(variant_id, []).append((min_quantity, unit_price))
+        return ladders
+
+    @staticmethod
+    def tiered_unit_price(
+        variant_price: Decimal,
+        tiers: list[tuple[int, Decimal]],
+        quantity: int,
+    ) -> Decimal:
+        """``price_for``'s rules replayed in memory for one line.
+
+        ``tiers`` must be deepest-first (``price_tiers_for_many`` guarantees
+        it): the first tier at or below the quantity wins, and with none the
+        variant's own price is the answer — the ladder is an override, not a
+        prerequisite. Kept beside the query it mirrors so the batched and the
+        single-line paths cannot drift apart silently.
+        """
+        for min_quantity, unit_price in tiers:
+            if min_quantity <= quantity:
+                return unit_price
+        return variant_price
+
     # ------------------------------------------------- brands/categories ----
 
     @staticmethod

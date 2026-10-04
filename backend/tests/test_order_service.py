@@ -6,9 +6,10 @@ import uuid
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.catalog.models import ProductPrice
 from app.modules.catalog.service import CatalogService
 from app.modules.customers.service import CustomerService
 from app.modules.errors import ConflictError, NotFoundError, ValidationError
@@ -444,6 +445,148 @@ async def test_insufficient_stock_aborts_order_atomically(
     balance = await _balance(db, tenant_id, variant.id, wh.id)
     assert balance.reserved == 0
     await db.flush()
+
+
+async def test_checkout_variant_and_price_reads_do_not_grow_with_cart_size(
+    db: AsyncSession, tenant_ctx, _engine, monkeypatch
+):
+    """The prepared phase reads the cart in TWO queries, not two per line.
+
+    A 30-line cart used to issue a variant read and a price read per line
+    (60+ queries) before reserving anything. The batched path fetches every
+    variant and every price ladder once; only reserve's own per-line reads
+    (the FOR UPDATE path, deliberately per-item) still grow with the cart.
+    """
+    tenant_id = tenant_ctx.tenant_id
+    customer, variant, wh = await _customer_and_variant(db, tenant_id, stock=10)
+    variants = [variant]
+    for _ in range(5):
+        extra = await CatalogService.add_variant(
+            db,
+            tenant_id,
+            variant.product_id,
+            sku=f"WGT-{uuid.uuid4().hex[:6].upper()}",
+            price="10.00",
+        )
+        await InventoryService.move(
+            db,
+            tenant_id,
+            extra.id,
+            wh.id,
+            direction="in",
+            quantity=10,
+            reason="purchase",
+        )
+        variants.append(extra)
+    await db.flush()
+
+    counted: list[str] = []
+
+    def _count(_conn, _cursor, statement, _parameters, _context, _executemany):
+        lowered = statement.lower()
+        if "product_variants" in lowered or "product_prices" in lowered:
+            counted.append(lowered)
+
+    event.listen(_engine.sync_engine, "before_cursor_execute", _count)
+    calls = {"price_for": 0}
+    real_price_for = CatalogService.price_for
+
+    async def price_for_spy(*args, **kwargs):
+        calls["price_for"] += 1
+        return await real_price_for(*args, **kwargs)
+
+    monkeypatch.setattr(CatalogService, "price_for", staticmethod(price_for_spy))
+    try:
+        order = await OrderService.create_order(
+            db,
+            tenant_id,
+            customer.id,
+            [{"variant_id": v.id, "quantity": 1} for v in variants],
+        )
+    finally:
+        event.remove(_engine.sync_engine, "before_cursor_execute", _count)
+
+    # The cart itself must have succeeded — the counts below mean nothing
+    # if the batched path could not check this cart out at all.
+    assert order.status == "pending"
+
+    variant_reads = [s for s in counted if "product_variants" in s]
+    price_reads = [s for s in counted if "product_prices" in s]
+    # Price ladders: ONE read for the whole cart — the old path spent one
+    # per line.
+    assert len(price_reads) == 1
+    # Variants: one batched read for the cart plus one per line inside
+    # reserve's FOR UPDATE path (per-item on purpose, lock-order rule).
+    assert len(variant_reads) == len(variants) + 1
+    # The batch is the only variant read that fans out over ids.
+    assert sum(1 for s in variant_reads if " in (" in s) == 1
+    # The per-line price read is gone entirely.
+    assert calls["price_for"] == 0
+
+
+async def test_checkout_duplicate_lines_price_tiers_like_per_item_path(
+    db: AsyncSession, tenant_ctx
+):
+    """Duplicate cart lines and quantity tiers survive the batched read path.
+
+    Each duplicate line must be priced for its OWN quantity from the shared
+    ladder, and the batched result must equal the per-item path (``price_for``
+    called line by line) for a tiered case — including the §47 rule that a
+    foreign-currency tier sitting on this shop prices nothing.
+    """
+    tenant_id = tenant_ctx.tenant_id
+    customer, variant, wh = await _customer_and_variant(db, tenant_id, stock=100)
+    # Ladder in the tenant's currency (EGP): 5+ units at 20.00, 10+ at 15.00.
+    await CatalogService.set_variant_price(
+        db, tenant_id, variant.id, "20.00", min_quantity=5
+    )
+    await CatalogService.set_variant_price(
+        db, tenant_id, variant.id, "15.00", min_quantity=10
+    )
+    # A USD tier left on this EGP shop must never price a line (§47) — the
+    # write path refuses it, so the read-side filter gets a raw row to ignore.
+    db.add(
+        ProductPrice(
+            tenant_id=tenant_id,
+            variant_id=variant.id,
+            currency="USD",
+            unit_price=Decimal("1.00"),
+            min_quantity=1,
+        )
+    )
+    await db.flush()
+
+    quantities = [2, 5, 12]  # below the ladder, on the first tier, on the deepest
+    order = await OrderService.create_order(
+        db,
+        tenant_id,
+        customer.id,
+        [{"variant_id": variant.id, "quantity": q} for q in quantities],
+    )
+    await db.flush()
+
+    items = (
+        await db.execute(select(OrderItem).where(OrderItem.order_id == order.id))
+    ).scalars().all()
+    assert len(items) == len(quantities)
+    priced = {item.quantity: item.unit_price for item in items}
+
+    expected: dict[int, Decimal] = {}
+    for quantity in quantities:
+        # The OLD per-item path, called for the same quantities.
+        expected[quantity] = await CatalogService.price_for(
+            db, tenant_id, variant, currency=order.currency, quantity=quantity
+        )
+    assert priced == expected
+    # Tier edges: the base price below the ladder, each tier at its own
+    # threshold — and never the USD tier.
+    assert float(priced[2]) == pytest.approx(25.5)
+    assert float(priced[5]) == pytest.approx(20.0)
+    assert float(priced[12]) == pytest.approx(15.0)
+
+    # Duplicate lines reserve as separate holds, exactly as before.
+    balance = await _balance(db, tenant_id, variant.id, wh.id)
+    assert balance.reserved == sum(quantities)
 
 
 async def test_checkout_reserves_in_variant_id_order(
