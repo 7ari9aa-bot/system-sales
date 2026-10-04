@@ -95,7 +95,9 @@ async def test_login_delivers_the_pair_as_cookies_and_body(db, app_sessions_on_t
     assert f"path={auth_cookies.ACCESS_COOKIE_PATH}" in access.lower()
     assert f"path={auth_cookies.REFRESH_COOKIE_PATH}" in refresh.lower()
     assert f"path={auth_cookies.CSRF_COOKIE_PATH}" in csrf.lower()
-    assert "samesite=none" in refresh.lower()
+    # local = Lax (SameSite=None without Secure is dropped by browsers);
+    # https deployments flip to None via the same auto flag.
+    assert "samesite=lax" in refresh.lower()
     # local runs plain http, so the AUTO secure flag stays off here
     assert "secure" not in access.lower()
 

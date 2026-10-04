@@ -45,11 +45,21 @@ def _secure_flag() -> bool:
     return s.auth_cookie_secure
 
 
+def _samesite_flag() -> str:
+    """SameSite MUST pair with Secure correctly or browsers drop the cookie:
+    SameSite=None is refused without Secure (chrome logs `Set-Cookie was
+    blocked`), and local runs plain http — so local gets Lax (valid: the
+    local dashboard is same-origin through the vite proxy), while every
+    https deployment (Vercel front, Railway back = true cross-site) gets
+    None, the only value that survives cross-site requests."""
+    return "none" if _secure_flag() else "lax"
+
+
 def _common_kwargs(path: str) -> dict:
     return {
         "path": path,
         "secure": _secure_flag(),
-        "samesite": "none",
+        "samesite": _samesite_flag(),
         "httponly": True,
     }
 
@@ -85,7 +95,7 @@ def set_auth_cookies(response: Response, access_token: str, refresh_token: str) 
         max_age=s.refresh_token_ttl_seconds,
         path=CSRF_COOKIE_PATH,
         secure=_secure_flag(),
-        samesite="none",
+        samesite=_samesite_flag(),
         httponly=False,  # double-submit: the frontend must read it to echo it
     )
     return csrf
