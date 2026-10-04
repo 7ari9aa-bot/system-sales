@@ -82,12 +82,10 @@ KNOWN_DEAD_MODULES: dict[str, str] = {
     # and the sales-intelligence agent loop (next phase), per the spec's
     # dependency order (Phase 1 contracts before Phase 4+ engines).
     "app.modules.analytics.coverage": "SI Phase 7 controller — agent loop lands later.",
-    # evaluation.synthetic is no longer recorded: golden.py imports its
-    # generator, so the harness reached it the moment the golden runner
-    # landed. golden itself stays recorded until an in-app runner calls it.
-    "app.modules.analytics.evaluation.golden": (
-        "SI Phase 2 golden runner — same eval-harness wave."
-    ),
+    # evaluation.synthetic and evaluation.golden are no longer recorded:
+    # golden.py imports the generator, and the operator harness
+    # (scripts/run_golden_eval.py — scripts count as import roots) runs the
+    # golden scenarios. The dead-module allow-list no longer shields them.
     # The SI agent module itself — its composition root is the Phase 10
     # API route (POST /ai/sales/analyses) that lands next wave; the tools
     # register into the platform registry at import time.
