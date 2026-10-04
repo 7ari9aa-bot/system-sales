@@ -192,3 +192,9 @@ in the row it belongs to.
 - When citing a collision number, name the file the first time: `ADR-014`
   (`docs/adrs/ADR-014-conversation-serialization.md`).
 - Do not describe the two same-numbered documents as agreeing unless §3 says so.
+
+## D16 — Sales Intelligence rides Novita/GLM
+
+| Decision | File |
+|---|---|
+| D16: the SI agent's strong/fast models ride Novita's OpenAI-compatible API (`zai-org/glm-5.3`, `zai-org/glm-5.3-flash`), configured per tenant via `model_configs` — recorded before the first real SI run. | [`docs/adrs/D16-si-provider-novita-glm.md`](adrs/D16-si-provider-novita-glm.md) |

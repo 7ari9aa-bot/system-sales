@@ -2,7 +2,7 @@
 
     .venv/bin/python scripts/configure_si.py <tenant_id>
 
-D16 resolution recorded in docs/adr/si-provider-novita-glm.md: the approved
+D16 resolution recorded in docs/adrs/D16-si-provider-novita-glm.md: the approved
 provider is NOVITA serving GLM-5.3 (user decision 2026-10-03). This script
 upserts the tenant's model_configs rows for the aliases the SI agent rides
 (strong = GLM-5.3, fast = GLM-5.3-flash) — data, not code: swapping provider
