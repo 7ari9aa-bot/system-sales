@@ -35,7 +35,10 @@ CSRF_COOKIE = "csrf_token"
 
 ACCESS_COOKIE_PATH = "/api/v1"
 REFRESH_COOKIE_PATH = "/api/v1/auth"
-CSRF_COOKIE_PATH = "/api/v1"
+# The csrf value must be readable by document.cookie on EVERY page: the
+# session-presence check (and the double-submit echo) run on dashboard
+# routes, and a path=/api/v1 cookie is invisible to a /dashboard document.
+CSRF_COOKIE_PATH = "/"
 
 
 def _secure_flag() -> bool:
