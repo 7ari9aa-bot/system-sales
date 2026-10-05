@@ -336,7 +336,7 @@ def main() -> int:
     print(f"  railway link -p {project_id} -e {env_id}")
     print("  railway up --service api     # from repo root (uses infra/Dockerfile.backend)")
     print("  railway up --service workers # same upload, second service")
-    print("\nthen set on Vercel: NEXT_PUBLIC_API_URL=https://" + api_domain)
+    print("\nthen set on Vercel: VITE_API_URL=https://" + api_domain)
     return 0
 
 
