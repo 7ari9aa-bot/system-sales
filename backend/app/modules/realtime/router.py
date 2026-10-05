@@ -255,6 +255,14 @@ async def _build_cursor(cursor: str | None, streams: list[str]) -> dict[str, str
     Redis stream IDs carry epoch milliseconds, so the clamp floor is computed
     from the wall clock: a cursor older than _CURSOR_CLAMP_MS is pulled up to
     the floor instead of replaying the entire retained stream.
+
+    KNOWN LIMIT (single reconnect cursor): within one connection, delivery is
+    tracked per stream (last_ids), but a RECONNECT seeds every stream from the
+    ONE id the client echoes — an id from the fastest stream can start slower
+    streams slightly past their last event. The window is the inter-stream skew
+    at disconnect time, bounded by the clamp. The full fix is a per-stream
+    cursor map in the resume protocol, and it lands with the stream's first
+    real consumer (the dashboard does not consume this endpoint yet).
     """
     floor_ms = int(time.time() * 1000) - _CURSOR_CLAMP_MS
     floor_id = f"{floor_ms}-0"
@@ -323,6 +331,18 @@ async def _event_stream(
             if asyncio.get_event_loop().time() >= heartbeat_due:
                 if not await _tenant_may_stream(tenant_id):
                     logger.info("sse.tenant_blocked tenant=%s", tenant_id)
+                    # Tell the client WHY the stream ended — a bare close reads
+                    # as a network drop and the client reconnects immediately,
+                    # meeting this same refusal forever (reconnect storm).
+                    yield _sse_frame(
+                        {
+                            "error": {
+                                "code": "tenant_suspended",
+                                "message": "workspace suspended — stream closed",
+                            }
+                        },
+                        event_id=f"{int(time.time() * 1000)}-0",
+                    )
                     break
                 yield _heartbeat()
                 heartbeat_due = asyncio.get_event_loop().time() + _HEARTBEAT_INTERVAL_S

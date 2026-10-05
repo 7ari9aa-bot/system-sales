@@ -29,7 +29,13 @@ def compute_effect_idempotency_key(
         "task_id": (task_id or "").strip(),
         "arguments": arguments or {},
     }
-    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    # default=str: callers may pass non-JSON natives (UUID, datetime,
+    # Decimal) inside arguments — a bare dumps would raise TypeError and
+    # take the whole intent down. str() is stable per process, which is all
+    # a same-process idempotency key needs.
+    encoded = json.dumps(
+        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str
+    )
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 

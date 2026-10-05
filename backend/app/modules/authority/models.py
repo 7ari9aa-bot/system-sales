@@ -20,6 +20,7 @@ from decimal import Decimal
 
 from sqlalchemy import (
     DateTime,
+    ForeignKey,
     Index,
     Integer,
     Numeric,
@@ -87,7 +88,11 @@ class AuthorityLease(TenantMixin, Base):
     lease_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    grant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    grant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("capability_grants.grant_id", ondelete="CASCADE"),
+        nullable=False,
+    )
     decision_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     lease_token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     # "sha256:" + 64 hex chars:
@@ -123,7 +128,9 @@ class AutonomyBudget(TenantMixin, Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     actor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
-    parent_budget_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    parent_budget_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("autonomy_budgets.budget_id", ondelete="SET NULL")
+    )
     name: Mapped[str] = mapped_column(String(127), nullable=False)
     period: Mapped[str] = mapped_column(String(31), server_default="DAILY", nullable=False)
     currency: Mapped[str] = mapped_column(String(15), server_default="USD", nullable=False)
@@ -156,7 +163,11 @@ class BudgetReservation(TenantMixin, Base):
     reservation_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    budget_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    budget_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("autonomy_budgets.budget_id", ondelete="CASCADE"),
+        nullable=False,
+    )
     lease_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     status: Mapped[str] = mapped_column(String(31), server_default="RESERVED", nullable=False)

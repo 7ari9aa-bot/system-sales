@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only
 
@@ -111,8 +112,28 @@ class NotificationService:
             payload=payload or {},
             dedup_key=dedup_key,
         )
-        session.add(notif)
-        await session.flush()
+        # The pre-check above is check-then-act: two concurrent producers can
+        # both see "absent". The partial unique index
+        # (ix_notifications_tenant_user_dedup) makes the database the arbiter —
+        # the loser's savepoint rolls back and it returns the winner's row,
+        # exactly the ToolCall insert-race pattern.
+        try:
+            async with session.begin_nested():
+                session.add(notif)
+                await session.flush()
+        except IntegrityError:
+            existing = (
+                await session.execute(
+                    select(Notification).where(
+                        Notification.tenant_id == tenant_id,
+                        Notification.user_id == user_id,
+                        Notification.dedup_key == dedup_key,
+                    )
+                )
+            ).scalar_one_or_none()
+            if existing is not None:
+                return existing
+            raise
         return notif
 
     @staticmethod
