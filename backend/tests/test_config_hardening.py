@@ -125,6 +125,12 @@ def test_an_explicit_origin_list_is_accepted() -> None:
 def test_secure_environment_requires_configured_password_reset_delivery() -> None:
     with pytest.raises(ValidationError, match="EMAIL_DELIVERY_ENABLED"):
         _build("production", email_delivery_enabled=False)
+    # The soft-launch opt-out: an EXPLICIT email_delivery_strict=false boots
+    # production without email (degraded on purpose), while the default
+    # strict=True keeps the hard requirement for everyone else.
+    _build("production", email_delivery_enabled=False, email_delivery_strict=False)
+    with pytest.raises(ValidationError, match="EMAIL_DELIVERY_ENABLED"):
+        _build("production", email_delivery_enabled=False, email_delivery_strict=True)
 
 
 def test_secure_environment_requires_durable_media_storage() -> None:

@@ -59,6 +59,11 @@ class Settings(BaseSettings):
     email_from: str = ""
     frontend_public_url: str = ""
     email_delivery_enabled: bool = False
+    # Soft-launch escape hatch: a secure-environment deployment may boot with
+    # email delivery OFF (password-reset-by-email then degrades — the reset
+    # endpoint's anti-enumeration 202 still holds) ONLY when this opt-out is
+    # EXPLICIT. Default True: the hard requirement the recovery wave shipped.
+    email_delivery_strict: bool = True
 
     # auth
     jwt_secret: str = "change-me"
@@ -314,8 +319,17 @@ class Settings(BaseSettings):
                 )
 
         if self.is_secure_environment and not self.email_delivery_enabled:
-            raise ValueError(
-                f"EMAIL_DELIVERY_ENABLED must be true in secure environments {where}"
+            if self.email_delivery_strict:
+                raise ValueError(
+                    f"EMAIL_DELIVERY_ENABLED must be true in secure environments {where}"
+                )
+            # Explicit soft-launch opt-out (EMAIL_DELIVERY_STRICT=false): boot
+            # without email, LOUDLY — password-reset-by-email is unavailable
+            # until the operator sets a Resend key and re-enables it.
+            logger.warning(
+                "EMAIL_DELIVERY_ENABLED=false in %s — password-reset-by-email "
+                "is unavailable (email_delivery_strict=false soft-launch opt-out)",
+                self.environment,
             )
 
         if self.email_delivery_enabled:
