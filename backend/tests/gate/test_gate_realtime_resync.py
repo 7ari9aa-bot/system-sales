@@ -348,6 +348,14 @@ async def test_gate_a_suspended_workspace_has_its_stream_closed(
     ]
 
     assert checked == [str(tenant)], "the mid-stream re-check never ran"
-    assert [f for f in frames if not f.startswith(b":")] == [], (
+    data_frames = [f for f in frames if not f.startswith(b":")]
+    # The suspended tenant's EVENT must never stream — but the close now
+    # carries ONE reason frame (tenant_suspended, via the error envelope) so
+    # the client does not mistake the refusal for a network drop and
+    # reconnect into it forever.
+    assert all(b"MUST-NOT-STREAM" not in f for f in data_frames), (
         "a suspended workspace kept receiving its events"
+    )
+    assert any(b"tenant_suspended" in f for f in data_frames), (
+        "the close carries no reason — the client would treat it as a drop"
     )

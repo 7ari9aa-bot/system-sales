@@ -39,7 +39,7 @@ from pydantic import BaseModel
 from sqlalchemy import select as sa_select
 from sqlalchemy import text as sa_text
 
-from app.core.errors import PermissionDeniedError, ValidationError
+from app.core.errors import PermissionDeniedError, ValidationError, build_error_envelope
 from app.core.events.schemas import deserialize
 from app.core.redis import get_redis
 from app.core.security import STREAM_TOKEN_TTL_SECONDS, create_stream_token, decode_token
@@ -335,12 +335,10 @@ async def _event_stream(
                     # as a network drop and the client reconnects immediately,
                     # meeting this same refusal forever (reconnect storm).
                     yield _sse_frame(
-                        {
-                            "error": {
-                                "code": "tenant_suspended",
-                                "message": "workspace suspended — stream closed",
-                            }
-                        },
+                        build_error_envelope(
+                            "tenant_suspended",
+                            "workspace suspended — stream closed",
+                        ),
                         event_id=f"{int(time.time() * 1000)}-0",
                     )
                     break

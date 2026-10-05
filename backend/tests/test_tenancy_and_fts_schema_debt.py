@@ -173,8 +173,8 @@ def test_the_three_new_revisions_exist_and_chain_from_the_head() -> None:
     # chain, and this guard pins it so a fork is caught the day it lands.
     pointed_to = {parent for _, parent in ids.values() if parent}
     tail = set(ids) - pointed_to
-    assert tail == {"fd2026100407"}, (
-        f"expected one linear head fd2026100407, found {sorted(tail)} — "
+    assert tail == {"fd2026100408"}, (
+        f"expected one linear head fd2026100408, found {sorted(tail)} — "
         "two heads break `alembic upgrade head` for every environment"
     )
 
@@ -792,7 +792,7 @@ def test_alembic_still_reports_a_single_head() -> None:
     lines = [line for line in out.stdout.splitlines() if line.strip()]
     assert out.returncode == 0, out.stderr
     assert len(lines) == 1, f"multiple heads would break the build: {lines}"
-    assert lines[0].startswith("fd2026100407"), lines
+    assert lines[0].startswith("fd2026100408"), lines
 
 
 # ------------------------------------------- DB-backed: CI-only, not watched
