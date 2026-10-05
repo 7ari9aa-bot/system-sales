@@ -26,8 +26,9 @@ pytestmark = pytest.mark.usefixtures("db")
 async def _seed_security_event(db: AsyncSession, tenant_id: uuid.UUID | None, message: str) -> None:
     await db.execute(
         sa.text(
-            "INSERT INTO security_events (id, kind, details, ip, tenant_id) "
-            "VALUES (gen_random_uuid(), 'login_failure', :details, '127.0.0.1', :tenant)"
+            "INSERT INTO security_events (id, event_type, details, ip, tenant_id) "
+            "VALUES (gen_random_uuid(), 'login_failure', "
+            "CAST(:details AS jsonb), '127.0.0.1', :tenant)"
         ),
         {
             "details": json.dumps({"m": message}),  # JSONB binds as a string
@@ -64,14 +65,17 @@ class TestSystemEventVisibility:
         await bind_tenant(db, tenant_ctx.tenant_id)
         await db.execute(
             sa.text(
-                "INSERT INTO security_events (id, kind, details, ip, tenant_id) "
+                "INSERT INTO security_events (id, event_type, details, ip, tenant_id) "
                 "VALUES (gen_random_uuid(), 'login_failure', '{}', '127.0.0.1', :tenant)"
             ),
             {"tenant": str(tenant_ctx.tenant_id)},
         )
         with pytest.raises(Exception, match="row-level security|permission"):
             await db.execute(
-                sa.text("UPDATE security_events SET kind = 'tampered' WHERE tenant_id = :t"),
+                sa.text(
+                    "UPDATE security_events SET event_type = 'tampered' "
+                    "WHERE tenant_id = :t"
+                ),
                 {"t": str(tenant_ctx.tenant_id)},
             )
 
@@ -108,8 +112,22 @@ class TestLocationGrantTenancy:
             ),
             {"id": str(other_tenant), "slug": f"other-{uuid.uuid4().hex[:8]}"},
         )
+        # locations is RLS-guarded on app.tenant_id — bind the foreign tenant
+        # while creating its workspace + location, then bind back to the
+        # caller's tenant.
+        await bind_tenant(db, other_tenant)
+        from app.modules.identity.models import Workspace
+
+        foreign_ws = Workspace(
+            tenant_id=other_tenant,
+            name="Other WS",
+            slug=f"other-ws-{uuid.uuid4().hex[:8]}",
+        )
+        db.add(foreign_ws)
+        await db.flush()
         foreign_location = Location(
             tenant_id=other_tenant,
+            workspace_id=foreign_ws.id,
             name="Foreign Site",
         )
         db.add(foreign_location)
