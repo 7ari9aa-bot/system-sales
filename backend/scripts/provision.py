@@ -224,6 +224,19 @@ CHANNEL_TENANT_FN_REVOKE = (
 #: already applies to the channel resolver.
 PRIVILEGE_REFREEZE: tuple[str, ...] = (
     "REVOKE TRUNCATE ON public.invoices FROM sales_app",
+    # The isolation hardening (fd2026100409): the blanket ALL above re-opens
+    # what the audit closed — re-freeze on every provision run so a fresh
+    # database converges to the hardened state.
+    "REVOKE TRUNCATE, REFERENCES, TRIGGER, MAINTAIN "
+    "ON ALL TABLES IN SCHEMA public FROM sales_app",
+    "REVOKE UPDATE, DELETE ON public.inventory_movements FROM sales_app",
+    "REVOKE UPDATE, DELETE ON public.financial_entries FROM sales_app",
+    "REVOKE UPDATE, DELETE ON public.effect_ledger FROM sales_app",
+    "REVOKE UPDATE, DELETE ON public.order_status_history FROM sales_app",
+    "REVOKE UPDATE, DELETE ON public.audit_logs FROM sales_app",
+    "REVOKE UPDATE, DELETE ON public.security_events FROM sales_app",
+    "ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public "
+    "REVOKE TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON TABLES FROM sales_app",
 )
 
 #: Spec §55–57 — functions the application calls, granted here because the
@@ -247,6 +260,7 @@ FUNCTION_EXECUTE_GRANTS: tuple[str, ...] = (
     "GRANT EXECUTE ON FUNCTION public.partitioning_ensure_partition(text, date) TO sales_app",
     "GRANT EXECUTE ON FUNCTION public.partitioning_ensure_months(text, integer) TO sales_app",
     "GRANT EXECUTE ON FUNCTION public.retention_drop_horizon(text) TO sales_app",
+    "GRANT EXECUTE ON FUNCTION public._location_tenant_allowed(uuid, uuid) TO sales_app",
     "GRANT EXECUTE ON FUNCTION public.partitioning_purge_month(text, date) TO sales_app",
 )
 
