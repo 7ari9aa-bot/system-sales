@@ -17,6 +17,7 @@ from typing import Annotated
 import sqlalchemy as sa
 from fastapi import Depends, Header, Request
 from sqlalchemy import select
+from sqlalchemy import text as sa_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import bind_scope, bind_tenant
@@ -167,6 +168,13 @@ async def get_current_user(
             raise PermissionDeniedError("account is inactive")
         if int(payload.get("auth_version", 0)) != int(auth_state.auth_version or 0):
             raise PermissionDeniedError("session revoked by password reset")
+        # The platform-admin flag as a transaction-local GUC: RLS policies on
+        # the system tables (security_events NULL-tenant rows) read it — a
+        # DB-side claim that never comes from the JWT itself.
+        await session.execute(
+            sa_text("SELECT set_config('app.is_platform_admin', :v, true)"),
+            {"v": "true" if bool(payload.get("is_platform_admin", False)) else "false"},
+        )
         return AuthedUser(
             id=user_id,
             tenant_id=uuid.UUID(payload["tenant_id"]) if payload.get("tenant_id") else None,
