@@ -333,7 +333,7 @@ class AuthorityService:
                 select(AutonomyBudget).where(
                     AutonomyBudget.tenant_id == tenant_id,
                     AutonomyBudget.budget_id == parent_budget_id,
-                )
+                ).with_for_update()
             )
             if not parent:
                 raise NotFoundError(f"Parent budget {parent_budget_id} not found")
@@ -344,6 +344,8 @@ class AuthorityService:
                     f"Child budget limit ({total_limit}) exceeds parent available "
                     f"budget ({available})"
                 )
+            # Allocate the child's limit from the parent's available budget
+            parent.spent_amount += total_limit
 
         budget = AutonomyBudget(
             tenant_id=tenant_id,
@@ -365,13 +367,17 @@ class AuthorityService:
         session: AsyncSession,
         tenant_id: uuid.UUID,
         budget_id: uuid.UUID,
+        *,
+        for_update: bool = False,
     ) -> AutonomyBudget:
-        budget = await session.scalar(
-            select(AutonomyBudget).where(
-                AutonomyBudget.tenant_id == tenant_id,
-                AutonomyBudget.budget_id == budget_id,
-            )
+        stmt = select(AutonomyBudget).where(
+            AutonomyBudget.tenant_id == tenant_id,
+            AutonomyBudget.budget_id == budget_id,
         )
+        if for_update:
+            stmt = stmt.with_for_update()
+            
+        budget = await session.scalar(stmt)
         if not budget:
             raise NotFoundError(f"AutonomyBudget {budget_id} not found")
         return budget
@@ -407,7 +413,7 @@ class AuthorityService:
         lease_id: uuid.UUID | None = None,
         ttl_seconds: int = 60,
     ) -> BudgetReservation:
-        budget = await AuthorityService.get_budget(session, tenant_id, budget_id)
+        budget = await AuthorityService.get_budget(session, tenant_id, budget_id, for_update=True)
         available = budget.total_limit - budget.spent_amount - budget.reserved_amount
         if amount > available:
             await metrics.record_budget_fail()
@@ -443,7 +449,7 @@ class AuthorityService:
         )
         if not reservation or reservation.status != "RESERVED":
             return
-        budget = await AuthorityService.get_budget(session, tenant_id, reservation.budget_id)
+        budget = await AuthorityService.get_budget(session, tenant_id, reservation.budget_id, for_update=True)
         budget.reserved_amount = max(Decimal("0.00"), budget.reserved_amount - reservation.amount)
         budget.spent_amount += reservation.amount
         reservation.status = "COMMITTED"
@@ -463,7 +469,7 @@ class AuthorityService:
         )
         if not reservation or reservation.status != "RESERVED":
             return
-        budget = await AuthorityService.get_budget(session, tenant_id, reservation.budget_id)
+        budget = await AuthorityService.get_budget(session, tenant_id, reservation.budget_id, for_update=True)
         budget.reserved_amount = max(Decimal("0.00"), budget.reserved_amount - reservation.amount)
         reservation.status = "RELEASED"
         await session.flush()

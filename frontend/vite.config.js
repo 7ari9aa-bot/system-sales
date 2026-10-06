@@ -11,7 +11,7 @@ export default defineConfig(({ mode }) => {
   // silently ignored and the proxy stays on the default. loadEnv reads the
   // same .env files the app code gets (third arg: all vars, not just VITE_).
   const env = loadEnv(mode, process.cwd(), '');
-  const apiProxyTarget = env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:8000';
+  const apiProxyTarget = env.VITE_API_PROXY_TARGET || process.env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:8000';
   const apiProxy = {
     '/api': { target: apiProxyTarget, changeOrigin: true },
     '/auth': { target: apiProxyTarget, changeOrigin: true },

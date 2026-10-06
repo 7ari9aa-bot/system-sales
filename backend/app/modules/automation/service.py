@@ -227,7 +227,7 @@ class WorkflowService:
                 select(WorkflowExecution).where(
                     WorkflowExecution.tenant_id == tenant_id,
                     WorkflowExecution.id == execution_id,
-                )
+                ).with_for_update()
             )
         ).scalar_one_or_none()
         if execution is None:

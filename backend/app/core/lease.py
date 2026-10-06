@@ -60,6 +60,6 @@ async def conversation_lease(
     row = (
         await session.execute(text(f"SELECT {lock_fn} AS acquired"), {"key": key})
     ).scalar()
-    if not row:
+    if not wait and not row:
         raise ConversationBusy(conversation_id)
     yield

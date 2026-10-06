@@ -16,7 +16,6 @@ import secrets
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from functools import lru_cache
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import sqlalchemy as sa
@@ -146,7 +145,9 @@ def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-@lru_cache(maxsize=1)
+_dummy_password_hash_cache: str | None = None
+
+
 async def _dummy_password_hash() -> str:
     """A real bcrypt hash used when the account does not exist.
 
@@ -154,8 +155,18 @@ async def _dummy_password_hash() -> str:
     account answered measurably faster than a wrong password — a timing oracle
     that enumerates registered emails (S12). Comparing against this hash makes
     both paths cost the same bcrypt work.
+
+    The hash is cached as a STRING, never as the coroutine: an ``lru_cache`` on
+    an ``async def`` stores the coroutine object itself, so the second caller
+    awaits an already-consumed coroutine and every nonexistent-email login
+    after the first 500s for the life of the process.
     """
-    return await hash_password_async("not-a-real-password")
+    global _dummy_password_hash_cache
+    if _dummy_password_hash_cache is None:
+        # Benign race: concurrent first callers each compute a valid hash of
+        # the same constant; the last write wins and both verify correctly.
+        _dummy_password_hash_cache = await hash_password_async("not-a-real-password")
+    return _dummy_password_hash_cache
 
 
 class AuthService:
