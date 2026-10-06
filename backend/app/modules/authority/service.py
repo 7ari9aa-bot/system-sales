@@ -449,7 +449,9 @@ class AuthorityService:
         )
         if not reservation or reservation.status != "RESERVED":
             return
-        budget = await AuthorityService.get_budget(session, tenant_id, reservation.budget_id, for_update=True)
+        budget = await AuthorityService.get_budget(
+            session, tenant_id, reservation.budget_id, for_update=True
+        )
         budget.reserved_amount = max(Decimal("0.00"), budget.reserved_amount - reservation.amount)
         budget.spent_amount += reservation.amount
         reservation.status = "COMMITTED"
@@ -469,7 +471,9 @@ class AuthorityService:
         )
         if not reservation or reservation.status != "RESERVED":
             return
-        budget = await AuthorityService.get_budget(session, tenant_id, reservation.budget_id, for_update=True)
+        budget = await AuthorityService.get_budget(
+            session, tenant_id, reservation.budget_id, for_update=True
+        )
         budget.reserved_amount = max(Decimal("0.00"), budget.reserved_amount - reservation.amount)
         reservation.status = "RELEASED"
         await session.flush()
