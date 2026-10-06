@@ -12,8 +12,8 @@ from __future__ import annotations
 import httpx
 from httpx import ASGITransport, AsyncClient
 
-from app.core.security import create_oauth_state_token, decode_token
 from app.core.secrets import decrypt_credentials_dict
+from app.core.security import create_oauth_state_token, decode_token
 from app.main import create_app
 from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 from app.modules.platform.models import Integration
