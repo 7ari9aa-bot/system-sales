@@ -156,7 +156,13 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # the core through its PUBLIC surface only — identity.deps, orders.money,
 # inventory.service, orders.service (attribution by counting d85c113 vs the
 # commerce-core tree). Adapter -> core services is the endorsed direction.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 131
+# 131 -> 135 on 2026-10-06: the Meta OAuth connect flow (customers/meta_oauth)
+# mirrors the manual connect's edges from inside the same module — identity.deps
+# (TenantContext/permission gate), platform.integration_verifier + platform.models
+# (the shared Integration row + credential verification), billing.service
+# (EntitlementService channel gate). Same pairs customers/router.py already holds;
+# the counter scans statements, so the second holder adds four.
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 135
 # 101 -> 99 on 2026-09-29: the diagnostics engine (platform/diagnostics.py) had
 # module-scope imports of `ai.models.Agent`, `inventory.models` and
 # `orders.models` — three edges that re-merged the eleven-module SCC blob the

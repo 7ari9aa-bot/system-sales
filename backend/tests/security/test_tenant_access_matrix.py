@@ -83,6 +83,11 @@ _ALLOWED_PUBLIC_ROUTES: frozenset[str] = frozenset(
         # provider webhook entrypoints (signature-verified inside the handler)
         "GET /api/v1/webhooks/{channel}",
         "POST /api/v1/webhooks/{channel}",
+        # Meta OAuth callback: PUBLIC by design — the 10-minute server-signed
+        # oauth_state JWT minted to a settings:write holder is the
+        # authorization, and the route only ever redirects back to the
+        # frontend with an outcome marker (it reads no tenant data).
+        "GET /api/v1/integrations/meta/oauth/callback",
         # SSE streams carry their own ticket auth in-body
         "GET /api/v1/conversations/stream",
         "GET /api/v1/realtime/events",

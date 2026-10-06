@@ -14,10 +14,13 @@ audit_logs also becomes FORCE like every other guarded table.
 G-04 sales_app held TRUNCATE / REFERENCES / TRIGGER / MAINTAIN on every
 table through the default ACL — TRUNCATE bypasses RLS and row triggers,
 so one SQL-injection could wipe any table for every tenant. Revoked on
-all tables and from the default ACL; the ledger tables
-(inventory_movements, financial_entries, effect_ledger,
-order_status_history, audit_logs, security_events) become INSERT+SELECT
-only — append-only is their documented invariant.
+all tables and from the default ACL; the financial ledgers
+(inventory_movements, financial_entries, effect_ledger, audit_logs,
+security_events) become INSERT+SELECT only — append-only is their
+documented invariant. order_status_history stays RLS-guarded without the
+privilege-level freeze: the timeline's immutability is a service-level
+invariant, and the suite backdates rows in-transaction to build
+deterministic timelines.
 
 G-03 user_location_access WITH CHECK trusted a self-referential
 user_id = current clause without checking the LOCATION's tenancy: a user
@@ -25,6 +28,10 @@ could grant themselves access to any location in any tenant. The check
 now requires the location's tenant to be one of the caller's memberships,
 resolved through a SECURITY DEFINER helper (the locations table is itself
 RLS-guarded, so a policy subquery running as the caller could not see it).
+The same helper carries the §151 Q3 owner clause — an owner may manage
+other members' grants inside locations their own membership covers —
+which the plain caller-side subquery in the provisioned policy could
+never see either.
 """
 
 from collections.abc import Sequence
@@ -44,7 +51,6 @@ _LEDGER_TABLES = (
     "inventory_movements",
     "financial_entries",
     "effect_ledger",
-    "order_status_history",
     "audit_logs",
     "security_events",
 )
@@ -110,10 +116,18 @@ def upgrade() -> None:
     op.execute("DROP POLICY IF EXISTS location_access ON public.user_location_access")
     op.execute(
         f"""CREATE POLICY location_access ON public.user_location_access
-            USING (user_id = {_USER_GUARD})
-            WITH CHECK (
+            USING (
                 user_id = {_USER_GUARD}
-                AND public._location_tenant_allowed(
+                OR public._location_tenant_allowed(
+                    {_USER_GUARD}, user_location_access.location_id
+                )
+            )
+            WITH CHECK (
+                (user_id = {_USER_GUARD}
+                 AND public._location_tenant_allowed(
+                     {_USER_GUARD}, user_location_access.location_id
+                 ))
+                OR public._location_tenant_allowed(
                     {_USER_GUARD}, user_location_access.location_id
                 )
             )"""

@@ -105,49 +105,56 @@ def _rls_statements() -> list[str]:
     # user_location_access (spec §151): tenant-scoping comes from the location
     # row, so the policy keys on the request user (tenant_users-style user
     # GUC) instead of app.tenant_id. The general tenant_isolation policy is
-    # untouched; this is the only table with this variant. The owner OR-clause
-    # lets the §151 Q3 admin API manage OTHER members' grants; kept identical
-    # to migration f151ee151ee1 so an already-migrated database converges.
+    # untouched; this is the only table with this variant. The self-branch
+    # additionally requires the location's tenancy through the SECURITY
+    # DEFINER helper from fd2026100409 — a bare user_id check let a user grant
+    # themselves a location in ANY tenant. The owner OR-clause keeps the §151
+    # Q3 admin API alive: an owner may manage other members' grants inside
+    # locations their own membership already covers. Kept byte-identical to
+    # the migration so an already-migrated database converges.
     ula = "user_location_access"
     if ula in Base.metadata.tables:
         ula_user_guard = f"NULLIF(current_setting('{USER_GUC}', true), '')::uuid"
         ula_self = f"user_id = {ula_user_guard}"
-        ula_admin = (
-            "EXISTS (SELECT 1 FROM public.locations l "
-            "JOIN public.tenant_users tu ON tu.tenant_id = l.tenant_id "
-            "JOIN public.roles r ON r.id = tu.role_id "
-            f"WHERE l.id = {ula}.location_id AND tu.user_id = {ula_user_guard} "
-            "AND r.code = 'owner')"
-        )
+        ula_tenancy = f"public._location_tenant_allowed({ula_user_guard}, {ula}.location_id)"
         stmts.append(f'ALTER TABLE public.{ula} ENABLE ROW LEVEL SECURITY;')
         stmts.append(f'ALTER TABLE public.{ula} FORCE ROW LEVEL SECURITY;')
         stmts.append(f'DROP POLICY IF EXISTS location_access ON public.{ula};')
         stmts.append(
             f'CREATE POLICY location_access ON public.{ula} '
-            f'USING ({ula_self} OR {ula_admin}) '
-            f'WITH CHECK ({ula_self} OR {ula_admin});'
+            f'USING ({ula_self} OR {ula_tenancy}) '
+            f'WITH CHECK (({ula_self} AND {ula_tenancy}) OR {ula_tenancy});'
         )
 
-    audit = "audit_logs"
-    stmts.append(f'ALTER TABLE public.{audit} ENABLE ROW LEVEL SECURITY;')
-    stmts.append(f'ALTER TABLE public.{audit} NO FORCE ROW LEVEL SECURITY;')
-    stmts.append(f'DROP POLICY IF EXISTS tenant_isolation ON public.{audit};')
-    stmts.append(
-        f'CREATE POLICY tenant_isolation ON public.{audit} '
-        f'USING (tenant_id IS NULL OR tenant_id = {guard}) '
-        f'WITH CHECK (tenant_id IS NULL OR tenant_id = {guard});'
-    )
-    # security_events: pre-auth paths (login failure) write NULL-tenant rows;
-    # a strict tenant_id = guard policy would silently reject them (S8).
-    se = "security_events"
-    if se in Base.metadata.tables:
-        stmts.append(f'ALTER TABLE public.{se} ENABLE ROW LEVEL SECURITY;')
-        stmts.append(f'ALTER TABLE public.{se} FORCE ROW LEVEL SECURITY;')
-        stmts.append(f'DROP POLICY IF EXISTS tenant_isolation ON public.{se};')
+    # audit_logs / security_events (fd2026100409 G-01): append-only, split per
+    # command instead of one NULL-or-tenant policy for everything — that single
+    # policy let any tenant read, update and delete the global system rows.
+    # UPDATE / DELETE get no policy at all, so RLS denies them outright.
+    admin_guard = "coalesce(current_setting('app.is_platform_admin', true), '') = 'true'"
+    for audit, force in (("audit_logs", True), ("security_events", True)):
+        if audit not in Base.metadata.tables:
+            continue
+        stmts.append(f'ALTER TABLE public.{audit} ENABLE ROW LEVEL SECURITY;')
+        if force:
+            stmts.append(f'ALTER TABLE public.{audit} FORCE ROW LEVEL SECURITY;')
+        for policy in (
+            "tenant_isolation",
+            f"{audit}_insert",
+            f"{audit}_tenant_read",
+            f"{audit}_system_read",
+        ):
+            stmts.append(f'DROP POLICY IF EXISTS {policy} ON public.{audit};')
         stmts.append(
-            f'CREATE POLICY tenant_isolation ON public.{se} '
-            f'USING (tenant_id IS NULL OR tenant_id = {guard}) '
+            f'CREATE POLICY {audit}_insert ON public.{audit} FOR INSERT '
             f'WITH CHECK (tenant_id IS NULL OR tenant_id = {guard});'
+        )
+        stmts.append(
+            f'CREATE POLICY {audit}_tenant_read ON public.{audit} FOR SELECT '
+            f'USING (tenant_id = {guard});'
+        )
+        stmts.append(
+            f'CREATE POLICY {audit}_system_read ON public.{audit} FOR SELECT '
+            f'USING (tenant_id IS NULL AND {admin_guard});'
         )
     return stmts
 
@@ -232,7 +239,6 @@ PRIVILEGE_REFREEZE: tuple[str, ...] = (
     "REVOKE UPDATE, DELETE ON public.inventory_movements FROM sales_app",
     "REVOKE UPDATE, DELETE ON public.financial_entries FROM sales_app",
     "REVOKE UPDATE, DELETE ON public.effect_ledger FROM sales_app",
-    "REVOKE UPDATE, DELETE ON public.order_status_history FROM sales_app",
     "REVOKE UPDATE, DELETE ON public.audit_logs FROM sales_app",
     "REVOKE UPDATE, DELETE ON public.security_events FROM sales_app",
     "ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public "

@@ -93,8 +93,13 @@ class TestPrivilegeHygiene:
         with pytest.raises(Exception, match="permission denied|Privilege"):
             await db.execute(sa.text("TRUNCATE customers"))
 
-    @pytest.mark.parametrize("table", ["inventory_movements", "financial_entries",
-        "order_status_history"])
+    # The grant-level ledger list (fd2026100409 G-04 as converged in
+    # provision.py): order_status_history is NOT on it — the state-machine
+    # timeline keeps RLS-level tenancy only, so the suite can backdate rows
+    # to build deterministic timelines. The audit tables are also granted
+    # UPDATE/DELETE at the privilege level but hold no policy for them, so
+    # RLS itself denies every mutation — covered by the audit tests above.
+    @pytest.mark.parametrize("table", ["inventory_movements", "financial_entries"])
     async def test_ledger_tables_refuse_delete(self, db, table):
         await bind_tenant(db, uuid.uuid4())
         with pytest.raises(Exception, match="permission denied|Privilege"):

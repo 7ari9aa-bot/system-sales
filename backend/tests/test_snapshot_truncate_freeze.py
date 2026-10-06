@@ -509,12 +509,14 @@ async def test_the_legitimate_insert_path_still_writes_a_snapshot(
     assert reread.extra["snapshot"], "the snapshot payload is not on the frozen row"
 
 
-async def test_truncating_any_other_table_is_untouched(db: AsyncSession) -> None:
-    """Negative control for the narrowing: the revoke is table-level on ONE table.
+async def test_truncate_is_revoked_schema_wide(db: AsyncSession) -> None:
+    """The G-04 contract supersedes the one-table narrowing of §53–54.
 
-    `usage_records` is the metering ledger — mutable in bulk by design. If it
-    loses TRUNCATE too, the change was a schema-wide revoke rather than the one
-    statement §53–54 is about.
+    fd2026100409 revokes TRUNCATE on ALL tables (and from the default ACL):
+    TRUNCATE bypasses RLS and row triggers, so the runtime role holding it on
+    ANY table — `usage_records` included — leaves that table one statement
+    from mass erasure for every tenant. The old negative control ("only
+    invoices loses it") asserted exactly the world this hardening closes.
     """
     user, is_super, bypasses = await _role_probe(db)
     if is_super or bypasses:
@@ -526,7 +528,7 @@ async def test_truncating_any_other_table_is_untouched(db: AsyncSession) -> None
             )
         )
     ).scalar_one()
-    assert granted is True, (
-        "the freeze leaked past `invoices`: the app role can no longer TRUNCATE "
-        "an ordinary table, which is a schema-wide change disguised as a rule"
+    assert granted is False, (
+        "the app role can still TRUNCATE an ordinary table — the G-04 "
+        "schema-wide revoke (and its default-ACL freeze) is not in force"
     )

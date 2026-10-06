@@ -24,10 +24,10 @@ Route-shape and permission-gate cases are DB-free; listing real rows needs
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import text as sa_text
 
 from app.core.db import bind_tenant
 from app.main import create_app
@@ -109,21 +109,37 @@ async def test_a_caller_without_settings_read_cannot_list() -> None:
 
 
 async def _seed(
-    db, *, tenant_id: uuid.UUID | None, event_type: str, details: dict
+    db,
+    *,
+    tenant_id: uuid.UUID | None,
+    event_type: str,
+    details: dict,
+    created_at: datetime | None = None,
 ) -> uuid.UUID:
     """Insert one event row with the given tenant attribution.
 
-    `security_events` is FORCE RLS (NULL-or-self policy), so a tenant-scoped
-    row needs the GUC bound; the pre-auth NULL row needs none.
+    `security_events` is FORCE RLS with the fd2026100409 append-only split —
+    INSERT only — so a tenant-scoped row needs the GUC bound, the pre-auth
+    NULL row needs none, and any timestamp shaping must happen at INSERT
+    time: an UPDATE would be refused by RLS by design.
     """
     if tenant_id is not None:
         await bind_tenant(db, tenant_id)
+    else:
+        # The ORM RETURNs server-defaulted columns, and RETURNING runs the row
+        # through the SELECT policy — a NULL-tenant row is invisible to a
+        # non-admin session under the fd2026100409 split. Supplying created_at
+        # client-side leaves the INSERT with nothing to fetch, so the seed
+        # stays a pure INSERT the *_insert policy can admit.
+        if created_at is None:
+            created_at = datetime.now(UTC)
     event = SecurityEvent(
         event_type=event_type,
         tenant_id=tenant_id,
         actor_user_id=None,
         details=details,
         ip="203.0.113.7",
+        created_at=created_at,
     )
     db.add(event)
     await db.flush()
@@ -249,13 +265,9 @@ async def test_list_is_newest_first(db, tenant_ctx) -> None:
         tenant_id=tenant_ctx.tenant_id,
         event_type="role_changed",
         details={"n": 1},
-    )
-    # distinct created_at so the order assertion is deterministic
-    await db.execute(
-        sa_text(
-            "UPDATE security_events SET created_at = created_at - interval '1 hour' "
-            "WHERE details->>'n' = '1'"
-        )
+        # distinct created_at so the order assertion is deterministic —
+        # shaped at INSERT time (append-only; no UPDATE path exists)
+        created_at=datetime.now(UTC) - timedelta(hours=1),
     )
     await _seed(
         db,

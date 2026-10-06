@@ -206,6 +206,10 @@ async def test_the_stream_closes_once_the_workspace_may_no_longer_stream(
 
     Before N-09 the generator never consulted the state at all, so this loop
     emitted a heartbeat forever — hence the cap rather than a bare iteration.
+    The close carries exactly one frame: the tenant_suspended envelope. A bare
+    close reads as a network drop and the client reconnects into the same
+    refusal forever (d1f93a3 reconnect-storm fix), so silence is no longer the
+    expected shape — one explanatory frame, then the stream ends.
     """
     from app.modules.realtime import router as rt
 
@@ -220,10 +224,12 @@ async def test_the_stream_closes_once_the_workspace_may_no_longer_stream(
     frames: list[bytes] = []
     async for frame in _stream(rt):
         frames.append(frame)
-        if len(frames) > 3:
+        if len(frames) > 1:
             pytest.fail("the stream kept emitting after the workspace was blocked")
 
-    assert frames == [], "a blocked workspace must not even get a heartbeat"
+    assert len(frames) == 1, "a blocked workspace gets exactly the refusal frame"
+    assert b"tenant_suspended" in frames[0]
+    assert b"heartbeat" not in frames[0]
 
 
 async def test_the_stream_keeps_heartbeating_while_the_workspace_is_allowed(

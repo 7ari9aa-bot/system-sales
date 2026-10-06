@@ -270,10 +270,10 @@ async def test_reuse_revocation_survives_the_request_rollback(db_url, monkeypatc
         async with factory() as cleanup:
             async with cleanup.begin():
                 await bind_tenant(cleanup, tenant_id)
-                await cleanup.execute(
-                    text("DELETE FROM security_events WHERE tenant_id = :t"),
-                    {"t": str(tenant_id)},
-                )
+                # security_events is deliberately NOT deleted here: fd2026100409
+                # made it append-only (INSERT/SELECT policies only), so even the
+                # test role cannot purge it. Isolation is guaranteed by the
+                # test transaction's rollback instead.
                 await cleanup.execute(
                     text("DELETE FROM refresh_tokens WHERE user_id = :u"),
                     {"u": str(user_id)},
