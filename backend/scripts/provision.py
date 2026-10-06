@@ -241,6 +241,18 @@ PRIVILEGE_REFREEZE: tuple[str, ...] = (
     "REVOKE UPDATE, DELETE ON public.effect_ledger FROM sales_app",
     "REVOKE UPDATE, DELETE ON public.audit_logs FROM sales_app",
     "REVOKE UPDATE, DELETE ON public.security_events FROM sales_app",
+    # Auth-plane isolation (fd2026100410): the RBAC reference plane and the ops
+    # table are SELECT-only for the runtime role — the blanket ALL above hands
+    # the writes straight back on every provision run, same mechanism as the
+    # invoices TRUNCATE freeze above. dr_policy is deliberately absent: the
+    # runtime role legitimately writes it (DRService.get_policy lazily inserts
+    # the singleton from the platform health endpoint), so freezing it needs an
+    # app change first — see the fd2026100410 docstring.
+    "REVOKE INSERT, UPDATE, DELETE ON public.permissions FROM sales_app",
+    "REVOKE INSERT, UPDATE, DELETE ON public.roles FROM sales_app",
+    "REVOKE INSERT, UPDATE, DELETE ON public.role_permissions FROM sales_app",
+    "REVOKE INSERT, UPDATE, DELETE ON public.plans FROM sales_app",
+    "REVOKE INSERT, UPDATE, DELETE ON public.alembic_version FROM sales_app",
     "ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public "
     "REVOKE TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON TABLES FROM sales_app",
 )
@@ -268,6 +280,10 @@ FUNCTION_EXECUTE_GRANTS: tuple[str, ...] = (
     "GRANT EXECUTE ON FUNCTION public.retention_drop_horizon(text) TO sales_app",
     "GRANT EXECUTE ON FUNCTION public._location_tenant_allowed(uuid, uuid) TO sales_app",
     "GRANT EXECUTE ON FUNCTION public.partitioning_purge_month(text, date) TO sales_app",
+    # Auth-plane pre-auth lookup helpers (fd2026100410) — the migration's
+    # guarded grants cannot fire when CI runs alembic before the role exists.
+    "GRANT EXECUTE ON FUNCTION public.auth_lookup_user_by_email(text) TO sales_app",
+    "GRANT EXECUTE ON FUNCTION public.auth_user_is_tenant_member(uuid, uuid) TO sales_app",
 )
 
 

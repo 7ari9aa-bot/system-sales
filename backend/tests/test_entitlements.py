@@ -26,7 +26,10 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy import text as sa_text
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.core.config import get_settings
 from app.core.errors import RateLimitExceededError
 from app.modules.billing.models import Entitlement, Plan, Subscription
 from app.modules.billing.service import (
@@ -37,8 +40,43 @@ from app.modules.billing.service import (
 )
 from app.modules.identity.models import TenantUser
 
+# fd2026100410 Finding 2: plans is SELECT-only for the runtime role, so the
+# fixtures plant plan rows through the admin DSN and this registry tracks
+# them for removal — the per-test rollback cannot cover another connection.
+_PLANTED_PLAN_IDS: list[str] = []
+
+
+def _admin_sessionmaker():
+    settings = get_settings()
+    if not settings.database_url_admin:
+        pytest.skip("planting plans requires DATABASE_URL_ADMIN (the admin DSN)")
+    eng = create_async_engine(
+        settings.database_url_admin,
+        pool_pre_ping=True,
+        connect_args={"statement_cache_size": 0},
+    )
+    return eng, async_sessionmaker(eng, expire_on_commit=False)
+
+
+@pytest.fixture(autouse=True)
+async def _cleanup_planted_plans():
+    yield
+    if not _PLANTED_PLAN_IDS:
+        return
+    ids, _PLANTED_PLAN_IDS[:] = list(_PLANTED_PLAN_IDS), []
+    eng, factory = _admin_sessionmaker()
+    try:
+        async with factory() as s, s.begin():
+            await s.execute(
+                sa_text("DELETE FROM plans WHERE id = ANY(CAST(:ids AS uuid[]))"),
+                {"ids": ids},
+            )
+    finally:
+        await eng.dispose()
+
 
 async def _subscription(db, tenant_id, *, features: dict | None = None) -> Subscription:
+    eng, factory = _admin_sessionmaker()
     plan = Plan(
         code=f"plan-{uuid.uuid4().hex[:8]}",
         name="Test Plan",
@@ -46,8 +84,13 @@ async def _subscription(db, tenant_id, *, features: dict | None = None) -> Subsc
         interval="month",
         features=features or {},
     )
-    db.add(plan)
-    await db.flush()
+    try:
+        async with factory() as s, s.begin():
+            s.add(plan)
+            await s.flush()
+    finally:
+        await eng.dispose()
+    _PLANTED_PLAN_IDS.append(str(plan.id))
     subscription = Subscription(
         tenant_id=tenant_id,
         plan_id=plan.id,
