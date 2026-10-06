@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node scripts/prerender-public-pages.mjs",
     "preview": "vite preview",
     "lint": "eslint src",
     "check:headers": "node scripts/check-security-headers.mjs",
