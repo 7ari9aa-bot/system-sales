@@ -18,6 +18,7 @@ import InteractiveBackground from '@/components/InteractiveBackground'
 import HeroRelationCanvas from '@/components/HeroRelationCanvas'
 import Spotlight from '@/components/Spotlight'
 import { getTokens } from '@/lib/api'
+import { PUBLIC_SEO_ROUTES } from '@/lib/public-seo-routes.mjs'
 
 const c = (ar, en) => ({ ar, en })
 const tx = (copy, locale) => copy[locale]
@@ -31,28 +32,26 @@ const navItems = [
 ]
 
 const pageFromPath = () => {
-  const path = window.location.pathname.replace(/\/$/, '')
-  if (path === '') return 'home'
-  const key = path.slice(1)
-  return ['product','conversations','context','assistant','automation','pricing','security','privacy','terms','contact-sales','support'].includes(key) ? key : 'home'
+  const path = window.location.pathname.replace(/\/+$/, '') || '/'
+  return PUBLIC_SEO_ROUTES.find((route) => route.path === path)?.key || 'home'
 }
 
-const pageMeta = {
+export const pageMeta = {
   home: c('FIHRIST | نظام تشغيل المبيعات الذكي', 'FIHRIST | Sales Operating System'),
-  product: c('المنصة | FIHRIST', 'Platform | FIHRIST'),
-  conversations: c('محادثات العملاء | FIHRIST', 'Customer Conversations | FIHRIST'),
-  context: c('سياق العميل | FIHRIST', 'Customer Context | FIHRIST'),
-  assistant: c('مساعد المبيعات بالذكاء الاصطناعي | FIHRIST', 'AI Sales Assistant | FIHRIST'),
+  product: c('منصة FIHRIST الذكية لإدارة المبيعات', 'FIHRIST AI Sales Platform | Manage Sales'),
+  conversations: c('محادثات العملاء في منصة FIHRIST للمبيعات', 'Customer Conversations | FIHRIST'),
+  context: c('سياق العملاء والطلبات في منصة FIHRIST', 'Customer Context for FIHRIST Sales Teams'),
+  assistant: c('مساعد المبيعات بالذكاء الاصطناعي | FIHRIST', 'AI Sales Assistant | FIHRIST Platform'),
   automation: c('أتمتة متابعة المبيعات | FIHRIST', 'Sales Follow-up Automation | FIHRIST'),
-  pricing: c('الأسعار | FIHRIST', 'Pricing | FIHRIST'),
-  security: c('الأمان | FIHRIST', 'Security | FIHRIST'),
-  privacy: c('سياسة الخصوصية | FIHRIST', 'Privacy Policy | FIHRIST'),
-  terms: c('شروط الاستخدام | FIHRIST', 'Terms of Use | FIHRIST'),
-  'contact-sales': c('تواصل مع المبيعات | FIHRIST', 'Contact Sales | FIHRIST'),
-  support: c('الدعم | FIHRIST', 'Support | FIHRIST'),
+  pricing: c('أسعار FIHRIST وخطط نظام إدارة المبيعات', 'FIHRIST Sales Management Plans & Pricing'),
+  security: c('أمان بيانات منصة FIHRIST لإدارة المبيعات', 'FIHRIST Sales Platform Security & Data'),
+  privacy: c('سياسة الخصوصية لمنصة FIHRIST للمبيعات', 'FIHRIST Privacy Policy for Sales Platform'),
+  terms: c('شروط استخدام منصة FIHRIST لإدارة المبيعات', 'FIHRIST Sales Platform Terms of Use'),
+  'contact-sales': c('تواصل مع فريق مبيعات FIHRIST واحجز عرضًا', 'Contact FIHRIST Sales | Request a Product Demo'),
+  support: c('مركز دعم FIHRIST لمنصة إدارة المبيعات', 'FIHRIST Support Center for Sales Teams'),
 }
 
-const pageDescription = {
+export const pageDescription = {
   home: c('FIHRIST نظام تشغيل مبيعات عربي يجمع محادثات واتساب وماسنجر وإنستغرام والبريد في مكان واحد، ويربط كل عميل بطلبه ومالكه وخطوته التالية.', 'FIHRIST is an Arabic-first sales operating system that connects WhatsApp, Messenger, Instagram, and email conversations to customers, orders, and next steps.'),
   product: c('اربط المحادثة بالعميل والطلب والخطوة التالية عبر صندوق موحد وسياق كامل وقواعد متابعة واضحة مع FIHRIST.', 'Connect each conversation to its customer, order, and next action with a shared inbox, customer context, and clear follow-up rules.'),
   conversations: c('اجمع محادثات WhatsApp وMessenger وInstagram والبريد وشات الموقع، وعيّن لكل محادثة مسؤولًا وموعد استجابة.', 'Bring WhatsApp, Messenger, Instagram, email, and web chat into one inbox with an owner and response window for every conversation.'),
@@ -62,9 +61,9 @@ const pageDescription = {
   pricing: c('تعرّف على خطط FIHRIST وخيارات استخدام نظام تشغيل المبيعات.', 'Explore FIHRIST plans and options for using the sales operating system.'),
   security: c('تعرّف على ضوابط الوصول ومصدر البيانات وسجل النشاط في FIHRIST.', 'Learn about access controls, data provenance, and activity records in FIHRIST.'),
   privacy: c('اقرأ سياسة الخصوصية الخاصة بمنصة FIHRIST وكيفية التعامل مع معلوماتك.', 'Read the FIHRIST privacy policy and learn how information is handled.'),
-  terms: c('اقرأ شروط استخدام منصة FIHRIST.', 'Read the terms of use for the FIHRIST platform.'),
+  terms: c('تعرّف على شروط إنشاء الحساب واستخدام منصة FIHRIST لإدارة محادثات العملاء والطلبات ومتابعة المبيعات داخل فريقك.', 'Review the terms for creating an account and using FIHRIST to manage customer conversations, orders, and sales follow-up.'),
   'contact-sales': c('تواصل مع فريق FIHRIST لمناقشة احتياجات فريق المبيعات وطريقة استخدام المنصة.', 'Contact FIHRIST to discuss your sales team’s needs and how the platform can help.'),
-  support: c('اعثر على المساعدة والدعم لاستخدام منصة FIHRIST.', 'Find help and support for using the FIHRIST platform.'),
+  support: c('اعثر على المساعدة لاستخدام FIHRIST، وتعرّف على الخطوات الأساسية لإدارة المحادثات وسياق العملاء ومتابعة المبيعات.', 'Get help using FIHRIST to organize customer conversations, review sales context, and manage follow-up tasks.'),
 }
 
 function KineticHeadline({ locale }) {
