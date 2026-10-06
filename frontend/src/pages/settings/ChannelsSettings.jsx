@@ -1,5 +1,5 @@
 import React from "react";
-import { Copy, Loader2, PlugZap, ShieldCheck, Unplug } from "lucide-react";
+import { Copy, Facebook, Loader2, PlugZap, ShieldCheck, Unplug } from "lucide-react";
 import { useI18n, useT } from "@/lib/i18n";
 import { api } from "@/lib/api";
 import { useRealChannels } from "@/hooks/useRealData";
@@ -27,6 +27,10 @@ const CONNECTION_FIELDS = {
 
 const ATTENTION_STATES = new Set(["reauth_required", "restricted", "disconnected", "degraded", "error"]);
 
+/** Facebook Login for Business: Meta owns the dialog, so these channels
+ *  offer the one-click OAuth path beside the manual token form. */
+const META_OAUTH_CHANNELS = new Set(["messenger", "instagram"]);
+
 export default function ChannelsSettings() {
   const t = useT();
   const { lang } = useI18n();
@@ -36,11 +40,62 @@ export default function ChannelsSettings() {
   const [values, setValues] = React.useState({});
   const [saving, setSaving] = React.useState(false);
   const [verifyingId, setVerifyingId] = React.useState("");
+  const [metaConnecting, setMetaConnecting] = React.useState("");
   const [formError, setFormError] = React.useState("");
   const [notice, setNotice] = React.useState("");
   const [copiedTarget, setCopiedTarget] = React.useState("");
 
   const editing = channels.find((channel) => channel.id === editingId) || null;
+
+  // The OAuth callback lands back here with meta_connected / meta_error.
+  // Read once, surface the outcome, and strip the params so a refresh
+  // never replays a stale result.
+  const oauthHandled = React.useRef(false);
+  React.useEffect(() => {
+    if (oauthHandled.current) return;
+    oauthHandled.current = true;
+    const params = new URLSearchParams(window.location.search);
+    const connected = params.get("meta_connected");
+    const oauthError = params.get("meta_error");
+    if (!connected && !oauthError) return;
+    params.delete("meta_connected");
+    params.delete("meta_error");
+    const rest = params.toString();
+    window.history.replaceState(null, "", window.location.pathname + (rest ? `?${rest}` : ""));
+    if (connected) {
+      const sep = connected.indexOf(":");
+      const pageName = sep === -1 ? connected : connected.slice(sep + 1);
+      setNotice(isAr
+        ? `تم ربط صفحة ${pageName || "فيسبوك"} عبر فيسبوك بنجاح.`
+        : `Connected the page ${pageName || "Facebook"} via Facebook Login.`);
+    } else {
+      setFormError(isAr
+        ? `تعذر إكمال ربط فيسبوك: ${oauthError}`
+        : `Could not complete the Facebook connect: ${oauthError}`);
+    }
+    void reload().catch(() => {});
+  }, [reload, isAr]);
+
+  async function connectViaMeta(channel) {
+    if (metaConnecting) return;
+    setMetaConnecting(channel.id);
+    setFormError("");
+    setNotice("");
+    try {
+      const { authorize_url: authorizeUrl } = await api(
+        `/integrations/meta/oauth/start?provider=${encodeURIComponent(channel.id)}`
+      );
+      if (!authorizeUrl) {
+        throw new Error(isAr ? "لم يصل رابط التفويض من الخادم." : "The server returned no authorize URL.");
+      }
+      // Top-level navigation to Meta's dialog — connect-src never applies,
+      // and the callback returns to this exact page with the outcome.
+      window.location.assign(authorizeUrl);
+    } catch (connectError) {
+      setFormError(connectError?.message || (isAr ? "تعذر بدء ربط فيسبوك." : "Could not start the Facebook connect."));
+      setMetaConnecting("");
+    }
+  }
 
   function openConnection(channel) {
     setFormError("");
@@ -216,6 +271,17 @@ export default function ChannelsSettings() {
                           >
                             {verifyingId === channel.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
                             {isAr ? "اختبار الاتصال" : "Verify"}
+                          </button>
+                        )}
+                        {META_OAUTH_CHANNELS.has(channel.id) && (
+                          <button
+                            type="button"
+                            onClick={() => connectViaMeta(channel)}
+                            disabled={saving || Boolean(metaConnecting)}
+                            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[12px] font-medium text-foreground hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {metaConnecting === channel.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Facebook className="h-3.5 w-3.5" />}
+                            {isAr ? "ربط عبر فيسبوك" : "Connect via Facebook"}
                           </button>
                         )}
                         {(channel.publicKey || channel.webhookUrl) && (
