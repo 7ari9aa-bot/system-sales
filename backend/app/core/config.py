@@ -133,6 +133,13 @@ class Settings(BaseSettings):
     whatsapp_app_secret: str = ""
     whatsapp_verify_token: str = ""
     telegram_webhook_secret: str = ""
+    # Facebook Login for Business (the Meta OAuth connect flow): the dialog
+    # authorizes the operator's pages, the callback exchanges the code and
+    # stores the PAGE token as the channel credential. The redirect URI must
+    # be registered verbatim in Meta → Valid OAuth Redirect URIs.
+    meta_app_id: str = ""
+    meta_app_secret: str = ""
+    meta_oauth_redirect_uri: str = ""
     messenger_app_secret: str = ""
     messenger_verify_token: str = ""
     instagram_app_secret: str = ""

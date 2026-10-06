@@ -927,3 +927,10 @@ async def upsert_integration(
     ctx.session.add(integration)
     await ctx.session.flush()
     return {"id": str(integration.id), "status": integration.status}
+
+
+# The Meta OAuth connect flow registers onto the same platform surface
+# (deferred bottom import: meta_oauth defers router helpers back here).
+from app.modules.customers.meta_oauth import meta_oauth_router  # noqa: E402
+
+platform_router.include_router(meta_oauth_router)

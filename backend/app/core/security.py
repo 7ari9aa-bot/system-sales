@@ -84,6 +84,17 @@ def create_access_token(user_id: str, claims: dict[str, Any] | None = None) -> s
     )
 
 
+def create_oauth_state_token(
+    user_id: str, claims: dict[str, Any] | None = None, *, ttl_seconds: int = 600
+) -> str:
+    """A short-lived signed state for two-phase flows (OAuth callbacks).
+
+    type='oauth_state' — decode_token callers MUST reject it as an access
+    token; the short TTL bounds the window between authorize and callback.
+    """
+    return _create_token(user_id, ttl_seconds, "oauth_state", claims or {})
+
+
 def create_refresh_token(user_id: str, claims: dict[str, Any] | None = None) -> str:
     settings = get_settings()
     return _create_token(
