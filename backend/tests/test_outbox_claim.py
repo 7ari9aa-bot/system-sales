@@ -465,6 +465,16 @@ async def test_relay_that_dies_mid_batch_does_not_strand_its_other_rows(
     it immediately, with no lease wait and no double publish.
     """
     factory = relay_env["factory"]
+    # The claim takes the OLDEST pending row with no tenant predicate, and a
+    # shared CI database holds outbox residue from earlier tests whose own
+    # cleanups only covered rolled-back transactions. Residue claimed first
+    # consumes bus call 1 and flips the die-on-call numbering, so clear the
+    # reclaimable statuses before staging — CI runs one worker, so nothing
+    # concurrent owns these rows.
+    async with factory() as purge, purge.begin():
+        await purge.execute(
+            text("DELETE FROM outbox_events WHERE status IN ('pending', 'publishing')")
+        )
     [first, second] = await relay_env["stage"](2, age_seconds=60)
 
     bus = RecordingBus()
