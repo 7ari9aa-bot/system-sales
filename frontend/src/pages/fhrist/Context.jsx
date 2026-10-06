@@ -3,21 +3,21 @@ import { Database, Clock, Eye, FileClock } from 'lucide-react'
 import { c, DetailHero, SectionIntro, DetailPoints, FeatureGrid } from '@/components/fihrist/Shared'
 
 const timelinePoints = [
-  { title: c('الطلبات السابقة', 'Past orders'), body: c('ماذا طلب، متى، وبأي سعر — كل في مكان واحد.', 'What they ordered, when, and at what price—all in one place.') },
-  { title: c('الملاحظات الداخلية', 'Internal notes'), body: c('ماذا قال فريقك عنه بعد آخر تفاعل، مرئي لمن يملك الصلاحية.', 'What your team said after the last interaction, visible to those with permission.') },
-  { title: c('مصادر البيانات', 'Data sources'), body: c('من أين جاء كل سطر في السجل — محادثة، طلب، أو إدخال يدوي.', 'Where every line in the record came from—conversation, order, or manual entry.') },
+  { title: c('العميل والمحادثة', 'Customer and conversation'), body: c('ابدأ بسجل العميل ومحادثته لتعرف ما الذي طلبه وما الذي يحتاجه.', 'Start with the customer and conversation details to understand what was requested and what is needed.') },
+  { title: c('المنتج والطلب والبيع', 'Product, order, and sale'), body: c('اربط سؤال العميل بالمنتج واختياراته والطلب، ثم تابع ما تم بيعه وما بقي في المخزون.', 'Connect a customer question to the product, its options, and the order, then follow what sold and what remains in stock.') },
+  { title: c('المخزون والخطوة التالية', 'Inventory and the next step'), body: c('سجّل ما تم بيعه وما بقي، واربطه بالطلب ليعرف الفريق ما الخطوة التالية.', 'Record what sold and what remains, linked to the order, so the team can see what comes next.') },
 ]
 
 const freshnessFeatures = [
-  { icon: Eye, title: c('المصدر', 'Source'), body: c('كل معلومة موثقة بمصدرها الأصلي.', 'Every detail is tagged with its original source.') },
-  { icon: Clock, title: c('الحداثة', 'Freshness'), body: c('وقت آخر تحديث ظاهر بجانب كل سطر في السجل.', 'Last-updated time visible next to every line in the record.') },
-  { icon: FileClock, title: c('المراجعة', 'Audit trail'), body: c('من شاهد وعدّل كل تفصيل، ومتى.', 'Who viewed and edited every detail, and when.') },
+  { icon: Eye, title: c('مصدر المعلومة', 'Where information comes from'), body: c('اعرف إن كانت المعلومة مرتبطة بمحادثة أو منتج أو طلب في المتجر.', 'See whether information comes from a conversation, product, or store order.') },
+  { icon: Clock, title: c('بيانات المنتج', 'Product details'), body: c('ارجع إلى السعر والتوفر واللون والمقاس والصور المسجلة للمنتج.', 'Refer to the product\'s listed price, availability, color, size, and images.') },
+  { icon: FileClock, title: c('تاريخ العميل', 'Customer history'), body: c('اجمع التفاعلات والطلبات والملاحظات ذات الصلة قبل متابعة المحادثة.', 'Bring together relevant interactions, orders, and notes before continuing a conversation.') },
 ]
 
 const permissionPoints = [
-  { title: c('صلاحيات حسب الدور', 'Role-based access'), body: c('لكل عضو فريق رؤية تتناسب مع مسؤولياته.', 'Each team member sees what fits their responsibilities.') },
-  { title: c('سجل النشاط', 'Activity log'), body: c('كل قراءة وتعديل مسجل بوقته وصاحبه.', 'Every read and edit is logged with time and actor.') },
-  { title: c('عزل البيانات', 'Data isolation'), body: c('بيانات كل عميل معزولة عن غيره.', 'Each customer\'s data is isolated from others.') },
+  { title: c('صلاحيات الفريق', 'Team permissions'), body: c('تنظم صلاحيات الوصول من يمكنه العمل على معلومات العملاء والطلبات.', 'Access permissions help determine who can work with customer and order information.') },
+  { title: c('تسليم المسؤولية', 'Team handoff'), body: c('وجّه المحادثة للعضو المناسب ليكمل متابعة العميل والطلب.', 'Route the conversation to the right teammate to continue following the customer and order.') },
+  { title: c('تدخل الفريق', 'Team involvement'), body: c('يبقى الفريق جزءًا من مسار البيع ويتدخل عندما يحتاج العميل أو القرار إلى متابعة شخص.', 'Your team remains part of the sales journey and steps in when a customer or decision needs a person.') },
 ]
 
 export default function Context({ locale }) {
@@ -26,17 +26,17 @@ export default function Context({ locale }) {
       <DetailHero
         locale={locale}
         kicker={c('السياق', 'Context')}
-        title={c('اعرف من العميل، لا من آخر رسالة فقط.', 'Know the customer, not just the last message.')}
-        body={c('اجمع سجل العميل والطلب والملاحظات في Timeline واحد قابل للمراجعة.', 'Bring customer history, requests, and notes into one reviewable timeline.')}
+        title={c('السياق يربط العميل بمسار البيع كاملًا.', 'Context connects the customer to the full sales journey.')}
+        body={c('من المحادثة إلى المنتج والطلب والبيع والمخزون، تنتقل التفاصيل ذات الصلة مع العميل ليتمكن الفريق من متابعة ما حدث والخطوة التالية.', 'Customer context carries from the conversation through the product, order, sale, and inventory, helping the team follow what happened and what comes next.')}
         icon={Database}
         variant="context"
       />
       <section className="section">
         <div className="container">
           <SectionIntro
-            kicker={tx(c('الخط الزمني', 'Timeline'), locale)}
-            title={tx(c('كل ما يهم عن العميل في مكان واحد.', 'Everything that matters about a customer in one place.'), locale)}
-            body={tx(c('لا تفتح ثلاثة تطبيقات لتعرف من ترد عليه. كل السياق أمامك قبل الرد.', 'Don\'t open three apps to know who you\'re replying to. All context is in front of you before you reply.'), locale)}
+            kicker={tx(c('السياق في دورة البيع', 'Context across the sales journey'), locale)}
+            title={tx(c('كل خطوة مرتبطة بما قبلها وما بعدها.', 'Every step stays connected to what came before and what comes next.'), locale)}
+            body={tx(c('يرى الفريق محادثة العميل والمنتج والطلب والبيع والمخزون المرتبط بها في رحلة واحدة، مع اتصال كل تفصيل بالخطوة التالية.', 'The team can follow the related customer conversation, product, order, sale, and inventory in one journey, with each detail connected to the next.'), locale)}
           />
           <DetailPoints points={timelinePoints} locale={locale} />
         </div>
@@ -44,9 +44,9 @@ export default function Context({ locale }) {
       <section className="section section-features">
         <div className="container">
           <SectionIntro
-            kicker={tx(c('الثقة في البيانات', 'Data trust'), locale)}
-            title={tx(c('مصدر كل معلومة ووقت تحديثها.', 'The source and freshness of every detail.'), locale)}
-            body={tx(c('لا توجد معلومة بلا مصدر. لا يوجد سجل بلا توقيت.', 'No information without a source. No record without a timestamp.'), locale)}
+            kicker={tx(c('تفاصيل ذات صلة', 'Relevant details'), locale)}
+            title={tx(c('معلومات تساعدك على خدمة العميل.', 'Information that helps you serve the customer.'), locale)}
+            body={tx(c('راجع بيانات المنتج والطلب وسجل التواصل المتاحة عند مواصلة المحادثة.', 'Refer to available product, order, and contact history as you continue the conversation.'), locale)}
           />
           <FeatureGrid items={freshnessFeatures} locale={locale} />
         </div>
@@ -54,9 +54,9 @@ export default function Context({ locale }) {
       <section className="section">
         <div className="container">
           <SectionIntro
-            kicker={tx(c('الصلاحيات', 'Permissions'), locale)}
-            title={tx(c('من يرى ماذا.', 'Who sees what.'), locale)}
-            body={tx(c('صلاحيات واضحة، سجل نشاط، وعزل بيانات — لكل عضو فريق.', 'Clear permissions, activity trail, and data isolation—for every team member.'), locale)}
+            kicker={tx(c('عمل الفريق', 'Team access'), locale)}
+            title={tx(c('وصول يتناسب مع مسؤولية كل عضو.', 'Access suited to each teammate\'s role.'), locale)}
+            body={tx(c('تساعد صلاحيات الفريق على تنظيم الوصول إلى معلومات العملاء والطلبات ومتابعة العمل.', 'Team permissions help organize access to customer and order information and follow-up work.'), locale)}
           />
           <DetailPoints points={permissionPoints} locale={locale} />
         </div>

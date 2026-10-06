@@ -65,7 +65,7 @@ export function Button({ children, href = '#', kind = 'primary', icon = true }) 
 }
 
 export function DemoBadge({ locale = 'ar' }) {
-  return <span className="demo-badge"><span className="demo-dot" /> {tx(c('محتوى تجريبي', 'Demo content'), locale)}</span>
+  return <span className="demo-badge"><span className="demo-dot" /> {tx(c('معاينة توضيحية', 'Illustrative preview'), locale)}</span>
 }
 
 function SettingsIcon() { return <div className="rail-settings">•••</div> }
@@ -76,13 +76,13 @@ export function ProductFrame({ variant = 'inbox', locale }) {
   const [filter, setFilter] = useState('all')
   const [approved, setApproved] = useState(false)
   const threadData = isAr ? [
-    ['عميل محتمل — حساب تجريبي', 'هل العرض يشمل التوصيل؟', 'نية شراء عالية'],
-    ['محادثة جديدة — حساب تجريبي', 'أرسل تفاصيل الطلب', 'طلب جديد'],
-    ['متابعة — حساب تجريبي', 'متابعة بعد الاجتماع', 'متابعة'],
+    ['محادثة جديدة', 'العميل يسأل عن المقاس والتوفر.', 'استفسار عن المنتج'],
+    ['طلب جديد', 'أرسل تفاصيل المنتج المتاحة.', 'طلب جديد'],
+    ['متابعة العميل', 'لم يصلنا رد بعد.', 'متابعة'],
   ] : [
-    ['Prospect — demo account', 'Does the quote include delivery?', 'High intent'],
-    ['New thread — demo account', 'Sent order details', 'New request'],
-    ['Follow-up — demo account', 'Post-meeting follow-up', 'Follow-up'],
+    ['New conversation', 'Customer asks about size and availability.', 'Product question'],
+    ['New order', 'Sent the available product details.', 'New order'],
+    ['Customer follow-up', 'No reply yet.', 'Follow-up'],
   ]
   useEffect(() => {
     if (variant !== 'inbox') return
@@ -93,14 +93,14 @@ export function ProductFrame({ variant = 'inbox', locale }) {
   const active = threadData[activeThread] || threadData[0]
   return (
     <div className={`product-frame product-${variant}`} dir="ltr" aria-label={isAr ? 'لقطة تجريبية من واجهة FIHRIST' : 'Illustrative FIHRIST product interface'}>
-      <div className="product-topbar"><div className="window-dots"><i/><i/><i/></div><span className="product-url">app.fihrist.demo / {variant}</span><span className="product-live"><span/> Live demo</span></div>
+      <div className="product-topbar"><div className="window-dots"><i/><i/><i/></div><span className="product-url">FIHRIST / {variant}</span><span className="product-live"><span/> Preview</span></div>
       <div className="product-body">
         <aside className="product-rail"><div className="rail-mark">F</div><Inbox size={17}/><Users size={17}/><Target size={17}/><WorkflowIcon size={17}/><SettingsIcon /></aside>
         <div className="product-main" dir="ltr">
           <div className="product-heading">
             <div>
-              <span className="eyebrow-mini">{variant === 'inbox' ? 'INBOX / TODAY' : variant.toUpperCase() + ' / DEMO'}</span>
-              <h3>{variant === 'inbox' ? (isAr ? 'المحادثات المهمة اليوم' : 'Priority conversations') : variant === 'assistant' ? (isAr ? 'اقتراحات المساعد' : 'Assistant suggestions') : variant === 'automation' ? (isAr ? 'متابعة عرض السعر' : 'Quote follow-up') : (isAr ? 'سجل العميل' : 'Customer record')}</h3>
+              <span className="eyebrow-mini">{variant === 'inbox' ? 'INBOX / TODAY' : variant.toUpperCase()}</span>
+              <h3>{variant === 'inbox' ? (isAr ? 'المحادثات المهمة اليوم' : 'Priority conversations') : variant === 'assistant' ? (isAr ? 'اقتراحات المساعد' : 'Assistant suggestions') : variant === 'automation' ? (isAr ? 'متابعة العميل' : 'Customer follow-up') : (isAr ? 'سجل العميل' : 'Customer record')}</h3>
             </div>
             <span className="avatar">أ</span>
           </div>
@@ -130,10 +130,10 @@ export function ProductFrame({ variant = 'inbox', locale }) {
                 </div>
                 <div className="conversation">
                   <div className="bubble customer">{active[1]}<small>10:42</small></div>
-                  <div className="bubble ai"><Sparkles size={13}/>{isAr ? `استخرج النظام: ${active[2]} + خطوة تالية مقترحة` : `Extracted: ${active[2]} + suggested next action`}<small>{isAr ? 'اقتراح AI' : 'AI suggestion'}</small></div>
+                  <div className="bubble ai"><Sparkles size={13}/>{isAr ? `سؤال العميل: ${active[2]} + خطوة تالية مقترحة` : `Customer request: ${active[2]} + suggested next step`}<small>{isAr ? 'مساعدة AI' : 'AI assistance'}</small></div>
                   <div className="conversation-footer">
                     <span className="tag teal">{active[2]}</span>
-                    <span className="tag">{isAr ? 'التالي: أرسل العرض' : 'Next: send quote'}</span>
+                    <span className="tag">{isAr ? 'التالي: أرسل تفاصيل المنتج المتاحة' : 'Next: send the available product details'}</span>
                   </div>
                 </div>
               </div>
@@ -145,27 +145,27 @@ export function ProductFrame({ variant = 'inbox', locale }) {
                 <div className="detail-line">
                   <span className="detail-icon teal"><Sparkles size={15}/></span>
                   <span>
-                    <b>{variant === 'assistant' ? (isAr ? 'ملخص قابل للمراجعة' : 'Reviewable summary') : variant === 'automation' ? (isAr ? 'الخطوة التالية' : 'Next action') : (isAr ? 'سياق موثوق' : 'Trusted context')}</b>
-                    <small>{variant === 'assistant' ? (isAr ? 'العميل يريد عرضاً خلال هذا الأسبوع.' : 'Customer needs a quote this week.') : variant === 'automation' ? (isAr ? 'أنشئ مهمة متابعة بعد 24 ساعة.' : 'Create a follow-up task in 24 hours.') : (isAr ? 'آخر طلب، المالك، ومصدر البيانات.' : 'Last order, owner, and data source.')}</small>
+                    <b>{variant === 'assistant' ? (isAr ? 'ملخص المحادثة' : 'Conversation summary') : variant === 'automation' ? (isAr ? 'الخطوة التالية' : 'Next action') : (isAr ? 'سياق موثوق' : 'Trusted context')}</b>
+                    <small>{variant === 'assistant' ? (isAr ? 'العميل يسأل عن المقاس والتوفر.' : 'Customer asks about size and availability.') : variant === 'automation' ? (isAr ? 'أنشئ مهمة متابعة عند الحاجة.' : 'Create a follow-up task when needed.') : (isAr ? 'آخر طلب، المسؤول، ومعلومات المنتج.' : 'Latest order, owner, and product details.')}</small>
                   </span>
                 </div>
                 <div className="detail-line">
                   <span className="detail-icon sand"><Database size={15}/></span>
                   <span>
                     <b>{isAr ? 'المصدر' : 'Source'}</b>
-                    <small>{isAr ? 'المحادثة #4821 · تمت المراجعة' : 'Conversation #4821 · Reviewed'}</small>
+                    <small>{isAr ? 'محادثة العميل · متاحة للفريق' : 'Customer conversation · available to your team'}</small>
                   </span>
                 </div>
                 <div className="detail-actions">
-                  <button onClick={() => setApproved(true)} className={approved ? 'is-approved' : ''}><Check size={14}/> {approved ? (isAr ? 'تم الاعتماد' : 'Approved') : (isAr ? 'اعتماد' : 'Approve')}</button>
+                  <button onClick={() => setApproved(true)} className={approved ? 'is-approved' : ''}><Check size={14}/> {approved ? (isAr ? 'تمت المراجعة' : 'Reviewed') : (isAr ? 'مراجعة المحادثة' : 'Review conversation')}</button>
                   <button className="muted">{isAr ? 'تعديل' : 'Edit'}</button>
                 </div>
               </div>
               <div className="score-card">
-                <span className="score-label">{isAr ? 'وضوح السياق' : 'Context clarity'}</span>
-                <strong>86<span>%</span></strong>
+                <span className="score-label">{isAr ? 'سياق البيع' : 'Sales context'}</span>
+                <strong>✓</strong>
                 <div className="score-bar"><i/></div>
-                <small>{isAr ? 'بيانات حديثة من 4 مصادر' : 'Fresh data from 4 sources'}</small>
+                <small>{isAr ? 'محادثة · منتج · طلب' : 'Conversation · product · order'}</small>
               </div>
             </div>
           )}
@@ -177,11 +177,11 @@ export function ProductFrame({ variant = 'inbox', locale }) {
 
 export function Workflow({ locale, compact = false, steps: customSteps, descs: customDescs }) {
   const defaultSteps = locale === 'ar'
-    ? ['التقط الإشارة', 'افهم النية', 'عيّن المسؤول', 'تابع في الوقت المناسب', 'أغلق وتعلّم']
-    : ['Capture the signal', 'Understand intent', 'Assign ownership', 'Follow up on time', 'Close and learn']
+    ? ['ابدأ من سؤال العميل', 'اربط العميل بالمنتج', 'سجّل الطلب والبيع', 'حدّث المخزون بما بيع وما بقي', 'تابع الخطوة التالية واقرأ الأداء']
+    : ['Start with a customer question', 'Connect the customer and product', 'Record the order and sale', 'Update inventory with what sold and what remains', 'Follow up and review performance']
   const defaultDescs = locale === 'ar'
-    ? ['رسالة تصل من أي قناة، بلا نسخ ولصق', 'يفهم النظام: استفسار؟ طلب؟ شكوى؟', 'لكل محادثة صاحب وموعد استجابة', 'تذكير وقالب رد قبل أن يبرد العميل', 'النتيجة تتحول إلى بيانات تحسّن ما بعدها']
-    : ['A message arrives from any channel—no copy-paste', 'The system reads intent: question, order, complaint', 'Every thread gets an owner and response window', 'A reminder and reply draft before the lead goes cold', 'The outcome becomes data for the next round']
+    ? ['رسالة من إحدى قنوات التواصل المدعومة', 'سجل العميل وتفاصيل المنتج المتاحة للفريق', 'اربط الطلب بالمحادثة وسجّل المنتج والاختيار والكمية التي بيعت', 'تعرّف على ما بيع وما بقي في المخزون', 'استخدم تذكيرًا أو قاعدة متابعة؛ وتساعد بيانات المتجر على قراءة الأداء']
+    : ['A message arrives through a supported channel', 'Customer context and available product details are at hand', 'Connect the order to the conversation and record the product, option, and quantity sold', 'See what sold and what remains in inventory', 'Use a reminder or follow-up rule; store data also supports performance insights']
   const steps = customSteps || defaultSteps
   const descs = customDescs || defaultDescs
   const localized = (value) => (typeof value === 'string' ? value : tx(value, locale))
@@ -209,7 +209,7 @@ export function PrincipleCard({ icon: Icon, locale, title }) {
       {title && <h3>{tx(title, locale)}</h3>}
       <Workflow locale={locale} compact/>
       <div className="principle-foot">
-        <span>Core workflow</span>
+        <span>{tx(c('مسار البيع', 'Sales journey'), locale)}</span>
         <span className="tag teal">{tx(c('توضيحي', 'Illustrative'), locale)}</span>
       </div>
     </div>
