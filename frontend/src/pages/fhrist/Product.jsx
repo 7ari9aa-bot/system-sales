@@ -3,9 +3,9 @@ import { Layers3, MessageCircle, Database, Zap } from 'lucide-react'
 import { c, tx, DetailHero, SectionIntro, FeatureGrid, Workflow } from '@/components/fihrist/Shared'
 
 const pillars = [
-  { icon: MessageCircle, title: c('صندوق واحد', 'One inbox'), body: c('واتساب وماسنجر وإنستغرام في Inbox واحد. لكل محادثة مالك وموعد رد، فلا رسالة تنام بلا رد.', 'WhatsApp, Messenger, and Instagram in one inbox. Every thread has an owner and a response window—nothing sits unanswered.'), href: '/conversations' },
-  { icon: Database, title: c('سياق كامل', 'Full context'), body: c('اعرف من العميل، وماذا طلب آخر مرة، وأين وصل طلبه — قبل أن ترد.', 'Know who the customer is, what they last asked, and where their order stands—before you reply.'), href: '/context' },
-  { icon: Zap, title: c('متابعة لا تنسى', 'Follow-up that never forgets'), body: c('قواعد تذكّرك وتصعد لك قبل أن يبرد العميل. كل قاعدة مرئية وقابلة للإيقاف.', 'Rules that remind and escalate before a lead goes cold. Every rule is visible and can be paused.'), href: '/automation' },
+  { icon: MessageCircle, title: c('محادثات ومساعدة للعملاء', 'Customer conversations and assistance'), body: c('اجمع WhatsApp وMessenger وInstagram والبريد وشات الموقع مع سجل العميل. عند تفعيل مساعد العملاء، يجيب تلقائيًا عن الأسئلة اعتمادًا على بيانات المتجر، ويستطيع الفريق متابعة المحادثة والتدخل عند الحاجة.', 'Bring WhatsApp, Messenger, Instagram, email, and web chat together with customer context. When enabled, the customer assistant answers questions automatically using store data, and your team can follow the conversation and step in when needed.'), href: '/conversations' },
+  { icon: Database, title: c('المنتجات والطلبات والمخزون', 'Products, orders, and inventory'), body: c('اربط السعر والصورة والاختيارات بالطلب، وسجّل الكمية التي بيعت من كل اختيار لتعرف ما بقي. يعرّف رمز QR الصنف ويربطه بتسجيل البيع وحركة المخزون، مع صلاحيات للفريق.', 'Connect prices, images, and options to orders, and record what sold from each option to see what remains. QR codes identify each item and link it to its sales and inventory records, with team permissions.'), href: '/context' },
+  { icon: Zap, title: c('متابعة وتحليل للمبيعات', 'Follow-up and sales analysis'), body: c('تغذي بيانات الطلبات والمبيعات والمخزون قراءة أداء المتجر. قارن الفترات وحركة المنتجات ونتائج القنوات، ونظّم المتابعة داخل FIHRIST، بينما يساعد مساعد تحليل المبيعات على شرح ما تدعمه البيانات.', 'Orders, sales, and inventory records inform the view of store performance. Compare periods, product movement, and channel results, organize follow-up within FIHRIST, and let the sales-analysis assistant explain what the data supports.'), href: '/automation' },
 ]
 
 export default function Product({ locale }) {
@@ -14,8 +14,8 @@ export default function Product({ locale }) {
       <DetailHero
         locale={locale}
         kicker={c('المنصة', 'The platform')}
-        title={c('نظام تشغيل مبيعات، لا CRM آخر.', 'A sales operating system, not another CRM.')}
-        body={c('يربط FIHRIST المحادثة بالعميل والطلب والخطوة التالية، ثم يترك لفريقك القرار الواضح.', 'FIHRIST connects the conversation to the customer, request, and next action—then keeps the decision clear for your team.')}
+        title={c('نظام واحد يربط دورة البيع كاملة.', 'One system connects the full sales journey.')}
+        body={c('من محادثة العميل والمنتج إلى الطلب والبيع والمخزون، ثم المتابعة وقراءة الأداء. تنتقل المعلومات بين الخطوات ليعمل فريقك على صورة واحدة.', 'From customer conversation and product to order, sale, and inventory, then follow-up and performance insights. Information carries across steps so your team can work from one connected view.')}
         icon={Layers3}
         variant="inbox"
       />
@@ -23,8 +23,8 @@ export default function Product({ locale }) {
         <div className="container">
           <SectionIntro
             kicker={tx(c('المنصة', 'The platform'), locale)}
-            title={tx(c('ثلاث قدرات في مسار واحد.', 'Three capabilities in one path.'), locale)}
-            body={tx(c('لا تجمع أدوات. اجمع قرارات.', 'Stop collecting tools. Start collecting decisions.'), locale)}
+            title={tx(c('كل ما يدعم البيع يعمل معًا.', 'Everything that supports a sale works together.'), locale)}
+            body={tx(c('المحادثات ومعلومات المنتجات والطلبات والمبيعات والمخزون والمتابعة ورؤية المتجر ضمن دورة مترابطة.', 'Conversations, product details, orders, sales, inventory, follow-up, and store insight in one connected cycle.'), locale)}
           />
           <FeatureGrid items={pillars} locale={locale} />
         </div>
@@ -33,13 +33,13 @@ export default function Product({ locale }) {
         <div className="container">
           <SectionIntro
             kicker={tx(c('كيف يعمل', 'How it works'), locale)}
-            title={tx(c('من رسالة عابرة إلى خطوة يملكها شخص.', 'From a passing message to an owned next action.'), locale)}
-            body={tx(c('من أول سؤال إلى آخر متابعة، يحافظ FIHRIST على الخيط الذي يجعل المبيعات قابلة للفهم.', 'From the first question to the last follow-up, FIHRIST keeps the thread that makes sales understandable.'), locale)}
+            title={tx(c('من سؤال العميل إلى متابعة المتجر.', 'From a customer question to store follow-up.'), locale)}
+            body={tx(c('ترتبط تفاصيل العميل والمنتج بالطلب والبيع والمخزون، ثم تساعد بيانات المتجر على قراءة النتائج وتنظيم المتابعة.', 'Customer and product details connect to orders, sales, and inventory; store data then helps review results and organize follow-up.'), locale)}
           />
           <Workflow locale={locale} />
           <div className="workflow-caption">
             <span className="caption-line"/>
-            <span>{tx(c('محادثة → عميل → طلب → خطوة تالية', 'Conversation → customer → request → next action'), locale)}</span>
+            <span>{tx(c('عميل → محادثة → منتج → طلب → بيع → مخزون → متابعة ورؤية', 'Customer → conversation → product → order → sale → inventory → follow-up and insight'), locale)}</span>
             <span className="caption-line"/>
           </div>
         </div>
