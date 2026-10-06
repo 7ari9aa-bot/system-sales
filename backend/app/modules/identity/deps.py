@@ -161,7 +161,9 @@ async def get_current_user(
         # before any tenant GUC is bound.
         auth_state = (
             await session.execute(
-                select(User.is_active, User.auth_version).where(User.id == user_id)
+                select(
+                    User.is_active, User.auth_version, User.is_platform_admin
+                ).where(User.id == user_id)
             )
         ).one_or_none()
         if auth_state is None or not auth_state.is_active:
@@ -169,21 +171,29 @@ async def get_current_user(
         if int(payload.get("auth_version", 0)) != int(auth_state.auth_version or 0):
             raise PermissionDeniedError("session revoked by password reset")
         # The platform-admin flag as a transaction-local GUC: RLS policies on
-        # the system tables (security_events NULL-tenant rows) read it — a
-        # DB-side claim that never comes from the JWT itself.
+        # the system tables (security_events NULL-tenant rows) read it. It is
+        # verified against the users row on EVERY request — a demoted admin
+        # loses cross-tenant visibility immediately, never at token expiry,
+        # because the JWT claim is not trusted for this gate.
+        db_platform_admin = bool(auth_state.is_platform_admin)
         await session.execute(
             sa_text("SELECT set_config('app.is_platform_admin', :v, true)"),
-            {"v": "true" if bool(payload.get("is_platform_admin", False)) else "false"},
+            {"v": "true" if db_platform_admin else "false"},
         )
         return AuthedUser(
             id=user_id,
             tenant_id=uuid.UUID(payload["tenant_id"]) if payload.get("tenant_id") else None,
             role_code=payload.get("role"),
-            is_platform_admin=bool(payload.get("is_platform_admin", False)),  # §146
+            is_platform_admin=db_platform_admin,
             auth_version=int(auth_state.auth_version or 0),
             is_active=bool(auth_state.is_active),
         )
     except PermissionDeniedError:
+        raise
+    except sa.exc.SQLAlchemyError:
+        # A database failure is a 5xx — the request never reached the token
+        # validation verdict, so answering 403 would log every user out on a
+        # transient connection blip.
         raise
     except Exception as exc:  # malformed/expired tokens → 401, never a 500
         raise PermissionDeniedError("invalid token") from exc

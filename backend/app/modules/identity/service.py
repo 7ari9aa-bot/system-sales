@@ -351,9 +351,41 @@ class AuthService:
             )
         ).scalar_one_or_none()
         tenant_id = membership.tenant_id if membership else None
-        await AuthService._assert_tenant_allows_login(
-            session, tenant_id, user_id=user.id, ip=ip
-        )
+        # §48 prefers an ACTIVE tenant: a suspended default must not lock a
+        # user out of tenants they still hold live memberships in. Membership
+        # candidates are checked in preference order — the default first, then
+        # the rest — and the refusal is raised only when every membership is
+        # blocked, keeping the original error text for that case.
+        if membership is not None:
+            try:
+                await AuthService._assert_tenant_allows_login(
+                    session, tenant_id, user_id=user.id, ip=ip
+                )
+            except PermissionDeniedError:
+                candidates = (
+                    await session.execute(
+                        select(TenantUser.tenant_id).where(
+                            TenantUser.user_id == user.id,
+                            TenantUser.tenant_id != tenant_id,
+                        )
+                    )
+                ).scalars().all()
+                tenant_id = None
+                for candidate in candidates:
+                    try:
+                        await AuthService._assert_tenant_allows_login(
+                            session, candidate, user_id=user.id, ip=ip
+                        )
+                    except PermissionDeniedError:
+                        continue
+                    tenant_id = candidate
+                    break
+                if tenant_id is None:
+                    raise
+        else:
+            await AuthService._assert_tenant_allows_login(
+                session, None, user_id=user.id, ip=ip
+            )
         # §146: password OK is factor one — an MFA-enabled account does NOT
         # get tokens yet; it gets a short-lived single-use challenge (Redis)
         # and must complete POST /auth/mfa/verify with a TOTP code.
@@ -613,8 +645,12 @@ class AuthService:
         # §48: switching INTO a suspended/deleted tenant must not mint a token
         # family any more than logging into one would.
         await AuthService._assert_tenant_allows_login(session, tenant_id, user_id=user.id)
-        # Ownership: only revoke a refresh token that belongs to the caller.
+        # Ownership + session continuity: switching tenants requires a LIVE
+        # refresh token owned by the caller. Without this gate a stolen
+        # 30-minute access token would mint a fresh 14-day refresh family
+        # here — an indefinite session from half a credential pair.
         old_hash = _hash_token(refresh_token)
+        now = _now()
         row = (
             await session.execute(
                 select(RefreshToken).where(
@@ -622,8 +658,11 @@ class AuthService:
                 )
             )
         ).scalar_one_or_none()
-        if row is not None:
-            row.revoked_at = _now()
+        if row is None or row.revoked_at is not None or row.expires_at <= now:
+            raise PermissionDeniedError("invalid or expired refresh token")
+        # Rotation: the presented family dies with the switch — the new pair
+        # starts its own lineage, so a replayed refresh token cannot re-enter.
+        row.revoked_at = now
         return AuthService._issue_pair(session, user, tenant_id)
 
     # -- internals ---------------------------------------------------------
