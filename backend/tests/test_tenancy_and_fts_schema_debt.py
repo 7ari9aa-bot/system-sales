@@ -890,6 +890,11 @@ async def test_every_tenant_scoped_model_table_has_a_policy(db) -> None:
         "webhook_events",
         "scheduled_jobs",
         "tenant_users",
+        # fd2026100409 G-01: the audit tables carry the STRICTER per-command
+        # split (insert/tenant_read/system_read, no UPDATE/DELETE policy)
+        # instead of the generic tenant_isolation — covered, not missing.
+        "audit_logs",
+        "security_events",
     }
     tenant_tables = {
         name
