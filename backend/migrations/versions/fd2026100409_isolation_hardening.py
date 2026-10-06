@@ -98,7 +98,15 @@ def upgrade() -> None:
            )
        $$"""
     )
-    op.execute("GRANT EXECUTE ON FUNCTION public._location_tenant_allowed(uuid, uuid) TO sales_app")
+    op.execute(
+        """DO $$
+        BEGIN
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'sales_app') THEN
+            GRANT EXECUTE ON FUNCTION public._location_tenant_allowed(uuid, uuid)
+              TO sales_app;
+          END IF;
+        END $$"""
+    )
     op.execute("DROP POLICY IF EXISTS location_access ON public.user_location_access")
     op.execute(
         f"""CREATE POLICY location_access ON public.user_location_access
