@@ -112,16 +112,29 @@ def upgrade() -> None:
     )
 
     # --- G-04: privilege hygiene ----------------------------------------
+    # GUARDED like every role-dependent statement in this repo: CI runs the
+    # migrations BEFORE provision creates sales_app, so an unguarded REVOKE
+    # would error the whole alembic run on a fresh database. provision.py
+    # re-applies the same hardening after it creates the role (converge by
+    # running both, the resolve_channel_tenant convention).
     op.execute(
-        "REVOKE TRUNCATE, REFERENCES, TRIGGER, MAINTAIN "
-        "ON ALL TABLES IN SCHEMA public FROM sales_app"
-    )
-    op.execute(
-        "ALTER DEFAULT PRIVILEGES IN SCHEMA public "
-        "REVOKE TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON TABLES FROM sales_app"
+        """DO $$
+        BEGIN
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'sales_app') THEN
+            REVOKE TRUNCATE, REFERENCES, TRIGGER, MAINTAIN
+              ON ALL TABLES IN SCHEMA public FROM sales_app;
+          END IF;
+        END $$"""
     )
     for table in _LEDGER_TABLES:
-        op.execute(f"REVOKE UPDATE, DELETE ON public.{table} FROM sales_app")
+        op.execute(
+            f"""DO $$
+            BEGIN
+              IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'sales_app') THEN
+                REVOKE UPDATE, DELETE ON public.{table} FROM sales_app;
+              END IF;
+            END $$"""
+        )
 
 
 def downgrade() -> None:
