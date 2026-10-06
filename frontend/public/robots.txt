@@ -1,2 +1,22 @@
 User-agent: *
 Allow: /
+Disallow: /api/
+Disallow: /auth/
+Disallow: /dashboard
+Disallow: /inbox
+Disallow: /customers
+Disallow: /orders
+Disallow: /products
+Disallow: /inventory
+Disallow: /marketing
+Disallow: /ai
+Disallow: /analytics
+Disallow: /usage
+Disallow: /settings
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /accept-invitation
+
+Sitemap: https://fihrist.world/sitemap.xml
