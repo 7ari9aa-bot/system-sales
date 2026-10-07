@@ -86,17 +86,19 @@ export default function NeedsAttention() {
           ))}
         </div>
       ) : !live || approvals == null ? (
-        <div role="status" className="py-6 text-center text-[12.5px] text-muted-foreground">{t("common.loading", "Loading current signals…")}</div>
+        <div role="status" className="py-3 text-center text-[12.5px] text-muted-foreground">{t("common.loading", "Loading current signals…")}</div>
       ) : items.length === 0 && loadError ? (
-        <div role="alert" className="flex flex-col items-center gap-2 py-6 text-center text-[12.5px] text-muted-foreground">
+        <div role="alert" className="flex flex-col items-center gap-2 py-3 text-center text-[12.5px] text-muted-foreground">
           <span>{loadError}</span>
           <button type="button" onClick={retryUnavailable} className="text-primary hover:underline">{t("common.retry", "Retry")}</button>
         </div>
       ) : items.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-8 text-center">
-          <CheckCircle2 className="h-9 w-9 text-success mb-2" />
-          <p className="font-display text-[15px] font-semibold">{t("home.allCaughtUp")}</p>
-          <p className="text-[12.5px] text-muted-foreground mt-0.5">{t("home.allCaughtUpDesc")}</p>
+        <div role="status" className="flex min-h-12 items-center gap-3 rounded-xl bg-success/5 px-3 py-2.5">
+          <CheckCircle2 className="h-5 w-5 shrink-0 text-success" />
+          <div className="min-w-0 flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-2">
+            <p className="font-display text-[13.5px] font-semibold">{t("home.allCaughtUp")}</p>
+            <p className="text-[12px] text-muted-foreground">{t("home.allCaughtUpDesc")}</p>
+          </div>
         </div>
       ) : (
         <>

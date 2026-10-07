@@ -39,6 +39,13 @@ export default function Analytics() {
     customers: { value: live?.customers ?? null },
   };
   const sources = live?.sources || [];
+  const revenueChartPending = !live || (data.length === 0 && live.overviewLoading);
+  const revenueChartUnavailable = Boolean(live?.dashboardError || live?.overviewError || (data.length === 0 && !revenueChartPending));
+  const revenueChartHeight = revenueChartUnavailable ? "min-h-16 py-2" : "h-[260px]";
+  const ordersChartUnavailable = Boolean(live && (live.dashboardError || live.overviewError || (data.length === 0 && !live.overviewLoading)));
+  const ordersChartHeight = ordersChartUnavailable ? "min-h-16 py-2" : "h-[220px]";
+  const sourcesChartUnavailable = Boolean(live && (live.dashboardError || sources.length === 0));
+  const sourcesChartHeight = sourcesChartUnavailable ? "min-h-16 py-2" : "h-[220px]";
 
   // "What changed" — أرقام حقيقية بدون دلتا وهمية: الـbackend مش بينشر مقارنات فترات
   const changes = [
@@ -104,18 +111,18 @@ export default function Analytics() {
       </div>
 
       <SectionCard title={t("analytics.revenueOverTime")} className="mb-5" bodyClassName="pt-2">
-        <div className="h-[260px]">
+        <div className={revenueChartHeight}>
           {!live ? (
             <div className="grid h-full place-items-center text-[13px] text-muted-foreground">{t("common.loading", "Loading…")}</div>
           ) : live.dashboardError || live.overviewError ? (
-            <div role="alert" className="grid h-full place-items-center gap-2 px-4 text-center text-[13px] text-muted-foreground">
-              <span>{live.dashboardError || live.overviewError}</span>
+            <div role="alert" className="grid min-h-12 place-items-center gap-2 px-4 text-center text-[13px] text-muted-foreground">
+              <span className="max-w-full break-words">{live.dashboardError || live.overviewError}</span>
               <button type="button" onClick={live.dashboardError ? live.retryDashboard : live.retryOverview} className="text-primary hover:underline">{t("common.retry", "Retry")}</button>
             </div>
           ) : data.length === 0 && live.overviewLoading ? (
             <div className="grid h-full place-items-center text-[13px] text-muted-foreground">{t("common.loading", "Loading…")}</div>
           ) : data.length === 0 ? (
-            <div role="status" className="grid h-full place-items-center px-4 text-center text-[13px] text-muted-foreground">{t("analytics.noData", "No sales in this period.")}</div>
+            <div role="status" className="grid min-h-12 place-items-center px-4 text-center text-[13px] text-muted-foreground">{t("analytics.noData", "No sales in this period.")}</div>
           ) : <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={data} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
               <defs>
@@ -136,18 +143,18 @@ export default function Analytics() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <SectionCard title={t("analytics.ordersByPeriod")} bodyClassName="pt-2">
-          <div className="h-[220px]">
+          <div className={ordersChartHeight}>
             {!live ? (
               <div className="grid h-full place-items-center text-[13px] text-muted-foreground">{t("common.loading", "Loading…")}</div>
             ) : live.dashboardError || live.overviewError ? (
-              <div role="alert" className="grid h-full place-items-center gap-2 px-4 text-center text-[13px] text-muted-foreground">
-                <span>{live.dashboardError || live.overviewError}</span>
+              <div role="alert" className="grid min-h-12 place-items-center gap-2 px-4 text-center text-[13px] text-muted-foreground">
+                <span className="max-w-full break-words">{live.dashboardError || live.overviewError}</span>
                 <button type="button" onClick={live.dashboardError ? live.retryDashboard : live.retryOverview} className="text-primary hover:underline">{t("common.retry", "Retry")}</button>
               </div>
             ) : data.length === 0 && live.overviewLoading ? (
               <div className="grid h-full place-items-center text-[13px] text-muted-foreground">{t("common.loading", "Loading…")}</div>
             ) : data.length === 0 ? (
-              <div role="status" className="grid h-full place-items-center px-4 text-center text-[13px] text-muted-foreground">{t("analytics.noData", "No orders in this period.")}</div>
+              <div role="status" className="grid min-h-12 place-items-center px-4 text-center text-[13px] text-muted-foreground">{t("analytics.noData", "No orders in this period.")}</div>
             ) : <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
                 <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" vertical={false} />
@@ -161,16 +168,16 @@ export default function Analytics() {
         </SectionCard>
 
         <SectionCard title={t("analytics.attributedTitle")} bodyClassName="pt-2">
-          <div className="h-[220px]">
+          <div className={sourcesChartHeight}>
             {!live ? (
               <div className="grid h-full place-items-center text-[13px] text-muted-foreground">{t("common.loading", "Loading…")}</div>
             ) : live.dashboardError ? (
-              <div role="alert" className="grid h-full place-items-center gap-2 px-4 text-center text-[13px] text-muted-foreground">
-                <span>{live.dashboardError}</span>
+              <div role="alert" className="grid min-h-12 place-items-center gap-2 px-4 text-center text-[13px] text-muted-foreground">
+                <span className="max-w-full break-words">{live.dashboardError}</span>
                 <button type="button" onClick={live.retryDashboard} className="text-primary hover:underline">{t("common.retry", "Retry")}</button>
               </div>
             ) : sources.length === 0 ? (
-              <div className="grid h-full place-items-center text-[13px] text-muted-foreground">{t("insight.empty")}</div>
+              <div className="grid min-h-12 place-items-center text-center text-[13px] text-muted-foreground">{t("insight.empty")}</div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>

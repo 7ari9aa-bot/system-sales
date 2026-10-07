@@ -12,7 +12,7 @@ export function Skeleton({ className }) {
 
 export function KpiSkeleton() {
   return (
-    <div className="rounded-2xl border border-border bg-card p-5">
+    <div className="rounded-2xl border border-border bg-card p-4">
       <div className="flex items-center justify-between">
         <Skeleton className="h-3.5 w-20" />
         <Skeleton className="h-7 w-7 rounded-lg" />
@@ -43,9 +43,9 @@ export function Delta({ value, className }) {
 
 export function SectionCard({ title, action, actionTo, children, className, bodyClassName }) {
   return (
-    <section className={cn("rounded-2xl bg-card border border-border", className)}>
+    <section className={cn("min-w-0 rounded-2xl bg-card border border-border", className)}>
       {(title || action) &&
-      <div className="flex items-center justify-between px-5 pt-4 pb-3">
+      <div className="flex items-center justify-between gap-3 px-4 pt-3.5 pb-2.5">
           {title && <h2 className="font-display text-[15px] font-semibold whitespace-nowrap truncate">{title}</h2>}
           {action && actionTo &&
         <Link
@@ -58,7 +58,7 @@ export function SectionCard({ title, action, actionTo, children, className, body
         }
         </div>
       }
-      <div className={cn("px-5 pb-5", bodyClassName)}>{children}</div>
+      <div className={cn("px-4 pb-4", bodyClassName)}>{children}</div>
     </section>);
 
 }
@@ -67,7 +67,7 @@ export function KpiCard({ label, value, sub, delta, to, accent }) {
   return (
     <Link
       to={to}
-      className="group relative rounded-2xl bg-card border border-border p-5 hover:border-primary/40 hover:shadow-sm transition-all">
+      className="group relative rounded-2xl bg-card border border-border p-4 hover:border-primary/40 hover:shadow-sm transition-all">
       
       <div className="flex items-center justify-between">
         <span className="text-[12.5px] font-medium text-muted-foreground whitespace-nowrap truncate">{label}</span>
@@ -140,7 +140,7 @@ export function Badge({ children, tone = "muted" }) {
 export function PageHeader({ title, subtitle, actions }) {
   const { lang } = useI18n();
   return (
-    <div className={cn("flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-6", lang === "ar" && "sm:flex-row-reverse")}>
+    <div className={cn("flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-4", lang === "ar" && "sm:flex-row-reverse")}>
       <div className={cn("min-w-0", lang === "ar" && "text-right")}>
         <h1 className="font-display text-[24px] font-semibold tracking-tight whitespace-nowrap truncate">{title}</h1>
         {subtitle && <p className="text-[13.5px] text-muted-foreground mt-1 line-clamp-2">{subtitle}</p>}

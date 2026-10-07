@@ -39,6 +39,9 @@ export default function SalesPerformance() {
   const netSales = live?.netSales ?? null;
   const orders = live?.orders ?? null;
   const sources = (live?.sources ?? []).slice(0, 4);
+  const chartPending = !live || (data.length === 0 && live.overviewLoading);
+  const chartUnavailable = Boolean(live?.dashboardError || live?.overviewError || (data.length === 0 && !chartPending));
+  const chartHeight = chartUnavailable ? "min-h-16 py-2" : "h-[200px]";
 
   return (
     <SectionCard
@@ -69,14 +72,14 @@ export default function SalesPerformance() {
         </div>
       </div>
 
-      <div className="h-[200px] -mx-1">
+      <div className={`${chartHeight} -mx-1 transition-[height] duration-200`}>
         {!live ? (
           <div className="h-full">
             <Skeleton className="h-[150px] w-full" />
           </div>
         ) : live.dashboardError || live.overviewError ? (
-          <div role="alert" className="grid h-full place-items-center gap-2 px-4 text-center text-[12px] text-muted-foreground">
-            <span>{live.dashboardError || live.overviewError}</span>
+          <div role="alert" className="grid min-h-12 place-items-center gap-2 px-4 text-center text-[12px] text-muted-foreground">
+            <span className="max-w-full break-words">{live.dashboardError || live.overviewError}</span>
             <button type="button" onClick={live.dashboardError ? live.retryDashboard : live.retryOverview} className="text-primary hover:underline">{t("common.retry", "Retry")}</button>
           </div>
         ) : data.length === 0 && live.overviewLoading ? (
@@ -84,7 +87,7 @@ export default function SalesPerformance() {
             <Skeleton className="h-[150px] w-full" />
           </div>
         ) : data.length === 0 ? (
-          <div role="status" className="grid h-full place-items-center px-4 text-center text-[12px] text-muted-foreground">{t("analytics.noData", "No sales in this period.")}</div>
+          <div role="status" className="grid min-h-12 place-items-center px-4 text-center text-[12px] text-muted-foreground">{t("analytics.noData", "No sales in this period.")}</div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={data} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>

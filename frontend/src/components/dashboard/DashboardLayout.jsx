@@ -26,7 +26,7 @@ export default function DashboardLayout() {
         <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} collapsed={collapsed} onToggleCollapse={toggleCollapsed} />
         <div className={cn("transition-[padding] duration-300", collapsed ? "lg:pl-[68px]" : "lg:pl-[248px]")}>
           <Header onMenu={() => setSidebarOpen(true)} />
-          <main className="px-4 sm:px-6 lg:px-8 py-6 max-w-[1320px] mx-auto">
+          <main className="w-full min-w-0 px-4 py-5 sm:px-6 lg:px-8 lg:py-6">
             <Outlet />
           </main>
         </div>
