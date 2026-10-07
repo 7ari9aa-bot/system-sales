@@ -49,6 +49,7 @@ class AgentDefinition(BaseModel):
     kind: str
     name: str
     description: str
+    definition_version: int = 1
     capabilities: list[AgentCapability] = Field(default_factory=list)
     system_prompt_template: str = ""
     default_model: str = "fast"

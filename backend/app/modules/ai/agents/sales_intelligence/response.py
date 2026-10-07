@@ -7,7 +7,7 @@ no third model call).
 
 from __future__ import annotations
 
-from app.modules.analytics.contracts import Finding
+from app.modules.analytics.contracts import AnswerDraft, Finding
 from app.modules.analytics.numbers import free_numerals
 from app.modules.analytics.validators import validate_response
 
@@ -24,6 +24,7 @@ def validate_answer(
     ``allowed_numbers`` are the digit runs the tools produced (the facts).
     Anything else digit-shaped in the answer is a free number → rejection.
     A hypothesis reaching HIGH is rejected by contract even here.
+    Also executes `validate_response` on the synthesized AnswerDraft.
     """
     problems: list[str] = []
     for numeral in free_numerals(text):
@@ -32,8 +33,16 @@ def validate_answer(
     for finding in findings:
         if finding.type == "HYPOTHESIS" and finding.confidence == "HIGH":
             problems.append("hypothesis reached HIGH confidence")
-    _ = validate_response  # the fuller placeholder gate joins when the model
-    # starts DRAFTING with {{fact:fmt}} tokens (Phase 9's render path).
+
+    # Contract gate: run validate_response to catch unrendered placeholders or free numbers
+    draft = AnswerDraft(text=text, findings=findings)
+    for p in validate_response(draft, text):
+        if p.startswith("free number in answer: "):
+            num = p.removeprefix("free number in answer: ").strip()
+            if num in allowed_numbers or num.strip(".,%") in allowed_numbers:
+                continue
+        if p not in problems:
+            problems.append(p)
     return problems
 
 
@@ -62,11 +71,34 @@ def safe_response(findings: list[Finding], store_facts: dict[str, str]) -> str:
 
 
 def allowed_numbers_from_facts(facts_payload: list[dict]) -> set[str]:
-    """Every digit run the tools produced — the answer's ONLY legal numbers."""
+    """Every digit run the tools produced — the answer's ONLY legal numbers.
+
+    Recursively scans all values in the fact payloads (deltas, delta percentages,
+    breakdown items, driver contributions, sample sizes, fulfillment rates, money values).
+    """
     allowed: set[str] = set()
+
+    def _extract_all_numbers(obj: object) -> None:
+        if obj is None:
+            return
+        if isinstance(obj, (int, float)):
+            allowed.update(_digit_runs(str(obj)))
+            if isinstance(obj, float):
+                allowed.update(_digit_runs(f"{obj:.1f}"))
+                allowed.update(_digit_runs(f"{obj:.2f}"))
+                allowed.update(_digit_runs(f"{obj:.0f}"))
+        elif isinstance(obj, str):
+            allowed.update(_digit_runs(obj))
+        elif isinstance(obj, dict):
+            for v in obj.values():
+                _extract_all_numbers(v)
+        elif isinstance(obj, (list, tuple, set)):
+            for item in obj:
+                _extract_all_numbers(item)
+
     for payload in facts_payload:
-        value = str(payload.get("value", ""))
-        allowed |= {run for run in _digit_runs(value)}
+        _extract_all_numbers(payload)
+
     return allowed
 
 

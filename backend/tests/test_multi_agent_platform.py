@@ -120,3 +120,142 @@ async def test_runtime_tool_isolation_enforcement() -> None:
     # Injected / unauthorized tool MUST be stripped by the enforcement boundary
     assert "si_analyze_drivers" not in loaded_names
     assert len(loaded) == 2
+
+
+@pytest.mark.asyncio
+async def test_agent_3_extensibility_e2e_lifecycle() -> None:
+    """True Platform Acceptance Test:
+    1. Register custom Agent #3 (inventory_ops) with unique capabilities & tool.
+    2. Verify registry discovers and exposes the definition.
+    3. Verify tool authorization boundary rejects cross-domain tool requests.
+    4. Verify runtime tool loader only retains tools authorized for this kind.
+    5. Execute authorized tool through runtime -> status=ok, facts captured.
+    6. Execute unauthorized cross-agent tool through runtime -> status=denied.
+    """
+    from pydantic import BaseModel
+    from app.modules.ai.models import Agent, AgentRun
+    from app.modules.ai.tools import ToolSpec, register_tool
+    from app.modules.ai.providers import ToolCallRequest
+
+    # Step 1: Register custom Agent #3
+    agent3_defn = AgentDefinition(
+        kind="inventory_ops",
+        name="Inventory Operations Agent",
+        description="Monitors stock levels, reconciles warehouses, and triggers supplier POs.",
+        definition_version=1,
+        capabilities=[
+            AgentCapability(name="inv_check_reorder_level", description="Check reorder thresholds", required=True),
+        ],
+        system_prompt_template="You are the inventory operations assistant.",
+        default_model="fast",
+        default_tools=["inv_check_reorder_level"],
+        allowed_tools=["inv_check_reorder_level"],
+        task_types=["stock_reorder", "inventory_audit"],
+        guardrail_profile="internal",
+        provisioning_policy={"is_canonical": True, "auto_provision": True, "singleton_per_tenant": True},
+    )
+    AgentRegistry.register(agent3_defn, allow_override=True)
+
+    # Step 2: Verify registry discovery
+    assert AgentRegistry.has("inventory_ops")
+    fetched = AgentRegistry.get("inventory_ops")
+    assert fetched.name == "Inventory Operations Agent"
+    assert fetched.definition_version == 1
+
+    # Step 3: Register custom tool in platform tools registry
+    class DummyReorderArgs(BaseModel):
+        sku: str
+
+    async def dummy_reorder_handler(session, tenant_id, **kw):
+        return {"sku": kw.get("sku"), "reorder_needed": True, "suggested_qty": 50}
+
+    register_tool(
+        ToolSpec(
+            name="inv_check_reorder_level",
+            description="Checks SKU reorder level",
+            args_schema=DummyReorderArgs,
+            handler=dummy_reorder_handler,
+            tags=["inventory"],
+        )
+    )
+
+    # Step 4: Verify tool authorization boundary
+    assert AgentRegistry.is_tool_authorized("inventory_ops", "inv_check_reorder_level") is True
+    assert AgentRegistry.is_tool_authorized("inventory_ops", "create_order") is False
+    assert AgentRegistry.is_tool_authorized("inventory_ops", "si_analyze_drivers") is False
+
+    # Step 5: Test runtime loading with isolation
+    tenant_id = uuid.uuid4()
+    agent_id = uuid.uuid4()
+    tool_authorized = AgentTool(tenant_id=tenant_id, agent_id=agent_id, name="inv_check_reorder_level", is_active=True)
+    tool_unauthorized = AgentTool(tenant_id=tenant_id, agent_id=agent_id, name="create_order", is_active=True)
+
+    mock_session = AsyncMock()
+    mock_res = MagicMock()
+    mock_res.scalars.return_value.all.return_value = [tool_authorized, tool_unauthorized]
+    mock_session.execute.return_value = mock_res
+
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def _mock_nested():
+        yield
+
+    mock_session.begin_nested = MagicMock(side_effect=_mock_nested)
+
+    loaded_tools = await AgentRunner._load_agent_tools(
+        mock_session, tenant_id=tenant_id, agent_id=agent_id, agent_kind="inventory_ops"
+    )
+    assert len(loaded_tools) == 1
+    assert loaded_tools[0].name == "inv_check_reorder_level"
+
+    # Step 6: Test authorized tool execution
+    runner = AgentRunner()
+    agent_instance = Agent(
+        id=agent_id,
+        tenant_id=tenant_id,
+        kind="inventory_ops",
+        name="Inventory Operations Agent",
+        is_active=True,
+    )
+    run_instance = AgentRun(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        agent_id=agent_id,
+        status="running",
+    )
+
+    # 6a. Execute authorized tool
+    valid_request = ToolCallRequest(
+        id="call_1",
+        name="inv_check_reorder_level",
+        arguments={"sku": "SKU-TEST-99"},
+    )
+    outcome_ok = await runner._execute_tool(
+        mock_session,
+        tenant_id,
+        run=run_instance,
+        agent=agent_instance,
+        agent_tools=loaded_tools,
+        request=valid_request,
+    )
+    assert outcome_ok["status"] == "ok"
+    assert outcome_ok["result"]["reorder_needed"] is True
+    assert outcome_ok["result"]["suggested_qty"] == 50
+
+    # 6b. Attempt to execute unauthorized tool (even if requested by model)
+    forbidden_request = ToolCallRequest(
+        id="call_2",
+        name="create_order",
+        arguments={"items": []},
+    )
+    outcome_denied = await runner._execute_tool(
+        mock_session,
+        tenant_id,
+        run=run_instance,
+        agent=agent_instance,
+        agent_tools=loaded_tools,
+        request=forbidden_request,
+    )
+    assert outcome_denied["status"] == "denied"
+    assert "not authorized for agent kind 'inventory_ops'" in outcome_denied["error"]

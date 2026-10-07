@@ -87,6 +87,7 @@ class AgentKindOut(BaseModel):
     kind: str
     name: str
     description: str | None = None
+    definition_version: int = 1
     default_model: str
     capabilities: list[AgentCapabilityOut] = Field(default_factory=list)
     default_tools: list[str] = Field(default_factory=list)
@@ -476,3 +477,25 @@ class UsageSummaryOut(BaseModel):
     days: int
     summary: list[UsageDayOut]
     totals: UsageTotalsOut
+
+
+# ------------------------------------------------------------------ handovers §37/150
+
+
+class HandoverOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    conversation_id: UUID
+    run_id: UUID | None = None
+    reason: str
+    status: str
+    claimed_by_user_id: UUID | None = None
+    note: str | None = None
+    created_at: str | None = None
+
+
+class HandoverList(BaseModel):
+    items: list[HandoverOut]
+    total: int
+

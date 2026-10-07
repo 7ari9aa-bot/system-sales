@@ -33,7 +33,11 @@ from app.modules.ai.agents.sales_intelligence.response import (
     safe_response,
     validate_answer,
 )
-from app.modules.analytics.capabilities import CapabilityContext, EvidenceStore
+from app.modules.analytics.capabilities import (
+    CapabilityContext,
+    EvidenceStore,
+    StoreMetricProfile,
+)
 from app.modules.analytics.contracts import (
     AnalysisPeriod,
     DataQuality,
@@ -176,18 +180,19 @@ def _rebuild_facts(tool_calls_made: list[dict]) -> list[dict]:
     return payloads
 
 
-def _facts_to_contracts(payloads: list[dict]) -> dict[str, MetricFact]:
+def _facts_to_contracts(payloads: list[dict], timezone: str = "Africa/Cairo") -> dict[str, MetricFact]:
     """Rebuild the run-scoped evidence needed for findings/coverage. v1 keeps
     the reconstruction minimal: facts only — comparisons/drivers stay in the
     tool summaries the model already quoted."""
     facts: dict[str, MetricFact] = {}
     now = datetime.now(UTC)
     for payload in payloads:
+        fact_tz = payload.get("timezone") or timezone
         period = AnalysisPeriod(
             start=datetime.fromisoformat(payload["period_start"]).replace(tzinfo=UTC),
             end=datetime.fromisoformat(payload["period_end"]).replace(tzinfo=UTC),
-            timezone="UTC",
-            attribution_basis="placed_at",
+            timezone=fact_tz,
+            attribution_basis=payload.get("attribution_basis", "placed_at"),
             maturity_policy=MaturityPolicy(kind="immediate"),
             maturity_status=MaturityStatus(payload["maturity"]),
             data_as_of=now,
@@ -195,8 +200,8 @@ def _facts_to_contracts(payloads: list[dict]) -> dict[str, MetricFact]:
         facts[payload["id"]] = MetricFact(
             id=payload["id"],
             metric=payload["metric"],
-            value=Decimal(payload["value"]),
-            unit=payload["unit"],
+            value=Decimal(str(payload["value"])),
+            unit=payload.get("unit", "orders"),
             period=period,
             source="orders",
             computed_at=now,
@@ -215,8 +220,30 @@ async def run_sales_analysis(
     runner=None,
 ) -> AnalysisResult:
     """One sales question → an evidence-backed answer (or a safe one)."""
+    from sqlalchemy import text as sa_text
     from app.modules.ai.gateway import AIGateway
     from app.modules.ai.runtime import AgentRunner
+
+    # Load tenant settings (merchant timezone & currency)
+    tenant_row = (
+        await session.execute(
+            sa_text("SELECT COALESCE(timezone, 'Africa/Cairo'), COALESCE(currency, 'EGP') FROM tenants WHERE id = :tid"),
+            {"tid": str(tenant_id)},
+        )
+    ).first()
+    merchant_tz = tenant_row[0] if tenant_row else "Africa/Cairo"
+    merchant_currency = tenant_row[1] if tenant_row else "EGP"
+
+    setting_val = (
+        await session.execute(
+            sa_text("SELECT value FROM platform_settings WHERE tenant_id = :tid AND key = 'primary_sales_metric'"),
+            {"tid": str(tenant_id)},
+        )
+    ).scalar_one_or_none()
+    try:
+        profile = StoreMetricProfile(primary_sales_metric=setting_val) if setting_val else StoreMetricProfile()
+    except Exception:
+        profile = StoreMetricProfile()
 
     runner = runner or AgentRunner(gateway=AIGateway())
     analysis_id = uuid.uuid4()
@@ -227,7 +254,7 @@ async def run_sales_analysis(
         event_type="ai.analysis.started",
         analysis_id=analysis_id,
         run_id=None,
-        payload={"question": question},
+        payload={"question": question, "currency": merchant_currency},
     )
     result = await runner.run(
         session,
@@ -240,7 +267,7 @@ async def run_sales_analysis(
     run_id = result.run_id
     payloads = _rebuild_facts(result.tool_calls_made)
     allowed = allowed_numbers_from_facts(payloads)
-    facts_contracts = _facts_to_contracts(payloads)
+    facts_contracts = _facts_to_contracts(payloads, timezone=merchant_tz)
 
     from app.modules.analytics.evidence import build_pack
     from app.modules.analytics.findings import build_findings
@@ -253,7 +280,7 @@ async def run_sales_analysis(
     if facts_contracts:
         pack = build_pack(
             _store_from(facts_contracts),
-            CapabilityContext(tenant_id=tenant_id),
+            CapabilityContext(tenant_id=tenant_id, profile=profile),
             question=question,
         )
         evidence_hash = pack.content_hash

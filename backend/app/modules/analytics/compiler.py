@@ -56,10 +56,13 @@ _STATEMENTS: dict[str, tuple[str, str | None]] = {
     "delivered_revenue": (
         "SELECT COUNT(DISTINCT o.id) AS value, "
         "COALESCE(SUM(o.grand_total), 0) AS money_value "
-        "FROM shipments s JOIN orders o ON o.id = s.order_id "
+        "FROM orders o "
         "WHERE o.tenant_id = :tenant_id AND o.deleted_at IS NULL "
-        "AND s.tenant_id = :tenant_id AND s.status = 'delivered' "
-        "AND s.delivered_at >= :start AND s.delivered_at < :end",
+        "AND o.id IN ("
+        "  SELECT DISTINCT s.order_id FROM shipments s "
+        "  WHERE s.tenant_id = :tenant_id AND s.status = 'delivered' "
+        "  AND s.delivered_at >= :start AND s.delivered_at < :end"
+        ")",
         "o",
     ),
     "shipped_orders": (
@@ -132,10 +135,13 @@ _BREAKDOWN_STATEMENTS: dict[str, tuple[str, str]] = {
         "SELECT COALESCE(o.channel, 'unknown') AS channel_key, "
         "COUNT(DISTINCT o.id) AS value, "
         "COALESCE(SUM(o.grand_total), 0) AS money_value "
-        "FROM shipments s JOIN orders o ON o.id = s.order_id "
+        "FROM orders o "
         "WHERE o.tenant_id = :tenant_id AND o.deleted_at IS NULL "
-        "AND s.tenant_id = :tenant_id AND s.status = 'delivered' "
-        "AND s.delivered_at >= :start AND s.delivered_at < :end "
+        "AND o.id IN ("
+        "  SELECT DISTINCT s.order_id FROM shipments s "
+        "  WHERE s.tenant_id = :tenant_id AND s.status = 'delivered' "
+        "  AND s.delivered_at >= :start AND s.delivered_at < :end"
+        ") "
         "GROUP BY channel_key",
         "channel",
     ),

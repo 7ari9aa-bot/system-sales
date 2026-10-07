@@ -226,6 +226,88 @@ async def seed_tenant_defaults(
 
     created["metric_definitions"] = (await seed_definitions(session, tenant_id)) > 0
 
+    # --- canonical agent provisioning --------------------------------------
+    #
+    # Every new tenant must be born with the platform's canonical agents
+    # (Customer Service Agent and Sales Intelligence Agent) plus their default tools.
+    # Parameter-bound SQL avoids closing an identity <-> ai module import cycle
+    # (review G-16 / spec §137).
+    canonical_agents = [
+        (
+            "customer",
+            "مساعد المبيعات",
+            "Handles customer inquiries, catalog search, orders, tasks, and vision-based product matching.",
+            "fast",
+            "You are a helpful sales assistant.",
+            [
+                "search_products",
+                "get_variant_price",
+                "check_stock",
+                "create_order",
+                "get_customer",
+                "get_order",
+                "search_knowledge",
+                "add_task",
+                "add_tag",
+                "find_product_by_image",
+                "resolve_product_media",
+            ],
+        ),
+        (
+            "sales_intelligence",
+            "Sales Intelligence Agent",
+            "Analyzes sales data, metrics, trends, fulfillment, and drivers to provide actionable business intelligence.",
+            "strong",
+            "You are a senior sales & commercial intelligence analyst.",
+            [
+                "si_get_metric",
+                "si_compare_periods",
+                "si_breakdown",
+                "si_analyze_drivers",
+                "si_explain_metric",
+                "si_data_status",
+                "si_analyze_seasonality",
+                "si_analyze_customers",
+                "si_analyze_fulfillment",
+            ],
+        ),
+    ]
+
+    for kind, name, description, model, prompt, tools in canonical_agents:
+        agent_id = uuid.uuid4()
+        ins = await session.execute(
+            sa_text(
+                "INSERT INTO agents (id, tenant_id, kind, name, description, model, system_prompt, is_active, created_at, updated_at) "
+                "SELECT :id, :tenant_id, :kind, :name, :description, :model, :prompt, true, now(), now() "
+                "WHERE NOT EXISTS (SELECT 1 FROM agents WHERE tenant_id = :tenant_id AND kind = :kind)"
+            ),
+            {
+                "id": str(agent_id),
+                "tenant_id": str(tenant_id),
+                "kind": kind,
+                "name": name,
+                "description": description,
+                "model": model,
+                "prompt": prompt,
+            },
+        )
+        if ins.rowcount:
+            for tool_name in tools:
+                await session.execute(
+                    sa_text(
+                        "INSERT INTO agent_tools (id, tenant_id, agent_id, name, policy, is_active, created_at, updated_at) "
+                        "VALUES (:id, :tenant_id, :agent_id, :name, '{}', true, now(), now()) "
+                        "ON CONFLICT (tenant_id, agent_id, name) DO NOTHING"
+                    ),
+                    {
+                        "id": str(uuid.uuid4()),
+                        "tenant_id": str(tenant_id),
+                        "agent_id": str(agent_id),
+                        "name": tool_name,
+                    },
+                )
+    created["canonical_agents"] = True
+
     logger.info("tenant.seeded tenant=%s created=%s", tenant_id, created)
     return created
 

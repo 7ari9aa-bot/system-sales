@@ -1,6 +1,21 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
-import { Sparkles, ShieldCheck, Users, ListChecks, ShoppingBag, Repeat, Plus, Power, Check, X } from "lucide-react";
+import {
+  Sparkles,
+  ShieldCheck,
+  Users,
+  ListChecks,
+  ShoppingBag,
+  Repeat,
+  Plus,
+  Power,
+  Check,
+  X,
+  Cpu,
+  Layers,
+  Wrench,
+  CheckCircle2,
+} from "lucide-react";
 import { PageHeader, Badge, SectionCard } from "@/components/dashboard/ui";
 import useSalesStats from "@/hooks/useSalesStats";
 import useUsageSummary from "@/hooks/useUsageSummary";
@@ -46,7 +61,8 @@ export default function AI() {
   const [resolvedApprovals, setResolvedApprovals] = React.useState(() => new Set());
   const [busyAgent, setBusyAgent] = React.useState("");
   const [busyApproval, setBusyApproval] = React.useState("");
-  const [creatingAgent, setCreatingAgent] = React.useState(false);
+  const [showCatalog, setShowCatalog] = React.useState(false);
+  const [provisioningKind, setProvisioningKind] = React.useState("");
 
   const loadAgents = React.useCallback(async () => {
     try {
@@ -57,6 +73,15 @@ export default function AI() {
       setAgentError(error?.message || (isAr ? "تعذر تحميل الوكلاء" : "Could not load agents"));
     }
   }, [isAr]);
+
+  const loadKinds = React.useCallback(async () => {
+    try {
+      const rows = await apiCached(AGENT_KINDS_PATH, { ttlMs: 0 });
+      setAgentKinds(Array.isArray(rows) ? rows : []);
+    } catch {
+      // Fallback
+    }
+  }, []);
 
   React.useEffect(() => {
     let alive = true;
@@ -84,30 +109,26 @@ export default function AI() {
   const tokens = usage?.totals ? (usage.totals.tokens_in ?? 0) + (usage.totals.tokens_out ?? 0) : null;
   const cost = usage?.totals?.cost ?? null;
 
-  async function createAgent() {
-    const name = window.prompt(isAr ? "اسم الوكيل الجديد" : "Name for the new agent");
-    if (!name?.trim()) return;
-    
-    let kind = "customer";
-    if (agentKinds && agentKinds.length > 0) {
-      const kindsStr = agentKinds.map((k) => k.kind).join(", ");
-      const kindInput = window.prompt(
-        isAr ? `نوع الوكيل (${kindsStr})` : `Agent kind (${kindsStr})`,
-        "customer"
-      );
-      if (kindInput) kind = kindInput.trim();
-    }
-
-    setCreatingAgent(true);
+  async function provisionAgent(kindDef) {
+    setProvisioningKind(kindDef.kind);
     setAgentError("");
     try {
-      await api(AGENTS_PATH, { method: "POST", body: { name: name.trim(), kind } });
+      await api(AGENTS_PATH, {
+        method: "POST",
+        body: {
+          kind: kindDef.kind,
+          name: kindDef.name,
+          model: kindDef.default_model,
+          description: kindDef.description,
+        },
+      });
       invalidateCache(AGENTS_PATH);
       await loadAgents();
+      setShowCatalog(false);
     } catch (error) {
-      setAgentError(error?.message || (isAr ? "تعذر إنشاء الوكيل" : "Could not create agent"));
+      setAgentError(error?.message || (isAr ? "تعذر تهيئة الوكيل" : "Could not provision agent"));
     } finally {
-      setCreatingAgent(false);
+      setProvisioningKind("");
     }
   }
 
@@ -146,26 +167,39 @@ export default function AI() {
     }
   }
 
+  // Set of kinds already provisioned for this tenant
+  const provisionedKinds = new Set((agents || []).map((a) => a.kind));
+
   return (
     <div>
       <PageHeader
         title={t("ai.title")}
         subtitle={t("ai.subtitle")}
         actions={
-          <button type="button" onClick={createAgent} disabled={creatingAgent} className="h-9 px-3.5 rounded-lg bg-primary text-primary-foreground text-[13px] font-medium flex items-center gap-1.5 disabled:opacity-60">
-            <Plus className="h-4 w-4" /> {creatingAgent ? "…" : t("ai.new")}
+          <button
+            type="button"
+            onClick={() => setShowCatalog(!showCatalog)}
+            className="h-9 px-3.5 rounded-lg bg-primary text-primary-foreground text-[13px] font-medium flex items-center gap-1.5 shadow-sm hover:opacity-90 transition-opacity"
+          >
+            <Layers className="h-4 w-4" /> {isAr ? "كتالوج الوكلاء" : "Agent Catalog"}
           </button>
         }
       />
 
-      {live?.dashboardError && <div role="alert" className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-        <span>{live.dashboardError}</span>
-        <button type="button" onClick={live.retryDashboard} className="shrink-0 underline">{t("common.retry", "Retry")}</button>
-      </div>}
-      {usage?.error && <div role="status" className="mb-4 flex items-center justify-between gap-3 text-[11.5px] text-muted-foreground">
-        <span>{usage.error}</span>
-        <button type="button" onClick={usage.retry} className="shrink-0 text-primary hover:underline">{t("common.retry", "Retry")}</button>
-      </div>}
+      {live?.dashboardError && (
+        <div role="alert" className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <span>{live.dashboardError}</span>
+          <button type="button" onClick={live.retryDashboard} className="shrink-0 underline">{t("common.retry", "Retry")}</button>
+        </div>
+      )}
+      {usage?.error && (
+        <div role="status" className="mb-4 flex items-center justify-between gap-3 text-[11.5px] text-muted-foreground">
+          <span>{usage.error}</span>
+          <button type="button" onClick={usage.retry} className="shrink-0 text-primary hover:underline">{t("common.retry", "Retry")}</button>
+        </div>
+      )}
+
+      {/* Stats bar */}
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3.5 mb-5">
         <Stat icon={Repeat} label={t("ai.stat.conversations")} value={live?.openConversations == null ? "—" : live.openConversations.toLocaleString()} tone="accent" />
         <Stat icon={Sparkles} label={t("ai.stat.tokens")} value={tokens == null ? "—" : tokens.toLocaleString()} tone="primary" />
@@ -175,50 +209,165 @@ export default function AI() {
         <Stat icon={ShoppingBag} label={t("ai.stat.orders")} value={live?.aiOrders == null ? "—" : live.aiOrders.toLocaleString()} tone="muted" />
       </div>
 
+      {/* Agent Catalog Drawer / Modal */}
+      {showCatalog && (
+        <div className="mb-6 rounded-2xl border border-primary/20 bg-primary/5 p-5 shadow-sm transition-all">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-[16px] font-bold flex items-center gap-2">
+                <Layers className="h-5 w-5 text-primary" />
+                {isAr ? "كتالوج الوكلاء المتاحين في المنصة" : "Platform Agent Catalog"}
+              </h2>
+              <p className="text-[12px] text-muted-foreground mt-0.5">
+                {isAr
+                  ? "تعريفات الوكلاء الرسمية المسجلة في الـ Agent Registry. يتم تزويد كل وكيل تلقائيًا بحزمة أدواته وحدوده الأمنية."
+                  : "Standard agent definitions registered in the Agent Registry. Each agent is provisioned with its verified toolset."}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowCatalog(false)}
+              className="h-8 w-8 grid place-items-center rounded-lg hover:bg-surface text-muted-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-4">
+            {(agentKinds || []).map((kindDef) => {
+              const isProvisioned = provisionedKinds.has(kindDef.kind);
+              const isBusy = provisioningKind === kindDef.kind;
+
+              return (
+                <div
+                  key={kindDef.kind}
+                  className="rounded-xl border border-border bg-card p-4 flex flex-col justify-between hover:border-primary/40 transition-colors"
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-[15px]">{kindDef.name}</span>
+                        <span className="text-[10px] font-mono bg-surface px-1.5 py-0.5 rounded border border-border">
+                          {kindDef.kind}
+                        </span>
+                      </div>
+                      <Badge tone={isProvisioned ? "success" : "muted"}>
+                        {isProvisioned
+                          ? (isAr ? "تم التجهيز" : "Provisioned")
+                          : (isAr ? "متاح" : "Available")}
+                      </Badge>
+                    </div>
+
+                    <p className="text-[12px] text-muted-foreground mb-3 leading-relaxed">
+                      {kindDef.description || (isAr ? "لا يوجد وصف متوفر" : "No description")}
+                    </p>
+
+                    <div className="flex flex-wrap gap-1.5 mb-3">
+                      <span className="inline-flex items-center gap-1 text-[11px] font-medium bg-surface text-foreground px-2 py-0.5 rounded-md border border-border">
+                        <Cpu className="h-3 w-3 text-muted-foreground" />
+                        {kindDef.default_model}
+                      </span>
+                      <span className="inline-flex items-center gap-1 text-[11px] font-medium bg-surface text-foreground px-2 py-0.5 rounded-md border border-border">
+                        <Wrench className="h-3 w-3 text-muted-foreground" />
+                        {kindDef.allowed_tools?.length || 0} {isAr ? "أدوات مصرح بها" : "tools"}
+                      </span>
+                      {kindDef.definition_version && (
+                        <span className="text-[10px] font-mono text-muted-foreground bg-surface px-1.5 py-0.5 rounded border border-border">
+                          v{kindDef.definition_version}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-border flex items-center justify-between">
+                    <span className="text-[11px] text-muted-foreground">
+                      {kindDef.guardrail_profile ? `Guardrail: ${kindDef.guardrail_profile}` : ""}
+                    </span>
+                    {isProvisioned ? (
+                      <span className="inline-flex items-center gap-1 text-[12px] font-medium text-success">
+                        <CheckCircle2 className="h-4 w-4" /> {isAr ? "جاهز للاستخدام" : "Active & Ready"}
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        onClick={() => provisionAgent(kindDef)}
+                        className="h-8 px-3 rounded-lg bg-primary text-primary-foreground text-[12px] font-medium flex items-center gap-1.5 hover:opacity-90 disabled:opacity-50"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        {isBusy ? "…" : (isAr ? "تهيئة الوكيل" : "Provision Agent")}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Main sections */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <SectionCard title={t("ai.agents.title")} className="lg:col-span-2" bodyClassName="pt-1">
-          {agentError && <div role="alert" className="mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-[12px] text-destructive">{agentError}</div>}
+          {agentError && (
+            <div role="alert" className="mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-[12px] text-destructive">
+              {agentError}
+            </div>
+          )}
           <div className="space-y-3">
             {agents === null ? (
               <div className="py-8 text-center text-[13px] text-muted-foreground">
                 {agentError ? (
-                  <><span>{isAr ? "تعذر تحميل الوكلاء." : "Agents could not be loaded."}</span><button type="button" onClick={() => void loadAgents()} className="ml-3 text-primary hover:underline">{isAr ? "إعادة المحاولة" : "Retry"}</button></>
-                ) : (isAr ? "جارٍ تحميل الوكلاء…" : "Loading agents…")}
+                  <>
+                    <span>{isAr ? "تعذر تحميل الوكلاء." : "Agents could not be loaded."}</span>
+                    <button type="button" onClick={() => void loadAgents()} className="ml-3 text-primary hover:underline">
+                      {isAr ? "إعادة المحاولة" : "Retry"}
+                    </button>
+                  </>
+                ) : (
+                  isAr ? "جارٍ تحميل الوكلاء…" : "Loading agents…"
+                )}
               </div>
             ) : agents.length === 0 ? (
-              <div className="py-8 text-center text-[13px] text-muted-foreground">{isAr ? "لا توجد وكلاء بعد." : "No agents yet."}</div>
-            ) : agents.map((agent) => (
-              <div key={agent.id} className="flex items-center gap-3.5 p-3.5 rounded-xl border border-border hover:bg-surface/50 transition-colors">
-                <span className="h-10 w-10 shrink-0 rounded-xl bg-accent/10 text-accent grid place-items-center"><Sparkles className="h-5 w-5" /></span>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[14px] font-semibold truncate">{agent.name}</span>
-                    {agent.kind && (
-                      <span className="text-[10px] font-medium text-muted-foreground bg-surface px-1.5 py-0.5 rounded-md border border-border">
-                        {agent.kind}
-                      </span>
-                    )}
-                    <Badge tone={agent.is_active ? "success" : "muted"}>
-                      <span className={`h-1.5 w-1.5 rounded-full ${agent.is_active ? "bg-success" : "bg-muted-foreground"}`} />
-                      {agent.is_active ? t("ai.agents.active") : (isAr ? "متوقف" : "Inactive")}
-                    </Badge>
-                  </div>
-                  <div className="text-[12px] text-muted-foreground mt-0.5 truncate">
-                    {agent.description || agent.model || (isAr ? "لا يوجد وصف" : "No description")}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  aria-label={agent.is_active ? (isAr ? "إيقاف الوكيل" : "Deactivate agent") : (isAr ? "تفعيل الوكيل" : "Activate agent")}
-                  title={agent.is_active ? (isAr ? "إيقاف الوكيل" : "Deactivate agent") : (isAr ? "تفعيل الوكيل" : "Activate agent")}
-                  disabled={busyAgent === agent.id}
-                  onClick={() => toggleAgent(agent)}
-                  className="h-8 w-8 grid place-items-center rounded-lg hover:bg-surface text-muted-foreground disabled:opacity-50"
-                >
-                  <Power className="h-4 w-4" />
-                </button>
+              <div className="py-8 text-center text-[13px] text-muted-foreground">
+                {isAr ? "لا توجد وكلاء بعد. افتح كتالوج الوكلاء لتجهيز الوكلاء المطلوبين." : "No agents yet. Open the Agent Catalog to provision."}
               </div>
-            ))}
+            ) : (
+              agents.map((agent) => (
+                <div key={agent.id} className="flex items-center gap-3.5 p-3.5 rounded-xl border border-border hover:bg-surface/50 transition-colors">
+                  <span className="h-10 w-10 shrink-0 rounded-xl bg-accent/10 text-accent grid place-items-center">
+                    <Sparkles className="h-5 w-5" />
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[14px] font-semibold truncate">{agent.name}</span>
+                      {agent.kind && (
+                        <span className="text-[10px] font-mono text-muted-foreground bg-surface px-1.5 py-0.5 rounded-md border border-border">
+                          {agent.kind}
+                        </span>
+                      )}
+                      <Badge tone={agent.is_active ? "success" : "muted"}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${agent.is_active ? "bg-success" : "bg-muted-foreground"}`} />
+                        {agent.is_active ? t("ai.agents.active") : (isAr ? "متوقف" : "Inactive")}
+                      </Badge>
+                    </div>
+                    <div className="text-[12px] text-muted-foreground mt-0.5 truncate">
+                      {agent.description || agent.model || (isAr ? "لا يوجد وصف" : "No description")}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label={agent.is_active ? (isAr ? "إيقاف الوكيل" : "Deactivate agent") : (isAr ? "تفعيل الوكيل" : "Activate agent")}
+                    title={agent.is_active ? (isAr ? "إيقاف الوكيل" : "Deactivate agent") : (isAr ? "تفعيل الوكيل" : "Activate agent")}
+                    disabled={busyAgent === agent.id}
+                    onClick={() => toggleAgent(agent)}
+                    className="h-8 w-8 grid place-items-center rounded-lg hover:bg-surface text-muted-foreground disabled:opacity-50"
+                  >
+                    <Power className="h-4 w-4" />
+                  </button>
+                </div>
+              ))
+            )}
           </div>
         </SectionCard>
 
@@ -230,10 +379,12 @@ export default function AI() {
             </div>
             <p className="text-[12px] text-muted-foreground mt-1.5 leading-relaxed">{t("ai.approvals.body")}</p>
             {approvalError && <div role="alert" className="mt-2 text-[11px] text-destructive">{approvalError}</div>}
-            {approvals?.error && <div role="alert" className="mt-2 flex items-center justify-between gap-2 text-[11px] text-destructive">
-              <span>{approvals.error}</span>
-              <button type="button" onClick={approvals.retry} className="shrink-0 underline">{t("common.retry", "Retry")}</button>
-            </div>}
+            {approvals?.error && (
+              <div role="alert" className="mt-2 flex items-center justify-between gap-2 text-[11px] text-destructive">
+                <span>{approvals.error}</span>
+                <button type="button" onClick={approvals.retry} className="shrink-0 underline">{t("common.retry", "Retry")}</button>
+              </div>
+            )}
             {approvals == null ? (
               <div role="status" className="mt-3 text-[12px] text-muted-foreground">{t("common.loading", "Loading…")}</div>
             ) : approvals.error ? null : pendingItems.length === 0 ? (
@@ -250,7 +401,9 @@ export default function AI() {
                     </div>
                   </div>
                 ))}
-                {pendingItems.length > 5 && <button type="button" onClick={() => navigate("/inbox")} className="w-full text-center text-[11px] text-primary hover:underline">{isAr ? "عرض بقية الموافقات" : "View remaining approvals"}</button>}
+                {pendingItems.length > 5 && (
+                  <button type="button" onClick={() => navigate("/inbox")} className="w-full text-center text-[11px] text-primary hover:underline">{isAr ? "عرض بقية الموافقات" : "View remaining approvals"}</button>
+                )}
               </div>
             )}
           </div>

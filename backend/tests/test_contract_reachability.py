@@ -535,7 +535,6 @@ TABLES_NEVER_READ: dict[str, str] = {
     "Automation": "platform — superseded by automation/workflows; no writer, no reader.",
     # Written by a live path, read by nothing: the row is a receipt, not a source.
     "DeliveryAttempt": "§130 — message_worker writes one row per attempt; nobody reads it.",
-    "AIHandover": "ai/hooks + runtime write handover rows; no surface lists them.",
     "WorkflowFailure": "automation/service writes failures a dispatcher never reads.",
     "Assignment": "conversations/service writes assignments; no read model serves them.",
     "TemplateApproval": "§templates — approval rows never checked at send.",

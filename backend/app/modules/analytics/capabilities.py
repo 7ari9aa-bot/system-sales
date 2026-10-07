@@ -54,10 +54,14 @@ class EvidenceStore:
     _seq: int = 0
 
     def add_fact(self, fact: MetricFact) -> str:
-        self._seq += 1
-        registered = fact.model_copy(update={"id": f"F{self._seq}"})
-        self.facts[registered.id] = registered
-        return registered.id
+        if fact.id and fact.id not in ("F0", ""):
+            fid = fact.id
+        else:
+            self._seq += 1
+            fid = f"F{self._seq}"
+        registered = fact.model_copy(update={"id": fid})
+        self.facts[fid] = registered
+        return fid
 
     def add_comparison(self, comparison: Comparison) -> str:
         self._seq += 1

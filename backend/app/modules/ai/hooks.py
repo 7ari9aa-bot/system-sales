@@ -77,11 +77,28 @@ async def _do_auto_reply(
         session, tenant_id, conversation_id, limit=HISTORY_MESSAGES
     )
     last_inbound = next(
-        (m for m in reversed(history) if m.direction == "inbound" and m.body), None
+        (
+            m
+            for m in reversed(history)
+            if m.direction == "inbound"
+            and (m.body or m.media_url or m.content_type in ("image", "voice", "file"))
+        ),
+        None,
     )
-    if last_inbound is None or not last_inbound.body:
+    if last_inbound is None:
         return
-    user_body = last_inbound.body
+
+    # Support multimodal / attachment-only intake: if body is absent, use placeholder
+    if last_inbound.body and last_inbound.body.strip():
+        user_body = last_inbound.body.strip()
+    elif last_inbound.content_type == "image" or (last_inbound.media_type and "image" in last_inbound.media_type):
+        user_body = "[Customer sent an image]"
+    elif last_inbound.content_type == "voice" or (last_inbound.media_type and "audio" in last_inbound.media_type):
+        user_body = "[Customer sent a voice note]"
+    elif last_inbound.media_url:
+        user_body = f"[Customer sent an attachment: {last_inbound.content_type}]"
+    else:
+        return
 
     conversation = await ConversationService.get(session, tenant_id, conversation_id)
     # A6: never talk over a human. When the conversation is closed, paused or
@@ -163,6 +180,13 @@ async def _do_auto_reply(
                 note=f"guardrail:{result.guardrail_reason}",
             )
         )
+        await session.execute(
+            text(
+                "UPDATE conversations SET status = 'waiting_human' "
+                "WHERE id = :cid AND tenant_id = :tid"
+            ),
+            {"cid": str(conversation_id), "tid": str(tenant_id)},
+        )
         logger.warning(
             "ai.guardrail_blocked conversation=%s reason=%s",
             conversation_id,
@@ -198,6 +222,13 @@ async def _do_auto_reply(
                 status="pending",
                 note=f"policy:{exc.message}",
             )
+        )
+        await session.execute(
+            text(
+                "UPDATE conversations SET status = 'waiting_human' "
+                "WHERE id = :cid AND tenant_id = :tid"
+            ),
+            {"cid": str(conversation_id), "tid": str(tenant_id)},
         )
         logger.warning(
             "ai.reply_blocked_by_policy conversation=%s reason=%s",

@@ -579,6 +579,7 @@ class AgentRunner:
             # handover so a human picks it up.
             if conversation_id is not None:
                 from app.modules.ai.models import AIHandover
+                from sqlalchemy import text
 
                 session.add(
                     AIHandover(
@@ -589,6 +590,13 @@ class AgentRunner:
                         status="pending",
                         note=f"run_limit:{hit_limit}",
                     )
+                )
+                await session.execute(
+                    text(
+                        "UPDATE conversations SET status = 'waiting_human' "
+                        "WHERE id = :cid AND tenant_id = :tid"
+                    ),
+                    {"cid": str(conversation_id), "tid": str(tenant_id)},
                 )
             await session.flush()
             logger.warning("ai.run_limit_hit run=%s limit=%s", run.id, hit_limit)
@@ -603,6 +611,7 @@ class AgentRunner:
             # over rather than the customer staring at silence.
             if conversation_id is not None:
                 from app.modules.ai.models import AIHandover
+                from sqlalchemy import text
 
                 session.add(
                     AIHandover(
@@ -613,6 +622,13 @@ class AgentRunner:
                         status="pending",
                         note="run_limit:max_steps",
                     )
+                )
+                await session.execute(
+                    text(
+                        "UPDATE conversations SET status = 'waiting_human' "
+                        "WHERE id = :cid AND tenant_id = :tid"
+                    ),
+                    {"cid": str(conversation_id), "tid": str(tenant_id)},
                 )
             await session.flush()
             logger.warning("ai.run_limit_hit run=%s limit=max_steps", run.id)

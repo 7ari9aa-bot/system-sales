@@ -198,3 +198,27 @@ class StoreMetricProfile:
 
 def freshness_policies() -> dict[str, FreshnessPolicy]:
     return {name: d.freshness_policy for name, d in _registry.items()}
+
+
+async def load_store_metric_profile(
+    session: Any, tenant_id: Any
+) -> StoreMetricProfile:
+    """Load store metric profile from persistent settings if configured,
+    otherwise falling back to default StoreMetricProfile."""
+    from sqlalchemy import text
+
+    try:
+        row = (
+            await session.execute(
+                text(
+                    "SELECT value FROM platform_settings WHERE tenant_id = :tid AND key = 'primary_sales_metric'"
+                ),
+                {"tid": str(tenant_id)},
+            )
+        ).scalar_one_or_none()
+        if row and row in _registry:
+            return StoreMetricProfile(primary_sales_metric=row)
+    except Exception:
+        pass
+    return StoreMetricProfile()
+

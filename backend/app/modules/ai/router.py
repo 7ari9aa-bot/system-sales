@@ -36,7 +36,7 @@ from app.modules.ai.agents.sales_intelligence.agent import (
     FindingStoredOut,
 )
 from app.modules.ai.approvals import ApprovalService
-from app.modules.ai.models import Agent, AIUsage, KnowledgeItem, Memory
+from app.modules.ai.models import Agent, AIHandover, AIUsage, KnowledgeItem, Memory
 from app.modules.ai.policy import AIProviderPolicyService
 from app.modules.ai.schemas import (
     AgentCreateRequest,
@@ -48,6 +48,8 @@ from app.modules.ai.schemas import (
     ApprovalList,
     EvaluationList,
     EvaluationOut,
+    HandoverList,
+    HandoverOut,
     KnowledgeIngested,
     KnowledgeIngestRequest,
     KnowledgeList,
@@ -130,6 +132,7 @@ async def list_agent_kinds(ctx: TenantCtxDep) -> list[AgentKindOut]:
             kind=defn.kind,
             name=defn.name,
             description=defn.description,
+            definition_version=defn.definition_version,
             default_model=defn.default_model,
             capabilities=[
                 AgentCapabilityOut(name=c.name, description=c.description, required=c.required)
@@ -884,3 +887,107 @@ async def approve_evaluation(agent_version_id: uuid.UUID, ctx: SettingsCtx):
         ctx.session, ctx.tenant_id, agent_version_id
     )
     return _evaluation_out(ev)
+
+
+# ---------- §37/§150 Handover queue & workflow ----------
+
+
+@router.get("/handovers", response_model=HandoverList)
+async def list_handovers(
+    ctx: TenantCtxDep,
+    status: Annotated[str | None, Query(description="Filter by pending | claimed | resolved")] = None,
+):
+    query = select(AIHandover).where(AIHandover.tenant_id == ctx.tenant_id)
+    if status:
+        query = query.where(AIHandover.status == status)
+    query = query.order_by(AIHandover.created_at.desc())
+    rows = (await ctx.session.execute(query)).scalars().all()
+    return {
+        "items": [
+            HandoverOut(
+                id=h.id,
+                conversation_id=h.conversation_id,
+                run_id=h.run_id,
+                reason=h.reason,
+                status=h.status,
+                claimed_by_user_id=h.claimed_by_user_id,
+                note=h.note,
+                created_at=h.created_at.isoformat() if h.created_at else None,
+            )
+            for h in rows
+        ],
+        "total": len(rows),
+    }
+
+
+@router.post("/handovers/{handover_id}/claim", response_model=HandoverOut)
+async def claim_handover(
+    handover_id: uuid.UUID,
+    ctx: TenantCtxDep,
+):
+    from sqlalchemy import text
+
+    handover = (
+        await ctx.session.execute(
+            select(AIHandover).where(
+                AIHandover.id == handover_id,
+                AIHandover.tenant_id == ctx.tenant_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if not handover:
+        raise NotFoundError("handover not found")
+    handover.status = "claimed"
+    handover.claimed_by_user_id = ctx.user_id
+    await ctx.session.execute(
+        text(
+            "UPDATE conversations SET assignee_user_id = :uid "
+            "WHERE id = :cid AND tenant_id = :tid"
+        ),
+        {
+            "uid": str(ctx.user_id),
+            "cid": str(handover.conversation_id),
+            "tid": str(ctx.tenant_id),
+        },
+    )
+    await ctx.session.flush()
+    return HandoverOut(
+        id=handover.id,
+        conversation_id=handover.conversation_id,
+        run_id=handover.run_id,
+        reason=handover.reason,
+        status=handover.status,
+        claimed_by_user_id=handover.claimed_by_user_id,
+        note=handover.note,
+        created_at=handover.created_at.isoformat() if handover.created_at else None,
+    )
+
+
+@router.post("/handovers/{handover_id}/resolve", response_model=HandoverOut)
+async def resolve_handover(
+    handover_id: uuid.UUID,
+    ctx: TenantCtxDep,
+):
+    handover = (
+        await ctx.session.execute(
+            select(AIHandover).where(
+                AIHandover.id == handover_id,
+                AIHandover.tenant_id == ctx.tenant_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if not handover:
+        raise NotFoundError("handover not found")
+    handover.status = "resolved"
+    await ctx.session.flush()
+    return HandoverOut(
+        id=handover.id,
+        conversation_id=handover.conversation_id,
+        run_id=handover.run_id,
+        reason=handover.reason,
+        status=handover.status,
+        claimed_by_user_id=handover.claimed_by_user_id,
+        note=handover.note,
+        created_at=handover.created_at.isoformat() if handover.created_at else None,
+    )
+
