@@ -75,3 +75,7 @@ vibe_images/
 # pytest scratch dirs (unreadable under lock on Windows)
 .pytest-temp-*/
 pytest-of-*/
+
+# Deploy/build artifacts (owner tooling snapshots) — never part of the tree
+.codex/
+Dashboard-Frontend.zip

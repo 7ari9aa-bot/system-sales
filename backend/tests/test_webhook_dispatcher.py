@@ -22,13 +22,16 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import uuid
 
 import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.platform.models import WebhookDelivery, WebhookEndpoint
-from app.modules.platform.service import WebhookDispatcher
+from app.core.errors import NotFoundError, ValidationError
+from app.modules.platform.models import WebhookDelivery, WebhookEndpoint, WebhookEvent
+from app.modules.platform.router import admin_retry_webhook_event
+from app.modules.platform.service import WebhookDispatcher, WebhookService
 
 SECRET = "whsec-0123456789abcdef"
 
@@ -209,3 +212,227 @@ async def test_sign_is_stable_for_the_same_inputs():
     assert first == WebhookDispatcher.sign(SECRET, body, 1_700_000_000)
     assert first.startswith("sha256=")
     assert len(first) == len("sha256=") + 64
+
+
+# ---------------------------------------------------------------------------
+# Package 2.1 — the registry surface behind the endpoints (create/rotate/
+# deactivate): secret shown once, tenant-scoped, audited, SSRF-gated.
+# ---------------------------------------------------------------------------
+
+
+async def test_registration_rejects_internal_targets_before_any_row(db, tenant_ctx):
+    """S6 at the registry: an internal/metadata URL is refused at registration
+    (real net_guard, no stub) and NO endpoint row is created."""
+    from sqlalchemy import func, select
+
+    with pytest.raises(ValidationError):
+        await WebhookService.register_endpoint(
+            db,
+            tenant_ctx.tenant_id,
+            url="http://169.254.169.254/latest/meta-data/",
+            events=["order.created"],
+        )
+    stored = (
+        await db.execute(
+            select(func.count(WebhookEndpoint.id)).where(
+                WebhookEndpoint.tenant_id == tenant_ctx.tenant_id
+            )
+        )
+    ).scalar_one()
+    assert stored == 0
+
+
+async def test_registration_issues_a_secret_once_and_audits(db, tenant_ctx, _bypass_dns_guard):
+    from sqlalchemy import select
+
+    from app.modules.platform.models import AuditLog
+
+    endpoint = await WebhookService.register_endpoint(
+        db,
+        tenant_ctx.tenant_id,
+        url="https://receiver.example.test/hooks",
+        events=["order.created"],
+        actor_user_id=tenant_ctx.user.id,
+    )
+
+    assert len(endpoint.secret) == 64  # two uuid4 hexes, server-minted
+    audits = (
+        (
+            await db.execute(
+                select(AuditLog).where(
+                    AuditLog.action == "webhook_endpoint.registered",
+                    AuditLog.resource_id == str(endpoint.id),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(audits) == 1
+    assert audits[0].actor_user_id == tenant_ctx.user.id
+    # The audit trail records target + filter, never the secret.
+    assert endpoint.secret not in str(audits[0].after)
+
+
+async def test_rotation_replaces_the_secret_exactly_once_and_audits(db, tenant_ctx, _bypass_dns_guard):
+    """Rotate returns a NEW secret on the row (the router surfaces it once);
+    the old secret is gone in the same flush, and the audit row records the
+    rotation without ever carrying the new secret."""
+    from sqlalchemy import select
+
+    from app.modules.platform.models import AuditLog
+
+    endpoint = await WebhookService.register_endpoint(
+        db,
+        tenant_ctx.tenant_id,
+        url="https://receiver.example.test/hooks",
+        events=["order.created"],
+    )
+    old_secret = endpoint.secret
+
+    rotated = await WebhookService.rotate_endpoint_secret(
+        db, tenant_ctx.tenant_id, endpoint.id, actor_user_id=tenant_ctx.user.id
+    )
+
+    assert rotated.id == endpoint.id
+    assert rotated.secret != old_secret
+    assert len(rotated.secret) == 64
+    audits = (
+        (
+            await db.execute(
+                select(AuditLog).where(
+                    AuditLog.action == "webhook_endpoint.secret_rotated",
+                    AuditLog.resource_id == str(endpoint.id),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(audits) == 1
+    assert old_secret not in str(audits[0].after)
+    assert rotated.secret not in str(audits[0].after)
+
+
+async def test_rotation_and_deactivation_are_tenant_scoped(db, tenant_ctx, _bypass_dns_guard):
+    """Another tenant's endpoint id answers 404 — its very existence is not
+    the caller's business — and cannot be rotated or deactivated."""
+    endpoint = await WebhookService.register_endpoint(
+        db,
+        tenant_ctx.tenant_id,
+        url="https://receiver.example.test/hooks",
+        events=[],
+    )
+    stranger_tenant = uuid.uuid4()
+
+    with pytest.raises(NotFoundError):
+        await WebhookService.rotate_endpoint_secret(db, stranger_tenant, endpoint.id)
+    with pytest.raises(NotFoundError):
+        await WebhookService.deactivate_endpoint(db, stranger_tenant, endpoint.id)
+    # The row is untouched by the refused stranger calls.
+    assert endpoint.is_active is True
+
+
+async def test_deactivation_is_soft_idempotent_and_audited_once(db, tenant_ctx, _bypass_dns_guard):
+    from sqlalchemy import func, select
+
+    from app.modules.platform.models import AuditLog
+
+    endpoint = await WebhookService.register_endpoint(
+        db,
+        tenant_ctx.tenant_id,
+        url="https://receiver.example.test/hooks",
+        events=[],
+    )
+
+    await WebhookService.deactivate_endpoint(
+        db, tenant_ctx.tenant_id, endpoint.id, actor_user_id=tenant_ctx.user.id
+    )
+    # Repeat DELETE is idempotent: no second audit row, no error.
+    await WebhookService.deactivate_endpoint(
+        db, tenant_ctx.tenant_id, endpoint.id, actor_user_id=tenant_ctx.user.id
+    )
+
+    assert endpoint.is_active is False
+    assert endpoint.secret  # the row stays — the delivery history keeps its FK
+    audits = (
+        await db.execute(
+            select(func.count(AuditLog.id)).where(
+                AuditLog.action == "webhook_endpoint.deactivated",
+                AuditLog.resource_id == str(endpoint.id),
+            )
+        )
+    ).scalar_one()
+    assert audits == 1
+
+
+async def test_the_admin_retry_never_replays_an_unverified_row(db, tenant_ctx):
+    """Fail-closed on the relay: the replay path re-runs ingest WITHOUT a fresh
+    signature check, so a row that was never proven provider-signed (the flag
+    the ingress router stamps) must be refused by the platform-admin surface
+    instead of being turned back into messages."""
+    row = WebhookEvent(
+        provider="whatsapp",
+        external_event_id=f"evt-{uuid.uuid4().hex[:16]}",
+        tenant_id=tenant_ctx.tenant_id,
+        signature_valid=False,
+        payload={"signed": "nowhere"},
+        processing_status="failed",
+        attempts=1,
+    )
+    db.add(row)
+    await db.flush()
+
+    from tests.test_webhook_retry import _admin_ctx
+
+    with pytest.raises(ValidationError, match="signature"):
+        await admin_retry_webhook_event(_admin_ctx(tenant_ctx), row.id)
+
+
+def _permission_codes(routes, path: str, method: str) -> set[str]:
+    """RBAC codes a route declares, found by walking its dependency tree."""
+    for route in routes:
+        if route.path == path and method in route.methods:
+            codes: set[str] = set()
+            stack = list(route.dependant.dependencies)
+            while stack:
+                dependant = stack.pop()
+                code = getattr(dependant.call, "code", None)
+                if code:
+                    codes.add(code)
+                stack.extend(dependant.dependencies)
+            return codes
+    raise AssertionError(f"{method} {path} is not routed")
+
+
+def test_the_registry_routes_stay_permission_gated():
+    """Every registry mutation is a settings:write act (an unguarded endpoint
+    registry is a credential surface), and the only read is a settings:read
+    that can never see a secret."""
+    from app.modules.billing.router import webhooks_router
+
+    assert _permission_codes(webhooks_router.routes, "/webhook-endpoints", "POST") == {
+        "settings:write"
+    }
+    assert _permission_codes(webhooks_router.routes, "/webhook-endpoints", "GET") == {
+        "settings:read"
+    }
+    assert _permission_codes(
+        webhooks_router.routes, "/webhook-endpoints/{endpoint_id}/rotate", "POST"
+    ) == {"settings:write"}
+    assert _permission_codes(
+        webhooks_router.routes, "/webhook-endpoints/{endpoint_id}", "DELETE"
+    ) == {"settings:write"}
+
+
+def test_no_registry_read_response_declares_a_secret():
+    """The show-once contract at the schema level: only the create/rotate
+    models carry a ``secret`` field — the list/deleted models must not, so no
+    read can ever be widened into a secret dump."""
+    from app.modules.billing import router as billing_router_module
+    from app.modules.billing.router import WebhookEndpointCreated, WebhookEndpointOut
+
+    assert "secret" in WebhookEndpointCreated.model_fields
+    assert "secret" not in WebhookEndpointOut.model_fields
+    assert "secret" in billing_router_module.WebhookEndpointRotated.model_fields
+    assert "secret" not in billing_router_module.WebhookEndpointDeleted.model_fields

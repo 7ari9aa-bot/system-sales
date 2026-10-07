@@ -65,9 +65,20 @@ def _patch_httpx(monkeypatch: pytest.MonkeyPatch, handler) -> None:
 
 def _configured_port() -> ObjectStorage:
     port = ObjectStorage()
+    # HERMETIC by force: ObjectStorage() reads the ambient settings, and this
+    # repo's real .env carries a live Supabase project — an un-overridden
+    # attribute here meant the "failing put" test fired REAL HTTP at the
+    # PRODUCTION storage bucket. Pin the whole attribute surface and the S3
+    # branch explicitly so the test can only ever talk to its own mock.
     port._bucket = "bucket"
+    port._endpoint = "https://s3.test"
+    port._region = "us-east-1"
     port._key = "key"
     port._secret = "secret"
+    port._supabase_url = ""
+    port._supabase_key = ""
+    port._rest_client = None
+    port._signed_url_cache = {}
     assert port.configured
     return port
 

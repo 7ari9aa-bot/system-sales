@@ -35,18 +35,27 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.main import create_app
+from app.core.ids import uuid7
 from app.modules.identity.deps import AuthedUser, TenantContext, get_db, get_tenant_ctx
 from app.modules.platform.models import FeatureFlag, SavedView, WebhookEvent
 from app.modules.platform.router import router as platform_router
+from app.modules.platform.tenant_restore import TenantRestoreJob
 
 API = "/api/v1/platform"
 TENANT = uuid.UUID("11111111-1111-1111-1111-111111111111")
 USER = uuid.UUID("22222222-2222-2222-2222-222222222222")
+OTHER = uuid.UUID("33333333-3333-3333-3333-333333333333")
 
 #: The measured size of the module's HTTP surface. A route added or removed
 #: here changes the gap-register claim P8 is written against, so it must be an
 #: explicit edit rather than a silent drift.
-PLATFORM_ROUTE_COUNT = 31
+#: 31 -> 34 on 2026-10-06 (package 2.2): the outbox ledger (§19) and the audit
+#: trail (§66) gain their operator read surfaces — ``GET /platform/outbox-events``
+#: plus ``GET /platform/outbox-events/{event_id}`` (the payload body is fetched
+#: per row, not listed) and ``GET /platform/audit-logs``. Both tables had
+#: writers and ZERO readers, the Wave C failure mode; all three routes are
+#: ``settings:read``-gated and typed.
+PLATFORM_ROUTE_COUNT = 34
 
 
 # --------------------------------------------------------------------------- harness
@@ -99,6 +108,12 @@ class _RecordingSession:
         self.added.append(instance)
 
     async def flush(self) -> None:
+        # A route handler flushes to obtain server-side defaults — chiefly the
+        # uuid7 primary key. Assign it here so response models that declare a
+        # UUID id validate instead of serializing the string "None".
+        for instance in self.added:
+            if getattr(instance, "id", None) is None:
+                instance.id = uuid7()
         return None
 
     async def delete(self, _instance: Any) -> None:
@@ -563,3 +578,179 @@ async def test_total_reports_the_filtered_size_not_the_page_size(db, tenant_ctx)
     body = response.json()
     assert body["total"] == 3
     assert len(body["items"]) == 2
+
+
+# ---------------------------------------------------------------- flags: writes
+#
+# §76: a flag is a rollout switch. Flipping one is tenant configuration, so the
+# write is gated and validated, and a value the write path cannot produce must
+# never widen a rollout (the read-side fail-closed half lives in
+# tests/test_flags_metrics.py).
+
+
+async def test_flag_writes_require_settings_write() -> None:
+    response, session = await _call(
+        "PUT", f"{API}/flags/voice.enabled", [], permissions=set(), body={"enabled": True}
+    )
+
+    assert response.status_code == 403, response.text
+    assert session.statements == [], "a refused flag write must not reach the database"
+
+
+async def test_flag_upsert_persists_the_validated_row() -> None:
+    row = FeatureFlag(
+        tenant_id=TENANT, feature="voice.enabled", enabled=True, rollout_percent=100
+    )
+    response, session = await _call(
+        "PUT",
+        f"{API}/flags/voice.enabled",
+        [row],
+        permissions={"settings:write"},
+        body={"enabled": True, "rollout_percent": 37},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["feature"] == "voice.enabled"
+    assert session.statements, "an accepted upsert is a real write"
+    # The harness's session echoes its seeded row, so the write contract is
+    # pinned on the STATEMENT: the converging upsert keyed on the tenant's
+    # (tenant_id, feature) carrying exactly the values the operator sent.
+    upsert = session.statements[-1].compile()
+    assert "ON CONFLICT" in str(upsert)
+    assert any(value == 37 for value in upsert.params.values()), (
+        f"the requested rollout_percent=37 never reached the write: {upsert.params}"
+    )
+
+
+async def test_an_out_of_range_rollout_is_refused_without_touching_the_db() -> None:
+    response, session = await _call(
+        "PUT",
+        f"{API}/flags/voice.enabled",
+        [],
+        permissions={"settings:write"},
+        body={"rollout_percent": 101},
+    )
+
+    assert response.status_code == 422, response.text
+    assert session.statements == []
+
+
+async def test_an_oversized_feature_name_is_refused_without_touching_the_db() -> None:
+    """The feature column is String(127); a longer name is a 400, not a
+    database error surfacing as a 500."""
+    response, session = await _call(
+        "PUT",
+        f"{API}/flags/{'x' * 128}",
+        [],
+        permissions={"settings:write"},
+        body={"enabled": True},
+    )
+
+    assert response.status_code == 400, response.text
+    assert session.statements == []
+
+
+# ------------------------------------------------------------ saved views: reads
+
+
+async def test_a_missing_saved_view_is_404() -> None:
+    response, _ = await _call(
+        "GET", f"{API}/saved-views/{uuid.uuid4()}", [], permissions=set()
+    )
+
+    assert response.status_code == 404, response.text
+
+
+async def test_another_users_private_view_is_404_not_403() -> None:
+    """A private view's very existence is private information: the 404 masks
+    it rather than confirming the row with a 403."""
+    response, _ = await _call(
+        "GET",
+        f"{API}/saved-views/{uuid.uuid4()}",
+        [_saved_view(owner_user_id=OTHER)],
+        permissions=set(),
+    )
+
+    assert response.status_code == 404, response.text
+
+
+async def test_saved_view_reads_are_scoped_to_the_caller_tenant() -> None:
+    """The list is tenant-scoped AND filters other users' private views in SQL
+    — never returned and left for the client to hide."""
+    response, session = await _call(
+        "GET", f"{API}/saved-views", [_saved_view()], permissions=set()
+    )
+
+    assert response.status_code == 200, response.text
+    where = _sql_with(session, "saved_views").split("WHERE", 1)[1]
+    assert "saved_views.tenant_id" in where, "the read is not tenant-filtered"
+    assert "owner_user_id" in where, "another user's private views are not filtered in SQL"
+
+
+# ---------------------------------------------------------- §164 tenant restores
+#
+# Restoring tombstoned rows is the highest-stakes tenant write in the module,
+# so every mutating route is settings:write-gated, and the job is ALWAYS bound
+# to the caller's own tenant: the wire carries no target field, so no payload
+# can aim a restore at another tenant (the service still fails closed on a
+# mismatched target — tests/test_tenant_restore.py). A cross-tenant restore
+# operation does not exist on this surface; the §160 admin plane has none
+# either, by design (ADR-040 scopes restore to the tenant itself).
+
+
+@pytest.mark.parametrize(
+    ("path", "needs_body"),
+    [
+        (f"{API}/tenant-restores", False),
+        (f"{API}/tenant-restores/{uuid.uuid4()}/extract", False),
+        (f"{API}/tenant-restores/{uuid.uuid4()}/validate", False),
+        (f"{API}/tenant-restores/{uuid.uuid4()}/execute", False),
+    ],
+    ids=["create", "extract", "validate", "execute"],
+)
+async def test_tenant_restore_writes_require_settings_write(
+    path: str, needs_body: bool
+) -> None:
+    response, session = await _call(
+        "POST", path, [], permissions=set(), body={"x": 1} if needs_body else None
+    )
+
+    assert response.status_code == 403, response.text
+    assert session.statements == [], "a refused restore step must not reach the database"
+
+
+async def test_a_restore_job_is_always_bound_to_the_caller_tenant() -> None:
+    """The created job's tenant AND its target ARE the caller's tenant."""
+    response, session = await _call(
+        "POST",
+        f"{API}/tenant-restores",
+        [],
+        permissions={"settings:write"},
+        body={"backup_point": "2026-10-01T00:00:00Z", "entity_types": ["customers"]},
+    )
+
+    assert response.status_code == 201, response.text
+    jobs = [row for row in session.added if isinstance(row, TenantRestoreJob)]
+    assert len(jobs) == 1, "creating a job stages exactly one job row"
+    job = jobs[0]
+    assert job.tenant_id == TENANT
+    assert job.target_tenant_id == TENANT
+    assert job.status == "pending"
+    assert job.entity_types == ["customers"]
+
+
+async def test_a_restore_job_for_an_unsupported_entity_is_refused_at_the_edge() -> None:
+    """The m16 fail-fast gate: an unknown entity type is a 400 before any
+    staging work, not a per-entity error deep inside the job."""
+    response, session = await _call(
+        "POST",
+        f"{API}/tenant-restores",
+        [],
+        permissions={"settings:write"},
+        body={"backup_point": "2026-10-01T00:00:00Z", "entity_types": ["invoices"]},
+    )
+
+    assert response.status_code == 400, response.text
+    assert not [row for row in session.added if isinstance(row, TenantRestoreJob)], (
+        "a refused restore request must not stage a job row"
+    )

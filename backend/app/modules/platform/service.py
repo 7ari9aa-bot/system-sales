@@ -374,6 +374,24 @@ class NotificationDispatcher:
 
 
 class WebhookService:
+    """The tenant-owned outbound webhook registry (§148).
+
+    Lifecycle contract, fail-closed by construction:
+
+    * ``register_endpoint`` mints a signing secret that the caller receives
+      EXACTLY once (in the register response) — no read path ever returns a
+      secret again, so a leaked response cannot be salvaged from the API.
+    * ``rotate_endpoint_secret`` replaces the secret and returns the NEW one
+      exactly once. ``webhooks.secret`` is a single column, so there is no
+      dual-acceptance grace period: the old secret stops verifying the moment
+      the new one is minted, and the rotate response is the only place the new
+      value exists.
+    * ``deactivate_endpoint`` is a soft delete (``is_active=False``): the
+      dispatcher skips inactive endpoints without contacting them, and the
+      delivery ledger keeps its rows — nothing disappears.
+    * Every registry mutation is audited (§66) with the acting user attached.
+    """
+
     @staticmethod
     async def register_endpoint(
         session,
@@ -381,6 +399,7 @@ class WebhookService:
         *,
         url: str,
         events: list[str],
+        actor_user_id: uuid.UUID | None = None,
     ) -> WebhookEndpoint:
         # S6: reject internal/metadata targets at registration time so a tenant
         # cannot turn our delivery worker into an SSRF proxy. Re-validated at
@@ -394,6 +413,117 @@ class WebhookService:
         )
         session.add(endpoint)
         await session.flush()
+        # §66: registration is a credential-bearing configuration act — the
+        # audit row carries the target and event filter, never the secret.
+        await AuditService.write(
+            session,
+            tenant_id,
+            actor_user_id,
+            "webhook_endpoint.registered",
+            "webhook_endpoint",
+            str(endpoint.id),
+            after={"url": url, "events": list(events)},
+        )
+        return endpoint
+
+    @staticmethod
+    async def _load_endpoint(
+        session, tenant_id: uuid.UUID, endpoint_id: uuid.UUID
+    ) -> WebhookEndpoint:
+        endpoint = (
+            await session.execute(
+                select(WebhookEndpoint).where(
+                    WebhookEndpoint.tenant_id == tenant_id,
+                    WebhookEndpoint.id == endpoint_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if endpoint is None:
+            # Tenant-scoped on purpose: another tenant's endpoint id is a 404,
+            # not a 403 — its existence is not the caller's business.
+            raise NotFoundError("webhook endpoint not found")
+        return endpoint
+
+    @staticmethod
+    async def list_endpoints(
+        session, tenant_id: uuid.UUID
+    ) -> list[WebhookEndpoint]:
+        """Every endpoint the tenant registered, oldest first.
+
+        The read half of the registry surface. Unpaginated on the same grounds
+        as the flags list: endpoints are tenant configuration, not a growing
+        user dataset. ``(created_at, id)`` is a total order, so repeated reads
+        return the rows in one stable sequence.
+        """
+        rows = (
+            await session.execute(
+                select(WebhookEndpoint)
+                .where(WebhookEndpoint.tenant_id == tenant_id)
+                .order_by(WebhookEndpoint.created_at, WebhookEndpoint.id)
+            )
+        ).scalars()
+        return list(rows.all())
+
+    @staticmethod
+    async def rotate_endpoint_secret(
+        session,
+        tenant_id: uuid.UUID,
+        endpoint_id: uuid.UUID,
+        *,
+        actor_user_id: uuid.UUID | None = None,
+    ) -> WebhookEndpoint:
+        """Replace the endpoint's signing secret; return the row with it.
+
+        Fail-closed on purpose: the new secret is minted server-side and never
+        sent anywhere but this return value (the router responds with it once).
+        The old secret is dropped in the same flush — a receiver still holding
+        it fails signature verification from the next delivery on, which is
+        the documented cost of rotation (no dual-secret grace window exists in
+        the single-column model).
+        """
+        endpoint = await WebhookService._load_endpoint(session, tenant_id, endpoint_id)
+        endpoint.secret = uuid.uuid4().hex + uuid.uuid4().hex
+        await session.flush()
+        await AuditService.write(
+            session,
+            tenant_id,
+            actor_user_id,
+            "webhook_endpoint.secret_rotated",
+            "webhook_endpoint",
+            str(endpoint.id),
+            after={"active": bool(endpoint.is_active)},
+        )
+        return endpoint
+
+    @staticmethod
+    async def deactivate_endpoint(
+        session,
+        tenant_id: uuid.UUID,
+        endpoint_id: uuid.UUID,
+        *,
+        actor_user_id: uuid.UUID | None = None,
+    ) -> WebhookEndpoint:
+        """Soft delete: ``is_active=False`` so deliveries stop targeting it.
+
+        Never a hard DELETE — ``webhook_deliveries`` rows reference the
+        endpoint and the delivery history is the audit trail (§24: nothing
+        disappears). Idempotent: an already-inactive endpoint is returned
+        unchanged and writes no second audit row.
+        """
+        endpoint = await WebhookService._load_endpoint(session, tenant_id, endpoint_id)
+        if endpoint.is_active:
+            endpoint.is_active = False
+            await session.flush()
+            await AuditService.write(
+                session,
+                tenant_id,
+                actor_user_id,
+                "webhook_endpoint.deactivated",
+                "webhook_endpoint",
+                str(endpoint.id),
+                before={"active": True},
+                after={"active": False},
+            )
         return endpoint
 
     @staticmethod

@@ -6,6 +6,11 @@ logic lives here — that is the gateway's and the runtime's job.
 
 ``_client`` is injectable so tests can pass an ``httpx.AsyncClient`` wired to
 ``httpx.MockTransport``; production code lets the provider own its client.
+
+Egress (S6): every transport validates its ``base_url`` through
+:func:`assert_provider_base_url` before the request is built — the URL can
+arrive from tenant-supplied ``model_configs``, so a non-public target is
+refused here rather than becoming an open proxy.
 """
 
 from __future__ import annotations
@@ -16,10 +21,44 @@ from dataclasses import dataclass, field
 
 import httpx
 
-from app.core.errors import ExternalProviderError
+from app.core.errors import ExternalProviderError, ValidationError
+from app.core.net_guard import assert_public_url as _net_guard_assert_public_url
 
 _TIMEOUT_SECONDS = 120.0  # reasoning models with tool schemas can be slow
 _VISION_TIMEOUT_SECONDS = 15.0  # the image tool budget (§19) is 8s; transport headroom
+
+
+def assert_provider_base_url(url: str) -> str:
+    """Egress guard for AI provider base URLs (S6) — net_guard, scoped to this file.
+
+    The base_url can arrive from a tenant-supplied ``model_configs`` row, so
+    the AI transports are exactly the open-proxy surface ``app.core.net_guard``
+    exists for: without this check a tenant could point us at
+    ``http://169.254.169.254`` (cloud metadata), ``http://localhost:8000``
+    (our own API, past the edge) or any RFC1918 host and have us POST a
+    deployment-scoped bearer key plus the prompt to it. Every external call
+    this module makes — chat, embeddings, and both vision transports — passes
+    through this function BEFORE the request is built.
+
+    The rules are net_guard's own (same function, one source of truth):
+    http/https only, no embedded credentials, no localhost/metadata hostname,
+    and no literal or resolved private/loopback/link-local address.
+
+    The ONE documented delta: a hostname that does not resolve AT ALL is
+    allowed through — there is no address to smuggle a request to, and the
+    HTTP connect that follows immediately fails closed on its own. net_guard's
+    DNS-fail-closed rule targets webhook URLs that are STORED and resolved
+    later at send time; here the connection happens in the next statement, so
+    an unresolvable name can never complete the egress.
+    """
+    if not url or not isinstance(url, str):
+        raise ValidationError("provider base_url is required")
+    try:
+        return _net_guard_assert_public_url(url)
+    except ValidationError as exc:
+        if "did not resolve" in str(exc):
+            return url
+        raise
 
 
 @dataclass(slots=True)
@@ -73,7 +112,9 @@ class AIProvider:
         max_tokens: int | None = None,
         _client: httpx.AsyncClient | None = None,
     ) -> ChatCompletionResult:
-        url = f"{base_url.rstrip('/')}/chat/completions"
+        # S6 egress guard FIRST: the URL is built from it, so a blocked host
+        # never even reaches a constructed request string.
+        url = f"{assert_provider_base_url(base_url).rstrip('/')}/chat/completions"
         payload: dict = {"model": model, "messages": messages, "temperature": temperature}
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
@@ -151,7 +192,8 @@ class EmbeddingProvider:
         dimensions: int | None = None,
         _client: httpx.AsyncClient | None = None,
     ) -> list[list[float]]:
-        url = f"{base_url.rstrip('/')}/embeddings"
+        # S6 egress guard — embeddings carry customer text too.
+        url = f"{assert_provider_base_url(base_url).rstrip('/')}/embeddings"
         payload: dict = {"model": model, "input": texts}
         if dimensions is not None:
             payload["dimensions"] = dimensions
@@ -237,8 +279,9 @@ class MultimodalEmbeddingProvider:
     ) -> list[list[float]]:
         if not contents:
             raise ValueError("contents must not be empty")
+        # S6 egress guard — the vision embedding ships images and captions.
         url = (
-            f"{base_url.rstrip('/')}"
+            f"{assert_provider_base_url(base_url).rstrip('/')}"
             "/services/embeddings/multimodal-embedding/multimodal-embedding"
         )
         payload = {
@@ -319,7 +362,8 @@ class RerankerProvider:
     ) -> list[RerankResult]:
         if not documents:
             raise ValueError("documents must not be empty")
-        url = f"{base_url.rstrip('/')}/rerank"
+        # S6 egress guard — the reranker ships candidate images and text.
+        url = f"{assert_provider_base_url(base_url).rstrip('/')}/rerank"
         payload: dict = {"model": model, "query": query, "documents": documents}
         if top_n is not None:
             payload["top_n"] = top_n

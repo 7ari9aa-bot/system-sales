@@ -10,7 +10,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -442,9 +442,13 @@ async def channel_webhook(channel: str, request: Request, session: DbSession):
     try:
         payload = json.loads(raw or b"{}")
     except json.JSONDecodeError as exc:
-        raise ValidationError("unparsable payload") from exc
+        # 422, not the domain 400: an unparsable body is a FRAMEWORK-shaped
+        # validation refusal (the same class as a pydantic 422), answered in
+        # the unified envelope by the StarletteHTTPException handler with
+        # code "validation_error".
+        raise HTTPException(status_code=422, detail="unparsable payload") from exc
     if not isinstance(payload, dict):
-        raise ValidationError("payload must be a JSON object")
+        raise HTTPException(status_code=422, detail="payload must be a JSON object")
     payload["_query"] = dict(request.query_params)
 
     tenant_key = adapter.resolve_tenant_key(payload)

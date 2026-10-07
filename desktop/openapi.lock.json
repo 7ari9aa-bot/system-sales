@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 324,
-    "sha256": "2bda02a827fde8ae97146cb1375a9a1f9eedb83543ed7a2bdb4284adf6185e6c",
-    "typed_operations": 200
+    "operations": 331,
+    "sha256": "ee928776462f39269418cbf14cd1cd38bc7187af95a754b60ada08bb1d68c1f4",
+    "typed_operations": 209
   },
   "spec": {
     "components": {
@@ -1608,6 +1608,149 @@
             "never_sum_with_other_views"
           ],
           "title": "AttributionViewOut",
+          "type": "object"
+        },
+        "AuditLogListOut": {
+          "description": "``GET /platform/audit-logs``: a page of the tenant's action history.",
+          "properties": {
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/AuditLogOut"
+              },
+              "title": "Items",
+              "type": "array"
+            },
+            "limit": {
+              "title": "Limit",
+              "type": "integer"
+            },
+            "offset": {
+              "title": "Offset",
+              "type": "integer"
+            },
+            "total": {
+              "title": "Total",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "total",
+            "limit",
+            "offset",
+            "items"
+          ],
+          "title": "AuditLogListOut",
+          "type": "object"
+        },
+        "AuditLogOut": {
+          "description": "One audited action with its §66 lineage fields.\n\n``source`` / ``request_id`` / ``correlation_id`` are the fields that let an\noperator tie the row back to the HTTP request (or bus event) that caused\nit. They are genuinely nullable — copied from request-scoped contextvars\nthat exist only inside a request/event scope — so a missing value renders\nas JSON ``null``, never as a string placeholder.",
+          "properties": {
+            "action": {
+              "title": "Action",
+              "type": "string"
+            },
+            "actor_user_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Actor User Id"
+            },
+            "after": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After"
+            },
+            "before": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
+            },
+            "correlation_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Correlation Id"
+            },
+            "created_at": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created At"
+            },
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "request_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Request Id"
+            },
+            "resource_id": {
+              "title": "Resource Id",
+              "type": "string"
+            },
+            "resource_type": {
+              "title": "Resource Type",
+              "type": "string"
+            },
+            "source": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          },
+          "required": [
+            "id",
+            "action",
+            "resource_type",
+            "resource_id"
+          ],
+          "title": "AuditLogOut",
           "type": "object"
         },
         "AuthorityLeaseListOut": {
@@ -7622,6 +7765,18 @@
           "title": "IntegrationConnectBody",
           "type": "object"
         },
+        "IntegrationDisconnectBody": {
+          "description": "Explicit confirmation for ``POST /integrations/{id}/disconnect``.\n\nDisconnecting stops the tenant's inbound provider traffic, so the route\nrefuses to run on a defaulted body: the caller must send ``confirm: true``.",
+          "properties": {
+            "confirm": {
+              "default": false,
+              "title": "Confirm",
+              "type": "boolean"
+            }
+          },
+          "title": "IntegrationDisconnectBody",
+          "type": "object"
+        },
         "IntegrationHealthOut": {
           "description": "One integration's rolled-up webhook status.\n\nDeliberately only ``provider`` + ``status``: ``webhook_health`` may carry a\n``last_error`` string with a URL in it, and nothing like that leaves the\nhealth surface.",
           "properties": {
@@ -9196,6 +9351,20 @@
           "title": "MergeBody",
           "type": "object"
         },
+        "MetaOAuthStartOut": {
+          "description": "P8 contract for GET /integrations/meta/oauth/start: the ONLY field the\nfrontend consumes is the Meta-owned dialog URL it navigates to.",
+          "properties": {
+            "authorize_url": {
+              "title": "Authorize Url",
+              "type": "string"
+            }
+          },
+          "required": [
+            "authorize_url"
+          ],
+          "title": "MetaOAuthStartOut",
+          "type": "object"
+        },
         "MetricDefinitionListOut": {
           "description": "The whole registry in one call: finite, never paged, ``next_cursor`` null.",
           "properties": {
@@ -10197,6 +10366,226 @@
             "timezone"
           ],
           "title": "OrdersSummaryOut",
+          "type": "object"
+        },
+        "OutboxEventDetailOut": {
+          "description": "The full row: the envelope plus the payload and meta the relay carried.\n\nThe body is the evidence a lost/duplicated event is investigated with, so\nit is fetched per row rather than riding every list page.",
+          "properties": {
+            "aggregate_id": {
+              "format": "uuid",
+              "title": "Aggregate Id",
+              "type": "string"
+            },
+            "aggregate_type": {
+              "title": "Aggregate Type",
+              "type": "string"
+            },
+            "attempts": {
+              "title": "Attempts",
+              "type": "integer"
+            },
+            "created_at": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created At"
+            },
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "last_error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Error"
+            },
+            "meta": {
+              "additionalProperties": true,
+              "title": "Meta",
+              "type": "object"
+            },
+            "not_before": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Not Before"
+            },
+            "payload": {
+              "additionalProperties": true,
+              "title": "Payload",
+              "type": "object"
+            },
+            "published_at": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Published At"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            },
+            "stream": {
+              "title": "Stream",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "aggregate_type",
+            "aggregate_id",
+            "stream",
+            "status",
+            "attempts",
+            "payload",
+            "meta"
+          ],
+          "title": "OutboxEventDetailOut",
+          "type": "object"
+        },
+        "OutboxEventListOut": {
+          "description": "``GET /platform/outbox-events``: a page of the tenant's relay ledger.",
+          "properties": {
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/OutboxEventOut"
+              },
+              "title": "Items",
+              "type": "array"
+            },
+            "limit": {
+              "title": "Limit",
+              "type": "integer"
+            },
+            "offset": {
+              "title": "Offset",
+              "type": "integer"
+            },
+            "total": {
+              "title": "Total",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "total",
+            "limit",
+            "offset",
+            "items"
+          ],
+          "title": "OutboxEventListOut",
+          "type": "object"
+        },
+        "OutboxEventOut": {
+          "description": "One staged relay event as the list shows it: the envelope, no body.\n\n``status`` is the relay's vocabulary (pending / publishing / published /\nfailed) and stays open ``str`` because the relay worker writes it, not\nthis route — a value the reader has never seen must render, not fail the\nresponse (the same rule ``WebhookEventOut`` applies to ``processing_status``).",
+          "properties": {
+            "aggregate_id": {
+              "format": "uuid",
+              "title": "Aggregate Id",
+              "type": "string"
+            },
+            "aggregate_type": {
+              "title": "Aggregate Type",
+              "type": "string"
+            },
+            "attempts": {
+              "title": "Attempts",
+              "type": "integer"
+            },
+            "created_at": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created At"
+            },
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "last_error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Error"
+            },
+            "not_before": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Not Before"
+            },
+            "published_at": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Published At"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            },
+            "stream": {
+              "title": "Stream",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "aggregate_type",
+            "aggregate_id",
+            "stream",
+            "status",
+            "attempts"
+          ],
+          "title": "OutboxEventOut",
           "type": "object"
         },
         "PasswordResetConfirmRequest": {
@@ -15016,6 +15405,108 @@
           "title": "WebhookCloseOut",
           "type": "object"
         },
+        "WebhookEndpointCreated": {
+          "description": "The register/rotate response — the ONLY response that ever carries a\nsigning secret. No list or detail model includes ``secret``.",
+          "properties": {
+            "active": {
+              "default": true,
+              "title": "Active",
+              "type": "boolean"
+            },
+            "events": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Events",
+              "type": "array"
+            },
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "secret": {
+              "title": "Secret",
+              "type": "string"
+            },
+            "url": {
+              "title": "Url",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "url",
+            "secret",
+            "events"
+          ],
+          "title": "WebhookEndpointCreated",
+          "type": "object"
+        },
+        "WebhookEndpointDeleted": {
+          "properties": {
+            "active": {
+              "default": false,
+              "title": "Active",
+              "type": "boolean"
+            },
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "title": "WebhookEndpointDeleted",
+          "type": "object"
+        },
+        "WebhookEndpointOut": {
+          "description": "A registry row WITHOUT its secret — the list surface is secret-free.",
+          "properties": {
+            "active": {
+              "title": "Active",
+              "type": "boolean"
+            },
+            "created_at": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created At"
+            },
+            "events": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Events",
+              "type": "array"
+            },
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "url": {
+              "title": "Url",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "url",
+            "events",
+            "active"
+          ],
+          "title": "WebhookEndpointOut",
+          "type": "object"
+        },
         "WebhookEndpointRequest": {
           "properties": {
             "events": {
@@ -15035,6 +15526,35 @@
             "url"
           ],
           "title": "WebhookEndpointRequest",
+          "type": "object"
+        },
+        "WebhookEndpointRotated": {
+          "properties": {
+            "active": {
+              "default": true,
+              "title": "Active",
+              "type": "boolean"
+            },
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "rotated": {
+              "default": true,
+              "title": "Rotated",
+              "type": "boolean"
+            },
+            "secret": {
+              "title": "Secret",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "secret"
+          ],
+          "title": "WebhookEndpointRotated",
           "type": "object"
         },
         "WebhookEventDetailOut": {
@@ -20359,7 +20879,7 @@
       },
       "/api/v1/auth/mfa/confirm": {
         "post": {
-          "description": "§146: prove possession → MFA enabled; backup codes are returned ONCE.",
+          "description": "§146: prove possession → MFA enabled; backup codes are returned ONCE.\n\nWrong codes are throttled (core/mfa) and every rejection emits a §67\nsecurity event, so the request IP rides along for the audit trail.",
           "operationId": "mfa_confirm_api_v1_auth_mfa_confirm_post",
           "parameters": [
             {
@@ -20417,7 +20937,7 @@
       },
       "/api/v1/auth/mfa/disable": {
         "post": {
-          "description": "§146: disable with a current TOTP code OR a one-time backup code.",
+          "description": "§146: disable with a current TOTP code OR a one-time backup code.\n\nRe-verification is mandatory and wrong codes are throttled (core/mfa);\nrejections emit §67 security events with the request IP.",
           "operationId": "mfa_disable_api_v1_auth_mfa_disable_post",
           "parameters": [
             {
@@ -31720,7 +32240,9 @@
             "200": {
               "content": {
                 "application/json": {
-                  "schema": {}
+                  "schema": {
+                    "$ref": "#/components/schemas/MetaOAuthStartOut"
+                  }
                 }
               },
               "description": "Successful Response"
@@ -31737,6 +32259,124 @@
             }
           },
           "summary": "Meta Oauth Start",
+          "tags": [
+            "platform"
+          ]
+        }
+      },
+      "/api/v1/integrations/{integration_id}/disconnect": {
+        "post": {
+          "description": "Disconnect a channel (§145 lifecycle: active|restricted → disconnected).\n\nDELIBERATE confirmation gate: the body must carry ``confirm=true``. A\nstray click or a replayed request must not cut a live provider webhook —\ndisconnecting stops inbound message flow for the whole tenant, so the\nrequest is destructive enough to require an explicit assertion.\n\nFail-closed on the state machine: only ``active`` and ``restricted`` rows\nmay disconnect (those are the states that receive provider traffic);\n``pending``/``connecting``/``reauth_required`` have no provider traffic to\nstop and are refused with the legal sources listed. ``disabled`` is\nterminal and reconnecting is refused by design (connect enforces it too).\nIdempotent: an already-disconnected row returns as-is without a second\naudit entry. Reversal is the verified connect path — ``POST\n/integrations/connect`` — so a reconnection always re-proves credentials\nwith the provider before going live. The decision is audited (§66) with\nthe before/after status.",
+          "operationId": "disconnect_integration_api_v1_integrations__integration_id__disconnect_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "integration_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Integration Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationDisconnectBody"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/IntegrationOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Disconnect Integration",
           "tags": [
             "platform"
           ]
@@ -38668,6 +39308,211 @@
           ]
         }
       },
+      "/api/v1/platform/audit-logs": {
+        "get": {
+          "description": "§66: this tenant's audited actions, newest first, with lineage.\n\nA bounded page with a ``total`` and a ``(created_at, id)`` DESC sort —\nrows written in one request share the transaction clock, so ``id`` is the\ntie-break. The period is inclusive/exclusive at the bounds the caller\nnames (``since <= created_at < until``); a reversed range is a 400, not a\nsilently empty page.",
+          "operationId": "list_audit_logs_api_v1_platform_audit_logs_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "action",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "maxLength": 127,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Action"
+              }
+            },
+            {
+              "in": "query",
+              "name": "resource_type",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "maxLength": 63,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Resource Type"
+              }
+            },
+            {
+              "in": "query",
+              "name": "source",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Source"
+              }
+            },
+            {
+              "in": "query",
+              "name": "since",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Since"
+              }
+            },
+            {
+              "in": "query",
+              "name": "until",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Until"
+              }
+            },
+            {
+              "in": "query",
+              "name": "limit",
+              "required": false,
+              "schema": {
+                "default": 50,
+                "maximum": 200,
+                "minimum": 1,
+                "title": "Limit",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "default": 0,
+                "minimum": 0,
+                "title": "Offset",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AuditLogListOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Audit Logs",
+          "tags": [
+            "platform"
+          ]
+        }
+      },
       "/api/v1/platform/diagnostics": {
         "get": {
           "description": "Comprehensive system-wide diagnostic suite with root-cause analysis for every subsystem.",
@@ -39475,6 +40320,251 @@
             }
           },
           "summary": "List Tenant Metric Definitions",
+          "tags": [
+            "platform"
+          ]
+        }
+      },
+      "/api/v1/platform/outbox-events": {
+        "get": {
+          "description": "§19: this tenant's staged relay events, newest first. Read-only.\n\nA bounded page with a ``total``, and a ``(created_at, id)`` DESC sort —\nevents staged in one transaction share ``now()``, so ``id`` is the\ntie-break that keeps page 2 from repeating page 1. The payload body is\ndeliberately NOT listed; fetch a row for that.",
+          "operationId": "list_outbox_events_api_v1_platform_outbox_events_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "status",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Status"
+              }
+            },
+            {
+              "in": "query",
+              "name": "limit",
+              "required": false,
+              "schema": {
+                "default": 50,
+                "maximum": 200,
+                "minimum": 1,
+                "title": "Limit",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "default": 0,
+                "minimum": 0,
+                "title": "Offset",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OutboxEventListOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Outbox Events",
+          "tags": [
+            "platform"
+          ]
+        }
+      },
+      "/api/v1/platform/outbox-events/{event_id}": {
+        "get": {
+          "description": "§19: the full relay row — envelope, attempts AND the payload/meta the\nrelay carried, the evidence a lost/duplicated event is investigated with.\n\nTenant isolation rides the same ``meta[\"tenant_id\"]`` predicate as the\nlist: another tenant's event id answers 404.",
+          "operationId": "inspect_outbox_event_api_v1_platform_outbox_events__event_id__get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "event_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Event Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OutboxEventDetailOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Inspect Outbox Event",
           "tags": [
             "platform"
           ]
@@ -41466,7 +42556,7 @@
       },
       "/api/v1/platform/webhook-events/{event_id}/retry": {
         "post": {
-          "description": "§24: replay a failed or dead-lettered inbound webhook ingress row.\n\nStages a ``webhook.event.retry`` event on the webhook.events stream; the\nWebhookWorker then re-runs the EXACT ingest block the channel webhook\nrouter runs (``IngestService.process_webhook_event``) under the row's\ntenant — the per-message idempotency keys make the replay safe.\n\nwebhook_events is FORCE-RLS, so the row is loaded under the request's\ntenant context: the admin operates on the ACTIVE tenant's rows (X-Tenant-Id\nselects the tenant). FAILED rows (budget left) and DEAD rows (budget spent\n— the DLQ: replay is exactly what it exists for) can be retried; the row\nmust have resolved a tenant — an un-attributed ingress has nothing to\nre-ingest and no tenant scope to run it under.",
+          "description": "§24: replay a failed or dead-lettered inbound webhook ingress row.\n\nStages a ``webhook.event.retry`` event on the webhook.events stream; the\nWebhookWorker then re-runs the EXACT ingest block the channel webhook\nrouter runs (``IngestService.process_webhook_event``) under the row's\ntenant — the per-message idempotency keys make the replay safe.\n\nwebhook_events is FORCE-RLS, so the row is loaded under the request's\ntenant context: the admin operates on the ACTIVE tenant's rows (X-Tenant-Id\nselects the tenant). FAILED rows (budget left) and DEAD rows (budget spent\n— the DLQ: replay is exactly what it exists for) can be retried; the row\nmust have resolved a tenant — an un-attributed ingress has nothing to\nre-ingest and no tenant scope to run it under. The replay re-runs the\ningest block WITHOUT re-verifying a provider signature, so only rows whose\nsignature was verified at ingress are ever replayed (fail-closed, §22).",
           "operationId": "admin_retry_webhook_event_api_v1_platform_webhook_events__event_id__retry_post",
           "parameters": [
             {
@@ -48851,6 +49941,106 @@
         }
       },
       "/api/v1/webhook-endpoints": {
+        "get": {
+          "description": "This tenant's registered outbound webhook endpoints — never their secrets.\n\nUnpaginated on the same grounds as ``GET /platform/flags``: endpoints are\ntenant configuration, not a growing user dataset, so the row count is\nbounded by what an operator can name. Ordered ``(created_at, id)`` —\n``created_at`` alone is not a total order for rows created in one\ntransaction, and ``id`` is the tie-break that keeps the list stable.",
+          "operationId": "list_webhook_endpoints_api_v1_webhook_endpoints_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/WebhookEndpointOut"
+                    },
+                    "title": "Response List Webhook Endpoints Api V1 Webhook Endpoints Get",
+                    "type": "array"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Webhook Endpoints",
+          "tags": [
+            "webhooks"
+          ]
+        },
         "post": {
           "operationId": "register_webhook_api_v1_webhook_endpoints_post",
           "parameters": [
@@ -48933,7 +50123,9 @@
             "201": {
               "content": {
                 "application/json": {
-                  "schema": {}
+                  "schema": {
+                    "$ref": "#/components/schemas/WebhookEndpointCreated"
+                  }
                 }
               },
               "description": "Successful Response"
@@ -48950,6 +50142,222 @@
             }
           },
           "summary": "Register Webhook",
+          "tags": [
+            "webhooks"
+          ]
+        }
+      },
+      "/api/v1/webhook-endpoints/{endpoint_id}": {
+        "delete": {
+          "description": "Soft delete: the endpoint stops receiving deliveries (``is_active=False``),\nits delivery history stays, and the decision is audited. Idempotent.",
+          "operationId": "delete_webhook_endpoint_api_v1_webhook_endpoints__endpoint_id__delete",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "endpoint_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Endpoint Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/WebhookEndpointDeleted"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Delete Webhook Endpoint",
+          "tags": [
+            "webhooks"
+          ]
+        }
+      },
+      "/api/v1/webhook-endpoints/{endpoint_id}/rotate": {
+        "post": {
+          "description": "Rotate an endpoint's signing secret after a suspected leak.\n\nThe NEW secret rides this response and nowhere else; the old one stops\nverifying from the next delivery (see ``WebhookService.rotate_endpoint_\nsecret``). Audited as ``webhook_endpoint.secret_rotated``.",
+          "operationId": "rotate_webhook_secret_api_v1_webhook_endpoints__endpoint_id__rotate_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "endpoint_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Endpoint Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/WebhookEndpointRotated"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Rotate Webhook Secret",
           "tags": [
             "webhooks"
           ]
@@ -49036,7 +50444,7 @@
       },
       "/api/v1/website-platform/catalog/products": {
         "get": {
-          "description": "Published catalog projection for the website platform (read-only).",
+          "description": "Sellable catalog projection for the website platform (read-only).\n\nFilters on the catalog's OWN vocabulary — ``active`` is the state a\nproduct must hold to sell (M4), so it is the state the storefront can\nrender. A ``published`` literal does not exist in the domain.",
           "operationId": "website_platform_products_api_v1_website_platform_catalog_products_get",
           "parameters": [
             {

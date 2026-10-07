@@ -314,3 +314,120 @@ async def test_update_customer_refuses_a_phone_already_on_another_customer(
     with pytest.raises(ConflictError):
         await CustomerService.update_customer(db, tenant_id, other.id, phone="0100-123-4567")
     assert taken.phone == EGYPT_CANONICAL
+
+
+# ------------------------------------------- the 6.1 close-out merge race ----
+
+
+async def test_two_concurrent_merges_of_one_source_admit_exactly_one(
+    db_url: str,
+) -> None:
+    """The mandated 6.1 close-out: two SIMULTANEOUS merges dragging the same
+    source customer into two different canonicals must admit exactly one and
+    refuse the other — a customer can be merged away exactly ONCE.
+
+    merge() locks the canonical AND the source rows FOR UPDATE with
+    ``merged_into_customer_id IS NULL`` predicates, so the loser re-reads the
+    source after the winner's commit, sees it tombstoned, and refuses with
+    the not-found domain error. Uses its own engine with REAL commits (the
+    conftest harness nests in savepoints on one connection and cannot race
+    itself); the tenant row is the cascade root for cleanup.
+    """
+    import asyncio
+
+    import sqlalchemy as sa
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.core.db import bind_tenant
+    from app.core.errors import ConflictError, NotFoundError
+    from app.modules.customers.service import CustomerService, IdentityMergeService
+
+    engine = create_async_engine(db_url, connect_args={"statement_cache_size": 0})
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+
+    tenant_id = uuid.uuid4()
+    async with engine.connect() as boot:
+        async with boot.begin():
+            await boot.execute(
+                sa.text(
+                    "INSERT INTO tenants (id, slug, name) VALUES (:id, :slug, :name)"
+                ),
+                {
+                    "id": tenant_id,
+                    "slug": f"merge-{uuid.uuid4().hex[:10]}",
+                    "name": "Merge Race Tenant",
+                },
+            )
+
+    source = canonical_a = canonical_b = None
+    outcomes: list[str] = []
+    try:
+        async with sessions() as seed:
+            await bind_tenant(seed, tenant_id)
+            canonical_a = await CustomerService.get_or_create_by_identity(
+                seed, tenant_id, "whatsapp", f"wa-a-{uuid.uuid4().hex[:8]}"
+            )
+            canonical_b = await CustomerService.get_or_create_by_identity(
+                seed, tenant_id, "whatsapp", f"wa-b-{uuid.uuid4().hex[:8]}"
+            )
+            source = await CustomerService.get_or_create_by_identity(
+                seed, tenant_id, "whatsapp", f"wa-s-{uuid.uuid4().hex[:8]}"
+            )
+            await seed.commit()
+
+        async def racer(canonical_id) -> None:
+            async with sessions() as session:
+                await bind_tenant(session, tenant_id)
+                try:
+                    await IdentityMergeService.merge(
+                        session,
+                        tenant_id,
+                        canonical_customer_id=canonical_id,
+                        merged_away_customer_id=source.id,
+                    )
+                    await session.commit()
+                except (NotFoundError, ConflictError):
+                    await session.rollback()
+                    outcomes.append("refused")
+                else:
+                    outcomes.append("merged")
+
+        await asyncio.gather(
+            racer(canonical_a.id), racer(canonical_b.id)
+        )
+        assert sorted(outcomes) == ["merged", "refused"], (
+            f"one merge must win and one must refuse, got {outcomes}"
+        )
+
+        # The survivor state: the source redirects to the WINNING canonical —
+        # whichever it is — and never to both.
+        async with sessions() as check:
+            await bind_tenant(check, tenant_id)
+            redirect = (
+                await check.execute(
+                    sa.text(
+                        "SELECT merged_into_customer_id FROM customers "
+                        "WHERE id = :s"
+                    ),
+                    {"s": source.id},
+                )
+            ).scalar_one()
+            assert redirect in (canonical_a.id, canonical_b.id)
+            others = (
+                await check.execute(
+                    sa.text(
+                        "SELECT id FROM customers WHERE tenant_id = :t "
+                        "AND id <> :s AND merged_into_customer_id IS NULL"
+                    ),
+                    {"t": tenant_id, "s": source.id},
+                )
+            ).scalars().all()
+            assert len(others) == 2, "both canonicals stay live"
+    finally:
+        async with sessions() as cleanup:
+            await bind_tenant(cleanup, tenant_id)
+            await cleanup.execute(
+                sa.text("DELETE FROM tenants WHERE id = :t"), {"t": tenant_id}
+            )
+            await cleanup.commit()
+        await engine.dispose()

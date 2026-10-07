@@ -7,7 +7,7 @@ import json
 import httpx
 import pytest
 
-from app.core.errors import ExternalProviderError
+from app.core.errors import ExternalProviderError, ValidationError
 from app.modules.ai.providers import AIProvider, EmbeddingProvider
 
 BASE_URL = "https://api.test/v1"
@@ -179,3 +179,81 @@ async def test_embed_http_error_and_malformed_raise():
             await EmbeddingProvider().embed(
                 base_url=BASE_URL, api_key="k", model="m", texts=["a"], _client=client
             )
+
+
+# ---------------------------------------------------------------------------
+# S6 egress guard — every transport refuses a non-public base_url before any
+# request is built. The base_url can come from tenant model_configs, so this
+# is the open-proxy boundary; the vision transports below are covered too,
+# because they are gateways out of the process just as much as chat is.
+# ---------------------------------------------------------------------------
+
+_BAD_URLS = [
+    "http://169.254.169.254/v1",  # cloud instance metadata (link-local)
+    "http://localhost:8000/v1",  # our own API, past the edge
+    "http://10.1.2.3:9000/v1",  # RFC1918 private literal
+    "https://metadata.google.internal/v1",  # GCP metadata hostname
+    "https://user:pass@api.test/v1",  # embedded credentials
+    "ftp://api.test/v1",  # non-http scheme
+]
+
+
+@pytest.mark.parametrize("bad_url", _BAD_URLS)
+async def test_chat_refuses_non_public_base_url(bad_url):
+    with pytest.raises(ValidationError):
+        await AIProvider().chat(
+            base_url=bad_url,
+            api_key="k",
+            model="m",
+            messages=[{"role": "user", "content": "hi"}],
+            _client=None,
+        )
+
+
+@pytest.mark.parametrize("bad_url", _BAD_URLS)
+async def test_embed_refuses_non_public_base_url(bad_url):
+    with pytest.raises(ValidationError):
+        await EmbeddingProvider().embed(
+            base_url=bad_url, api_key="k", model="m", texts=["a"], _client=None
+        )
+
+
+@pytest.mark.parametrize("bad_url", _BAD_URLS)
+async def test_vision_transports_refuse_non_public_base_url(bad_url):
+    from app.modules.ai.providers import (
+        MultimodalContent,
+        MultimodalEmbeddingProvider,
+        RerankerProvider,
+    )
+
+    with pytest.raises(ValidationError):
+        await MultimodalEmbeddingProvider().embed(
+            base_url=bad_url,
+            api_key="k",
+            model="m",
+            contents=[MultimodalContent(text="a", image="https://x.test/i.png")],
+            _client=None,
+        )
+    with pytest.raises(ValidationError):
+        await RerankerProvider().rerank(
+            base_url=bad_url,
+            api_key="k",
+            model="m",
+            query="q",
+            documents=[{"text": "doc"}],
+            _client=None,
+        )
+
+
+async def test_public_base_url_passes_the_guard():
+    """A normal https host name is not touched by the guard — the transport
+    call below reaching the (mock) request proves the guard passed it."""
+    async with _client(lambda request: httpx.Response(200, json=_chat_body())) as client:
+        result = await AIProvider().chat(
+            base_url=BASE_URL,
+            api_key="k",
+            model="gpt-test",
+            messages=[{"role": "user", "content": "hi"}],
+            _client=client,
+        )
+    assert result.content == "pong"

@@ -198,3 +198,96 @@ async def test_invalid_ids_are_rejected_before_network_access() -> None:
                 {"phone_number_id": "https://attacker.invalid"},
                 client=client,
             )
+
+
+# ---------------------------------------------------------------------------
+# Package 2.1 — fail-closed error contract + bounded transport.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("status", [429, 500, 502, 503])
+async def test_provider_throttling_and_outages_are_retryable_502s(status) -> None:  # noqa: ANN001
+    """Fail-closed error contract: a provider that cannot answer (throttled or
+    down) is an ExternalProviderError — a 502 with retryable=True on the wire —
+    never a raw 500 and never a non-retryable verdict that would strand the
+    operator on a transient outage."""
+    def respond(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(status, json={})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        with pytest.raises(ExternalProviderError) as caught:
+            await verify_channel_credentials(
+                "messenger", {"api_key": "page-secret"}, {}, client=client
+            )
+
+    assert caught.value.retryable is True
+
+
+async def test_provider_malformed_payload_is_an_external_error_not_a_crash() -> None:
+    """HTML error pages and non-object JSON (a proxy's array, a CDN interstitial)
+    must fail closed as provider errors — parsing them as credentials data or
+    crashing with a 500 would leak transport details into the response."""
+    for body in (b"<html>gateway timeout</html>", b'["not", "an", "object"]'):
+
+        def respond(_request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, content=body)
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+            with pytest.raises(ExternalProviderError):
+                await verify_channel_credentials(
+                    "messenger", {"api_key": "page-secret"}, {}, client=client
+                )
+
+
+async def test_redirects_are_never_followed() -> None:
+    """follow_redirects=False is the SSRF/tuning guard: a provider (or anything
+    between us and it) answering 302 must not be chased — the verification
+    fails closed instead of submitting the credential to the redirect target."""
+    def respond(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            302, headers={"location": "https://attacker.example.test/catch"}
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        with pytest.raises(ExternalProviderError):
+            await verify_channel_credentials(
+                "messenger", {"api_key": "page-secret"}, {}, client=client
+            )
+
+
+def test_the_verifier_client_is_timeout_bounded(monkeypatch) -> None:  # noqa: ANN001
+    """The self-managed client (no caller-supplied one) must carry a bounded
+    timeout — an unbounded provider call pins a request worker forever."""
+    captured: dict = {}
+
+    real_client = httpx.AsyncClient
+
+    class _SpyClient(real_client):
+        def __init__(self, *args, **kwargs) -> None:  # noqa: ANN002, ANN003
+            captured.update(kwargs)
+            super().__init__(
+                *args,
+                transport=httpx.MockTransport(
+                    lambda _request: httpx.Response(
+                        200, json={"id": "345678901", "name": "Page"}
+                    )
+                ),
+                **kwargs,
+            )
+
+    monkeypatch.setattr(
+        "app.modules.platform.integration_verifier.httpx.AsyncClient", _SpyClient
+    )
+
+    import anyio
+
+    async def _run() -> None:
+        result = await verify_channel_credentials(
+            "messenger", {"api_key": "page-secret"}, {}
+        )
+        assert result.identity_config == {"account_id": "345678901"}
+
+    anyio.run(_run)
+
+    assert captured["timeout"] == httpx.Timeout(8.0, connect=3.0)
+    assert captured["follow_redirects"] is False

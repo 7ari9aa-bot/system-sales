@@ -421,6 +421,85 @@ class SecurityEventListOut(BaseModel):
     offset: int
 
 
+# ------------------------------------------------ outbox events (§19 read)
+
+
+class OutboxEventOut(BaseModel):
+    """One staged relay event as the list shows it: the envelope, no body.
+
+    ``status`` is the relay's vocabulary (pending / publishing / published /
+    failed) and stays open ``str`` because the relay worker writes it, not
+    this route — a value the reader has never seen must render, not fail the
+    response (the same rule ``WebhookEventOut`` applies to ``processing_status``).
+    """
+
+    id: uuid.UUID
+    aggregate_type: str
+    aggregate_id: uuid.UUID
+    stream: str
+    status: str
+    attempts: int
+    last_error: str | None = None
+    not_before: datetime | None = None
+    created_at: datetime | None = None
+    published_at: datetime | None = None
+
+
+class OutboxEventListOut(BaseModel):
+    """``GET /platform/outbox-events``: a page of the tenant's relay ledger."""
+
+    total: int
+    limit: int
+    offset: int
+    items: list[OutboxEventOut]
+
+
+class OutboxEventDetailOut(OutboxEventOut):
+    """The full row: the envelope plus the payload and meta the relay carried.
+
+    The body is the evidence a lost/duplicated event is investigated with, so
+    it is fetched per row rather than riding every list page.
+    """
+
+    payload: dict[str, Any]
+    meta: dict[str, Any]
+
+
+# ------------------------------------------------ audit log read (§66)
+
+
+class AuditLogOut(BaseModel):
+    """One audited action with its §66 lineage fields.
+
+    ``source`` / ``request_id`` / ``correlation_id`` are the fields that let an
+    operator tie the row back to the HTTP request (or bus event) that caused
+    it. They are genuinely nullable — copied from request-scoped contextvars
+    that exist only inside a request/event scope — so a missing value renders
+    as JSON ``null``, never as a string placeholder.
+    """
+
+    id: uuid.UUID
+    actor_user_id: uuid.UUID | None = None
+    action: str
+    resource_type: str
+    resource_id: str
+    before: dict[str, Any] | None = None
+    after: dict[str, Any] | None = None
+    source: str | None = None
+    request_id: str | None = None
+    correlation_id: str | None = None
+    created_at: datetime | None = None
+
+
+class AuditLogListOut(BaseModel):
+    """``GET /platform/audit-logs``: a page of the tenant's action history."""
+
+    total: int
+    limit: int
+    offset: int
+    items: list[AuditLogOut]
+
+
 # ------------------------------------------------ system diagnostics (§103/Anti-Silent-Failures)
 
 

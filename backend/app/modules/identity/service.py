@@ -507,12 +507,14 @@ class AuthService:
         The challenge is consumed atomically (GETDEL) inside
         check_challenge_code, so a replayed challenge can never mint a
         second pair; the tenant policy is re-asserted because minutes may
-        have passed since the password was checked.
+        have passed since the password was checked. Every rejection inside
+        check_challenge_code emits its own §67 security event (coarse
+        outcome, no PII) — this layer stays thin by design.
         """
         from app.core.mfa import check_challenge_code
 
         user_id, tenant_id = await check_challenge_code(
-            session, challenge_id=challenge_id, code=code
+            session, challenge_id=challenge_id, code=code, ip=ip
         )
         user = (
             await session.execute(select(User).where(User.id == user_id))

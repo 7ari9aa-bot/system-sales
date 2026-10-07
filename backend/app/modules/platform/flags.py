@@ -17,6 +17,11 @@ Access control lives in RBAC (``require_permission``); see the router docstring.
    deterministic bucket of ``sha256(f"{tenant_id}:{feature}:{stable_key}")``
    reduced modulo 100 is compared against the percentage.
 
+Every branch of that ladder fails CLOSED: a row the operator never wrote
+(a value the write paths cannot produce — an out-of-band edit, a corrupt
+import) reads as OFF, never as "on for everyone". An invalid percentage
+narrows a rollout; it can never widen one.
+
 Determinism in step 5 is the whole point: the same caller must never flip
 between on and off across requests, so the bucket is a pure hash of stable
 identifiers — no random source, no clock, no per-request state.
@@ -96,8 +101,14 @@ class FeatureFlagService:
         # 4. Role scope: a scoped row applies only to that role.
         if row.role_code is not None and row.role_code != role_code:
             return False
-        # 5. Percentage rollout, bucketed deterministically.
-        percent = row.rollout_percent or ROLLOUT_MIN
+        # 5. Percentage rollout, bucketed deterministically. A stored value the
+        # write paths cannot produce (out-of-band edit, corrupt row) fails
+        # CLOSED: it reads as off until the operator repairs the row. Reading
+        # an invalid percentage must never *widen* the rollout — before this
+        # guard, a corrupt 150 hit the ``>= 100`` branch and read as ON.
+        percent = row.rollout_percent
+        if not isinstance(percent, int) or not ROLLOUT_MIN <= percent <= ROLLOUT_MAX:
+            return False
         if percent <= ROLLOUT_MIN:
             return False
         if percent >= ROLLOUT_MAX:

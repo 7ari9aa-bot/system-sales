@@ -110,7 +110,7 @@ async def products_count(ctx: TenantCtxDep):
 
     count = (
         await ctx.session.execute(
-            select(func.count()).select_from(Product).where(Product.tenant_id == ctx.tenant_id, Product.status == "published")
+            select(func.count()).select_from(Product).where(Product.tenant_id == ctx.tenant_id, Product.status == "active")
         )
     ).scalar()
     return {"publishedProducts": int(count or 0)}

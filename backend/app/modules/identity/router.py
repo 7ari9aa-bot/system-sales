@@ -331,21 +331,35 @@ async def mfa_enroll(body: MfaEnrollRequest, user: CurrentUserDep, session: DbSe
 
 
 @router.post("/auth/mfa/confirm")
-async def mfa_confirm(body: MfaCodeRequest, user: CurrentUserDep, session: DbSession):
-    """§146: prove possession → MFA enabled; backup codes are returned ONCE."""
+async def mfa_confirm(
+    body: MfaCodeRequest, request: Request, user: CurrentUserDep, session: DbSession
+):
+    """§146: prove possession → MFA enabled; backup codes are returned ONCE.
+
+    Wrong codes are throttled (core/mfa) and every rejection emits a §67
+    security event, so the request IP rides along for the audit trail.
+    """
     from app.core.mfa import confirm_mfa
 
-    codes = await confirm_mfa(session, user_id=user.id, code=body.code)
+    _user_agent, ip = _client_meta(request)
+    codes = await confirm_mfa(session, user_id=user.id, code=body.code, ip=ip)
     return {"backup_codes": codes}
 
 
 @router.post("/auth/mfa/disable", status_code=204)
-async def mfa_disable(body: MfaDisableRequest, user: CurrentUserDep, session: DbSession):
-    """§146: disable with a current TOTP code OR a one-time backup code."""
+async def mfa_disable(
+    body: MfaDisableRequest, request: Request, user: CurrentUserDep, session: DbSession
+):
+    """§146: disable with a current TOTP code OR a one-time backup code.
+
+    Re-verification is mandatory and wrong codes are throttled (core/mfa);
+    rejections emit §67 security events with the request IP.
+    """
     from app.core.mfa import disable_mfa
 
+    _user_agent, ip = _client_meta(request)
     await disable_mfa(
-        session, user_id=user.id, code=body.code, backup_code=body.backup_code
+        session, user_id=user.id, code=body.code, backup_code=body.backup_code, ip=ip
     )
     return Response(status_code=204)
 

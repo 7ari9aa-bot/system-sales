@@ -51,7 +51,9 @@ class TelegramAdapter:
         if not secret:
             return False
         provided = headers.get("x-telegram-bot-api-secret-token", "")
-        return _hmac.compare_digest(provided, secret)
+        # Compared on BYTES: a str compare_digest raises TypeError on non-ASCII
+        # input, which would turn a hostile header into a 500.
+        return _hmac.compare_digest(provided.encode(), secret.encode())
 
     def resolve_tenant_key(self, payload: dict) -> str | None:
         query = payload.get("_query") or {}

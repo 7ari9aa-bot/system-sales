@@ -118,12 +118,15 @@ async def test_email_adapter_parses_inbound_sendgrid_webhook() -> None:
 
     adapter = get_adapter("email")
     assert adapter is not None
-    inbound = await adapter.parse_inbound(
-        {"from": "Dana <dana@example.com>", "to": "sales@tenant.test", "text": "hello"},
-        {},
+    # 5.1 reshaped every adapter to the SAME contract: sync, one payload
+    # argument, and a LIST of canonical messages the dispatcher iterates.
+    inbound = adapter.parse_inbound(
+        {"from": "Dana <dana@example.com>", "to": "sales@tenant.test", "text": "hello"}
     )
-    assert inbound.channel == "email"
-    assert inbound.customer_ref == "Dana <dana@example.com>"
-    assert inbound.customer_name == "Dana"
-    assert inbound.body == "hello"
-    assert inbound.conversation_ref == "sales@tenant.test"
+    assert len(inbound) == 1
+    message = inbound[0]
+    assert message.channel == "email"
+    assert message.customer_ref == "Dana <dana@example.com>"
+    assert message.customer_name == "Dana"
+    assert message.body == "hello"
+    assert message.conversation_ref == "sales@tenant.test"

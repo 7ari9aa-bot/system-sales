@@ -320,3 +320,239 @@ async def test_verify_success_returns_identity_without_credentials(monkeypatch) 
     assert result["credentials_verified"] is True
     assert result["display_name"] == "Page"
     assert "page-secret" not in response.text
+
+
+# ---------------------------------------------------------------------------
+# Package 2.1 — the disconnect surface + the audit trail for connect/verify.
+#
+# The §145 lifecycle had a "disconnected" state nothing could drive: a channel
+# could never be detached from the settings surface at all, and connecting or
+# re-verifying a channel left no audit entry. These tests pin the route the
+# hardening added (confirmation-gated, state-machine-fail-closed, audited) and
+# the §66 audit rows the connect/verify paths now write.
+# ---------------------------------------------------------------------------
+
+
+def _channel_row(**overrides):
+    defaults = {
+        "id": uuid.uuid4(),
+        "tenant_id": TENANT,
+        "provider": "whatsapp",
+        "kind": "channel",
+        "status": "active",
+        "config": {"phone_number_id": "123456789"},
+        "credentials": {"ciphertext": "encrypted"},
+    }
+    defaults.update(overrides)
+    return Integration(**defaults)
+
+
+async def test_disconnect_requires_explicit_confirmation() -> None:
+    """A stray click or replayed request must not cut live provider traffic:
+    the body has to carry confirm=true, and a defaulted body changes nothing."""
+    row = _channel_row()
+
+    response, _session = await _call(
+        "POST",
+        f"/api/v1/integrations/{row.id}/disconnect",
+        rows=[row],
+        permissions={"settings:write"},
+        body={"confirm": False},
+    )
+
+    assert response.status_code == 400, response.text
+    assert "confirm" in response.json()["error"]["message"]
+    assert row.status == "active"
+
+
+async def test_disconnect_is_gated_by_settings_write() -> None:
+    row = _channel_row()
+
+    response, _session = await _call(
+        "POST",
+        f"/api/v1/integrations/{row.id}/disconnect",
+        rows=[row],
+        permissions=set(),
+        body={"confirm": True},
+    )
+
+    assert response.status_code == 403, response.text
+
+
+async def test_disconnect_refuses_states_without_provider_traffic() -> None:
+    """Fail-closed on the §145 machine: only active|restricted receive
+    provider webhooks, so only they may disconnect."""
+    row = _channel_row(status="reauth_required")
+
+    response, _session = await _call(
+        "POST",
+        f"/api/v1/integrations/{row.id}/disconnect",
+        rows=[row],
+        permissions={"settings:write"},
+        body={"confirm": True},
+    )
+
+    assert response.status_code == 400, response.text
+    assert "active" in response.json()["error"]["message"]
+
+
+async def test_disconnect_is_listed_in_the_gate_inventory() -> None:
+    """The route must stay in the customers-surface gate inventory: one
+    permission code (settings:write) and the route-count pin bumped with it."""
+    from tests.test_customers_http_surface import GATED_WRITES
+
+    assert (
+        GATED_WRITES["POST /integrations/{integration_id}/disconnect"]
+        == "settings:write"
+    )
+
+
+def _settings_ctx(db, tenant_ctx) -> TenantContext:
+    from app.modules.identity.deps import AuthedUser, TenantContext
+
+    return TenantContext(
+        session=db,
+        user=AuthedUser(
+            id=tenant_ctx.user.id,
+            tenant_id=tenant_ctx.tenant_id,
+            role_code=tenant_ctx.role.code,
+            is_active=True,
+        ),
+        tenant_id=tenant_ctx.tenant_id,
+        role_code=tenant_ctx.role.code,
+        permission_codes={"settings:write"},
+    )
+
+
+async def test_disconnect_moves_active_to_disconnected_and_audits(db, tenant_ctx) -> None:
+    from sqlalchemy import func, select
+
+    from app.modules.customers.schemas import IntegrationDisconnectBody
+    from app.modules.customers.router import disconnect_integration
+    from app.modules.platform.models import AuditLog
+
+    row = _channel_row(tenant_id=tenant_ctx.tenant_id)
+    db.add(row)
+    await db.flush()
+    ctx = _settings_ctx(db, tenant_ctx)
+
+    result = await disconnect_integration(
+        row.id, IntegrationDisconnectBody(confirm=True), ctx
+    )
+
+    assert result["status"] == "disconnected"
+    audit = (
+        await db.execute(
+            select(func.count(AuditLog.id)).where(
+                AuditLog.action == "integration.disconnected",
+                AuditLog.resource_id == str(row.id),
+            )
+        )
+    ).scalar_one()
+    assert audit == 1
+
+    # Idempotent: a repeated confirmed disconnect is a no-op, not a second
+    # audit row and not an illegal self-transition.
+    result = await disconnect_integration(
+        row.id, IntegrationDisconnectBody(confirm=True), ctx
+    )
+    assert result["status"] == "disconnected"
+    audit = (
+        await db.execute(
+            select(func.count(AuditLog.id)).where(
+                AuditLog.action == "integration.disconnected",
+                AuditLog.resource_id == str(row.id),
+            )
+        )
+    ).scalar_one()
+    assert audit == 1
+
+
+async def test_connect_writes_an_audit_entry_without_secrets(
+    db, tenant_ctx, monkeypatch
+) -> None:  # noqa: ANN001
+    from sqlalchemy import select
+
+    from app.modules.customers.schemas import IntegrationConnectBody
+    from app.modules.customers.router import connect_integration
+    from app.modules.platform.models import AuditLog
+
+    async def allow_channel(_session, _tenant_id, _provider) -> None:
+        return None
+
+    async def verify(_provider, _credentials, _config) -> VerifiedChannel:
+        return VerifiedChannel({"phone_number_id": "123456789"}, "Shop")
+
+    monkeypatch.setattr(
+        "app.modules.customers.router.EntitlementService.ensure_channel_allowed",
+        staticmethod(allow_channel),
+    )
+    monkeypatch.setattr(
+        "app.modules.customers.router.verify_channel_credentials", verify
+    )
+    ctx = _settings_ctx(db, tenant_ctx)
+
+    result = await connect_integration(
+        IntegrationConnectBody(
+            provider="whatsapp",
+            credentials={"access_token": "submitted-secret"},
+            config={"phone_number_id": "123456789"},
+        ),
+        ctx,
+    )
+
+    assert result["credentials_verified"] is True
+    audits = (
+        (
+            await db.execute(
+                select(AuditLog).where(
+                    AuditLog.action == "integration.connected",
+                    AuditLog.resource_id == result["id"],
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(audits) == 1
+    # The audit row carries identity metadata only — never the credential.
+    assert "submitted-secret" not in str(audits[0].after)
+
+
+async def test_verification_failure_demotes_the_channel_and_audits(
+    db, tenant_ctx, monkeypatch
+) -> None:  # noqa: ANN001
+    from sqlalchemy import func, select
+
+    from app.modules.customers.router import verify_integration
+    from app.modules.platform.models import AuditLog
+
+    row = _channel_row(tenant_id=tenant_ctx.tenant_id)
+    db.add(row)
+    await db.flush()
+
+    async def decrypt(_session, integration) -> dict:
+        return {"access_token": "old-secret"}
+
+    async def reject(_provider, _credentials, _config) -> None:
+        raise ValidationError("The provider rejected these credentials.")
+
+    monkeypatch.setattr(IntegrationCredentialsService, "decrypt", staticmethod(decrypt))
+    monkeypatch.setattr(
+        "app.modules.customers.router.verify_channel_credentials", reject
+    )
+    ctx = _settings_ctx(db, tenant_ctx)
+
+    result = await verify_integration(row.id, ctx)
+
+    assert result["status"] == "reauth_required"
+    audit = (
+        await db.execute(
+            select(func.count(AuditLog.id)).where(
+                AuditLog.action == "integration.verification_failed",
+                AuditLog.resource_id == str(row.id),
+            )
+        )
+    ).scalar_one()
+    assert audit == 1
+    assert row.status == "reauth_required"

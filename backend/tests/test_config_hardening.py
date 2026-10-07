@@ -134,7 +134,9 @@ def test_secure_environment_requires_configured_password_reset_delivery() -> Non
 
 
 def test_secure_environment_requires_durable_media_storage() -> None:
-    with pytest.raises(ValidationError, match="durable S3-compatible media storage"):
+    with pytest.raises(
+            ValidationError, match="durable object storage must be configured"
+        ):
         _build(
             "production",
             s3_endpoint="",
@@ -142,6 +144,12 @@ def test_secure_environment_requires_durable_media_storage() -> None:
             s3_bucket="",
             s3_access_key_id="",
             s3_secret_access_key="",
+            # Ambient-proof: the repo's real .env carries a live Supabase
+            # project, and durable_storage_configured accepts the Supabase
+            # half — without blanking it here the ambient values would make
+            # this "nothing configured" assertion lie.
+            supabase_url="",
+            supabase_service_role_key="",
         )
 
 

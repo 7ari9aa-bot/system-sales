@@ -548,11 +548,19 @@ def _storage(client=None, *, bucket="b") -> Any:
 
     storage = ObjectStorage.__new__(ObjectStorage)
     storage._bucket = bucket
-    storage._endpoint = None
+    storage._endpoint = "https://s3.test" if client is not None else None
     storage._region = "us-east-1"
     storage._key = "k" if client is not None else ""
     storage._secret = "s" if client is not None else ""
     storage._client = client
+    # The supabase half of __init__ (rest client + url/key + url cache): the
+    # configured() predicate reads BOTH halves, so an object built via
+    # __new__ must carry the whole attribute surface or the delete path
+    # dies on a missing attribute instead of answering "nothing configured".
+    storage._supabase_url = ""
+    storage._supabase_key = ""
+    storage._rest_client = None
+    storage._signed_url_cache = {}
     return storage
 
 

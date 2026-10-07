@@ -701,4 +701,3 @@ async def test_e2e_login_mfa_refresh_grace_replay_then_reuse_revokes_family(
         "reuse past the window must revoke EVERY live token the user owns — "
         "the rotation heir and the tolerated replay's pair included"
     )
-    await redis.aclose()

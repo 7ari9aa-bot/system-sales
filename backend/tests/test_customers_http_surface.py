@@ -71,7 +71,11 @@ LTV = Decimal("999999999999.99")
 #: here changes the gap-register claim P8 is written against, so it must be an
 #: explicit edit rather than a silent drift.
 CUSTOMERS_ROUTE_COUNT = 15
-PLATFORM_ROUTE_COUNT = 6
+# 6 -> 7 (hardening package 2.1): added POST
+# /integrations/{integration_id}/disconnect — the §145 disconnected state
+# (active|restricted -> disconnected) had no route driving it, so a channel
+# could never be detached from the settings surface at all.
+PLATFORM_ROUTE_COUNT = 7
 
 #: Routes that answer 204 and therefore have NO body to type. Enumerated by
 #: path+method rather than filtered by status code, so a new 204 has to be
@@ -80,12 +84,23 @@ NO_BODY_ROUTES: frozenset[str] = frozenset(
     {
         "DELETE /customers/{customer_id}/tags/{tag_name}",
         "DELETE /invitations/{invitation_id}",
+        # Meta OAuth callback: answers a 302 redirect, never a JSON body.
+        "GET /integrations/meta/oauth/callback",
     }
 )
 
 #: P4, read off ``scripts/provision.py``'s ROLE_MATRIX: ``customers:read`` and
 #: ``customers:write`` are separate grants, and the settings screen is a
 #: ``settings:*`` surface. Every route in the module maps to exactly one code.
+#: Routes whose authorization is NOT a permission code, enumerated so an
+#: accidental ungated addition can never hide behind the exemption.
+#: The OAuth callback's authorization is the 10-minute signed state JWT minted
+#: under settings:write at start-time; the route reads no tenant data.
+_PERMISSION_EXEMPT: frozenset[str] = frozenset(
+    {"GET /integrations/meta/oauth/callback"}
+)
+
+
 GATED_READS: dict[str, str] = {
     "GET /customers": "customers:read",
     "GET /customers/{customer_id}": "customers:read",
@@ -108,6 +123,8 @@ GATED_WRITES: dict[str, str] = {
     "POST /integrations": "settings:write",
     "POST /integrations/connect": "settings:write",
     "POST /integrations/{integration_id}/verify": "settings:write",
+    "POST /integrations/{integration_id}/disconnect": "settings:write",
+    "GET /integrations/meta/oauth/start": "settings:write",
     "GET /invitations": "settings:write",
     "DELETE /invitations/{invitation_id}": "settings:write",
 }
@@ -169,8 +186,20 @@ class _RecordingSession:
 
 
 def _routes() -> list[Any]:
-    out = [r for r in customers_router.routes if getattr(r, "methods", None)]
-    out += [r for r in platform_router.routes if getattr(r, "methods", None)]
+    # Recurse into lazily-included routers (the _IncludedRouter wrappers, e.g.
+    # the Meta OAuth router): a flat walk silently skipped their routes, so
+    # the inventory — and every guard pinned on it — never saw them.
+    def walk(routes: list[Any], out: list[Any]) -> None:
+        for r in routes:
+            original = getattr(r, "original_router", None)
+            if original is not None:
+                walk(original.routes, out)
+            elif getattr(r, "methods", None):
+                out.append(r)
+
+    out: list[Any] = []
+    walk(customers_router.routes, out)
+    walk(platform_router.routes, out)
     return out
 
 
@@ -344,7 +373,13 @@ def test_every_customers_response_schema_documents_its_fields() -> None:
     paths = {p: ops for p, ops in document["paths"].items() if p.startswith("/api/v1")}
 
     untyped: list[str] = []
-    for key in (_key(r) for r in _routes()):
+    for route in _routes():
+        key = _key(route)
+        if getattr(route, "include_in_schema", True) is False:
+            # Deliberately unlisted (the OAuth callback is a browser-redirect
+            # landing on a public URL) — absent from OpenAPI BY CONTRACT, so
+            # the document walk skips it instead of demanding a phantom entry.
+            continue
         method, path = key.split(" ", 1)
         operations = paths.get(f"/api/v1{path}")
         assert operations, f"{key} is not in the OpenAPI document at all"
@@ -835,6 +870,8 @@ def test_every_customers_route_declares_exactly_one_permission_code() -> None:
     offenders: list[str] = []
     for route in _routes():
         key = _key(route)
+        if key in _PERMISSION_EXEMPT:
+            continue
         codes: set[str] = set()
         stack = list(route.dependant.dependencies)
         while stack:

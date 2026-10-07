@@ -87,6 +87,16 @@ class IntegrationConnectBody(BaseModel):
     config: dict[str, Any] = Field(default_factory=dict)
 
 
+class IntegrationDisconnectBody(BaseModel):
+    """Explicit confirmation for ``POST /integrations/{id}/disconnect``.
+
+    Disconnecting stops the tenant's inbound provider traffic, so the route
+    refuses to run on a defaulted body: the caller must send ``confirm: true``.
+    """
+
+    confirm: bool = False
+
+
 class IntegrationVerificationOut(BaseModel):
     id: UUID
     provider: str
@@ -363,3 +373,10 @@ class IntegrationOut(BaseModel):
 class IntegrationUpserted(BaseModel):
     id: UUID
     status: str
+
+
+class MetaOAuthStartOut(BaseModel):
+    """P8 contract for GET /integrations/meta/oauth/start: the ONLY field the
+    frontend consumes is the Meta-owned dialog URL it navigates to."""
+
+    authorize_url: str

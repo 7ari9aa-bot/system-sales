@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import DomainError, ValidationError
 from app.core.secrets import encrypt_credentials_dict
 from app.core.security import create_oauth_state_token, decode_token
+from app.modules.customers.schemas import MetaOAuthStartOut
 from app.modules.identity.deps import DbSession, TenantContext, require_permission
 from app.modules.platform.integration_verifier import verify_channel_credentials
 from app.modules.platform.models import Integration
@@ -118,7 +119,9 @@ def _build_authorize_url(
     return f"https://www.facebook.com/{_META_VERSION}/dialog/oauth?{urlencode(params)}"
 
 
-@meta_oauth_router.get("/integrations/meta/oauth/start")
+@meta_oauth_router.get(
+    "/integrations/meta/oauth/start", response_model=MetaOAuthStartOut
+)
 async def meta_oauth_start(
     provider: str,
     ctx: TenantContext = Depends(require_permission("settings:write")),

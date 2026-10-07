@@ -424,3 +424,140 @@ async def test_a_cancelled_order_records_one_release_for_its_hold(
         reservation.id
     ]
     assert (await _reservation(db, order.id)).status == "CANCELLED"
+
+
+# ------------------------------------------------ the 4.2 close-out race ----
+
+
+async def test_two_concurrent_reserves_on_the_last_unit_admit_exactly_one(
+    db_url: str,
+) -> None:
+    """The mandated 4.2 close-out: two SIMULTANEOUS reservations racing the
+    same last unit must admit exactly one and refuse the other with the stock
+    domain error — never a double hold, never a raw 500.
+
+    Uses its own engine with REAL commits: the conftest ``db`` fixture nests
+    in savepoints on one connection, which cannot race itself, and uncommitted
+    seed rows would be invisible to a second connection. Each racer binds the
+    tenant GUC on its own session; the FOR UPDATE row lock serializes them,
+    and the loser re-reads ``available = 0`` under READ COMMITTED and raises
+    the domain error. Seeded rows are torn down on the same engine so the
+    suite leaves nothing behind.
+    """
+    import asyncio
+
+    import sqlalchemy as sa
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.core.db import bind_tenant
+    from app.core.errors import InsufficientStockError
+
+    engine = create_async_engine(db_url, connect_args={"statement_cache_size": 0})
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+
+    # A REAL committed tenant: every tenant-scoped row carries an FK to
+    # tenants, and the conftest harness's tenant exists only inside its own
+    # rolled-back transaction, invisible to this engine. The INSERT policy
+    # on tenants admits it pre-GUC (register's own path does the same).
+    tenant_id = uuid.uuid4()
+    async with engine.connect() as boot:
+        async with boot.begin():
+            await boot.execute(
+                sa.text(
+                    "INSERT INTO tenants (id, slug, name) VALUES (:id, :slug, :name)"
+                ),
+                {
+                    "id": tenant_id,
+                    "slug": f"race-{uuid.uuid4().hex[:10]}",
+                    "name": "Race Tenant",
+                },
+            )
+
+    wh_id = variant_id = product_id = None
+    outcomes: list[str] = []
+    try:
+        # Seed with real commits: a warehouse and an active variant on a
+        # one-unit shelf.
+        async with sessions() as seed:
+            await bind_tenant(seed, tenant_id)
+            wh = Warehouse(
+                tenant_id=tenant_id,
+                name="Race WH",
+                code=f"RW-{uuid.uuid4().hex[:6].upper()}",
+            )
+            seed.add(wh)
+            await seed.flush()
+            product = await CatalogService.create_product(
+                seed,
+                tenant_id,
+                title="Race Product",
+                slug=f"race-{uuid.uuid4().hex[:10]}",
+            )
+            await CatalogService.update_product(
+                seed, tenant_id, product.id, status="active"
+            )
+            variant = await CatalogService.add_variant(
+                seed, tenant_id, product.id, price="10.00"
+            )
+            await InventoryService.move(
+                seed,
+                tenant_id,
+                variant.id,
+                wh.id,
+                direction="in",
+                quantity=1,
+                reason="purchase",
+            )
+            await seed.commit()
+            wh_id, variant_id, product_id = wh.id, variant.id, product.id
+
+        async def racer() -> None:
+            async with sessions() as session:
+                await bind_tenant(session, tenant_id)
+                try:
+                    await InventoryService.reserve(
+                        session, tenant_id, variant_id, wh_id, 1
+                    )
+                    await session.commit()
+                except InsufficientStockError:
+                    await session.rollback()
+                    outcomes.append("refused")
+                else:
+                    outcomes.append("admitted")
+
+        await asyncio.gather(racer(), racer())
+        assert sorted(outcomes) == ["admitted", "refused"], (
+            f"one racer must win and one must refuse, got {outcomes}"
+        )
+
+        # The ledger agrees: exactly ONE hold row, and the balance sits at
+        # on_hand=1 with reserved=1 — a double hold would show reserved=2.
+        async with sessions() as check:
+            await bind_tenant(check, tenant_id)
+            holds = (
+                await check.execute(
+                    select(InventoryMovement).where(
+                        InventoryMovement.variant_id == variant_id,
+                        InventoryMovement.direction == "hold",
+                    )
+                )
+            ).scalars().all()
+            assert len(holds) == 1, [m.quantity for m in holds]
+            balance = await InventoryService.get_balance(
+                check, tenant_id, variant_id, wh_id
+            )
+            assert (balance.on_hand, balance.reserved) == (1, 1)
+    finally:
+        # Leave nothing behind: balances and movements first, then the variant
+        # (its movements already gone), the product (cascades what is left of
+        # the variant tree), and the warehouse.
+        # One DELETE with the tenant GUC bound: the tenants row is the cascade
+        # root for every seeded row, exactly as the offboarding purge relies
+        # on — so the suite leaves nothing behind by construction.
+        async with sessions() as cleanup:
+            await bind_tenant(cleanup, tenant_id)
+            await cleanup.execute(
+                sa.text("DELETE FROM tenants WHERE id = :t"), {"t": tenant_id}
+            )
+            await cleanup.commit()
+        await engine.dispose()

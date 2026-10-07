@@ -11,7 +11,8 @@ future outbound-delivery surface.
 
 from __future__ import annotations
 
-from datetime import date
+import uuid
+from datetime import date, datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends
@@ -30,7 +31,42 @@ class WebhookEndpointRequest(BaseModel):
     events: list[str] = Field(default_factory=list)
 
 
-@webhooks_router.post("", status_code=201)
+class WebhookEndpointCreated(BaseModel):
+    """The register/rotate response — the ONLY response that ever carries a
+    signing secret. No list or detail model includes ``secret``."""
+
+    id: uuid.UUID
+    url: str
+    # Shown once at creation (register) or rotation: the server cannot re-show
+    # it later, so a caller that loses this response must rotate again.
+    secret: str
+    events: list[str]
+    active: bool = True
+
+
+class WebhookEndpointOut(BaseModel):
+    """A registry row WITHOUT its secret — the list surface is secret-free."""
+
+    id: uuid.UUID
+    url: str
+    events: list[str]
+    active: bool
+    created_at: datetime | None = None
+
+
+class WebhookEndpointRotated(BaseModel):
+    id: uuid.UUID
+    secret: str  # the NEW secret, shown exactly once (see WebhookEndpointCreated)
+    rotated: bool = True
+    active: bool = True
+
+
+class WebhookEndpointDeleted(BaseModel):
+    id: uuid.UUID
+    active: bool = False
+
+
+@webhooks_router.post("", status_code=201, response_model=WebhookEndpointCreated)
 async def register_webhook(
     body: WebhookEndpointRequest,
     ctx: TenantContext = Depends(require_permission("settings:write")),
@@ -40,13 +76,81 @@ async def register_webhook(
         ctx.tenant_id,
         url=body.url,
         events=body.events,
+        actor_user_id=ctx.user.id,
     )
     return {
         "id": str(endpoint.id),
         "url": endpoint.url,
         "secret": endpoint.secret,  # shown once at creation
         "events": endpoint.events,
+        "active": bool(endpoint.is_active),
     }
+
+
+@webhooks_router.get("", response_model=list[WebhookEndpointOut])
+async def list_webhook_endpoints(ctx: TenantContext = Depends(require_permission("settings:read"))):
+    """This tenant's registered outbound webhook endpoints — never their secrets.
+
+    Unpaginated on the same grounds as ``GET /platform/flags``: endpoints are
+    tenant configuration, not a growing user dataset, so the row count is
+    bounded by what an operator can name. Ordered ``(created_at, id)`` —
+    ``created_at`` alone is not a total order for rows created in one
+    transaction, and ``id`` is the tie-break that keeps the list stable.
+    """
+    rows = await WebhookService.list_endpoints(ctx.session, ctx.tenant_id)
+    return [
+        {
+            "id": str(row.id),
+            "url": row.url,
+            "events": list(row.events or []),
+            "active": bool(row.is_active),
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+        }
+        for row in rows
+    ]
+
+
+@webhooks_router.post(
+    "/{endpoint_id}/rotate", response_model=WebhookEndpointRotated
+)
+async def rotate_webhook_secret(
+    endpoint_id: uuid.UUID,
+    ctx: TenantContext = Depends(require_permission("settings:write")),
+):
+    """Rotate an endpoint's signing secret after a suspected leak.
+
+    The NEW secret rides this response and nowhere else; the old one stops
+    verifying from the next delivery (see ``WebhookService.rotate_endpoint_
+    secret``). Audited as ``webhook_endpoint.secret_rotated``.
+    """
+    endpoint = await WebhookService.rotate_endpoint_secret(
+        ctx.session,
+        ctx.tenant_id,
+        endpoint_id,
+        actor_user_id=ctx.user.id,
+    )
+    return {
+        "id": str(endpoint.id),
+        "secret": endpoint.secret,
+        "rotated": True,
+        "active": bool(endpoint.is_active),
+    }
+
+
+@webhooks_router.delete("/{endpoint_id}", response_model=WebhookEndpointDeleted)
+async def delete_webhook_endpoint(
+    endpoint_id: uuid.UUID,
+    ctx: TenantContext = Depends(require_permission("settings:write")),
+):
+    """Soft delete: the endpoint stops receiving deliveries (``is_active=False``),
+    its delivery history stays, and the decision is audited. Idempotent."""
+    endpoint = await WebhookService.deactivate_endpoint(
+        ctx.session,
+        ctx.tenant_id,
+        endpoint_id,
+        actor_user_id=ctx.user.id,
+    )
+    return {"id": str(endpoint.id), "active": bool(endpoint.is_active)}
 
 
 @billing_router.get("/subscription")

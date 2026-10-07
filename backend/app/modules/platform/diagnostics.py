@@ -8,6 +8,14 @@ Deep self-inspection across all architectural layers:
 - Integrations & Channels: webhook consecutive failures, disconnected accounts.
 - Data Integrity: orphaned conversations, invalid order states, negative inventories.
 - Environment: essential secrets (JWT_SECRET), default currency, timezone.
+
+The contract every check in this engine obeys:
+- LIVE: each check runs its probe at request time — never a cached status.
+- EVIDENCED: a result carries its evidence (metrics, error, root cause,
+  remediation), so a red finding is answerable, not just coloured.
+- FAIL-CLOSED: a check that cannot run (network outage, broken query) is
+  reported as a ``degraded``/``down`` FINDING with the exception attached —
+  never swallowed, and never rendered as "healthy".
 """
 
 from __future__ import annotations
@@ -399,57 +407,83 @@ class SystemDiagnosticsService:
 
     @classmethod
     async def check_dead_letter_queue(cls) -> dict[str, Any]:
-        """Check depth of DLQ across Redis streams."""
+        """Check depth of DLQ across Redis streams.
+
+        Two fail-closed rules keep this check honest:
+
+        1. It reads the SAME stream inventory the §103 health surface reads
+           (``router.DLQ_STREAMS`` — the ``<source stream>.dlq`` convention
+           the workers actually write). The pre-hardening inventory named
+           streams nothing writes to, so the check could inspect phantom
+           keys forever and always report a clean zero.
+        2. A stream that cannot be answered is a FINDING, not a zero. The
+           previous code swallowed every ``XLEN`` error into the loop, so a
+           Redis outage was reported as ``healthy`` with ``dlq_depth: 0`` —
+           the exact silent failure this engine exists to surface. Any
+           unreadable stream now degrades the result and names the stream.
+        """
+        from app.modules.platform.router import DLQ_STREAMS
+
+        streams = tuple(DLQ_STREAMS)
+        depth = 0
+        failed: list[str] = []
         try:
             client = get_redis()
-            dlq_streams = ["stream:dlq", "stream:orders:dlq", "stream:conversations:dlq"]
-            depth = 0
-            for s in dlq_streams:
+            for s in streams:
                 try:
                     depth += int(await client.xlen(s) or 0)
-                except Exception:
-                    pass
-
-            if depth >= 50:
-                status = "down"
-                root_cause = (
-                    f"طابور الرسائل الميتة (DLQ) يحتوي على {depth} رسالة متعثرة تجاوزت المحاولات!"
-                )
-                remediation = "قم بفحص سبب استبعاد الرسائل في DLQ وحل خطأ المعالج."
-            elif depth > 0:
-                status = "degraded"
-                root_cause = f"يوجد {depth} رسالة في طابور الرسائل الميتة (DLQ)."
-                remediation = "راجع رسائل DLQ واستعد الرسائل الصالحة."
-            else:
-                status = "healthy"
-                root_cause = None
-                remediation = None
-
+                except Exception as exc:  # noqa: BLE001 — one unreadable stream degrades
+                    failed.append(f"{s} ({type(exc).__name__})")
+        except Exception as exc:
+            # A check that cannot run is a finding, never a clean bill of
+            # health: this engine must not certify a queue it cannot see.
             return {
                 "id": "dlq_depth",
                 "category": "outbox",
                 "name_ar": "طابور الرسائل الميتة (DLQ)",
                 "name_en": "Dead Letter Queue (DLQ)",
-                "status": status,
-                "error": None,
-                "root_cause": root_cause,
-                "remediation": remediation,
-                "metrics": {"dlq_depth": depth},
+                "status": "degraded",
+                "error": f"{type(exc).__name__}: {exc}",
+                "root_cause": "تعذر الوصول إلى Redis لفحص طابور الرسائل الميتة.",
+                "remediation": "تأكد من تشغيل Redis قبل الاعتماد على سلامة الـDLQ.",
+                "metrics": {},
                 "timestamp": datetime.now(UTC).isoformat(),
             }
-        except Exception:
-            return {
-                "id": "dlq_depth",
-                "category": "outbox",
-                "name_ar": "طابور الرسائل الميتة (DLQ)",
-                "name_en": "Dead Letter Queue (DLQ)",
-                "status": "healthy",
-                "error": None,
-                "root_cause": None,
-                "remediation": None,
-                "metrics": {"dlq_depth": 0},
-                "timestamp": datetime.now(UTC).isoformat(),
-            }
+
+        if failed:
+            status_val = "degraded"
+            root_cause = (
+                f"تعذر فحص {len(failed)} من {len(streams)} من تدفقات الـDLQ "
+                f"({'; '.join(failed)}) — العمق المعروض قد يكون أقل من الحقيقي."
+            )
+            remediation = "افحص اتصال Redis وأذونات قراءة التدفقات قبل الاطمئنان للعمق."
+        elif depth >= 50:
+            status_val = "down"
+            root_cause = (
+                f"طابور الرسائل الميتة (DLQ) يحتوي على {depth} رسالة متعثرة تجاوزت المحاولات!"
+            )
+            remediation = "قم بفحص سبب استبعاد الرسائل في DLQ وحل خطأ المعالج."
+        elif depth > 0:
+            status_val = "degraded"
+            root_cause = f"يوجد {depth} رسالة في طابور الرسائل الميتة (DLQ)."
+            remediation = "راجع رسائل DLQ واستعد الرسائل الصالحة."
+        else:
+            status_val = "healthy"
+            root_cause = None
+            remediation = None
+
+        return {
+            "id": "dlq_depth",
+            "category": "outbox",
+            "name_ar": "طابور الرسائل الميتة (DLQ)",
+            "name_en": "Dead Letter Queue (DLQ)",
+            "status": status_val,
+            "error": "; ".join(failed) or None,
+            "root_cause": root_cause,
+            "remediation": remediation,
+            "metrics": {"dlq_depth": depth, "unreadable_streams": len(failed)},
+            "timestamp": datetime.now(UTC).isoformat(),
+        }
 
     @classmethod
     async def check_ai_engine(
@@ -689,16 +723,20 @@ class SystemDiagnosticsService:
                 "metrics": {"negative_inventory": 0, "invalid_orders": 0},
                 "timestamp": datetime.now(UTC).isoformat(),
             }
-        except Exception:
+        except Exception as exc:
+            # Same rule as every check in this engine: an inspection that
+            # could not run is a finding (degraded + evidence), never a
+            # silent "healthy" — a broken invariant query must not read as
+            # "no anomalies detected".
             return {
                 "id": "data_integrity",
                 "category": "data_integrity",
                 "name_ar": "سلامة واتساق البيانات التجارية",
                 "name_en": "Business Data Invariants",
-                "status": "healthy",
-                "error": None,
-                "root_cause": None,
-                "remediation": None,
+                "status": "degraded",
+                "error": f"{type(exc).__name__}: {exc}",
+                "root_cause": "تعذر فحص اختلالات البيانات (طلبات أو مخزون سالب).",
+                "remediation": "تحقق من صحة جداول orders و inventory_balances قبل الاطمئنان للسلامة.",
                 "metrics": {},
                 "timestamp": datetime.now(UTC).isoformat(),
             }

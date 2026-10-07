@@ -24,11 +24,12 @@ import uuid
 
 import httpx
 import pytest
+from sqlalchemy import select
 
 from app.core.errors import ValidationError
 from app.modules.ai import gateway as ai_gateway
 from app.modules.ai.gateway import AIGateway
-from app.modules.ai.models import AIProviderPolicy, ModelConfig
+from app.modules.ai.models import AIProviderPolicy, ModelCall, ModelConfig
 from app.modules.ai.policy import classify_data, decide
 
 # ---------------------------------------------------------------------------
@@ -292,3 +293,95 @@ async def test_embed_honours_residency_before_calling_the_provider(
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         with pytest.raises(ValidationError, match="data-egress"):
             await AIGateway().embed(db, tenant_id, texts=["any text"], _client=client)
+
+
+# ---------------------------------------------------------------------------
+# 4. S6 — the base_url itself is an egress surface
+#
+# A tenant-supplied ``model_configs.base_url`` used to be POSTed to verbatim,
+# so a tenant could aim the gateway at cloud metadata (169.254.169.254), our
+# own API behind the edge (localhost), or any RFC1918 host and read the
+# response through error messages — with a deployment bearer key attached.
+# providers.assert_provider_base_url now runs net_guard's rules before the
+# request is built. These tests prove the refusal happens BEFORE any HTTP
+# call, on the real gateway send path.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "bad_base_url",
+    [
+        "http://169.254.169.254/v1",  # cloud instance metadata (link-local)
+        "http://localhost:8000/v1",  # our own API, past the edge
+        "http://10.0.0.5:9000/v1",  # RFC1918 private literal
+        "https://metadata.google.internal/v1",  # GCP metadata hostname
+    ],
+)
+async def test_tenant_base_url_to_internal_target_is_refused_before_http(
+    db, tenant_ctx, monkeypatch, bad_base_url
+):
+    tenant_id = tenant_ctx.tenant_id
+    monkeypatch.setattr(ai_gateway, "get_settings", lambda: _StubSettings())
+    db.add(
+        ModelConfig(
+            tenant_id=tenant_id,
+            alias="fast",
+            provider="openai",
+            model="cfg-model",
+            config={"base_url": bad_base_url, "api_key": "cfg-key"},
+        )
+    )
+    await db.flush()
+
+    def handler(request: httpx.Request) -> httpx.Response:  # pragma: no cover
+        raise AssertionError(f"request must never be issued to {bad_base_url}")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(ValidationError):
+            await AIGateway().chat(
+                db,
+                tenant_id,
+                alias="fast",
+                messages=[{"role": "user", "content": "hi"}],
+                _client=client,
+            )
+
+
+async def test_blocked_base_url_is_recorded_as_a_failed_model_call(
+    db, tenant_ctx, monkeypatch
+):
+    """The refusal is a governed outcome, not a silent drop: a ModelCall row
+    with status=error exists, and none of it carries the tenant's key."""
+    tenant_id = tenant_ctx.tenant_id
+    monkeypatch.setattr(ai_gateway, "get_settings", lambda: _StubSettings())
+    db.add(
+        ModelConfig(
+            tenant_id=tenant_id,
+            alias="fast",
+            provider="openai",
+            model="cfg-model",
+            config={"base_url": "http://169.254.169.254/v1", "api_key": "cfg-key"},
+        )
+    )
+    await db.flush()
+
+    def handler(request: httpx.Request) -> httpx.Response:  # pragma: no cover
+        raise AssertionError("no request may be issued")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(ValidationError):
+            await AIGateway().chat(
+                db,
+                tenant_id,
+                alias="fast",
+                messages=[{"role": "user", "content": "hi"}],
+                _client=client,
+            )
+
+    row = (
+        (await db.execute(select(ModelCall).where(ModelCall.tenant_id == tenant_id)))
+        .scalars()
+        .one()
+    )
+    assert row.status == "error"
+    assert "cfg-key" not in str(row.__dict__)

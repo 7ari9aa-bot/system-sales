@@ -173,6 +173,10 @@ class Settings(BaseSettings):
     messenger_verify_token: str = ""
     instagram_app_secret: str = ""
     instagram_verify_token: str = ""
+    # Email channel webhook (SendGrid bearer / Mailgun HMAC). Empty = the email
+    # adapter cannot verify a delivery and rejects ALL of them (fail closed),
+    # exactly like every other channel secret above.
+    email_webhook_secret: str = ""
 
     # object storage
     s3_endpoint: str = ""

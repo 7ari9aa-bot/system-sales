@@ -179,6 +179,20 @@ async def test_set_flag_rejects_out_of_range_percent_before_touching_db(percent:
         )
 
 
+@pytest.mark.parametrize("percent", [None, -5, 150, "100"])
+async def test_a_stored_percent_the_write_paths_cannot_produce_fails_closed(percent: object) -> None:
+    """Reading an invalid ``rollout_percent`` must be OFF, never widened.
+
+    Fail-first: against the pre-fix evaluation, a corrupt ``150`` reached the
+    ``percent >= ROLLOUT_MAX`` branch and answered True — a row nobody wrote
+    through the validated write path silently widened its own rollout to
+    "on for everyone". Only values the write path can produce (0-100) are
+    honoured; everything else reads as off until an operator repairs the row.
+    """
+    session = _FakeSession(_flag(rollout_percent=percent))  # type: ignore[arg-type]
+    assert await FeatureFlagService.is_enabled(session, TENANT, FEATURE) is False
+
+
 # ------------------------------------------------------ metric registry -----
 
 

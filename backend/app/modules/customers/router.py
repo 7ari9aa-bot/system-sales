@@ -44,7 +44,7 @@ from app.modules.platform.integration_verifier import (
     verify_channel_credentials,
 )
 from app.modules.platform.models import Integration
-from app.modules.platform.service import IntegrationCredentialsService
+from app.modules.platform.service import AuditService, IntegrationCredentialsService
 
 router = APIRouter(tags=["customers"])
 platform_router = APIRouter(tags=["platform"])
@@ -746,6 +746,23 @@ async def connect_integration(
         integration.config = integration_config
         await ctx.session.flush()
 
+    # §66: binding (or re-binding) a channel is a credential-bearing act with
+    # tenant-wide blast radius — it redirects the provider's webhook traffic.
+    # The audit row carries identity metadata only, never credentials.
+    await AuditService.write(
+        ctx.session,
+        ctx.tenant_id,
+        ctx.user.id,
+        "integration.connected",
+        "integration",
+        str(integration.id),
+        after={
+            "provider": provider,
+            "status": integration.status,
+            "is_new": integration is not existing,
+        },
+    )
+
     return {
         "id": str(integration.id),
         "provider": provider,
@@ -800,6 +817,18 @@ async def verify_integration(
         )
         integration.config = config
         await ctx.session.flush()
+        # §66: the demotion to reauth_required is a state change on a live
+        # channel — audited so an operator can see WHEN the credential died.
+        await AuditService.write(
+            ctx.session,
+            ctx.tenant_id,
+            ctx.user.id,
+            "integration.verification_failed",
+            "integration",
+            str(integration.id),
+            before={"status": current},
+            after={"status": integration.status},
+        )
         return {
             "id": str(integration.id),
             "provider": integration.provider,
@@ -837,6 +866,18 @@ async def verify_integration(
             "_connection": connection_metadata,
         }
         await ctx.session.flush()
+
+    # §66: a successful re-verification re-arms a live channel — audited with
+    # the resulting status (active vs reconnected), never any credential.
+    await AuditService.write(
+        ctx.session,
+        ctx.tenant_id,
+        ctx.user.id,
+        "integration.reverified",
+        "integration",
+        str(integration.id),
+        after={"provider": integration.provider, "status": integration.status},
+    )
     return {
         "id": str(integration.id),
         "provider": integration.provider,
@@ -848,6 +889,80 @@ async def verify_integration(
         if integration.provider == "webchat"
         else None,
     }
+
+
+@platform_router.post(
+    "/integrations/{integration_id}/disconnect",
+    response_model=schemas.IntegrationOut,
+)
+async def disconnect_integration(
+    integration_id: UUID,
+    body: schemas.IntegrationDisconnectBody,
+    ctx: TenantContext = Depends(require_permission("settings:write")),
+):
+    """Disconnect a channel (§145 lifecycle: active|restricted → disconnected).
+
+    DELIBERATE confirmation gate: the body must carry ``confirm=true``. A
+    stray click or a replayed request must not cut a live provider webhook —
+    disconnecting stops inbound message flow for the whole tenant, so the
+    request is destructive enough to require an explicit assertion.
+
+    Fail-closed on the state machine: only ``active`` and ``restricted`` rows
+    may disconnect (those are the states that receive provider traffic);
+    ``pending``/``connecting``/``reauth_required`` have no provider traffic to
+    stop and are refused with the legal sources listed. ``disabled`` is
+    terminal and reconnecting is refused by design (connect enforces it too).
+    Idempotent: an already-disconnected row returns as-is without a second
+    audit entry. Reversal is the verified connect path — ``POST
+    /integrations/connect`` — so a reconnection always re-proves credentials
+    with the provider before going live. The decision is audited (§66) with
+    the before/after status.
+    """
+    if not body.confirm:
+        raise ValidationError(
+            "disconnecting a channel requires confirmation — "
+            'send {"confirm": true}',
+            details={"integration_id": str(integration_id)},
+        )
+    integration = (
+        await ctx.session.execute(
+            select(Integration).where(
+                Integration.id == integration_id,
+                Integration.tenant_id == ctx.tenant_id,
+                Integration.kind == "channel",
+            )
+        )
+    ).scalar_one_or_none()
+    if integration is None:
+        raise NotFoundError("channel integration not found")
+
+    current = _LEGACY_STATUS_ALIASES.get(integration.status, integration.status)
+    if current == "disconnected":
+        return _integration_output(integration)
+    if current == "disabled":
+        raise ValidationError("This channel was permanently disabled.")
+    if current not in ("active", "restricted"):
+        raise ValidationError(
+            "only an active or restricted channel can be disconnected",
+            details={
+                "integration_id": str(integration_id),
+                "status": integration.status,
+            },
+        )
+    Integration.validate_transition(current, "disconnected")
+    integration.status = "disconnected"
+    await ctx.session.flush()
+    await AuditService.write(
+        ctx.session,
+        ctx.tenant_id,
+        ctx.user.id,
+        "integration.disconnected",
+        "integration",
+        str(integration.id),
+        before={"status": current},
+        after={"status": "disconnected"},
+    )
+    return _integration_output(integration)
 
 
 @platform_router.post(

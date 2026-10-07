@@ -178,3 +178,185 @@ async def test_upsert_from_external_writes_in_the_tenants_currency(
 
     variants = await CatalogService.list_variants(db, tenant_id, product.id)
     assert variants[0].price == Decimal("25.00")
+
+
+# --------------------------------------------------------------------------
+# Package 5.1 — checklist 4: CHANNEL ACCOUNT STATE SYNC (not catalog sync —
+# that half lives above). The verify surface is the only writer of channel
+# state besides connect/disconnect: a failed recheck must DEMOTE the channel
+# to reauth_required (never silently keep it active), leave the stored
+# credentials untouched, expose no credential material, and leave an audit
+# row. A successful recheck re-arms the channel under the same rules.
+# --------------------------------------------------------------------------
+
+from httpx import ASGITransport, AsyncClient  # noqa: E402
+from sqlalchemy import text as sa_text  # noqa: E402
+
+from app.core.errors import ValidationError as DomainValidationError  # noqa: E402
+from app.core.secrets import decrypt_credentials_dict, encrypt_credentials_dict  # noqa: E402
+from app.main import create_app  # noqa: E402
+from app.modules.identity.deps import (  # noqa: E402
+    AuthedUser,
+    TenantContext,
+    get_tenant_ctx,
+)
+from app.modules.platform.integration_verifier import VerifiedChannel  # noqa: E402
+from app.modules.platform.models import AuditLog, Integration  # noqa: E402
+
+
+def _sync_app(db: AsyncSession, tenant_ctx) -> object:
+    """The real app with the tenant dependency replaced by the bound ctx.
+
+    Route, lifecycle table, audit writer and error handlers are all the
+    production ones; only the provider HTTP seam is patched per test.
+    """
+    app = create_app()
+    ctx = TenantContext(
+        session=db,
+        user=AuthedUser(
+            id=tenant_ctx.user.id, tenant_id=tenant_ctx.tenant_id, role_code="owner"
+        ),
+        tenant_id=tenant_ctx.tenant_id,
+        role_code="owner",
+        permission_codes={"settings:write"},
+    )
+
+    async def _override() -> TenantContext:
+        return ctx
+
+    app.dependency_overrides[get_tenant_ctx] = _override
+    return app
+
+
+async def _active_channel(db: AsyncSession, tenant_id: uuid.UUID) -> Integration:
+    row = Integration(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        provider="whatsapp",
+        kind="channel",
+        status="active",
+        config={"phone_number_id": "201008888888"},
+        credentials=encrypt_credentials_dict({"access_token": "live-provider-secret"}),
+    )
+    db.add(row)
+    await db.flush()
+    return row
+
+
+async def test_failed_recheck_demotes_to_reauth_required_and_audits(
+    db: AsyncSession, tenant_ctx, monkeypatch
+) -> None:
+    row = await _active_channel(db, tenant_ctx.tenant_id)
+
+    async def reject(_provider, _credentials, _config, *, client=None):
+        raise DomainValidationError("The provider rejected these credentials.")
+
+    monkeypatch.setattr(
+        "app.modules.customers.router.verify_channel_credentials", reject
+    )
+
+    async with AsyncClient(
+        transport=ASGITransport(app=_sync_app(db, tenant_ctx)), base_url="http://test"
+    ) as client:
+        response = await client.post(f"/api/v1/integrations/{row.id}/verify")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "reauth_required", "a dead credential must demote"
+    assert body["credentials_verified"] is False
+    assert "live-provider-secret" not in response.text, "no credential material"
+
+    await db.refresh(row)
+    assert row.status == "reauth_required"
+    assert decrypt_credentials_dict(row.credentials) == {
+        "access_token": "live-provider-secret"
+    }, "a state sync must not rewrite credentials"
+
+    audit = (
+        await db.execute(
+            select(AuditLog).where(
+                AuditLog.tenant_id == tenant_ctx.tenant_id,
+                AuditLog.action == "integration.verification_failed",
+                AuditLog.resource_id == str(row.id),
+            )
+        )
+    ).scalar_one()
+    assert audit.before == {"status": "active"}
+    assert audit.after["status"] == "reauth_required"
+
+
+async def test_successful_recheck_rearms_the_channel_without_credential_writes(
+    db: AsyncSession, tenant_ctx, monkeypatch
+) -> None:
+    row = await _active_channel(db, tenant_ctx.tenant_id)
+
+    async def approve(provider, credentials, config, *, client=None):
+        assert credentials == {"access_token": "live-provider-secret"}
+        return VerifiedChannel({"phone_number_id": "201008888888"}, "Shop")
+
+    monkeypatch.setattr(
+        "app.modules.customers.router.verify_channel_credentials", approve
+    )
+
+    async with AsyncClient(
+        transport=ASGITransport(app=_sync_app(db, tenant_ctx)), base_url="http://test"
+    ) as client:
+        response = await client.post(f"/api/v1/integrations/{row.id}/verify")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "active"
+    assert body["credentials_verified"] is True
+    assert "live-provider-secret" not in response.text
+
+    await db.refresh(row)
+    assert row.status == "active"
+    assert decrypt_credentials_dict(row.credentials) == {
+        "access_token": "live-provider-secret"
+    }, "a re-verification must not rewrite the stored credential"
+    assert row.config["_connection"]["verified_at"]
+
+    audit = (
+        await db.execute(
+            select(AuditLog).where(
+                AuditLog.tenant_id == tenant_ctx.tenant_id,
+                AuditLog.action == "integration.reverified",
+                AuditLog.resource_id == str(row.id),
+            )
+        )
+    ).scalar_one()
+    assert audit.after["status"] == "active"
+
+
+async def test_channel_state_only_resolves_traffic_while_active(
+    db: AsyncSession, tenant_ctx
+) -> None:
+    """The state → ingress contract at the resolver: reauth_required and
+    disabled states never route provider traffic, only active/connected do."""
+    key = "201007777777"
+    row = Integration(
+        id=uuid.uuid4(),
+        tenant_id=tenant_ctx.tenant_id,
+        provider="whatsapp",
+        kind="channel",
+        status="reauth_required",
+        config={"phone_number_id": key},
+        credentials=encrypt_credentials_dict({"access_token": "s"}),
+    )
+    db.add(row)
+    await db.flush()
+
+    def _resolve():
+        return db.execute(
+            sa_text("SELECT public.resolve_channel_tenant('whatsapp', :k)"), {"k": key}
+        )
+
+    assert (await _resolve()).scalar() is None, (
+        "reauth_required must not receive provider traffic"
+    )
+    row.status = "active"
+    await db.flush()
+    assert str((await _resolve()).scalar()) == str(tenant_ctx.tenant_id)
+    row.status = "disabled"
+    await db.flush()
+    assert (await _resolve()).scalar() is None

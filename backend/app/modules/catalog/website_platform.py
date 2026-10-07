@@ -46,13 +46,18 @@ async def website_platform_products(
     db: AsyncSession = Depends(get_db),
     limit: int = 100,
 ) -> dict:
-    """Published catalog projection for the website platform (read-only)."""
+    """Sellable catalog projection for the website platform (read-only).
+
+        Filters on the catalog's OWN vocabulary — ``active`` is the state a
+        product must hold to sell (M4), so it is the state the storefront can
+        render. A ``published`` literal does not exist in the domain.
+        """
     await bind_tenant(db, key_tenant)
     capped = max(1, min(limit, 500))
 
     product_rows = (
         (await db.execute(
-            select(Product).where(Product.status == "published").order_by(Product.created_at.desc()).limit(capped)
+            select(Product).where(Product.status == "active").order_by(Product.created_at.desc()).limit(capped)
         ))
         .scalars()
         .all()

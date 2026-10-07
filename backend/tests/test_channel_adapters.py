@@ -1,9 +1,17 @@
-"""Channel adapter tests — WhatsApp & Telegram normalization, signatures, sends."""
+"""Channel adapter tests — WhatsApp & Telegram normalization, signatures, sends.
+
+Package 5.1 (checklist 2) adds the table-driven contract section at the bottom:
+all SIX channels (whatsapp, messenger, instagram, telegram, email, webchat)
+must expose the same adapter surface — one registry, one normalization shape,
+one outbound signature — proven by walking every adapter through the SAME
+cases rather than six bespoke suites.
+"""
 
 from __future__ import annotations
 
 import hashlib
 import hmac
+import inspect
 import json
 import uuid
 
@@ -11,8 +19,14 @@ import httpx
 import pytest
 
 from app.core.errors import ExternalProviderError
+from app.modules.conversations.gateway import registry as gateway_registry
 from app.modules.conversations.gateway.base import OutboundMessage, ProviderCredentials
+from app.modules.conversations.gateway.email import email_adapter
+from app.modules.conversations.gateway.instagram import instagram_adapter
+from app.modules.conversations.gateway.messenger import messenger_adapter
+from app.modules.conversations.gateway.registry import ADAPTERS
 from app.modules.conversations.gateway.telegram import telegram_adapter
+from app.modules.conversations.gateway.webchat import webchat_adapter
 from app.modules.conversations.gateway.whatsapp import whatsapp_adapter
 
 
@@ -451,3 +465,222 @@ def test_telegram_media_payloads_map_to_canonical_content_types():
     )[0]
     assert animation.content_type == "video"
     assert animation.media_url == "telegram:animation"
+
+
+# --------------------------------------------------------------------------
+# Package 5.1 — the adapter contract, table-driven across ALL SIX channels.
+# Every adapter must satisfy the same surface: the registry keys them the same
+# way, empty/garbage payloads normalize to an empty LIST (never None, never an
+# awaitable), a canonical payload normalizes to a tenant-resolvable message
+# stamped with the adapter's own channel, and `send` has one signature and one
+# return type. A seventh channel that drifts from the shape fails here instead
+# of crashing the dispatcher (or the WebhookWorker) on its first delivery.
+# --------------------------------------------------------------------------
+
+ALL_ADAPTERS = [
+    whatsapp_adapter,
+    messenger_adapter,
+    instagram_adapter,
+    telegram_adapter,
+    email_adapter,
+    webchat_adapter,
+]
+ALL_ADAPTER_IDS = [a.name for a in ALL_ADAPTERS]
+
+#: One canonical inbound payload per channel, shaped so the adapter yields
+#: exactly one normalized message with a customer ref and a provider id.
+_CANONICAL_INBOUND = {
+    "whatsapp": {
+        "entry": [
+            {
+                "changes": [
+                    {
+                        "value": {
+                            "metadata": {"phone_number_id": "PNID-C"},
+                            "messages": [
+                                {
+                                    "id": "wamid.c1",
+                                    "from": "201000000001",
+                                    "type": "text",
+                                    "text": {"body": "مرحبا"},
+                                }
+                            ],
+                        }
+                    }
+                ]
+            }
+        ]
+    },
+    "messenger": {
+        "entry": [
+            {
+                "id": "PAGE-1",
+                "messaging": [
+                    {
+                        "sender": {"id": "PSID-1"},
+                        "recipient": {"id": "PAGE-1"},
+                        "message": {"mid": "mid.c1", "text": "مرحبا"},
+                    }
+                ],
+            }
+        ]
+    },
+    "instagram": {
+        "entry": [
+            {
+                "id": "IG-1",
+                "messaging": [
+                    {
+                        "sender": {"id": "IG-USER-1"},
+                        "recipient": {"id": "IG-1"},
+                        "message": {"mid": "mid.ig1", "text": "مرحبا"},
+                    }
+                ],
+            }
+        ]
+    },
+    "telegram": {
+        "_query": {"tenant_key": "pk-telegram"},
+        "message": {
+            "message_id": 101,
+            "chat": {"id": 555},
+            "from": {"first_name": "Sara"},
+            "text": "مرحبا",
+        },
+    },
+    "email": {
+        "from": "Alice <alice@example.test>",
+        "to": "support@example.test",
+        "text": "مرحبا",
+        "messageId": "<msg-1@example.test>",
+    },
+    "webchat": {
+        "session_key": "visitor-session-1",
+        "body": "مرحبا",
+        "client_message_id": "cmid-1",
+        "public_key": "pk-webchat",
+    },
+}
+
+
+def test_registry_has_exactly_the_six_channels():
+    """The registry is the single source of channel truth — no more, no less."""
+    assert set(ADAPTERS) == {
+        "whatsapp",
+        "messenger",
+        "instagram",
+        "telegram",
+        "email",
+        "webchat",
+    }
+    assert all(ADAPTERS[name].name == name for name in ADAPTERS)
+
+
+@pytest.mark.parametrize("adapter", ALL_ADAPTERS, ids=ALL_ADAPTER_IDS)
+def test_adapter_contract_empty_payload_normalizes_to_an_empty_list(adapter):
+    """An empty envelope is ZERO messages — never None, never a coroutine.
+
+    Both the generic dispatcher and the WebhookWorker iterate the result
+    (`for message in adapter.parse_inbound(payload)`), so a None return is a
+    TypeError on the hot path and an async return is a silent no-op.
+    """
+    result = adapter.parse_inbound({})
+    assert isinstance(result, list)
+    assert result == []
+    assert not inspect.isawaitable(result)
+
+
+@pytest.mark.parametrize("adapter", ALL_ADAPTERS, ids=ALL_ADAPTER_IDS)
+def test_adapter_contract_canonical_payload_normalizes_to_one_message(adapter):
+    """One canonical delivery → one normalized message, channel-stamped."""
+    from app.modules.conversations.gateway.base import InboundMessage
+
+    messages = adapter.parse_inbound(_CANONICAL_INBOUND[adapter.name])
+    assert isinstance(messages, list) and len(messages) == 1
+    message = messages[0]
+    assert isinstance(message, InboundMessage)
+    assert message.channel == adapter.name
+    assert message.customer_ref, "a message without a customer ref cannot be routed"
+    assert message.body == "مرحبا"
+
+
+@pytest.mark.parametrize("adapter", ALL_ADAPTERS, ids=ALL_ADAPTER_IDS)
+def test_adapter_contract_resolves_a_tenant_key_from_the_canonical_payload(adapter):
+    """Tenant resolution reads the same payload the adapter normalized."""
+    assert adapter.resolve_tenant_key(_CANONICAL_INBOUND[adapter.name]) is not None
+    assert adapter.resolve_tenant_key({}) is None
+
+
+@pytest.mark.parametrize("adapter", ALL_ADAPTERS, ids=ALL_ADAPTER_IDS)
+def test_adapter_contract_no_handshake_for_unconfigured_channels(adapter):
+    """With nothing configured, the GET handshake verifies NOTHING — None."""
+    assert adapter.verify_request({}) is None
+
+
+@pytest.mark.parametrize("adapter", ALL_ADAPTERS, ids=ALL_ADAPTER_IDS)
+def test_adapter_contract_send_signature_is_uniform(adapter):
+    """One outbound signature: (credentials, message, _client=None) -> str."""
+    params = list(inspect.signature(adapter.send).parameters)
+    assert params[:2] == ["credentials", "message"], adapter.name
+    assert params[2] == "_client"
+    # `send` must be awaitable and `parse_inbound` must not be — one async
+    # surface (send), one sync surface (parse), enforced per adapter.
+    assert inspect.iscoroutinefunction(adapter.send)
+
+
+async def test_adapter_contract_send_returns_a_provider_id_string():
+    """Every egress channel answers a healthy provider with a `str` id;
+    webchat's transport is the message row itself, so the id is local."""
+    outbound = OutboundMessage(
+        tenant_id=uuid.uuid4(),
+        conversation_id=uuid.uuid4(),
+        message_id=uuid.uuid4(),
+        customer_ref="customer-1",
+        body="hello",
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = str(request.url)
+        if "graph.facebook.com" in path and path.endswith("/me/messages"):
+            return httpx.Response(200, json={"message_id": "mid.out1"})
+        if "graph.facebook.com" in path and "/IG-1/messages" in path:
+            return httpx.Response(200, json={"message_id": "mid.out1"})
+        if "graph.facebook.com" in path:
+            return httpx.Response(200, json={"messages": [{"id": "wamid.out1"}]})
+        if "api.telegram.org" in path:
+            return httpx.Response(200, json={"ok": True, "result": {"message_id": 77}})
+        if "api.sendgrid.com" in path:
+            return httpx.Response(202, headers={"X-Message-Id": "sg-out-1"})
+        raise AssertionError(f"unexpected egress host: {path}")
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    credentials = {
+        "whatsapp": ProviderCredentials(config={"phone_number_id": "P", "access_token": "T"}),
+        "messenger": ProviderCredentials(config={"api_key": "PAGE-TOKEN"}),
+        "instagram": ProviderCredentials(config={"api_key": "IG-TOKEN", "account_id": "IG-1"}),
+        "telegram": ProviderCredentials(config={"bot_token": "BOT"}),
+        "email": ProviderCredentials(config={"api_key": "ESP-KEY"}),
+        "webchat": ProviderCredentials(config={}),
+    }
+    expected = {
+        "whatsapp": "wamid.out1",
+        "messenger": "mid.out1",
+        "instagram": "mid.out1",
+        "telegram": "77",
+        "email": "sg-out-1",
+        "webchat": None,  # local id — asserted by type only
+    }
+    for adapter in ALL_ADAPTERS:
+        provider_id = await adapter.send(credentials[adapter.name], outbound, _client=client)
+        assert isinstance(provider_id, str) and provider_id, adapter.name
+        if expected[adapter.name] is not None:
+            assert provider_id == expected[adapter.name], adapter.name
+
+
+def test_registry_never_hands_out_a_foreign_adapter():
+    """A channel name resolves to ITS OWN adapter or nothing — the dispatch
+    contract the webhook router is built on."""
+    for name in ("whatsapp", "messenger", "instagram", "telegram", "email", "webchat"):
+        assert gateway_registry.get_adapter(name) is ADAPTERS[name]
+    assert gateway_registry.get_adapter("sms") is None
+    assert gateway_registry.get_adapter("") is None

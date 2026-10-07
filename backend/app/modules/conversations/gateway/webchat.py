@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import uuid
 
+import httpx
+
 from app.modules.conversations.gateway.base import (
     ChannelAdapter,
     InboundMessage,
@@ -59,9 +61,16 @@ class WebchatAdapter(ChannelAdapter):
         # webchat; the public route takes the key from the URL path instead.
         return payload.get("public_key")
 
-    async def send(self, credentials: ProviderCredentials, message: OutboundMessage) -> str:
-        # Delivery for webchat is pull-based (the widget polls / fetches via SSE),
-        # so "sending" just means persisting — the message row is the transport.
+    async def send(
+        self,
+        credentials: ProviderCredentials,
+        message: OutboundMessage,
+        _client: httpx.AsyncClient | None = None,
+    ) -> str:
+        # Delivery for webchat is pull-based (the widget polls / fetches via
+        # SSE), so "sending" just means persisting — the message row is the
+        # transport. ``_client`` is accepted (and ignored) so all six adapters
+        # share ONE send signature; webchat opens no HTTP client.
         return f"webchat-{uuid.uuid4()}"
 
 

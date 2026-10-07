@@ -202,3 +202,61 @@ async def test_provider_error_is_recorded_and_raised(db, tenant_ctx, monkeypatch
     )
     assert row.status == "error"
     assert row.tokens_in == 0 and row.tokens_out == 0
+
+
+async def test_api_key_never_reaches_logs_or_model_call_rows(
+    db, tenant_ctx, monkeypatch, caplog
+):
+    """Routing verdict pin, credential half: `resolve_model_config` is
+    deterministic (tenant row, then deployment settings — the tests above
+    prove the order), and the credential it resolves is WRITE-ONLY: it rides
+    the Authorization header to the provider and appears in no log record and
+    in no `model_calls` column. A key that leaks into a log line or a row is
+    readable by everyone who can read logs."""
+    import logging
+
+    tenant_id = tenant_ctx.tenant_id
+    secret = "sk-super-secret-gateway-key-9f8e7d"
+
+    class _KeyedSettings:
+        """The deployment stub, with a distinctive key the assertions can hunt for."""
+
+        ai_provider_primary = "openai"
+        ai_api_key_primary = secret
+        ai_base_url_primary = "https://api.test/v1"
+        ai_model_primary = "gpt-test"
+
+    monkeypatch.setattr(ai_gateway, "get_settings", lambda: _KeyedSettings())
+
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["auth"] = request.headers.get("authorization")
+        return httpx.Response(200, json=_ok_chat_response())
+
+    with caplog.at_level(logging.DEBUG):
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            await AIGateway().chat(
+                db,
+                tenant_id,
+                alias="fast",
+                messages=[{"role": "user", "content": "hi"}],
+                _client=client,
+            )
+
+    # The key DID reach the provider (that is its one job) ...
+    assert captured["auth"] == f"Bearer {secret}"
+    # ... and appears nowhere else: not in any log record ...
+    leaked_logs = [
+        record.getMessage()
+        for record in caplog.records
+        if secret in record.getMessage()
+    ]
+    assert leaked_logs == []
+    # ... and not in any recorded column of the ModelCall row.
+    row = (
+        (await db.execute(select(ModelCall).where(ModelCall.tenant_id == tenant_id)))
+        .scalars()
+        .one()
+    )
+    assert secret not in str(row.__dict__)

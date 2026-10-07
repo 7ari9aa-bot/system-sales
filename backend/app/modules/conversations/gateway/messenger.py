@@ -38,31 +38,11 @@ class MessengerAdapter(ChannelAdapter):
     name = "messenger"  # ChannelAdapter registry key
     channel = "messenger"
 
-    def __init__(
-        self,
-        *,
-        app_secret: str | None = None,
-        access_token: str | None = None,
-        page_id: str | None = None,
-        api_version: str = "v21.0",
-    ):
-        self._app_secret = app_secret
-        self._access_token = access_token
-        self._page_id = page_id
-        self._api_version = api_version
+    def __init__(self, *, api_version: str = "v21.0"):
+        # All secrets live in settings, read per call — a constructor-injected
+        # secret can only go stale (the removed per-instance `verify_webhook`
+        # verified nothing for exactly that reason).
         self._base = f"https://graph.facebook.com/{api_version}"
-
-    async def verify_webhook(
-        self, signature: str | None, body: bytes, headers: dict[str, str]
-    ) -> bool:
-        """Verify X-Hub-Signature-256 (HMAC-SHA256)."""
-        if not self._app_secret or not signature:
-            return False
-
-        expected = "sha256=" + hmac.new(
-            self._app_secret.encode(), body, hashlib.sha256
-        ).hexdigest()
-        return hmac.compare_digest(signature[7:], expected)
 
     def verify_request(self, query_params: dict[str, str]) -> str | None:
         """Meta webhook subscription handshake (GET hub.challenge)."""
@@ -89,7 +69,9 @@ class MessengerAdapter(ChannelAdapter):
         if not signature.startswith("sha256="):
             return False
         expected = hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
-        return hmac.compare_digest(signature[7:], expected)
+        # Compared on BYTES: a str compare_digest raises TypeError on non-ASCII
+        # input, which would turn a hostile header into a 500.
+        return hmac.compare_digest(signature[7:].encode(), expected.encode())
 
     def resolve_tenant_key(self, payload: dict) -> str | None:
         """Meta routes by the page / IG account id in entry[0].id."""
@@ -104,14 +86,19 @@ class MessengerAdapter(ChannelAdapter):
         return []
 
     def parse_inbound(self, payload: dict) -> list[InboundMessage]:
-        """Parse a Meta Messenger webhook payload."""
+        """Parse a Meta Messenger webhook payload into 0..1 messages.
+
+        Always a list — the dispatcher and the WebhookWorker iterate it, so the
+        ``None`` this used to return on an empty envelope crashed the hot path
+        instead of yielding zero messages.
+        """
         entries = payload.get("entry", [])
         if not entries:
-            return None
+            return []
 
         messaging = entries[0].get("messaging", [])
         if not messaging:
-            return None
+            return []
 
         event = messaging[0]
         sender = event.get("sender", {})
@@ -119,7 +106,7 @@ class MessengerAdapter(ChannelAdapter):
         message = event.get("message", {})
 
         if not message:
-            return None
+            return []
 
         text = message.get("text")
         attachments = message.get("attachments", [])

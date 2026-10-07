@@ -122,6 +122,15 @@ IDEMPOTENT_PATHS: tuple[str, ...] = (
     "/api/v1/conversations",  # send message, assign, close
     "/api/v1/privacy/data-requests",  # data-subject request execution
     "/api/v1/workflows/executions",  # run an automation
+    # Package 2.2, closing the gap 2.1 documented: register/rotate is a
+    # credential-bearing configuration write that mints a signing secret, and a
+    # bare retry of a lost register response used to create a SECOND active
+    # endpoint (two endpoints, two secrets, duplicate deliveries). With the
+    # header present the same key now replays the first response and a key
+    # reused with a different body is refused (409) — the rotate/DELETE
+    # sub-paths ride the same prefix, which is exactly what a retried rotate
+    # wants: one rotation, not two.
+    "/api/v1/webhook-endpoints",
 )
 
 #: Response header set on a replayed response so a client can tell it apart.

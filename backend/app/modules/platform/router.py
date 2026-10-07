@@ -1,10 +1,15 @@
 """PLATFORM routes — feature flags (§76), the metric registry (§167), saved
-views (§95) and the health indicator (§103).
+views (§95), the health indicator (§103), the outbox ledger and the audit
+trail (package 2.2 read surfaces), the webhook DLQ (§24) and the security
+trail (§67).
 
 Flags are rollout switches, not authorization. The registry is read-only: it
 tells every screen what a number means so two screens cannot compute it
 differently. Saved views are the cross-cutting "list layout" store every entity
-screen saves into, and the health surface is what the UI badges.
+screen saves into, and the health surface is what the UI badges. The outbox
+ledger and audit trail are the operator-visible halves of "no event is lost"
+(§19) and "every sensitive action is answerable" (§66) — both reads, never
+writes; their writers live in their own modules.
 """
 
 from __future__ import annotations
@@ -912,12 +917,25 @@ async def admin_retry_webhook_event(ctx: TenantCtxDep, event_id: uuid.UUID):
     selects the tenant). FAILED rows (budget left) and DEAD rows (budget spent
     — the DLQ: replay is exactly what it exists for) can be retried; the row
     must have resolved a tenant — an un-attributed ingress has nothing to
-    re-ingest and no tenant scope to run it under.
+    re-ingest and no tenant scope to run it under. The replay re-runs the
+    ingest block WITHOUT re-verifying a provider signature, so only rows whose
+    signature was verified at ingress are ever replayed (fail-closed, §22).
     """
     _require_platform_admin(ctx)
     from app.core.events.writer import add_outbox_event
 
     row = await _load_webhook_event(ctx, event_id)
+    if not row.signature_valid:
+        # Fail-closed: the retry path bypasses the signature check (the raw
+        # provider headers are not stored), so the row's recorded
+        # ``signature_valid`` flag is the ONLY proof this payload was
+        # provider-signed. The ingress router stamps True exactly when
+        # ``adapter.check_signature`` passed; a row without that proof must
+        # never be turned back into messages by an authenticated surface.
+        raise ValidationError(
+            "webhook event was never signature-verified — refusing to replay",
+            details={"event_id": str(event_id)},
+        )
     if row.tenant_id is None:
         raise ValidationError(
             "webhook event has no resolved tenant — nothing to re-ingest",
@@ -1499,4 +1517,224 @@ async def list_security_events(
         "total": int(total),
         "limit": limit,
         "offset": offset,
+    }
+
+
+# ---------------------------------------------------------------------------
+# §19: the outbox read surface (package 2.2)
+#
+# ``add_outbox_event`` has writers in every module and the relay drains the
+# table, but nothing could LOOK at what was staged: diagnostics counts backlog
+# depth and nothing more, so "no event was lost" (this package's goal) was an
+# unobservable claim. This is the operator-visible ledger.
+#
+# * outbox_events is a SYSTEM table with no tenant column: §19 puts tenancy
+#   inside the envelope (``meta["tenant_id"]`` — the key the relay refuses to
+#   publish without). The read filters on exactly that key, and because the
+#   table has NO RLS backstop, the explicit predicate IS the isolation — the
+#   tests pin that another tenant's row is a 404, not a 403.
+# * Gated by `settings:read`, the code every other admin-facing read in this
+#   module uses; no new permission strings.
+# * DELIBERATELY no manual retry endpoint here: a re-staged event gets a NEW
+#   outbox id, so consumers' ``processed_events`` dedupe (keyed on
+#   ``meta["outbox_id"]``) would miss it and the effect would run twice.
+#   Retries belong to the relay's durable backoff (``not_before``); a row
+#   stranded mid-publish is reclaimed by POST /platform/diagnostics/remediate
+#   under its own audit trail.
+# ---------------------------------------------------------------------------
+
+_OUTBOX_STATUSES: frozenset[str] = frozenset(
+    {"pending", "publishing", "published", "failed"}
+)
+
+
+def _outbox_event_summary(row: OutboxEvent) -> dict:
+    return {
+        "id": str(row.id),
+        "aggregate_type": row.aggregate_type,
+        "aggregate_id": str(row.aggregate_id),
+        "stream": row.stream,
+        "status": row.status,
+        "attempts": int(row.attempts or 0),
+        "last_error": row.last_error,
+        "not_before": row.not_before.isoformat() if row.not_before else None,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "published_at": row.published_at.isoformat() if row.published_at else None,
+    }
+
+
+@router.get("/outbox-events", response_model=schemas.OutboxEventListOut)
+async def list_outbox_events(
+    ctx: TenantContext = Depends(require_permission("settings:read")),
+    status: str | None = None,
+    limit: PageLimit = schemas.PAGE_LIMIT_DEFAULT,
+    offset: PageOffset = 0,
+):
+    """§19: this tenant's staged relay events, newest first. Read-only.
+
+    A bounded page with a ``total``, and a ``(created_at, id)`` DESC sort —
+    events staged in one transaction share ``now()``, so ``id`` is the
+    tie-break that keeps page 2 from repeating page 1. The payload body is
+    deliberately NOT listed; fetch a row for that.
+    """
+    if status is not None and status not in _OUTBOX_STATUSES:
+        raise ValidationError(
+            "unknown outbox event status",
+            details={"status": status, "allowed": sorted(_OUTBOX_STATUSES)},
+        )
+    conditions = [OutboxEvent.meta["tenant_id"].as_string() == str(ctx.tenant_id)]
+    if status is not None:
+        conditions.append(OutboxEvent.status == status)
+    total = (
+        await ctx.session.execute(
+            select(func.count(OutboxEvent.id)).where(*conditions)
+        )
+    ).scalar_one()
+    rows = (
+        await ctx.session.execute(
+            select(OutboxEvent)
+            .where(*conditions)
+            .order_by(OutboxEvent.created_at.desc(), OutboxEvent.id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+    ).scalars().all()
+    return {
+        "total": int(total),
+        "limit": limit,
+        "offset": offset,
+        "items": [_outbox_event_summary(row) for row in rows],
+    }
+
+
+@router.get(
+    "/outbox-events/{event_id}", response_model=schemas.OutboxEventDetailOut
+)
+async def inspect_outbox_event(
+    event_id: uuid.UUID,
+    ctx: TenantContext = Depends(require_permission("settings:read")),
+):
+    """§19: the full relay row — envelope, attempts AND the payload/meta the
+    relay carried, the evidence a lost/duplicated event is investigated with.
+
+    Tenant isolation rides the same ``meta["tenant_id"]`` predicate as the
+    list: another tenant's event id answers 404.
+    """
+    row = (
+        await ctx.session.execute(
+            select(OutboxEvent).where(
+                OutboxEvent.id == event_id,
+                OutboxEvent.meta["tenant_id"].as_string() == str(ctx.tenant_id),
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise NotFoundError("outbox event not found")
+    return {
+        **_outbox_event_summary(row),
+        "payload": dict(row.payload or {}),
+        "meta": dict(row.meta or {}),
+    }
+
+
+# ---------------------------------------------------------------------------
+# §66: the audit-log read surface (package 2.2)
+#
+# ``AuditService.write`` has callers across the app (every DLQ decision, tenant
+# status change, secret rotation, retention write...) and ZERO readers — the
+# Wave C lesson ("built, tested in isolation, never called") again. Deliberations
+# mirror the §67 surface above:
+#
+# * Tenant isolation is EXPLICIT (``tenant_id == ctx.tenant_id``). Platform-
+#   level rows with a NULL tenant are NOT returned: they carry actions taken
+#   outside any tenant, and exposing them through a tenant endpoint is an
+#   exposure decision that belongs to the platform-admin plane.
+# * Gated by `settings:read`; no new permission strings.
+# * The filters stay narrow: ``action``/``resource_type``/``source`` are exact
+#   matches (no wildcards to widen the read), ``source`` is bounded to the
+#   §66 vocabulary, and the period is a validated ``since``/``until`` pair.
+# * The §66 lineage fields (``source`` / ``request_id`` / ``correlation_id``)
+#   are part of the response. A row written outside a request scope has NULL
+#   ids — they render as JSON null, never as a string "null".
+# ---------------------------------------------------------------------------
+
+_AUDIT_SOURCES: frozenset[str] = frozenset(
+    {"human", "ai", "automation", "system", "integration"}
+)
+
+
+@router.get("/audit-logs", response_model=schemas.AuditLogListOut)
+async def list_audit_logs(
+    ctx: TenantContext = Depends(require_permission("settings:read")),
+    action: Annotated[str | None, Query(max_length=127)] = None,
+    resource_type: Annotated[str | None, Query(max_length=63)] = None,
+    source: str | None = None,
+    since: Annotated[datetime | None, Query()] = None,
+    until: Annotated[datetime | None, Query()] = None,
+    limit: PageLimit = schemas.PAGE_LIMIT_DEFAULT,
+    offset: PageOffset = 0,
+):
+    """§66: this tenant's audited actions, newest first, with lineage.
+
+    A bounded page with a ``total`` and a ``(created_at, id)`` DESC sort —
+    rows written in one request share the transaction clock, so ``id`` is the
+    tie-break. The period is inclusive/exclusive at the bounds the caller
+    names (``since <= created_at < until``); a reversed range is a 400, not a
+    silently empty page.
+    """
+    if source is not None and source not in _AUDIT_SOURCES:
+        raise ValidationError(
+            "unknown audit source",
+            details={"source": source, "allowed": sorted(_AUDIT_SOURCES)},
+        )
+    if since is not None and until is not None and since > until:
+        raise ValidationError(
+            "audit period is reversed — since must not be after until",
+            details={"since": since.isoformat(), "until": until.isoformat()},
+        )
+    conditions = [AuditLog.tenant_id == ctx.tenant_id]
+    if action:
+        conditions.append(AuditLog.action == action)
+    if resource_type:
+        conditions.append(AuditLog.resource_type == resource_type)
+    if source is not None:
+        conditions.append(AuditLog.source == source)
+    if since is not None:
+        conditions.append(AuditLog.created_at >= since)
+    if until is not None:
+        conditions.append(AuditLog.created_at < until)
+    total = (
+        await ctx.session.execute(
+            select(func.count(AuditLog.id)).where(*conditions)
+        )
+    ).scalar_one()
+    rows = (
+        await ctx.session.execute(
+            select(AuditLog)
+            .where(*conditions)
+            .order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+    ).scalars().all()
+    return {
+        "total": int(total),
+        "limit": limit,
+        "offset": offset,
+        "items": [
+            {
+                "id": str(entry.id),
+                "actor_user_id": str(entry.actor_user_id) if entry.actor_user_id else None,
+                "action": entry.action,
+                "resource_type": entry.resource_type,
+                "resource_id": entry.resource_id,
+                "before": entry.before,
+                "after": entry.after,
+                "source": entry.source,
+                "request_id": entry.request_id,
+                "correlation_id": entry.correlation_id,
+                "created_at": entry.created_at.isoformat() if entry.created_at else None,
+            }
+            for entry in rows
+        ],
     }

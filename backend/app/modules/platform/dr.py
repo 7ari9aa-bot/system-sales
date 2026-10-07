@@ -18,12 +18,13 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 
-from sqlalchemy import DateTime, Index, String, Text
+from sqlalchemy import DateTime, Index, String, Text, select
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
+from app.core.errors import NotFoundError, ValidationError
 from app.core.ids import uuid7
 from app.core.model_kit import TimestampMixin
 
@@ -108,8 +109,6 @@ class DRService:
     @staticmethod
     async def get_policy(session: AsyncSession) -> DRPolicy:
         """Get the DR policy (singleton)."""
-        from sqlalchemy import select
-
         policy = (
             await session.execute(select(DRPolicy).limit(1))
         ).scalar_one_or_none()
@@ -121,7 +120,13 @@ class DRService:
 
     @staticmethod
     async def start_restore_test(session: AsyncSession) -> RestoreTestRun:
-        """Start a restore test — proves backups are recoverable."""
+        """Start a restore test — proves backups are recoverable.
+
+        The run opens in ``running`` with its ``started_at`` stamped, so the
+        drill has an auditable beginning even if the completing step dies
+        before writing a result (a run stuck in ``running`` is itself visible
+        evidence a drill was opened and never closed).
+        """
         run = RestoreTestRun(
             status=RestoreTestStatus.RUNNING.value,
             started_at=datetime.now(UTC),
@@ -149,16 +154,27 @@ class DRService:
         checks: dict,
         errors: str | None = None,
     ) -> RestoreTestRun:
-        """Record the result of a restore test."""
-        from sqlalchemy import select
+        """Record the result of a restore test — exactly once.
 
+        The drill is a one-shot state machine: ``running -> passed|failed``.
+        Completing a run that is not ``running`` is refused, so a recorded
+        result can never be overwritten by a late retry (a falsified audit
+        trail is worse than a missing one). The policy's
+        ``last_restore_test_*`` stamp is copied from the run's own
+        ``completed_at`` — the evidence, not the wall clock of the writer.
+        """
         run = (
             await session.execute(
                 select(RestoreTestRun).where(RestoreTestRun.id == run_id)
             )
         ).scalar_one_or_none()
         if run is None:
-            raise ValueError("restore test run not found")
+            raise NotFoundError("restore test run not found")
+        if run.status != RestoreTestStatus.RUNNING.value:
+            raise ValidationError(
+                "restore test run is already completed",
+                details={"run_id": str(run_id), "status": run.status},
+            )
 
         run.status = (
             RestoreTestStatus.PASSED.value if passed else RestoreTestStatus.FAILED.value
@@ -170,9 +186,9 @@ class DRService:
         run.errors = errors
         await session.flush()
 
-        # Update the policy's last test result
+        # Update the policy's last test result with the run's own evidence.
         policy = await DRService.get_policy(session)
-        policy.last_restore_test_at = datetime.now(UTC)
+        policy.last_restore_test_at = run.completed_at
         policy.last_restore_test_status = run.status
         await session.flush()
 
@@ -180,7 +196,16 @@ class DRService:
 
     @staticmethod
     async def check_dr_health(session: AsyncSession) -> dict:
-        """Return DR health summary for the global health indicator (§103)."""
+        """Return DR health summary for the global health indicator (§103).
+
+        Every field here is derived from RECORDED DRILL EVIDENCE — the last
+        ``RestoreTestRun`` result stamped onto the policy — never from a
+        configured intent. ``healthy`` requires the last drill to have
+        actually PASSED and to be inside its weekly window; a drill that
+        never ran is ``overdue``, and a passed-but-stale drill is overdue
+        too, because "we tested it once, last quarter" is not recovery
+        capability.
+        """
         policy = await DRService.get_policy(session)
 
         # Check if restore test is overdue

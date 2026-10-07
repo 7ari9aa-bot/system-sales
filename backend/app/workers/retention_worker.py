@@ -193,8 +193,10 @@ class RetentionWorker(StreamWorker):
 #
 # The hard delete is a CASCADE: deleting the tenant row cascades to all
 # tenant-scoped tables (customers, conversations, messages, orders, etc.)
-# via the FK ON DELETE CASCADE. The deletion is logged as a security
-# event so there is a record that the data was purged.
+# via the FK ON DELETE CASCADE. The tenant.data_purged audit row commits
+# INSIDE the delete transaction; the independent `tenant_data_purged`
+# security event is emitted by OffboardingWorker.sweep_expired AFTER that
+# commit succeeds — an audit row inside the transaction, an event after it.
 
 
 class OffboardingWorker:

@@ -11,8 +11,10 @@ PostgreSQL with RLS enforced, and skips locally when no app DB URL is set.
 
 from __future__ import annotations
 
+import json
 import types
 import uuid
+from collections.abc import AsyncIterator
 
 import pytest
 import sqlalchemy as sa
@@ -248,3 +250,142 @@ async def test_tenant_scoped_event_lands_without_a_bound_context(
     ).scalars().all()
     assert len(rows) == 1
     assert rows[0].tenant_id == tenant_ctx.tenant_id
+
+
+# ---------------------------------- §146/§147 MFA + break-glass emissions ----
+#
+# Package 1.4: the MFA challenge and the break-glass capability own their
+# event boundaries inside core (mfa.py / break_glass.py) and delegate to the
+# platform writer. These pure tests pin the EMISSION CONTRACT — one coarse
+# event per rejection, no codes, no seeds, no tokens — while the DB-backed
+# persistence of the same events is pinned in test_mfa_login_flow.py and
+# test_break_glass_redis.py.
+
+
+class _SpyEvents:
+    """Capture what a core emitter sends to the platform writer."""
+
+    def __init__(self, monkeypatch, module, name: str = "_emit_security_event"):
+        self.calls: list[dict] = []
+        spy = self
+
+        async def _capture(event_type, *, details=None, ip=None, tenant_id=None, actor_user_id=None):
+            spy.calls.append(
+                {
+                    "event_type": event_type,
+                    "details": details,
+                    "ip": ip,
+                    "tenant_id": tenant_id,
+                    "actor_user_id": actor_user_id,
+                }
+            )
+
+        monkeypatch.setattr(module, name, _capture)
+
+
+@pytest.fixture
+async def fakeredis_client() -> AsyncIterator:
+    from fakeredis.aioredis import FakeRedis
+
+    client = FakeRedis(decode_responses=True)
+    yield client
+    await client.aclose()
+
+
+async def test_every_mfa_challenge_rejection_emits_one_coarse_event(
+    monkeypatch, fakeredis_client
+) -> None:
+    from app.core import mfa
+
+    spy = _SpyEvents(monkeypatch, mfa)
+    monkeypatch.setattr("app.core.mfa.get_redis", lambda: fakeredis_client)
+
+    async def _no_totp(session, *, user_id, code):
+        return None
+
+    async def _no_backup(session, user_id, code):
+        return False
+
+    monkeypatch.setattr(mfa, "_verify_user_totp_counter", _no_totp)
+    monkeypatch.setattr(mfa, "_consume_backup_code", _no_backup)
+
+    uid, tid = uuid.uuid4(), uuid.uuid4()
+    cid = await mfa.start_challenge(uid, tid, redis=fakeredis_client)
+    for _ in range(mfa.CHALLENGE_MAX_FAILURES):
+        with pytest.raises(PermissionDeniedError):
+            await mfa.check_challenge_code(
+                None, challenge_id=cid, code="000000", ip="203.0.113.9"
+            )
+
+    assert [c["event_type"] for c in spy.calls] == ["mfa_verify_failure"] * (
+        mfa.CHALLENGE_MAX_FAILURES
+    )
+    outcomes = [c["details"]["outcome"] for c in spy.calls]
+    assert outcomes[: mfa.CHALLENGE_MAX_FAILURES - 1] == ["invalid_code"] * (
+        mfa.CHALLENGE_MAX_FAILURES - 1
+    )
+    assert outcomes[-1] == "challenge_locked"
+    # Coarse only: outcome string, the actor from the challenge payload, and
+    # the request ip — never the presented code, the seed, or any PII.
+    assert all(set(c["details"]) == {"outcome"} for c in spy.calls)
+    assert all(c["actor_user_id"] == uid for c in spy.calls)
+    assert all(c["tenant_id"] == tid for c in spy.calls)
+    assert all(c["ip"] == "203.0.113.9" for c in spy.calls)
+
+
+async def test_break_glass_use_and_reject_are_both_audited(
+    monkeypatch, fakeredis_client
+) -> None:
+    from app.core import break_glass as bg
+
+    spy = _SpyEvents(monkeypatch, bg)
+    tid, uid = uuid.uuid4(), uuid.uuid4()
+    token = "bg-audit-" + uuid.uuid4().hex[:16]
+    payload = json.dumps(
+        {
+            "tenant_id": str(tid),
+            "user_id": str(uid),
+            "action": "tenant_status_change",
+            "resource_type": "tenant",
+            "resource_id": str(tid),
+            "reason": "audited emission contract",
+            "expires_at": "2099-01-01T00:00:00+00:00",
+        }
+    )
+    await fakeredis_client.set(
+        bg._capability_key(token), payload, ex=bg.CAPABILITY_TTL_MINUTES * 60
+    )
+
+    # The USE validates and is audited; the immediate second presentation
+    # is REJECTED and audited too.
+    assert await bg.validate_capability(
+        token, tenant_id=tid, user_id=uid, action="tenant_status_change",
+        redis=fakeredis_client,
+    )
+    assert not await bg.validate_capability(
+        token, tenant_id=tid, user_id=uid, action="tenant_status_change",
+        redis=fakeredis_client,
+    )
+    assert [c["event_type"] for c in spy.calls] == [
+        "break_glass_use",
+        "break_glass_reject",
+    ]
+    assert spy.calls[0]["details"] == {
+        "action": "tenant_status_change",
+        "outcome": "validated",
+    }
+    assert spy.calls[1]["details"] == {
+        "action": "tenant_status_change",
+        "outcome": "rejected",
+    }
+    # The capability token itself must never appear in the trail.
+    assert all(token not in json.dumps(c["details"]) for c in spy.calls)
+
+    # A failed PEEK is a rejected attempt (audited); a successful peek stays
+    # silent — the use at the protected action is its own event.
+    spy.calls.clear()
+    assert not await bg.peek_capability(
+        token, tenant_id=tid, user_id=uid, action="tenant_status_change",
+        redis=fakeredis_client,
+    )
+    assert [c["event_type"] for c in spy.calls] == ["break_glass_reject"]

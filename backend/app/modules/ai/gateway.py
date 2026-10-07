@@ -18,6 +18,7 @@ import time
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
+from urllib.parse import urlsplit
 from uuid import UUID
 
 from sqlalchemy import func, select, text
@@ -509,6 +510,25 @@ class AIGateway:
         self._provider = provider or AIProvider()
         self._embeddings = EmbeddingProvider()
 
+    def _provider_breaker(self, config: dict[str, Any]):
+        """The breaker for THIS provider endpoint — not for all providers at once.
+
+        §47 first wired the chat request behind the process-wide ``provider.ai``
+        breaker, which named ONE breaker for every provider on the platform: a
+        tenant's self-hosted or misconfigured endpoint failing repeatedly opened
+        that single breaker and blocked every OTHER tenant's calls to completely
+        different providers — one bad endpoint became a platform-wide AI outage,
+        the opposite of the degradation-not-catastrophe goal. The breaker name is
+        therefore scoped to the endpoint's HOST: every tenant of the same
+        upstream (api.openai.com) still backs off together, because that IS one
+        downstream dependency, while a dead private endpoint cannot reach across
+        the network boundary to anyone else. Host, not URL: path/query noise
+        must not fragment one provider into N breakers (N failures before any
+        backoff is the bug the registry exists to prevent).
+        """
+        host = (urlsplit(config.get("base_url") or "").hostname or "").lower()
+        return get_breaker(f"{PROVIDER_AI}:{host or 'unspecified'}")
+
     async def chat(
         self,
         session: AsyncSession,
@@ -608,14 +628,16 @@ class AIGateway:
         status = "ok"
         result: ChatCompletionResult | None = None
         try:
-            # §47: the ONE provider HTTP request goes through the process-wide
-            # `provider.ai` breaker, so a dead or slow provider is backed off
-            # instead of hammered. Only the request is wrapped — the budget
-            # reservation above and the ModelCall bookkeeping below are not.
+            # §47: the ONE provider HTTP request goes through the breaker for
+            # THIS provider endpoint (see _provider_breaker), so a dead or slow
+            # provider is backed off instead of hammered — and its failure does
+            # not stop a different provider. Only the request is wrapped — the
+            # budget reservation above and the ModelCall bookkeeping below are
+            # not.
             #
             # CircuitOpenError is a DomainError and is re-raised unchanged by the
             # handler below, so an open breaker stays visible as an open breaker.
-            result = await get_breaker(PROVIDER_AI).call(
+            result = await self._provider_breaker(config).call(
                 self._provider.chat,
                 base_url=config["base_url"],
                 api_key=config["api_key"],
@@ -709,11 +731,11 @@ class AIGateway:
         status = "ok"
         vectors: list[list[float]] = []
         try:
-            # §47: embeddings hit the SAME provider, so they spend the SAME
-            # `provider.ai` breaker. Wrapping only `chat` left a dead provider
-            # reachable through the embedding path — it would be hammered there
-            # while the chat breaker sat open.
-            vectors = await get_breaker(PROVIDER_AI).call(
+            # §47: embeddings hit the SAME provider as chat, so they spend the
+            # SAME per-endpoint breaker (see _provider_breaker). Wrapping only
+            # `chat` left a dead provider reachable through the embedding path —
+            # it would be hammered there while the chat breaker sat open.
+            vectors = await self._provider_breaker(config).call(
                 self._embeddings.embed,
                 base_url=config["base_url"],
                 api_key=config["api_key"],

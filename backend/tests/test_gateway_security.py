@@ -42,7 +42,10 @@ from app.modules.conversations.gateway.base import (
     OutboundMessage,
     ProviderCredentials,
 )
+from app.modules.conversations.gateway.email import EmailAdapter, email_adapter
 from app.modules.conversations.gateway.ingest import IngestService
+from app.modules.conversations.gateway.instagram import instagram_adapter
+from app.modules.conversations.gateway.messenger import messenger_adapter
 from app.modules.conversations.gateway.registry import get_adapter
 from app.modules.conversations.gateway.telegram import telegram_adapter
 from app.modules.conversations.gateway.whatsapp import whatsapp_adapter
@@ -58,6 +61,7 @@ class _Settings:
     instagram_app_secret = "ig-secret"
     messenger_app_secret = "msgr-secret"
     telegram_webhook_secret = "tg-secret"
+    email_webhook_secret = ""
     circuit_breaker_failure_threshold = _THRESHOLD
     circuit_breaker_recovery_seconds = 30.0
     circuit_breaker_half_open_successes = 1
@@ -432,3 +436,241 @@ async def test_a_successful_send_still_returns_the_provider_id():
 
     tg = _always(httpx.Response(200, json={"ok": True, "result": {"message_id": 77}}))
     assert await telegram_adapter.send(_tg_credentials(), _outbound(), _client=tg) == "77"
+
+
+# --------------------------------------------------------------------------
+# 4. Package 5.1 — cross-provider signature isolation + hostile-header safety
+# --------------------------------------------------------------------------
+
+#: One DISTINCT secret per provider. The cross-provider matrix below proves a
+#: delivery signed with provider B's credential can never pass provider A's
+#: check — the package's fail-first scenario (checklist 1).
+_ALL_SECRETS: dict[str, str] = {
+    "whatsapp_app_secret": "sec-whatsapp",
+    "messenger_app_secret": "sec-messenger",
+    "instagram_app_secret": "sec-instagram",
+    "telegram_webhook_secret": "sec-telegram",
+    "email_webhook_secret": "sec-email",
+}
+
+
+class _AllSecrets:
+    """Settings carrying EVERY channel secret at once (all distinct)."""
+
+    whatsapp_app_secret = _ALL_SECRETS["whatsapp_app_secret"]
+    whatsapp_verify_token = "verify-whatsapp"
+    messenger_app_secret = _ALL_SECRETS["messenger_app_secret"]
+    messenger_verify_token = "verify-messenger"
+    instagram_app_secret = _ALL_SECRETS["instagram_app_secret"]
+    instagram_verify_token = "verify-instagram"
+    telegram_webhook_secret = _ALL_SECRETS["telegram_webhook_secret"]
+    email_webhook_secret = _ALL_SECRETS["email_webhook_secret"]
+
+
+def _patch_all_secret_settings(monkeypatch) -> None:
+    """Point every adapter's settings reader at _AllSecrets."""
+    for module in (
+        "app.modules.conversations.gateway.whatsapp",
+        "app.modules.conversations.gateway.messenger",
+        "app.modules.conversations.gateway.instagram",
+        "app.modules.conversations.gateway.telegram",
+        "app.modules.conversations.gateway.email",
+    ):
+        monkeypatch.setattr(f"{module}.get_settings", lambda: _AllSecrets())
+
+
+def _signed_headers(scheme: str, secret: str, raw: bytes) -> dict[str, str]:
+    """The auth header a delivery signed with ``secret`` would carry."""
+    if scheme in ("whatsapp", "messenger", "instagram"):
+        return {
+            "x-hub-signature-256": "sha256="
+            + hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
+        }
+    if scheme == "telegram":
+        # Telegram's scheme IS the shared secret echoed in a header.
+        return {"x-telegram-bot-api-secret-token": secret}
+    if scheme == "email-sendgrid":
+        return {"authorization": f"Bearer {secret}"}
+    if scheme == "email-mailgun":
+        return {
+            "x-mailgun-signature": hmac.new(
+                secret.encode(), raw, hashlib.sha256
+            ).hexdigest()
+        }
+    raise KeyError(scheme)
+
+
+#: (scheme, adapter) pairs that must each bind to exactly ONE provider secret.
+_SIGNED_SURFACES = [
+    ("whatsapp", whatsapp_adapter),
+    ("messenger", messenger_adapter),
+    ("instagram", instagram_adapter),
+    ("telegram", telegram_adapter),
+    ("email-sendgrid", email_adapter),
+    ("email-mailgun", EmailAdapter(provider="mailgun")),
+]
+
+_OWN_SECRET_ATTR = {
+    "whatsapp": "whatsapp_app_secret",
+    "messenger": "messenger_app_secret",
+    "instagram": "instagram_app_secret",
+    "telegram": "telegram_webhook_secret",
+    "email-sendgrid": "email_webhook_secret",
+    "email-mailgun": "email_webhook_secret",
+}
+
+
+@pytest.mark.parametrize(("scheme", "adapter"), _SIGNED_SURFACES)
+def test_a_body_signed_with_another_providers_secret_is_rejected(
+    monkeypatch, scheme, adapter
+):
+    """Checklist 1, per channel: a payload authenticated with provider B's
+    secret must NEVER pass channel A. Every pair of distinct secrets is
+    exercised, plus the positive control (its own secret passes)."""
+    _patch_all_secret_settings(monkeypatch)
+    raw = json.dumps({"entry": []}).encode()
+    own = _ALL_SECRETS[_OWN_SECRET_ATTR[scheme]]
+
+    assert adapter.check_signature(_signed_headers(scheme, own, raw), raw) is True
+    for attr, foreign_secret in _ALL_SECRETS.items():
+        if foreign_secret == own:
+            continue  # the positive control above
+        foreign_headers = _signed_headers(scheme, foreign_secret, raw)
+        assert adapter.check_signature(foreign_headers, raw) is False, (
+            f"{scheme} accepted a signature made with {attr}"
+        )
+
+
+@pytest.mark.parametrize(("scheme", "adapter"), _SIGNED_SURFACES)
+def test_a_hostile_non_ascii_signature_header_is_rejected_not_a_500(
+    monkeypatch, scheme, adapter
+):
+    """compare_digest raises TypeError on non-ASCII str — a hostile header
+    must come back as a plain False (403 at the edge), never a 500. The
+    comparisons therefore run on encoded bytes."""
+    _patch_all_secret_settings(monkeypatch)
+    raw = b"{}"
+    hostile = "ÿþ\u20ac"  # non-ASCII — would raise on a str comparison
+    headers = dict(_signed_headers(scheme, "x", raw))
+    key = next(iter(headers))
+    headers[key] = hostile
+    assert adapter.check_signature(headers, raw) is False
+
+
+def test_email_signature_fails_closed_without_a_configured_secret(monkeypatch):
+    """No EMAIL_WEBHOOK_SECRET must reject ALL traffic — both ESP schemes."""
+    monkeypatch.setattr(
+        "app.modules.conversations.gateway.email.get_settings",
+        lambda: type("S", (), {"email_webhook_secret": ""})(),
+    )
+    raw = b'{"from": "x@y.z"}'
+    for adapter in (email_adapter, EmailAdapter(provider="mailgun")):
+        assert adapter.check_signature({}, raw) is False
+        assert (
+            adapter.check_signature({"authorization": "Bearer guess"}, raw) is False
+        )
+        assert (
+            adapter.check_signature(
+                {"x-mailgun-signature": "a" * 64}, raw
+            )
+            is False
+        )
+
+
+def test_email_signature_accepts_only_the_configured_credential(monkeypatch):
+    """The happy path: the exact configured bearer / HMAC, and nothing else."""
+    secret = "sec-email"
+    monkeypatch.setattr(
+        "app.modules.conversations.gateway.email.get_settings",
+        lambda: type("S", (), {"email_webhook_secret": secret})(),
+    )
+    raw = b'{"from": "x@y.z"}'
+
+    sendgrid = email_adapter
+    assert sendgrid.check_signature({"authorization": f"Bearer {secret}"}, raw) is True
+    # Same header WITHOUT the last character: rejected.
+    assert (
+        sendgrid.check_signature({"authorization": f"Bearer {secret[:-1]}"}, raw)
+        is False
+    )
+    # The Bearer credential is NOT a body HMAC: swapping schemes must not pass.
+    body_hmac = hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
+    assert (
+        sendgrid.check_signature({"authorization": f"Bearer {body_hmac}"}, raw)
+        is False
+    )
+
+    mailgun = EmailAdapter(provider="mailgun")
+    good = hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
+    assert mailgun.check_signature({"x-mailgun-signature": good}, raw) is True
+    tampered = raw.replace(b"x@y.z", b"evil@y.z")
+    assert mailgun.check_signature({"x-mailgun-signature": good}, tampered) is False
+
+
+def test_email_parse_inbound_normalizes_an_esp_delivery():
+    """The email adapter normalizes like every other channel: sync, list, one
+    message per delivery, empty list for an envelope without a sender."""
+    messages = email_adapter.parse_inbound(
+        {
+            "from": "Alice <alice@example.test>",
+            "to": "support@example.test",
+            "text": "مرحبا",
+            "messageId": "<m-1@example.test>",
+        }
+    )
+    assert len(messages) == 1
+    message = messages[0]
+    assert message.channel == "email"
+    assert message.customer_ref == "Alice <alice@example.test>"
+    assert message.body == "مرحبا"
+    assert message.channel_message_id == "<m-1@example.test>"
+    assert email_adapter.parse_inbound({}) == []
+
+
+async def test_email_send_returns_a_provider_message_id():
+    """Outbound conformance: 202 with an empty SendGrid body still yields the
+    X-Message-Id; a 2xx WITHOUT one is a provider failure, not a success."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(202, headers={"X-Message-Id": "sg-123"})
+
+    provider_id = await email_adapter.send(
+        ProviderCredentials(config={"api_key": "ESP-KEY"}),
+        _outbound(),
+        _client=_client(handler),
+    )
+    assert provider_id == "sg-123"
+
+    def bare(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(202)
+
+    with pytest.raises(ExternalProviderError):
+        await email_adapter.send(
+            ProviderCredentials(config={"api_key": "ESP-KEY"}),
+            _outbound(),
+            _client=_client(bare),
+        )
+
+
+@pytest.mark.parametrize(("scheme", "adapter"), _SIGNED_SURFACES)
+def test_every_signed_channel_fails_closed_without_its_secret(
+    monkeypatch, scheme, adapter
+):
+    """Checklist 1, per channel, unconditional: an EMPTY secret rejects ALL
+    traffic in ANY environment — there is no permissive mode to reach."""
+    empty = type("S", (), {attr: "" for attr in _ALL_SECRETS})()
+    for module, channel in (
+        ("app.modules.conversations.gateway.whatsapp", "whatsapp"),
+        ("app.modules.conversations.gateway.messenger", "messenger"),
+        ("app.modules.conversations.gateway.instagram", "instagram"),
+        ("app.modules.conversations.gateway.telegram", "telegram"),
+        ("app.modules.conversations.gateway.email", "email-sendgrid"),
+        ("app.modules.conversations.gateway.email", "email-mailgun"),
+    ):
+        if channel == scheme:
+            monkeypatch.setattr(f"{module}.get_settings", lambda: empty)
+    raw = b'{"entry": []}'
+    assert adapter.check_signature({}, raw) is False, scheme
+    assert (
+        adapter.check_signature(_signed_headers(scheme, "anything", raw), raw) is False
+    ), scheme

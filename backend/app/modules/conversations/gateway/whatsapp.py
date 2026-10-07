@@ -71,7 +71,9 @@ class WhatsAppAdapter:
         if not signature.startswith("sha256="):
             return False
         expected = hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
-        return hmac.compare_digest(signature[7:], expected)
+        # Compared on BYTES: a str compare_digest raises TypeError on non-ASCII
+        # input, which would turn a hostile header into a 500.
+        return hmac.compare_digest(signature[7:].encode(), expected.encode())
 
     # ---------- tenant resolution ----------
 

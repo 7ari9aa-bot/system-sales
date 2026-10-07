@@ -20,12 +20,12 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.dialects import postgresql
 
 from app.core.errors import NotFoundError, PermissionDeniedError, ValidationError
 from app.modules.conversations.gateway.ingest import IngestService
-from app.modules.platform.models import AuditLog, OutboxEvent
+from app.modules.platform.models import AuditLog, OutboxEvent, WebhookEvent
 from app.modules.platform.router import (
     admin_ignore_webhook_event,
     admin_inspect_webhook_event,
@@ -34,7 +34,13 @@ from app.modules.platform.router import (
     admin_retry_webhook_event,
 )
 from app.workers.platform_workers import retry_failed_webhook_events
-from tests.test_webhook_retry import _admin_ctx, _ingress_row, _reload, _wa_payload
+from tests.test_webhook_retry import (
+    _admin_ctx,
+    _inbound_count,
+    _ingress_row,
+    _reload,
+    _wa_payload,
+)
 
 # ------------------------------------------------- dead-lettering boundary --
 
@@ -304,3 +310,97 @@ async def test_inspect_returns_the_full_row_including_payload(db, tenant_ctx):
 async def test_inspect_missing_row_is_404(db, tenant_ctx):
     with pytest.raises(NotFoundError):
         await admin_inspect_webhook_event(_admin_ctx(tenant_ctx), uuid.uuid4())
+
+
+async def test_a_dead_row_lists_the_investigation_fields(db, tenant_ctx):
+    """Package 2.2: a dead-lettered row must be investigable FROM THE LIST —
+    the triage fields (attempts, the last error, the signature verdict) ride
+    the summary so an operator can decide replay/ignore/resolve without
+    opening every row's raw payload."""
+    row = await _ingress_row(
+        db, tenant_ctx.tenant_id, _wa_payload("wamid.dlq-triage"),
+        status="dead", attempts=3,
+    )
+    await db.execute(
+        update(WebhookEvent)
+        .where(WebhookEvent.id == row.id)
+        .values(last_error="provider returned HTTP 503 for every attempt")
+    )
+    await db.flush()
+
+    listing = await admin_list_webhook_events(
+        _admin_ctx(tenant_ctx), status="dead", provider=None, limit=50, offset=0
+    )
+    summary = next(i for i in listing["items"] if i["id"] == str(row.id))
+    assert summary["attempts"] == 3, "the burned retry budget must be visible"
+    assert "HTTP 503" in summary["last_error"], (
+        "the recorded failure must ride the summary — a DLQ row whose error "
+        "is hidden is not investigable"
+    )
+    assert summary["signature_valid"] is True, (
+        "the §22 verdict must be visible: it decides whether a replay is "
+        "even legal (the retry guard refuses unverified rows)"
+    )
+
+
+# --------------------------------------- package 2.2: the at-least-once loop --
+
+
+async def test_repeated_restarts_deliver_at_least_once_and_then_exactly_once(
+    db, tenant_ctx, monkeypatch
+):
+    """The package's closing scenario, end to end.
+
+    Restart the worker again and again while the dependency is down:
+
+    * every restart RETRIES the row (at-least-once — nothing is silently
+      dropped) and each failure is counted, so the budget burns down;
+    * when the budget is spent the row lands in the DLQ (``dead``) — still
+      visible, never lost;
+    * an explicit replay of the dead row re-runs the SAME ingest block, and
+      the per-message idempotency keys make the handler idempotent: the
+      message lands exactly once, and a later sweep cannot add another.
+    """
+    payload = _wa_payload("wamid.restart-loop")
+    real_ingest = IngestService.ingest
+
+    async def _always_explodes(session, **kwargs):
+        raise RuntimeError("dependency down")
+
+    monkeypatch.setattr(IngestService, "ingest", _always_explodes)
+    monkeypatch.setattr(
+        "app.core.config.get_settings",
+        lambda: SimpleNamespace(worker_max_attempts=3),
+    )
+
+    row = await _ingress_row(
+        db, tenant_ctx.tenant_id, payload, status="failed", attempts=1
+    )
+
+    # Restart 2: retried, counted, still failing.
+    assert await retry_failed_webhook_events(db, tenant_ctx.tenant_id) == 1
+    stored = await _reload(db, row.id)
+    assert stored.attempts == 2
+    assert stored.processing_status == "failed"
+
+    # Restart 3: the last allowed attempt — the row dead-letters, it does not
+    # vanish and it is not retried into infinity.
+    assert await retry_failed_webhook_events(db, tenant_ctx.tenant_id) == 1
+    stored = await _reload(db, row.id)
+    assert stored.processing_status == "dead"
+    assert stored.attempts == 3
+
+    # The automatic sweep never touches dead rows (no retry storm on the DLQ).
+    assert await retry_failed_webhook_events(db, tenant_ctx.tenant_id) == 0
+
+    # The dependency recovers; the human replay re-runs the same block.
+    monkeypatch.setattr(IngestService, "ingest", real_ingest)
+    assert (
+        await retry_failed_webhook_events(db, tenant_ctx.tenant_id, event_id=row.id)
+        == 1
+    )
+    stored = await _reload(db, row.id)
+    assert stored.processing_status == "processed"
+    # Idempotent handler: the message exists exactly once, despite the row
+    # having been "in flight" across three restarts.
+    assert await _inbound_count(db, tenant_ctx.tenant_id) == 1

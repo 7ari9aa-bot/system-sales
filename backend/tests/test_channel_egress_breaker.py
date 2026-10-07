@@ -39,6 +39,8 @@ from app.core.circuit_breaker import (
     PROVIDER_EMAIL,
     PROVIDER_INSTAGRAM,
     PROVIDER_MESSENGER,
+    PROVIDER_TELEGRAM,
+    PROVIDER_WHATSAPP,
     get_breaker,
     reset_breakers,
 )
@@ -47,6 +49,8 @@ from app.modules.conversations.gateway.base import OutboundMessage, ProviderCred
 from app.modules.conversations.gateway.email import email_adapter
 from app.modules.conversations.gateway.instagram import instagram_adapter
 from app.modules.conversations.gateway.messenger import messenger_adapter
+from app.modules.conversations.gateway.telegram import telegram_adapter
+from app.modules.conversations.gateway.whatsapp import whatsapp_adapter
 
 BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[1]
 GATEWAY_DIR = BACKEND_ROOT / "app" / "modules" / "conversations" / "gateway"
@@ -206,15 +210,19 @@ def _uses_name(path: pathlib.Path, name: str) -> bool:
 
 @pytest.mark.parametrize("path", sorted(GATEWAY_DIR.glob("*.py")))
 def test_a_gateway_that_calls_out_routes_through_the_breaker(path: pathlib.Path) -> None:
-    """Any gateway module that opens an ``httpx`` client must spend a breaker.
+    """Any gateway module that OPENS an ``httpx`` client must spend a breaker.
 
-    webchat has no client and passes vacuously; a new first-party egress channel
-    that opens an AsyncClient without wiring ``get_breaker`` fails here instead
-    of shipping the hole this pass closed.
+    webchat has no client and passes vacuously (its uniform ``send`` signature
+    merely ANNOTATES ``_client`` — an annotation opens no socket); a new
+    first-party egress channel that instantiates an AsyncClient without wiring
+    ``get_breaker`` fails here instead of shipping the hole this pass closed.
     """
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     opens_http_client = any(
-        isinstance(node, ast.Attribute) and node.attr == "AsyncClient" for node in ast.walk(tree)
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "AsyncClient"
+        for node in ast.walk(tree)
     )
     if not opens_http_client:
         return
@@ -222,3 +230,113 @@ def test_a_gateway_that_calls_out_routes_through_the_breaker(path: pathlib.Path)
         f"{path.name} opens an httpx client but never calls get_breaker — "
         f"external egress with no back-off."
     )
+
+
+# --------------------------------------------------------------------------
+# Package 5.1 — half-open recovery + per-channel independence, all 5 egress
+# channels (whatsapp, telegram, messenger, instagram, email). webchat has no
+# external egress: delivery is the persisted message row itself.
+# --------------------------------------------------------------------------
+
+EGRESS = [
+    pytest.param(whatsapp_adapter, PROVIDER_WHATSAPP,
+                 ProviderCredentials(config={"phone_number_id": "P", "access_token": "T"}),
+                 id="whatsapp"),
+    pytest.param(telegram_adapter, PROVIDER_TELEGRAM,
+                 ProviderCredentials(config={"bot_token": "BOT"}), id="telegram"),
+    pytest.param(messenger_adapter, PROVIDER_MESSENGER,
+                 ProviderCredentials(config={"api_key": "PAGE-TOKEN"}), id="messenger"),
+    pytest.param(instagram_adapter, PROVIDER_INSTAGRAM,
+                 ProviderCredentials(config={"api_key": "IG-TOKEN", "account_id": "IG-1"}),
+                 id="instagram"),
+    pytest.param(email_adapter, PROVIDER_EMAIL,
+                 ProviderCredentials(config={"api_key": "ESP-KEY"}), id="email"),
+]
+
+
+def _healthy_transport_for(adapter) -> httpx.AsyncClient:
+    """A per-channel 2xx the adapter's own response parser accepts."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if "api.telegram.org" in url:
+            return httpx.Response(200, json={"ok": True, "result": {"message_id": 7}})
+        if "api.sendgrid.com" in url:
+            return httpx.Response(202, headers={"X-Message-Id": "sg-7"})
+        if "graph.facebook.com" in url and url.endswith("/P/messages"):
+            # WhatsApp Cloud API shape (phone_number_id "P").
+            return httpx.Response(200, json={"messages": [{"id": "whatsapp-7"}]})
+        # Messenger / Instagram Graph shape.
+        return httpx.Response(200, json={"message_id": f"{adapter.name}-7"})
+
+    return _client(handler)
+
+
+@pytest.mark.parametrize(("adapter", "breaker_name", "credentials"), EGRESS)
+async def test_half_open_admits_one_probe_then_recloses_or_reopens(
+    adapter, breaker_name, credentials
+):
+    """Checklist 3, second half: after the recovery timeout the breaker admits
+    a probe GRADUALLY — a successful probe closes it, a failed one re-opens it
+    with a fresh timer. Driven on a fake clock, no sleeping."""
+    clock = {"t": 1000.0}
+    breaker = get_breaker(breaker_name, time_fn=lambda: clock["t"])
+
+    # OPEN the breaker with two unreachable sends.
+    for _ in range(_THRESHOLD):
+        with pytest.raises(ExternalProviderError):
+            await adapter.send(credentials, _outbound(), _client=_failing())
+    assert breaker.is_open
+
+    # Before the recovery timeout: refused, provider never contacted.
+    clock["t"] += _Settings.circuit_breaker_recovery_seconds - 1
+    contacted = {"n": 0}
+    with pytest.raises(CircuitOpenError):
+        await adapter.send(
+            credentials, _outbound(), _client=_counting(contacted)
+        )
+    assert contacted["n"] == 0
+
+    # At the timeout: one healthy probe closes it (half_open_successes = 1).
+    clock["t"] += 2
+    provider_id = await adapter.send(
+        credentials, _outbound(), _client=_healthy_transport_for(adapter)
+    )
+    assert isinstance(provider_id, str) and provider_id
+    assert breaker.state == cb.CLOSED
+
+    # Re-open, then a failing probe AT half-open must re-open with a FRESH
+    # timer — not fall through to closed, not stay open forever.
+    for _ in range(_THRESHOLD):
+        with pytest.raises(ExternalProviderError):
+            await adapter.send(credentials, _outbound(), _client=_failing())
+    clock["t"] += _Settings.circuit_breaker_recovery_seconds + 1
+    with pytest.raises(ExternalProviderError):
+        await adapter.send(credentials, _outbound(), _client=_failing())
+    assert breaker.is_open
+    assert breaker.seconds_until_half_open > 0, "a failed probe re-arms the timer"
+
+
+@pytest.mark.parametrize(("adapter", "breaker_name", "credentials"), EGRESS)
+async def test_one_channel_open_breaker_does_not_stop_the_others(
+    adapter, breaker_name, credentials
+):
+    """Checklist 3, first half: breaker values are PER CHANNEL. With the
+    channel under test OPEN (and refusing, provider uncontacted), every other
+    channel still delivers through its own healthy breaker."""
+    await _trip(breaker_name)
+
+    contacted = {"n": 0}
+    with pytest.raises(CircuitOpenError):
+        await adapter.send(credentials, _outbound(), _client=_counting(contacted))
+    assert contacted["n"] == 0
+
+    # (adapter, credentials, param id) for every egress channel.
+    all_channels = [(p.values[0], p.values[2], p.id) for p in EGRESS]
+    for other, other_credentials, _name in all_channels:
+        if other is adapter:
+            continue
+        provider_id = await other.send(
+            other_credentials, _outbound(), _client=_healthy_transport_for(other)
+        )
+        assert isinstance(provider_id, str) and provider_id
