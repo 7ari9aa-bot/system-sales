@@ -160,7 +160,7 @@ class AgentRunner:
         knowledge_context: str | None = None,
     ) -> AgentRunResult:
         agent = await self._load_agent(session, tenant_id, agent_id)
-        agent_tools = await self._load_agent_tools(session, tenant_id, agent_id)
+        agent_tools = await self._load_agent_tools(session, tenant_id, agent_id, agent_kind=agent.kind)
 
         run = AgentRun(
             tenant_id=tenant_id,
@@ -279,7 +279,10 @@ class AgentRunner:
 
     @staticmethod
     async def _load_agent_tools(
-        session: AsyncSession, tenant_id: uuid.UUID, agent_id: uuid.UUID
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        agent_id: uuid.UUID,
+        agent_kind: str | None = None,
     ) -> list[AgentTool]:
         rows = (
             await session.execute(
@@ -290,12 +293,34 @@ class AgentRunner:
                 )
             )
         ).scalars()
-        return list(rows.all())
+        tools = list(rows.all())
+        if agent_kind:
+            from app.modules.ai.core.registry import AgentRegistry
+            authorized = []
+            for t in tools:
+                if AgentRegistry.is_tool_authorized(agent_kind, t.name):
+                    authorized.append(t)
+                else:
+                    logger.warning(
+                        "ai.tool_isolation_unauthorized agent=%s kind=%s tool=%s",
+                        agent_id, agent_kind, t.name,
+                    )
+            return authorized
+        return tools
 
     @staticmethod
     def _alias_for(agent: Agent) -> str:
-        # Agent.model stores a gateway alias; unknown/empty values use "fast".
-        return agent.model if (agent.model or "") in ALIASES else "fast"
+        # Agent.model stores a gateway alias; if valid in ALIASES use it.
+        if (agent.model or "") in ALIASES:
+            return agent.model
+        try:
+            from app.modules.ai.core.registry import AgentRegistry
+            defn = AgentRegistry.get_or_none(agent.kind)
+            if defn and defn.default_model in ALIASES:
+                return defn.default_model
+        except Exception:
+            pass
+        return "fast"
 
     @staticmethod
     def _resolve_system_prompt(agent: Agent, override: str | None = None) -> str:
@@ -501,7 +526,7 @@ class AgentRunner:
                     hit_limit = "max_tool_calls"
                     break
                 outcome = await self._execute_tool(
-                    session, tenant_id, run=run, agent_tools=agent_tools, request=tc,
+                    session, tenant_id, run=run, agent=agent, agent_tools=agent_tools, request=tc,
                     customer_id=customer_id, conversation_id=conversation_id,
                     customer_image_url=customer_image_url,
                 )
@@ -652,18 +677,19 @@ class AgentRunner:
                     decision, reason = "block", "grounding_failed"
 
         if content:
-            # `require_tool_evidence` is on because this is the only place the
-            # run's tool results exist: a price or a stock level the model
-            # invented, with nothing behind it, is handed over rather than sent.
-            verdict = default_guardrail(require_tool_evidence=True).evaluate(
-                content, {"tool_results": tool_calls_made}
-            )
-            decision, reason = verdict.decision, verdict.reason
-            if decision != "allow":
-                logger.warning(
-                    "ai.guardrail_%s run=%s reason=%s", decision, run.id, reason
+            guardrail_profile = getattr(defn, "guardrail_profile", "customer") if defn else "customer"
+            if guardrail_profile == "analytics":
+                decision, reason = "allow", None
+            else:
+                verdict = default_guardrail(require_tool_evidence=True).evaluate(
+                    content, {"tool_results": tool_calls_made}
                 )
-                content = None
+                decision, reason = verdict.decision, verdict.reason
+                if decision != "allow":
+                    logger.warning(
+                        "ai.guardrail_%s run=%s reason=%s", decision, run.id, reason
+                    )
+                    content = None
 
         # §13: resolve the media the model requested into deliverable
         # attachments SERVER-SIDE — only image ids crossed the model
@@ -877,6 +903,7 @@ class AgentRunner:
         tenant_id: uuid.UUID,
         *,
         run: AgentRun,
+        agent: Agent | None = None,
         agent_tools: list[AgentTool],
         request: ToolCallRequest,
         customer_id: uuid.UUID | None = None,
@@ -927,7 +954,13 @@ class AgentRunner:
         error: str | None = None
         duration_ms: int | None = None
 
-        if agent_tool is None:
+        from app.modules.ai.core.registry import AgentRegistry
+        agent_kind = agent.kind if agent else None
+
+        if agent_kind and not AgentRegistry.is_tool_authorized(agent_kind, request.name):
+            status = "denied"
+            error = f"tool '{request.name}' is not authorized for agent kind '{agent_kind}'"
+        elif agent_tool is None:
             status = "denied"
             error = "tool not enabled for this agent"
         elif request.name in ((agent_tool.policy or {}).get("denied") or []):

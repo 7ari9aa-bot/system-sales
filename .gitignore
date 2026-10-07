@@ -79,3 +79,9 @@ pytest-of-*/
 # Deploy/build artifacts (owner tooling snapshots) — never part of the tree
 .codex/
 Dashboard-Frontend.zip
+
+# Local scratch and tooling temporary artifacts
+scratch/
+supabase/
+schema.ts
+schema_utf8.ts

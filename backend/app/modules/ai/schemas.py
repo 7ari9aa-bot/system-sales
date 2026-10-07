@@ -90,6 +90,10 @@ class AgentKindOut(BaseModel):
     default_model: str
     capabilities: list[AgentCapabilityOut] = Field(default_factory=list)
     default_tools: list[str] = Field(default_factory=list)
+    allowed_tools: list[str] = Field(default_factory=list)
+    task_types: list[str] = Field(default_factory=list)
+    guardrail_profile: str = "default"
+    provisioning_policy: dict[str, Any] = Field(default_factory=dict)
 
 
 class AgentCreateRequest(BaseModel):
@@ -112,7 +116,8 @@ class AgentUpdateRequest(BaseModel):
     system_prompt: str | None = Field(default=None, min_length=1)
     description: str | None = None
     is_active: bool | None = None
-    kind: str | None = Field(default=None, max_length=63)
+    # NOTE: kind is intentionally excluded - immutable architectural property
+    # set at creation. Mutating would bypass tool authorization (ADR-060).
 
 
 class AgentDetailOut(BaseModel):

@@ -59,6 +59,10 @@ class Agent(TenantMixin, TimestampMixin, WorkspaceScopeMixin, VersionMixin, Base
     run_limits: Mapped[dict] = mapped_column(JSONB, server_default="{}")
     is_active: Mapped[bool] = mapped_column(default=True, server_default="true")
 
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "kind", name="uq_agents_tenant_kind"),
+    )
+
 
 class AgentTool(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "agent_tools"

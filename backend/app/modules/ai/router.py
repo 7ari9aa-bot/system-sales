@@ -123,6 +123,7 @@ async def list_agent_kinds(ctx: TenantCtxDep) -> list[AgentKindOut]:
     This is the platform's extensibility surface: a new agent kind added
     to the registry appears here automatically."""
     from app.modules.ai.core.registry import AgentRegistry
+    from app.modules.ai.schemas import AgentCapabilityOut
 
     return [
         AgentKindOut(
@@ -131,10 +132,14 @@ async def list_agent_kinds(ctx: TenantCtxDep) -> list[AgentKindOut]:
             description=defn.description,
             default_model=defn.default_model,
             capabilities=[
-                {"name": c.name, "description": c.description, "required": c.required}
+                AgentCapabilityOut(name=c.name, description=c.description, required=c.required)
                 for c in defn.capabilities
             ],
             default_tools=defn.default_tools,
+            allowed_tools=defn.allowed_tools,
+            task_types=defn.task_types,
+            guardrail_profile=defn.guardrail_profile,
+            provisioning_policy=defn.provisioning_policy,
         )
         for defn in AgentRegistry.get_all()
     ]
@@ -270,33 +275,58 @@ async def get_sales_analysis(ctx: TenantCtxDep, analysis_id: uuid.UUID) -> Sales
 async def create_agent(ctx: SettingsCtx, body: AgentCreateRequest) -> AgentOut:
     from app.modules.ai.core.registry import AgentRegistry
     from app.modules.ai.models import AgentTool
+    from app.core.errors import ConflictError, ValidationError
+
+    defn = AgentRegistry.get_or_none(body.kind)
+    if defn is None:
+        raise ValidationError(
+            f"Unknown agent kind '{body.kind}'. Registered kinds: {AgentRegistry.kinds()}"
+        )
+
+    singleton = (defn.provisioning_policy or {}).get("singleton_per_tenant", True)
+    if singleton:
+        existing = (
+            await ctx.session.execute(
+                select(Agent).where(
+                    Agent.tenant_id == ctx.tenant_id,
+                    Agent.kind == body.kind,
+                )
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            raise ConflictError(
+                f"Agent of kind '{body.kind}' already exists for this tenant"
+            )
+
+    model = body.model or defn.default_model
+    system_prompt = body.system_prompt or defn.system_prompt_template
 
     agent = Agent(
         tenant_id=ctx.tenant_id,
         kind=body.kind,
         name=body.name,
-        model=body.model,
-        system_prompt=body.system_prompt,
-        description=body.description,
+        model=model,
+        system_prompt=system_prompt,
+        description=body.description or defn.description,
     )
     ctx.session.add(agent)
     await ctx.session.flush()
 
-    try:
-        defn = AgentRegistry.get(body.kind)
-        for tool_name in defn.default_tools:
-            ctx.session.add(
-                AgentTool(
-                    tenant_id=ctx.tenant_id,
-                    agent_id=agent.id,
-                    name=tool_name,
-                    policy={},
-                )
+    for tool_name in defn.default_tools:
+        if not AgentRegistry.is_tool_authorized(body.kind, tool_name):
+            raise ValidationError(
+                f"Tool '{tool_name}' is not authorized for agent kind '{body.kind}'"
             )
-        if defn.default_tools:
-            await ctx.session.flush()
-    except Exception:
-        pass
+        ctx.session.add(
+            AgentTool(
+                tenant_id=ctx.tenant_id,
+                agent_id=agent.id,
+                name=tool_name,
+                policy={},
+            )
+        )
+    if defn.default_tools:
+        await ctx.session.flush()
 
     return AgentOut.model_validate(agent)
 
