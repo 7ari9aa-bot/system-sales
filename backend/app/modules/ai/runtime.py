@@ -297,6 +297,23 @@ class AgentRunner:
         # Agent.model stores a gateway alias; unknown/empty values use "fast".
         return agent.model if (agent.model or "") in ALIASES else "fast"
 
+    @staticmethod
+    def _resolve_system_prompt(agent: Agent, override: str | None = None) -> str:
+        """Resolve the system prompt: override > agent row > registry template > default."""
+        if override:
+            return override
+        if agent.system_prompt:
+            return agent.system_prompt
+        # Fall back to registry definition if available
+        try:
+            from app.modules.ai.core.registry import AgentRegistry
+            defn = AgentRegistry.get(agent.kind)
+            if defn.system_prompt_template:
+                return defn.system_prompt_template
+        except (ValueError, Exception):  # noqa: BLE001
+            pass
+        return DEFAULT_SYSTEM_PROMPT
+
     async def _loop(
         self,
         session: AsyncSession,
@@ -332,7 +349,7 @@ class AgentRunner:
         messages: list[dict] = [
             {
                 "role": "system",
-                "content": system_prompt or agent.system_prompt or DEFAULT_SYSTEM_PROMPT,
+                "content": self._resolve_system_prompt(agent, system_prompt),
             }
         ]
         # §132: knowledge context is injected as a SEPARATE user message,
@@ -582,13 +599,18 @@ class AgentRunner:
         # caller that forgets to inspect the verdict still cannot send it.
         decision, reason = "allow", None
 
-        # Grounding v1: when the run used tools, every numeral in the reply
+        # Grounding v1: controlled by the agent definition in the registry.
+        # When enabled and the run used tools, every numeral in the reply
         # must trace to a tool fact (§12). ONE regeneration, tools disabled,
-        # with a corrective instruction; failing again withholds the reply
-        # and flags it — the hook's existing path turns that into an
-        # AIHandover. No tool results → the unsourced-claim gate below owns
-        # the case, not this controller.
-        if content and tool_calls_made:
+        # with a corrective instruction; failing again withholds the reply.
+        defn = None
+        try:
+            from app.modules.ai.core.registry import AgentRegistry
+            defn = AgentRegistry.get(agent.kind)
+        except Exception:
+            pass
+
+        if content and tool_calls_made and defn and getattr(defn, "enforce_grounding", False):
             from app.modules.ai.agents.customer import grounding, ledger
 
             facts = ledger.facts_from_tool_calls(tool_calls_made)

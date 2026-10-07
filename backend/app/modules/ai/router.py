@@ -41,6 +41,7 @@ from app.modules.ai.policy import AIProviderPolicyService
 from app.modules.ai.schemas import (
     AgentCreateRequest,
     AgentDetailOut,
+    AgentKindOut,
     AgentOut,
     AgentUpdateRequest,
     ApprovalDecisionOut,
@@ -115,6 +116,30 @@ async def search_knowledge(
     ]
 
 
+@router.get("/agent-kinds")
+async def list_agent_kinds(ctx: TenantCtxDep) -> list[AgentKindOut]:
+    """List all registered agent kinds and their definitions.
+
+    This is the platform's extensibility surface: a new agent kind added
+    to the registry appears here automatically."""
+    from app.modules.ai.core.registry import AgentRegistry
+
+    return [
+        AgentKindOut(
+            kind=defn.kind,
+            name=defn.name,
+            description=defn.description,
+            default_model=defn.default_model,
+            capabilities=[
+                {"name": c.name, "description": c.description, "required": c.required}
+                for c in defn.capabilities
+            ],
+            default_tools=defn.default_tools,
+        )
+        for defn in AgentRegistry.get_all()
+    ]
+
+
 @router.get("/agents")
 async def list_agents(ctx: TenantCtxDep) -> list[AgentOut]:
     rows = (
@@ -138,22 +163,11 @@ async def create_sales_analysis(
         ensure_si_tools,
         run_sales_analysis,
     )
+    from app.modules.ai.core.resolver import resolve_agent_by_kind
 
-    agent = (
-        await ctx.session.execute(
-            select(Agent)
-            .where(
-                Agent.tenant_id == ctx.tenant_id,
-                Agent.is_active.is_(True),
-            )
-            .order_by(Agent.created_at.asc())
-            .limit(1)
-        )
-    ).scalar_one_or_none()
-    if agent is None:
-        from app.core.errors import NotFoundError
-
-        raise NotFoundError("no active agent for this tenant")
+    agent = await resolve_agent_by_kind(
+        ctx.session, ctx.tenant_id, "sales_intelligence"
+    )
 
     await ensure_si_tools(ctx.session, ctx.tenant_id, agent.id)
     result = await run_sales_analysis(
@@ -195,20 +209,11 @@ async def create_deep_analysis(
     from app.modules.ai.agents.sales_intelligence.agent import ensure_si_tools
     from app.modules.analytics.persistence import create_pending_analysis
     from app.modules.platform.service import JobService
+    from app.modules.ai.core.resolver import resolve_agent_by_kind
 
-    agent = (
-        await ctx.session.execute(
-            select(Agent)
-            .where(
-                Agent.tenant_id == ctx.tenant_id,
-                Agent.is_active.is_(True),
-            )
-            .order_by(Agent.created_at.asc())
-            .limit(1)
-        )
-    ).scalar_one_or_none()
-    if agent is None:
-        raise NotFoundError("no active agent for this tenant")
+    agent = await resolve_agent_by_kind(
+        ctx.session, ctx.tenant_id, "sales_intelligence"
+    )
 
     await ensure_si_tools(ctx.session, ctx.tenant_id, agent.id)
     analysis_id = await create_pending_analysis(
@@ -263,8 +268,12 @@ async def get_sales_analysis(ctx: TenantCtxDep, analysis_id: uuid.UUID) -> Sales
 
 @router.post("/agents", status_code=201)
 async def create_agent(ctx: SettingsCtx, body: AgentCreateRequest) -> AgentOut:
+    from app.modules.ai.core.registry import AgentRegistry
+    from app.modules.ai.models import AgentTool
+
     agent = Agent(
         tenant_id=ctx.tenant_id,
+        kind=body.kind,
         name=body.name,
         model=body.model,
         system_prompt=body.system_prompt,
@@ -272,6 +281,23 @@ async def create_agent(ctx: SettingsCtx, body: AgentCreateRequest) -> AgentOut:
     )
     ctx.session.add(agent)
     await ctx.session.flush()
+
+    try:
+        defn = AgentRegistry.get(body.kind)
+        for tool_name in defn.default_tools:
+            ctx.session.add(
+                AgentTool(
+                    tenant_id=ctx.tenant_id,
+                    agent_id=agent.id,
+                    name=tool_name,
+                    policy={},
+                )
+            )
+        if defn.default_tools:
+            await ctx.session.flush()
+    except Exception:
+        pass
+
     return AgentOut.model_validate(agent)
 
 

@@ -55,14 +55,8 @@ async def _do_auto_reply(
     from app.core.events.writer import add_outbox_event
     from app.modules.conversations.service import ConversationService
 
-    agent = (
-        await session.execute(
-            select(Agent)
-            .where(Agent.tenant_id == tenant_id, Agent.is_active.is_(True))
-            .order_by(Agent.created_at.asc())
-            .limit(1)
-        )
-    ).scalar_one_or_none()
+    from app.modules.ai.core.resolver import resolve_agent_by_kind_optional
+    agent = await resolve_agent_by_kind_optional(session, tenant_id, "customer")
     if agent is None:
         return
 

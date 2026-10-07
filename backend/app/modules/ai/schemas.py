@@ -77,7 +77,23 @@ class KnowledgeSearchRequest(BaseModel):
     limit: int = Field(default=5, ge=1, le=50)
 
 
+class AgentCapabilityOut(BaseModel):
+    name: str
+    description: str | None = None
+    required: bool
+
+
+class AgentKindOut(BaseModel):
+    kind: str
+    name: str
+    description: str | None = None
+    default_model: str
+    capabilities: list[AgentCapabilityOut] = Field(default_factory=list)
+    default_tools: list[str] = Field(default_factory=list)
+
+
 class AgentCreateRequest(BaseModel):
+    kind: str = Field(default="customer", max_length=63)
     name: str = Field(min_length=1, max_length=255)
     model: str | None = Field(default=None, max_length=127)
     system_prompt: str | None = None
@@ -96,6 +112,7 @@ class AgentUpdateRequest(BaseModel):
     system_prompt: str | None = Field(default=None, min_length=1)
     description: str | None = None
     is_active: bool | None = None
+    kind: str | None = Field(default=None, max_length=63)
 
 
 class AgentDetailOut(BaseModel):
@@ -107,6 +124,7 @@ class AgentDetailOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
+    kind: str
     name: str
     description: str | None = None
     model: str | None = None
@@ -185,6 +203,7 @@ class AgentOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
+    kind: str
     name: str
     description: str | None
     model: str | None

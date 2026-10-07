@@ -125,6 +125,11 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     # Invariant 13: Boot Reconciler validates RLS ENABLE + FORCE on all tenant tables
     # dedicated engine inside: no shared-pool residue across loops
     await run_boot_reconciler()
+
+    # Agent Registry: discover and register all agent kinds at startup
+    from app.modules.ai.core.registry import discover_agents
+    discover_agents()
+
     yield
     await engine.dispose()
     await close_redis()

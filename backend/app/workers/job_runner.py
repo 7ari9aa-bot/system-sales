@@ -206,16 +206,11 @@ async def _si_deep_analysis(session: AsyncSession, job: Job) -> dict:
         raise ValueError(f"deep analysis shell missing: {job.correlation_id}")
     question = shell["question"]
 
-    agent = (
-        await session.execute(
-            select(Agent).where(
-                Agent.tenant_id == job.tenant_id,
-                Agent.is_active.is_(True),
-            )
-        )
-    ).scalars().first()
-    if agent is None:
-        raise ValueError("no active agent for deep analysis")
+    from app.modules.ai.core.resolver import resolve_agent_by_kind
+    try:
+        agent = await resolve_agent_by_kind(session, job.tenant_id, "sales_intelligence")
+    except Exception as exc:
+        raise ValueError("no active agent for deep analysis") from exc
 
     try:
         result = await run_sales_analysis(

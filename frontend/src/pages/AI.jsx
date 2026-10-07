@@ -29,6 +29,7 @@ function Stat({ icon: Icon, label, value, tone }) {
 
 const AGENTS_PATH = "/ai/agents";
 const APPROVALS_PATH = "/ai/approvals?status=PENDING";
+const AGENT_KINDS_PATH = "/ai/agent-kinds";
 
 export default function AI() {
   const t = useT();
@@ -39,6 +40,7 @@ export default function AI() {
   const usage = useUsageSummary();
   const approvals = useApprovals();
   const [agents, setAgents] = React.useState(() => peekCache(AGENTS_PATH) || null);
+  const [agentKinds, setAgentKinds] = React.useState(() => peekCache(AGENT_KINDS_PATH) || null);
   const [agentError, setAgentError] = React.useState("");
   const [approvalError, setApprovalError] = React.useState("");
   const [resolvedApprovals, setResolvedApprovals] = React.useState(() => new Set());
@@ -66,6 +68,13 @@ export default function AI() {
         if (!alive) return;
         setAgentError(error?.message || (isAr ? "تعذر تحميل الوكلاء" : "Could not load agents"));
       });
+
+    const cachedKinds = peekCache(AGENT_KINDS_PATH);
+    if (cachedKinds) setAgentKinds(cachedKinds);
+    apiCached(AGENT_KINDS_PATH)
+      .then((rows) => alive && setAgentKinds(Array.isArray(rows) ? rows : []))
+      .catch(() => {});
+
     return () => { alive = false; };
   }, [isAr]);
 
@@ -78,10 +87,21 @@ export default function AI() {
   async function createAgent() {
     const name = window.prompt(isAr ? "اسم الوكيل الجديد" : "Name for the new agent");
     if (!name?.trim()) return;
+    
+    let kind = "customer";
+    if (agentKinds && agentKinds.length > 0) {
+      const kindsStr = agentKinds.map((k) => k.kind).join(", ");
+      const kindInput = window.prompt(
+        isAr ? `نوع الوكيل (${kindsStr})` : `Agent kind (${kindsStr})`,
+        "customer"
+      );
+      if (kindInput) kind = kindInput.trim();
+    }
+
     setCreatingAgent(true);
     setAgentError("");
     try {
-      await api(AGENTS_PATH, { method: "POST", body: { name: name.trim() } });
+      await api(AGENTS_PATH, { method: "POST", body: { name: name.trim(), kind } });
       invalidateCache(AGENTS_PATH);
       await loadAgents();
     } catch (error) {
@@ -173,6 +193,11 @@ export default function AI() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-[14px] font-semibold truncate">{agent.name}</span>
+                    {agent.kind && (
+                      <span className="text-[10px] font-medium text-muted-foreground bg-surface px-1.5 py-0.5 rounded-md border border-border">
+                        {agent.kind}
+                      </span>
+                    )}
                     <Badge tone={agent.is_active ? "success" : "muted"}>
                       <span className={`h-1.5 w-1.5 rounded-full ${agent.is_active ? "bg-success" : "bg-muted-foreground"}`} />
                       {agent.is_active ? t("ai.agents.active") : (isAr ? "متوقف" : "Inactive")}
