@@ -12,6 +12,7 @@ import { ThemeProvider } from '@/lib/themeContext';
 import { I18nProvider } from '@/lib/i18n';
 import { RegionalProvider } from '@/lib/regional';
 import ProtectedRoute from '@/components/ProtectedRoute';
+import { PUBLIC_SEO_ROUTES } from '@/lib/public-seo-routes.mjs';
 const Fihrist = lazy(() => import('@/pages/Fihrist'));
 const Login = lazy(() => import('@/pages/Login'));
 const Register = lazy(() => import('@/pages/Register'));
@@ -46,18 +47,9 @@ const DangerZoneSettings = lazy(() => import('@/pages/settings/DangerZoneSetting
 const MarketingRoutes = () => (
   <LanguageProvider>
     <Routes>
-      <Route path="/" element={<Fihrist />} />
-      <Route path="/product" element={<Fihrist />} />
-      <Route path="/conversations" element={<Fihrist />} />
-      <Route path="/context" element={<Fihrist />} />
-      <Route path="/assistant" element={<Fihrist />} />
-      <Route path="/automation" element={<Fihrist />} />
-      <Route path="/pricing" element={<Fihrist />} />
-      <Route path="/security" element={<Fihrist />} />
-      <Route path="/privacy" element={<Fihrist />} />
-      <Route path="/terms" element={<Fihrist />} />
-      <Route path="/contact-sales" element={<Fihrist />} />
-      <Route path="/support" element={<Fihrist />} />
+      {PUBLIC_SEO_ROUTES.map(({ path }) => (
+        <Route key={path} path={path} element={<Fihrist />} />
+      ))}
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   </LanguageProvider>

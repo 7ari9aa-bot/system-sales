@@ -18,6 +18,7 @@ import InteractiveBackground from '@/components/InteractiveBackground'
 import HeroRelationCanvas from '@/components/HeroRelationCanvas'
 import Spotlight from '@/components/Spotlight'
 import { getTokens } from '@/lib/api'
+import { PUBLIC_SEO_ROUTES } from '@/lib/public-seo-routes.mjs'
 
 const c = (ar, en) => ({ ar, en })
 const tx = (copy, locale) => copy[locale]
@@ -31,38 +32,38 @@ const navItems = [
 ]
 
 const pageFromPath = () => {
-  const path = window.location.pathname.replace(/\/$/, '')
-  if (path === '') return 'home'
-  const key = path.slice(1)
-  return ['product','conversations','context','assistant','automation','pricing','security','privacy','terms','contact-sales','support'].includes(key) ? key : 'home'
+  const path = window.location.pathname.replace(/\/+$/, '') || '/'
+  return PUBLIC_SEO_ROUTES.find((route) => route.path === path)?.key || 'home'
 }
 
-const pageMeta = {
-  home: c('FIHRIST — نظام تشغيل المبيعات للمتاجر', 'FIHRIST — Sales Operating System for stores'),
-  product: c('FIHRIST — المنصة التي تربط دورة البيع', 'FIHRIST — The connected sales platform'),
-  conversations: c('FIHRIST — محادثات العملاء وسياق البيع', 'FIHRIST — Customer conversations and sales context'),
-  context: c('FIHRIST — سياق العميل ومسار البيع', 'FIHRIST — Customer context across the sale'),
-  assistant: c('FIHRIST — مساعد العملاء ومساعد تحليل المبيعات', 'FIHRIST — Customer and sales-analysis AI'),
-  automation: c('FIHRIST — المتابعة والقواعد', 'FIHRIST — Follow-up and business rules'),
-  pricing: c('FIHRIST — الخطط والأسعار', 'FIHRIST — Plans and pricing'),
-  security: c('FIHRIST — الأمان والتحكم في الوصول', 'FIHRIST — Security and access control'),
-  privacy: c('سياسة الخصوصية', 'Privacy policy'),
-  terms: c('شروط الاستخدام', 'Terms of use'),
-  'contact-sales': c('FIHRIST — تواصل مع المبيعات', 'FIHRIST — Contact sales'),
-  support: c('ابدأ من هنا', 'Start here'),
+export const pageMeta = {
+  home: c('FIHRIST | نظام تشغيل المبيعات للمتاجر', 'FIHRIST | Sales Operating System for Stores'),
+  product: c('منصة FIHRIST لربط دورة البيع وإدارة المبيعات', 'FIHRIST Sales Platform for a Connected Sales Cycle'),
+  conversations: c('محادثات العملاء في نظام مبيعات FIHRIST', 'Customer Conversations and Sales Context | FIHRIST'),
+  context: c('سياق العميل والطلب والمخزون مع FIHRIST', 'Customer, Order, and Inventory Context | FIHRIST'),
+  assistant: c('مساعد العملاء وتحليل المبيعات في FIHRIST', 'Customer Assistant and Sales Analysis | FIHRIST'),
+  automation: c('متابعة المبيعات والتذكيرات في FIHRIST', 'Sales Follow-up Rules and Reminders | FIHRIST'),
+  pricing: c('خطط وأسعار FIHRIST لنظام إدارة المبيعات', 'FIHRIST Sales Management Plans and Pricing'),
+  security: c('الأمان وصلاحيات الوصول في منصة FIHRIST', 'Security and Access Controls for Sales Teams | FIHRIST'),
+  privacy: c('سياسة الخصوصية واستخدام بيانات FIHRIST', 'FIHRIST Privacy Policy and Data Use'),
+  terms: c('شروط استخدام منصة FIHRIST لإدارة المبيعات', 'FIHRIST Sales Platform Terms of Use'),
+  'contact-sales': c('تواصل مع فريق مبيعات FIHRIST للاستفسارات', 'Contact the FIHRIST Sales Team | FIHRIST'),
+  support: c('دعم FIHRIST لإدارة المبيعات ومتابعة العملاء', 'FIHRIST Support for Sales and Customer Follow-up'),
 }
 
-const pageDescriptions = {
-  home: c('FIHRIST يربط محادثات العملاء بالمنتجات والطلبات والمبيعات والمخزون، مع أدوات للمتابعة وقراءة أداء المتجر.', 'FIHRIST connects customer conversations with products, orders, sales, and inventory, with tools for follow-up and store insights.'),
-  product: c('منصة مبيعات تربط المحادثات والمنتجات والطلبات والمبيعات والمخزون والمتابعة في دورة واحدة.', 'A sales platform connecting conversations, products, orders, sales, inventory, and follow-up in one workflow.'),
-  conversations: c('اجمع محادثات WhatsApp وMessenger وInstagram والبريد وشات الموقع مع سياق العميل والمنتج والطلب.', 'Connect WhatsApp, Messenger, Instagram, email, and web chat with customer, product, and order context.'),
-  context: c('اربط سياق العميل بالمنتج والطلب والبيع والمخزون حتى يعرف الفريق ما حدث وما الخطوة التالية.', 'Carry customer context through products, orders, sales, and inventory so your team can see what happened and what comes next.'),
-  assistant: c('مساعد عملاء يجيب تلقائيًا عند تفعيله، ومساعد تحليل مبيعات يساعد التاجر على فهم بيانات المتجر.', 'A customer assistant that answers automatically when enabled, plus a sales-analysis assistant that helps merchants understand store data.'),
-  automation: c('نظّم التذكيرات وقواعد المتابعة داخل FIHRIST حتى تظل الخطوة التالية واضحة.', 'Organize reminders and follow-up rules inside FIHRIST so the next step stays clear.'),
-  pricing: c('تعرّف على خيارات خطط FIHRIST والأسعار المتاحة عبر فريق المبيعات.', 'Explore FIHRIST plan options and current pricing with the sales team.'),
-  security: c('تعرف على كيفية تنظيم الوصول وصلاحيات الفريق ودور المراجعة والتدخل البشري داخل FIHRIST.', 'See how FIHRIST organizes access, team permissions, and human review and intervention.'),
-  'contact-sales': c('استكشف FIHRIST وما يمكن أن يناسب دورة البيع والمحادثات والطلبات والمخزون في متجرك.', 'Explore FIHRIST and the options that may fit your store\'s conversations, orders, sales, and inventory workflow.'),
-  support: c('إرشادات عملية لمتابعة المحادثات والمنتجات والطلبات والخطوة التالية داخل FIHRIST.', 'Practical guidance for conversations, products, orders, and the next step in FIHRIST.'),
+export const pageDescription = {
+  home: c('يربط FIHRIST محادثات العملاء بالمنتجات والطلبات والمبيعات والمخزون، مع أدوات لمتابعة الأداء وتحديد الخطوة التالية.', 'FIHRIST connects customer conversations with products, orders, sales, and inventory, with tools for follow-up and store performance insights.'),
+  product: c('تربط منصة FIHRIST محادثات العملاء بالمنتجات والطلبات والمبيعات والمخزون لمتابعة مسار البيع في مكان واحد.', 'Explore the FIHRIST platform for connecting customer conversations with products, orders, sales, and inventory in one sales journey.'),
+  conversations: c('اجمع محادثات WhatsApp وMessenger وInstagram والبريد وشات الموقع مع بيانات العميل والمنتج والطلب في مكان واحد.', 'Connect WhatsApp, Messenger, Instagram, email, and web chat with customer, product, and order details in one place.'),
+  context: c('اربط بيانات العميل والمنتجات والطلبات والمبيعات والمخزون حتى يتمكن الفريق من مراجعة ما حدث وتحديد الخطوة التالية.', 'Connect customer, product, order, sales, and inventory details so your team can review what happened and decide what comes next.'),
+  assistant: c('عند تفعيله، يجيب مساعد العملاء عن الأسئلة اعتمادًا على بيانات المتجر، بينما يساعد مساعد تحليل المبيعات على فهم الأداء.', 'When enabled, the customer assistant answers questions using store data, while the sales-analysis assistant helps explain performance.'),
+  automation: c('نظّم التذكيرات وقواعد المتابعة داخل FIHRIST، واربط الطلبات والمحادثات بالخطوة التالية دون فقدان السياق.', 'Organize reminders and follow-up rules in FIHRIST, connecting conversations and orders to a clear next step.'),
+  pricing: c('تعرّف على خطط وأسعار FIHRIST، وتواصل مع الفريق لمعرفة الخيارات التي تناسب احتياجات متجرك وفريقك.', 'Explore FIHRIST plans and pricing, and contact the team to discuss options for your store and team.'),
+  security: c('تعرّف على كيفية تنظيم الوصول وصلاحيات الفريق ومراجعة سجل النشاط عند استخدام منصة FIHRIST.', 'Learn how FIHRIST organizes access, team permissions, and activity records across the sales platform.'),
+  privacy: c('اقرأ سياسة الخصوصية لمعرفة المعلومات التي تستخدمها FIHRIST، وكيفية التعامل معها وإدارة طلباتك.', 'Read the privacy policy to learn what information FIHRIST uses, how it is handled, and how to manage your requests.'),
+  terms: c('راجع شروط استخدام FIHRIST لإدارة حسابات الفريق ومحادثات العملاء والطلبات ومتابعة المبيعات.', 'Review the terms for using FIHRIST to manage team accounts, customer conversations, orders, and sales follow-up.'),
+  'contact-sales': c('تواصل مع فريق FIHRIST لمناقشة احتياجاتك في محادثات العملاء والطلبات والمخزون وقراءة أداء المبيعات.', 'Contact the FIHRIST team to discuss customer conversations, orders, inventory, and sales performance insights.'),
+  support: c('اعثر على إرشادات استخدام FIHRIST لمتابعة المحادثات والمنتجات والطلبات وتحديد الخطوة التالية لفريقك.', 'Find practical guidance for using FIHRIST to follow conversations, products, and orders and choose your team’s next step.'),
 }
 
 function KineticHeadline({ locale }) {
@@ -180,7 +181,63 @@ function DemoProof({ locale }) { return <section className="section section-proo
 function Home({ locale }) { return <><section className="hero"><div className="hero-bg-canvas"><HeroRelationCanvas/></div><div className="container hero-grid"><div className="hero-copy"><span className="eyebrow"><span/> FIHRIST</span><KineticHeadline locale={locale}/><p className="hero-lede">{tx(c('FIHRIST يربط محادثات العملاء بالمنتجات والطلبات والمبيعات والمخزون. عند تفعيله، يجيب مساعد العملاء تلقائيًا عن الأسئلة اعتمادًا على بيانات المتجر، ويساعد مساعد تحليل المبيعات التاجر على قراءة الأداء.', 'FIHRIST connects customer conversations with products, orders, sales, and inventory. When enabled, the customer assistant automatically answers questions using store data, while the merchant sales-analysis assistant helps review performance.'), locale)}</p><div className="hero-actions"><Button href="/register">{tx(c('ابدأ الآن','Start now'), locale)}</Button><Button href="/contact-sales" kind="secondary">{tx(c('تحدث مع فريقنا','Talk to our team'), locale)}</Button></div><ChannelChips locale={locale}/><div className="hero-note"><ShieldCheck size={16}/><span>{tx(c('تنتقل المعلومات من محادثة العميل إلى الطلب والبيع والمخزون والمتابعة.', 'Information carries from the customer conversation through the order and sale to inventory and follow-up.'), locale)}</span></div></div><div className="hero-visual"><span className="hero-visual-label"><span className="demo-dot"/>{tx(c('مسار البيع مترابط', 'A connected sales journey'), locale)}</span></div></div></section><section className="section section-workflow"><div className="container"><SectionIntro kicker={tx(c('السرد في سطر واحد','The story in one line'), locale)} title={tx(c('من سؤال العميل إلى متابعة المتجر.', 'From a customer question to store follow-up.'), locale)} body={tx(c('تنتقل معلومات العميل والمنتج والطلب إلى البيع والمخزون، ثم تساعدك على قراءة ما حدث وتحديد المتابعة.', 'Customer, product, and order details carry through to sales and inventory, then help you review what happened and plan follow-up.'), locale)}/><Workflow locale={locale}/><div className="workflow-caption"><span className="caption-line"/><span>{tx(c('عميل → محادثة → منتج → طلب → بيع → مخزون → متابعة ورؤية', 'Customer → conversation → product → order → sale → inventory → follow-up and insight'), locale)}</span><span className="caption-line"/></div></div></section><BeforeAfter locale={locale}/><section className="section section-features"><div className="container"><SectionIntro kicker={tx(c('المنصة','The platform'), locale)} title={tx(c('من المحادثة إلى إدارة المتجر.', 'From customer conversation to store operations.'), locale)} body={tx(c('مساعدة للعملاء، تشغيل المنتجات والطلبات والمخزون، وقراءة الأداء والمتابعة.', 'Customer assistance, connected product, order, and inventory operations, and performance insights and follow-up.'), locale)}/><FeatureGrid locale={locale}/></div></section><ScenarioDemo locale={locale}/><DemoProof locale={locale}/><section className="section section-audience"><div className="container"><SectionIntro kicker={tx(c('مسارات مختلفة، أساس واحد','Different paths, one foundation'), locale)} title={tx(c('ابدأ من المشكلة التي تراها كل يوم.', 'Start with the problem you see every day.'), locale)}/><div className="audience-grid"><AudienceCard icon={Users} title={c('فرق المبيعات','Sales teams')} body={c('متابعة محادثات العملاء وربط طلباتهم بالمنتجات والخطوة التالية.', 'Follow customer conversations and connect requests to products and next steps.')} href="/conversations" locale={locale}/><AudienceCard icon={Layers3} title={c('أصحاب المتاجر ومديروها','Store owners and managers')} body={c('تابع المبيعات والطلبات والمخزون، وافهم حركة المنتجات ونتائج قنوات البيع من بيانات المتجر.', 'Track sales, orders, and inventory, and understand product movement and sales-channel performance from your store data.')} href="/product" locale={locale}/><AudienceCard icon={Network} title={c('فرق المتجر والعمليات','Store and operations teams')} body={c('ربط المنتجات والطلبات والمبيعات والمخزون مع صلاحيات تناسب مسؤوليات الفريق.', 'Connect products, orders, sales, and inventory with access suited to team responsibilities.')} href="/security" locale={locale}/></div></div></section><Faq locale={locale}/></> }
 function AudienceCard({icon: Icon, title, body, href, locale}) { return <Reveal className="reveal-cell"><a className="audience-card" href={href}><span className="icon-tile"><Icon size={20}/></span><h3>{tx(title, locale)}</h3><p>{tx(body, locale)}</p><span className="card-arrow"><ArrowRight size={17}/></span></a></Reveal> }
 
-function App() { const [locale, setLocale] = useState(() => { try { const saved = window.localStorage.getItem('fh_locale'); return saved === 'en' ? 'en' : 'ar' } catch { return 'ar' } }); const [theme, setTheme] = useState(() => { try { const saved = window.localStorage.getItem('fh_theme'); if (saved === 'dark' || saved === 'light') return saved; return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light' } catch { return 'light' } }); const [page, setPage] = useState(pageFromPath()); useEffect(() => { const onPop = () => setPage(pageFromPath()); window.addEventListener('popstate', onPop); return () => window.removeEventListener('popstate', onPop) }, []); useEffect(() => { document.documentElement.lang = locale; document.documentElement.dir = locale === 'ar' ? 'rtl' : 'ltr'; try { window.localStorage.setItem('fh_locale', locale); window.localStorage.setItem('fh_theme', theme) } catch {} document.title = tx(pageMeta[page], locale); const desc = document.querySelector('meta[name="description"]'); if (desc) desc.setAttribute('content', tx(pageDescriptions[page] || c('FIHRIST يربط محادثات العملاء بالمنتجات والطلبات والمبيعات والمخزون، مع أدوات للمتابعة وقراءة أداء المتجر.', 'FIHRIST connects customer conversations with products, orders, sales, and inventory, with tools for follow-up and store insights.'), locale)) }, [locale, theme, page]); const pageComponents = { product: Product, conversations: Conversations, context: Context, assistant: Assistant, automation: Automation, pricing: Pricing, security: Security, privacy: Privacy, terms: Terms, 'contact-sales': ContactSales, support: Support }
+function App() {
+  const [locale, setLocale] = useState(() => {
+    try {
+      const saved = window.localStorage.getItem('fh_locale')
+      return saved === 'en' ? 'en' : 'ar'
+    } catch {
+      return 'ar'
+    }
+  })
+  const [theme, setTheme] = useState(() => {
+    try {
+      const saved = window.localStorage.getItem('fh_theme')
+      if (saved === 'dark' || saved === 'light') return saved
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+    } catch {
+      return 'light'
+    }
+  })
+  const [page, setPage] = useState(pageFromPath())
+
+  useEffect(() => {
+    const onPop = () => setPage(pageFromPath())
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
+
+  useEffect(() => {
+    document.documentElement.lang = locale
+    document.documentElement.dir = locale === 'ar' ? 'rtl' : 'ltr'
+    try {
+      window.localStorage.setItem('fh_locale', locale)
+      window.localStorage.setItem('fh_theme', theme)
+    } catch {}
+
+    const title = tx(pageMeta[page] || pageMeta.home, locale)
+    const description = tx(pageDescription[page] || pageDescription.home, locale)
+    document.title = title
+
+    const setMetaContent = (selector, content) => {
+      const element = document.querySelector(selector)
+      if (element) element.setAttribute('content', content)
+    }
+
+    setMetaContent('meta[name="description"]', description)
+    setMetaContent('meta[property="og:title"]', title)
+    setMetaContent('meta[property="og:description"]', description)
+    setMetaContent('meta[name="twitter:title"]', title)
+    setMetaContent('meta[name="twitter:description"]', description)
+
+    const canonicalPath = window.location.pathname.replace(/\/+$/, '') || '/'
+    const canonicalUrl = `https://fihrist.world${canonicalPath}`
+    const canonical = document.querySelector('link[rel="canonical"]')
+    if (canonical) canonical.setAttribute('href', canonicalUrl)
+    setMetaContent('meta[property="og:url"]', canonicalUrl)
+  }, [locale, theme, page])
+
+  const pageComponents = { product: Product, conversations: Conversations, context: Context, assistant: Assistant, automation: Automation, pricing: Pricing, security: Security, privacy: Privacy, terms: Terms, 'contact-sales': ContactSales, support: Support }
   const PageComponent = pageComponents[page]
   const content = useMemo(() => page === 'home' || !PageComponent ? <Home locale={locale}/> : <PageComponent locale={locale}/>, [locale, page, PageComponent]); return <div className={`app ${theme === 'dark' ? 'theme-dark' : ''}`} data-theme={theme} data-lang={locale}><InteractiveBackground/><Spotlight/><Header locale={locale} setLocale={setLocale} theme={theme} toggleTheme={() => setTheme((value) => value === 'light' ? 'dark' : 'light')}/><main className="route-shell" key={page}>{content}</main><footer className="site-footer"><div className="container footer-center"><div className="footer-brand-large"><img src="/fihrist-mark.svg" alt="" /><span>FIHRIST</span></div><p className="footer-tagline">{tx(c('نظام مبيعات يربط المحادثات بالمنتجات والطلبات والمبيعات والمخزون والمتابعة والرؤية.', 'A sales system connecting conversations with products, orders, sales, inventory, follow-up, and insight.'), locale)}</p><nav className="footer-nav-links"><a href="/product">{tx(c('المنصة','Platform'), locale)}</a><a href="/conversations">{tx(c('المحادثات','Conversations'), locale)}</a><a href="/automation">{tx(c('التذكيرات والمتابعة','Reminders & follow-up'), locale)}</a><a href="/security">{tx(c('الأمان','Security'), locale)}</a><a href="/privacy">{tx(c('الخصوصية','Privacy'), locale)}</a><a href="/terms">{tx(c('الشروط','Terms'), locale)}</a><a href="/support">{tx(c('الدعم','Support'), locale)}</a><a href="/contact-sales">{tx(c('المبيعات','Sales'), locale)}</a></nav><div className="footer-bottom"><span>© 2026 FIHRIST</span><span>{tx(c('الواجهة المعروضة مثال توضيحي لمسار العمل.', 'The interface shown is an illustrative view of the workflow.'), locale)}</span></div></div></footer></div> }
 
