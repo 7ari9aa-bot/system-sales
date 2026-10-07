@@ -28,6 +28,23 @@ class PasswordResetRequest(BaseModel):
     email: EmailStr
 
 
+class VerifyEmailRequest(BaseModel):
+    """Body for POST /auth/verify-email — the token from the confirmation link."""
+
+    token: str = Field(min_length=16, max_length=128)
+
+
+class ResendVerificationRequest(BaseModel):
+    """Body for POST /auth/resend-verification — an address, nothing else.
+
+    Shape-identical to PasswordResetRequest on purpose: both endpoints answer
+    with the same neutral response regardless of account state. It stays its
+    own type so the two contracts can evolve independently.
+    """
+
+    email: EmailStr
+
+
 class PasswordResetConfirmRequest(BaseModel):
     token: str = Field(min_length=32, max_length=128)
     password: str = Field(min_length=8, max_length=128)

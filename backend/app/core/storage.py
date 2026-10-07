@@ -1,8 +1,8 @@
-"""Object storage — S3-compatible persistence for channel media.
+"""Object storage — Supabase Storage over S3 or its Storage REST API.
 
 Channel media URLs (WhatsApp especially) EXPIRE within hours, so media must be
-fetched to our own storage during ingest. When S3 is not configured this
-degrades to pass-through with a loud warning (dev only).
+fetched to our own storage during ingest. Without either server-side storage
+connection this degrades to pass-through with a loud warning (dev only).
 
 This module is a dumb port: it moves bytes, it does NOT screen them. Inbound
 media is untrusted, so callers MUST use the two steps deliberately —
@@ -31,7 +31,8 @@ import re
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from urllib.parse import urljoin
+from time import monotonic
+from urllib.parse import quote, urljoin
 
 import httpx
 
@@ -81,11 +82,39 @@ class ObjectStorage:
         self._region = settings.s3_region
         self._key = settings.s3_access_key_id
         self._secret = settings.s3_secret_access_key
+        self._supabase_url = settings.supabase_url.rstrip("/")
+        self._supabase_key = settings.supabase_service_role_key
         self._client = None
+        self._rest_client: httpx.Client | None = None
+        self._signed_url_cache: dict[tuple[str, int], tuple[float, str]] = {}
+
+    @property
+    def _s3_configured(self) -> bool:
+        return bool(
+            self._endpoint
+            and self._region
+            and self._bucket
+            and self._key
+            and self._secret
+        )
+
+    @property
+    def _supabase_configured(self) -> bool:
+        return bool(self._supabase_url and self._supabase_key and self._bucket)
+
+    @property
+    def _storage_api_base(self) -> str:
+        return f"{self._supabase_url}/storage/v1"
+
+    def _storage_headers(self) -> dict[str, str]:
+        return {
+            "apikey": self._supabase_key,
+            "Authorization": f"Bearer {self._supabase_key}",
+        }
 
     @property
     def configured(self) -> bool:
-        return bool(self._bucket and self._key and self._secret)
+        return self._s3_configured or self._supabase_configured
 
     def _s3(self):
         if self._client is None:
@@ -106,6 +135,11 @@ class ObjectStorage:
     def public_url(self, key: str) -> str:
         if self._endpoint:
             return f"{self._endpoint.rstrip('/')}/{self._bucket}/{key}"
+        if self._supabase_configured:
+            return (
+                f"{self._storage_api_base}/object/"
+                f"{quote(self._bucket, safe='')}/{quote(key, safe='/')}"
+            )
         return f"https://{self._bucket}.s3.{self._region or 'us-east-1'}.amazonaws.com/{key}"
 
     def signed_url(self, key: str, *, expires_in: int | None = None) -> str:
@@ -120,11 +154,57 @@ class ObjectStorage:
         )
         if ttl < 1 or ttl > 7 * 24 * 60 * 60:
             raise ValueError("signed URL lifetime must be between 1 second and 7 days")
-        return self._s3().generate_presigned_url(
-            "get_object",
-            Params={"Bucket": self._bucket, "Key": key},
-            ExpiresIn=ttl,
+        if self._s3_configured:
+            return self._s3().generate_presigned_url(
+                "get_object",
+                Params={"Bucket": self._bucket, "Key": key},
+                ExpiresIn=ttl,
+            )
+
+        cache_key = (key, ttl)
+        cached = self._signed_url_cache.get(cache_key)
+        if cached and cached[0] > monotonic():
+            return cached[1]
+
+        if self._rest_client is None:
+            self._rest_client = httpx.Client(timeout=10.0)
+        path = (
+            f"{self._storage_api_base}/object/sign/"
+            f"{quote(self._bucket, safe='')}/{quote(key, safe='/')}"
         )
+        response = self._rest_client.post(
+            path,
+            headers={**self._storage_headers(), "Content-Type": "application/json"},
+            json={"expiresIn": ttl},
+        )
+        response.raise_for_status()
+        signed_path = response.json().get("signedURL")
+        if not isinstance(signed_path, str) or not signed_path:
+            raise RuntimeError("Supabase Storage returned no signed URL")
+        if signed_path.startswith(("https://", "http://")):
+            signed_url = signed_path
+        else:
+            suffix = signed_path if signed_path.startswith("/") else f"/{signed_path}"
+            signed_url = f"{self._storage_api_base}{suffix}"
+        if len(self._signed_url_cache) >= 1000:
+            self._signed_url_cache.pop(next(iter(self._signed_url_cache)))
+        self._signed_url_cache[cache_key] = (
+            monotonic() + min(60, ttl - 1),
+            signed_url,
+        )
+        return signed_url
+
+    def resolve_product_image_url(self, value: str, *, tenant_id) -> str:
+        # External merchant URLs pass through unchanged. Uploaded images are
+        # stored as object keys, so the DB never holds an expiring signed URL.
+        if not value.startswith("s3://"):
+            return value
+        key = value[len("s3://"):]
+        tenant_prefix = f"product-images/{tenant_id}/"
+        filename = key[len(tenant_prefix):] if key.startswith(tenant_prefix) else ""
+        if not filename or "/" in filename:
+            raise ValueError("product image key is outside the tenant image prefix")
+        return self.signed_url(key, expires_in=7 * 24 * 60 * 60)
 
     MAX_REDIRECTS = 3
 
@@ -230,7 +310,7 @@ class ObjectStorage:
         after the object is already stored.
         """
         if not self.configured:
-            logger.warning("storage.s3_not_configured — keeping expiring URL only")
+            logger.warning("storage.not_configured — keeping expiring URL only")
             return StoredMedia(
                 url=original_url or "",
                 content_type=media.content_type,
@@ -243,18 +323,24 @@ class ObjectStorage:
         key = f"{prefix}/{uuid.uuid4().hex}.{self._extension(media.content_type)}"
         import asyncio
 
-        # `put_object` is SYNCHRONOUS boto3, so the blocking call is handed to
-        # `asyncio.to_thread` — the callable, not a pre-made coroutine, is what
-        # goes to the breaker, which keeps the thread-pool hop AND the breaker's
-        # failure accounting (an open breaker means boto3 is never entered).
-        await get_breaker(STORAGE_OBJECTS).call(
-            asyncio.to_thread,
-            self._s3().put_object,
-            Bucket=self._bucket,
-            Key=key,
-            Body=media.data,
-            ContentType=media.content_type or "application/octet-stream",
-        )
+        if self._s3_configured:
+            # put_object is synchronous boto3, so the blocking call is handed
+            # to asyncio.to_thread and remains inside the breaker.
+            await get_breaker(STORAGE_OBJECTS).call(
+                asyncio.to_thread,
+                self._s3().put_object,
+                Bucket=self._bucket,
+                Key=key,
+                Body=media.data,
+                ContentType=media.content_type or "application/octet-stream",
+            )
+        else:
+            await get_breaker(STORAGE_OBJECTS).call(
+                self._supabase_upload,
+                key,
+                media.data,
+                media.content_type or "application/octet-stream",
+            )
         return StoredMedia(
             url=self.public_url(key),
             content_type=media.content_type,
@@ -265,6 +351,21 @@ class ObjectStorage:
         )
 
     #: S3 accepts at most 1000 keys per `delete_objects` request.
+    async def _supabase_upload(self, key: str, data: bytes, content_type: str) -> None:
+        path = (
+            f"{self._storage_api_base}/object/"
+            f"{quote(self._bucket, safe='')}/{quote(key, safe='/')}"
+        )
+        headers = {
+            **self._storage_headers(),
+            "Content-Type": content_type,
+            "Cache-Control": "max-age=3600",
+        }
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(path, headers=headers, content=data)
+            response.raise_for_status()
+
+    #: Keep bulk deletion chunks within S3's 1000-key request limit.
     DELETE_CHUNK = 1000
 
     async def delete_objects(self, keys: Sequence[str]) -> list[str]:
@@ -283,7 +384,7 @@ class ObjectStorage:
         success, and both leave objects in the bucket with nobody holding the
         list. Callers get the surviving keys back and are expected to audit them.
 
-        When S3 is not configured there is nothing to remove: `store` kept the
+        When no storage connection is configured, there is nothing to remove: `store` kept the
         expiring provider URL and wrote no object, so this answers "no failures"
         rather than raising out of a dev-only setup.
         """
@@ -299,15 +400,21 @@ class ObjectStorage:
         for start in range(0, len(pending), self.DELETE_CHUNK):
             chunk = pending[start : start + self.DELETE_CHUNK]
             try:
-                outcome = await get_breaker(STORAGE_OBJECTS).call(
-                    asyncio.to_thread,
-                    self._s3().delete_objects,
-                    Bucket=self._bucket,
-                    Delete={
-                        "Objects": [{"Key": k} for k in chunk],
-                        "Quiet": True,
-                    },
-                )
+                if self._s3_configured:
+                    outcome = await get_breaker(STORAGE_OBJECTS).call(
+                        asyncio.to_thread,
+                        self._s3().delete_objects,
+                        Bucket=self._bucket,
+                        Delete={
+                            "Objects": [{"Key": k} for k in chunk],
+                            "Quiet": True,
+                        },
+                    )
+                else:
+                    await get_breaker(STORAGE_OBJECTS).call(
+                        self._supabase_delete, chunk
+                    )
+                    outcome = {}
             except Exception as exc:  # a dead bucket is reported, never fatal
                 logger.warning(
                     "storage.delete_objects_failed count=%d error=%s", len(chunk), exc
@@ -323,6 +430,18 @@ class ObjectStorage:
                 )
                 failed.extend(str(e.get("Key") or "") for e in errors)
         return [k for k in failed if k]
+
+    async def _supabase_delete(self, keys: Sequence[str]) -> None:
+        path = f"{self._storage_api_base}/object/{quote(self._bucket, safe='')}"
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.request(
+                "DELETE",
+                path,
+                headers={**self._storage_headers(), "Content-Type": "application/json"},
+                json={"prefixes": list(keys)},
+            )
+            response.raise_for_status()
+
 
 _storage: ObjectStorage | None = None
 

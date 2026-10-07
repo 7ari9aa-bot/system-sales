@@ -106,6 +106,18 @@ def __getattr__(name: str):
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
+def _guc_value(value: UUID | str) -> str:
+    """Validate and canonicalize an id bound into a GUC.
+
+    Every RLS policy casts ``current_setting(...)::uuid``, so a malformed id
+    that slipped through would sit quietly in the GUC until the next query
+    died with a Postgres "invalid input syntax for type uuid" 500. Failing
+    here — at the bind site, before any DB round-trip — keeps the failure
+    attributable and fail-closed, and normalizes the string form.
+    """
+    return str(UUID(str(value)))
+
+
 async def bind_tenant(
     session: AsyncSession,
     tenant_id: UUID | str,
@@ -118,26 +130,28 @@ async def bind_tenant(
     set_config(..., is_local := true) is transaction-scoped exactly like
     SET LOCAL (required behind transaction-pooled connections) — but unlike
     SET LOCAL it accepts bind parameters (SET is a utility statement and
-    rejects $1 placeholders).
+    rejects $1 placeholders). ids are validated before binding, so the values
+    travel as engine bind parameters on a fixed statement — never interpolated.
     Call inside an active transaction (session.begin() / tenant_scope()).
 
     §151: the optional workspace/location ids bind the scope GUCs in the same
     round; omitting them leaves any previously bound scope untouched — use
     bind_scope() when the scope must be cleared as well.
     """
+    tenant = _guc_value(tenant_id)
     await session.execute(
         text("SELECT set_config(:guc, :tenant_id, true)"),
-        {"guc": TENANT_GUC, "tenant_id": str(tenant_id)},
+        {"guc": TENANT_GUC, "tenant_id": tenant},
     )
     if workspace_id is not None:
         await session.execute(
             text("SELECT set_config(:guc, :value, true)"),
-            {"guc": WORKSPACE_GUC, "value": str(workspace_id)},
+            {"guc": WORKSPACE_GUC, "value": _guc_value(workspace_id)},
         )
     if location_id is not None:
         await session.execute(
             text("SELECT set_config(:guc, :value, true)"),
-            {"guc": LOCATION_GUC, "value": str(location_id)},
+            {"guc": LOCATION_GUC, "value": _guc_value(location_id)},
         )
 
 
@@ -149,13 +163,14 @@ async def bind_scope(
     """Set BOTH §151 scope GUCs, clearing whichever is None.
 
     Always both-or-null: a request that resolves no scope must never inherit a
-    scope an earlier bind in the same transaction left behind.
+    scope an earlier bind in the same transaction left behind. Values are
+    validated the same way bind_tenant validates them.
     """
     await session.execute(
         text("SELECT set_config(:guc, :value, true)"),
-        {"guc": WORKSPACE_GUC, "value": None if workspace_id is None else str(workspace_id)},
+        {"guc": WORKSPACE_GUC, "value": None if workspace_id is None else _guc_value(workspace_id)},
     )
     await session.execute(
         text("SELECT set_config(:guc, :value, true)"),
-        {"guc": LOCATION_GUC, "value": None if location_id is None else str(location_id)},
+        {"guc": LOCATION_GUC, "value": None if location_id is None else _guc_value(location_id)},
     )

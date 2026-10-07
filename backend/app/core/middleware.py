@@ -3,10 +3,14 @@
 - Route buckets are matched against the path AFTER the /api/v1 prefix
   (all routes are mounted under it — matching the raw path silently put
   auth/webchat/webhooks in the generic bucket).
-- Proxy-aware client IP: the X-Forwarded-For chain is only trusted when it
-  carries at least two hops (a proxy appended the peer); a single-hop chain
-  is client-controlled, so the socket peer is used instead. This blocks
-  per-request key rotation via a spoofed header on direct exposure.
+- Proxy-aware client IP: X-Forwarded-For is trusted only down to the
+  configured trusted-proxy depth (config.TRUSTED_PROXY_COUNT, default 1).
+  Each trusted proxy APPENDS its peer, so the real client sits exactly N
+  entries from the RIGHT of the chain; anything further left is
+  attacker-injectable, and a chain shorter than N carries no trusted
+  signature at all — the socket peer wins in both cases. Taking the LAST
+  entry (the old rule) keyed every user behind a proxy chain (Cloudflare →
+  Vercel → app) to the inner proxy's edge IP and mass-throttled them.
 - §25 layered limits: the IP tier (above) is joined by a TENANT tier, a USER
   tier, and an ENDPOINT tier. Each tier has its own Redis key, so one tenant
   can never exhaust another's budget. All tiers are checked in a single
@@ -16,19 +20,26 @@
   previous INCR/EXPIRE pair could leave an immortal counter behind if the
   process died between the two calls, and a fixed window allowed up to 2x the
   limit across a boundary. The sliding window has neither problem.
-- Auth endpoints get a much tighter bucket (brute-force protection) and fail
-  CLOSED when Redis is unavailable; everything else fails open.
+- The STRICT auth bucket (brute-force protection, fail CLOSED when Redis is
+  unavailable) covers the credential-granting /auth/* actions — login,
+  register, password-reset, mfa-verify, switch-tenant. The session-surface
+  endpoints (me / refresh / logout) get a lighter bucket and fail OPEN: a
+  user refreshing a token must not compete with an attacker guessing
+  passwords for the same budget. Everything else fails open.
 - §144: behind the rate tiers sits an in-process per-tenant CONCURRENCY gate
   (tenancy.TenantConcurrencyGovernor) for signature-verified tenants: at-capacity
   requests queue up to the tenant queue depth, then get 429 tier="concurrency".
   It is Redis-free on purpose — it keeps providing backpressure during exactly
   the outages the rate limiter fails open through.
-- The tenant/user tiers are derived from the SIGNATURE-VERIFIED bearer token
-  here, at the edge, rather than waiting for the auth dependency — the
-  dependency runs inside the route, after this middleware, so it is too late
-  to key a bucket. Decoding is used ONLY for keying; authorization still
-  happens in the route's dependency, and an invalid token simply falls back
-  to the IP-only tiers. A forged token cannot help an attacker.
+- The tenant/user tiers are derived from the SIGNATURE-VERIFIED access token
+  (Bearer header or the HttpOnly access cookie) here, at the edge, rather
+  than waiting for the auth dependency — the dependency runs inside the
+  route, after this middleware, so it is too late to key a bucket. Only
+  ``type == "access"`` tokens qualify: a visitor or refresh token must not
+  key the tenant/user tiers (audit finding 6). Decoding is used ONLY for
+  keying; authorization still happens in the route's dependency, and an
+  invalid token simply falls back to the IP-only tiers. A forged token
+  cannot help an attacker.
 
 This module also carries the two edge-hardening middlewares that must run
 before the app sees a request: BodySizeLimitMiddleware (S5) and
@@ -59,10 +70,21 @@ from app.core.security import decode_token
 from app.core.tenancy import TenantBusyError, TenantConcurrencyGovernor
 
 EXEMPT_PATHS = {"/healthz", "/readyz", "/docs", "/openapi.json"}
-AUTH_LIMIT = 10          # per window, per IP — login/register/refresh
+AUTH_LIMIT = 10          # per window, per IP — credential-granting /auth/* actions
+# Session-surface /auth/* endpoints (me / refresh / logout): still bounded, but
+# a user refreshing a token or checking who they are must not compete with an
+# attacker brute-forcing login — so they do NOT share the strict bucket and do
+# NOT fail closed on a Redis outage.
+AUTH_SESSION_LIMIT = 60
 DEFAULT_LIMIT = 300      # per window, per IP — everything else
 PUBLIC_LIMIT = 120       # per window, per IP — webchat/webhook ingress
 API_PREFIX = "/api/v1"
+
+# /auth/* subpaths that hand out or rotate credentials. EVERYTHING under
+# /auth/ used to share one strict bucket, so a dashboard's routine me/refresh
+# polling burned the same budget an attacker was trying to exhaust and locked
+# legitimate users out of the endpoints that actually matter.
+_AUTH_SESSION_PATHS = frozenset({"/auth/me", "/auth/refresh", "/auth/logout"})
 
 # §25 — layered ceilings on top of the per-IP buckets. These are deliberately
 # generous: they are blast-radius caps for a noisy or compromised caller, not
@@ -76,23 +98,46 @@ ENDPOINT_LIMIT = 120     # per window, per caller per route shape
 # far below what it takes to exhaust a worker's memory.
 MAX_BODY_BYTES = 1_048_576  # 1 MiB
 
+# Product images are sent as raw binary, so this is also the exact file limit.
+MAX_PRODUCT_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024
+_PRODUCT_IMAGE_UPLOAD_PATH = re.compile(r"^/products/[0-9a-fA-F-]{36}/images/upload$")
+
 # A path segment that looks like an id (uuid or integer) is collapsed so the
 # endpoint tier keys a route shape, not one key per row.
 _ID_SEGMENT = re.compile(r"^[0-9a-fA-F-]{16,}$|^\d+$")
 
 
-def _client_ip(request: Request) -> str:
+def _client_ip(
+    request: Request, *, trusted_proxy_count: int | None = None
+) -> str:
     """Client IP that an attacker cannot freely rotate.
 
-    Behind a proxy chain the proxy APPENDS the real peer to X-Forwarded-For,
-    so the LAST entry is trustworthy once the chain has 2+ hops. A 0/1-hop
-    chain is fully attacker-controlled (or absent), so the socket peer wins.
+    Each of the TRUSTED_PROXY_COUNT proxies in front of this process APPENDS
+    the peer it received the connection from, so the chain is::
+
+        [attacker-injectable prefix ..., real-client, P1 ... P(N-1)]
+
+    and the real client sits exactly N entries from the RIGHT. Anything
+    further left was injected before the first trusted proxy saw the request;
+    a chain SHORTER than N carries no trusted signature at all. In both cases
+    the socket peer wins.
+
+    Taking the LAST entry (the previous behaviour) keyed every user behind a
+    proxy CHAIN (e.g. Cloudflare → Vercel → app) to the inner proxy's edge IP
+    and mass-throttled them; TRUSTED_PROXY_COUNT selects the correct hop.
+    ``trusted_proxy_count`` overrides the setting (test injection point).
     """
     forwarded = request.headers.get("x-forwarded-for", "")
     if forwarded:
-        hops = [h.strip() for h in forwarded.split(",") if h.strip()]
-        if len(hops) >= 2 and hops[-1]:
-            return hops[-1]
+        trusted = (
+            get_settings().trusted_proxy_count
+            if trusted_proxy_count is None
+            else trusted_proxy_count
+        )
+        if trusted >= 1:
+            hops = [h.strip() for h in forwarded.split(",") if h.strip()]
+            if len(hops) >= trusted and hops[-trusted]:
+                return hops[-trusted]
     return request.client.host if request.client else "unknown"
 
 
@@ -101,6 +146,11 @@ def _bucket_for(path: str) -> tuple[str, int]:
     if path.startswith(API_PREFIX):
         path = path[len(API_PREFIX):]
     if path.startswith("/auth/"):
+        # me/refresh/logout are session maintenance, not credential entry
+        # points — a lighter bucket keeps routine dashboard traffic from
+        # competing with a brute-force attempt for the strict budget.
+        if path in _AUTH_SESSION_PATHS:
+            return "auth_session", AUTH_SESSION_LIMIT
         return "auth", AUTH_LIMIT
     if path.startswith("/webchat/") or path.startswith("/webhooks/"):
         return "public", PUBLIC_LIMIT
@@ -118,13 +168,30 @@ def _principal_from_request(request: Request) -> _Principal:
 
     Never an authorization decision (see the module docstring): a missing or
     invalid token yields an empty principal and the IP-only tiers.
+
+    Audit finding 6, both halves:
+    - ONLY ``type == "access"`` tokens may key the tenant/user tiers. The
+      webchat visitor token carries ``sub`` and ``tenant_id`` too — accepting
+      any signed type let a VISITOR exhaust a victim tenant's limits by
+      presenting a perfectly valid visitor token as a Bearer header.
+    - The cookie-authenticated path (the dashboard's HttpOnly delivery) is
+      keyed the same as Bearer: without the fallback, every cookie request
+      escaped the tenant/user tiers entirely and burned only its IP budget.
     """
     authorization = request.headers.get("authorization")
-    if not authorization or not authorization.lower().startswith("bearer "):
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1].strip()
+    else:
+        from app.modules.identity import cookies
+
+        token = request.cookies.get(cookies.ACCESS_COOKIE)
+    if not token:
         return _Principal()
     try:
-        payload = decode_token(authorization.split(" ", 1)[1].strip())
+        payload = decode_token(token)
     except Exception:  # noqa: BLE001 — expired/forged token is expected here
+        return _Principal()
+    if payload.get("type") != "access":
         return _Principal()
     return _Principal(
         user_id=payload.get("sub"), tenant_id=payload.get("tenant_id")
@@ -334,10 +401,20 @@ class BodySizeLimitMiddleware:
             await self.app(scope, receive, send)
             return
 
+        route_path = scope.get("path", "")
+        if route_path.startswith(API_PREFIX):
+            route_path = route_path[len(API_PREFIX):]
+        max_bytes = self.max_bytes
+        if (
+            scope.get("method") == "POST"
+            and _PRODUCT_IMAGE_UPLOAD_PATH.fullmatch(route_path)
+        ):
+            max_bytes = MAX_PRODUCT_IMAGE_UPLOAD_BYTES
+
         declared = _header(scope, b"content-length")
         if declared is not None:
             try:
-                oversized = int(declared) > self.max_bytes
+                oversized = int(declared) > max_bytes
             except ValueError:
                 oversized = True  # unparsable length → refuse, do not guess
             if oversized:
@@ -352,7 +429,7 @@ class BodySizeLimitMiddleware:
             message = await receive()
             if message.get("type") == "http.request":
                 consumed += len(message.get("body", b""))
-                if consumed > self.max_bytes:
+                if consumed > max_bytes:
                     exceeded = True
                     # Starve the app of further body instead of buffering it.
                     return {"type": "http.disconnect"}

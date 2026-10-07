@@ -186,6 +186,15 @@ def test_is_secure_environment(env: str, expected: bool) -> None:
 # ------------------------------------------------------------- DEBUG -------
 
 
+def test_debug_defaults_to_false(monkeypatch) -> None:
+    """The SECURE direction: an unset DEBUG must not turn verbose logging on
+    in production (it used to default True — a deploy that never set it ran
+    loud). Local development sets DEBUG=true explicitly."""
+    monkeypatch.delenv("DEBUG", raising=False)
+    settings = Settings(_env_file=None, environment="local", jwt_secret="change-me")
+    assert settings.debug is False
+
+
 def test_debug_outside_development_warns_but_does_not_block_startup(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -210,6 +219,55 @@ def test_debug_off_outside_development_is_silent(
     assert not [
         r for r in caplog.records if "debug_enabled_in_secure_environment" in r.message
     ]
+
+
+# ------------------------- JWT pinning, rotation secret, proxy hop count ----
+
+
+@pytest.mark.parametrize("env", ["production", "staging", "prod", ""])
+def test_a_non_hs256_algorithm_is_refused_outside_development(env: str) -> None:
+    """Encode and decode are pinned to the same algorithm in security.py; a
+    deploy that sets something else must fail at boot, not at first login."""
+    with pytest.raises(ValidationError, match="JWT_ALGORITHM"):
+        _build(env, jwt_algorithm="HS512")
+
+
+def test_development_may_not_set_a_foreign_algorithm_without_consequence() -> None:
+    """Local/test keeps the permissive branch (the value is ignored by the
+    pinned encoder/decoder), so this only pins that it does NOT raise."""
+    Settings(environment="local", **{**INSECURE, "jwt_algorithm": "HS512"})
+
+
+@pytest.mark.parametrize("env", ["production", "staging", "prod", ""])
+def test_a_short_previous_secret_is_refused(env: str) -> None:
+    with pytest.raises(ValidationError, match="JWT_SECRET_PREVIOUS"):
+        _build(env, jwt_secret_previous="short")
+
+
+@pytest.mark.parametrize("env", ["production", "staging", "prod", ""])
+def test_a_previous_secret_equal_to_current_is_refused(env: str) -> None:
+    with pytest.raises(ValidationError, match="JWT_SECRET_PREVIOUS"):
+        _build(env, jwt_secret_previous=SECURE["jwt_secret"])
+
+
+def test_a_well_formed_previous_secret_is_accepted() -> None:
+    settings = _build("production", jwt_secret_previous="p" * 40)
+    assert settings.jwt_secret_previous == "p" * 40
+
+
+@pytest.mark.parametrize("env", ["production", "staging", "prod", ""])
+def test_a_half_configured_rotation_is_refused(env: str) -> None:
+    """JWT_SECRET_PREVIOUS set while the CURRENT secret is still the public
+    default must not boot: a rotation pair of (public, private) is no rotation
+    at all — the half-configured state fails at boot, never mid-flight."""
+    with pytest.raises(ValidationError):
+        _build(env, jwt_secret="change-me", jwt_secret_previous="p" * 40)
+
+
+@pytest.mark.parametrize("env", ["production", "staging", "prod", ""])
+def test_a_negative_trusted_proxy_count_is_refused(env: str) -> None:
+    with pytest.raises(ValidationError, match="TRUSTED_PROXY_COUNT"):
+        _build(env, trusted_proxy_count=-1)
 
 
 # ------------------------------------------- an UNSET variable must fail ----

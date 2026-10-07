@@ -55,6 +55,8 @@ from app.modules.billing.router import (
     webhooks_router,
 )
 from app.modules.catalog.router import router as catalog_router
+from app.modules.catalog.website_platform import router as website_platform_catalog_router
+from app.modules.website.router import router as website_router
 from app.modules.conversations.router import (
     public_router as conversations_public_router,
 )
@@ -438,6 +440,8 @@ def create_app() -> FastAPI:
         conversations_public_router,
         conversations_webhook_router,
         catalog_router,
+        website_platform_catalog_router,
+        website_router,
         inventory_router,
         orders_router,
         customers_router,

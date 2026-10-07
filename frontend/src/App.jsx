@@ -17,6 +17,7 @@ const Login = lazy(() => import('@/pages/Login'));
 const Register = lazy(() => import('@/pages/Register'));
 const ForgotPassword = lazy(() => import('@/pages/ForgotPassword'));
 const ResetPassword = lazy(() => import('@/pages/ResetPassword'));
+const VerifyEmail = lazy(() => import('@/pages/VerifyEmail'));
 const AcceptInvitation = lazy(() => import('@/pages/AcceptInvitation'));
 const Home = lazy(() => import('@/pages/Home'));
 const Inbox = lazy(() => import('@/pages/Inbox'));
@@ -31,6 +32,7 @@ const MarketingAutomation = lazy(() => import('@/pages/marketing/Automation'));
 const AI = lazy(() => import('@/pages/AI'));
 const Analytics = lazy(() => import('@/pages/Analytics'));
 const Usage = lazy(() => import('@/pages/Usage'));
+const Website = lazy(() => import('@/pages/Website'));
 import SettingsLayout from '@/components/settings/SettingsLayout';
 const ProfileSettings = lazy(() => import('@/pages/settings/ProfileSettings'));
 const MembersSettings = lazy(() => import('@/pages/settings/MembersSettings'));
@@ -68,6 +70,7 @@ const AuthRoutes = () => (
       <Route path="/register" element={<Register />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/verify-email" element={<VerifyEmail />} />
       <Route path="/accept-invitation" element={<AcceptInvitation />} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
@@ -92,6 +95,7 @@ const DashboardRoutes = () => (
         <Route path="/ai" element={<AI />} />
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/usage" element={<Usage />} />
+        <Route path="/website" element={<Website />} />
       </Route>
       <Route element={<ProtectedRoute />}>
         <Route element={<SettingsLayout />}>

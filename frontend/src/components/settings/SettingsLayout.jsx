@@ -1,12 +1,20 @@
 import React, { useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
-  ArrowLeft, LogOut, User, MessageSquare, Wallet, Users, ShieldCheck, AlertTriangle, Menu, X,
+  ArrowLeft, LogOut, User, MessageSquare, Wallet, Users, ShieldCheck, AlertTriangle, Menu, X, ChevronDown, Settings2,
 } from "lucide-react";
 import { useI18n, useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/AuthContext";
 import Logo from "@/components/dashboard/Logo";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 // Settings is an exceptional full-screen workspace: the dashboard shell is
 // replaced by this dedicated sidebar + content area.
@@ -49,7 +57,7 @@ export default function SettingsLayout() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div data-dashboard-theme-scope className="min-h-screen bg-background">
       {open && (
         <div className="fixed inset-0 z-30 bg-foreground/20 backdrop-blur-sm lg:hidden" onClick={() => setOpen(false)} />
       )}
@@ -106,22 +114,33 @@ export default function SettingsLayout() {
             <ArrowLeft className="h-[17px] w-[17px] shrink-0 text-muted-foreground" />
             <span className="flex-1 min-w-0 truncate">{t("settings.backToApp")}</span>
           </Link>
-          <button
-            type="button"
-            disabled={loggingOut}
-            onClick={() => { void handleLogout(); }}
-            className="mt-1 flex w-full items-center gap-3 px-3 py-2 rounded-lg text-[13.5px] font-medium text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-60"
-          >
-            <LogOut className="h-[17px] w-[17px] shrink-0" />
-            <span className="flex-1 min-w-0 truncate text-left">{loggingOut ? (lang === "ar" ? "جارٍ تسجيل الخروج…" : "Signing out…") : logoutLabel}</span>
-          </button>
-          <div className="mt-3 px-3 flex items-center gap-2.5">
-            <div className="h-8 w-8 rounded-full bg-accent/15 text-accent grid place-items-center text-[12px] font-semibold">{initials}</div>
-            <div className="leading-tight flex-1 min-w-0">
-              <div className="text-[12.5px] font-medium text-foreground whitespace-nowrap truncate">{displayName}</div>
-              <div className="text-[11px] text-muted-foreground whitespace-nowrap truncate">{t("sidebar.role")}</div>
-            </div>
-          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button type="button" aria-label={lang === "ar" ? "قائمة الحساب" : "Account menu"} className="mt-2 flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <div className="h-8 w-8 rounded-full bg-accent/15 text-accent grid place-items-center text-[12px] font-semibold shrink-0">{initials}</div>
+                <div className="leading-tight flex-1 min-w-0">
+                  <div className="text-[12.5px] font-medium text-foreground whitespace-nowrap truncate" dir="ltr">{displayName}</div>
+                  <div className="text-[11px] text-muted-foreground whitespace-nowrap truncate">{t("sidebar.role")}</div>
+                </div>
+                <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="right" align="end" sideOffset={8} className="w-64 rounded-xl border border-border bg-popover p-1.5 shadow-lg">
+              <DropdownMenuLabel className="px-2 py-2 font-normal">
+                <div className="text-[13px] font-medium text-foreground truncate" dir="ltr">{displayName}</div>
+                {user?.email && <div className="mt-0.5 text-[11px] text-muted-foreground truncate" dir="ltr">{user.email}</div>}
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => { setOpen(false); navigate("/settings"); }} className="h-9 cursor-pointer text-[13px]">
+                <Settings2 className="h-4 w-4" />
+                <span>{t("nav.settings")}</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled={loggingOut} onSelect={() => { setOpen(false); void handleLogout(); }} className="h-9 cursor-pointer text-[13px] text-destructive focus:text-destructive">
+                <LogOut className="h-4 w-4" />
+                <span>{loggingOut ? (lang === "ar" ? "جارٍ تسجيل الخروج…" : "Signing out…") : logoutLabel}</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </aside>
 
@@ -133,7 +152,7 @@ export default function SettingsLayout() {
           >
             <Menu className="h-5 w-5" />
           </button>
-          <h1 className="font-display text-[16px] font-semibold whitespace-nowrap truncate">{t("settings.title")}</h1>
+          <h1 className={cn("font-display text-[16px] font-semibold whitespace-nowrap truncate", lang === "ar" && "ml-auto text-right")}>{t("settings.title")}</h1>
         </header>
         <main className="px-4 sm:px-6 lg:px-8 py-6 max-w-[1080px] mx-auto">
           <Outlet />

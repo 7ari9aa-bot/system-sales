@@ -1,9 +1,11 @@
 """§144 P5 — per-tenant concurrency cap (the last dead fairness constant).
 
-``tenancy.py`` declared DEFAULT_TENANT_CONCURRENCY / DEFAULT_TENANT_QUEUE_DEPTH
-with the promise "excess requests are rejected with 429" — and nothing ever
-enforced it. One tenant hammering the API with slow requests could occupy every
-worker slot while other tenants waited behind them.
+``tenancy.py`` declared the concurrency/queue-depth defaults with the promise
+"excess requests are rejected with 429" — and nothing ever enforced it. One
+tenant hammering the API with slow requests could occupy every worker slot
+while other tenants waited behind them. The gate's default is now DERIVED
+from the DB pool (never wider than the pool it fronts); TENANT_CONCURRENCY
+overrides it.
 
 The governor is IN-PROCESS asyncio state (a Condition + per-tenant counters),
 not a Redis budget: the §144 daily consumption counters are the cross-process
@@ -28,22 +30,75 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from app.core import middleware as mw
+from app.core.config import get_settings
 from app.core.security import create_access_token
 from app.core.tenancy import (
-    DEFAULT_TENANT_CONCURRENCY,
     DEFAULT_TENANT_QUEUE_DEPTH,
     TenantBusyError,
     TenantConcurrencyGovernor,
+    default_tenant_concurrency,
 )
 
 # ------------------------------------------------------------ governor ----
 
 
-async def test_defaults_come_from_the_budget_constants():
-    """The §144 constants are the governor's configuration source of truth."""
+class _PoolSettings:
+    db_pool_size = 12
+    db_max_overflow = 10
+    tenant_concurrency = 0
+
+
+class _ExplicitSettings(_PoolSettings):
+    tenant_concurrency = 7
+
+
+async def test_the_default_gate_is_the_pool_capacity_itself(monkeypatch):
+    """The §144 gate sits in front of the DB pool, so its default is DERIVED
+    from the pool (pool + overflow), never the old flat 50 — a gate wider
+    than the pool let an admitted tenant starve on pool timeouts."""
+    monkeypatch.setattr(
+        "app.core.config.get_settings", lambda: _PoolSettings()
+    )
+
     governor = TenantConcurrencyGovernor()
-    assert governor.concurrency == DEFAULT_TENANT_CONCURRENCY
+    assert governor.concurrency == 22  # 12 + 10, the pool capacity
+    assert governor.concurrency == default_tenant_concurrency()
     assert governor.queue_depth == DEFAULT_TENANT_QUEUE_DEPTH
+
+
+async def test_an_explicit_tenant_concurrency_overrides_the_derivation(monkeypatch):
+    monkeypatch.setattr(
+        "app.core.config.get_settings", lambda: _ExplicitSettings()
+    )
+
+    assert TenantConcurrencyGovernor().concurrency == 7
+    # An explicit constructor argument still wins over everything.
+    assert TenantConcurrencyGovernor(concurrency=3).concurrency == 3
+
+
+async def test_the_middleware_governor_defaults_to_the_derivation(monkeypatch):
+    """Fail-first: the production path builds its governor with no explicit
+    concurrency, so the gate width must come from default_tenant_concurrency()
+    — the pool capacity — and never from a stale hard-coded number. A gate
+    wider than the pool is exactly the §144 starvation bug this file exists
+    to keep closed."""
+    monkeypatch.setattr("app.core.config.get_settings", lambda: _PoolSettings())
+    middleware = mw.RateLimitMiddleware(
+        FastAPI(), client=FakeRedis(decode_responses=True), enabled=True
+    )
+    assert middleware._governor.concurrency == 22  # 12 + 10, the pool capacity
+    assert middleware._governor.concurrency == default_tenant_concurrency()
+
+
+async def test_the_derived_default_never_exceeds_the_declared_pool():
+    """Guard against the settings drifting apart from the gate."""
+    settings = get_settings()
+    derived = default_tenant_concurrency()
+    if settings.tenant_concurrency > 0:
+        assert derived == settings.tenant_concurrency
+    else:
+        pool = settings.db_pool_size + settings.db_max_overflow
+        assert derived == pool, "the gate default must track the pool capacity"
 
 
 async def test_requests_up_to_the_limit_are_admitted_immediately():
@@ -158,6 +213,7 @@ def _concurrency_app(
     *,
     gate: asyncio.Event,
     held: asyncio.Event,
+    client=None,
 ) -> FastAPI:
     """/api/v1/orders blocks until ``gate`` is set, announcing entry via ``held``."""
     app = FastAPI()
@@ -170,7 +226,7 @@ def _concurrency_app(
 
     app.add_middleware(
         mw.RateLimitMiddleware,
-        client=FakeRedis(decode_responses=True),
+        client=client or FakeRedis(decode_responses=True),
         enabled=True,
         governor=governor,
     )
@@ -267,4 +323,52 @@ async def test_slot_is_released_between_sequential_requests():
     first = await _get(app, token=_token(uuid.uuid4(), tenant), ip="192.0.2.1")
     assert first.status_code == 200
     second = await _get(app, token=_token(uuid.uuid4(), tenant), ip="192.0.2.2")
+    assert second.status_code == 200
+
+
+class _ExplodingRedis:
+    async def eval(self, *args, **kwargs):  # noqa: ANN002, ANN003
+        raise RuntimeError("redis down")
+
+
+async def test_the_gate_still_fails_closed_when_redis_is_down():
+    """Fail-first: the §144 governor is Redis-free precisely so an outage the
+    rate limiter fails OPEN through cannot also switch the concurrency gate
+    off. With Redis dead the rate tiers admit everything, but a tenant past
+    its cap must STILL be refused with the 429 concurrency envelope — not a
+    500 and not an open gate."""
+    gate = asyncio.Event()
+    held = asyncio.Event()
+    app = _concurrency_app(
+        TenantConcurrencyGovernor(concurrency=1, queue_depth=1),
+        gate=gate,
+        held=held,
+        client=_ExplodingRedis(),
+    )
+    tenant = uuid.uuid4()
+
+    holder = asyncio.create_task(
+        _get(app, token=_token(uuid.uuid4(), tenant), ip="203.0.113.1")
+    )
+    await held.wait()  # request 1 occupies the single slot, Redis is dead
+
+    waiter = asyncio.create_task(
+        _get(app, token=_token(uuid.uuid4(), tenant), ip="203.0.113.2")
+    )
+    await asyncio.sleep(0.05)
+    assert not waiter.done()  # queued, not denied — the gate still meters
+
+    refused = await asyncio.wait_for(
+        _get(app, token=_token(uuid.uuid4(), tenant), ip="203.0.113.3"),
+        timeout=1,
+    )
+    assert refused.status_code == 429
+    assert refused.json()["tier"] == "concurrency"
+    assert refused.json()["error"]["code"] == "rate_limit_exceeded"
+    assert refused.json()["error"]["retryable"] is True
+    assert refused.headers["retry-after"]
+
+    gate.set()
+    first, second = await asyncio.wait_for(asyncio.gather(holder, waiter), timeout=2)
+    assert first.status_code == 200
     assert second.status_code == 200

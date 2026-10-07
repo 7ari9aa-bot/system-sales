@@ -22,10 +22,10 @@ export default function DashboardLayout() {
 
   return (
     <DashboardProvider>
-      <div className="min-h-screen bg-background">
-        <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} collapsed={collapsed} />
+      <div data-dashboard-theme-scope className="min-h-screen bg-background">
+        <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} collapsed={collapsed} onToggleCollapse={toggleCollapsed} />
         <div className={cn("transition-[padding] duration-300", collapsed ? "lg:pl-[68px]" : "lg:pl-[248px]")}>
-          <Header onMenu={() => setSidebarOpen(true)} collapsed={collapsed} onToggleCollapse={toggleCollapsed} />
+          <Header onMenu={() => setSidebarOpen(true)} />
           <main className="px-4 sm:px-6 lg:px-8 py-6 max-w-[1320px] mx-auto">
             <Outlet />
           </main>

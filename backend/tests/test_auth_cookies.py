@@ -9,6 +9,7 @@ its client inside ONE `async with` — httpx clients do not survive a loop.
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 
 import pytest
@@ -155,6 +156,56 @@ async def test_refresh_accepts_the_cookie_when_the_body_is_empty(
         refreshed = await client.post("/api/v1/auth/refresh", json={})
     assert refreshed.status_code == 200
     assert {"access_token", "refresh_token"} <= set(refreshed.json())
+
+
+async def test_switch_tenant_uses_the_refresh_cookie_fallback(
+    db, app_sessions_on_test_connection
+):
+    """The refresh cookie (path=/api/v1/auth) also covers /auth/switch-tenant.
+
+    Same token-supply contract as refresh and logout: the body wins, the
+    cookie is the browser flow's fallback. A cookie-authenticated caller that
+    sends no body token must still be able to switch — and the presented
+    family must rotate, so the login pair dies with the switch.
+    """
+    from sqlalchemy import select
+
+    from app.modules.identity.models import RefreshToken
+
+    email, password = await _register(db, app_sessions_on_test_connection, uuid.uuid4().hex[:8])
+    client = _client()
+    async with client:
+        login = await client.post(
+            "/api/v1/auth/login", json={"email": email, "password": password}
+        )
+        old_refresh = login.json()["refresh_token"]
+        me = await client.get("/api/v1/auth/me")
+        tenant_id = me.json()["tenants"][0]["id"]
+
+        csrf_pair = _set_cookie_for(login, auth_cookies.CSRF_COOKIE).split(";", 1)[0]
+        csrf = csrf_pair.split("=", 1)[1]
+        switch = await client.post(
+            "/api/v1/auth/switch-tenant",
+            json={"tenant_id": tenant_id},  # no refresh_token in the body
+            headers={"X-CSRF-Token": csrf},
+        )
+    assert switch.status_code == 200
+    body = switch.json()
+    assert body["refresh_token"] != old_refresh
+    # the browser gets the NEW pair as cookies, on the same policy
+    refresh_header = _set_cookie_for(switch, auth_cookies.REFRESH_COOKIE).lower()
+    assert f"path={auth_cookies.REFRESH_COOKIE_PATH}" in refresh_header
+    # the presented (login) family was rotated: its row is revoked
+    rows = (
+        await db.execute(
+            select(RefreshToken).where(
+                RefreshToken.token_hash
+                == hashlib.sha256(old_refresh.encode()).hexdigest()
+            )
+        )
+    ).scalars().all()
+    assert rows, "the login pair's refresh row must exist"
+    assert all(row.revoked_at is not None for row in rows)
 
 
 async def test_cookie_post_without_the_csrf_header_is_refused(db, app_sessions_on_test_connection):

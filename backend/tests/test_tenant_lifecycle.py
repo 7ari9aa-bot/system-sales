@@ -167,3 +167,299 @@ def test_bad_transitions_are_refused_before_touching_the_database(
                 _NoDb(), uuid.uuid4(), target, reason=reason
             )
         )
+
+
+@pytest.mark.parametrize(
+    "target",
+    [None, ["active"], {"state": "active"}, 7, True],
+)
+def test_hostile_target_types_fail_closed_not_as_a_raw_typeerror(
+    target: object,
+) -> None:
+    """§183 contract (core/transitions.require_transition), applied here.
+
+    The vocabulary check used to be a bare ``target not in STATE_POLICIES``,
+    so an unhashable target — a list or dict a service-level caller can hand
+    over — escaped as a raw TypeError and surfaced as a bare 500 instead of
+    the domain refusal every other illegal transition gets. A None/int target
+    is refused the same way rather than depending on hashing accidents.
+    """
+    with pytest.raises(ValidationError, match="unknown tenant lifecycle state"):
+        asyncio.run(TenantLifecycleService.transition(_NoDb(), uuid.uuid4(), target))
+
+
+@pytest.mark.parametrize("reason", [["closing shop"], {"reason": "closing shop"}, 7])
+def test_a_non_string_reason_fails_closed(reason: object) -> None:
+    """Same posture for the reason: a list reached ``.strip()`` as an
+    AttributeError (500) before the guard existed."""
+    with pytest.raises(ValidationError):
+        asyncio.run(
+            TenantLifecycleService.transition(
+                _NoDb(), uuid.uuid4(), "suspended", reason=reason
+            )
+        )
+
+
+# --- route-level authority (external audit finding 1) ------------------------
+#
+# The transition ROUTE used to be gated by settings:write alone, so ANY
+# owner/admin could move their own tenant past_due -> active (billing bypass),
+# suspended -> active (self-unsuspension) or -> deleted. The authority split
+# lives in the route, so these tests drive `transition_tenant_lifecycle`
+# directly with a hand-built TenantContext — the same DB-verified
+# AuthedUser.is_platform_admin the require_platform_admin dependency reads.
+
+from app.core.errors import PermissionDeniedError  # noqa: E402
+from app.modules.identity.deps import AuthedUser, TenantContext  # noqa: E402
+from app.modules.identity.router import (  # noqa: E402
+    LifecycleTransitionRequest,
+    transition_tenant_lifecycle,
+)
+
+
+def _owner_ctx(db, tenant_ctx, *, is_platform_admin: bool = False) -> TenantContext:
+    return TenantContext(
+        session=db,
+        user=AuthedUser(
+            id=tenant_ctx.user.id,
+            tenant_id=tenant_ctx.tenant_id,
+            role_code="owner",
+            is_platform_admin=is_platform_admin,
+            is_active=True,
+        ),
+        tenant_id=tenant_ctx.tenant_id,
+        role_code="owner",
+        permission_codes={"settings:write"},
+    )
+
+
+@pytest.mark.parametrize("target", ["active", "past_due", "grace", "deleted"])
+async def test_billing_controlled_transitions_require_platform_admin(
+    db, tenant_ctx, target: str
+):
+    """→active/→past_due/→grace/→deleted restore service or steer billing."""
+    body = LifecycleTransitionRequest(state=target, reason="self-service attempt")
+    with pytest.raises(PermissionDeniedError, match="platform admin"):
+        await transition_tenant_lifecycle(tenant_ctx.tenant_id, body, _owner_ctx(db, tenant_ctx))
+
+
+async def test_suspend_is_not_owner_requestable_either(db, tenant_ctx):
+    """Suspension is the billing system's and the platform's lever, not the
+    tenant's — a tenant-side settings:write holder may request ONE thing:
+    their own offboarding."""
+    body = LifecycleTransitionRequest(state="suspended", reason="going dark myself")
+    with pytest.raises(PermissionDeniedError, match="only request offboarding"):
+        await transition_tenant_lifecycle(tenant_ctx.tenant_id, body, _owner_ctx(db, tenant_ctx))
+
+
+async def test_offboarding_requires_the_password_step_up(db, tenant_ctx):
+    """§146 step-up on the one tenant-side-requestable transition.
+
+    Offboarding starts the deletion countdown, so a bearer token alone must
+    not suffice — the same posture mfa/enroll takes.
+    """
+    with pytest.raises(PermissionDeniedError, match="re-authentication"):
+        await transition_tenant_lifecycle(
+            tenant_ctx.tenant_id,
+            LifecycleTransitionRequest(state="offboarding", reason="closing shop"),
+            _owner_ctx(db, tenant_ctx),
+        )
+    with pytest.raises(PermissionDeniedError, match="step-up failed"):
+        await transition_tenant_lifecycle(
+            tenant_ctx.tenant_id,
+            LifecycleTransitionRequest(
+                state="offboarding", reason="closing shop", password="wrong-password"
+            ),
+            _owner_ctx(db, tenant_ctx),
+        )
+
+
+async def test_owner_offboarding_with_the_password_transitions(
+    db, tenant_ctx, app_sessions_on_test_connection
+):
+    """The happy path: password verified, the tenant moves to offboarding."""
+    body = LifecycleTransitionRequest(
+        state="offboarding", reason="closing shop", password="secret-password"
+    )
+    out = await transition_tenant_lifecycle(
+        tenant_ctx.tenant_id, body, _owner_ctx(db, tenant_ctx)
+    )
+    assert out.lifecycle_state == "offboarding"
+    assert out.deletion_scheduled_at is not None
+
+
+async def test_platform_admin_member_may_move_the_state(
+    db, tenant_ctx, app_sessions_on_test_connection
+):
+    """A platform admin who is ALSO a member transitions with full authority —
+    the DB-verified flag is what unlocks the billing-controlled targets."""
+    body = LifecycleTransitionRequest(state="suspended", reason="chargeback hold")
+    out = await transition_tenant_lifecycle(
+        tenant_ctx.tenant_id, body, _owner_ctx(db, tenant_ctx, is_platform_admin=True)
+    )
+    assert out.lifecycle_state == "suspended"
+
+
+# --- the mandated full transition matrix (package 1.2 closing test) ---------
+#
+# Every lifecycle target × every actor kind, driven through the REAL HTTP
+# route (create_app + the real middleware stack) so each cell's verdict is the
+# status the API actually answers: 200 served, 403 refused on authority, 409
+# refused on the state machine. Actor kinds, in this codebase's vocabulary:
+#
+#   owner          — tenant member holding settings:write, NOT a platform
+#                    admin. The one requestable target is offboarding, and it
+#                    requires the §146 password step-up (the body carries it).
+#   manager        — the admin-class tenant role WITHOUT settings:write
+#                    (ROLE_MATRIX grants manager settings:read only), so every
+#                    cell is refused at the RBAC gate before the lifecycle
+#                    authority split is even reached.
+#   platform_admin — a member whose DB-verified platform flag is set: full
+#                    authority over every target, so the STATE MACHINE is the
+#                    only gate left — allowed moves are 200, moves the graph
+#                    does not draw from `active` are 409.
+#   anonymous      — no credentials at all: refused before any tenant context
+#                    exists.
+#
+# The fixture tenant is in `active` (the column's server_default), so the
+# platform-admin row exercises exactly the edges ALLOWED_TRANSITIONS["active"]
+# draws: past_due, suspended, offboarding, deleted.
+
+import httpx  # noqa: E402
+from app.main import create_app  # noqa: E402
+from app.modules.identity.deps import get_db, get_tenant_ctx  # noqa: E402
+
+_LIFECYCLE_TARGETS = (
+    "provisioning",
+    "trial",
+    "active",
+    "past_due",
+    "grace",
+    "suspended",
+    "offboarding",
+    "deleted",
+)
+_MATRIX_ACTORS = ("owner", "manager", "platform_admin", "anonymous")
+
+# (target, actor) -> the status the route must answer. EVERY cell has a verdict.
+TRANSITION_MATRIX: dict[tuple[str, str], int] = {
+    (target, actor): expected
+    for target in _LIFECYCLE_TARGETS
+    for actor, expected in (
+        # offboarding is the owner's single requestable target, and the body's
+        # password satisfies the step-up; every other target is a 403 refusal
+        # naming the platform admin's authority (or the single permitted move).
+        ("owner", 200 if target == "offboarding" else 403),
+        # The RBAC gate fires first for a settings:write-less member.
+        ("manager", 403),
+        # Full authority → the state machine decides: from `active` the graph
+        # only draws past_due / suspended / offboarding / deleted.
+        (
+            "platform_admin",
+            200 if target in ("past_due", "suspended", "offboarding", "deleted") else 409,
+        ),
+        # No credentials → no tenant context → refused outright.
+        ("anonymous", 403),
+    )
+}
+
+
+def _matrix_ctx(db, tenant_ctx, actor: str) -> TenantContext:
+    """The hand-built TenantContext for one matrix actor.
+
+    Identity mirrors what ``get_current_user`` would have DB-verified: the
+    owner row is an ordinary member, the platform-admin row carries the
+    verified flag on the AuthedUser (the exact value ``require_platform_admin``
+    reads). Permissions mirror ROLE_MATRIX for the actor's role.
+    """
+    if actor == "platform_admin":
+        return TenantContext(
+            session=db,
+            user=AuthedUser(
+                id=tenant_ctx.user.id,
+                tenant_id=tenant_ctx.tenant_id,
+                role_code="owner",
+                is_platform_admin=True,
+                is_active=True,
+            ),
+            tenant_id=tenant_ctx.tenant_id,
+            role_code="owner",
+            permission_codes={"settings:write"},
+        )
+    if actor == "manager":
+        return TenantContext(
+            session=db,
+            user=AuthedUser(
+                id=tenant_ctx.user.id,
+                tenant_id=tenant_ctx.tenant_id,
+                role_code="manager",
+                is_active=True,
+            ),
+            tenant_id=tenant_ctx.tenant_id,
+            role_code="manager",
+            # manager: everything settings EXCEPT the write (provision.py).
+            permission_codes={"settings:read"},
+        )
+    return _owner_ctx(db, tenant_ctx)
+
+
+def _matrix_app(db, tenant_ctx, actor: str):
+    """The real app with sessions bound to the test transaction.
+
+    For ``anonymous`` no identity dependency is overridden: the real auth
+    chain runs, finds no token and refuses — that refusal IS the cell.
+    """
+    app = create_app()
+
+    async def _session():
+        yield db
+
+    app.dependency_overrides[get_db] = _session
+    if actor != "anonymous":
+        ctx = _matrix_ctx(db, tenant_ctx, actor)
+        app.dependency_overrides[get_tenant_ctx] = lambda: ctx
+    return app
+
+
+@pytest.mark.parametrize(("target", "actor"), sorted(TRANSITION_MATRIX))
+async def test_transition_matrix_target_x_actor(
+    db,
+    tenant_ctx,
+    app_sessions_on_test_connection,
+    target: str,
+    actor: str,
+) -> None:
+    """Every cell of the mandated matrix has one expected verdict, pinned here.
+
+    200 → the transition happened (the response names the new state);
+    403 → the actor has no authority over this target (or no credentials);
+    409 → the state machine refuses a move the graph does not draw.
+    """
+    expected = TRANSITION_MATRIX[(target, actor)]
+    app = _matrix_app(db, tenant_ctx, actor)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            f"/api/v1/tenants/{tenant_ctx.tenant_id}/lifecycle",
+            json={"state": target, "reason": "matrix probe", "password": "secret-password"},
+        )
+
+    assert response.status_code == expected, (
+        f"matrix cell (target={target!r}, actor={actor!r}): expected "
+        f"{expected}, got {response.status_code}: {response.text}"
+    )
+    if expected == 200:
+        assert response.json()["lifecycle_state"] == target
+
+
+def test_the_matrix_covers_every_target_and_actor_exactly_once() -> None:
+    """The matrix is complete by construction: 8 targets × 4 actors, no gaps.
+
+    This is the guard that keeps the parametrized test above honest — a new
+    lifecycle state or actor kind added to the system without extending the
+    matrix fails HERE, loudly.
+    """
+    assert set(_LIFECYCLE_TARGETS) == set(TENANT_LIFECYCLE_STATES)
+    assert set(_MATRIX_ACTORS) == {"owner", "manager", "platform_admin", "anonymous"}
+    assert len(TRANSITION_MATRIX) == len(_LIFECYCLE_TARGETS) * len(_MATRIX_ACTORS)
+    assert {verdict for verdict in TRANSITION_MATRIX.values()} <= {200, 403, 409}

@@ -23,8 +23,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from starlette.requests import Request
 
+from app.core.db import bind_tenant
 from app.core.errors import PermissionDeniedError
-from app.core.security import create_access_token
+from app.core.security import create_access_token, decode_token
 from app.modules.identity.deps import (
     AuthedUser,
     _policy_for,
@@ -32,7 +33,7 @@ from app.modules.identity.deps import (
     get_tenant_ctx,
     tenant_may_use_api,
 )
-from app.modules.identity.models import Tenant, TenantUser
+from app.modules.identity.models import Role, Tenant, TenantUser
 from app.modules.identity.service import STATE_POLICIES, AuthService
 from app.modules.realtime.router import _sse_auth, _tenant_may_stream
 
@@ -84,12 +85,24 @@ def test_recovery_paths_cover_the_escape_hatches() -> None:
         "/api/v1/billing/subscription",
         "/api/v1/privacy/requests",
         "/api/v1/notifications",
-        "/api/v1/tenants/00000000-0000-0000-0000-000000000001/lifecycle",
         "/api/v1/tenants/00000000-0000-0000-0000-000000000001/offboarding/export",
         "/api/v1/tenants/00000000-0000-0000-0000-000000000001/offboarding/status",
         "/healthz",
     ):
         assert _tenant_recovery_path(path), path
+
+
+def test_the_lifecycle_route_is_not_a_recovery_path() -> None:
+    """POST /tenants/{id}/lifecycle must stay behind the suspended-tenant gate.
+
+    It used to be exempt, which — combined with settings:write gating the whole
+    state machine — let a suspended owner restore their own service by API call
+    (external audit finding 1). Restoration is the platform admin's job via the
+    §147 break-glass route now; a blocked tenant gets nothing on this surface.
+    """
+    assert not _tenant_recovery_path(
+        "/api/v1/tenants/00000000-0000-0000-0000-000000000001/lifecycle"
+    )
 
 
 def test_business_routes_are_not_recovery_paths() -> None:
@@ -337,7 +350,15 @@ async def test_blocked_tenant_is_denied_before_the_tenant_guc_is_switched(
         )
     )
     await db.flush()
+    # The sessions UPDATE now runs behind the tenants RLS policy (fd2026100410),
+    # which matches `id = app.tenant_id OR app.is_platform_admin = 'true'`. The
+    # fixture bound THIS caller's tenant, so writing a second tenant needs the
+    # platform-admin GUC for the duration of the setup write — then it is
+    # revoked again, because the caller under test is NOT a platform admin and
+    # the gate below must reject an ordinary owner.
+    await db.execute(sa.text("SELECT set_config('app.is_platform_admin', 'true', true)"))
     await _set_state(db, other.id, "suspended")
+    await db.execute(sa.text("SELECT set_config('app.is_platform_admin', 'false', true)"))
 
     with pytest.raises(PermissionDeniedError):
         await get_tenant_ctx(
@@ -386,3 +407,84 @@ async def test_login_gate_blocks_an_unknown_state(db: AsyncSession, tenant_ctx):
 async def test_login_gate_is_a_noop_without_a_tenant(db: AsyncSession):
     """A user with no membership yet must still be able to sign in."""
     await AuthService._assert_tenant_allows_login(db, None)
+
+
+# --------------------------------- §48 prefers an ACTIVE tenant at login -----
+#
+# Login used to pin the DEFAULT membership and refuse outright when its tenant
+# was blocked, so a suspension locked the user out of tenants they still hold
+# live memberships in. The membership candidates are now tried in preference
+# order — default first, then the rest — and the refusal only lands when EVERY
+# membership is blocked.
+
+
+async def _second_membership(db: AsyncSession, tenant_ctx, *, default: bool) -> Tenant:
+    """A second tenant + membership for the fixture user (self-GUC allows it)."""
+    role = (await db.execute(sa.select(Role).where(Role.code == "owner"))).scalar_one()
+    other = Tenant(slug=f"t-{uuid.uuid4().hex[:10]}", name="Other Tenant")
+    db.add(other)
+    await db.flush()
+    db.add(
+        TenantUser(
+            tenant_id=other.id,
+            user_id=tenant_ctx.user.id,
+            role_id=role.id,
+            is_default=False,
+        )
+    )
+    if default:
+        # Make the fixture tenant the default, as the real register() does —
+        # otherwise the preference order the fallback relies on is undefined.
+        membership = (
+            await db.execute(
+                sa.select(TenantUser).where(
+                    TenantUser.user_id == tenant_ctx.user.id,
+                    TenantUser.tenant_id == tenant_ctx.tenant_id,
+                )
+            )
+        ).scalar_one()
+        membership.is_default = True
+    await db.flush()
+    return other
+
+
+async def test_suspended_default_tenant_does_not_lock_out_the_active_ones(
+    db: AsyncSession, tenant_ctx
+):
+    """A suspended default must not block sign-in into a live membership."""
+    other = await _second_membership(db, tenant_ctx, default=True)
+    await _set_state(db, tenant_ctx.tenant_id, "suspended")
+
+    pair, _user, tenant_id = await AuthService.login(
+        db,
+        email=tenant_ctx.user.email,
+        password="secret-password",
+        user_agent="test",
+        ip="127.0.0.1",
+    )
+    assert tenant_id == other.id
+    claims = decode_token(pair.access_token)
+    assert claims["tenant_id"] == str(other.id), (
+        "the minted pair must carry the ACTIVE tenant, not the suspended one"
+    )
+
+
+async def test_login_refuses_only_when_every_membership_is_blocked(
+    db: AsyncSession, tenant_ctx
+):
+    """All memberships blocked → the original default's refusal stands."""
+    other = await _second_membership(db, tenant_ctx, default=True)
+    await _set_state(db, tenant_ctx.tenant_id, "suspended")
+    # The fallback must not be a loophole: the second tenant is blocked too.
+    # tenants UPDATE is bound-tenant policy (fd2026100410), so bind it first.
+    await bind_tenant(db, other.id)
+    await _set_state(db, other.id, "deleted")
+
+    with pytest.raises(PermissionDeniedError, match="suspended"):
+        await AuthService.login(
+            db,
+            email=tenant_ctx.user.email,
+            password="secret-password",
+            user_agent="test",
+            ip="127.0.0.1",
+        )

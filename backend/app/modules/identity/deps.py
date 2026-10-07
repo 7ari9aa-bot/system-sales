@@ -56,10 +56,15 @@ def _tenant_recovery_path(path: str) -> bool:
     if path.startswith(_TENANT_RECOVERY_PREFIXES):
         return True
     # Workspace recovery must remain reachable after offboarding starts, but
-    # do not exempt the whole tenants API from the lifecycle gate.
+    # do not exempt the whole tenants API from the lifecycle gate. POST
+    # /tenants/{id}/lifecycle is deliberately NOT exempt (external audit
+    # finding 1): with the platform-admin authority split, a suspended tenant
+    # has nothing left to negotiate on this route — restoring service is the
+    # platform admin's job via the §147 break-glass route, and a blocked
+    # tenant must not be able to even probe the transition surface. (The
+    # offboarding export/status exemptions below stay: they are read/export
+    # hatches for a state the tenant itself is already in.)
     parts = path.rstrip("/").strip("/").split("/")
-    if len(parts) == 5 and parts[:3] == ["api", "v1", "tenants"]:
-        return parts[4] == "lifecycle"
     if len(parts) == 6 and parts[:3] == ["api", "v1", "tenants"]:
         return parts[4] == "offboarding" and parts[5] in {"export", "status"}
     return False

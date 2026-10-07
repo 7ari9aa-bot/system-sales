@@ -1,11 +1,13 @@
 import React from "react";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/lib/i18n";
 
 export default function SettingsShell({ title, subtitle, children, actions }) {
+  const { lang } = useI18n();
   return (
     <div className="space-y-5 animate-fade-in">
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
-        <div className="min-w-0">
+      <div className={cn("flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3", lang === "ar" && "sm:flex-row-reverse")}>
+        <div className={cn("min-w-0", lang === "ar" && "text-right")}>
           <h1 className="font-display text-[22px] font-semibold tracking-tight">{title}</h1>
           {subtitle && <p className="text-[13px] text-muted-foreground mt-1 max-w-xl">{subtitle}</p>}
         </div>

@@ -2,17 +2,19 @@
 
 from __future__ import annotations
 
+import hashlib
 from decimal import Decimal
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from app.core.errors import NotFoundError, ValidationError
+from app.core.errors import NotFoundError, StorageUnavailableError, ValidationError
 from app.core.middleware import MAX_BODY_BYTES
+from app.core.storage import FetchedMedia, get_storage
 from app.modules.catalog.external.csv_import import CSVImportService
 from app.modules.catalog.service import CatalogService
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
@@ -40,7 +42,7 @@ def _variant_out(variant) -> dict:
     }
 
 
-def _product_out(product, variants) -> dict:
+def _product_out(product, variants, images=(), *, tenant_id=None) -> dict:
     return {
         "id": str(product.id),
         "title": product.title,
@@ -51,6 +53,7 @@ def _product_out(product, variants) -> dict:
         "category_id": str(product.category_id) if product.category_id else None,
         "attributes": product.attributes or {},
         "variants": [_variant_out(v) for v in variants],
+        "images": [_image_out(image, tenant_id=tenant_id) for image in images],
     }
 
 
@@ -133,12 +136,15 @@ class AddImageRequest(BaseModel):
     variant_id: UUID | None = None
 
 
-def _image_out(image) -> dict:
+def _image_out(image, *, tenant_id=None) -> dict:
+    url = image.url
+    if tenant_id is not None:
+        url = get_storage().resolve_product_image_url(url, tenant_id=tenant_id)
     return {
         "id": str(image.id),
         "product_id": str(image.product_id),
         "variant_id": str(image.variant_id) if image.variant_id else None,
-        "url": image.url,
+        "url": url,
         "alt": image.alt,
         "position": image.position,
     }
@@ -166,10 +172,18 @@ async def list_products(ctx: TenantCtxDep, limit: int = 100, offset: int = 0):
     products = await CatalogService.list_products(
         ctx.session, ctx.tenant_id, limit=limit, offset=offset
     )
+    images_by_product = await CatalogService.list_images_for_products(
+        ctx.session, ctx.tenant_id, [product.id for product in products]
+    )
     result = []
     for product in products:
         variants = await CatalogService.list_variants(ctx.session, ctx.tenant_id, product.id)
-        result.append(_product_out(product, variants))
+        result.append(_product_out(
+            product,
+            variants,
+            images_by_product.get(product.id, []),
+            tenant_id=ctx.tenant_id,
+        ))
     return result
 
 
@@ -205,7 +219,8 @@ async def create_product(ctx: WriteCtx, body: CreateProductRequest):
 async def get_product(ctx: TenantCtxDep, product_id: UUID):
     product = await CatalogService.get_product(ctx.session, ctx.tenant_id, product_id)
     variants = await CatalogService.list_variants(ctx.session, ctx.tenant_id, product_id)
-    return _product_out(product, variants)
+    images = await CatalogService.list_images(ctx.session, ctx.tenant_id, product_id)
+    return _product_out(product, variants, images, tenant_id=ctx.tenant_id)
 
 
 @router.patch("/products/{product_id}")
@@ -217,7 +232,9 @@ async def update_product(product_id: UUID, body: UpdateProductRequest, ctx: Writ
         )
     except ValueError as exc:
         raise ValidationError(str(exc)) from exc
-    return _product_out(product, [])
+    variants = await CatalogService.list_variants(ctx.session, ctx.tenant_id, product_id)
+    images = await CatalogService.list_images(ctx.session, ctx.tenant_id, product_id)
+    return _product_out(product, variants, images, tenant_id=ctx.tenant_id)
 
 
 @router.post("/products/{product_id}/archive")
@@ -372,13 +389,71 @@ async def add_product_image(product_id: UUID, body: AddImageRequest, ctx: WriteC
         alt=body.alt,
         variant_id=body.variant_id,
     )
-    return _image_out(image)
+    return _image_out(image, tenant_id=ctx.tenant_id)
+
+
+@router.post("/products/{product_id}/images/upload", status_code=201)
+async def upload_product_image(product_id: UUID, request: Request, ctx: WriteCtx):
+    # Validate the upload before persisting its bytes.
+    product = await CatalogService.get_product(ctx.session, ctx.tenant_id, product_id)
+    storage = get_storage()
+    if not storage.configured:
+        raise StorageUnavailableError()
+
+    content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    signatures = {
+        "image/jpeg": lambda data: data.startswith(b"\xff\xd8\xff"),
+        "image/png": lambda data: data.startswith(b"\x89PNG\r\n\x1a\n"),
+        "image/gif": lambda data: data.startswith((b"GIF87a", b"GIF89a")),
+        "image/webp": lambda data: (
+            len(data) >= 12 and data.startswith(b"RIFF") and data[8:12] == b"WEBP"
+        ),
+        "image/bmp": lambda data: data.startswith(b"BM"),
+    }
+    signature = signatures.get(content_type)
+    if signature is None:
+        raise ValidationError("unsupported image type; use JPEG, PNG, GIF, WebP, or BMP")
+
+    chunks = bytearray()
+    async for chunk in request.stream():
+        chunks.extend(chunk)
+        if len(chunks) > 10 * 1024 * 1024:
+            raise ValidationError("image exceeds the 10 MB upload limit")
+    image_data = bytes(chunks)
+    if not image_data or not signature(image_data):
+        raise ValidationError("image content does not match its file type")
+
+    fetched = FetchedMedia(
+        data=image_data,
+        content_type=content_type,
+        checksum=hashlib.sha256(image_data).hexdigest(),
+    )
+    stored = await storage.store(
+        fetched,
+        prefix=f"product-images/{ctx.tenant_id}",
+        original_url="",
+    )
+    if not stored.durable or not stored.storage_key:
+        raise StorageUnavailableError()
+
+    try:
+        image = await CatalogService.add_image(
+            ctx.session,
+            ctx.tenant_id,
+            product_id,
+            url=f"s3://{stored.storage_key}",
+            alt=product.title,
+        )
+    except Exception:
+        await storage.delete_objects([stored.storage_key])
+        raise
+    return _image_out(image, tenant_id=ctx.tenant_id)
 
 
 @router.get("/products/{product_id}/images")
 async def list_product_images(ctx: TenantCtxDep, product_id: UUID):
     rows = await CatalogService.list_images(ctx.session, ctx.tenant_id, product_id)
-    return [_image_out(i) for i in rows]
+    return [_image_out(i, tenant_id=ctx.tenant_id) for i in rows]
 
 
 @router.post("/categories", status_code=201)

@@ -1,0 +1,14 @@
+/backend
+/desktop
+/docs
+/infra
+/website-builder
+/.github
+/.railway
+/.codex
+/.agents
+/.aws
+/frontend/test-results
+/frontend/node_modules
+/frontend/dist
+/frontend/.vercel

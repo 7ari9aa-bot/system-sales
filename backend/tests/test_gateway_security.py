@@ -214,6 +214,62 @@ def test_telegram_signature_fails_closed_without_a_configured_secret(monkeypatch
     )
 
 
+@pytest.mark.parametrize("adapter_name", ["messenger", "instagram"])
+def test_meta_channel_handshake_fails_closed_without_a_verify_token(
+    monkeypatch, adapter_name
+):
+    """The GET handshake had the same hole the WhatsApp adapter closed: with
+    the verify token unset (empty default), an EMPTY `hub.verify_token`
+    compared equal to the configured value and the endpoint answered with the
+    caller's own challenge. Not configured = cannot verify = reject."""
+    import importlib
+
+    module = importlib.import_module(
+        f"app.modules.conversations.gateway.{adapter_name}"
+    )
+    adapter = getattr(module, f"{adapter_name}_adapter")
+    monkeypatch.setattr(
+        f"app.modules.conversations.gateway.{adapter_name}.get_settings",
+        lambda: type("S", (), {f"{adapter_name}_verify_token": ""})(),
+    )
+    for params in (
+        {"hub.mode": "subscribe", "hub.challenge": "CH1"},
+        {"hub.mode": "subscribe", "hub.verify_token": "", "hub.challenge": "CH1"},
+        {"hub.mode": "subscribe", "hub.verify_token": "anything", "hub.challenge": "CH1"},
+    ):
+        assert adapter.verify_request(params) is None, params
+
+
+@pytest.mark.parametrize("adapter_name", ["messenger", "instagram"])
+def test_meta_channel_handshake_completes_only_with_the_configured_token(
+    monkeypatch, adapter_name
+):
+    """The fail-closed guard must not take the happy path down with it."""
+    import importlib
+
+    module = importlib.import_module(
+        f"app.modules.conversations.gateway.{adapter_name}"
+    )
+    adapter = getattr(module, f"{adapter_name}_adapter")
+    monkeypatch.setattr(
+        f"app.modules.conversations.gateway.{adapter_name}.get_settings",
+        lambda: type("S", (), {f"{adapter_name}_verify_token": "s3cret"})(),
+    )
+    assert (
+        adapter.verify_request(
+            {"hub.mode": "subscribe", "hub.verify_token": "s3cret", "hub.challenge": "CH1"}
+        )
+        == "CH1"
+    )
+    # Wrong or partial token: rejected.
+    assert (
+        adapter.verify_request(
+            {"hub.mode": "subscribe", "hub.verify_token": "s3cret-toke", "hub.challenge": "CH1"}
+        )
+        is None
+    )
+
+
 def test_every_generic_webhook_channel_rejects_an_unsigned_body():
     """Registry-wide guard: a channel reachable on the generic dispatcher must
     refuse a body it cannot authenticate. Catches a future adapter that ships

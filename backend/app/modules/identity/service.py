@@ -14,6 +14,7 @@ import logging
 import re
 import secrets
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -21,11 +22,19 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import sqlalchemy as sa
 from sqlalchemy import select
 
+from app.core import auth_lockout
 from app.core.config import get_settings
 from app.core.currency import storage_refusal
 from app.core.db import bind_tenant
-from app.core.errors import ConflictError, NotFoundError, PermissionDeniedError, ValidationError
+from app.core.errors import (
+    ConflictError,
+    NotFoundError,
+    PermissionDeniedError,
+    RateLimitExceededError,
+    ValidationError,
+)
 from app.core.model_kit import AppendOnlyCreatedAtMixin  # noqa: F401  (convention anchor)
+from app.core.redis import get_redis_or_none
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -34,6 +43,7 @@ from app.core.security import (
     verify_password_async,
 )
 from app.modules.identity.models import (
+    EmailVerificationToken,
     Invitation,
     Location,
     PasswordResetToken,
@@ -48,6 +58,20 @@ from app.modules.identity.models import (
 from app.modules.identity.schemas import TokenPair
 
 logger = logging.getLogger(__name__)
+
+
+class EmailAlreadyRegistered(ConflictError):
+    """register() found an existing account for the email (audit finding 3).
+
+    Subclasses ConflictError so any pre-existing caller keeps its 409 lineage,
+    but the ROUTE distinguishes it: the register endpoint must answer a
+    known address with the SAME neutral response as a fresh one. A distinct
+    409 "email already registered" was a user-enumeration oracle — probing
+    signup with an arbitrary address disclosed account existence before the
+    attacker ever proved a credential — and it was half of the account
+    pre-hijack attack (register a victim's address first, then let an
+    invitation to that address bind the victim's role to the attacker).
+    """
 
 
 async def _record_audit(
@@ -145,6 +169,21 @@ def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
+# How long a JUST-rotated refresh token may be replayed without being treated
+# as theft (audit finding 5). Two tabs hitting /auth/refresh in the same second
+# serialize on the row lock: the winner rotates, the loser then re-reads the row
+# as revoked. Without a grace window that loser was "reuse", and reuse revokes
+# EVERY session the user owns — parallel tabs nuked the whole family. Within
+# this window the same token is a concurrent duplicate, not an attack. The
+# window is measured from the row's ORIGINAL revoked_at and the tolerated path
+# never refreshes that timestamp, so replaying cannot extend it: past the
+# window, the next replay is genuine reuse and revokes the family. An attacker
+# who already holds the token can therefore mint at most a few extra pairs
+# inside 45 seconds — they already had that credential — and loses everything
+# the moment they hesitate.
+_REFRESH_REUSE_GRACE_SECONDS = 45
+
+
 _dummy_password_hash_cache: str | None = None
 
 
@@ -167,6 +206,32 @@ async def _dummy_password_hash() -> str:
         # the same constant; the last write wins and both verify correctly.
         _dummy_password_hash_cache = await hash_password_async("not-a-real-password")
     return _dummy_password_hash_cache
+
+
+async def _lockout_op(
+    op: Callable[..., Awaitable[auth_lockout.LockoutStatus | None]],
+    *,
+    ip: str | None,
+    email: str,
+) -> auth_lockout.LockoutStatus | None:
+    """Run one lockout op, fail-open on any Redis problem.
+
+    get_redis_or_none() only reflects the §163 breaker's state — on the FIRST
+    failed connection the breaker is still closed and the raw client raises
+    (a live local outage, not a hypothetical). A cache outage must never take
+    sign-in down, so every failure here degrades to "no lockout this try",
+    mirroring the layered limiter's except policy (core/ratelimit.py): this
+    layer only narrows brute force while the §25 auth bucket in front of
+    login keeps failing closed.
+    """
+    redis = get_redis_or_none()
+    if redis is None:
+        return None
+    try:
+        return await op(redis, ip=ip or "", email=email)
+    except Exception:  # noqa: BLE001 — any Redis failure means "skip the layer"
+        logger.warning("auth.lockout_unreachable op=%s", op.__name__, exc_info=True)
+        return None
 
 
 class AuthService:
@@ -196,7 +261,16 @@ class AuthService:
             )
         ).scalar_one_or_none()
         if existing_email is not None:
-            raise ConflictError("email already registered")
+            # Account pre-hijack + enumeration guard (external audit): this
+            # path used to be a bare ConflictError, which made /auth/register
+            # an oracle for "does this email have an account". The route now
+            # answers every register with one neutral response; the service
+            # still needs the distinguishable subclass, and it queues a fresh
+            # verification email first (throttled) so the legitimate owner —
+            # who may be re-signing-up after losing the first message — keeps
+            # a way to prove the address. Nothing about the account changes.
+            await AuthService.queue_email_verification(session, user=existing_email)
+            raise EmailAlreadyRegistered("email already registered")
 
         if tenant_slug is None:
             # Auto-derived slug from the email local part; dedupe with a short
@@ -251,6 +325,11 @@ class AuthService:
         from app.modules.identity.bootstrap import seed_tenant_defaults
 
         await seed_tenant_defaults(session, tenant.id)
+        # The account is born UNVERIFIED (email_verified=False): queue the
+        # verification message now, because verification is what the
+        # invitation flow later requires of an existing account — a signup
+        # that could never verify would be a locked account waiting to happen.
+        await AuthService.queue_email_verification(session, user=user)
         await AuthService._audit(
             session, None, "auth.registered", "user", str(user.id), tenant_id=tenant.id
         )
@@ -301,6 +380,17 @@ class AuthService:
         user_agent: str | None = None,
         ip: str | None = None,
     ) -> tuple[TokenPair, User, uuid.UUID | None]:
+        # Per-(ip, email) progressive lockout — the credential-stuffing layer
+        # the IP-only auth bucket cannot cover (many IPs, one account). Check
+        # BEFORE credential verification, count bad credentials, clear on a
+        # verified credential. _lockout_op fails open on any Redis problem:
+        # the §25 auth bucket in front of login already fails closed, so the
+        # cache going away must not take sign-in down with it.
+        lock_status = await _lockout_op(auth_lockout.check, ip=ip, email=email)
+        if lock_status is not None and lock_status.locked:
+            raise RateLimitExceededError(
+                "too many failed sign-in attempts — try again later"
+            )
         user = (
             await session.execute(
                 select(User).where(User.email == email.strip().lower())
@@ -321,9 +411,13 @@ class AuthService:
                 details={"email_domain": email.split("@")[-1] if "@" in email else ""},
                 ip=ip,
             )
+            await _lockout_op(auth_lockout.record_failure, ip=ip, email=email)
             # Unified message: "no such account" and "wrong password" are
             # indistinguishable to the caller.
             raise PermissionDeniedError("invalid credentials")
+
+        # Verified credential — the pair's failure counter restarts.
+        await _lockout_op(auth_lockout.reset, ip=ip, email=email)
 
         if not user.is_active:
             # §67: no PII in `details` — the same coarse proxy `login_failure`
@@ -451,24 +545,41 @@ class AuthService:
         if row is None:
             raise PermissionDeniedError("invalid refresh token")
         if row.revoked_at is not None:
-            # Reuse of a revoked token → revoke the whole family (all user tokens).
-            #
-            # BOTH writes must outlive this request: the raise below rolls the
-            # REQUEST transaction back, so a revocation or audit row issued on
-            # that transaction never reached the database. Reuse detection used
-            # to be a silent no-op in production for exactly this reason — the
-            # old test passed only because it called the service directly,
-            # outside any request transaction. `_revoke_family_on_reuse` and
-            # `_record_security_event` each own a short-lived transaction.
-            await _revoke_family_on_reuse(row.user_id)
+            age_seconds = (_now() - row.revoked_at).total_seconds()
+            if age_seconds > _REFRESH_REUSE_GRACE_SECONDS:
+                # Reuse of a revoked token → revoke the whole family (all user
+                # tokens).
+                #
+                # BOTH writes must outlive this request: the raise below rolls
+                # the REQUEST transaction back, so a revocation or audit row
+                # issued on that transaction never reached the database. Reuse
+                # detection used to be a silent no-op in production for exactly
+                # this reason — the old test passed only because it called the
+                # service directly, outside any request transaction.
+                # `_revoke_family_on_reuse` and `_record_security_event` each
+                # own a short-lived transaction.
+                await _revoke_family_on_reuse(row.user_id)
+                await _record_security_event(
+                    "token_reuse_detected",
+                    details={"token_id": str(row.id)},
+                    ip=ip,
+                    tenant_id=row.tenant_id,
+                    actor_user_id=row.user_id,
+                )
+                raise PermissionDeniedError("refresh token revoked")
+            # Inside the grace window this is the LOSER of a concurrent refresh
+            # race (two tabs, same token), not a replayed stolen token — see
+            # _REFRESH_REUSE_GRACE_SECONDS. Tolerate it: fall through and mint
+            # a pair, without touching `revoked_at` (extending it would turn
+            # the fixed window into a sliding one and let a patient replay
+            # re-enter forever). The attempt is still on the §67 trail.
             await _record_security_event(
-                "token_reuse_detected",
-                details={"token_id": str(row.id)},
+                "token_refresh_race_tolerated",
+                details={"token_id": str(row.id), "age_seconds": round(age_seconds, 3)},
                 ip=ip,
                 tenant_id=row.tenant_id,
                 actor_user_id=row.user_id,
             )
-            raise PermissionDeniedError("refresh token revoked")
         if row.expires_at < _now():
             raise PermissionDeniedError("refresh token expired")
 
@@ -478,7 +589,8 @@ class AuthService:
         await AuthService._assert_tenant_allows_login(
             session, row.tenant_id, user_id=user.id, ip=ip
         )
-        row.revoked_at = _now()  # rotation
+        if row.revoked_at is None:
+            row.revoked_at = _now()  # rotation
         pair = AuthService._issue_pair(session, user, row.tenant_id, user_agent=user_agent, ip=ip)
         return pair, user, row.tenant_id
 
@@ -586,6 +698,13 @@ class AuthService:
 
         user.password_hash = await hash_password_async(password)
         user.auth_version = int(user.auth_version or 0) + 1
+        # Inbox control is now proven: a completed reset heals the pre-hijack
+        # state too. An attacker who pre-registered a victim's address (and
+        # never verified it) loses the account to the real owner here — the
+        # reset link landed in the victim's inbox — and the account becomes
+        # bindable again, so a pending invitation the victim already received
+        # can be accepted without waiting on a separate verification email.
+        user.email_verified = True
         row.consumed_at = now
         row.encrypted_token = ""
         row.lease_expires_at = None
@@ -610,6 +729,130 @@ class AuthService:
             .values(consumed_at=now, encrypted_token="", lease_expires_at=None)
         )
         await session.flush()
+
+    # -- email verification (audit finding 3: account pre-hijack) -----------
+
+    @staticmethod
+    async def queue_email_verification(session, *, user: User) -> bool:
+        """Queue a verification email for `user`; False when deliberately skipped.
+
+        Skips when the address is already verified (re-registering a known,
+        verified account must not become a mail-bombing channel against that
+        inbox) and when a token was queued within the last 60 seconds — the
+        same throttle request_password_reset applies, and for the same reason:
+        register's neutral response re-queues on every attempt, so an
+        unthrottled queue is an email-flooding primitive.
+
+        Mirrors the reset queue's economics: a newer request invalidates
+        previous links immediately, the raw token is encrypted at rest while
+        delivery is pending, and validation uses the SHA-256 digest only. The
+        row is written on the CALLER's transaction — register and the resend
+        endpoint both return normally, so the request commit publishes it
+        (unlike the reset/reuse paths, nothing here raises afterwards).
+        """
+        if user.email_verified:
+            return False
+        now = _now()
+        recent = (
+            await session.execute(
+                select(EmailVerificationToken.id)
+                .where(
+                    EmailVerificationToken.user_id == user.id,
+                    EmailVerificationToken.requested_at > now - timedelta(seconds=60),
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if recent is not None:
+            return False
+
+        # A newer request invalidates previous links immediately, including a
+        # message still leased by the sender worker.
+        await session.execute(
+            sa.update(EmailVerificationToken)
+            .where(
+                EmailVerificationToken.user_id == user.id,
+                EmailVerificationToken.consumed_at.is_(None),
+            )
+            .values(consumed_at=now, encrypted_token="", lease_expires_at=None)
+        )
+
+        from app.core.secrets import get_envelope_store
+
+        token = secrets.token_urlsafe(32)
+        session.add(
+            EmailVerificationToken(
+                user_id=user.id,
+                token_hash=_hash_token(token),
+                encrypted_token=get_envelope_store().encrypt(token),
+                requested_at=now,
+                expires_at=now + timedelta(hours=24),
+                next_attempt_at=now,
+            )
+        )
+        await session.flush()
+        return True
+
+    @staticmethod
+    async def request_email_verification(session, *, email: str) -> None:
+        """The resend endpoint's engine: neutral, like request_password_reset.
+
+        Only a known, active, UNVERIFIED account gets a queued token; every
+        other address is a silent no-op, so the response cannot disclose
+        account existence or verification state.
+        """
+        user = (
+            await session.execute(
+                select(User).where(User.email == email.strip().lower())
+            )
+        ).scalar_one_or_none()
+        if user is None or not user.is_active:
+            return
+        await AuthService.queue_email_verification(session, user=user)
+
+    @staticmethod
+    async def verify_email(session, *, token: str) -> User:
+        """Consume one verification link and mark the account's email proven.
+
+        Verification is the gate accept_invitation checks before binding a
+        membership to an EXISTING account — the fact that closes the
+        pre-hijack attack. Like reset_password, the link is single-use and
+        consuming it invalidates every other outstanding link for the user.
+        """
+        now = _now()
+        row = (
+            await session.execute(
+                select(EmailVerificationToken)
+                .where(EmailVerificationToken.token_hash == _hash_token(token))
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if row is None or row.consumed_at is not None or row.expires_at <= now:
+            raise ValidationError("email verification link is invalid or expired")
+
+        user = (
+            await session.execute(
+                select(User).where(User.id == row.user_id).with_for_update()
+            )
+        ).scalar_one_or_none()
+        if user is None or not user.is_active:
+            raise ValidationError("email verification link is invalid or expired")
+
+        user.email_verified = True
+        row.consumed_at = now
+        row.encrypted_token = ""
+        row.lease_expires_at = None
+        await session.execute(
+            sa.update(EmailVerificationToken)
+            .where(
+                EmailVerificationToken.user_id == user.id,
+                EmailVerificationToken.id != row.id,
+                EmailVerificationToken.consumed_at.is_(None),
+            )
+            .values(consumed_at=now, encrypted_token="", lease_expires_at=None)
+        )
+        await session.flush()
+        return user
 
     @staticmethod
     async def switch_tenant(
@@ -649,6 +892,11 @@ class AuthService:
         # refresh token owned by the caller. Without this gate a stolen
         # 30-minute access token would mint a fresh 14-day refresh family
         # here — an indefinite session from half a credential pair.
+        if not refresh_token:
+            # Fail CLOSED (a 403) rather than hashing None on the way to a 500:
+            # the absence of a token is the same "not proven" verdict as a
+            # forged one.
+            raise PermissionDeniedError("no refresh token supplied")
         old_hash = _hash_token(refresh_token)
         now = _now()
         row = (
@@ -711,6 +959,13 @@ class AuthService:
 
 
 class TenantService:
+    # Tenant role hierarchy — the ORDER of the roles provision.py seeds, not a
+    # second definition of them. `owner` outranks `manager` outranks `staff`;
+    # anything else (a future role, a typo) has no rank and therefore may
+    # invite nothing (see invite's escalation guard).
+    _ROLE_RANK: dict[str, int] = {"owner": 3, "manager": 2, "staff": 1}
+
+
     @staticmethod
     async def list_for_user(session, user_id: uuid.UUID) -> list[tuple[Tenant, str | None]]:
         rows = (
@@ -725,7 +980,14 @@ class TenantService:
 
     @staticmethod
     async def invite(
-        session, *, tenant_id: uuid.UUID, email: str, role_code: str, invited_by: uuid.UUID
+        session,
+        *,
+        tenant_id: uuid.UUID,
+        email: str,
+        role_code: str,
+        invited_by: uuid.UUID,
+        inviter_role_code: str | None = None,
+        inviter_is_platform_admin: bool = False,
     ) -> Invitation:
         # Case-fold at the boundary: the users table matches on lower(email)
         # everywhere, so an invitation stored in mixed case would silently
@@ -736,6 +998,27 @@ class TenantService:
         ).scalar_one_or_none()
         if role is None:
             raise ValidationError(f"unknown role: {role_code}")
+        # Privilege-escalation guard (external audit finding 7): the invitation
+        # IS the grant — accept_invitation binds `role_id` verbatim — so an
+        # admin inviting "owner" was a self-service escalation to full tenant
+        # control (and every role above the inviter's own). The inviter must
+        # STRICTLY outrank the invited role, and owner invitations require the
+        # platform admin (§146/§147 authority), so no tenant role can mint
+        # another owner. `_ROLE_RANK` mirrors provision.py's ROLE_MATRIX — the
+        # permission seeding is the source of truth for what each rank can do;
+        # this table only encodes their ORDER. Ranks unknown here fail CLOSED:
+        # an inviter whose role cannot be placed outranks nothing.
+        if role_code == "owner" and not inviter_is_platform_admin:
+            raise PermissionDeniedError(
+                "owner invitations require a platform admin"
+            )
+        if not inviter_is_platform_admin:
+            inviter_rank = TenantService._ROLE_RANK.get(inviter_role_code or "")
+            invited_rank = TenantService._ROLE_RANK.get(role_code)
+            if inviter_rank is None or inviter_rank <= invited_rank:
+                raise PermissionDeniedError(
+                    f"a {inviter_role_code or 'unknown'} role cannot invite a {role_code}"
+                )
         pending = (
             await session.execute(
                 select(Invitation).where(
@@ -757,6 +1040,12 @@ class TenantService:
             expires_at=_now() + timedelta(days=7),
         )
         session.add(invitation)
+        # Flush so the row's defaults (id) are assigned before the route
+        # serializes the response: the request transaction commits AFTER
+        # FastAPI renders the body, so an unflushed invitation serialized as
+        # None id was a 500 on every successful invite — invisible to the
+        # service-level tests, which read the ORM object directly.
+        await session.flush()
         return invitation
 
     @staticmethod
@@ -822,6 +1111,22 @@ class TenantService:
 
         if existing is not None:
             user = existing
+            # Account pre-hijack guard (external audit finding 3): binding a
+            # membership to an EXISTING account requires its email to be
+            # PROVEN. Without this, an attacker who pre-registered the
+            # victim's address (register never used to verify) received the
+            # victim's invited role the moment an admin invited that address —
+            # the password argument here was ignored for existing accounts, so
+            # whoever held the account held the role. With the gate, the bind
+            # is refused until the rightful owner proves the inbox: a
+            # verification link, or a completed password reset (which sets
+            # email_verified for exactly this reason).
+            if not user.email_verified:
+                raise PermissionDeniedError(
+                    "this account's email is not verified — confirm the "
+                    "address (or complete a password reset) before accepting "
+                    "this invitation"
+                )
             await _bind_self_guc(user.id)
             membership_exists = (
                 await session.execute(
@@ -840,6 +1145,11 @@ class TenantService:
                 email=invitation.email.strip().lower(),
                 password_hash=await hash_password_async(password),
                 full_name=full_name,
+                # Redeeming the invitation token IS inbox proof: the token
+                # arrived at that address, so the account created from it is
+                # born verified (this is what keeps invitation-born accounts
+                # out of the pre-hijack state the register path guards).
+                email_verified=True,
             )
             session.add(user)
             await session.flush()
@@ -1087,6 +1397,25 @@ ALLOWED_TRANSITIONS: dict[str, frozenset[str]] = {
     "deleted": frozenset(),
 }
 
+# Lifecycle targets that RESTORE service or steer billing (external audit
+# finding 1): anything that takes a tenant out of past_due/grace/suspension
+# re-opens the money firehose, and `deleted` is the irreversible half of the
+# same authority. Those transitions are platform-admin-only — a tenant-side
+# settings:write holder (any owner/admin) must not be able to wave their own
+# billing state back to active. The ONE transition a tenant-side caller may
+# still request is `offboarding` (their own wind-down, capability-REDUCING);
+# `suspended` is likewise not owner-requestable — it is the billing system's
+# and the platform's lever (billing/service.py on payment failure, the §147
+# PATCH /admin/tenants/{id}/status break-glass route). Enforced in the
+# lifecycle ROUTE on top of the state machine below, which stays
+# authority-agnostic because service-level callers (billing, workers) are not
+# the adversary this gate addresses.
+PLATFORM_ONLY_LIFECYCLE_TARGETS: frozenset[str] = frozenset(
+    {"active", "past_due", "grace", "deleted"}
+)
+# The only target a non-platform-admin may request through the route.
+TENANT_REQUESTABLE_LIFECYCLE_TARGETS: frozenset[str] = frozenset({"offboarding"})
+
 # States in which the tenant still operates normally — the ones where the
 # coarse `is_active` flag is True.
 TENANT_OPERATIONAL_STATES: frozenset[str] = frozenset(
@@ -1235,9 +1564,24 @@ class TenantLifecycleService:
 
         Validation happens BEFORE any database read, so an invalid target or a
         missing reason fails fast and is unit-testable without a session.
+
+        Hostile input fails CLOSED (the §183 contract core/transitions
+        .require_transition fixed for the other state machines): a `target`
+        that is not a string — None, a list, a dict; a service-level caller
+        can hand any of them here — must not escape the vocabulary check as a
+        raw TypeError from an unhashable dict-membership test, which a handler
+        would surface as a bare 500. It gets the same refusal an unknown state
+        gets (this module's pinned contract: vocabulary problems are a 400
+        raised before any I/O, illegal-but-known moves are the 409 below). A
+        non-string `reason` is refused the same way, ahead of the ``.strip()``
+        that would otherwise raise AttributeError.
         """
-        if target not in STATE_POLICIES:
-            raise ValidationError(f"unknown tenant lifecycle state: {target}")
+        if not isinstance(target, str) or target not in STATE_POLICIES:
+            raise ValidationError(f"unknown tenant lifecycle state: {target!r}")
+        if reason is not None and not isinstance(reason, str):
+            raise ValidationError(
+                f"a reason must be a string, got {type(reason).__name__}"
+            )
         if target in _REASON_REQUIRED and not (reason or "").strip():
             raise ValidationError(f"a reason is required to move a tenant to {target}")
 

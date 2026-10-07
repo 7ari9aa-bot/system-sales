@@ -162,7 +162,14 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # (the shared Integration row + credential verification), billing.service
 # (EntitlementService channel gate). Same pairs customers/router.py already holds;
 # the counter scans statements, so the second holder adds four.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 135
+# 135 -> 139 on 2026-10-06: the Website builder surface (modules/website +
+# catalog/website_platform) — website -> identity.deps (TenantCtxDep, the gate
+# every module holds), website -> identity.models (Tenant/User lookups for the
+# platform hand-off, one statement), website -> catalog.models (function-scope
+# lazy read of the tenant's own product rows), and catalog -> identity.deps
+# (get_db on the platform bridge). Same endorsed directions as the platform
+# module's existing reads of identity/catalog.
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 139
 # 101 -> 99 on 2026-09-29: the diagnostics engine (platform/diagnostics.py) had
 # module-scope imports of `ai.models.Agent`, `inventory.models` and
 # `orders.models` — three edges that re-merged the eleven-module SCC blob the

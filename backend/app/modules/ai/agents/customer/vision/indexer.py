@@ -19,6 +19,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.core.storage import get_storage
 from app.modules.ai.agents.customer.vision.retrieval import MODEL_VERSION
 from app.modules.ai.models import ProductEmbedding
 from app.modules.ai.providers import MultimodalContent, MultimodalEmbeddingProvider
@@ -73,10 +74,13 @@ async def index_product_images(
         chunk = rows[start : start + batch_size]
         contents = []
         for row in chunk:
+            image_url = get_storage().resolve_product_image_url(
+                row.url, tenant_id=tenant_id
+            )
             if row.alt:
-                contents.append(MultimodalContent(image=row.url, text=row.alt))
+                contents.append(MultimodalContent(image=image_url, text=row.alt))
             else:
-                contents.append(MultimodalContent(image=row.url))
+                contents.append(MultimodalContent(image=image_url))
         vectors = await provider.embed(
             base_url=settings.ai_embedding_vision_base_url,
             api_key=settings.ai_embedding_vision_api_key,

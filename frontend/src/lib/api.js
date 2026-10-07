@@ -172,7 +172,14 @@ async function refreshTokens() {
 }
 
 /** نداء API عام — يرمي ApiError، ويجدد التوكن مرة واحدة عند انتهائه. */
-export async function api(path, { method = "GET", body, retry = true, headers = {} } = {}) {
+export async function api(path, {
+  method = "GET",
+  body,
+  rawBody = false,
+  contentType,
+  retry = true,
+  headers = {},
+} = {}) {
   const isMutation = method !== "GET";
   const csrf = isMutation ? csrfToken() : null;
   let res;
@@ -181,11 +188,12 @@ export async function api(path, { method = "GET", body, retry = true, headers = 
       method,
       credentials: "include", // كوكي الجلسة (HttpOnly) بتمشي مع كل طلب
       headers: {
-        ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+        ...(body !== undefined && !rawBody ? { "Content-Type": "application/json" } : {}),
+        ...(contentType ? { "Content-Type": contentType } : {}),
         ...(csrf ? { "X-CSRF-Token": csrf } : {}),
         ...headers,
       },
-      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+      ...(body !== undefined ? { body: rawBody ? body : JSON.stringify(body) } : {}),
     });
   } catch (networkErr) {
     // فشل الشبكة (الخادم وايقف، انقطاع نت، اعتراض) — أخطر أنواع الفشل
@@ -225,7 +233,7 @@ export async function api(path, { method = "GET", body, retry = true, headers = 
       if (method === "GET" && !path.startsWith("/auth/")) reportFailure(path, refreshError);
       throw refreshError;
     }
-    if (ok) return api(path, { method, body, retry: false, headers });
+    if (ok) return api(path, { method, body, rawBody, contentType, retry: false, headers });
     setTokens(null);
   }
 

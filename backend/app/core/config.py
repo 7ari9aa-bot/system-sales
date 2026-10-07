@@ -34,7 +34,12 @@ class Settings(BaseSettings):
     # the CI job env. A deploy that forgets the variable now fails closed rather
     # than running unvalidated.
     environment: str = "production"
-    debug: bool = True
+    # DEBUG defaults to the QUIET direction (it used to default True, so a
+    # deploy that never set it ran verbose in production). Local development
+    # sets DEBUG=true explicitly — see .env.example. Outside local/test a
+    # lingering debug=true is logged loudly (not a hard failure: it only
+    # controls log verbosity — see _refuse_insecure_configuration below).
+    debug: bool = False
 
     # data stores
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/sales"
@@ -67,7 +72,18 @@ class Settings(BaseSettings):
 
     # auth
     jwt_secret: str = "change-me"
+    # Pinned to HS256 (security.py defines the same constant and BOTH encode
+    # and decode use it): the previous split — encode honoring this setting,
+    # decode hardcoding HS256 — minted tokens no decoder accepted the moment
+    # an operator changed it. A non-HS256 value in a secure environment is
+    # refused outright (see _refuse_insecure_configuration).
     jwt_algorithm: str = "HS256"
+    # Zero-logout rotation: the secret the PREVIOUS deployment signed with.
+    # Tokens carry a kid header (the current secret's fingerprint) and
+    # decode_token verifies against current or previous — so a secret roll
+    # invalidates nothing until the old tokens expire on their own. Empty
+    # (the default) means no rotation is in progress.
+    jwt_secret_previous: str = ""
     access_token_ttl_seconds: int = 60 * 30
     refresh_token_ttl_seconds: int = 60 * 60 * 24 * 14
     # HttpOnly cookie auth (the XSS-hardening wave). None means AUTO:
@@ -91,6 +107,14 @@ class Settings(BaseSettings):
     # must keep it true.
     db_pool_size: int = 12
     db_max_overflow: int = 10
+    # §144: per-tenant in-flight cap. 0 (the default) DERIVES the gate from the
+    # DB pool (pool_size + max_overflow): the old hard-coded 50 exceeded the
+    # 12+10 pool, so a tenant that was admitted past the gate could still
+    # starve on pool timeouts it thought were another tenant's fault. Set an
+    # explicit TENANT_CONCURRENCY to override; the invariant
+    # (gate <= pool capacity) still holds because 0-derivation is the default
+    # and an explicit value is an operator decision. See tenancy.TenantConcurrencyGovernor.
+    tenant_concurrency: int = 0
     worker_max_attempts: int = 5
     worker_backoff_base_seconds: float = 2.0
 
@@ -140,6 +164,11 @@ class Settings(BaseSettings):
     meta_app_id: str = ""
     meta_app_secret: str = ""
     meta_oauth_redirect_uri: str = ""
+    # Optional. Set ONLY for a Business-type app using Facebook Login for
+    # Business: the dashboard configuration id replaces the scope list on the
+    # login dialog (developers.facebook.com/docs/facebook-login/facebook-
+    # login-for-business). Leave empty for classic Consumer-type apps.
+    meta_oauth_config_id: str = ""
     messenger_app_secret: str = ""
     messenger_verify_token: str = ""
     instagram_app_secret: str = ""
@@ -154,6 +183,10 @@ class Settings(BaseSettings):
     # Supabase Storage S3-compatible credentials are server-side only. Private
     # media is returned through short-lived presigned GET URLs.
     s3_signed_url_ttl_seconds: int = 900
+    # Server-side Supabase Storage REST fallback. The service-role key is only
+    # used by the API/workers; it must never be exposed to browser code.
+    supabase_url: str = ""
+    supabase_service_role_key: str = ""
 
     # outbox relay
     outbox_poll_interval_seconds: float = 0.5
@@ -171,6 +204,15 @@ class Settings(BaseSettings):
 
     # CORS: comma-separated origins, "*" allows all (dev); set explicitly in prod
     cors_origins: str = "*"
+
+    # How many reverse proxies sit between the internet and this process and
+    # are trusted to APPEND their peer to X-Forwarded-For. The real client is
+    # then the entry N hops from the RIGHT of the chain (middleware._client_ip):
+    # everything further left is attacker-injectable. Default 1 covers a single
+    # fronting proxy (Vercel / Cloudflare / Railway alone); behind a chain
+    # (e.g. Cloudflare → Vercel → app) set 2 — taking the LAST entry there
+    # keyed every user to the inner proxy's edge IP and mass-throttled them.
+    trusted_proxy_count: int = 1
 
     # Internal service credential used by trusted metrics scrapers.
     service_token_internal: str = "change-me-too"
@@ -195,6 +237,25 @@ class Settings(BaseSettings):
     # Comma-separated OLD master keys, kept for decryption only during a
     # rotation grace period (§69: existing rows must not break at switch-over).
     secrets_previous_master_keys: str = ""
+
+    # ------------------------------------------------------------------
+    # DELIMITED EDIT (Meta connect flow) — redirect URI derivation only.
+    # META_OAUTH_REDIRECT_URI wins when set; otherwise the callback path is
+    # derived from the canonical API public base URL (same value the
+    # provider webhooks are registered under). No deploy needs a hardcoded
+    # personal host, and an empty pair fails loudly in meta_oauth._meta_config.
+    # ------------------------------------------------------------------
+    @property
+    def meta_oauth_redirect_uri_effective(self) -> str:
+        explicit = self.meta_oauth_redirect_uri.strip()
+        if explicit:
+            return explicit
+        base = self.api_public_base_url.strip().rstrip("/")
+        if base:
+            return f"{base}/api/v1/integrations/meta/oauth/callback"
+        return ""
+
+    # ------------------------------------------------------------------
 
     @property
     def is_secure_environment(self) -> bool:
@@ -231,6 +292,23 @@ class Settings(BaseSettings):
             )
         )
 
+    @property
+    def supabase_storage_configured(self) -> bool:
+        """Whether the server can use the Supabase Storage REST API."""
+        return all(
+            value.strip()
+            for value in (
+                self.supabase_url,
+                self.supabase_service_role_key,
+                self.s3_bucket,
+            )
+        )
+
+    @property
+    def durable_storage_configured(self) -> bool:
+        """Whether either supported server-side Storage connection is ready."""
+        return self.object_storage_configured or self.supabase_storage_configured
+
     @model_validator(mode="after")
     def _refuse_insecure_configuration(self) -> "Settings":
         """Fail fast (H2, review G-05): refuse insecure settings outside local/test.
@@ -256,6 +334,25 @@ class Settings(BaseSettings):
         # offline from a single captured token, so refuse rather than warn.
         if len(self.jwt_secret.encode()) < 32:
             raise ValueError(f"JWT_SECRET must be at least 32 bytes {where}")
+        # Both token sides are pinned to HS256 (see security.JWT_ALGORITHM);
+        # a deploy that sets something else must not discover it as a
+        # full-auth-outage at first request.
+        if self.jwt_algorithm != "HS256":
+            raise ValueError(f"JWT_ALGORITHM must be HS256 (pinned both sides) {where}")
+        # Rotation is optional, but a HALF-configured rotation must not boot:
+        # a weak or duplicated previous secret either weakens verification or
+        # silently makes the rotation a no-op.
+        if self.jwt_secret_previous:
+            if len(self.jwt_secret_previous.encode()) < 32:
+                raise ValueError(
+                    f"JWT_SECRET_PREVIOUS must be at least 32 bytes {where}"
+                )
+            if self.jwt_secret_previous == self.jwt_secret:
+                raise ValueError(
+                    f"JWT_SECRET_PREVIOUS must differ from JWT_SECRET {where}"
+                )
+        if self.trusted_proxy_count < 0:
+            raise ValueError(f"TRUSTED_PROXY_COUNT must not be negative {where}")
         if self.service_token_internal in _INSECURE_SERVICE_TOKENS:
             raise ValueError(f"SERVICE_TOKEN_INTERNAL must be set {where}")
         if self.secrets_master_key in _INSECURE_MASTER_KEYS:
@@ -273,22 +370,31 @@ class Settings(BaseSettings):
         if self.cors_origins.strip() == "*":
             raise ValueError(f"CORS_ORIGINS must not be * {where}")
 
-        storage_values = (
+        s3_values = (
             self.s3_endpoint,
             self.s3_region,
-            self.s3_bucket,
             self.s3_access_key_id,
             self.s3_secret_access_key,
         )
-        if any(value.strip() for value in storage_values) and not self.object_storage_configured:
+        if (
+            any(value.strip() for value in s3_values)
+            and not self.object_storage_configured
+        ):
             raise ValueError(
                 "S3_ENDPOINT, S3_REGION, S3_BUCKET, S3_ACCESS_KEY_ID and "
                 f"S3_SECRET_ACCESS_KEY must be configured together {where}"
             )
-        if self.is_secure_environment and not self.object_storage_configured:
+        supabase_storage_values = (self.supabase_url, self.supabase_service_role_key)
+        if (
+            any(value.strip() for value in supabase_storage_values)
+            and not self.supabase_storage_configured
+        ):
             raise ValueError(
-                f"durable S3-compatible media storage must be configured {where}"
+                "SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY and S3_BUCKET must be "
+                f"configured together for the Storage REST fallback {where}"
             )
+        if self.is_secure_environment and not self.durable_storage_configured:
+            raise ValueError(f"durable object storage must be configured {where}")
         if self.object_storage_configured:
             storage_endpoint = urlsplit(self.s3_endpoint)
             if (
@@ -302,6 +408,21 @@ class Settings(BaseSettings):
             ):
                 raise ValueError(
                     f"S3_ENDPOINT must be an HTTPS S3-compatible endpoint {where}"
+                )
+        if self.supabase_storage_configured:
+            storage_url = urlsplit(self.supabase_url)
+            if (
+                storage_url.scheme not in {"https", "http"}
+                or not storage_url.netloc
+                or storage_url.username is not None
+                or storage_url.password is not None
+                or storage_url.path not in {"", "/"}
+                or storage_url.query
+                or storage_url.fragment
+                or (self.is_secure_environment and storage_url.scheme != "https")
+            ):
+                raise ValueError(
+                    f"SUPABASE_URL must be a project HTTPS URL without a path {where}"
                 )
         if not 1 <= self.s3_signed_url_ttl_seconds <= 7 * 24 * 60 * 60:
             raise ValueError("S3_SIGNED_URL_TTL_SECONDS must be between 1 and 604800")

@@ -82,6 +82,15 @@ async def _deliver_password_reset_email() -> int:
     return await PasswordResetEmailDelivery.run_once()
 
 
+async def _deliver_email_verification_email() -> int:
+    # Same pre-GUC possession pattern as the reset sweep: the delivery worker
+    # claims leased verification-token rows by token hash, so it binds no
+    # tenant/user GUC and must run as a global sweeper.
+    from app.modules.identity.email_delivery import EmailVerificationEmailDelivery
+
+    return await EmailVerificationEmailDelivery.run_once()
+
+
 async def _purge_expired_offboarding_tenants() -> int:
     from app.workers.retention_worker import OffboardingWorker
 
@@ -93,6 +102,7 @@ async def _purge_expired_offboarding_tenants() -> int:
 # tenants. Each function owns its own durable claim/transaction semantics.
 GLOBAL_SWEEPERS: dict[str, tuple[timedelta, Callable[[], object]]] = {
     "password_reset_email": (timedelta(seconds=5), _deliver_password_reset_email),
+    "email_verification_email": (timedelta(seconds=5), _deliver_email_verification_email),
     "offboarding.purge": (timedelta(hours=1), _purge_expired_offboarding_tenants),
 }
 

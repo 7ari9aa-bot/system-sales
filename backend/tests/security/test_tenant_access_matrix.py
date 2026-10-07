@@ -75,6 +75,20 @@ _ALLOWED_PUBLIC_ROUTES: frozenset[str] = frozenset(
         # and inaccessible to Supabase public roles by migration.
         "POST /api/v1/auth/password-reset/request",
         "POST /api/v1/auth/password-reset/confirm",
+        # Email verification rides the same account-global contract as the
+        # password-reset pair above: the emailed token IS the credential
+        # (fd2026100411 rows are possession-scoped), and the resend endpoint
+        # answers a uniform neutral 202 for every address, so neither route
+        # reads tenant-scoped data or binds a GUC.
+        "POST /api/v1/auth/verify-email",
+        "POST /api/v1/auth/resend-verification",
+        # Website Platform bridge (modules/catalog/website_platform.py): the
+        # caller is the EXTERNAL website builder, not a browser session —
+        # tenancy resolves from the X-Website-Platform-Key header contract
+        # (_resolve_tenant_key), which binds the tenant and is covered by the
+        # website-bridge suite. Declared here so the matrix sees the
+        # alternative resolver instead of flagging it as unguarded.
+        "GET /api/v1/website-platform/catalog/products",
         # SEC-1: mints a 5-minute stream-scoped credential from the caller's
         # OWN authed identity — reads no tenant-scoped row, binds no GUC.
         "POST /api/v1/realtime/stream-token",

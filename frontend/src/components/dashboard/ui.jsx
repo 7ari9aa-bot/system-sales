@@ -2,6 +2,7 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/lib/i18n";
 
 /** هيكل عظمي بلمعان — مكان مؤشر التحميل: الشاشة بتترسم بشكلها النهائي
  *  فورًا والبيانات بتملا مكانها في أجزاء من الثانية. */
@@ -137,9 +138,10 @@ export function Badge({ children, tone = "muted" }) {
 }
 
 export function PageHeader({ title, subtitle, actions }) {
+  const { lang } = useI18n();
   return (
-    <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-6">
-      <div>
+    <div className={cn("flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-6", lang === "ar" && "sm:flex-row-reverse")}>
+      <div className={cn("min-w-0", lang === "ar" && "text-right")}>
         <h1 className="font-display text-[24px] font-semibold tracking-tight whitespace-nowrap truncate">{title}</h1>
         {subtitle && <p className="text-[13.5px] text-muted-foreground mt-1 line-clamp-2">{subtitle}</p>}
       </div>

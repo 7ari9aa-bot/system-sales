@@ -67,6 +67,12 @@ class MessengerAdapter(ChannelAdapter):
     def verify_request(self, query_params: dict[str, str]) -> str | None:
         """Meta webhook subscription handshake (GET hub.challenge)."""
         settings = get_settings()
+        if not settings.messenger_verify_token:
+            # Not configured -> cannot verify -> reject (fail closed). Same
+            # hole the WhatsApp adapter closed: an empty `hub.verify_token`
+            # compared equal to the empty default and answered the caller's
+            # own challenge (see test_whatsapp_verify_fail_closed.py).
+            return None
         if (
             query_params.get("hub.mode") == "subscribe"
             and query_params.get("hub.verify_token") == settings.messenger_verify_token

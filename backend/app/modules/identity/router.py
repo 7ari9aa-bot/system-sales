@@ -6,6 +6,7 @@ import uuid
 from dataclasses import asdict
 from datetime import datetime
 
+import sqlalchemy as sa
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
@@ -20,6 +21,7 @@ from app.modules.identity.deps import (
     TenantCtxDep,
     require_permission,
 )
+from app.modules.identity.models import Role
 
 router = APIRouter(tags=["auth"])
 users_router = APIRouter(prefix="/users", tags=["users"])
@@ -33,10 +35,16 @@ _CLIENT_TTL = 60 * 60 * 24 * 30  # refresh cookie life if cookie mode used
 
 
 class LifecycleTransitionRequest(BaseModel):
-    """Platform-admin request to move a tenant to another §48 state."""
+    """Platform-admin request to move a tenant to another §48 state.
+
+    ``password`` is the §146 step-up for the one tenant-side-requestable
+    transition (offboarding): it is ignored for platform-admin callers, whose
+    authority gate is the DB-verified platform flag.
+    """
 
     state: str = Field(min_length=1, max_length=31)
     reason: str | None = Field(default=None, max_length=255)
+    password: str | None = Field(default=None, max_length=128)
 
 
 class TenantCapabilityPolicyOut(BaseModel):
@@ -67,23 +75,70 @@ def _client_meta(request: Request) -> tuple[str | None, str | None]:
     return request.headers.get("user-agent"), request.client.host if request.client else None
 
 
-@router.post("/auth/register", response_model=schemas.CurrentUser, status_code=201)
-async def register(body: schemas.RegisterRequest, session: DbSession):
-    user, _tenant = await service.AuthService.register(
-        session,
-        tenant_name=body.tenant_name,
-        tenant_slug=body.tenant_slug,
-        email=body.email,
-        password=body.password,
-        full_name=body.full_name,
-    )
-    return schemas.CurrentUser(
-        id=user.id,
-        email=user.email,
-        full_name=user.full_name,
-        is_platform_admin=user.is_platform_admin,
-        tenants=[],
-    )
+@router.post("/auth/register", status_code=202)
+async def register(body: schemas.RegisterRequest, session: DbSession, response: Response):
+    """Signup, neutral on purpose (external audit, account pre-hijack).
+
+    The same 202 body is returned whether the address was fresh or already
+    taken: a fresh registration creates an UNVERIFIED account + tenant and
+    queues a verification email; a taken address re-queues that verification
+    (throttled) and changes nothing. The previous 201 + CurrentUser response
+    — and the 409 "email already registered" it replaced for duplicates —
+    were a user-enumeration oracle, and the duplicate path was half of the
+    pre-hijack attack (register a victim's address first, then let an
+    invitation to that address bind the victim's role to the attacker's
+    account). CONTRACT CHANGE: callers that read the registered user's id from
+    this response must move to /auth/me after sign-in.
+    """
+    try:
+        await service.AuthService.register(
+            session,
+            tenant_name=body.tenant_name,
+            tenant_slug=body.tenant_slug,
+            email=body.email,
+            password=body.password,
+            full_name=body.full_name,
+        )
+    except service.EmailAlreadyRegistered:
+        # The service already queued the re-verification on its way out. The
+        # response must not distinguish — that is the whole point.
+        pass
+    response.headers["Cache-Control"] = "no-store"
+    return {"message": "Check your email to confirm your account before signing in."}
+
+
+@router.post("/auth/verify-email", status_code=204)
+async def verify_email(
+    body: schemas.VerifyEmailRequest, session: DbSession, response: Response
+):
+    """Consume a verification link and mark the account's email proven.
+
+    Verification is what accept_invitation requires of an existing account
+    before it will bind a membership to it — the fact that closes the
+    account pre-hijack attack.
+    """
+    await service.AuthService.verify_email(session, token=body.token)
+    response.headers["Cache-Control"] = "no-store"
+    return Response(status_code=204, headers={"Cache-Control": "no-store"})
+
+
+@router.post("/auth/resend-verification", status_code=202)
+async def resend_verification(
+    body: schemas.ResendVerificationRequest, session: DbSession, response: Response
+):
+    """Re-queue the verification email — neutral, like password-reset/request.
+
+    The same 202 is returned for known, unknown, inactive, verified and
+    recently-throttled addresses, so the endpoint discloses nothing about
+    account existence or verification state. Throttling (60s) lives in the
+    service; the delivery worker picks the row up like any other token email.
+    """
+    await service.AuthService.request_email_verification(session, email=str(body.email))
+    response.headers["Cache-Control"] = "no-store"
+    return {
+        "message": "If the account needs verification, a confirmation email "
+        "will be sent shortly."
+    }
 
 
 @router.post("/auth/login", response_model=schemas.TokenPair)
@@ -181,12 +236,19 @@ async def me(user: CurrentUserDep, session: DbSession):
 @router.post("/auth/switch-tenant", response_model=schemas.TokenPair)
 async def switch_tenant(
     body: schemas.SwitchTenantRequest,
+    request: Request,
     user: CurrentUserDep,
     session: DbSession,
     response: Response,
 ):
+    # Same token-supply contract as refresh/logout below: the body wins, the
+    # refresh cookie (path=/api/v1/auth, which covers this route) is the
+    # browser flow's fallback. Without it a cookie-only caller — body empty —
+    # handed the service a None token, which died hashing (a 500) instead of
+    # being refused (a 403).
+    refresh_token = body.refresh_token or request.cookies.get(cookies.REFRESH_COOKIE)
     pair = await service.AuthService.switch_tenant(
-        session, user=user, tenant_id=body.tenant_id, refresh_token=body.refresh_token
+        session, user=user, tenant_id=body.tenant_id, refresh_token=refresh_token
     )
     cookies.set_auth_cookies(response, pair.access_token, pair.refresh_token)
     return pair
@@ -352,8 +414,31 @@ async def create_invitation(
         email=body.email,
         role_code=body.role_code,
         invited_by=ctx.user.id,
+        # Privilege-escalation guard (audit finding 7): the service enforces
+        # the hierarchy against the CALLER's role — ctx.role_code is the
+        # membership row's role, resolved per request by get_tenant_ctx, and
+        # the platform flag is the DB-verified one from get_current_user.
+        inviter_role_code=ctx.role_code,
+        inviter_is_platform_admin=ctx.user.is_platform_admin,
     )
-    return invitation
+    # The response's role_code is read back from the roles table by the stored
+    # role_id — the same read-back discipline the hierarchy guard itself
+    # follows (the DB decides, never the request body). Serializing the ORM
+    # row directly was a 500 on every successful invite: Invitation carries
+    # role_id, and InvitationOut's role_code had no attribute to read.
+    role_code = (
+        await ctx.session.execute(
+            sa.select(Role.code).where(Role.id == invitation.role_id)
+        )
+    ).scalar_one_or_none()
+    return schemas.InvitationOut(
+        id=invitation.id,
+        email=invitation.email,
+        role_code=role_code,
+        status=invitation.status,
+        expires_at=invitation.expires_at,
+        token=invitation.token,  # shown once to the inviting admin
+    )
 
 
 @tenants_router.delete(
@@ -393,9 +478,66 @@ async def transition_tenant_lifecycle(
     body: LifecycleTransitionRequest,
     ctx: TenantContext = Depends(require_permission("settings:write")),
 ):
-    """Move a tenant between §48 lifecycle states (suspend, reactivate, offboard)."""
+    """Move a tenant between §48 lifecycle states (suspend, reactivate, offboard).
+
+    Authority (external audit finding 1): ``settings:write`` alone used to gate
+    the whole state machine, so ANY owner/admin could wave their own tenant
+    from past_due or suspension back to active — a billing bypass by API call.
+    The transitions that RESTORE service or steer billing (→active, →past_due,
+    →grace, →deleted) are platform-admin-only now. The flag checked here is
+    ``ctx.user.is_platform_admin`` — the SAME DB-verified value the
+    ``require_platform_admin`` dependency gates on: deps.get_current_user
+    re-reads it from the users row on EVERY request and never trusts the JWT
+    claim for it, so a demoted admin is cut off at once, not at token expiry.
+    (The dependency itself cannot be applied unconditionally — it would also
+    block the owner's one permitted request below — so the check happens here,
+    on the same verified flag.)
+
+    A tenant-side caller may request exactly ONE transition: their own
+    ``offboarding`` — capability-REDUCING, so it cannot bypass billing — and
+    because it starts the deletion countdown it is step-up protected with the
+    §146 pattern (mfa/enroll): the password is re-verified before the
+    destructive change. ``suspended`` is not owner-requestable at all; it is
+    the billing system's and the platform's lever.
+
+    Cross-tenant break-glass transitions do NOT come through this route (it
+    requires membership in the target tenant); platform admins use
+    PATCH /admin/tenants/{id}/status in the platform module.
+    """
     if ctx.tenant_id != tenant_id:
         raise PermissionDeniedError("tenant mismatch")
+    # The admin check comes FIRST, not last: the previous ordering tested the
+    # target sets before the flag, so `suspended` — which is in NEITHER set —
+    # fell into the tenant-refusal branch and a platform admin could not move
+    # a tenant into suspension at all (the state the billing system and the
+    # §147 break-glass route exist to reach). Now: a DB-verified platform
+    # admin passes for every target the state machine accepts; everyone else
+    # gets exactly one requestable target plus two distinct refusals.
+    if ctx.user.is_platform_admin:
+        pass  # full authority over every target the state machine accepts
+    elif body.state in service.TENANT_REQUESTABLE_LIFECYCLE_TARGETS:
+        # §146 step-up for the owner's one destructive request.
+        if not body.password:
+            raise PermissionDeniedError(
+                "re-authentication (your password) is required to request "
+                "offboarding"
+            )
+        from app.core.security import verify_password_async
+
+        row = await service.UserService.get(ctx.session, ctx.user.id)
+        if not await verify_password_async(body.password, row.password_hash):
+            raise PermissionDeniedError("password step-up failed — re-authenticate first")
+    elif body.state in service.PLATFORM_ONLY_LIFECYCLE_TARGETS:
+        raise PermissionDeniedError(
+            "platform admin access is required to move a tenant to "
+            f"{body.state} — tenant admins may only request offboarding"
+        )
+    else:
+        # `suspended` is in neither set: it is the billing system's and the
+        # platform's lever, never tenant-requestable.
+        raise PermissionDeniedError(
+            f"tenant admins may only request offboarding, not {body.state}"
+        )
     tenant = await service.TenantLifecycleService.transition(
         ctx.session,
         tenant_id,

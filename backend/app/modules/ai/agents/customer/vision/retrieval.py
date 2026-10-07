@@ -17,6 +17,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.core.storage import get_storage
 from app.modules.ai.agents.customer.vision.schemas import Candidate
 from app.modules.ai.providers import MultimodalContent, MultimodalEmbeddingProvider
 
@@ -112,7 +113,9 @@ async def retrieve_candidates(
             product_id=row.product_id,
             product_title=row.product_title,
             image_id=row.image_id,
-            image_url=row.image_url,
+            image_url=get_storage().resolve_product_image_url(
+                row.image_url, tenant_id=tenant_id
+            ),
             retrieval_rank=rank,
         )
         for rank, row in enumerate(rows, start=1)

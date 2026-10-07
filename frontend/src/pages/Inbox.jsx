@@ -5,7 +5,7 @@ import ChannelSwitcher from "@/components/inbox/ChannelSwitcher";
 import ChannelChat from "@/components/inbox/ChannelChat";
 import { CHANNELS, getChannel } from "@/lib/channels";
 import { api } from "@/lib/api";
-import { useT } from "@/lib/i18n";
+import { useI18n, useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 function displayTime(value) {
@@ -58,6 +58,7 @@ function toConversation(row, channel) {
 
 export default function Inbox() {
   const t = useT();
+  const { lang } = useI18n();
   const [activeChannel, setActiveChannel] = useState("whatsapp");
   const [activeId, setActiveId] = useState(null);
   const [filter, setFilter] = useState("all");
@@ -292,14 +293,32 @@ export default function Inbox() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-112px)]">
-      <PageHeader title={t("inbox.title")} subtitle={t("inbox.channelsConnected", { n: connectedCount })} />
-
-      <div className="flex items-center gap-1 mb-3 -mt-2">
-        <ChannelSwitcher
-          channels={channels}
-          active={activeChannel}
-          unreadByChannel={unreadByChannel}
-          onSelect={(id) => { setActiveChannel(id); setActiveId(null); setFilter("all"); }}
+      <div className={cn("mb-6 flex min-w-0 items-start justify-between gap-2 sm:hidden", lang === "ar" ? "flex-row-reverse" : "flex-row")}>
+        <div className={cn("min-w-0 flex-1", lang === "ar" && "text-right")}>
+          <h1 className="truncate whitespace-nowrap font-display text-[22px] font-semibold tracking-tight">{t("inbox.title")}</h1>
+          <p className="mt-1 truncate text-[12px] text-muted-foreground">{t("inbox.channelsConnected", { n: connectedCount })}</p>
+        </div>
+        <div className="w-[48%] min-w-0 max-w-[48%] overflow-hidden pt-1">
+          <ChannelSwitcher
+            channels={channels}
+            active={activeChannel}
+            unreadByChannel={unreadByChannel}
+            onSelect={(id) => { setActiveChannel(id); setActiveId(null); setFilter("all"); }}
+          />
+        </div>
+      </div>
+      <div className="hidden sm:block">
+        <PageHeader
+          title={t("inbox.title")}
+          subtitle={t("inbox.channelsConnected", { n: connectedCount })}
+          actions={(
+            <ChannelSwitcher
+              channels={channels}
+              active={activeChannel}
+              unreadByChannel={unreadByChannel}
+              onSelect={(id) => { setActiveChannel(id); setActiveId(null); setFilter("all"); }}
+            />
+          )}
         />
       </div>
 

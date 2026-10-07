@@ -25,7 +25,6 @@ from app.modules.ai.models import BudgetPolicy
 from app.modules.billing.models import Entitlement, Subscription
 from app.modules.identity.bootstrap import (
     DEFAULT_HOURS,
-    DEFAULT_PLAN_CODE,
     seed_tenant_defaults,
 )
 from app.modules.identity.models import Tenant
@@ -181,44 +180,39 @@ async def test_registering_a_tenant_that_already_has_defaults_is_safe(
 
 
 async def test_register_does_not_fail_when_the_plan_is_absent(
-    db: AsyncSession, tenant_ctx
+    db: AsyncSession, tenant_ctx, monkeypatch
 ):
     """A missing plan is an environment state (provision.py not run), not a
     reason to refuse a signup — and it is reported, not swallowed."""
-    from app.modules.billing.models import Plan
+    from app.modules.identity import bootstrap as bootstrap_module
 
-    plan = (
-        await db.execute(select(Plan).where(Plan.code == DEFAULT_PLAN_CODE))
-    ).scalar_one_or_none()
-    if plan is None:
-        pytest.skip("starter plan not seeded here")
-    original_code = plan.code
-    plan.code = f"moved-{uuid.uuid4().hex[:8]}"
-    await db.flush()
-    try:
-        _, tenant = await AuthService.register(
-            db,
-            tenant_name="No Plan Co",
-            tenant_slug=f"noplan-{uuid.uuid4().hex[:8]}",
-            email=f"owner-{uuid.uuid4().hex[:10]}@test.local",
-            password="secret-password",
-            full_name="No Plan Owner",
+    # plans is SELECT-only for the runtime role since fd2026100410, so the
+    # old "rename the seeded row" simulation now dies on privilege. Point
+    # the seeding constant at a code that cannot exist instead — same
+    # environment state, zero writes to the frozen reference plane.
+    monkeypatch.setattr(
+        bootstrap_module, "DEFAULT_PLAN_CODE", f"absent-{uuid.uuid4().hex[:8]}"
+    )
+    _, tenant = await AuthService.register(
+        db,
+        tenant_name="No Plan Co",
+        tenant_slug=f"noplan-{uuid.uuid4().hex[:8]}",
+        email=f"owner-{uuid.uuid4().hex[:10]}@test.local",
+        password="secret-password",
+        full_name="No Plan Owner",
+    )
+    # Registration succeeded; the calendar and policy are still seeded.
+    calendars = (
+        await db.execute(
+            select(BusinessCalendar).where(BusinessCalendar.tenant_id == tenant.id)
         )
-        # Registration succeeded; the calendar and policy are still seeded.
-        calendars = (
-            await db.execute(
-                select(BusinessCalendar).where(BusinessCalendar.tenant_id == tenant.id)
-            )
-        ).scalars().all()
-        assert len(calendars) == 1
-        assert (
-            await db.execute(
-                select(Subscription).where(Subscription.tenant_id == tenant.id)
-            )
-        ).scalars().all() == []
-    finally:
-        plan.code = original_code
-        await db.flush()
+    ).scalars().all()
+    assert len(calendars) == 1
+    assert (
+        await db.execute(
+            select(Subscription).where(Subscription.tenant_id == tenant.id)
+        )
+    ).scalars().all() == []
 
 
 async def test_the_seeded_calendar_belongs_to_the_new_tenant_only(

@@ -36,9 +36,30 @@ _current_scope: ContextVar[tuple[UUID | None, UUID | None]] = ContextVar(
 
 # §144: per-tenant concurrency budgets. A tenant can hold at most N concurrent
 # in-flight requests; excess requests are rejected with 429. The default is
-# generous; lower it for noisy tenants via the plan configuration.
-DEFAULT_TENANT_CONCURRENCY = 50
+# DERIVED from the DB pool (never above it): the gate sits in front of the
+# pool, and the old flat 50 exceeded the 12+10 pool — a tenant admitted past
+# the gate still starved on pool timeouts that looked like another tenant's
+# fault. TENANT_CONCURRENCY overrides the derivation for operators who sized
+# their pool independently (0 = derive, the default).
 DEFAULT_TENANT_QUEUE_DEPTH = 100
+
+
+def default_tenant_concurrency() -> int:
+    """The §144 gate default: the DB pool capacity itself.
+
+    Each API/worker process owns one engine pool (db_pool_size +
+    db_max_overflow) and one in-process governor, so per-tenant in-flight
+    requests above the pool capacity cannot all be served — they would only
+    queue against the pool's own acquire timeout and surface as 30-second
+    TimeoutErrors. The gate therefore defaults to the pool capacity, and an
+    explicit TENANT_CONCURRENCY=0 (or unset) keeps that derivation.
+    """
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    if settings.tenant_concurrency > 0:
+        return settings.tenant_concurrency
+    return settings.db_pool_size + settings.db_max_overflow
 
 
 class TenantBusyError(Exception):
@@ -62,7 +83,7 @@ class TenantConcurrencyGovernor:
         queue_depth: int | None = None,
     ) -> None:
         self.concurrency = (
-            DEFAULT_TENANT_CONCURRENCY if concurrency is None else concurrency
+            default_tenant_concurrency() if concurrency is None else concurrency
         )
         self.queue_depth = (
             DEFAULT_TENANT_QUEUE_DEPTH if queue_depth is None else queue_depth
@@ -183,13 +204,22 @@ def reset_current_scope(token) -> None:
 
 @asynccontextmanager
 async def tenant_scope(session, tenant_id: UUID | str) -> AsyncIterator[UUID]:
-    """Bind tenant on the session (RLS) and in the context (authz) for a block."""
+    """Bind tenant on the session (RLS) and in the context (authz) for a block.
+
+    The PREVIOUS context value is restored on exit (a ContextVar reset
+    token), not flattened to None: the old `reset_current_tenant()` punched a
+    hole through nesting — after an inner scope exited, the outer block's
+    remaining code ran tenant-less, which an RLS-bound query fails closed on
+    but any code that still needs the outer tenant (event envelopes, audit
+    rows) silently lost. Fail-closed semantics are unchanged: entering with
+    no prior binding still restores None, never a foreign tenant.
+    """
     from app.core.db import bind_tenant
 
     tid = UUID(str(tenant_id))
-    set_current_tenant(tid)
+    token = _current_tenant.set(tid)
     try:
         await bind_tenant(session, tid)
         yield tid
     finally:
-        reset_current_tenant()
+        _current_tenant.reset(token)

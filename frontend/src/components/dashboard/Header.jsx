@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, Bell, CircleHelp, Menu, ChevronDown, Check, Sun, Moon, Languages, BookOpen, LifeBuoy, Keyboard, Settings2, PanelLeft } from "lucide-react";
+import { Search, Bell, CircleHelp, Menu, ChevronDown, Check, Sun, Moon, Languages, BookOpen, LifeBuoy, Keyboard, Settings2 } from "lucide-react";
 import { useDashboard } from "@/lib/dashboardContext";
 import { DATE_RANGES } from "@/lib/dashboardData";
 import { api, apiCached } from "@/lib/api";
@@ -57,7 +57,7 @@ function greeting(t) {
   return t("header.greeting.evening");
 }
 
-export default function Header({ onMenu, collapsed = false, onToggleCollapse }) {
+export default function Header({ onMenu }) {
   const { range, setRange } = useDashboard();
   const navigate = useNavigate();
   const t = useT();
@@ -137,15 +137,6 @@ export default function Header({ onMenu, collapsed = false, onToggleCollapse }) 
           className="lg:hidden h-9 w-9 grid place-items-center rounded-lg hover:bg-surface text-muted-foreground"
         >
           <Menu className="h-5 w-5" />
-        </button>
-
-        {/* Collapse toggle — desktop only */}
-        <button
-          onClick={onToggleCollapse}
-          title={collapsed ? t("sidebar.expand") : t("sidebar.collapse")}
-          className="hidden lg:grid h-9 w-9 place-items-center rounded-lg border border-border hover:bg-surface text-muted-foreground cursor-pointer"
-        >
-          <PanelLeft className={cn("h-[18px] w-[18px] transition-transform", collapsed && "rotate-180")} />
         </button>
 
         {/* Search */}

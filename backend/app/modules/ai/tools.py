@@ -20,6 +20,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import DomainError, NotFoundError, ValidationError
+from app.core.storage import get_storage
 from app.core.sql import LIKE_ESCAPE, like_pattern
 from app.modules.ai.agents.customer.vision.schemas import ImageKind
 from app.modules.catalog.models import Product, ProductImage, ProductVariant
@@ -642,7 +643,9 @@ async def media_payload_for_ids(
         )
     ).all()
     return [
-        {"image_id": str(image_id), "image_url": url, "alt": alt}
+        {"image_id": str(image_id), "image_url": get_storage().resolve_product_image_url(
+            url, tenant_id=tenant_id
+        ), "alt": alt}
         for image_id, url, alt in rows
     ]
 

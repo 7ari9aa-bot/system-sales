@@ -100,6 +100,17 @@ class User(TimestampMixin, Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     full_name: Mapped[str] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(Boolean, server_default="true")
+    # Account pre-hijack guard (external audit): an account whose email was
+    # never proven is a landmine — an attacker can register a victim's address
+    # BEFORE the victim signs up, and an invitation to that address would then
+    # bind the victim's future role to the attacker's account. Verified email
+    # is what makes an existing account bindable (accept_invitation refuses
+    # unverified ones) — proving inbox control is the only thing that
+    # distinguishes the legitimate owner from the pre-hijacker. Login is
+    # deliberately NOT gated on this: the column is backfilled true for
+    # accounts that predate it (migration fd2026100411), and password reset
+    # sets it (a completed reset proves inbox control the same way).
+    email_verified: Mapped[bool] = mapped_column(Boolean, server_default="false")
     is_platform_admin: Mapped[bool] = mapped_column(Boolean, server_default="false")
     # Bumped by password-reset and other account-wide credential changes.
     # Access JWTs carry this value, so a password reset immediately invalidates
@@ -138,6 +149,51 @@ class PasswordResetToken(TimestampMixin, Base):
         Index("ix_password_reset_user_requested", "user_id", "requested_at"),
         Index(
             "ix_password_reset_delivery_due",
+            "next_attempt_at",
+            "lease_expires_at",
+            postgresql_where=text(
+                "sent_at IS NULL AND consumed_at IS NULL AND delivery_failed_at IS NULL"
+            ),
+        ),
+    )
+
+
+class EmailVerificationToken(TimestampMixin, Base):
+    """Single-use email-verification token, shaped like PasswordResetToken.
+
+    Same economics as the reset flow (external audit, account pre-hijack): the
+    hash validates the attempt, the raw token is retained encrypted only while
+    delivery is pending, and the leased delivery worker (email_delivery.py)
+    owns retries. It is a GLOBAL pre-GUC possession table exactly like
+    password_reset_tokens — verification runs before any tenant context exists
+    — so migration fd2026100411 gives it the same RLS posture: permissive
+    SELECT/INSERT/UPDATE (the queue cannot work otherwise), no DELETE policy.
+    """
+
+    __tablename__ = "email_verification_tokens"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    encrypted_token: Mapped[str] = mapped_column(Text)
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    delivery_failed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    attempts: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)
+    next_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(String(255))
+
+    __table_args__ = (
+        Index("ix_email_verification_user_requested", "user_id", "requested_at"),
+        Index(
+            "ix_email_verification_delivery_due",
             "next_attempt_at",
             "lease_expires_at",
             postgresql_where=text(

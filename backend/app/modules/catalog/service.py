@@ -743,6 +743,32 @@ class CatalogService:
         return list(rows)
 
     @staticmethod
+    async def list_images_for_products(
+        session: AsyncSession, tenant_id: UUID, product_ids: list[UUID]
+    ) -> dict[UUID, list[ProductImage]]:
+        """Batch-load galleries for products already scoped by the caller."""
+        if not product_ids:
+            return {}
+        rows = (
+            await session.execute(
+                select(ProductImage)
+                .where(
+                    ProductImage.tenant_id == tenant_id,
+                    ProductImage.product_id.in_(product_ids),
+                )
+                .order_by(
+                    ProductImage.product_id.asc(),
+                    ProductImage.position.asc(),
+                    ProductImage.id.asc(),
+                )
+            )
+        ).scalars().all()
+        grouped: dict[UUID, list[ProductImage]] = {}
+        for image in rows:
+            grouped.setdefault(image.product_id, []).append(image)
+        return grouped
+
+    @staticmethod
     async def list_brands(
         session: AsyncSession, tenant_id: UUID, *, limit: int = 200, offset: int = 0
     ) -> list[Brand]:

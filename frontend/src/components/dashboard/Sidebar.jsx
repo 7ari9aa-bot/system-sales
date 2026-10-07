@@ -11,8 +11,11 @@ import {
   Sparkles,
   BarChart3,
   Gauge,
+  Globe,
   ChevronDown,
   LogOut,
+  PanelLeft,
+  Settings2,
 } from "lucide-react";
 import { useI18n, useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -20,8 +23,16 @@ import { useAuth } from "@/lib/AuthContext";
 import { useNavigate } from "react-router-dom";
 import Logo from "@/components/dashboard/Logo";
 import useSalesStats from "@/hooks/useSalesStats";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
-export default function Sidebar({ open, onClose, collapsed = false }) {
+export default function Sidebar({ open, onClose, collapsed = false, onToggleCollapse }) {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const t = useT();
@@ -76,6 +87,7 @@ export default function Sidebar({ open, onClose, collapsed = false }) {
         { to: "/marketing", label: t("nav.marketing"), icon: Megaphone },
         { to: "/ai", label: t("nav.ai"), icon: Sparkles },
         { to: "/analytics", label: t("nav.analytics"), icon: BarChart3 },
+        { to: "/website", label: t("nav.website"), icon: Globe },
         { to: "/usage", label: t("nav.usage"), icon: Gauge },
       ],
     },
@@ -98,15 +110,24 @@ export default function Sidebar({ open, onClose, collapsed = false }) {
           collapsed ? "lg:translate-x-0 lg:w-[68px]" : "lg:w-[248px]"
         )}
       >
-        {/* Brand */}
-        <div className={cn("h-16 flex items-center border-b border-sidebar-border shrink-0", collapsed ? "justify-center px-2" : "gap-2.5 px-5")}>
-          <Logo size={28} />
-          {!collapsed && (
-            <div className="leading-tight min-w-0">
+        {/* Brand and desktop sidebar toggle */}
+        <div className={cn("h-16 flex items-center border-b border-sidebar-border shrink-0", collapsed ? "justify-between px-5 lg:justify-start lg:gap-1 lg:px-1.5" : "gap-2.5 px-5")}>
+          <div className={cn("flex items-center min-w-0", collapsed ? "gap-0 lg:gap-1" : "gap-2.5")}>
+            <Logo size={collapsed ? 24 : 28} />
+            <div className={cn("leading-tight min-w-0", collapsed && "lg:hidden")}>
               <div className="font-display font-bold text-[15px] tracking-wide text-foreground whitespace-nowrap truncate">{t("app.name")}</div>
               <div className="text-[11px] text-muted-foreground tracking-wide uppercase whitespace-nowrap truncate">{t("app.tagline")}</div>
             </div>
-          )}
+          </div>
+          <button
+            type="button"
+            onClick={onToggleCollapse}
+            title={collapsed ? t("sidebar.expand") : t("sidebar.collapse")}
+            aria-label={collapsed ? t("sidebar.expand") : t("sidebar.collapse")}
+            className={cn("hidden lg:grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-sidebar-border hover:bg-sidebar-accent text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", collapsed ? "h-7 w-7" : "ml-auto")}
+          >
+            <PanelLeft className={cn("h-[18px] w-[18px] transition-transform", collapsed && "rotate-180")} />
+          </button>
         </div>
 
         {/* Nav */}
@@ -154,44 +175,46 @@ export default function Sidebar({ open, onClose, collapsed = false }) {
           ))}
         </nav>
 
-        {/* Footer — settings + profile merged into one account entry */}
+        {/* Compact account menu */}
         <div className="border-t border-sidebar-border p-3">
-          <Link
-            to="/settings"
-            title={collapsed ? t("nav.settings") : undefined}
-            className={cn(
-              "flex items-center rounded-lg transition-colors",
-              collapsed ? "justify-center px-0 py-2" : "gap-2.5 px-3 py-2.5",
-              pathname.startsWith("/settings")
-                ? "bg-primary/10"
-                : "hover:bg-sidebar-accent"
-            )}
-          >
-            <div className="h-9 w-9 rounded-full bg-accent/15 text-accent grid place-items-center text-[12px] font-semibold shrink-0">
-              {initials}
-            </div>
-            {!collapsed && (
-              <div className="leading-tight flex-1 min-w-0 text-left">
-                <div className={cn("text-[13px] font-medium whitespace-nowrap truncate", pathname.startsWith("/settings") ? "text-primary" : "text-foreground")} dir="ltr">{displayName}</div>
-                <div className="text-[11px] text-muted-foreground whitespace-nowrap truncate">{t("sidebar.role")}</div>
-              </div>
-            )}
-            {!collapsed && <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />}
-          </Link>
-          <button
-            type="button"
-            disabled={loggingOut}
-            onClick={() => { void handleLogout(); }}
-            title={collapsed ? logoutLabel : undefined}
-            aria-label={logoutLabel}
-            className={cn(
-              "mt-1 flex w-full items-center rounded-lg text-[13px] font-medium text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-60",
-              collapsed ? "justify-center px-0 py-2" : "gap-2.5 px-3 py-2"
-            )}
-          >
-            <LogOut className="h-[17px] w-[17px] shrink-0" />
-            {!collapsed && <span className="truncate">{loggingOut ? (lang === "ar" ? "جارٍ تسجيل الخروج…" : "Signing out…") : logoutLabel}</span>}
-          </button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                title={collapsed ? displayName : undefined}
+                aria-label={lang === "ar" ? "قائمة الحساب" : "Account menu"}
+                className={cn(
+                  "flex w-full items-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  collapsed ? "justify-center px-0 py-2" : "gap-2.5 px-3 py-2.5",
+                  pathname.startsWith("/settings") ? "bg-primary/10" : "hover:bg-sidebar-accent"
+                )}
+              >
+                <div className="h-9 w-9 rounded-full bg-accent/15 text-accent grid place-items-center text-[12px] font-semibold shrink-0">{initials}</div>
+                {!collapsed && (
+                  <div className="leading-tight flex-1 min-w-0 text-left">
+                    <div className={cn("text-[13px] font-medium whitespace-nowrap truncate", pathname.startsWith("/settings") ? "text-primary" : "text-foreground")} dir="ltr">{displayName}</div>
+                    <div className="text-[11px] text-muted-foreground whitespace-nowrap truncate">{t("sidebar.role")}</div>
+                  </div>
+                )}
+                {!collapsed && <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />}
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="right" align="end" sideOffset={8} className="w-64 rounded-xl border border-border bg-popover p-1.5 shadow-lg">
+              <DropdownMenuLabel className="px-2 py-2 font-normal">
+                <div className="text-[13px] font-medium text-foreground truncate" dir="ltr">{displayName}</div>
+                {user?.email && <div className="mt-0.5 text-[11px] text-muted-foreground truncate" dir="ltr">{user.email}</div>}
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => { onClose?.(); navigate("/settings"); }} className="h-9 cursor-pointer text-[13px]">
+                <Settings2 className="h-4 w-4" />
+                <span>{t("nav.settings")}</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled={loggingOut} onSelect={() => { onClose?.(); void handleLogout(); }} className="h-9 cursor-pointer text-[13px] text-destructive focus:text-destructive">
+                <LogOut className="h-4 w-4" />
+                <span>{loggingOut ? (lang === "ar" ? "جارٍ تسجيل الخروج…" : "Signing out…") : logoutLabel}</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </aside>
     </>

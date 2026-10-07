@@ -255,3 +255,92 @@ async def test_get_tenant_ctx_rejects_malformed_scope_headers(
         await get_tenant_ctx(
             _fake_request(), db, user, x_location_id="12345"
         )
+
+
+# ---------------------------------------------------------- bind transport ---
+# WP 10.2 verify item 1: the GUC travels as an engine bind parameter on a fixed
+# statement, and the binding is transaction-scoped so a pooled connection never
+# carries one request's tenant into the next.
+
+
+async def test_bind_tenant_travels_as_a_bind_parameter_not_interpolated() -> None:
+    """Fail-first: if a future edit interpolates the tenant id into the SQL
+    text (SET is a utility statement, so someone may "simplify" to it), a
+    crafted tenant id becomes SQL injection at the RLS bind site. The tenant
+    id must arrive as a bind param, never inside the statement text."""
+    captured: list[tuple[str, dict[str, str] | None]] = []
+
+    class _RecordSession:
+        async def execute(self, stmt, params=None):  # noqa: ANN001
+            captured.append((str(stmt), params))
+
+    tid = uuid.uuid4()
+    await bind_tenant(_RecordSession(), tid)
+    sql, params = captured[0]
+    assert str(tid) not in sql
+    assert params == {"guc": "app.tenant_id", "tenant_id": str(tid)}
+
+
+async def test_bind_tenant_rejects_a_malformed_id_before_any_db_work() -> None:
+    """Fail-first: every policy casts current_setting(...)::uuid, so a
+    malformed id bound silently would 500 the NEXT query with a Postgres cast
+    error instead of failing at the bind site. The session here fakes execute
+    (a real session would need a database), so a ValueError can only come
+    from the id validation itself."""
+
+    class _NullSession:
+        async def execute(self, stmt, params=None):  # noqa: ANN001
+            pass
+
+    with pytest.raises(ValueError):
+        await bind_tenant(_NullSession(), "not-a-uuid")
+    with pytest.raises(ValueError):
+        await bind_tenant(_NullSession(), uuid.uuid4(), workspace_id="not-a-uuid")
+
+
+async def test_a_bound_guc_does_not_survive_commit_or_rollback_on_the_connection(
+    db_url,
+) -> None:
+    """The pooler no-leak half of verify item 1: set_config(..., is_local :=
+    true) is transaction-scoped, so the tenant bound for request 1 must be
+    UNBOUND for request 2 on the SAME connection — after commit and after
+    rollback alike, or the pool would hand one tenant's RLS context to the
+    next request. Uses its own engine: the conftest ``db`` fixture nests in
+    savepoints, which would mask the transaction boundary this pins."""
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from app.core.db import TENANT_GUC
+
+    def _normalize(value: str | None) -> str | None:
+        return value or None  # set_config(guc, NULL) stores '' — same as unset
+
+    engine = create_async_engine(db_url, connect_args={"statement_cache_size": 0})
+    a, b = uuid.uuid4(), uuid.uuid4()
+    try:
+        async with engine.connect() as conn:
+
+            async def setting() -> str | None:
+                return _normalize(
+                    (
+                        await conn.execute(
+                            sa.text("SELECT current_setting(:g, true)"),
+                            {"g": TENANT_GUC},
+                        )
+                    ).scalar()
+                )
+
+            async with conn.begin():
+                await bind_tenant(conn, a)
+                assert await setting() == str(a)
+            # committed — the next request on this connection starts unbound
+            async with conn.begin():
+                assert await setting() is None, "GUC leaked across COMMIT"
+            async with conn.begin() as tx:
+                await bind_tenant(conn, b)
+                assert await setting() == str(b)
+                await tx.rollback()
+            # rolled back — equally unbound for the next request
+            async with conn.begin():
+                assert await setting() is None, "GUC leaked across ROLLBACK"
+    finally:
+        await engine.dispose()

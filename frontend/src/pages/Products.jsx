@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
-import { Search, Plus, Package, Pencil, Archive, Loader2 } from "lucide-react";
+import { Search, Plus, Package, Pencil, Trash2, Loader2 } from "lucide-react";
 import { PageHeader, Badge } from "@/components/dashboard/ui";
 import { formatCurrency } from "@/lib/dashboardData";
 import { api, apiCached } from "@/lib/api";
@@ -13,6 +13,14 @@ function stockStatus(stock, threshold) {
   if (threshold == null) return "unknown";
   if (stock <= threshold) return "low";
   return "in-stock";
+}
+
+function ProductImage({ product }) {
+  const images = Array.isArray(product.images) ? product.images : [];
+  const imageUrl = images.length ? images[images.length - 1]?.url : "";
+  const [failed, setFailed] = useState(false);
+  if (!imageUrl || failed) return <Package className="h-10 w-10 text-muted-foreground/40" />;
+  return <img src={imageUrl} alt={images[images.length - 1]?.alt || product.name || ""} onError={() => setFailed(true)} className="absolute inset-0 h-full w-full object-cover" />;
 }
 
 function toProduct(product, balances, threshold) {
@@ -149,10 +157,10 @@ export default function Products() {
             return (
               <div key={product.id} className="rounded-2xl bg-card border border-border overflow-hidden hover:shadow-sm transition-shadow group">
                 <div className="aspect-[4/3] bg-surface grid place-items-center overflow-hidden relative">
-                  <Package className="h-10 w-10 text-muted-foreground/40" />
-                  <div className="absolute top-2 right-2 flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                  <ProductImage product={product} />
+                  <div className="absolute top-2 right-2 flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity">
                     <button type="button" aria-label={`${t("products.edit")} ${product.name}`} onClick={() => { setEditing(product); setDialogOpen(true); }} className="h-8 w-8 grid place-items-center rounded-lg bg-card/90 border border-border hover:bg-surface"><Pencil className="h-3.5 w-3.5" /></button>
-                    <button type="button" aria-label={`${t("products.archive", "Archive")} ${product.name}`} onClick={() => archive(product)} className="h-8 w-8 grid place-items-center rounded-lg bg-card/90 border border-border hover:bg-destructive/10 hover:text-destructive"><Archive className="h-3.5 w-3.5" /></button>
+                    <button type="button" aria-label={`${t("products.archive", "Archive")} ${product.name}`} onClick={() => archive(product)} className="h-8 w-8 grid place-items-center rounded-lg bg-card/90 border border-border hover:bg-destructive/10 hover:text-destructive"><Trash2 className="h-3.5 w-3.5" /></button>
                   </div>
                 </div>
                 <div className="p-4">

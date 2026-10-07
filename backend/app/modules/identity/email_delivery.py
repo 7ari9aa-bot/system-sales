@@ -18,7 +18,11 @@ from sqlalchemy import or_, select, update
 from app.core.config import get_settings
 from app.core.db import SessionLocal
 from app.core.secrets import get_envelope_store
-from app.modules.identity.models import PasswordResetToken, User
+from app.modules.identity.models import (
+    EmailVerificationToken,
+    PasswordResetToken,
+    User,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +83,51 @@ class ResendEmailSender:
                 "you can ignore this email."
             ),
         }
+        await self._send(delivery_id=delivery_id, payload=payload)
+
+    async def send_email_verification(
+        self, *, delivery_id: uuid.UUID, recipient: str, token: str
+    ) -> None:
+        """The verification half of the account pre-hijack guard (audit finding 3).
+
+        Same transport, same idempotency discipline as the reset message; only
+        the copy and the link differ. The link is what proves inbox control —
+        the fact accept_invitation requires of an existing account before it
+        will bind a membership to it.
+        """
+        settings = get_settings()
+        if not settings.auth_email_delivery_configured:
+            raise EmailDeliveryError("email delivery is not configured", retryable=True)
+
+        verify_url = (
+            f"{settings.frontend_public_url.rstrip('/')}/verify-email"
+            f"#token={quote(token, safe='')}"
+        )
+        payload = {
+            "from": settings.email_from,
+            "to": [recipient],
+            "subject": "Confirm your email address",
+            "html": (
+                "<!doctype html><html><body>"
+                "<h1>Confirm your email address</h1>"
+                "<p>Use this link to confirm the email address of your "
+                "account.</p>"
+                f'<p><a href="{verify_url}">Confirm my email address</a></p>'
+                "<p>This link expires in 24 hours. If you did not sign up, "
+                "you can ignore this email.</p>"
+                "</body></html>"
+            ),
+            "text": (
+                "Use this link to confirm the email address of your account: "
+                f"{verify_url} "
+                "This link expires in 24 hours. If you did not sign up, "
+                "you can ignore this email."
+            ),
+        }
+        await self._send(delivery_id=delivery_id, payload=payload)
+
+    async def _send(self, *, delivery_id: uuid.UUID, payload: dict) -> None:
+        settings = get_settings()
         try:
             async with self._client_factory(
                 timeout=httpx.Timeout(10.0, connect=3.0)
@@ -88,7 +137,7 @@ class ResendEmailSender:
                     headers={
                         "Authorization": f"Bearer {settings.resend_api_key}",
                         # Retries after a network timeout must not send the
-                        # same reset message more than once.
+                        # same message more than once.
                         "Idempotency-Key": str(delivery_id),
                     },
                     json=payload,
@@ -229,3 +278,153 @@ class PasswordResetEmailDelivery:
                     return
                 delay_seconds = min(15 * (2 ** max(row.attempts - 1, 0)), 900)
                 row.next_attempt_at = now + timedelta(seconds=delay_seconds)
+
+
+class EmailVerificationEmailDelivery:
+    """Leased delivery for email-verification messages (audit finding 3).
+
+    A structural twin of PasswordResetEmailDelivery over
+    ``email_verification_tokens`` — same lease/at-least-once economics, same
+    failure bookkeeping, same expiry sweep — kept as an explicit class rather
+    than parameterised into the reset worker so each queue's lifecycle stays
+    independently readable (and the reset worker's tested behavior is not
+    re-plumbed to carry a second table).
+
+    NOTE for operators: like the reset queue, this worker must be registered
+    in app/workers/scheduler_worker.py's GLOBAL_SWEEPERS to be polled; the
+    registration line ships with the feature (identity module owns the class,
+    the scheduler owns the polling loop).
+    """
+
+    @staticmethod
+    async def run_once(*, sender: ResendEmailSender | None = None) -> int:
+        settings = get_settings()
+        if not settings.auth_email_delivery_configured:
+            return 0
+
+        now = datetime.now(UTC)
+        delivery: _Delivery | None = None
+        async with SessionLocal() as session:
+            async with session.begin():
+                # Expired verification links are terminal: retain only a hash
+                # and metadata after cleanup, exactly like the reset queue.
+                await session.execute(
+                    update(EmailVerificationToken)
+                    .where(
+                        EmailVerificationToken.expires_at <= now,
+                        EmailVerificationToken.consumed_at.is_(None),
+                    )
+                    .values(
+                        consumed_at=now,
+                        encrypted_token="",
+                        lease_expires_at=None,
+                    )
+                )
+                candidate = (
+                    await session.execute(
+                        select(EmailVerificationToken, User.email)
+                        .join(User, User.id == EmailVerificationToken.user_id)
+                        .where(
+                            User.is_active.is_(True),
+                            EmailVerificationToken.sent_at.is_(None),
+                            EmailVerificationToken.consumed_at.is_(None),
+                            EmailVerificationToken.delivery_failed_at.is_(None),
+                            EmailVerificationToken.expires_at > now,
+                            EmailVerificationToken.next_attempt_at <= now,
+                            or_(
+                                EmailVerificationToken.lease_expires_at.is_(None),
+                                EmailVerificationToken.lease_expires_at <= now,
+                            ),
+                        )
+                        .order_by(EmailVerificationToken.requested_at)
+                        .with_for_update(of=EmailVerificationToken, skip_locked=True)
+                        .limit(1)
+                    )
+                ).one_or_none()
+                if candidate is None:
+                    return 0
+                row, email = candidate
+                row.attempts += 1
+                row.lease_expires_at = now + timedelta(seconds=_LEASE_SECONDS)
+                delivery = _Delivery(
+                    id=row.id,
+                    email=email,
+                    encrypted_token=row.encrypted_token,
+                    attempts=row.attempts,
+                )
+
+        assert delivery is not None
+        try:
+            token = get_envelope_store().decrypt(delivery.encrypted_token).value
+            await (sender or ResendEmailSender()).send_email_verification(
+                delivery_id=delivery.id,
+                recipient=delivery.email,
+                token=token,
+            )
+        except EmailDeliveryError as exc:
+            await _record_token_delivery_failure(EmailVerificationToken, delivery, exc)
+            logger.warning(
+                "auth.email_verification_failed delivery_id=%s reason=%s",
+                delivery.id,
+                str(exc),
+            )
+            return 1
+        except Exception:  # noqa: BLE001 — keep poller alive on corrupt ciphertext/provider bugs
+            await _record_token_delivery_failure(
+                EmailVerificationToken,
+                delivery,
+                EmailDeliveryError("email delivery internal error", retryable=False),
+            )
+            logger.exception(
+                "auth.email_verification_internal_error delivery_id=%s", delivery.id
+            )
+            return 1
+
+        finished_at = datetime.now(UTC)
+        async with SessionLocal() as session:
+            async with session.begin():
+                row = (
+                    await session.execute(
+                        select(EmailVerificationToken)
+                        .where(EmailVerificationToken.id == delivery.id)
+                        .with_for_update()
+                    )
+                ).scalar_one_or_none()
+                if row is not None:
+                    row.sent_at = finished_at
+                    row.encrypted_token = ""
+                    row.lease_expires_at = None
+                    row.last_error = None
+        return 1
+
+
+async def _record_token_delivery_failure(
+    model: type[PasswordResetToken] | type[EmailVerificationToken],
+    delivery: _Delivery,
+    error: EmailDeliveryError,
+) -> None:
+    """Book a failed attempt for a token-email queue row (shared by both workers).
+
+    Extracted from PasswordResetEmailDelivery so the verification worker gets
+    IDENTICAL retry economics: non-retryable errors (or exhausted attempts)
+    fail the delivery terminally and drop the encrypted copy; retryable ones
+    back off exponentially, capped at 15 minutes.
+    """
+    now = datetime.now(UTC)
+    async with SessionLocal() as session:
+        async with session.begin():
+            row = (
+                await session.execute(
+                    select(model).where(model.id == delivery.id).with_for_update()
+                )
+            ).scalar_one_or_none()
+            if row is None:
+                return
+            row.lease_expires_at = None
+            row.last_error = str(error)[:255]
+            if not error.retryable or row.attempts >= _MAX_ATTEMPTS:
+                row.delivery_failed_at = now
+                row.encrypted_token = ""
+                return
+            delay_seconds = min(15 * (2 ** max(row.attempts - 1, 0)), 900)
+            row.next_attempt_at = now + timedelta(seconds=delay_seconds)

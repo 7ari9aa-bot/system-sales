@@ -208,3 +208,28 @@ class TestPersistedCredentials:
         await db.flush()
         with pytest.raises(SecretDecryptionError):
             await IntegrationCredentialsService.decrypt(db, integration)
+
+
+class TestSerializerLeakage:
+    """Spot-check that no read path hands credential material to a response."""
+
+    def test_channel_serializer_exposes_no_credential_material(self):
+        # Fail-first: if _integration_output ever starts forwarding the
+        # credentials column (even as ciphertext), the two assertions below
+        # fail — the serialized dict is exactly what the API returns.
+        from types import SimpleNamespace
+
+        from app.modules.customers.router import _integration_output
+
+        integration = SimpleNamespace(
+            id="00000000-0000-0000-0000-000000000001",
+            provider="whatsapp",
+            kind="channel",
+            status="active",
+            config={"_connection": {"verified_at": "2026-01-01T00:00:00Z"}},
+            webhook_health=None,
+            credentials={"access_token": "v1:SECRETCIPHERTEXT"},
+        )
+        out = _integration_output(integration)
+        assert "credentials" not in out
+        assert "SECRETCIPHERTEXT" not in str(out)

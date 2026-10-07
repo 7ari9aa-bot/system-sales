@@ -27,9 +27,46 @@ const CONNECTION_FIELDS = {
 
 const ATTENTION_STATES = new Set(["reauth_required", "restricted", "disconnected", "degraded", "error"]);
 
-/** Facebook Login for Business: Meta owns the dialog, so these channels
- *  offer the one-click OAuth path beside the manual token form. */
+/** Facebook Login for Business: the connect button navigates straight to
+ *  Meta's own login dialog (manual redirect flow — the dialog page belongs
+ *  to Meta and the operator consents with their Meta account; the dialog
+ *  never asks for app ids or tokens). The backend mints the signed state
+ *  and hands back the authorize URL; Meta's callback returns here with the
+ *  outcome. docs/META_SETUP.md holds the console-side setup. */
 const META_OAUTH_CHANNELS = new Set(["messenger", "instagram"]);
+
+/** Map the marker the OAuth callback appended (meta_error=<value>) onto a
+ *  sentence the operator can act on. Unknown values are shown verbatim —
+ *  Meta's own descriptions are the most precise diagnostic there is. */
+function friendlyMetaError(raw, isAr) {
+  const detail = String(raw || "");
+  if (detail.startsWith("access_denied")) {
+    return isAr
+      ? "لم تُمنح صلاحيات فيسبوك: إما أن الموافقة أُلغيت، أو التطبيق في وضع التطوير وحسابك ليس Tester أو Admin عليه. أضف الحساب من Meta Developer Console ثم أعد المحاولة."
+      : "Meta did not grant the permissions: either the consent was cancelled, or the app is in development mode and your account is not a tester or admin of it. Add the account in the Meta Developer Console, then retry.";
+  }
+  if (detail.includes("redirect_uri")) {
+    return isAr
+      ? "رابط العودة غير مسجّل في تطبيق فيسبوك: أضف الرابط الظاهر في رسالة الخطأ إلى Valid OAuth Redirect URIs (التفاصيل في docs/META_SETUP.md)."
+      : "The redirect URI is not whitelisted on the Meta app: add the exact URL from the error to Valid OAuth Redirect URIs (see docs/META_SETUP.md).";
+  }
+  if (detail === "invalid_state") {
+    return isAr
+      ? "انتهت صلاحية نافذة ربط فيسبوك (عشر دقائق). أعد المحاولة من الزر."
+      : "The Facebook connect window (10 minutes) expired. Press connect again.";
+  }
+  if (detail === "missing_code_or_state" || detail === "invalid_provider") {
+    return isAr
+      ? "عاد ربط فيسبوك بلا بيانات مكتملة. أعد المحاولة، وإن تكررت أعد التحميل أولًا."
+      : "The Facebook connect returned without a complete response. Retry; if it repeats, reload the page first.";
+  }
+  if (detail.startsWith("meta_exchange_failed")) {
+    return isAr
+      ? "فشل تبادل رمز التفويض مع خوادم فيسبوك. تحقق من إعدادات التطبيق ثم أعد المحاولة."
+      : "The authorization code could not be exchanged with Meta. Check the app settings, then retry.";
+  }
+  return detail;
+}
 
 export default function ChannelsSettings() {
   const t = useT();
@@ -70,8 +107,8 @@ export default function ChannelsSettings() {
         : `Connected the page ${pageName || "Facebook"} via Facebook Login.`);
     } else {
       setFormError(isAr
-        ? `تعذر إكمال ربط فيسبوك: ${oauthError}`
-        : `Could not complete the Facebook connect: ${oauthError}`);
+        ? `تعذر إكمال ربط فيسبوك: ${friendlyMetaError(oauthError, isAr)}`
+        : `Could not complete the Facebook connect: ${friendlyMetaError(oauthError, isAr)}`);
     }
     void reload().catch(() => {});
   }, [reload, isAr]);
@@ -88,11 +125,19 @@ export default function ChannelsSettings() {
       if (!authorizeUrl) {
         throw new Error(isAr ? "لم يصل رابط التفويض من الخادم." : "The server returned no authorize URL.");
       }
-      // Top-level navigation to Meta's dialog — connect-src never applies,
-      // and the callback returns to this exact page with the outcome.
+      // Top-level navigation to Meta's dialog — the user consents there with
+      // their Meta account (no app id or token is pasted anywhere), and the
+      // callback returns to this exact page with the outcome.
       window.location.assign(authorizeUrl);
     } catch (connectError) {
-      setFormError(connectError?.message || (isAr ? "تعذر بدء ربط فيسبوك." : "Could not start the Facebook connect."));
+      const raw = connectError?.message || "";
+      setFormError(
+        raw.includes("not configured") || raw.includes("META_")
+          ? (isAr
+            ? `ربط فيسبوك غير مُعد على الخادم: ${raw}`
+            : `Facebook connect is not configured on the server: ${raw}`)
+          : (raw || (isAr ? "تعذر بدء ربط فيسبوك." : "Could not start the Facebook connect."))
+      );
       setMetaConnecting("");
     }
   }

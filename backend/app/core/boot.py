@@ -6,8 +6,14 @@ Every table in the database that carries a ``tenant_id`` column MUST:
    owners and superusers (unless bypassrls) are still bound;
 3. Have the canonical ``tenant_isolation`` policy defined in ``pg_policies``.
 
-If ANY tenant-scoped table fails this invariant, the system refuses to boot
-(Invariant 13 fail-closed rule) in secure/production environments.
+And the role side: the CONNECTED database role must NOT carry BYPASSRLS —
+otherwise none of the above binds the app (checked by
+``inspect_app_role_bypass_rls``).
+
+If ANY tenant-scoped table fails this invariant, or the connected role
+bypasses RLS, the system refuses to boot (Invariant 13 fail-closed rule) in
+secure/production environments. Outside them (local/test, where the developer
+role is usually the superuser) violations are logged, not fatal.
 """
 
 from __future__ import annotations
@@ -41,6 +47,37 @@ RLS_EXEMPT_TABLES: frozenset[str] = frozenset(
 
 class BootReconcilerError(RuntimeError):
     """Refusal to boot because a fundamental security invariant was violated."""
+
+
+async def inspect_app_role_bypass_rls(session: AsyncSession) -> str | None:
+    """Check the CONNECTED role for BYPASSRLS (Invariant 13's role-side half).
+
+    Every table-level guarantee above binds sessions through the app role —
+    which is exactly why the role itself must not carry BYPASSRLS: with it,
+    ``sales_app`` reads and writes EVERY tenant's rows no matter what the
+    policies say, and Invariant 13 becomes decoration. Returns a violation
+    description, or None when the connected role is clean.
+    """
+    row = (
+        await session.execute(
+            text(
+                """
+                SELECT r.rolname, r.rolbypassrls
+                FROM pg_roles r
+                WHERE r.rolname = current_user
+                """
+            )
+        )
+    ).one_or_none()
+    if row is None:  # pragma: no cover — current_user is always in pg_roles
+        return "connected role not found in pg_roles"
+    rolname, rolbypassrls = row[0], row[1]
+    if rolbypassrls:
+        return (
+            f"connected role {rolname!r} has BYPASSRLS — row-level security "
+            "cannot bind it, so tenant isolation is unenforceable for the app"
+        )
+    return None
 
 
 async def inspect_tenant_rls_invariants(
@@ -153,6 +190,11 @@ async def run_boot_reconciler(
         async with engine.connect() as conn:
             async with AsyncSession(conn) as session:
                 violations = await inspect_tenant_rls_invariants(session)
+                # The role-side half of the invariant: RLS FORCED on every
+                # table means nothing if the connected role bypasses it. In
+                # local/test the developer role (often postgres, superuser,
+                # BYPASSRLS by construction) is expected — logged, not fatal.
+                role_violation = await inspect_app_role_bypass_rls(session)
     except Exception as exc:
         if should_fail_closed:
             raise BootReconcilerError(
@@ -163,6 +205,16 @@ async def run_boot_reconciler(
     finally:
         if owns_engine:
             await engine.dispose()
+
+    if role_violation:
+        if should_fail_closed:
+            violations.insert(0, role_violation)
+        else:
+            logger.warning(
+                "boot_reconciler.app_role_bypassrls (non-fatal outside secure "
+                "environments): %s",
+                role_violation,
+            )
 
     if violations:
         msg = (

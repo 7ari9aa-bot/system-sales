@@ -119,6 +119,14 @@ class CircuitOpenError(DomainError):
     retryable = True
 
 
+class StorageUnavailableError(DomainError):
+    # Durable storage is required for this operation but is not configured.
+    code = "storage_unavailable"
+    http_status = 503
+    default_message = "Object storage is unavailable"
+    retryable = True
+
+
 class ExternalProviderError(DomainError):
     code = "external_provider_error"
     http_status = 502

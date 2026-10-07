@@ -105,11 +105,36 @@ def set_auth_cookies(response: Response, access_token: str, refresh_token: str) 
 
 
 def clear_auth_cookies(response: Response) -> None:
-    """Clear the pair with the EXACT paths/flags they were set with — a
-    mismatched path is the classic way delete_cookie silently does nothing."""
-    response.delete_cookie(ACCESS_COOKIE, path=ACCESS_COOKIE_PATH)
-    response.delete_cookie(REFRESH_COOKIE, path=REFRESH_COOKIE_PATH)
-    response.delete_cookie(CSRF_COOKIE, path=CSRF_COOKIE_PATH)
+    """Clear the pair with the EXACT attributes they were set with.
+
+    A mismatched path is the classic way delete_cookie silently does nothing
+    (the browser matches the expiry cookie by name + path + domain). Secure and
+    SameSite ride the same config-driven helpers as the SET path (audit
+    finding 6): they are not part of the browser's matching key, but a clear
+    cookie that disagrees with how the set one was delivered (Secure/SameSite
+    mode) is exactly the kind of half-state that turns into a
+    works-in-staging-drops-in-production bug — and some proxies/CDNs normalize
+    or refuse Set-Cookie headers whose flags contradict the request scheme.
+    One source of truth, both directions.
+    """
+    response.delete_cookie(
+        ACCESS_COOKIE,
+        path=ACCESS_COOKIE_PATH,
+        secure=_secure_flag(),
+        samesite=_samesite_flag(),
+    )
+    response.delete_cookie(
+        REFRESH_COOKIE,
+        path=REFRESH_COOKIE_PATH,
+        secure=_secure_flag(),
+        samesite=_samesite_flag(),
+    )
+    response.delete_cookie(
+        CSRF_COOKIE,
+        path=CSRF_COOKIE_PATH,
+        secure=_secure_flag(),
+        samesite=_samesite_flag(),
+    )
 
 
 MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})

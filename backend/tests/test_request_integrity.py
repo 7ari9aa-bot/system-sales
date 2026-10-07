@@ -38,7 +38,7 @@ from app.core.idempotency import (
     should_guard,
 )
 from app.core.ratelimit import LayeredRateLimiter, TierLimit
-from app.core.security import create_access_token
+from app.core.security import create_access_token, create_visitor_token
 
 ORDERS_PATH = "/api/v1/orders"
 ORDERS_BODY = b'{"amount": 10}'
@@ -518,6 +518,58 @@ async def test_user_tier_refuses_past_its_limit(monkeypatch) -> None:
 
     assert [r.status_code for r in responses] == [200, 200, 429]
     assert responses[2].json()["tier"] == "user"
+    await client.aclose()
+
+
+async def test_a_visitor_token_never_keys_the_tenant_tier(monkeypatch) -> None:
+    """Audit finding 6, half one: the webchat visitor JWT is fully signed and
+    carries sub + tenant_id, so a limiter that trusts any decoded payload let a
+    VISITOR exhaust a victim tenant's budget by presenting a valid visitor
+    token as a Bearer header. Only type=access may key the tenant/user tiers.
+    """
+    monkeypatch.setattr(mw, "TENANT_LIMIT", 1)
+    monkeypatch.setattr(mw, "ENDPOINT_LIMIT", 1000)
+    client = FakeRedis(decode_responses=True)
+    app = _rate_app(client)
+    tenant_id = uuid.uuid4()
+    visitor = create_visitor_token("sess-1", str(tenant_id), widget="pk_1")
+
+    # The visitor's own request passes — and charges no tenant tier.
+    first = await _get(app, token=visitor, ip="6.6.6.1")
+    # A real access token from the SAME tenant still has its full budget.
+    second = await _get(app, token=_token(uuid.uuid4(), tenant_id), ip="6.6.6.2")
+    exhausted = await _get(app, token=_token(uuid.uuid4(), tenant_id), ip="6.6.6.3")
+
+    assert first.status_code == 200
+    assert second.status_code == 200, "the visitor request never charged the tenant tier"
+    assert exhausted.status_code == 429
+    assert exhausted.json()["tier"] == "tenant"
+    await client.aclose()
+
+
+async def test_cookie_authenticated_requests_still_key_the_tenant_tier(monkeypatch) -> None:
+    """Audit finding 6, half two: keying only from the Bearer header meant the
+    HttpOnly-cookie dashboard escaped the tenant/user tiers on EVERY request —
+    a tenant could not be capped, and its budget was burned IP by IP."""
+    monkeypatch.setattr(mw, "TENANT_LIMIT", 1)
+    monkeypatch.setattr(mw, "ENDPOINT_LIMIT", 1000)
+    client = FakeRedis(decode_responses=True)
+    app = _rate_app(client)
+    token = _token(uuid.uuid4(), uuid.uuid4())
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as http:
+        first = await http.get(
+            ORDERS_PATH, headers=_ip_headers("5.5.5.1"), cookies={"access_token": token}
+        )
+        second = await http.get(
+            ORDERS_PATH, headers=_ip_headers("5.5.5.2"), cookies={"access_token": token}
+        )
+
+    assert first.status_code == 200
+    assert second.status_code == 429, "distinct IPs, same tenant — the tier must catch it"
+    assert second.json()["tier"] == "tenant"
     await client.aclose()
 
 

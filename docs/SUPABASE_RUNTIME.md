@@ -15,20 +15,31 @@ Use Supabase for the services this application already fits well:
 
 ## Storage setup
 
-1. In Supabase Storage, enable the S3 protocol and create a dedicated access key pair. Treat the secret as a full-storage server credential: never put either key in frontend build variables or browser code.
-2. Create a **private** bucket named `sales-media` (or choose another bucket name and use the same value in all service environments). Configure its maximum object size to 25 MiB. The application enforces the same 25 MiB fetch ceiling and its media-type policy before writing.
-3. Set the following server-side variables for both the Railway API and workers. Use separate staging and production buckets/keys if the environments are in separate Supabase projects.
+The `sales` project (`iixxqitfopsgvaheedlg`, `eu-west-1`) already has the S3 protocol enabled and a private `sales-media` bucket. The bucket limit is 27 MiB; the app enforces 25 MiB for fetched channel media and 10 MiB for direct product-image uploads. Keep the larger bucket limit so channel attachments continue to work.
 
-   - `S3_ENDPOINT=https://<project-ref>.supabase.co/storage/v1/s3`
-   - `S3_REGION=<the project's Storage region>`
+The preferred connection is a dedicated S3 access key pair generated in Supabase Storage settings. S3 keys provide full access to Storage, so keep them server-side and never put them in frontend build variables or browser code. A Supabase Management API PAT (`sbp_…`) is a different credential and cannot replace either S3 key.
+
+When dedicated S3 keys are unavailable, the server can use the Supabase Storage REST fallback with the project URL and the already-provisioned service-role key. This key is also server-only and has broader project privileges than a dedicated Storage key; never expose it to browser code. Both paths use the same private bucket and signed-download behavior.
+
+Configure either the complete S3 pair or the REST fallback for both the Railway API and workers. Use the matching project values for each environment.
+
+S3 variables:
+
+   - `S3_ENDPOINT=https://iixxqitfopsgvaheedlg.storage.supabase.co/storage/v1/s3`
+   - `S3_REGION=eu-west-1`
    - `S3_BUCKET=sales-media`
    - `S3_ACCESS_KEY_ID=<Storage S3 access key ID>`
    - `S3_SECRET_ACCESS_KEY=<Storage S3 secret access key>`
    - `S3_SIGNED_URL_TTL_SECONDS=900`
 
-4. Confirm upload, private signed download, and retention deletion against the target bucket before connecting real channel credentials. The media implementation routes those operations through the existing API/worker storage adapter.
+REST fallback variables:
 
-Staging and production now fail closed if the storage settings are absent, partial, or use an insecure endpoint. Local and test environments may leave Storage unconfigured.
+   - `SUPABASE_URL=https://iixxqitfopsgvaheedlg.supabase.co`
+   - `SUPABASE_SERVICE_ROLE_KEY=<server-only project key>`
+   - `S3_BUCKET=sales-media`
+   - `S3_SIGNED_URL_TTL_SECONDS=900`
+
+Staging and production fail closed if neither complete Storage connection is present, if a connection is partial, or if its URL is insecure. Local and test environments may leave Storage unconfigured.
 
 ## Identity and email
 

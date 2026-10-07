@@ -13,6 +13,21 @@ from app.core.config import get_settings
 
 _BCRYPT_SHA256_PREFIX = "bcrypt-sha256-v1$"
 
+# BOTH token sides are pinned to this algorithm (config.py refuses any other
+# JWT_ALGORITHM outside local/test): encode used to honor settings.jwt_algorithm
+# while decode hardcoded HS256, so flipping the setting minted tokens the very
+# same deployment refused to verify — a full auth outage from one config edit.
+JWT_ALGORITHM = "HS256"
+
+
+def _kid(secret: str) -> str:
+    """Stable key id: the SHA-256 fingerprint prefix of a signing secret.
+
+    Computed, never configured — the kid rides in the token header so a
+    verifier can select the right secret during a rotation without a registry.
+    """
+    return hashlib.sha256(secret.encode("utf-8")).hexdigest()[:8]
+
 
 def _bcrypt_material(password: str) -> bytes:
     """Pre-hash UTF-8 passwords so bcrypt's 72-byte input limit is explicit.
@@ -74,7 +89,15 @@ def _create_token(subject: str, ttl_seconds: int, token_type: str, claims: dict[
         "iat": int(now.timestamp()),
         "exp": int((now + timedelta(seconds=ttl_seconds)).timestamp()),
     }
-    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+    # The kid names the signing secret's fingerprint so a rotation (see
+    # decode_token) can verify old tokens with the previous secret without a
+    # logout wave.
+    return jwt.encode(
+        payload,
+        settings.jwt_secret,
+        algorithm=JWT_ALGORITHM,
+        headers={"kid": _kid(settings.jwt_secret)},
+    )
 
 
 def create_access_token(user_id: str, claims: dict[str, Any] | None = None) -> str:
@@ -131,14 +154,63 @@ def decode_token(token: str) -> dict[str, Any]:
     """Raise jwt.PyJWTError subclasses on invalid/expired tokens.
 
     Pins iss/aud and an explicit algorithm allowlist (no alg confusion).
+
+    kid-aware verification (zero-logout rotation): a token whose header names
+    the CURRENT secret's kid is verified with the current secret; one naming
+    the PREVIOUS secret's kid (JWT_SECRET_PREVIOUS) is verified with that;
+    a kid-less token — everything minted before the kid header existed — is
+    tried against current then previous, so a secret roll invalidates nothing
+    before its natural expiry. An UNKNOWN kid fails immediately: the signature
+    is never offered to a secret the token does not claim.
+
+    ``exp`` and ``sub`` are REQUIRED claims, not validated-if-present: PyJWT
+    only enforces a claim that exists, so a signature-valid token without
+    ``exp`` would otherwise be an unbounded-accept path (it never expires).
+    Every ``_create_token`` mint sets both.
     """
     settings = get_settings()
-    return jwt.decode(
-        token,
-        settings.jwt_secret,
-        algorithms=["HS256"],  # allowlist — never follow token headers
-        issuer="sales-os",
-        audience="sales-os",
+    kid: str | None
+    try:
+        kid = jwt.get_unverified_header(token).get("kid")
+    except jwt.PyJWTError:
+        raise  # malformed token — no point trying any secret
+
+    if kid:
+        if kid == _kid(settings.jwt_secret):
+            candidates = [settings.jwt_secret]
+        elif settings.jwt_secret_previous and kid == _kid(
+            settings.jwt_secret_previous
+        ):
+            candidates = [settings.jwt_secret_previous]
+        else:
+            raise jwt.InvalidTokenError(
+                "token kid does not match any configured signing secret"
+            )
+    else:
+        candidates = [settings.jwt_secret]
+        if settings.jwt_secret_previous:
+            candidates.append(settings.jwt_secret_previous)
+
+    last_error: Exception | None = None
+    for secret in candidates:
+        try:
+            return jwt.decode(
+                token,
+                secret,
+                algorithms=[JWT_ALGORITHM],  # allowlist — never follow token headers
+                issuer="sales-os",
+                audience="sales-os",
+                # Missing exp/sub is final (see docstring): without this a
+                # signature-valid token lacking exp would be accepted forever.
+                options={"require": ["exp", "sub"]},
+            )
+        except jwt.InvalidSignatureError as exc:
+            # Wrong half of the rotation pair — the next candidate may match.
+            # Any other decode error (expired, bad aud) is final: the signature
+            # already verified, so trying another secret cannot help.
+            last_error = exc
+    raise last_error if last_error is not None else jwt.InvalidTokenError(
+        "no signing secret available"
     )
 
 
