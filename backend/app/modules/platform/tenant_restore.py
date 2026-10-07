@@ -85,9 +85,7 @@ class TenantRestoreJob(TenantMixin, TimestampMixin, Base):
 
     __tablename__ = "tenant_restore_jobs"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        default=uuid7, primary_key=True
-    )
+    id: Mapped[uuid.UUID] = mapped_column(default=uuid7, primary_key=True)
     # The tenant to restore
     target_tenant_id: Mapped[uuid.UUID] = mapped_column()
     # PITR / backup point to restore from — TIMESTAMPTZ in the migration
@@ -95,9 +93,7 @@ class TenantRestoreJob(TenantMixin, TimestampMixin, Base):
     backup_point: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     # Entity types to restore: ["customers", "orders", "messages", ...]
     entity_types: Mapped[list] = mapped_column(JSONB, server_default="[]")
-    status: Mapped[str] = mapped_column(
-        String(25), server_default="pending"
-    )
+    status: Mapped[str] = mapped_column(String(25), server_default="pending")
     # Recovery DB connection string (isolated)
     recovery_db_ref: Mapped[str | None] = mapped_column(String(255))
     # Extraction results: {entity_type: {count, ids: [...]}}
@@ -107,13 +103,9 @@ class TenantRestoreJob(TenantMixin, TimestampMixin, Base):
     # Restore results: {entity_type: {restored, skipped, failed}}
     restore_results: Mapped[dict] = mapped_column(JSONB, server_default="{}")
     last_error: Mapped[str | None] = mapped_column(Text)
-    completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    __table_args__ = (
-        Index("ix_tenant_restore_tenant_status", "tenant_id", "status"),
-    )
+    __table_args__ = (Index("ix_tenant_restore_tenant_status", "tenant_id", "status"),)
 
 
 class TenantRestoreService:
@@ -288,14 +280,10 @@ class TenantRestoreService:
             }
             if "error" in extraction:
                 entry["conflicts"] = 1
-                entry["conflict_details"].append(
-                    {"id": None, "reason": "extraction_failed"}
-                )
+                entry["conflict_details"].append({"id": None, "reason": "extraction_failed"})
             elif tenant_mismatch:
                 entry["conflicts"] = max(len(extraction.get("ids") or []), 1)
-                entry["conflict_details"].append(
-                    {"id": None, "reason": "tenant_mismatch"}
-                )
+                entry["conflict_details"].append({"id": None, "reason": "tenant_mismatch"})
             else:
                 entry = await TenantRestoreService._validate_entity(
                     session,
@@ -340,17 +328,14 @@ class TenantRestoreService:
         without the lock they are not atomic. §176 gate 17
         (``tests/gate/test_gate_tenant_restore.py``).
         """
-        job = await TenantRestoreService._get_job(
-            session, tenant_id, job_id, for_update=True
-        )
+        job = await TenantRestoreService._get_job(session, tenant_id, job_id, for_update=True)
         if job.status != TenantRestoreStatus.RESTORING.value:
             raise ValidationError(
                 "restore job has not passed validation",
                 details={"job_id": str(job_id), "status": job.status},
             )
         conflicts = sum(
-            entry.get("conflicts", 0)
-            for entry in (job.validation_results or {}).values()
+            entry.get("conflicts", 0) for entry in (job.validation_results or {}).values()
         )
         if conflicts:
             raise ValidationError(
@@ -530,9 +515,7 @@ class TenantRestoreService:
         table = _TOMBSTONED_TABLES.get(entity_type)
         if table is None:
             entry["conflicts"] = 1
-            entry["conflict_details"].append(
-                {"id": None, "reason": "unknown_entity_type"}
-            )
+            entry["conflict_details"].append({"id": None, "reason": "unknown_entity_type"})
             return entry
         if not staged_ids:
             return entry

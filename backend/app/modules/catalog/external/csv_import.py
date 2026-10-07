@@ -35,6 +35,7 @@ _CHANNEL = "csv"
 @dataclass(slots=True)
 class ImportRow:
     """One row from the CSV, validated and ready for the service layer."""
+
     row_number: int
     data: dict[str, Any]
     errors: list[str] = field(default_factory=list)
@@ -48,6 +49,7 @@ class ImportReport:
     refused by a domain rule keeps the run non-green, whatever the counters
     otherwise look like.
     """
+
     total_rows: int = 0
     imported: int = 0
     skipped: int = 0
@@ -143,10 +145,12 @@ class CSVImportService:
 
             if import_row.errors:
                 report.errors += 1
-                report.error_details.append({
-                    "row": i,
-                    "errors": import_row.errors,
-                })
+                report.error_details.append(
+                    {
+                        "row": i,
+                        "errors": import_row.errors,
+                    }
+                )
                 continue
 
             try:
@@ -169,10 +173,12 @@ class CSVImportService:
             except Exception as exc:
                 logger.warning("csv customer import row %d: %s", i, exc)
                 report.errors += 1
-                report.error_details.append({
-                    "row": i,
-                    "errors": [str(exc)],
-                })
+                report.error_details.append(
+                    {
+                        "row": i,
+                        "errors": [str(exc)],
+                    }
+                )
 
         return report
 
@@ -199,10 +205,12 @@ class CSVImportService:
             title = (row.get("title") or "").strip()
             if not title:
                 report.errors += 1
-                report.error_details.append({
-                    "row": i,
-                    "errors": ["title is required"],
-                })
+                report.error_details.append(
+                    {
+                        "row": i,
+                        "errors": ["title is required"],
+                    }
+                )
                 continue
 
             slug = _row_ref(row, title)
@@ -251,9 +259,11 @@ class CSVImportService:
             except Exception as exc:
                 logger.warning("csv product import row %d: %s", i, exc)
                 report.errors += 1
-                report.error_details.append({
-                    "row": i,
-                    "errors": [str(exc)],
-                })
+                report.error_details.append(
+                    {
+                        "row": i,
+                        "errors": [str(exc)],
+                    }
+                )
 
         return report

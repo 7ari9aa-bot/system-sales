@@ -1,4 +1,5 @@
 """NOTIFICATIONS service — create, list, mark-read, mark-all-read."""
+
 from __future__ import annotations
 
 import uuid
@@ -185,9 +186,7 @@ class NotificationService:
                 select(
                     Notification.kind,
                     func.count().label("total"),
-                    func.count()
-                    .filter(Notification.read_at.is_(None))
-                    .label("unread"),
+                    func.count().filter(Notification.read_at.is_(None)).label("unread"),
                 )
                 .where(
                     Notification.tenant_id == tenant_id,

@@ -264,11 +264,7 @@ def _imported_module(node: ast.Import | ast.ImportFrom) -> str | None:
 
 
 def _module_files() -> list[pathlib.Path]:
-    return [
-        p
-        for p in sorted(MODULES_DIR.rglob("*.py"))
-        if "__pycache__" not in p.parts
-    ]
+    return [p for p in sorted(MODULES_DIR.rglob("*.py")) if "__pycache__" not in p.parts]
 
 
 def _cross_module_imports() -> list[tuple[str, str, str, bool]]:
@@ -279,9 +275,7 @@ def _cross_module_imports() -> list[tuple[str, str, str, bool]]:
         if source is None:
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"))
-        top_level = {
-            id(n) for n in tree.body if isinstance(n, (ast.Import, ast.ImportFrom))
-        }
+        top_level = {id(n) for n in tree.body if isinstance(n, (ast.Import, ast.ImportFrom))}
         for node in ast.walk(tree):
             if not isinstance(node, (ast.Import, ast.ImportFrom)):
                 continue
@@ -351,11 +345,7 @@ def _sccs_of(graph: dict[str, set[str]]) -> set[frozenset[str]]:
         if module not in index:
             visit(module)
 
-    return {
-        frozenset(comp)
-        for comp in components
-        if len(comp) > 1 or comp[0] in graph[comp[0]]
-    }
+    return {frozenset(comp) for comp in components if len(comp) > 1 or comp[0] in graph[comp[0]]}
 
 
 # ------------------------------------------------------------ the rules ---
@@ -406,9 +396,8 @@ def test_no_module_scope_router_imports() -> None:
         for src, tgt, kind, scope in _cross_module_imports()
         if kind == "router" and scope
     ]
-    assert not offenders, (
-        "a module imports another module's router at module scope: "
-        + ", ".join(sorted(set(offenders)))
+    assert not offenders, "a module imports another module's router at module scope: " + ", ".join(
+        sorted(set(offenders))
     )
 
 

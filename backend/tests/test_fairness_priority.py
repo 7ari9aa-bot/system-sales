@@ -33,10 +33,7 @@ def test_human_and_bulk_sits_at_opposite_ends():
     assert priority_for("message.outbound") is EventPriority.HUMAN_RESPONSE
     assert priority_for("campaign.run.started") is EventPriority.BULK_CAMPAIGN
     assert priority_for("campaign.run.batch") is EventPriority.BULK_CAMPAIGN
-    assert (
-        priority_for("message.outbound")
-        < priority_for("campaign.run.started")
-    )
+    assert priority_for("message.outbound") < priority_for("campaign.run.started")
 
 
 def test_customer_webhooks_outrank_automation_but_not_ai():

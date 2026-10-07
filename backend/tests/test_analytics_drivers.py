@@ -37,8 +37,10 @@ def test_hand_computed_classic_case():
     # 100 orders @ 50 → 90 orders @ 55. ΔR = 4950 − 5000 = −50.
     # ΔN·avg(AOV) = −10 · 52.5 = −525 ; ΔAOV·avg(N) = 5 · 95 = +475.
     orders_part, aov_part, total = orders_vs_aov(
-        orders_before=D(100), aov_before=D("50.00"),
-        orders_after=D(90), aov_after=D("55.00"),
+        orders_before=D(100),
+        aov_before=D("50.00"),
+        orders_after=D(90),
+        aov_after=D("55.00"),
     )
     assert orders_part == D("-525.00")
     assert aov_part == D("475.00")

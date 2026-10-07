@@ -31,6 +31,7 @@ def _current_workspace_id() -> uuid.UUID | None:
 def _current_location_id() -> uuid.UUID | None:
     return current_scope()[1]
 
+
 # AI spend needs sub-cent precision: a single model call costs a fraction of a
 # cent, so Numeric(14,2) rounded every row to 0.00, the monthly total summed to
 # zero and the hard cap could never be reached. Still exact Decimal (ADR-001).
@@ -38,9 +39,7 @@ AI_COST = Numeric(18, 8)
 
 
 class IdMixin:
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
 
 class TimestampMixin:

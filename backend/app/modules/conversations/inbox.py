@@ -209,7 +209,7 @@ class InboxQuery:
                      ORDER BY se.created_at DESC, se.id DESC
                      LIMIT 1
               ) sla ON TRUE
-             WHERE {' AND '.join(where)}
+             WHERE {" AND ".join(where)}
              ORDER BY c.last_message_at DESC NULLS LAST, c.id DESC
              LIMIT :limit
             """

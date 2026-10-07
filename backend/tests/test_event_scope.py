@@ -282,9 +282,7 @@ async def test_relay_flags_aggregate_version_regression(caplog) -> None:
     assert any(p and "event_id" in p for p in session.params)
 
 
-async def test_event_log_scope_columns_round_trip_in_postgres(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_event_log_scope_columns_round_trip_in_postgres(db: AsyncSession, tenant_ctx) -> None:
     """CI-only: the INSERT the relay runs must land the scope values in the
     real event_log columns (FKs to workspaces/locations, so this test uses a
     real workspace/location — the model/migration already has them)."""

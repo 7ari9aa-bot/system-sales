@@ -120,15 +120,11 @@ async def test_query_rides_image_plus_text_hint_in_one_item(db, tenant_ctx):
     assert embedding.calls == [[{"image": "https://c.test/q.png", "text": "abaya كحلي"}]]
 
 
-async def test_cap_limits_candidates_and_products_without_embeddings_are_invisible(
-    db, tenant_ctx
-):
+async def test_cap_limits_candidates_and_products_without_embeddings_are_invisible(db, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     for rank in range(4):
         product = await _seed_product(db, tenant_id, title=f"Product {rank}")
-        image = await _seed_image(
-            db, tenant_id, product, f"https://cdn.test/p{rank}.png"
-        )
+        image = await _seed_image(db, tenant_id, product, f"https://cdn.test/p{rank}.png")
         await _seed_embedding(db, tenant_id, image, _unit(rank))
 
     # A draft product with NO embedding row (the indexer skips it) must

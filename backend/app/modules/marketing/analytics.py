@@ -93,9 +93,7 @@ async def _canonical():
     return analytics_service
 
 
-async def revenue_by_source(
-    session: AsyncSession, tenant_id: UUID, days: int = 30
-) -> list[dict]:
+async def revenue_by_source(session: AsyncSession, tenant_id: UUID, days: int = 30) -> list[dict]:
     """[{source, revenue, conversions}] via last-touch attributions.
 
     Sources with no UTM on the touchpoint fall back to ``"direct"``.
@@ -175,9 +173,7 @@ async def _revenue_by_campaign_decimals(
     ]
 
 
-async def revenue_by_campaign(
-    session: AsyncSession, tenant_id: UUID, days: int = 30
-) -> list[dict]:
+async def revenue_by_campaign(session: AsyncSession, tenant_id: UUID, days: int = 30) -> list[dict]:
     """[{campaign_id, campaign_name, revenue, conversions}] via last-touch.
 
     Touchpoints without a campaign group under campaign_id=None and the name
@@ -207,9 +203,9 @@ async def orders_summary(
     the currency label is the tenant's.
     """
     since, until = _window(days)
-    summary = await (
-        await _canonical()
-    ).revenue_summary(session, tenant_id, since=since, until=until, timezone=timezone)
+    summary = await (await _canonical()).revenue_summary(
+        session, tenant_id, since=since, until=until, timezone=timezone
+    )
     return {
         "orders_count": summary["orders_count"],
         "gross_revenue": wire_money(summary["gross_revenue"]),
@@ -236,9 +232,9 @@ async def daily_orders(
     ANALYTICS_TIMEZONE -> UTC) in one place.
     """
     since, until = _window(days)
-    rows = await (
-        await _canonical()
-    ).daily_revenue_series(session, tenant_id, since=since, until=until, timezone=timezone)
+    rows = await (await _canonical()).daily_revenue_series(
+        session, tenant_id, since=since, until=until, timezone=timezone
+    )
     return [
         {
             "day": row["day"],

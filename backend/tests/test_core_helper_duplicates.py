@@ -97,9 +97,7 @@ async def test_get_db_opens_one_transaction_around_the_session(
     # CALL (not an import-time binding) — that per-call resolution is what
     # lets conftest bind the app's sessions to a test transaction, so this
     # guard patches the same seam the binding does.
-    monkeypatch.setattr(
-        "app.core.db.get_sessionmaker", lambda: (lambda: _FakeSession())
-    )
+    monkeypatch.setattr("app.core.db.get_sessionmaker", lambda: lambda: _FakeSession())
 
     dependency = deps.get_db()
     session = await dependency.__anext__()
@@ -156,9 +154,7 @@ async def test_list_dlq_round_trips_a_real_envelope() -> None:
         payload={"order_id": str(aggregate_id), "grand_total": Decimal("76.50")},
         meta={"attempts": 3},
     )
-    fields = _dlq_fields(
-        serialize(envelope), dlq_reason="boom", source_stream="order.events"
-    )
+    fields = _dlq_fields(serialize(envelope), dlq_reason="boom", source_stream="order.events")
     # the per-XADD bus uuid is deliberately NOT the envelope id
     bus_id = fields["id"]
     assert bus_id != envelope.id

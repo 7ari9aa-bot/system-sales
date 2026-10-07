@@ -58,25 +58,17 @@ PHYSICAL_MOVEMENT_REASONS: frozenset[str] = frozenset(
         "damage",
     }
 )
-AVAILABILITY_MOVEMENT_REASONS: frozenset[str] = frozenset(
-    {"reservation", "reservation_release"}
-)
-MOVEMENT_REASONS: frozenset[str] = (
-    PHYSICAL_MOVEMENT_REASONS | AVAILABILITY_MOVEMENT_REASONS
-)
+AVAILABILITY_MOVEMENT_REASONS: frozenset[str] = frozenset({"reservation", "reservation_release"})
+MOVEMENT_REASONS: frozenset[str] = PHYSICAL_MOVEMENT_REASONS | AVAILABILITY_MOVEMENT_REASONS
 #: `reference_type` of a durable reservation, so a release names what it freed.
 RESERVATION_REFERENCE = "inventory_reservation"
 
 #: Patterns for the request models: a whitelist the API document can show.
 MOVEMENT_DIRECTION_PATTERN = "^(?:" + "|".join(sorted(_DIRECTIONS)) + ")$"
-MOVEMENT_REASON_PATTERN = (
-    "^(?:" + "|".join(sorted(PHYSICAL_MOVEMENT_REASONS)) + ")$"
-)
+MOVEMENT_REASON_PATTERN = "^(?:" + "|".join(sorted(PHYSICAL_MOVEMENT_REASONS)) + ")$"
 #: The read filter may name ANY reason — the hold rows are what an auditor
 #: reconciling on_hand against available has to be able to ask for.
-MOVEMENT_REASON_FILTER_PATTERN = (
-    "^(?:" + "|".join(sorted(MOVEMENT_REASONS)) + ")$"
-)
+MOVEMENT_REASON_FILTER_PATTERN = "^(?:" + "|".join(sorted(MOVEMENT_REASONS)) + ")$"
 
 _TRANSFER_STATUSES = {"draft", "in_transit"}
 
@@ -176,8 +168,7 @@ def check_physical_settlement(
         raise InsufficientStockError(
             f"cannot settle {quantity} of variant {variant_id} in warehouse "
             f"{warehouse_id}: on_hand={on_hand}, sale={quantity}, "
-            f"shortfall={quantity - on_hand}"
-            + (f" ({context})" if context else "")
+            f"shortfall={quantity - on_hand}" + (f" ({context})" if context else "")
         )
     return quantity
 
@@ -452,9 +443,7 @@ class InventoryService:
                         InventoryMovement.tenant_id == tenant_id,
                         InventoryMovement.reason == "reservation_release",
                         InventoryMovement.reference_type == RESERVATION_REFERENCE,
-                        InventoryMovement.reference_id.in_(
-                            [r.id for r in candidates]
-                        ),
+                        InventoryMovement.reference_id.in_([r.id for r in candidates]),
                     )
                     .group_by(InventoryMovement.reference_id)
                 )
@@ -464,7 +453,6 @@ class InventoryService:
             if int(released.get(reservation.id) or 0) < reservation.quantity:
                 return reservation
         return None
-
 
     # ----------------------------------------------------------- balance ----
 
@@ -484,9 +472,7 @@ class InventoryService:
         ).scalar_one_or_none()
         if balance is not None:
             return balance
-        await InventoryService._ensure_balance_row(
-            session, tenant_id, variant_id, warehouse_id
-        )
+        await InventoryService._ensure_balance_row(session, tenant_id, variant_id, warehouse_id)
         return (
             await session.execute(
                 select(InventoryBalance).where(
@@ -519,9 +505,7 @@ class InventoryService:
         `hold_movement_id`, since the hold is written before the durable row
         exists) plus every release row that names the reservation.
         """
-        stmt = select(InventoryMovement).where(
-            InventoryMovement.tenant_id == tenant_id
-        )
+        stmt = select(InventoryMovement).where(InventoryMovement.tenant_id == tenant_id)
         if variant_id is not None:
             stmt = stmt.where(InventoryMovement.variant_id == variant_id)
         if reason is not None:
@@ -551,9 +535,11 @@ class InventoryService:
             if hold_movement_id is not None:
                 linked.append(InventoryMovement.id == hold_movement_id)
             stmt = stmt.where(or_(*linked))
-        stmt = stmt.order_by(
-            InventoryMovement.created_at.desc(), InventoryMovement.id.desc()
-        ).limit(limit).offset(offset)
+        stmt = (
+            stmt.order_by(InventoryMovement.created_at.desc(), InventoryMovement.id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
         return list((await session.execute(stmt)).scalars().all())
 
     # --------------------------------------------------------- transfers ----
@@ -597,9 +583,7 @@ class InventoryService:
             variant_id = line.get("variant_id")
             if variant_id is None:
                 raise ValueError("each transfer line needs a variant_id")
-            normalized.append(
-                {"variant_id": str(variant_id), "quantity": quantity}
-            )
+            normalized.append({"variant_id": str(variant_id), "quantity": quantity})
 
         transfer = InventoryTransfer(
             tenant_id=tenant_id,
@@ -619,8 +603,7 @@ class InventoryService:
         transfer = await InventoryService.get_transfer(session, tenant_id, transfer_id)
         if transfer.status not in _TRANSFER_STATUSES:
             raise ConflictError(
-                f"transfer {transfer_id} cannot be completed from status "
-                f"'{transfer.status}'"
+                f"transfer {transfer_id} cannot be completed from status '{transfer.status}'"
             )
 
         for line in transfer.lines or []:
@@ -657,9 +640,7 @@ class InventoryService:
     # ----------------------------------------------------------- helpers ----
 
     @staticmethod
-    async def _get_variant(
-        session: AsyncSession, tenant_id: UUID, variant_id: UUID
-    ):
+    async def _get_variant(session: AsyncSession, tenant_id: UUID, variant_id: UUID):
         """Existence + tenant check (inactive variants still hold stock).
 
         §8: delegates to CatalogService instead of importing catalog models.
@@ -702,9 +683,7 @@ class InventoryService:
         balance = (await session.execute(stmt.with_for_update())).scalar_one_or_none()
         if balance is not None:
             return balance
-        await InventoryService._ensure_balance_row(
-            session, tenant_id, variant_id, warehouse_id
-        )
+        await InventoryService._ensure_balance_row(session, tenant_id, variant_id, warehouse_id)
         return (await session.execute(stmt.with_for_update())).scalar_one()
 
     @staticmethod
@@ -724,24 +703,24 @@ class InventoryService:
                 on_hand=0,
                 reserved=0,
             )
-            .on_conflict_do_nothing(
-                index_elements=["tenant_id", "warehouse_id", "variant_id"]
-            )
+            .on_conflict_do_nothing(index_elements=["tenant_id", "warehouse_id", "variant_id"])
         )
 
     @staticmethod
-    async def list_balances(
-        session: AsyncSession, tenant_id: UUID, *, limit: int = 200
-    ) -> list:
+    async def list_balances(session: AsyncSession, tenant_id: UUID, *, limit: int = 200) -> list:
         from app.modules.inventory.models import InventoryBalance
 
         rows = (
-            await session.execute(
-                select(InventoryBalance)
-                .where(InventoryBalance.tenant_id == tenant_id)
-                .limit(limit)
+            (
+                await session.execute(
+                    select(InventoryBalance)
+                    .where(InventoryBalance.tenant_id == tenant_id)
+                    .limit(limit)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return list(rows)
 
     # --------------------------------------------------- public warehouse ---
@@ -754,9 +733,7 @@ class InventoryService:
         return await InventoryService._get_warehouse(session, tenant_id, warehouse_id)
 
     @staticmethod
-    async def get_default_warehouse(
-        session: AsyncSession, tenant_id: UUID
-    ) -> Warehouse:
+    async def get_default_warehouse(session: AsyncSession, tenant_id: UUID) -> Warehouse:
         """The tenant's first active warehouse, bootstrapping 'Main' if needed.
 
         Moved here from OrderService so orders never touches the Warehouse
@@ -794,7 +771,6 @@ class InventoryService:
                     )
                 ).scalar_one()
             except NoResultFound:
-
                 await session.rollback()
                 continue
         # Last-resort: try one more time without rollback
@@ -856,12 +832,9 @@ class InventoryService:
         same order, so the pairing is stable; None is tolerated (a hold written
         before this ledger existed simply stays unlinked).
         """
-        claimed = (
-            select(InventoryReservation.hold_movement_id)
-            .where(
-                InventoryReservation.tenant_id == tenant_id,
-                InventoryReservation.hold_movement_id.is_not(None),
-            )
+        claimed = select(InventoryReservation.hold_movement_id).where(
+            InventoryReservation.tenant_id == tenant_id,
+            InventoryReservation.hold_movement_id.is_not(None),
         )
         return (
             await session.execute(
@@ -890,9 +863,7 @@ class InventoryReservationService:
     """
 
     @staticmethod
-    async def convert(
-        session: AsyncSession, tenant_id: UUID, order_id: UUID
-    ) -> int:
+    async def convert(session: AsyncSession, tenant_id: UUID, order_id: UUID) -> int:
         """Mark the order's ACTIVE reservations CONVERTED (payment captured).
 
         Conversion settles the stock: the hold is released (reserved -= qty)
@@ -916,16 +887,20 @@ class InventoryReservationService:
         without it paid orders leak available stock forever (C9).
         """
         reservations = (
-            await session.execute(
-                select(InventoryReservation)
-                .where(
-                    InventoryReservation.tenant_id == tenant_id,
-                    InventoryReservation.order_id == order_id,
-                    InventoryReservation.status == "ACTIVE",
+            (
+                await session.execute(
+                    select(InventoryReservation)
+                    .where(
+                        InventoryReservation.tenant_id == tenant_id,
+                        InventoryReservation.order_id == order_id,
+                        InventoryReservation.status == "ACTIVE",
+                    )
+                    .with_for_update()
                 )
-                .with_for_update()
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         for reservation in reservations:
             balance = await InventoryService._locked_balance(
@@ -985,9 +960,7 @@ class InventoryReservationService:
         return len(reservations)
 
     @staticmethod
-    async def cancel_for_order(
-        session: AsyncSession, tenant_id: UUID, order_id: UUID
-    ) -> int:
+    async def cancel_for_order(session: AsyncSession, tenant_id: UUID, order_id: UUID) -> int:
         """Mark the order's ACTIVE reservations CANCELLED (order cancelled).
 
         The balance-level stock release itself stays the caller's job
@@ -1012,17 +985,21 @@ class InventoryReservationService:
         it every abandoned checkout permanently shrank availability.
         """
         reservations = (
-            await session.execute(
-                select(InventoryReservation)
-                .where(
-                    InventoryReservation.tenant_id == tenant_id,
-                    InventoryReservation.status == "ACTIVE",
-                    InventoryReservation.expires_at.is_not(None),
-                    InventoryReservation.expires_at < _now(),
+            (
+                await session.execute(
+                    select(InventoryReservation)
+                    .where(
+                        InventoryReservation.tenant_id == tenant_id,
+                        InventoryReservation.status == "ACTIVE",
+                        InventoryReservation.expires_at.is_not(None),
+                        InventoryReservation.expires_at < _now(),
+                    )
+                    .with_for_update()
                 )
-                .with_for_update()
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         for reservation in reservations:
             balance = await InventoryService._locked_balance(

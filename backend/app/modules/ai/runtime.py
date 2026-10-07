@@ -160,7 +160,9 @@ class AgentRunner:
         knowledge_context: str | None = None,
     ) -> AgentRunResult:
         agent = await self._load_agent(session, tenant_id, agent_id)
-        agent_tools = await self._load_agent_tools(session, tenant_id, agent_id, agent_kind=agent.kind)
+        agent_tools = await self._load_agent_tools(
+            session, tenant_id, agent_id, agent_kind=agent.kind
+        )
 
         run = AgentRun(
             tenant_id=tenant_id,
@@ -296,6 +298,7 @@ class AgentRunner:
         tools = list(rows.all())
         if agent_kind:
             from app.modules.ai.core.registry import AgentRegistry
+
             authorized = []
             for t in tools:
                 if AgentRegistry.is_tool_authorized(agent_kind, t.name):
@@ -303,7 +306,9 @@ class AgentRunner:
                 else:
                     logger.warning(
                         "ai.tool_isolation_unauthorized agent=%s kind=%s tool=%s",
-                        agent_id, agent_kind, t.name,
+                        agent_id,
+                        agent_kind,
+                        t.name,
                     )
             return authorized
         return tools
@@ -315,6 +320,7 @@ class AgentRunner:
             return agent.model
         try:
             from app.modules.ai.core.registry import AgentRegistry
+
             defn = AgentRegistry.get_or_none(agent.kind)
             if defn and defn.default_model in ALIASES:
                 return defn.default_model
@@ -332,6 +338,7 @@ class AgentRunner:
         # Fall back to registry definition if available
         try:
             from app.modules.ai.core.registry import AgentRegistry
+
             defn = AgentRegistry.get(agent.kind)
             if defn.system_prompt_template:
                 return defn.system_prompt_template
@@ -382,10 +389,12 @@ class AgentRunner:
         # instructions from untrusted retrieved content, reducing the
         # prompt-injection surface.
         if knowledge_context:
-            messages.append({
-                "role": "user",
-                "content": f"[Knowledge base — untrusted context]\n{knowledge_context}",
-            })
+            messages.append(
+                {
+                    "role": "user",
+                    "content": f"[Knowledge base — untrusted context]\n{knowledge_context}",
+                }
+            )
         customer_image_url: str | None = None
         if conversation_id is not None:
             turns, image_key = await self._conversation_context(
@@ -405,9 +414,7 @@ class AgentRunner:
                 try:
                     customer_image_url = get_storage().signed_url(image_key)
                 except Exception:  # noqa: BLE001 — vision is best-effort
-                    logger.warning(
-                        "ai.customer_image_sign_failed key=%s", image_key, exc_info=True
-                    )
+                    logger.warning("ai.customer_image_sign_failed key=%s", image_key, exc_info=True)
         # §38: retrieve customer memories and inject into context (best-effort).
         # ADR-036: each line carries its provenance so the model (and anyone
         # reading the trace) can tell "customer said X" from "the AI guessed X"
@@ -424,11 +431,12 @@ class AgentRunner:
                 )
                 if memories:
                     mem_snippets = "\n".join(_memory_line(m) for m, _dist in memories)
-                    messages.append({
-                        "role": "user",
-                        "content": "[Customer memories — untrusted context]\n"
-                        + mem_snippets,
-                    })
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": "[Customer memories — untrusted context]\n" + mem_snippets,
+                        }
+                    )
             except Exception:  # noqa: BLE001 — memory is best-effort context
                 logger.warning("ai.memory_search_failed customer=%s", customer_id, exc_info=True)
 
@@ -515,9 +523,7 @@ class AgentRunner:
             assistant_msg: dict = {
                 "role": "assistant",
                 "content": chat_result.content,
-                "tool_calls": [
-                    _assistant_tool_call(tc) for tc in chat_result.tool_calls
-                ],
+                "tool_calls": [_assistant_tool_call(tc) for tc in chat_result.tool_calls],
             }
             messages.append(assistant_msg)
             answered_ids: set[str] = set()
@@ -526,8 +532,14 @@ class AgentRunner:
                     hit_limit = "max_tool_calls"
                     break
                 outcome = await self._execute_tool(
-                    session, tenant_id, run=run, agent=agent, agent_tools=agent_tools, request=tc,
-                    customer_id=customer_id, conversation_id=conversation_id,
+                    session,
+                    tenant_id,
+                    run=run,
+                    agent=agent,
+                    agent_tools=agent_tools,
+                    request=tc,
+                    customer_id=customer_id,
+                    conversation_id=conversation_id,
                     customer_image_url=customer_image_url,
                 )
                 tool_calls_made.append(outcome)
@@ -558,9 +570,7 @@ class AgentRunner:
                             {
                                 "role": "tool",
                                 "tool_call_id": tc.id,
-                                "content": json.dumps(
-                                    {"skipped": "tool call limit reached"}
-                                ),
+                                "content": json.dumps({"skipped": "tool call limit reached"}),
                             }
                         )
                 break
@@ -578,8 +588,9 @@ class AgentRunner:
             # in AI limbo — the customer would get silence. Record a durable
             # handover so a human picks it up.
             if conversation_id is not None:
-                from app.modules.ai.models import AIHandover
                 from sqlalchemy import text
+
+                from app.modules.ai.models import AIHandover
 
                 session.add(
                     AIHandover(
@@ -610,8 +621,9 @@ class AgentRunner:
             # §134: same as above — the step budget ran out, so a human takes
             # over rather than the customer staring at silence.
             if conversation_id is not None:
-                from app.modules.ai.models import AIHandover
                 from sqlalchemy import text
+
+                from app.modules.ai.models import AIHandover
 
                 session.add(
                     AIHandover(
@@ -647,6 +659,7 @@ class AgentRunner:
         defn = None
         try:
             from app.modules.ai.core.registry import AgentRegistry
+
             defn = AgentRegistry.get(agent.kind)
         except Exception:
             pass
@@ -678,9 +691,7 @@ class AgentRunner:
                         run_id=run.id,
                     )
                 except Exception:  # noqa: BLE001 — a provider blip hands over
-                    logger.warning(
-                        "ai.grounding_regen_error run=%s", run.id, exc_info=True
-                    )
+                    logger.warning("ai.grounding_regen_error run=%s", run.id, exc_info=True)
                     regen = None
                 if regen is not None:
                     tokens_in += regen.tokens_in
@@ -693,7 +704,9 @@ class AgentRunner:
                     decision, reason = "block", "grounding_failed"
 
         if content:
-            guardrail_profile = getattr(defn, "guardrail_profile", "customer") if defn else "customer"
+            guardrail_profile = (
+                getattr(defn, "guardrail_profile", "customer") if defn else "customer"
+            )
             if guardrail_profile == "analytics":
                 decision, reason = "allow", None
             else:
@@ -702,17 +715,13 @@ class AgentRunner:
                 )
                 decision, reason = verdict.decision, verdict.reason
                 if decision != "allow":
-                    logger.warning(
-                        "ai.guardrail_%s run=%s reason=%s", decision, run.id, reason
-                    )
+                    logger.warning("ai.guardrail_%s run=%s reason=%s", decision, run.id, reason)
                     content = None
 
         # §13: resolve the media the model requested into deliverable
         # attachments SERVER-SIDE — only image ids crossed the model
         # boundary; URLs are minted here and capped at four per reply.
-        media, shown_product_ids = await self._collect_media(
-            session, tenant_id, tool_calls_made
-        )
+        media, shown_product_ids = await self._collect_media(session, tenant_id, tool_calls_made)
 
         return AgentRunResult(
             content=content,
@@ -748,8 +757,7 @@ class AgentRunner:
                 )
             else:
                 out[message_id] = (
-                    "[customer sent a voice message; no transcript is available "
-                    "for it yet]"
+                    "[customer sent a voice message; no transcript is available for it yet]"
                 )
         return out
 
@@ -801,16 +809,10 @@ class AgentRunner:
                 or (message.status or "") in _UNDELIVERED_OUTBOUND_STATUSES
             ):
                 continue
-            content = (
-                message.body
-                or voice.get(message.id)
-                or AgentRunner._media_marker(message)
-            )
+            content = message.body or voice.get(message.id) or AgentRunner._media_marker(message)
             if not content:
                 continue
-            turns.append(
-                {"role": "assistant" if outbound else "user", "content": content}
-            )
+            turns.append({"role": "assistant" if outbound else "user", "content": content})
         if (
             current_message is not None
             and turns
@@ -841,16 +843,10 @@ class AgentRunner:
         history = await ConversationService.list_messages(
             session, tenant_id, conversation_id, limit=HISTORY_MESSAGES
         )
-        spoken_ids = [
-            m.id for m in history if not m.body and m.direction == "inbound"
-        ]
-        rows = await ConversationService.audio_transcripts(
-            session, tenant_id, spoken_ids
-        )
+        spoken_ids = [m.id for m in history if not m.body and m.direction == "inbound"]
+        rows = await ConversationService.audio_transcripts(session, tenant_id, spoken_ids)
         voice = AgentRunner._voice_turns(rows)
-        turns = AgentRunner._provider_turns(
-            history, voice=voice, current_message=current_message
-        )
+        turns = AgentRunner._provider_turns(history, voice=voice, current_message=current_message)
 
         image_key: str | None = None
         for message in reversed(history):
@@ -955,7 +951,9 @@ class AgentRunner:
         if prior is not None and prior.result is not None and prior.status == "ok":
             logger.info(
                 "ai.tool_call_idempotent_skip run=%s tool=%s key=%s",
-                run.id, request.name, idempotency_key,
+                run.id,
+                request.name,
+                idempotency_key,
             )
             return {
                 "name": prior.name,
@@ -971,6 +969,7 @@ class AgentRunner:
         duration_ms: int | None = None
 
         from app.modules.ai.core.registry import AgentRegistry
+
         agent_kind = agent.kind if agent else None
 
         if agent_kind and not AgentRegistry.is_tool_authorized(agent_kind, request.name):
@@ -998,9 +997,7 @@ class AgentRunner:
                     if "context" in inspect.signature(spec.handler).parameters:
                         tool_context: dict[str, str | None] = {
                             "customer_id": str(customer_id) if customer_id else None,
-                            "conversation_id": (
-                                str(conversation_id) if conversation_id else None
-                            ),
+                            "conversation_id": (str(conversation_id) if conversation_id else None),
                         }
                         if customer_image_url:
                             # §12/§132: the customer's photo is server-bound —

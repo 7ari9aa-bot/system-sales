@@ -42,9 +42,7 @@ async def test_create_product_defaults_and_attributes(db: AsyncSession, tenant_c
     await db.flush()
 
 
-async def test_add_variant_price_validation_and_sku_conflict(
-    db: AsyncSession, tenant_ctx
-):
+async def test_add_variant_price_validation_and_sku_conflict(db: AsyncSession, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     product = await _product(db, tenant_id)
 
@@ -66,20 +64,14 @@ async def test_add_variant_price_validation_and_sku_conflict(
         await CatalogService.add_variant(db, tenant_id, product.id, price="-5")
 
     with pytest.raises(ConflictError):
-        await CatalogService.add_variant(
-            db, tenant_id, product.id, sku=variant.sku, price="10"
-        )
+        await CatalogService.add_variant(db, tenant_id, product.id, sku=variant.sku, price="10")
     await db.flush()
 
 
-async def test_set_variant_price_writes_and_updates_price_row(
-    db: AsyncSession, tenant_ctx
-):
+async def test_set_variant_price_writes_and_updates_price_row(db: AsyncSession, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     product = await _product(db, tenant_id)
-    variant = await CatalogService.add_variant(
-        db, tenant_id, product.id, price="10.00"
-    )
+    variant = await CatalogService.add_variant(db, tenant_id, product.id, price="10.00")
 
     row = await CatalogService.set_variant_price(
         db, tenant_id, variant.id, "49.99", currency="EGP", min_quantity=1
@@ -88,26 +80,34 @@ async def test_set_variant_price_writes_and_updates_price_row(
     assert row.currency == "EGP" and row.min_quantity == 1
 
     stored = (
-        await db.execute(
-            select(ProductPrice).where(
-                ProductPrice.tenant_id == tenant_id,
-                ProductPrice.variant_id == variant.id,
+        (
+            await db.execute(
+                select(ProductPrice).where(
+                    ProductPrice.tenant_id == tenant_id,
+                    ProductPrice.variant_id == variant.id,
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(stored) == 1
     assert stored[0].unit_price == Decimal("49.99")
 
     # Re-pricing the same tier updates the row instead of duplicating it.
     await CatalogService.set_variant_price(db, tenant_id, variant.id, "59.99")
     stored_after = (
-        await db.execute(
-            select(ProductPrice).where(
-                ProductPrice.tenant_id == tenant_id,
-                ProductPrice.variant_id == variant.id,
+        (
+            await db.execute(
+                select(ProductPrice).where(
+                    ProductPrice.tenant_id == tenant_id,
+                    ProductPrice.variant_id == variant.id,
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(stored_after) == 1
     assert stored_after[0].unit_price == Decimal("59.99")
     await db.flush()
@@ -116,9 +116,7 @@ async def test_set_variant_price_writes_and_updates_price_row(
 async def test_get_variant_tenant_guard(db: AsyncSession, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     product = await _product(db, tenant_id)
-    variant = await CatalogService.add_variant(
-        db, tenant_id, product.id, price="5.00"
-    )
+    variant = await CatalogService.add_variant(db, tenant_id, product.id, price="5.00")
 
     found = await CatalogService.get_variant(db, tenant_id, variant.id)
     assert found.id == variant.id
@@ -156,13 +154,9 @@ async def test_brands_and_categories(db: AsyncSession, tenant_ctx):
         await CatalogService.create_brand(db, tenant_id, name="Acme")
 
     parent = await CatalogService.create_category(db, tenant_id, name="Shoes")
-    child = await CatalogService.create_category(
-        db, tenant_id, name="Running", parent_id=parent.id
-    )
+    child = await CatalogService.create_category(db, tenant_id, name="Running", parent_id=parent.id)
     assert child.parent_id == parent.id
 
     with pytest.raises(NotFoundError):
-        await CatalogService.create_category(
-            db, tenant_id, name="Orphan", parent_id=uuid.uuid4()
-        )
+        await CatalogService.create_category(db, tenant_id, name="Orphan", parent_id=uuid.uuid4())
     await db.flush()

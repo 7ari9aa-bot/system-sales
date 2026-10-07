@@ -87,9 +87,7 @@ async def test_extract_stages_tombstoned_rows_but_not_live_ones(
     await _tombstone(db, dead, deleted_by=tenant_ctx.user.id)
 
     job = await _make_job(db, tenant_id)
-    job = await TenantRestoreService.extract_tenant_data(
-        db, tenant_id, job.id, recovery_session=db
-    )
+    job = await TenantRestoreService.extract_tenant_data(db, tenant_id, job.id, recovery_session=db)
 
     assert job.status == TenantRestoreStatus.VALIDATING.value
     staged = job.extraction_results["customers"]
@@ -114,9 +112,7 @@ async def test_execute_revives_rows_and_writes_audit_and_outbox(
     )
 
     job = await _make_job(db, tenant_id)
-    job = await TenantRestoreService.extract_tenant_data(
-        db, tenant_id, job.id, recovery_session=db
-    )
+    job = await TenantRestoreService.extract_tenant_data(db, tenant_id, job.id, recovery_session=db)
     job = await TenantRestoreService.validate_against_current(db, tenant_id, job.id)
 
     assert job.status == TenantRestoreStatus.RESTORING.value
@@ -155,9 +151,7 @@ async def test_execute_revives_rows_and_writes_audit_and_outbox(
     event_types = [e.payload["event_type"] for e in events]
     assert "tenant.restore.requested" in event_types
     assert "tenant.restore.completed" in event_types
-    completed = next(
-        e for e in events if e.payload["event_type"] == "tenant.restore.completed"
-    )
+    completed = next(e for e in events if e.payload["event_type"] == "tenant.restore.completed")
     assert completed.meta["aggregate_version"] == 1
     assert completed.payload["results"]["customers"]["restored"] == 1
 
@@ -185,9 +179,7 @@ async def test_validate_conflicts_when_staged_row_is_live_again(
     await _tombstone(db, customer, deleted_by=tenant_ctx.user.id)
 
     job = await _make_job(db, tenant_id)
-    job = await TenantRestoreService.extract_tenant_data(
-        db, tenant_id, job.id, recovery_session=db
-    )
+    job = await TenantRestoreService.extract_tenant_data(db, tenant_id, job.id, recovery_session=db)
     assert str(customer.id) in job.extraction_results["customers"]["ids"]
 
     # Someone revives the row before validation runs.
@@ -218,9 +210,7 @@ async def test_validate_fails_when_target_tenant_is_not_the_job_tenant(
     other_tenant = uuid.uuid4()
     job = await _make_job(db, tenant_id, target_tenant_id=other_tenant)
 
-    job = await TenantRestoreService.extract_tenant_data(
-        db, tenant_id, job.id, recovery_session=db
-    )
+    job = await TenantRestoreService.extract_tenant_data(db, tenant_id, job.id, recovery_session=db)
     # Nothing of ours is visible under the foreign tenant's RLS binding.
     assert job.extraction_results["customers"]["count"] == 0
 
@@ -229,18 +219,13 @@ async def test_validate_fails_when_target_tenant_is_not_the_job_tenant(
     assert job.status == TenantRestoreStatus.FAILED.value
     check = job.validation_results["customers"]
     assert check["conflicts"] >= 1
-    assert any(
-        detail["reason"] == "tenant_mismatch"
-        for detail in check["conflict_details"]
-    )
+    assert any(detail["reason"] == "tenant_mismatch" for detail in check["conflict_details"])
 
     with pytest.raises(ValidationError):
         await TenantRestoreService.execute_restore(db, tenant_id, job.id)
 
 
-async def test_execute_is_refused_before_validation_passes(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_execute_is_refused_before_validation_passes(db: AsyncSession, tenant_ctx) -> None:
     """A fresh PENDING job cannot be executed — validation is the gate."""
     tenant_id = tenant_ctx.tenant_id
     job = await _make_job(db, tenant_id)
@@ -253,25 +238,19 @@ async def test_execute_is_refused_before_validation_passes(
 # ------------------------------------------- m16: fail-fast input gates ---
 
 
-async def test_create_rejects_unknown_entity_types(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_create_rejects_unknown_entity_types(db: AsyncSession, tenant_ctx) -> None:
     """An unsupported entity type fails at CREATION, not mid-extraction."""
     with pytest.raises(ValidationError, match="unsupported entity_types"):
         await _make_job(db, tenant_ctx.tenant_id, entity_types=["customers", "invoices"])
 
 
-async def test_create_rejects_duplicate_entity_types(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_create_rejects_duplicate_entity_types(db: AsyncSession, tenant_ctx) -> None:
     """Duplicates would extract/validate/restore the same table twice."""
     with pytest.raises(ValidationError, match="duplicates"):
         await _make_job(db, tenant_ctx.tenant_id, entity_types=["orders", "orders"])
 
 
-async def test_create_rejects_a_future_backup_point(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_create_rejects_a_future_backup_point(db: AsyncSession, tenant_ctx) -> None:
     """A watermark in the future can never bound a completed deletion."""
     with pytest.raises(ValidationError, match="future"):
         await TenantRestoreService.create_restore_job(
@@ -283,9 +262,7 @@ async def test_create_rejects_a_future_backup_point(
         )
 
 
-async def test_a_naive_backup_point_is_still_checked(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_a_naive_backup_point_is_still_checked(db: AsyncSession, tenant_ctx) -> None:
     """Naive datetimes are read as UTC — a naive future point is rejected too."""
     with pytest.raises(ValidationError, match="future"):
         await TenantRestoreService.create_restore_job(
@@ -306,9 +283,7 @@ async def test_a_naive_backup_point_is_still_checked(
     assert job.status == TenantRestoreStatus.PENDING.value
 
 
-async def test_validate_is_refused_before_extraction(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_validate_is_refused_before_extraction(db: AsyncSession, tenant_ctx) -> None:
     """m16: validate→execute with NO extract used to complete a zero-work
     job and still emit tenant.restore.completed + an audit row."""
     tenant_id = tenant_ctx.tenant_id
@@ -319,11 +294,15 @@ async def test_validate_is_refused_before_extraction(
 
     # The refusal staged no completion trail.
     completed = (
-        await db.execute(
-            select(OutboxEvent).where(
-                OutboxEvent.aggregate_id == job.id,
-                OutboxEvent.payload["event_type"].astext == "tenant.restore.completed",
+        (
+            await db.execute(
+                select(OutboxEvent).where(
+                    OutboxEvent.aggregate_id == job.id,
+                    OutboxEvent.payload["event_type"].astext == "tenant.restore.completed",
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert completed == []

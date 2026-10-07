@@ -132,9 +132,7 @@ class Customer360Service:
                 "created_at": _iso(customer.created_at),
                 "updated_at": _iso(customer.updated_at),
             },
-            "tags": [
-                {"id": str(t.id), "name": t.name, "color": t.color} for t in tags
-            ],
+            "tags": [{"id": str(t.id), "name": t.name, "color": t.color} for t in tags],
             "identities": [
                 {"id": str(i.id), "channel": i.channel, "external_id": i.external_id}
                 for i in identities
@@ -219,9 +217,7 @@ class Customer360Service:
         # statements for a page and could never see a message preview.
         from app.modules.conversations.inbox import InboxQuery
 
-        rows = await InboxQuery.page(
-            session, tenant_id, customer_id=customer_id, limit=limit
-        )
+        rows = await InboxQuery.page(session, tenant_id, customer_id=customer_id, limit=limit)
         return [
             {
                 "id": c["id"],
@@ -269,9 +265,7 @@ class Customer360Service:
         ]
 
     @staticmethod
-    async def _payments(
-        session: AsyncSession, tenant_id: UUID, customer_id: UUID
-    ) -> dict:
+    async def _payments(session: AsyncSession, tenant_id: UUID, customer_id: UUID) -> dict:
         """Money actually collected, refunded, and still owed.
 
         Payments hang off orders (no direct customer FK), so both aggregates
@@ -462,9 +456,7 @@ class Customer360Service:
         payments: dict,
         events: list[CustomerEvent],
     ) -> dict:
-        open_tasks = sum(
-            1 for t in tasks if t.get("status") in ("todo", "in_progress")
-        )
+        open_tasks = sum(1 for t in tasks if t.get("status") in ("todo", "in_progress"))
         unread = sum(int(c.get("unread_count") or 0) for c in conversations)
         last_order_at = max(
             (o.get("created_at") for o in orders if o.get("created_at")),

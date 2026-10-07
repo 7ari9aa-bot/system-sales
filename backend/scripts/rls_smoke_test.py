@@ -59,11 +59,15 @@ async def main() -> int:
         print(f"testing as: {who['current_user']} (bypassrls=false)")
         await conn.execute(
             "INSERT INTO tenants (id, slug, name) VALUES ($1, $2, $3)",
-            uuid.UUID(tenant_a), f"rls-test-a-{tenant_a[:8]}", "RLS Test A",
+            uuid.UUID(tenant_a),
+            f"rls-test-a-{tenant_a[:8]}",
+            "RLS Test A",
         )
         await conn.execute(
             "INSERT INTO tenants (id, slug, name) VALUES ($1, $2, $3)",
-            uuid.UUID(tenant_b), f"rls-test-b-{tenant_b[:8]}", "RLS Test B",
+            uuid.UUID(tenant_b),
+            f"rls-test-b-{tenant_b[:8]}",
+            "RLS Test B",
         )
 
         # 1) no GUC -> INSERT must be rejected
@@ -71,7 +75,9 @@ async def main() -> int:
         try:
             await conn.execute(
                 "INSERT INTO customers (id, tenant_id, name) VALUES ($1, $2, $3)",
-                uuid.uuid4(), uuid.UUID(tenant_a), "NoGUC",
+                uuid.uuid4(),
+                uuid.UUID(tenant_a),
+                "NoGUC",
             )
             results.append(("insert without GUC rejected", FAIL))
         except asyncpg.InsufficientPrivilegeError:
@@ -82,7 +88,9 @@ async def main() -> int:
         try:
             await conn.execute(
                 "INSERT INTO customers (id, tenant_id, name) VALUES ($1, $2, $3)",
-                uuid.uuid4(), uuid.UUID(tenant_b), "CrossTenant",
+                uuid.uuid4(),
+                uuid.UUID(tenant_b),
+                "CrossTenant",
             )
             results.append(("cross-tenant insert rejected", FAIL))
         except asyncpg.InsufficientPrivilegeError:
@@ -93,21 +101,23 @@ async def main() -> int:
         cb = uuid.uuid4()
         await conn.execute(
             "INSERT INTO customers (id, tenant_id, name) VALUES ($1, $2, $3)",
-            ca, uuid.UUID(tenant_a), "TenantA-Customer",
+            ca,
+            uuid.UUID(tenant_a),
+            "TenantA-Customer",
         )
         await set_guc(tenant_b)
         await conn.execute(
             "INSERT INTO customers (id, tenant_id, name) VALUES ($1, $2, $3)",
-            cb, uuid.UUID(tenant_b), "TenantB-Customer",
+            cb,
+            uuid.UUID(tenant_b),
+            "TenantB-Customer",
         )
 
         # 3) GUC=A sees only A
         await set_guc(tenant_a)
         rows = await conn.fetch("SELECT id FROM customers")
         visible = {str(r["id"]) for r in rows}
-        results.append(
-            ("GUC=A sees exactly its row", PASS if visible == {str(ca)} else FAIL)
-        )
+        results.append(("GUC=A sees exactly its row", PASS if visible == {str(ca)} else FAIL))
 
         # 4) cross-tenant SELECT by id -> empty
         row = await conn.fetchrow("SELECT id FROM customers WHERE id = $1", cb)
@@ -117,9 +127,7 @@ async def main() -> int:
         await set_guc(tenant_b)
         rows = await conn.fetch("SELECT id FROM customers")
         visible = {str(r["id"]) for r in rows}
-        results.append(
-            ("GUC=B sees exactly its row", PASS if visible == {str(cb)} else FAIL)
-        )
+        results.append(("GUC=B sees exactly its row", PASS if visible == {str(cb)} else FAIL))
 
         # 6) tenant_users self-discovery: denied with no context, allowed via
         #    app.user_id (how login finds a user's memberships)
@@ -132,9 +140,9 @@ async def main() -> int:
         denied = False
         try:
             await conn.execute(
-                "INSERT INTO tenant_users (tenant_id, user_id, is_default) "
-                "VALUES ($1, $2, false)",
-                uuid.UUID(tenant_a), uid,
+                "INSERT INTO tenant_users (tenant_id, user_id, is_default) VALUES ($1, $2, false)",
+                uuid.UUID(tenant_a),
+                uid,
             )
         except asyncpg.InsufficientPrivilegeError:
             denied = True
@@ -144,9 +152,9 @@ async def main() -> int:
             results.append(("tenant_users insert with no context denied", PASS))
             await conn.execute(f"SET app.user_id = '{uid}'")
             await conn.execute(
-                "INSERT INTO tenant_users (tenant_id, user_id, is_default) "
-                "VALUES ($1, $2, false)",
-                uuid.UUID(tenant_a), uid,
+                "INSERT INTO tenant_users (tenant_id, user_id, is_default) VALUES ($1, $2, false)",
+                uuid.UUID(tenant_a),
+                uid,
             )
             results.append(("tenant_users self-access via app.user_id works", PASS))
     finally:

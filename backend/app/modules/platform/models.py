@@ -43,9 +43,7 @@ class OutboxEvent(Base):
 
     __tablename__ = "outbox_events"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     aggregate_type: Mapped[str] = mapped_column(String(63))  # e.g. "order"
     aggregate_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
     stream: Mapped[str] = mapped_column(String(127))
@@ -72,9 +70,7 @@ class IdempotencyKey(Base):
 
     __tablename__ = "idempotency_keys"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     scope: Mapped[str] = mapped_column(String(63))  # e.g. "webhook:whatsapp"
     key: Mapped[str] = mapped_column(String(255))  # provider event/message id
     request_hash: Mapped[str | None] = mapped_column(String(128))
@@ -94,9 +90,7 @@ class AuditLog(Base):
 
     __tablename__ = "audit_logs"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="SET NULL"), index=True
     )
@@ -147,13 +141,9 @@ class Integration(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
         """§145: raise if the transition is not in the allowed set."""
         allowed = cls._LIFECYCLE_TRANSITIONS.get(from_status, set())
         if to_status not in allowed:
-            raise ValueError(
-                f"illegal channel account transition: {from_status} -> {to_status}"
-            )
+            raise ValueError(f"illegal channel account transition: {from_status} -> {to_status}")
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     provider: Mapped[str] = mapped_column(String(63))  # whatsapp | gmail | sheets | ...
     kind: Mapped[str] = mapped_column(String(31))  # channel | oauth | api_key
     # allowed (§145 lifecycle): pending | connecting | active
@@ -205,9 +195,7 @@ class WebhookEndpoint(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
 
     __tablename__ = "webhooks"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     url: Mapped[str] = mapped_column(Text)
     secret: Mapped[str] = mapped_column(String(255))
     events: Mapped[list[str]] = mapped_column(ARRAY(String(127)))
@@ -217,9 +205,7 @@ class WebhookEndpoint(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
 class WebhookDelivery(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "webhook_deliveries"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     webhook_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("webhooks.id", ondelete="CASCADE"), index=True
     )
@@ -237,9 +223,7 @@ class WebhookDelivery(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
 class Notification(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "notifications"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True
     )
@@ -273,9 +257,7 @@ class NotificationPreference(TenantMixin, TimestampMixin, WorkspaceScopeMixin, B
 
     __tablename__ = "notification_preferences"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
@@ -285,14 +267,10 @@ class NotificationPreference(TenantMixin, TimestampMixin, WorkspaceScopeMixin, B
     quiet_hours_start: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    quiet_hours_end: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    quiet_hours_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
-        UniqueConstraint(
-            "tenant_id", "user_id", "channel", name="uq_notif_prefs_user_channel"
-        ),
+        UniqueConstraint("tenant_id", "user_id", "channel", name="uq_notif_prefs_user_channel"),
     )
 
 
@@ -301,9 +279,7 @@ class Automation(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
 
     __tablename__ = "automations"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text)
     trigger: Mapped[dict] = mapped_column(JSONB)  # {event, filters}
@@ -334,9 +310,7 @@ class WebhookEvent(Base):
     # re-runs it) → dead (budget spent — human hands only: replay/ignore/
     # resolve). ignored/resolved are the terminal DLQ close-outs; the row is
     # NEVER deleted — nothing disappears (§24).
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     provider: Mapped[str] = mapped_column(String(31))  # whatsapp | telegram | stripe | ...
     external_event_id: Mapped[str | None] = mapped_column(String(255))
     # plain column on purpose: no FK, no TenantMixin, no RLS (system ingress)
@@ -364,9 +338,7 @@ class EventLog(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base)
 
     __tablename__ = "event_log"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     event_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
     event_type: Mapped[str] = mapped_column(String(127))
     aggregate_type: Mapped[str] = mapped_column(String(63))
@@ -396,9 +368,7 @@ class ProcessedEvent(Base):
 
     __tablename__ = "processed_events"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     consumer_name: Mapped[str] = mapped_column(String(63))
     event_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
     processed_at: Mapped[datetime] = mapped_column(
@@ -417,9 +387,7 @@ class ScheduledJob(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
 
     __tablename__ = "scheduled_jobs"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     job_type: Mapped[str] = mapped_column(String(63))
     run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     # allowed: queued | processing | completed | failed | retrying | cancelled
@@ -444,9 +412,7 @@ class DeliveryAttempt(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin
 
     __tablename__ = "delivery_attempts"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     message_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("messages.id", ondelete="CASCADE")
     )
@@ -466,9 +432,7 @@ class DeliveryAttempt(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin
         DateTime(timezone=True), nullable=True
     )
 
-    __table_args__ = (
-        Index("ix_delivery_attempts_message", "tenant_id", "message_id"),
-    )
+    __table_args__ = (Index("ix_delivery_attempts_message", "tenant_id", "message_id"),)
 
 
 class InboundMessageDedupe(Base):
@@ -476,9 +440,7 @@ class InboundMessageDedupe(Base):
 
     __tablename__ = "inbound_message_dedupe"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
     channel_account_id: Mapped[str] = mapped_column(String(127))
     external_message_id: Mapped[str] = mapped_column(String(255))
@@ -501,9 +463,7 @@ class SecurityEvent(AppendOnlyCreatedAtMixin, Base):
 
     __tablename__ = "security_events"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     # allowed: login_failure | role_changed | permission_changed | secret_rotated
     #        | api_key_created | webhook_changed | integration_connected
     #        | suspicious_activity | data_export | data_deletion | break_glass
@@ -513,9 +473,7 @@ class SecurityEvent(AppendOnlyCreatedAtMixin, Base):
     details: Mapped[dict] = mapped_column(JSONB, server_default="{}")
     ip: Mapped[str | None] = mapped_column(String(64))
 
-    __table_args__ = (
-        Index("ix_security_events_type_created", "event_type", "created_at"),
-    )
+    __table_args__ = (Index("ix_security_events_type_created", "event_type", "created_at"),)
 
 
 class SecretReference(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
@@ -524,9 +482,7 @@ class SecretReference(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
 
     __tablename__ = "secret_references"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     scope: Mapped[str] = mapped_column(String(63))  # tenant|workspace|system
     provider: Mapped[str] = mapped_column(String(31))
     vault_key: Mapped[str] = mapped_column(String(255))  # vault secret name
@@ -536,9 +492,7 @@ class SecretReference(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     rotated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    __table_args__ = (
-        UniqueConstraint("tenant_id", "provider", "scope", name="uq_secret_ref"),
-    )
+    __table_args__ = (UniqueConstraint("tenant_id", "provider", "scope", name="uq_secret_ref"),)
 
 
 class SecretValue(TenantMixin, AppendOnlyCreatedAtMixin, Base):
@@ -553,18 +507,14 @@ class SecretValue(TenantMixin, AppendOnlyCreatedAtMixin, Base):
 
     __tablename__ = "secret_values"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     vault_key: Mapped[str] = mapped_column(String(255))
     version: Mapped[int] = mapped_column(Integer)
     ciphertext: Mapped[str] = mapped_column(Text)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
-        UniqueConstraint(
-            "tenant_id", "vault_key", "version", name="uq_secret_values_key_version"
-        ),
+        UniqueConstraint("tenant_id", "vault_key", "version", name="uq_secret_values_key_version"),
         Index("ix_secret_values_tenant_key", "tenant_id", "vault_key"),
     )
 
@@ -574,9 +524,7 @@ class FeatureFlag(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
 
     __tablename__ = "feature_flags"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     feature: Mapped[str] = mapped_column(String(127))  # e.g. voice.enabled
     enabled: Mapped[bool] = mapped_column(Boolean, server_default="false")
     workspace_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
@@ -593,9 +541,7 @@ class MetricDefinition(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
 
     __tablename__ = "metric_definitions"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(63))
     definition: Mapped[str] = mapped_column(Text)
     source: Mapped[str] = mapped_column(String(63))
@@ -605,9 +551,7 @@ class MetricDefinition(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     refund_treatment: Mapped[str | None] = mapped_column(String(31))
     version: Mapped[int] = mapped_column(Integer, server_default="1")
 
-    __table_args__ = (
-        UniqueConstraint("tenant_id", "name", "version", name="uq_metric_defs"),
-    )
+    __table_args__ = (UniqueConstraint("tenant_id", "name", "version", name="uq_metric_defs"),)
 
 
 class Job(TenantMixin, TimestampMixin, Base):
@@ -631,9 +575,7 @@ class Job(TenantMixin, TimestampMixin, Base):
 
     __tablename__ = "jobs"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     kind: Mapped[str] = mapped_column(String(63))  # e.g. "import.customers"
     # allowed: queued | processing | completed | failed | retrying | cancelled
     status: Mapped[str] = mapped_column(String(15), server_default="queued")
@@ -663,9 +605,7 @@ class SavedView(TenantMixin, TimestampMixin, Base):
 
     __tablename__ = "saved_views"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255))
     entity: Mapped[str] = mapped_column(String(63))  # customers | orders | inbox
     # filters / sort / columns / grouping / density — opaque to the server,

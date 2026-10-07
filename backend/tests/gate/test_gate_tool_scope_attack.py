@@ -69,9 +69,7 @@ async def _order_of(db, tenant_id, customer_id) -> Order:
     return order
 
 
-async def test_gate_a_bound_tool_read_returns_only_its_own_customers_order(
-    db, tenant_ctx
-) -> None:
+async def test_gate_a_bound_tool_read_returns_only_its_own_customers_order(db, tenant_ctx) -> None:
     """Positive control: the scope is not a blanket denial — the owner reads it."""
     tid = tenant_ctx.tenant_id
     owner = await _customer(db, tid, "Owner")
@@ -81,9 +79,7 @@ async def test_gate_a_bound_tool_read_returns_only_its_own_customers_order(
     assert result["order_id"] == str(order.id)
 
 
-async def test_gate_a_scoped_read_cannot_reach_another_customers_order(
-    db, tenant_ctx
-) -> None:
+async def test_gate_a_scoped_read_cannot_reach_another_customers_order(db, tenant_ctx) -> None:
     """Same tenant, different customer: the foreign order is invisible.
 
     Removing tools.py:384's ``order.customer_id != customer_id`` check makes
@@ -97,9 +93,7 @@ async def test_gate_a_scoped_read_cannot_reach_another_customers_order(
     order = await _order_of(db, tid, victim.id)
 
     with pytest.raises(NotFoundError):
-        await _get_order(
-            db, tid, order_id=order.id, context={"customer_id": str(attacker.id)}
-        )
+        await _get_order(db, tid, order_id=order.id, context={"customer_id": str(attacker.id)})
 
 
 async def test_gate_a_tool_call_with_no_bound_customer_is_refused(db, tenant_ctx) -> None:
@@ -114,9 +108,7 @@ async def test_gate_a_tool_call_with_no_bound_customer_is_refused(db, tenant_ctx
         await _get_customer(db, tid, context={})
 
 
-async def test_gate_create_order_cannot_be_steered_to_another_customer(
-    db, tenant_ctx
-) -> None:
+async def test_gate_create_order_cannot_be_steered_to_another_customer(db, tenant_ctx) -> None:
     """§132: create_order takes NO customer from the model — only the bound one.
 
     The argument schema deliberately omits ``customer_id``; with nothing bound
@@ -134,9 +126,7 @@ async def test_gate_create_order_cannot_be_steered_to_another_customer(
         )
 
 
-async def test_gate_customer_id_is_never_a_model_argument_for_scoped_reads(
-    db, tenant_ctx
-) -> None:
+async def test_gate_customer_id_is_never_a_model_argument_for_scoped_reads(db, tenant_ctx) -> None:
     """The read tools expose no way to name a customer; scope is server-injected."""
     from app.modules.ai.tools import GetCustomerArgs, GetOrderArgs
 
@@ -145,7 +135,5 @@ async def test_gate_customer_id_is_never_a_model_argument_for_scoped_reads(
     # Whatever the model names, the handler returns ONLY the bound customer:
     # the id comes from context, never from a model argument.
     bound = await _customer(db, tenant_ctx.tenant_id, "Bound")
-    result = await _get_customer(
-        db, tenant_ctx.tenant_id, context={"customer_id": str(bound.id)}
-    )
+    result = await _get_customer(db, tenant_ctx.tenant_id, context={"customer_id": str(bound.id)})
     assert result["customer_id"] == str(bound.id)

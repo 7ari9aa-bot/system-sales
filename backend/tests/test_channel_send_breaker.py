@@ -132,9 +132,7 @@ async def test_a_failing_whatsapp_send_trips_the_breaker() -> None:
 
     for _ in range(_THRESHOLD):
         with pytest.raises(httpx.ConnectError):
-            await whatsapp_adapter.send(
-                _direct_credentials(), _outbound(), _client=_unreachable()
-            )
+            await whatsapp_adapter.send(_direct_credentials(), _outbound(), _client=_unreachable())
 
     assert breaker.is_open
 
@@ -150,9 +148,7 @@ async def test_a_rejecting_whatsapp_send_trips_the_breaker() -> None:
 
     for _ in range(_THRESHOLD):
         with pytest.raises(ExternalProviderError):
-            await whatsapp_adapter.send(
-                _direct_credentials(), _outbound(), _client=_failing()
-            )
+            await whatsapp_adapter.send(_direct_credentials(), _outbound(), _client=_failing())
 
     assert breaker.is_open, "a rejecting provider must count against the breaker"
 

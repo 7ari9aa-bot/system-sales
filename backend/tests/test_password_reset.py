@@ -57,17 +57,13 @@ async def test_password_reset_is_single_use_and_revokes_sessions(db) -> None:
 
     await AuthService.request_password_reset(db, email=email)
     reset_row = (
-        await db.execute(
-            select(PasswordResetToken).where(PasswordResetToken.user_id == user.id)
-        )
+        await db.execute(select(PasswordResetToken).where(PasswordResetToken.user_id == user.id))
     ).scalar_one()
     token = email_delivery.get_envelope_store().decrypt(reset_row.encrypted_token).value
     assert reset_row.token_hash == hashlib.sha256(token.encode()).hexdigest()
     assert token not in reset_row.encrypted_token
 
-    await AuthService.reset_password(
-        db, token=token, password="replacement-password-2"
-    )
+    await AuthService.reset_password(db, token=token, password="replacement-password-2")
     await db.refresh(user)
     await db.refresh(reset_row)
     assert verify_password("replacement-password-2", user.password_hash)
@@ -76,8 +72,10 @@ async def test_password_reset_is_single_use_and_revokes_sessions(db) -> None:
     assert reset_row.encrypted_token == ""
 
     refresh_rows = (
-        await db.execute(select(RefreshToken).where(RefreshToken.user_id == user.id))
-    ).scalars().all()
+        (await db.execute(select(RefreshToken).where(RefreshToken.user_id == user.id)))
+        .scalars()
+        .all()
+    )
     assert refresh_rows
     assert all(row.revoked_at is not None for row in refresh_rows)
 
@@ -86,9 +84,7 @@ async def test_password_reset_is_single_use_and_revokes_sessions(db) -> None:
         await get_current_user(_request(), db, f"Bearer {pair.access_token}")
 
     with pytest.raises(ValidationError, match="invalid or expired"):
-        await AuthService.reset_password(
-            db, token=token, password="another-password-3"
-        )
+        await AuthService.reset_password(db, token=token, password="another-password-3")
 
 
 async def test_password_reset_request_does_not_create_rows_for_unknown_email(db) -> None:

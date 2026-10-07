@@ -156,9 +156,7 @@ def test_the_three_new_revisions_exist_and_chain_from_the_head() -> None:
         # are valid, so the guard must read both — a regex that only matches one
         # reports a fork that does not exist.
         rev = re.search(r"^revision:\s*\S+\s*=\s*[\"']([^\"']+)[\"']", src, re.M)
-        down = re.search(
-            r"^down_revision:\s*[^=]+=\s*(?:None|[\"']([0-9a-f]{12})[\"'])", src, re.M
-        )
+        down = re.search(r"^down_revision:\s*[^=]+=\s*(?:None|[\"']([0-9a-f]{12})[\"'])", src, re.M)
         assert rev, f"{path.name}: no parseable `revision` assignment"
         assert down, f"{path.name}: no parseable `down_revision` assignment"
         ids[path.name[:12]] = (rev.group(1), down.group(1) if down.group(1) else None)
@@ -348,9 +346,7 @@ def test_everything_the_tenancy_downgrade_drops_the_upgrade_created() -> None:
     for op_name, args, _kwargs in rec.calls:
         if op_name in {"create_foreign_key", "create_unique_constraint", "create_index"}:
             if args and isinstance(args[0], str):
-                (created_indexes if op_name == "create_index" else created_constraints).add(
-                    args[0]
-                )
+                (created_indexes if op_name == "create_index" else created_constraints).add(args[0])
         if op_name == "add_column":
             assert args[0] in SLICE_TABLES
 
@@ -384,10 +380,7 @@ def test_tenancy_downgrade_removes_the_policy_and_keeps_rls_enabled() -> None:
     assert "DISABLE ROW LEVEL SECURITY" not in sql
 
     dropped_columns = [
-        c
-        for c in rec.calls
-        if c[0] == "drop_column"
-        and c[1] == ("workflow_versions", "tenant_id")
+        c for c in rec.calls if c[0] == "drop_column" and c[1] == ("workflow_versions", "tenant_id")
     ]
     assert dropped_columns, "downgrade must drop the tenant_id column it added"
 
@@ -428,9 +421,7 @@ def test_gin_index_sits_on_every_search_column(table_name: str) -> None:
         for c in rec.calls
         if c[0] == "create_index"
         and c[1][0] == f"ix_{table_name}_search_ts"
-        and c[1][2] == [
-            "search_ts"
-        ]
+        and c[1][2] == ["search_ts"]
         and c[2].get("postgresql_using") == "gin"
     ]
     assert hits, f"no GIN index on {table_name}.search_ts"
@@ -581,8 +572,7 @@ def test_fts_ops_address_tables_by_literal_not_by_loop_variable() -> None:
             offenders.append(f"{attr}() first arg is not a literal: {ast.dump(node)[:60]}")
     assert not offenders, (
         "FTS migration addresses a table through a variable, which makes "
-        "test_every_model_column_is_created_by_a_migration blind to it:\n"
-        + "\n".join(offenders)
+        "test_every_model_column_is_created_by_a_migration blind to it:\n" + "\n".join(offenders)
     )
 
 
@@ -640,9 +630,7 @@ def test_segments_table_exists_and_is_registered_despite_the_empty_revision() ->
 
     empty = VERSIONS_DIR / "24037e2ebc05_segments_table.py"
     tree = ast.parse(empty.read_text(encoding="utf-8"))
-    upgrade = next(
-        n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "upgrade"
-    )
+    upgrade = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "upgrade")
     meaningful = [
         n
         for n in upgrade.body

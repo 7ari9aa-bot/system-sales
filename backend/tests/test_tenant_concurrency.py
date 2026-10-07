@@ -56,9 +56,7 @@ async def test_the_default_gate_is_the_pool_capacity_itself(monkeypatch):
     """The §144 gate sits in front of the DB pool, so its default is DERIVED
     from the pool (pool + overflow), never the old flat 50 — a gate wider
     than the pool let an admitted tenant starve on pool timeouts."""
-    monkeypatch.setattr(
-        "app.core.config.get_settings", lambda: _PoolSettings()
-    )
+    monkeypatch.setattr("app.core.config.get_settings", lambda: _PoolSettings())
 
     governor = TenantConcurrencyGovernor()
     assert governor.concurrency == 22  # 12 + 10, the pool capacity
@@ -67,9 +65,7 @@ async def test_the_default_gate_is_the_pool_capacity_itself(monkeypatch):
 
 
 async def test_an_explicit_tenant_concurrency_overrides_the_derivation(monkeypatch):
-    monkeypatch.setattr(
-        "app.core.config.get_settings", lambda: _ExplicitSettings()
-    )
+    monkeypatch.setattr("app.core.config.get_settings", lambda: _ExplicitSettings())
 
     assert TenantConcurrencyGovernor().concurrency == 7
     # An explicit constructor argument still wins over everything.
@@ -234,18 +230,14 @@ def _concurrency_app(
 
 
 def _token(user_id: uuid.UUID, tenant_id: uuid.UUID) -> str:
-    return create_access_token(
-        str(user_id), {"tenant_id": str(tenant_id), "role": "owner"}
-    )
+    return create_access_token(str(user_id), {"tenant_id": str(tenant_id), "role": "owner"})
 
 
 async def _get(app: FastAPI, *, token: str | None, ip: str):
     headers = {"x-forwarded-for": f"10.0.0.1, {ip}"}
     if token:
         headers["authorization"] = f"Bearer {token}"
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         return await client.get("/api/v1/orders", headers=headers)
 
 
@@ -259,14 +251,10 @@ async def test_tenant_at_capacity_with_full_queue_gets_429_concurrency_tier():
     )
     tenant = uuid.uuid4()
 
-    holder = asyncio.create_task(
-        _get(app, token=_token(uuid.uuid4(), tenant), ip="203.0.113.1")
-    )
+    holder = asyncio.create_task(_get(app, token=_token(uuid.uuid4(), tenant), ip="203.0.113.1"))
     await held.wait()  # request 1 now occupies the single slot
 
-    waiter = asyncio.create_task(
-        _get(app, token=_token(uuid.uuid4(), tenant), ip="203.0.113.2")
-    )
+    waiter = asyncio.create_task(_get(app, token=_token(uuid.uuid4(), tenant), ip="203.0.113.2"))
     await asyncio.sleep(0.05)  # request 2 is queued in the governor
     assert not waiter.done()
 
@@ -280,9 +268,7 @@ async def test_tenant_at_capacity_with_full_queue_gets_429_concurrency_tier():
     assert refused.headers["retry-after"]
 
     gate.set()
-    first, second = await asyncio.wait_for(
-        asyncio.gather(holder, waiter), timeout=2
-    )
+    first, second = await asyncio.wait_for(asyncio.gather(holder, waiter), timeout=2)
     assert first.status_code == 200
     assert second.status_code == 200, "the queued request was admitted on release"
 
@@ -347,14 +333,10 @@ async def test_the_gate_still_fails_closed_when_redis_is_down():
     )
     tenant = uuid.uuid4()
 
-    holder = asyncio.create_task(
-        _get(app, token=_token(uuid.uuid4(), tenant), ip="203.0.113.1")
-    )
+    holder = asyncio.create_task(_get(app, token=_token(uuid.uuid4(), tenant), ip="203.0.113.1"))
     await held.wait()  # request 1 occupies the single slot, Redis is dead
 
-    waiter = asyncio.create_task(
-        _get(app, token=_token(uuid.uuid4(), tenant), ip="203.0.113.2")
-    )
+    waiter = asyncio.create_task(_get(app, token=_token(uuid.uuid4(), tenant), ip="203.0.113.2"))
     await asyncio.sleep(0.05)
     assert not waiter.done()  # queued, not denied — the gate still meters
 

@@ -133,9 +133,7 @@ async def test_inbound_audio_is_queued_for_transcription(db, tenant_ctx) -> None
     assert attachment.transcription_status == "pending"
 
 
-async def test_transcribe_inbound_voice_is_a_noop_without_pending_audio(
-    db, tenant_ctx
-) -> None:
+async def test_transcribe_inbound_voice_is_a_noop_without_pending_audio(db, tenant_ctx) -> None:
     tenant_id = tenant_ctx.tenant_id
     conversation = await _conversation(db, tenant_id)
     message = await ConversationService.add_message(
@@ -197,9 +195,7 @@ async def test_provider_failure_leaves_the_voice_note_delivered_and_marked_faile
     assert attachment.transcription_status == "failed"
 
 
-async def test_already_transcribed_message_does_not_pay_for_it_twice(
-    db, tenant_ctx
-) -> None:
+async def test_already_transcribed_message_does_not_pay_for_it_twice(db, tenant_ctx) -> None:
     tenant_id = tenant_ctx.tenant_id
     conversation = await _conversation(db, tenant_id)
     message = await _voice_note(db, tenant_id, conversation)
@@ -239,9 +235,7 @@ async def _exhaust_budget(db, tenant_id, *, cap: str = "1.00", spent: str = "5.0
     await db.flush()
 
 
-async def test_transcription_is_blocked_when_the_budget_is_exhausted(
-    db, tenant_ctx
-) -> None:
+async def test_transcription_is_blocked_when_the_budget_is_exhausted(db, tenant_ctx) -> None:
     """§36: STT is ALWAYS behind the AI budget gate — transcription costs money.
 
     The gate must be consulted BEFORE the provider call, so an over-budget
@@ -275,13 +269,17 @@ async def test_successful_transcription_is_recorded_as_spend(db, tenant_ctx) -> 
     assert text == TRANSCRIPT
 
     spend = (
-        await db.execute(
-            select(AIUsage.cost).where(
-                AIUsage.tenant_id == tenant_id,
-                AIUsage.period_date >= datetime.now(UTC).date().replace(day=1),
+        (
+            await db.execute(
+                select(AIUsage.cost).where(
+                    AIUsage.tenant_id == tenant_id,
+                    AIUsage.period_date >= datetime.now(UTC).date().replace(day=1),
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert sum(Decimal(c or 0) for c in spend) > Decimal("0")
 
 
@@ -299,9 +297,7 @@ async def _voice_transcript_in_history(db, tenant_ctx, *, transcript: str | None
         attachment.transcription_status = "completed"
         attachment.transcript_text = transcript
     await db.flush()
-    turns, _image_key = await AgentRunner._conversation_context(
-        db, tenant_id, conversation.id
-    )
+    turns, _image_key = await AgentRunner._conversation_context(db, tenant_id, conversation.id)
     return turns
 
 
@@ -341,9 +337,7 @@ async def test_text_message_still_becomes_its_own_body(db, tenant_ctx) -> None:
         channel_message_id=f"wamid-{uuid.uuid4().hex[:12]}",
     )
 
-    history, _image_key = await AgentRunner._conversation_context(
-        db, tenant_id, conversation.id
-    )
+    history, _image_key = await AgentRunner._conversation_context(db, tenant_id, conversation.id)
     assert history[-1] == {"role": "user", "content": "سعر اللون الأزرق؟"}
 
 

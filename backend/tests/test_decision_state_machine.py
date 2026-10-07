@@ -136,9 +136,7 @@ def test_content_hash_is_canonical_json_of_action_and_arguments() -> None:
             ensure_ascii=False,
         )
     )
-    assert (
-        decision_content_hash("order.create", {"sku": "P1", "qty": 2}) == expected
-    )
+    assert decision_content_hash("order.create", {"sku": "P1", "qty": 2}) == expected
 
 
 def test_content_hash_ignores_argument_key_order_but_not_content() -> None:
@@ -207,10 +205,12 @@ class FakeSession:
             return _Result(self.decisions)
         if "from decision_dependencies" in low:
             # the service reads ORM attributes off these rows
-            return _Result([
-                SimpleNamespace(resource_id=r[0], resource_version=r[1], value_digest=r[2])
-                for r in self.dependency_rows
-            ])
+            return _Result(
+                [
+                    SimpleNamespace(resource_id=r[0], resource_version=r[1], value_digest=r[2])
+                    for r in self.dependency_rows
+                ]
+            )
         raise AssertionError(f"unexpected statement: {sql[:160]}")
 
 
@@ -229,9 +229,7 @@ async def test_propose_pins_the_hash_and_the_high_risk_ttl() -> None:
     # V12's 60-second TTL for HIGH/CRITICAL, measured from the mint instant.
     assert decision.expires_at is not None
     assert decision.created_at is not None
-    assert (
-        decision.expires_at - decision.created_at
-    ).total_seconds() == 60
+    assert (decision.expires_at - decision.created_at).total_seconds() == 60
 
     low = await DecisionService.propose(
         FakeSession(), TENANT, action="order.read", risk_level="LOW"
@@ -241,9 +239,7 @@ async def test_propose_pins_the_hash_and_the_high_risk_ttl() -> None:
 
 async def test_propose_validates_the_vocabulary_at_the_door() -> None:
     with pytest.raises(ValidationError):
-        await DecisionService.propose(
-            FakeSession(), TENANT, action="x", risk_level="EXISTENTIAL"
-        )
+        await DecisionService.propose(FakeSession(), TENANT, action="x", risk_level="EXISTENTIAL")
     with pytest.raises(ValidationError):
         await DecisionService.propose(
             FakeSession(), TENANT, action="x", risk_level="LOW", actor_type="ghost"
@@ -332,9 +328,7 @@ async def test_ttl_expiry_blocks_execute_and_expires_a_pending_approval() -> Non
         approval_state="PENDING",
         expires_at=datetime.now(UTC) - timedelta(seconds=1),
     )
-    result = await DecisionService.approve(
-        FakeSession([pending]), TENANT, pending.decision_id
-    )
+    result = await DecisionService.approve(FakeSession([pending]), TENANT, pending.decision_id)
     assert result.decision_status == "EXPIRED"
     assert result.approval_state == "EXPIRED"
 
@@ -431,9 +425,7 @@ async def test_record_dependency_repins_the_snapshot_hash_on_the_decision() -> N
         classification="INTERNAL",
         content_hash=_sha("snapshot"),
     )
-    expected = snapshot_hash_from_rows(
-        [(str(uuid.UUID(int=1)), "91", _sha("v1"))]
-    )
+    expected = snapshot_hash_from_rows([(str(uuid.UUID(int=1)), "91", _sha("v1"))])
     assert decision.dependency_snapshot_hash == expected
     # the write-back is a plain UPDATE on this tenant's row (scoped statement)
     assert any("decisions" in s.lower() for s in session.sql)

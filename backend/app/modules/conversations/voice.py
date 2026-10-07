@@ -264,9 +264,7 @@ class VoiceService:
             )
 
         if attachment.storage_key is None:
-            raise ValidationError(
-                "attachment has no durable storage key — cannot transcribe"
-            )
+            raise ValidationError("attachment has no durable storage key — cannot transcribe")
 
         # Mark as in-progress
         attachment.transcription_status = "pending"

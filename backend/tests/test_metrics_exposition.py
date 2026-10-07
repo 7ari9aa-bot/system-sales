@@ -219,9 +219,7 @@ async def test_a_counter_written_in_one_process_reads_in_another() -> None:
     writer = FakeRedis(decode_responses=True, server=server)
     reader = FakeRedis(decode_responses=True, server=server)
 
-    await metrics.increment(
-        "worker_seconds_total", stream="webhook.events", value=7, redis=writer
-    )
+    await metrics.increment("worker_seconds_total", stream="webhook.events", value=7, redis=writer)
     body = await metrics.render_prometheus(redis=reader)
     assert 'worker_seconds_total{stream="webhook.events"} 7' in body
 
@@ -391,9 +389,7 @@ async def test_a_broken_collector_reports_itself_instead_of_vanishing() -> None:
             return False
 
     fake = FakeRedis(decode_responses=True)
-    body = await metrics.render_prometheus(
-        redis=fake, session_factory=_Exploding()
-    )
+    body = await metrics.render_prometheus(redis=fake, session_factory=_Exploding())
     assert 'metrics_collection_failures_total{collector="outbox"}' in body
     # The promise is that a failed collector publishes NO NUMBERS, not that its
     # metric disappears: the HELP/TYPE preamble is rendered from the catalogue, so
@@ -415,9 +411,7 @@ def route_backends(monkeypatch: pytest.MonkeyPatch):
     fake = FakeRedis(decode_responses=True)
     session = _FakeSession({"n": 0, "age": None})
     monkeypatch.setattr(metrics, "_default_redis", lambda: fake)
-    monkeypatch.setattr(
-        metrics, "_default_session_factory", lambda: _FakeSessionFactory(session)
-    )
+    monkeypatch.setattr(metrics, "_default_session_factory", lambda: _FakeSessionFactory(session))
     return fake
 
 

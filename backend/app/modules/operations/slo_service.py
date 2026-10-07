@@ -318,9 +318,7 @@ async def _ai_availability_compliance(
     result = await session.execute(
         select(
             func.count(AgentRun.id),
-            func.count(AgentRun.id).filter(
-                ~AgentRun.status.in_(("failed", "timeout"))
-            ),
+            func.count(AgentRun.id).filter(~AgentRun.status.in_(("failed", "timeout"))),
         ).where(
             AgentRun.tenant_id == tenant_id,
             AgentRun.created_at >= since,
@@ -480,9 +478,7 @@ async def measure_slo(
     )
 
 
-async def measure_all_slos(
-    session: AsyncSession, tenant_id: uuid.UUID
-) -> list[SLOResult]:
+async def measure_all_slos(session: AsyncSession, tenant_id: uuid.UUID) -> list[SLOResult]:
     """Compute every SLO for the tenant in one call."""
     results: list[SLOResult] = []
     for spec in SLO_DEFINITIONS:

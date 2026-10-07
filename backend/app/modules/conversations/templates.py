@@ -74,9 +74,7 @@ def _validate(data: TemplateInput) -> None:
     if not (data.body_text or "").strip():
         raise ValidationError("template body is required")
     if data.provider not in KNOWN_PROVIDERS:
-        raise ValidationError(
-            f"provider must be one of: {', '.join(sorted(KNOWN_PROVIDERS))}"
-        )
+        raise ValidationError(f"provider must be one of: {', '.join(sorted(KNOWN_PROVIDERS))}")
     if len(data.variables) > MAX_VARIABLES:
         raise ValidationError(f"a template may declare at most {MAX_VARIABLES} variables")
     for var in data.variables:
@@ -100,10 +98,10 @@ class TemplateService:
         if provider:
             stmt = stmt.where(MessageTemplate.provider == provider)
         rows = (
-            await session.execute(
-                stmt.order_by(MessageTemplate.created_at.desc()).limit(limit)
-            )
-        ).scalars().all()
+            (await session.execute(stmt.order_by(MessageTemplate.created_at.desc()).limit(limit)))
+            .scalars()
+            .all()
+        )
         return list(rows)
 
     @staticmethod
@@ -138,9 +136,7 @@ class TemplateService:
             )
         ).scalar_one_or_none()
         if existing is not None:
-            raise ConflictError(
-                "a template with this name and language already exists"
-            )
+            raise ConflictError("a template with this name and language already exists")
         template = MessageTemplate(
             tenant_id=tenant_id,
             name=data.name.strip(),
@@ -195,9 +191,7 @@ class TemplateService:
                 hint = f" (allowed: {', '.join(sorted(allowed))})"
             else:
                 hint = " - archived is terminal"
-            raise ConflictError(
-                f"cannot move a {template.status} template to {target}{hint}"
-            )
+            raise ConflictError(f"cannot move a {template.status} template to {target}{hint}")
         template.status = target
         # The audit row is written for every review step, so history survives
         # later status changes.
@@ -218,9 +212,7 @@ class TemplateService:
     async def submit(
         session: AsyncSession, tenant_id: uuid.UUID, template_id: uuid.UUID
     ) -> MessageTemplate:
-        return await TemplateService._transition(
-            session, tenant_id, template_id, "submitted"
-        )
+        return await TemplateService._transition(session, tenant_id, template_id, "submitted")
 
     @staticmethod
     async def approve(
@@ -265,25 +257,19 @@ class TemplateService:
         session: AsyncSession, tenant_id: uuid.UUID, template_id: uuid.UUID
     ) -> MessageTemplate:
         """Stop using an approved template without losing its approval."""
-        return await TemplateService._transition(
-            session, tenant_id, template_id, "paused"
-        )
+        return await TemplateService._transition(session, tenant_id, template_id, "paused")
 
     @staticmethod
     async def resume(
         session: AsyncSession, tenant_id: uuid.UUID, template_id: uuid.UUID
     ) -> MessageTemplate:
-        return await TemplateService._transition(
-            session, tenant_id, template_id, "approved"
-        )
+        return await TemplateService._transition(session, tenant_id, template_id, "approved")
 
     @staticmethod
     async def archive(
         session: AsyncSession, tenant_id: uuid.UUID, template_id: uuid.UUID
     ) -> MessageTemplate:
-        return await TemplateService._transition(
-            session, tenant_id, template_id, "archived"
-        )
+        return await TemplateService._transition(session, tenant_id, template_id, "archived")
 
 
 __all__ = [

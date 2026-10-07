@@ -65,11 +65,7 @@ def test_the_sweep_enqueues_a_kind_the_job_runner_actually_handles() -> None:
 
 async def _jobs_for(db, tenant_id) -> list[Job]:
     return list(
-        (
-            await db.execute(
-                select(Job).where(Job.tenant_id == tenant_id, Job.kind == HEAVY_KIND)
-            )
-        )
+        (await db.execute(select(Job).where(Job.tenant_id == tenant_id, Job.kind == HEAVY_KIND)))
         .scalars()
         .all()
     )
@@ -96,9 +92,7 @@ async def test_a_pending_run_is_not_doubled_up(db, tenant_ctx) -> None:
 
 async def test_a_finished_run_is_followed_by_a_new_job(db, tenant_ctx) -> None:
     first = await _HANDLERS[SWEEP](db, tenant_ctx.tenant_id, {})
-    job = (
-        await db.execute(select(Job).where(Job.id == uuid.UUID(first["job_id"])))
-    ).scalar_one()
+    job = (await db.execute(select(Job).where(Job.id == uuid.UUID(first["job_id"])))).scalar_one()
     job.status = "completed"
     await db.flush()
 

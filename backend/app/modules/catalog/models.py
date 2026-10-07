@@ -158,9 +158,7 @@ class ProductPrice(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, I
     )
 
 
-class ProductIdentifier(
-    TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, IdMixin, Base
-):
+class ProductIdentifier(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, IdMixin, Base):
     """Append-only scan code on one sellable unit (Commerce Core v1.0 §179).
 
     `type` is the closed vocabulary {gtin, ean, upc, barcode, qr_token,
@@ -187,9 +185,7 @@ class ProductIdentifier(
     )
 
 
-class ProductOption(
-    TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, IdMixin, Base
-):
+class ProductOption(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, IdMixin, Base):
     """One option axis on a product (§179) — e.g. "size", "color"."""
 
     __tablename__ = "product_options"
@@ -206,9 +202,7 @@ class ProductOption(
     )
 
 
-class ProductOptionValue(
-    TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, IdMixin, Base
-):
+class ProductOptionValue(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, IdMixin, Base):
     """One selectable value of an option axis — "M" of "size"."""
 
     __tablename__ = "product_option_values"

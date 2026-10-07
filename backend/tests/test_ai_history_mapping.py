@@ -68,8 +68,7 @@ def test_an_outbound_message_the_customer_never_received_is_not_a_turn() -> None
     rows = [_outbound(body="Your order shipped today.", status="failed")]
 
     assert _turns(rows) == [], (
-        "a send that failed was replayed to the model as something it had "
-        "already told the customer"
+        "a send that failed was replayed to the model as something it had already told the customer"
     )
 
 
@@ -138,9 +137,7 @@ def test_a_customer_turn_is_unaffected_by_its_neighbour_being_a_notice() -> None
         _msg(body="Do you have the blue one in size M?"),
     ]
 
-    assert _turns(rows) == [
-        {"role": "user", "content": "Do you have the blue one in size M?"}
-    ]
+    assert _turns(rows) == [{"role": "user", "content": "Do you have the blue one in size M?"}]
 
 
 # ------------------------------------------------ the duplicated current --
@@ -219,9 +216,7 @@ def test_an_unintelligible_empty_row_stays_out_of_the_prompt() -> None:
 # ------------------------------------------------- the fetched pairing -----
 
 
-async def test_the_fetched_history_deduplicates_the_current_message(
-    db, tenant_ctx
-) -> None:
+async def test_the_fetched_history_deduplicates_the_current_message(db, tenant_ctx) -> None:
     """DB-backed (CI only): the fetch and the mapping have to agree that the
     turn being answered is not also replayed above it."""
     customer = await CustomerService.get_or_create_by_identity(

@@ -84,12 +84,16 @@ def _tx_dict(tx: FinancialTransaction) -> dict:
 async def list_accounts(ctx: TenantCtxDep):
     """List chart of accounts for the tenant."""
     rows = (
-        await ctx.session.execute(
-            select(ChartOfAccount)
-            .where(ChartOfAccount.tenant_id == ctx.tenant_id)
-            .order_by(ChartOfAccount.code)
+        (
+            await ctx.session.execute(
+                select(ChartOfAccount)
+                .where(ChartOfAccount.tenant_id == ctx.tenant_id)
+                .order_by(ChartOfAccount.code)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     return {
         "items": [_account_dict(r) for r in rows],
@@ -163,15 +167,21 @@ async def list_transactions(
     ).scalar_one()
 
     rows = (
-        await ctx.session.execute(
-            select(FinancialTransaction)
-            .where(*conditions)
-            .options(selectinload(FinancialTransaction.entries).selectinload(FinancialEntry.account))
-            .order_by(FinancialTransaction.posted_at.desc())
-            .limit(limit)
-            .offset(offset)
+        (
+            await ctx.session.execute(
+                select(FinancialTransaction)
+                .where(*conditions)
+                .options(
+                    selectinload(FinancialTransaction.entries).selectinload(FinancialEntry.account)
+                )
+                .order_by(FinancialTransaction.posted_at.desc())
+                .limit(limit)
+                .offset(offset)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     return {
         "items": [_tx_dict(r) for r in rows],
@@ -188,16 +198,20 @@ async def list_transaction_entries(
 ):
     """List debits and credits for a specific transaction."""
     rows = (
-        await ctx.session.execute(
-            select(FinancialEntry)
-            .where(
-                FinancialEntry.tenant_id == ctx.tenant_id,
-                FinancialEntry.transaction_id == transaction_id,
+        (
+            await ctx.session.execute(
+                select(FinancialEntry)
+                .where(
+                    FinancialEntry.tenant_id == ctx.tenant_id,
+                    FinancialEntry.transaction_id == transaction_id,
+                )
+                .options(selectinload(FinancialEntry.account))
+                .order_by(FinancialEntry.entry_type.asc())
             )
-            .options(selectinload(FinancialEntry.account))
-            .order_by(FinancialEntry.entry_type.asc())
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return [
         schemas.EntryOut(
             entry_id=e.entry_id,
@@ -215,4 +229,3 @@ async def list_transaction_entries(
 async def get_trial_balance(ctx: TenantCtxDep):
     """Retrieve full trial balance proving ledger debits equal credits."""
     return await FinancialService.get_trial_balance(ctx.session, ctx.tenant_id)
-

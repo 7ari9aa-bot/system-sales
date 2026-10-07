@@ -239,15 +239,19 @@ class OrderService:
             raise NotFoundError(f"order {order_id} not found")
         if with_items:
             items = (
-                await session.execute(
-                    select(OrderItem)
-                    .where(
-                        OrderItem.tenant_id == tenant_id,
-                        OrderItem.order_id == order_id,
+                (
+                    await session.execute(
+                        select(OrderItem)
+                        .where(
+                            OrderItem.tenant_id == tenant_id,
+                            OrderItem.order_id == order_id,
+                        )
+                        .order_by(OrderItem.created_at.asc(), OrderItem.id.asc())
                     )
-                    .order_by(OrderItem.created_at.asc(), OrderItem.id.asc())
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             # Transient, non-mapped attribute — the models declare no
             # relationships; this is the service's eager-load contract.
             order.items = list(items)
@@ -281,9 +285,7 @@ class OrderService:
             # Staff search by the printed number, which they type from memory:
             # a fragment, any case. `like_pattern` and `LIKE_ESCAPE` are a pair —
             # the backslashes only work because the statement names them.
-            stmt = stmt.where(
-                Order.number.ilike(like_pattern(number), escape=LIKE_ESCAPE)
-            )
+            stmt = stmt.where(Order.number.ilike(like_pattern(number), escape=LIKE_ESCAPE))
         if created_from is not None:
             # Both bounds inclusive — a one-day report asks for the same day
             # twice and expects that day's orders.
@@ -292,14 +294,9 @@ class OrderService:
             stmt = stmt.where(Order.created_at <= to_utc_bound(created_to))
         if before_created_at is not None and before_id is not None:
             stmt = stmt.where(
-                tuple_(Order.created_at, Order.id)
-                < tuple_(before_created_at, before_id)
+                tuple_(Order.created_at, Order.id) < tuple_(before_created_at, before_id)
             )
-        stmt = (
-            stmt.order_by(Order.created_at.desc(), Order.id.desc())
-            .limit(limit)
-            .offset(offset)
-        )
+        stmt = stmt.order_by(Order.created_at.desc(), Order.id.desc()).limit(limit).offset(offset)
         return list((await session.execute(stmt)).scalars().all())
 
     @staticmethod
@@ -318,17 +315,21 @@ class OrderService:
         """
         await OrderService.get(session, tenant_id, order_id, with_items=False)
         rows = (
-            await session.execute(
-                select(OrderPayment)
-                .where(
-                    OrderPayment.tenant_id == tenant_id,
-                    OrderPayment.order_id == order_id,
+            (
+                await session.execute(
+                    select(OrderPayment)
+                    .where(
+                        OrderPayment.tenant_id == tenant_id,
+                        OrderPayment.order_id == order_id,
+                    )
+                    .order_by(OrderPayment.created_at.asc(), OrderPayment.id.asc())
+                    .limit(limit)
+                    .offset(offset)
                 )
-                .order_by(OrderPayment.created_at.asc(), OrderPayment.id.asc())
-                .limit(limit)
-                .offset(offset)
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return list(rows)
 
     @staticmethod
@@ -347,19 +348,21 @@ class OrderService:
         """
         await OrderService.get(session, tenant_id, order_id, with_items=False)
         rows = (
-            await session.execute(
-                select(OrderStatusHistory)
-                .where(
-                    OrderStatusHistory.tenant_id == tenant_id,
-                    OrderStatusHistory.order_id == order_id,
+            (
+                await session.execute(
+                    select(OrderStatusHistory)
+                    .where(
+                        OrderStatusHistory.tenant_id == tenant_id,
+                        OrderStatusHistory.order_id == order_id,
+                    )
+                    .order_by(OrderStatusHistory.created_at.asc(), OrderStatusHistory.id.asc())
+                    .limit(limit)
+                    .offset(offset)
                 )
-                .order_by(
-                    OrderStatusHistory.created_at.asc(), OrderStatusHistory.id.asc()
-                )
-                .limit(limit)
-                .offset(offset)
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return list(rows)
 
     @staticmethod
@@ -376,9 +379,7 @@ class OrderService:
         refunds exists.
         """
         order = await OrderService.get(session, tenant_id, order_id, with_items=False)
-        settled, refunded = await OrderService._settled_and_refunded(
-            session, tenant_id, order
-        )
+        settled, refunded = await OrderService._settled_and_refunded(session, tenant_id, order)
         return {
             "order_id": str(order.id),
             "order_status": order.status,
@@ -476,17 +477,13 @@ class OrderService:
         # before reserving anything. Duplicate lines share the fetched rows,
         # and each is still priced for its OWN quantity off the shared ladder.
         fetch_ids = sorted({vid for vid in line_ids if vid is not None})
-        variants = await CatalogService.get_variants_by_ids(
-            session, tenant_id, fetch_ids
-        )
+        variants = await CatalogService.get_variants_by_ids(session, tenant_id, fetch_ids)
         ladders = await CatalogService.price_tiers_for_many(
             session, tenant_id, fetch_ids, currency=currency
         )
 
         prepared: list[tuple[Any, int, Decimal]] = []
-        for item, variant_id, parse_error in zip(
-            items, line_ids, parse_errors, strict=True
-        ):
+        for item, variant_id, parse_error in zip(items, line_ids, parse_errors, strict=True):
             if parse_error is not None:
                 raise ValueError("each item needs a valid variant_id") from parse_error
             # A line whose id parsed (parse_error is None) always has it here.
@@ -506,16 +503,12 @@ class OrderService:
         # the batch this function already needs for the line snapshots, and
         # BEFORE the reserve loop, so a refused cart holds nobody's stock.
         product_ids = {variant.product_id for variant, _q, _p in prepared}
-        products = await CatalogService.get_products_by_ids(
-            session, tenant_id, list(product_ids)
-        )
+        products = await CatalogService.get_products_by_ids(session, tenant_id, list(product_ids))
         for variant, _quantity, _price in prepared:
             product = products.get(variant.product_id)
             refusal = sellable_refusal(None if product is None else product.status)
             if refusal is not None:
-                raise ConflictError(
-                    f"{refusal} (variant {variant.sku or variant.id})"
-                )
+                raise ConflictError(f"{refusal} (variant {variant.sku or variant.id})")
 
         # Reserve first — insufficient stock aborts the whole order. The loop
         # walks variants in VARIANT-ID order, never the customer's line order:
@@ -523,9 +516,7 @@ class OrderService:
         # otherwise deadlock on the FOR UPDATE row locks. The customer's line
         # order is data; the lock order must be a global rule.
         for variant, quantity, _price in sorted(prepared, key=lambda item: item[0].id):
-            await InventoryService.reserve(
-                session, tenant_id, variant.id, warehouse.id, quantity
-            )
+            await InventoryService.reserve(session, tenant_id, variant.id, warehouse.id, quantity)
 
         subtotal = to_money(
             sum((price * quantity for _v, quantity, price in prepared), Decimal("0")),
@@ -628,9 +619,7 @@ class OrderService:
         return order
 
     @staticmethod
-    async def _insert_order(
-        session: AsyncSession, tenant_id: UUID, **values: object
-    ) -> Order:
+    async def _insert_order(session: AsyncSession, tenant_id: UUID, **values: object) -> Order:
         """Insert the order; retry once if the random number collides.
 
         The row is added INSIDE the savepoint so a failed attempt is fully
@@ -647,9 +636,7 @@ class OrderService:
                 return order
             except IntegrityError as exc:
                 last_exc = exc  # number collision — regenerate and retry
-        raise ConflictError(
-            "could not allocate a unique order number"
-        ) from last_exc
+        raise ConflictError("could not allocate a unique order number") from last_exc
 
     # --------------------------------------------------------- cancel ----
 
@@ -725,9 +712,7 @@ class OrderService:
             # `refunds` row exists to reconcile it against the capture.
             # Refunds are recorded through register_refund, which then performs
             # this transition itself.
-            settled, refunded = await OrderService._settled_and_refunded(
-                session, tenant_id, order
-            )
+            settled, refunded = await OrderService._settled_and_refunded(session, tenant_id, order)
             held = net_collected(settled, refunded)
             if held > 0:
                 raise ConflictError(
@@ -735,7 +720,12 @@ class OrderService:
                     "payment(s) before marking the order refunded"
                 )
         await OrderService._transition(
-            session, tenant_id, order, to_status, by_user_id=by_user_id, note=note,
+            session,
+            tenant_id,
+            order,
+            to_status,
+            by_user_id=by_user_id,
+            note=note,
             expected_version=expected_version,  # §17
         )
         return order
@@ -808,9 +798,7 @@ class OrderService:
         )
 
     @staticmethod
-    async def _release_order_stock(
-        session: AsyncSession, tenant_id: UUID, order: Order
-    ) -> None:
+    async def _release_order_stock(session: AsyncSession, tenant_id: UUID, order: Order) -> None:
         """Release every item's reservation at the warehouse the order used.
 
         §140: the balance hold goes back AND the durable reservation rows are
@@ -819,13 +807,17 @@ class OrderService:
         items = getattr(order, "items", None)
         if items is None:
             items = (
-                await session.execute(
-                    select(OrderItem).where(
-                        OrderItem.tenant_id == tenant_id,
-                        OrderItem.order_id == order.id,
+                (
+                    await session.execute(
+                        select(OrderItem).where(
+                            OrderItem.tenant_id == tenant_id,
+                            OrderItem.order_id == order.id,
+                        )
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             order.items = list(items)
 
         warehouse_raw = (order.extra or {}).get("warehouse_id")
@@ -833,17 +825,16 @@ class OrderService:
             warehouse_id = UUID(str(warehouse_raw))
         else:  # legacy order without a recorded warehouse
             from app.modules.inventory.service import InventoryService as _IS
+
             warehouse_id = (await _IS.get_default_warehouse(session, tenant_id)).id
 
         for item in items:
             from app.modules.inventory.service import InventoryService as _IS2
-            await _IS2.release(
-                session, tenant_id, item.variant_id, warehouse_id, item.quantity
-            )
+
+            await _IS2.release(session, tenant_id, item.variant_id, warehouse_id, item.quantity)
         from app.modules.inventory.service import InventoryReservationService as _IRS
-        await _IRS.cancel_for_order(
-            session, tenant_id, order.id
-        )
+
+        await _IRS.cancel_for_order(session, tenant_id, order.id)
 
     # --------------------------------------------------------- payment ----
 
@@ -890,14 +881,11 @@ class OrderService:
         # refunds) plus this capture must not exceed the order total. Summing
         # the payments GROSS counted a refunded amount as still collected, so
         # the refunded part could never be charged again.
-        settled, refunded = await OrderService._settled_and_refunded(
-            session, tenant_id, order
-        )
+        settled, refunded = await OrderService._settled_and_refunded(session, tenant_id, order)
         remaining = order_balance(order.grand_total, settled, refunded)
         if captured > remaining:
             raise ConflictError(
-                f"payment exceeds order balance: remaining={remaining}, "
-                f"requested={captured}"
+                f"payment exceeds order balance: remaining={remaining}, requested={captured}"
             )
 
         payment = OrderPayment(
@@ -916,6 +904,7 @@ class OrderService:
         # §140: a captured payment converts the order's stock reservations
         # into a sale (ACTIVE -> CONVERTED).
         from app.modules.inventory.service import InventoryReservationService as _IRS2
+
         await _IRS2.convert(session, tenant_id, order.id)
 
         # §139: money really arrived, so the saga says so.
@@ -928,9 +917,7 @@ class OrderService:
                 session, tenant_id, order, "confirmed", note=f"paid via {method}"
             )
         # Money arrived, so the customer's worth is recomputed from the rows.
-        await OrderService._recompute_lifetime_value(
-            session, tenant_id, order.id
-        )
+        await OrderService._recompute_lifetime_value(session, tenant_id, order.id)
         return payment
 
     @staticmethod
@@ -952,9 +939,7 @@ class OrderService:
         """
         status = _PAYMENT_PROVIDER_STATUSES.get(provider_status.lower())
         if status is None:
-            raise ValidationError(
-                f"unsupported provider payment status: {provider_status}"
-            )
+            raise ValidationError(f"unsupported provider payment status: {provider_status}")
         # The order lock first (global lock order: order -> payment), so two
         # reconciles on the same order cannot both observe "pending" and both
         # write a pending -> confirmed history row and event.
@@ -993,6 +978,7 @@ class OrderService:
         if status == "captured":
             payment.paid_at = payment.paid_at or _now()
             from app.modules.inventory.service import InventoryReservationService as _IRS3
+
             await _IRS3.convert(session, tenant_id, order.id)
             if OrderService._saga_move(order, "paid"):
                 order.process_state = "paid"
@@ -1005,9 +991,7 @@ class OrderService:
         # turned out captured is a capture), so the customer's worth is
         # recomputed — derived, so a no-op when the status change collected
         # nothing.
-        await OrderService._recompute_lifetime_value(
-            session, tenant_id, order.id
-        )
+        await OrderService._recompute_lifetime_value(session, tenant_id, order.id)
         return payment
 
     @staticmethod
@@ -1026,25 +1010,33 @@ class OrderService:
         """
         cutoff = _now() - timedelta(minutes=stuck_threshold_minutes)
         rows = (
-            await session.execute(
-                select(OrderPayment).where(
-                    OrderPayment.tenant_id == tenant_id,
-                    OrderPayment.status == "unknown",
-                    OrderPayment.created_at <= cutoff,
-                ).limit(50)
+            (
+                await session.execute(
+                    select(OrderPayment)
+                    .where(
+                        OrderPayment.tenant_id == tenant_id,
+                        OrderPayment.status == "unknown",
+                        OrderPayment.created_at <= cutoff,
+                    )
+                    .limit(50)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         results = []
         for payment in rows:
             old_status = payment.status
             payment.status = "failed"
-            results.append({
-                "payment_id": str(payment.id),
-                "order_id": str(payment.order_id),
-                "old_status": old_status,
-                "new_status": "failed",
-            })
+            results.append(
+                {
+                    "payment_id": str(payment.id),
+                    "order_id": str(payment.order_id),
+                    "old_status": old_status,
+                    "new_status": "failed",
+                }
+            )
         if results:
             await session.flush()
         return results
@@ -1071,7 +1063,8 @@ class OrderService:
                     OrderPayment.id == payment_id,
                     OrderPayment.tenant_id == tenant_id,
                     OrderPayment.order_id == order.id,
-                ).with_for_update()
+                )
+                .with_for_update()
             )
         ).scalar_one_or_none()
         if payment is None:
@@ -1079,9 +1072,7 @@ class OrderService:
         # Only captured money can be refunded — refunding a pending/failed
         # intent invented money that was never taken.
         if payment.status not in ("captured", "partially_refunded"):
-            raise ConflictError(
-                f"cannot refund a {payment.status} payment — only captured"
-            )
+            raise ConflictError(f"cannot refund a {payment.status} payment — only captured")
 
         # Quantized BEFORE the cap is checked, so the arithmetic matches the
         # NUMERIC(14,2) rows that will actually be stored.
@@ -1119,9 +1110,7 @@ class OrderService:
         )
         session.add(refund)
         payment.status = (
-            "refunded"
-            if refunded_total + refund_amount >= payment_total
-            else "partially_refunded"
+            "refunded" if refunded_total + refund_amount >= payment_total else "partially_refunded"
         )
         await session.flush()
 
@@ -1135,9 +1124,7 @@ class OrderService:
         # Money went back, so the same derived write lowers the customer's
         # worth — on the order's CURRENT owner, which is what keeps a refund
         # from being charged to whoever held the order when it was paid.
-        await OrderService._recompute_lifetime_value(
-            session, tenant_id, order.id
-        )
+        await OrderService._recompute_lifetime_value(session, tenant_id, order.id)
 
         await add_outbox_event(
             session,
@@ -1186,8 +1173,7 @@ class OrderService:
         )
         if order.status != "processing":
             raise ConflictError(
-                f"cannot ship an order in status '{order.status}' — it must be "
-                "'processing' first"
+                f"cannot ship an order in status '{order.status}' — it must be 'processing' first"
             )
         await OrderService._transition(
             session,
@@ -1211,9 +1197,7 @@ class OrderService:
         return shipment
 
     @staticmethod
-    async def get_shipment(
-        session: AsyncSession, tenant_id: UUID, shipment_id: UUID
-    ) -> Shipment:
+    async def get_shipment(session: AsyncSession, tenant_id: UUID, shipment_id: UUID) -> Shipment:
         shipment = (
             await session.execute(
                 select(Shipment).where(
@@ -1236,17 +1220,21 @@ class OrderService:
         offset: int = 0,
     ) -> list[Shipment]:
         rows = (
-            await session.execute(
-                select(Shipment)
-                .where(
-                    Shipment.tenant_id == tenant_id,
-                    Shipment.order_id == order_id,
+            (
+                await session.execute(
+                    select(Shipment)
+                    .where(
+                        Shipment.tenant_id == tenant_id,
+                        Shipment.order_id == order_id,
+                    )
+                    .order_by(Shipment.created_at.asc(), Shipment.id.asc())
+                    .limit(limit)
+                    .offset(offset)
                 )
-                .order_by(Shipment.created_at.asc(), Shipment.id.asc())
-                .limit(limit)
-                .offset(offset)
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return list(rows)
 
     @staticmethod
@@ -1309,9 +1297,7 @@ class OrderService:
                 session,
                 tenant_id,
                 order.id,
-                reason=(
-                    "delivery_failed" if new_status == "failed" else "customer_return"
-                ),
+                reason=("delivery_failed" if new_status == "failed" else "customer_return"),
                 by_user_id=by_user_id,
             )
         await session.flush()
@@ -1339,9 +1325,7 @@ class OrderService:
         staged beside them.
         """
         if shipping_address is None and shipping_method is None:
-            raise ValidationError(
-                "nothing to change: pass shipping_address and/or shipping_method"
-            )
+            raise ValidationError("nothing to change: pass shipping_address and/or shipping_method")
         order = await OrderService.get(
             session, tenant_id, order_id, with_items=False, for_update=True
         )
@@ -1409,9 +1393,7 @@ class OrderService:
                 "shipping_address": order.shipping_address,
                 "previous_shipping_address": before["shipping_address"],
                 "shipping_method": (order.extra or {}).get("shipping_method"),
-                "changed_by_user_id": (
-                    str(by_user_id) if by_user_id is not None else None
-                ),
+                "changed_by_user_id": (str(by_user_id) if by_user_id is not None else None),
             },
             # §153: the order row's real post-mutation version — never a literal.
             aggregate_version=order.version,
@@ -1459,9 +1441,7 @@ class OrderService:
             session, tenant_id, order_id, with_items=False, for_update=True
         )
         current = order.process_state or "created"
-        require_transition(
-            _PROCESS_TRANSITIONS, current, new_state, noun="saga transition"
-        )
+        require_transition(_PROCESS_TRANSITIONS, current, new_state, noun="saga transition")
         order.process_state = new_state
         await session.flush()
         return order
@@ -1500,10 +1480,7 @@ class OrderService:
             "rejected": "rejected",
         }
         params.update(
-            {
-                f"collected_{i}": status
-                for i, status in enumerate(COLLECTED_PAYMENT_STATUSES)
-            }
+            {f"collected_{i}": status for i, status in enumerate(COLLECTED_PAYMENT_STATUSES)}
         )
         await session.execute(
             text(
@@ -1572,6 +1549,7 @@ class OrderService:
 
 # ------------------------------------------- §137 read models ----
 
+
 class OrderListQuery:
     """§137: read-optimized order list query.
 
@@ -1603,4 +1581,3 @@ class OrderListQuery:
 
         rows = (await session.execute(text(sql), params)).all()
         return [dict(r._mapping) for r in rows]
-

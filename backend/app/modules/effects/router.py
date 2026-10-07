@@ -82,20 +82,22 @@ async def list_effects(
         conditions.append(EffectLedger.status == status)
 
     total = (
-        await ctx.session.execute(
-            select(func.count(EffectLedger.effect_id)).where(*conditions)
-        )
+        await ctx.session.execute(select(func.count(EffectLedger.effect_id)).where(*conditions))
     ).scalar_one()
 
     rows = (
-        await ctx.session.execute(
-            select(EffectLedger)
-            .where(*conditions)
-            .order_by(EffectLedger.created_at.desc())
-            .limit(limit)
-            .offset(offset)
+        (
+            await ctx.session.execute(
+                select(EffectLedger)
+                .where(*conditions)
+                .order_by(EffectLedger.created_at.desc())
+                .limit(limit)
+                .offset(offset)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     return {
         "items": [_effect_dict(row) for row in rows],

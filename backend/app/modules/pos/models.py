@@ -48,9 +48,7 @@ class PosRegister(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, Bas
     )
     is_active: Mapped[bool] = mapped_column(Boolean, server_default="true")
 
-    __table_args__ = (
-        UniqueConstraint("tenant_id", "code", name="uq_pos_registers_tenant_code"),
-    )
+    __table_args__ = (UniqueConstraint("tenant_id", "code", name="uq_pos_registers_tenant_code"),)
 
 
 class PosSession(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, Base):
@@ -81,9 +79,7 @@ class PosSession(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, Base
     closed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    closed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         Index(
@@ -96,9 +92,7 @@ class PosSession(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, Base
     )
 
 
-class PosCashMovement(
-    TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, IdMixin, Base
-):
+class PosCashMovement(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, IdMixin, Base):
     """Append-only cash ledger for one session (§189).
 
     direction `in` books money into the drawer, `out` removes it. The
@@ -118,9 +112,7 @@ class PosCashMovement(
     reason: Mapped[str] = mapped_column(String(31))
     amount: Mapped[Decimal] = mapped_column(MONEY)
     reference_type: Mapped[str | None] = mapped_column(String(31), nullable=True)
-    reference_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True
-    )
+    reference_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
@@ -134,9 +126,7 @@ class PosCashMovement(
     )
 
 
-class PosReceipt(
-    TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, IdMixin, Base
-):
+class PosReceipt(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, IdMixin, Base):
     """One receipt per POS sale — the human-facing artifact of one order."""
 
     __tablename__ = "pos_receipts"

@@ -158,9 +158,7 @@ async def test_refresh_accepts_the_cookie_when_the_body_is_empty(
     assert {"access_token", "refresh_token"} <= set(refreshed.json())
 
 
-async def test_switch_tenant_uses_the_refresh_cookie_fallback(
-    db, app_sessions_on_test_connection
-):
+async def test_switch_tenant_uses_the_refresh_cookie_fallback(db, app_sessions_on_test_connection):
     """The refresh cookie (path=/api/v1/auth) also covers /auth/switch-tenant.
 
     Same token-supply contract as refresh and logout: the body wins, the
@@ -175,9 +173,7 @@ async def test_switch_tenant_uses_the_refresh_cookie_fallback(
     email, password = await _register(db, app_sessions_on_test_connection, uuid.uuid4().hex[:8])
     client = _client()
     async with client:
-        login = await client.post(
-            "/api/v1/auth/login", json={"email": email, "password": password}
-        )
+        login = await client.post("/api/v1/auth/login", json={"email": email, "password": password})
         old_refresh = login.json()["refresh_token"]
         me = await client.get("/api/v1/auth/me")
         tenant_id = me.json()["tenants"][0]["id"]
@@ -197,13 +193,16 @@ async def test_switch_tenant_uses_the_refresh_cookie_fallback(
     assert f"path={auth_cookies.REFRESH_COOKIE_PATH}" in refresh_header
     # the presented (login) family was rotated: its row is revoked
     rows = (
-        await db.execute(
-            select(RefreshToken).where(
-                RefreshToken.token_hash
-                == hashlib.sha256(old_refresh.encode()).hexdigest()
+        (
+            await db.execute(
+                select(RefreshToken).where(
+                    RefreshToken.token_hash == hashlib.sha256(old_refresh.encode()).hexdigest()
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert rows, "the login pair's refresh row must exist"
     assert all(row.revoked_at is not None for row in rows)
 
@@ -227,9 +226,7 @@ async def test_cookie_post_with_the_matching_header_passes_the_gate(
     email, password = await _register(db, app_sessions_on_test_connection, uuid.uuid4().hex[:8])
     client = _client()
     async with client:
-        login = await client.post(
-            "/api/v1/auth/login", json={"email": email, "password": password}
-        )
+        login = await client.post("/api/v1/auth/login", json={"email": email, "password": password})
         # read the CSRF value from the login response's Set-Cookie header —
         # the same string the frontend JS would read from document.cookie.
         csrf_pair = _set_cookie_for(login, auth_cookies.CSRF_COOKIE).split(";", 1)[0]
@@ -248,9 +245,7 @@ async def test_cookie_post_with_the_matching_header_passes_the_gate(
     assert "csrf" not in attempt.text.lower()
 
 
-async def test_cookie_post_with_a_mismatched_header_is_refused(
-    db, app_sessions_on_test_connection
-):
+async def test_cookie_post_with_a_mismatched_header_is_refused(db, app_sessions_on_test_connection):
     email, password = await _register(db, app_sessions_on_test_connection, uuid.uuid4().hex[:8])
     client = _client()
     async with client:

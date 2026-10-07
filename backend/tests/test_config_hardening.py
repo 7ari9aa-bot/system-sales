@@ -116,9 +116,7 @@ def test_whitespace_padded_wildcard_is_still_a_wildcard() -> None:
 
 
 def test_an_explicit_origin_list_is_accepted() -> None:
-    settings = _build(
-        "staging", cors_origins="https://a.example.com,https://b.example.com"
-    )
+    settings = _build("staging", cors_origins="https://a.example.com,https://b.example.com")
     assert settings.is_secure_environment is True
 
 
@@ -134,9 +132,7 @@ def test_secure_environment_requires_configured_password_reset_delivery() -> Non
 
 
 def test_secure_environment_requires_durable_media_storage() -> None:
-    with pytest.raises(
-            ValidationError, match="durable object storage must be configured"
-        ):
+    with pytest.raises(ValidationError, match="durable object storage must be configured"):
         _build(
             "production",
             s3_endpoint="",
@@ -213,8 +209,7 @@ def test_debug_outside_development_warns_but_does_not_block_startup(
 
     assert settings.debug is True
     assert any(
-        "debug_enabled_in_secure_environment" in record.message
-        for record in caplog.records
+        "debug_enabled_in_secure_environment" in record.message for record in caplog.records
     ), "debug outside development must be reported"
 
 
@@ -224,9 +219,7 @@ def test_debug_off_outside_development_is_silent(
     with caplog.at_level(logging.WARNING, logger="app.core.config"):
         _build("staging", debug=False)
 
-    assert not [
-        r for r in caplog.records if "debug_enabled_in_secure_environment" in r.message
-    ]
+    assert not [r for r in caplog.records if "debug_enabled_in_secure_environment" in r.message]
 
 
 # ------------------------- JWT pinning, rotation secret, proxy hop count ----
@@ -331,17 +324,13 @@ def test_an_unset_environment_with_insecure_defaults_refuses_to_start(
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 
 
-def _run(
-    args: list[str], *, env: dict[str, str] | None = None
-) -> subprocess.CompletedProcess[str]:
+def _run(args: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     """Run in a fresh interpreter with ENVIRONMENT and JWT_SECRET removed.
 
     Removed rather than set: the behaviour under test is what happens when an
     operator has NOT stated the environment.
     """
-    child = {
-        k: v for k, v in os.environ.items() if k not in {"ENVIRONMENT", "JWT_SECRET"}
-    }
+    child = {k: v for k, v in os.environ.items() if k not in {"ENVIRONMENT", "JWT_SECRET"}}
     child["PYTHONPATH"] = str(BACKEND_ROOT)
     if env:
         child.update(env)
@@ -394,10 +383,7 @@ def test_an_ops_script_without_an_environment_says_what_to_set() -> None:
 
     assert result.returncode == 2, result.stdout + result.stderr
     assert "cannot load application settings" in result.stdout
-    assert "ENVIRONMENT=production" in result.stdout, (
-        "the message must say which variable to set"
-    )
+    assert "ENVIRONMENT=production" in result.stdout, "the message must say which variable to set"
     assert "Traceback (most recent call last)" not in result.stdout + result.stderr, (
         "an operator must get instructions, not a stack trace"
     )
-

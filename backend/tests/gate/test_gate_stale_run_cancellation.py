@@ -141,9 +141,7 @@ async def test_gate_a_second_run_cannot_enter_a_conversation_being_processed(
         # A committed -> the xact lock is gone -> the deferred run is admitted.
         async with _tx(engine, tid) as session_c:
             async with conversation_lease(session_c, conv_id):
-                passed = (
-                    await session_c.execute(text("SELECT 1"))
-                ).scalar_one()
+                passed = (await session_c.execute(text("SELECT 1"))).scalar_one()
         assert passed == 1, "the lease was never released after the first run committed"
     finally:
         await _cleanup(engine, tid)

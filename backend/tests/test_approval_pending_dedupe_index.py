@@ -62,10 +62,7 @@ from app.modules.ai.models import ApprovalRequest
 
 BACKEND = Path(__file__).resolve().parent.parent
 MIGRATION_PATH = (
-    BACKEND
-    / "migrations"
-    / "versions"
-    / "e6f7a8b9c0d1_approval_pending_dedupe_index.py"
+    BACKEND / "migrations" / "versions" / "e6f7a8b9c0d1_approval_pending_dedupe_index.py"
 )
 
 #: The head this revision must extend. An applied revision is immutable, so a
@@ -335,9 +332,7 @@ class _DrvError(Exception):
 
 
 def _integrity(pgcode: str) -> IntegrityError:
-    return IntegrityError(
-        "INSERT INTO approval_requests DEFAULT VALUES", {}, _DrvError(pgcode)
-    )
+    return IntegrityError("INSERT INTO approval_requests DEFAULT VALUES", {}, _DrvError(pgcode))
 
 
 async def test_duplicate_pending_key_returns_the_winner_not_a_500() -> None:

@@ -24,9 +24,7 @@ from app.modules.ai.agents.customer.vision.indexer import index_product_images
 
 
 async def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Embed approved product images for one tenant."
-    )
+    parser = argparse.ArgumentParser(description="Embed approved product images for one tenant.")
     parser.add_argument("tenant_id", type=uuid.UUID)
     parser.add_argument("--batch-size", type=int, default=16)
     args = parser.parse_args()
@@ -37,9 +35,7 @@ async def main() -> int:
     )
     factory = session_factory()
     async with factory() as session:
-        stats = await index_product_images(
-            session, args.tenant_id, batch_size=args.batch_size
-        )
+        stats = await index_product_images(session, args.tenant_id, batch_size=args.batch_size)
         await session.commit()
     print(f"indexed: {stats['indexed']} image(s) in {stats['batches']} batch(es)")
     return 0

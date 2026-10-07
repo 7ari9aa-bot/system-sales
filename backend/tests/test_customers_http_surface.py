@@ -96,9 +96,7 @@ NO_BODY_ROUTES: frozenset[str] = frozenset(
 #: accidental ungated addition can never hide behind the exemption.
 #: The OAuth callback's authorization is the 10-minute signed state JWT minted
 #: under settings:write at start-time; the route reads no tenant data.
-_PERMISSION_EXEMPT: frozenset[str] = frozenset(
-    {"GET /integrations/meta/oauth/callback"}
-)
+_PERMISSION_EXEMPT: frozenset[str] = frozenset({"GET /integrations/meta/oauth/callback"})
 
 
 GATED_READS: dict[str, str] = {
@@ -461,8 +459,7 @@ def test_every_money_field_of_the_customers_surface_is_a_string() -> None:
                 offenders.append(f"  {name}.{field}: type={prop.get('type')} (want string)")
     assert not offenders, (
         "money must leave as str(Decimal) (§47) — these fields are not typed as "
-        "strings, so a client may parse them as a float and lose the cent:\n"
-        + "\n".join(offenders)
+        "strings, so a client may parse them as a float and lose the cent:\n" + "\n".join(offenders)
     )
 
 

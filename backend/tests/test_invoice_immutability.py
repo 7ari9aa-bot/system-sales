@@ -85,9 +85,7 @@ class _RecordingOp:
 
 def _load_migration() -> tuple[object, list[str]]:
     captured: list[str] = []
-    spec = importlib.util.spec_from_file_location(
-        "invoice_immutability_migration", MIGRATION_PATH
-    )
+    spec = importlib.util.spec_from_file_location("invoice_immutability_migration", MIGRATION_PATH)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -158,8 +156,7 @@ async def _bare_tenant(db: AsyncSession) -> uuid.UUID:
     tenant_id = uuid.uuid4()
     await db.execute(
         text(
-            "INSERT INTO tenants (id, slug, name) "
-            "VALUES (:id, :slug, 'Immutable snapshot tenant')"
+            "INSERT INTO tenants (id, slug, name) VALUES (:id, :slug, 'Immutable snapshot tenant')"
         ),
         {"id": tenant_id, "slug": f"inv-{tenant_id.hex[:12]}"},
     )
@@ -183,15 +180,12 @@ async def test_the_database_refuses_an_update_of_a_closed_invoice(
     with pytest.raises(DBAPIError) as exc:
         async with db.begin_nested():
             await db.execute(
-                text(
-                    "UPDATE invoices SET total = 999.99, status = 'void' WHERE id = :id"
-                ),
+                text("UPDATE invoices SET total = 999.99, status = 'void' WHERE id = :id"),
                 {"id": invoice.id},
             )
 
     assert GUARD_MESSAGE in str(exc.value), (
-        "the UPDATE was refused by something other than the immutability trigger: "
-        f"{exc.value}"
+        f"the UPDATE was refused by something other than the immutability trigger: {exc.value}"
     )
 
     row = (
@@ -211,19 +205,14 @@ async def test_the_database_refuses_a_delete_of_a_closed_invoice(
 
     with pytest.raises(DBAPIError) as exc:
         async with db.begin_nested():
-            await db.execute(
-                text("DELETE FROM invoices WHERE id = :id"), {"id": invoice.id}
-            )
+            await db.execute(text("DELETE FROM invoices WHERE id = :id"), {"id": invoice.id})
 
     assert GUARD_MESSAGE in str(exc.value), (
-        "the DELETE was refused by something other than the immutability trigger: "
-        f"{exc.value}"
+        f"the DELETE was refused by something other than the immutability trigger: {exc.value}"
     )
 
     remaining = (
-        await db.execute(
-            text("SELECT count(*) FROM invoices WHERE id = :id"), {"id": invoice.id}
-        )
+        await db.execute(text("SELECT count(*) FROM invoices WHERE id = :id"), {"id": invoice.id})
     ).scalar_one()
     assert remaining == 1, "a frozen snapshot was deleted"
 
@@ -231,9 +220,7 @@ async def test_the_database_refuses_a_delete_of_a_closed_invoice(
 # ------------------------------------- and everything legitimate still works
 
 
-async def test_close_period_still_writes_a_snapshot(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_close_period_still_writes_a_snapshot(db: AsyncSession, tenant_ctx) -> None:
     """The guard is UPDATE/DELETE only — the INSERT path must be untouched."""
     invoice = await _closed_invoice(db, tenant_ctx.tenant_id)
 
@@ -296,9 +283,7 @@ async def test_an_invoice_without_a_period_still_moves_through_its_lifecycle(
     )
 
     db.expire_all()
-    reread = (
-        await db.execute(select(Invoice).where(Invoice.id == draft_id))
-    ).scalar_one()
+    reread = (await db.execute(select(Invoice).where(Invoice.id == draft_id))).scalar_one()
     assert reread.status == "issued"
     assert reread.issued_at is not None
 
@@ -316,13 +301,9 @@ async def test_deleting_a_tenant_still_removes_its_frozen_snapshots(
     tenant_id = await _bare_tenant(db)
     invoice = await _closed_invoice(db, tenant_id)
 
-    await db.execute(
-        text("DELETE FROM tenants WHERE id = :id"), {"id": tenant_id}
-    )
+    await db.execute(text("DELETE FROM tenants WHERE id = :id"), {"id": tenant_id})
 
     remaining = (
-        await db.execute(
-            text("SELECT count(*) FROM invoices WHERE id = :id"), {"id": invoice.id}
-        )
+        await db.execute(text("SELECT count(*) FROM invoices WHERE id = :id"), {"id": invoice.id})
     ).scalar_one()
     assert remaining == 0

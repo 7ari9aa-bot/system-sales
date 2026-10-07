@@ -86,9 +86,7 @@ class EmailAdapter(ChannelAdapter):
             prefix = "Bearer "
             if not provided.startswith(prefix):
                 return False
-            return hmac.compare_digest(
-                provided[len(prefix) :].encode(), secret.encode()
-            )
+            return hmac.compare_digest(provided[len(prefix) :].encode(), secret.encode())
         if self._provider == "mailgun":
             # Mailgun-style: HMAC-SHA256 over the raw body, hex-encoded in a
             # signature header. Compared WITHOUT any prefix, byte-wise.
@@ -191,9 +189,7 @@ class EmailAdapter(ChannelAdapter):
             "Content-Type": "application/json",
         }
         payload = {
-            "personalizations": [
-                {"to": [{"email": message.customer_ref}]}
-            ],
+            "personalizations": [{"to": [{"email": message.customer_ref}]}],
             "from": {"email": from_email},
             "subject": message.meta.get("subject", "Message"),
             "content": [
@@ -248,9 +244,7 @@ class EmailAdapter(ChannelAdapter):
             # configuration failure, not a crash.
             domain = (from_email or "").rpartition("@")[2]
             if not domain:
-                raise ExternalProviderError(
-                    "email integration missing a from_email with a domain"
-                )
+                raise ExternalProviderError("email integration missing a from_email with a domain")
             return f"https://api.mailgun.net/v3/{domain}/messages"
         raise ExternalProviderError(f"unknown email provider: {self._provider}")
 

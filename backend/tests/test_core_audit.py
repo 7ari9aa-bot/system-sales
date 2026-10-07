@@ -29,9 +29,7 @@ def _row_query(resource_id: str):
     return sa.select(AuditLog).where(AuditLog.resource_id == resource_id)
 
 
-async def test_write_audit_row_persists_columns_and_lineage(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_write_audit_row_persists_columns_and_lineage(db: AsyncSession, tenant_ctx) -> None:
     req = request_id_contextvar.set("req-core")
     cor = correlation_id_contextvar.set("cor-core")
     kind = actor_kind_contextvar.set("ai")
@@ -85,9 +83,7 @@ async def test_write_audit_row_defaults_source_human(db: AsyncSession, tenant_ct
     assert row.correlation_id is None
 
 
-async def test_write_audit_row_none_jsonb_stays_sql_null(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_write_audit_row_none_jsonb_stays_sql_null(db: AsyncSession, tenant_ctx) -> None:
     """A None before/after must be SQL NULL, not the JSON literal ``"null"``.
 
     The ORM JSON type turned a Python ``None`` into a NULL column for free; on a

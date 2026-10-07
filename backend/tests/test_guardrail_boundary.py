@@ -111,9 +111,7 @@ async def test_an_ai_message_with_pii_or_injection_is_refused(
     conversation = await _conversation(db, tenant_ctx.tenant_id)
 
     with pytest.raises(OutboundBlockedError) as exc:
-        await _send(
-            db, tenant_ctx.tenant_id, conversation.id, sender_type="ai", body=body
-        )
+        await _send(db, tenant_ctx.tenant_id, conversation.id, sender_type="ai", body=body)
     assert "guardrail" in str(exc.value).lower()
 
 
@@ -127,9 +125,7 @@ async def test_a_clean_ai_message_is_allowed(db: AsyncSession, tenant_ctx):
     assert message.sender_type == "ai"
 
 
-async def test_a_human_agent_is_not_subject_to_the_ai_guardrail(
-    db: AsyncSession, tenant_ctx
-):
+async def test_a_human_agent_is_not_subject_to_the_ai_guardrail(db: AsyncSession, tenant_ctx):
     """The agent typed it deliberately; blocking them would be wrong."""
     conversation = await _conversation(db, tenant_ctx.tenant_id)
 
@@ -152,9 +148,7 @@ async def test_the_blocked_message_is_not_persisted(db: AsyncSession, tenant_ctx
     conversation = await _conversation(db, tenant_ctx.tenant_id)
 
     with pytest.raises(OutboundBlockedError):
-        await _send(
-            db, tenant_ctx.tenant_id, conversation.id, sender_type="ai", body=PII_BODY
-        )
+        await _send(db, tenant_ctx.tenant_id, conversation.id, sender_type="ai", body=PII_BODY)
 
     count = (
         await db.execute(

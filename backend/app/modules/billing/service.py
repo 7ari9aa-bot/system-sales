@@ -149,9 +149,7 @@ class BillingService:
         """Is this a real plan code? Lets a caller probe before ``start_trial``,
         which refuses (NotFoundError) rather than guess a plan."""
         return (
-            await session.execute(
-                select(Plan.id).where(Plan.code == plan_code).limit(1)
-            )
+            await session.execute(select(Plan.id).where(Plan.code == plan_code).limit(1))
         ).scalar_one_or_none() is not None
 
     @staticmethod
@@ -543,9 +541,7 @@ class BillingSnapshotService:
             session, tenant_id, period_start=period_start, period_end=period_end
         )
         if ai_tokens:
-            features[_AI_TOKENS_FEATURE] = (
-                features.get(_AI_TOKENS_FEATURE, Decimal(0)) + ai_tokens
-            )
+            features[_AI_TOKENS_FEATURE] = features.get(_AI_TOKENS_FEATURE, Decimal(0)) + ai_tokens
 
         return PeriodUsage(features=features, ai_cost=ai_cost)
 
@@ -736,14 +732,10 @@ class BillingSnapshotService:
                     "period_end": period_end.isoformat(),
                     "overlaps_invoice_id": str(overlapping.id),
                     "overlaps_period_start": (
-                        overlapping.period_start.isoformat()
-                        if overlapping.period_start
-                        else None
+                        overlapping.period_start.isoformat() if overlapping.period_start else None
                     ),
                     "overlaps_period_end": (
-                        overlapping.period_end.isoformat()
-                        if overlapping.period_end
-                        else None
+                        overlapping.period_end.isoformat() if overlapping.period_end else None
                     ),
                 },
             )
@@ -823,12 +815,8 @@ class BillingSnapshotService:
             "number": invoice.number,
             "status": invoice.status,
             "currency": invoice.currency,
-            "period_start": (
-                invoice.period_start.isoformat() if invoice.period_start else None
-            ),
-            "period_end": (
-                invoice.period_end.isoformat() if invoice.period_end else None
-            ),
+            "period_start": (invoice.period_start.isoformat() if invoice.period_start else None),
+            "period_end": (invoice.period_end.isoformat() if invoice.period_end else None),
             "features": extra.get("snapshot", []),
             "ai_cost": extra.get("ai_cost"),
             # str(), not float(): the money contract is Decimal end to end.

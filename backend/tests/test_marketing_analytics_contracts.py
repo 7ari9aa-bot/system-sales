@@ -217,9 +217,7 @@ async def _post(
         return await client.post(path, json=body)
 
 
-async def _put(
-    session: FakeSession, path: str, body: dict, *, permissions: set[str] | None = None
-):
+async def _put(session: FakeSession, path: str, body: dict, *, permissions: set[str] | None = None):
     async with AsyncClient(
         transport=ASGITransport(app=_app(session, permissions=permissions)), base_url="http://test"
     ) as client:
@@ -901,9 +899,20 @@ async def test_the_overview_payload_survives_its_own_schema(monkeypatch) -> None
     assert response.status_code == 200, response.text
     body = response.json()
     assert {
-        "currency", "timezone", "timezone_source", "since", "until", "gross_revenue",
-        "refunded_amount", "net_revenue", "refund_excess", "orders_count", "gross_aov",
-        "net_aov", "daily_series", "stock",
+        "currency",
+        "timezone",
+        "timezone_source",
+        "since",
+        "until",
+        "gross_revenue",
+        "refunded_amount",
+        "net_revenue",
+        "refund_excess",
+        "orders_count",
+        "gross_aov",
+        "net_aov",
+        "daily_series",
+        "stock",
     } <= set(body), sorted(body)
     assert body["gross_revenue"] == "100.00", body
     assert body["daily_series"][0]["gross_revenue"] == "70.00", body
@@ -1026,9 +1035,7 @@ async def test_the_retention_routes_answer_their_declared_shapes(monkeypatch) ->
     monkeypatch.setattr(retention, "read_policy", no_policy)
     monkeypatch.setattr(analytics_router, "write_audit_row", nothing)
 
-    read = await _get(
-        FakeSession(), "/api/v1/analytics/retention", permissions={"analytics:read"}
-    )
+    read = await _get(FakeSession(), "/api/v1/analytics/retention", permissions={"analytics:read"})
     assert read.status_code == 200, read.text
     written = await _put(
         FakeSession(),
@@ -1071,8 +1078,14 @@ async def test_the_metric_definitions_list_is_typed_and_closed() -> None:
     assert body["next_cursor"] is None
     assert body["items"], "the registry published an empty list, which is not the truth"
     assert {
-        "name", "definition", "source", "filters",
-        "timezone_rule", "currency_rule", "refund_treatment", "version",
+        "name",
+        "definition",
+        "source",
+        "filters",
+        "timezone_rule",
+        "currency_rule",
+        "refund_treatment",
+        "version",
     } == set(body["items"][0])
 
 

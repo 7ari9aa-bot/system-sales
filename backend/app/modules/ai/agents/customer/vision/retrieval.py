@@ -113,9 +113,7 @@ async def retrieve_candidates(
             product_id=row.product_id,
             product_title=row.product_title,
             image_id=row.image_id,
-            image_url=get_storage().resolve_product_image_url(
-                row.image_url, tenant_id=tenant_id
-            ),
+            image_url=get_storage().resolve_product_image_url(row.image_url, tenant_id=tenant_id),
             retrieval_rank=rank,
         )
         for rank, row in enumerate(rows, start=1)

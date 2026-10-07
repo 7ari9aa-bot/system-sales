@@ -29,7 +29,6 @@ from fakeredis import aioredis as fakeredis_aioredis
 from app.core.events.schemas import build_envelope, serialize
 from app.modules.realtime import router as realtime
 
-
 # ------------------------------------------------------------- helpers ------
 
 
@@ -94,9 +93,7 @@ async def test_a_fresh_cursor_passes_through_unchanged() -> None:
     # a burst — the client cursor IS the last id seen and must be consumed
     # exclusively as-is.
     fresh = _next_id(5_000)
-    assert await realtime._build_cursor(fresh, ["message.events"]) == {
-        "message.events": fresh
-    }
+    assert await realtime._build_cursor(fresh, ["message.events"]) == {"message.events": fresh}
 
 
 async def test_an_old_cursor_is_clamped_to_the_retention_floor() -> None:
@@ -151,9 +148,7 @@ async def test_only_the_owning_tenants_events_are_delivered(fake_redis) -> None:
     id_a = await fake_redis.xadd(stream, _bus_fields(tenant_a), id=_next_id(1_000))
     await fake_redis.xadd(stream, _bus_fields(tenant_b), id=_next_id(2_000))
     # An unparseable frame: the gateway drops it fail-closed, never delivers.
-    await fake_redis.xadd(
-        stream, {"payload": b"not-json", "meta": b"{}"}, id=_next_id(3_000)
-    )
+    await fake_redis.xadd(stream, {"payload": b"not-json", "meta": b"{}"}, id=_next_id(3_000))
 
     gen = realtime._event_stream(
         tenant_id=str(tenant_a),
@@ -213,9 +208,7 @@ async def test_an_idle_stream_sends_heartbeats(fake_redis) -> None:
     assert heartbeats >= 1, "the keep-alive heartbeat must fire on idle streams"
 
 
-async def test_a_suspended_workspace_ends_the_stream_with_a_reason(
-    fake_redis, monkeypatch
-) -> None:
+async def test_a_suspended_workspace_ends_the_stream_with_a_reason(fake_redis, monkeypatch) -> None:
     async def _closed(tenant_id: str) -> bool:
         return False
 

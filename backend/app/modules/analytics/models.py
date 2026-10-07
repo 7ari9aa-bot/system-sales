@@ -28,9 +28,7 @@ class AnalysisEvidence(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixi
 
     __tablename__ = "analysis_evidence"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     # Soft reference to ai's agent_runs.id — a plain UUID column, NOT an
     # FK: an FK would force analytics to import ai's ORM (§1.2 forbids the
     # reverse direction; cross-domain values ride as opaque ids, the
@@ -43,9 +41,7 @@ class AnalysisEvidence(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixi
     model: Mapped[str | None] = mapped_column(String(127))
     prompt_version: Mapped[str | None] = mapped_column(String(31))
 
-    __table_args__ = (
-        Index("ix_analysis_evidence_tenant_created", "tenant_id", "created_at"),
-    )
+    __table_args__ = (Index("ix_analysis_evidence_tenant_created", "tenant_id", "created_at"),)
 
 
 class AnalysisFinding(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
@@ -53,9 +49,7 @@ class AnalysisFinding(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin
 
     __tablename__ = "analysis_findings"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     evidence_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("analysis_evidence.id", ondelete="CASCADE"),

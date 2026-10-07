@@ -105,15 +105,11 @@ async def defer_unless_tenant_allows(session, tenant_id, capability: str) -> Non
     from app.modules.identity.service import STATE_POLICIES
 
     state = (
-        await session.execute(
-            select(Tenant.lifecycle_state).where(Tenant.id == tenant_id)
-        )
+        await session.execute(select(Tenant.lifecycle_state).where(Tenant.id == tenant_id))
     ).scalar_one_or_none()
     policy = STATE_POLICIES.get(state) if state else None
     if policy is None or not getattr(policy, capability, False):
-        raise DeferredError(
-            f"tenant is {state or 'unknown'} — {capability} is not available"
-        )
+        raise DeferredError(f"tenant is {state or 'unknown'} — {capability} is not available")
 
 
 def _is_permanent_failure(exc: BaseException) -> bool:
@@ -282,9 +278,7 @@ class StreamWorker:
         try:
             from app.core.metrics import increment
 
-            await increment(
-                "worker_seconds_total", value=units, labels={"stream": self.stream}
-            )
+            await increment("worker_seconds_total", value=units, labels={"stream": self.stream})
         except Exception:  # noqa: BLE001 — accounting must never break handling
             logger.debug("worker.metrics_failed stream=%s", self.stream, exc_info=True)
 
@@ -338,14 +332,18 @@ class StreamWorker:
             if state == _INBOX_CONTESTED:
                 logger.info(
                     "worker.inbox_contended stream=%s consumer=%s id=%s",
-                    self.stream, self.name, dedupe_id,
+                    self.stream,
+                    self.name,
+                    dedupe_id,
                 )
                 await self._count("contested")
                 return
             if state == _INBOX_SEEN:
                 logger.info(
                     "worker.idempotent_skip stream=%s consumer=%s id=%s",
-                    self.stream, self.name, dedupe_id,
+                    self.stream,
+                    self.name,
+                    dedupe_id,
                 )
                 await self._count("skipped")
                 await self._bus.ack(self.stream, self.group, event)
@@ -403,7 +401,9 @@ class StreamWorker:
         except Exception:
             logger.debug(
                 "worker.idempotency_check_failed stream=%s id=%s",
-                self.stream, dedupe_id, exc_info=True,
+                self.stream,
+                dedupe_id,
+                exc_info=True,
             )
             with suppress(Exception):
                 await session.close()  # type: ignore[possibly-undefined]
@@ -417,9 +417,7 @@ class StreamWorker:
         with suppress(Exception):
             await session.close()
 
-    async def _close_inbox(
-        self, session: Any, tx: Any, dedupe_id: str, *, marker: bool
-    ) -> None:
+    async def _close_inbox(self, session: Any, tx: Any, dedupe_id: str, *, marker: bool) -> None:
         """End the claim transaction, atomically with the marker when asked.
 
         marker=True writes the processed_events row INSIDE the claim
@@ -446,7 +444,9 @@ class StreamWorker:
         except Exception:
             logger.debug(
                 "worker.idempotency_write_failed stream=%s id=%s",
-                self.stream, dedupe_id, exc_info=True,
+                self.stream,
+                dedupe_id,
+                exc_info=True,
             )
             with suppress(Exception):
                 await tx.rollback()
@@ -556,9 +556,7 @@ class StreamWorker:
         except (ValidationError, KeyError, TypeError, ValueError):
             # Not a §19 envelope, so the canonical writer cannot stage it.
             # Unreachable for relay-published rows — log loudly, never guess.
-            logger.error(
-                "worker.retry_not_an_envelope stream=%s id=%s", self.stream, event.id
-            )
+            logger.error("worker.retry_not_an_envelope stream=%s id=%s", self.stream, event.id)
             return
 
         original_outbox_id = envelope.meta.get("outbox_id")

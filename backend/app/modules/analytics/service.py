@@ -155,9 +155,7 @@ def _status_sql(values: Sequence[str]) -> str:
 _GROSS_PAYMENT_STATUSES = _status_sql(MetricRegistry.get("revenue").filters["status"])
 # 'approved' is counted as money going back even though only 'processed' is
 # written by the order path today — see refunded_amount for the bucketing rule.
-_REFUND_STATUSES = _status_sql(
-    MetricRegistry.get("refunded_amount").filters["status"]
-)
+_REFUND_STATUSES = _status_sql(MetricRegistry.get("refunded_amount").filters["status"])
 _UNPLACED_ORDER_STATUSES = _status_sql(
     MetricRegistry.get("orders_count").filters["status_excluded"]
 )
@@ -411,9 +409,7 @@ async def revenue_summary(
     }
 
 
-async def _sum_by_bucket(
-    session: AsyncSession, sql: str, params: dict
-) -> dict[date, Decimal]:
+async def _sum_by_bucket(session: AsyncSession, sql: str, params: dict) -> dict[date, Decimal]:
     rows = (await session.execute(text(sql), params)).all()
     return {row.day.date(): _money(row.value) for row in rows}
 

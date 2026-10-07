@@ -50,9 +50,7 @@ class TestSystemEventVisibility:
 
     async def test_admin_guc_reveals_null_system_rows(self, db, tenant_ctx):
         await _seed_security_event(db, None, "admin probe")
-        await db.execute(
-            sa.text("SELECT set_config('app.is_platform_admin', 'true', true)")
-        )
+        await db.execute(sa.text("SELECT set_config('app.is_platform_admin', 'true', true)"))
         await bind_tenant(db, tenant_ctx.tenant_id)
         rows = (
             await db.execute(
@@ -72,10 +70,7 @@ class TestSystemEventVisibility:
         )
         with pytest.raises(Exception, match="row-level security|permission"):
             await db.execute(
-                sa.text(
-                    "UPDATE security_events SET event_type = 'tampered' "
-                    "WHERE tenant_id = :t"
-                ),
+                sa.text("UPDATE security_events SET event_type = 'tampered' WHERE tenant_id = :t"),
                 {"t": str(tenant_ctx.tenant_id)},
             )
 
@@ -85,8 +80,7 @@ class TestPrivilegeHygiene:
         await bind_tenant(db, tenant_ctx.tenant_id)
         await db.execute(
             sa.text(
-                "INSERT INTO customers (id, tenant_id, name) "
-                "VALUES (gen_random_uuid(), :t, 'x')"
+                "INSERT INTO customers (id, tenant_id, name) VALUES (gen_random_uuid(), :t, 'x')"
             ),
             {"t": str(tenant_ctx.tenant_id)},
         )
@@ -112,9 +106,7 @@ class TestLocationGrantTenancy:
 
         other_tenant = uuid.uuid4()
         await db.execute(
-            sa.text(
-                "INSERT INTO tenants (id, slug, name) VALUES (:id, :slug, 'Other')"
-            ),
+            sa.text("INSERT INTO tenants (id, slug, name) VALUES (:id, :slug, 'Other')"),
             {"id": str(other_tenant), "slug": f"other-{uuid.uuid4().hex[:8]}"},
         )
         # locations is RLS-guarded on app.tenant_id — bind the foreign tenant
@@ -144,9 +136,6 @@ class TestLocationGrantTenancy:
         )
         with pytest.raises(Exception, match="row-level security|policy"):
             await db.execute(
-                sa.text(
-                    "INSERT INTO user_location_access (user_id, location_id) "
-                    "VALUES (:u, :l)"
-                ),
+                sa.text("INSERT INTO user_location_access (user_id, location_id) VALUES (:u, :l)"),
                 {"u": str(tenant_ctx.user.id), "l": str(foreign_location.id)},
             )

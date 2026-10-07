@@ -37,8 +37,7 @@ class Event:
 class EventBus(Protocol):
     async def publish(
         self, stream: str, payload: dict[str, Any], meta: dict[str, Any] | None = None
-    ) -> str:
-        ...
+    ) -> str: ...
 
     def consume(
         self,
@@ -46,11 +45,9 @@ class EventBus(Protocol):
         group: str,
         consumer: str,
         block_ms: int | None = None,
-    ) -> AsyncIterator[Event]:
-        ...
+    ) -> AsyncIterator[Event]: ...
 
-    async def ack(self, stream: str, group: str, event: Event) -> None:
-        ...
+    async def ack(self, stream: str, group: str, event: Event) -> None: ...
 
 
 class RedisStreamsBus:

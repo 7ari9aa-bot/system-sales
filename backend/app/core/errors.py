@@ -36,9 +36,7 @@ request_id_contextvar: ContextVar[str | None] = ContextVar("request_id", default
 # §65: correlation id — links HTTP requests to domain events. Generated per
 # request (or honored from x-correlation-id header) and passed to
 # add_outbox_event so every event traces back to the request that caused it.
-correlation_id_contextvar: ContextVar[str | None] = ContextVar(
-    "correlation_id", default=None
-)
+correlation_id_contextvar: ContextVar[str | None] = ContextVar("correlation_id", default=None)
 
 
 class DomainError(Exception):
@@ -172,9 +170,7 @@ def build_error_envelope(
     }
 
 
-def build_error_body(
-    exc: DomainError, request_id: str | None = None
-) -> dict[str, Any]:
+def build_error_body(exc: DomainError, request_id: str | None = None) -> dict[str, Any]:
     """Unified error contract body: ``{error: {code, message, retryable, request_id}}``."""
     return build_error_envelope(
         exc.code, exc.message, retryable=exc.retryable, request_id=request_id

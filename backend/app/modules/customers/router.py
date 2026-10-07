@@ -106,10 +106,7 @@ async def list_customers(
     )
     page, next_cursor = page_slice(rows, limit)
     return {
-        "items": [
-            _customer_summary(c, permission_codes=ctx.permission_codes)
-            for c in page
-        ],
+        "items": [_customer_summary(c, permission_codes=ctx.permission_codes) for c in page],
         "next_cursor": next_cursor,
     }
 
@@ -150,9 +147,7 @@ def _redact_issue_item(item: dict, ctx: TenantContext) -> dict:
     )
 
 
-@router.post(
-    "/customers/{customer_id}/contact-issue/resolve", response_model=schemas.ContactIssue
-)
+@router.post("/customers/{customer_id}/contact-issue/resolve", response_model=schemas.ContactIssue)
 async def resolve_contact_issue(
     customer_id: UUID,
     body: ContactIssueResolution,
@@ -185,9 +180,7 @@ async def resolve_contact_issue(
 async def get_customer(ctx: ReadCtx, customer_id: UUID, response: Response):
     customer = await CustomerService.get(ctx.session, ctx.tenant_id, customer_id)
     tags = await CustomerService.list_tags(ctx.session, ctx.tenant_id, customer_id)
-    identities = await CustomerService.list_identities(
-        ctx.session, ctx.tenant_id, customer_id
-    )
+    identities = await CustomerService.list_identities(ctx.session, ctx.tenant_id, customer_id)
     addresses = await CustomerService.list_addresses(ctx.session, ctx.tenant_id, customer_id)
     notes = await CustomerService.list_notes(ctx.session, ctx.tenant_id, customer_id)
     # G-15: the row's version is the concurrency token. It is exposed in the body
@@ -323,9 +316,6 @@ async def unblock_customer(customer_id: UUID, ctx: WriteCtx):
     return {"id": str(customer.id), "is_blocked": bool(customer.is_blocked)}
 
 
-
-
-
 @router.post("/customers/{customer_id}/archive", response_model=schemas.Archived)
 async def archive_customer(
     customer_id: UUID,
@@ -340,8 +330,6 @@ async def archive_customer(
         reason=body.reason if body else None,
     )
     return {"id": str(customer.id), "deleted_at": customer.deleted_at.isoformat()}
-
-
 
 
 @router.post("/customers/merge", response_model=schemas.CustomerSummary)
@@ -366,8 +354,6 @@ async def merge_customers(
     return _customer_summary(customer, permission_codes=ctx.permission_codes)
 
 
-
-
 @router.get("/customers/{customer_id}/tags", response_model=list[schemas.TagOut])
 async def list_customer_tags(ctx: ReadCtx, customer_id: UUID):
     tags = await CustomerService.list_tags(ctx.session, ctx.tenant_id, customer_id)
@@ -379,9 +365,7 @@ async def list_customer_tags(ctx: ReadCtx, customer_id: UUID):
     status_code=201,
     response_model=schemas.TagOut,
 )
-async def add_customer_tag(
-    customer_id: UUID, body: TagBody, ctx: WriteCtx
-):
+async def add_customer_tag(customer_id: UUID, body: TagBody, ctx: WriteCtx):
     name = body.name.strip()
     if not name:
         raise ValidationError("tag name must not be empty")
@@ -393,13 +377,9 @@ async def add_customer_tag(
     "/customers/{customer_id}/tags/{tag_name}",
     status_code=204,
 )
-async def remove_customer_tag(
-    customer_id: UUID, tag_name: str, ctx: WriteCtx
-):
+async def remove_customer_tag(customer_id: UUID, tag_name: str, ctx: WriteCtx):
     await CustomerService.remove_tag(ctx.session, ctx.tenant_id, customer_id, tag_name)
     return Response(status_code=204)
-
-
 
 
 @router.get("/customers/{customer_id}/notes", response_model=list[schemas.NoteOut])
@@ -421,15 +401,11 @@ async def list_customer_notes(ctx: ReadCtx, customer_id: UUID):
     status_code=201,
     response_model=schemas.NoteCreated,
 )
-async def add_customer_note(
-    customer_id: UUID, body: NoteBody, ctx: WriteCtx
-):
+async def add_customer_note(customer_id: UUID, body: NoteBody, ctx: WriteCtx):
     note = await CustomerService.add_note(
         ctx.session, ctx.tenant_id, customer_id, ctx.user.id, body.body
     )
     return {"id": str(note.id), "body": note.body}
-
-
 
 
 # §145: pre-lifecycle status values and the canonical states the migration
@@ -489,9 +465,7 @@ def _webhook_status(integration: Integration) -> str:
         return "server_setup_required"
     if integration.provider == "telegram":
         connection = (
-            integration.config.get("_connection")
-            if isinstance(integration.config, dict)
-            else None
+            integration.config.get("_connection") if isinstance(integration.config, dict) else None
         )
         if not isinstance(connection, dict) or not connection.get("webhook_configured_at"):
             return "server_setup_required"
@@ -551,8 +525,7 @@ def _integration_output(integration: Integration) -> dict:
         display_name = None
     public_key = (
         config.get("public_key")
-        if integration.provider in {"webchat", "telegram"}
-        and integration.kind == "channel"
+        if integration.provider in {"webchat", "telegram"} and integration.kind == "channel"
         else None
     )
     webhook_url = (
@@ -565,8 +538,7 @@ def _integration_output(integration: Integration) -> dict:
         "provider": integration.provider,
         "kind": integration.kind,
         "status": integration.status,
-        "credentials_verified": bool(verified_at)
-        and integration.status in {"active", "connected"},
+        "credentials_verified": bool(verified_at) and integration.status in {"active", "connected"},
         "display_name": display_name,
         "verified_at": verified_at,
         "webhook_status": _webhook_status(integration),
@@ -694,9 +666,7 @@ async def connect_integration(
         await EntitlementService.ensure_channel_allowed(ctx.session, ctx.tenant_id, provider)
 
     verification_config = (
-        dict(existing.config)
-        if existing and isinstance(existing.config, dict)
-        else {}
+        dict(existing.config) if existing and isinstance(existing.config, dict) else {}
     )
     verification_config.update(body.config)
     verified = await verify_channel_credentials(provider, credentials, verification_config)
@@ -920,8 +890,7 @@ async def disconnect_integration(
     """
     if not body.confirm:
         raise ValidationError(
-            "disconnecting a channel requires confirmation — "
-            'send {"confirm": true}',
+            'disconnecting a channel requires confirmation — send {"confirm": true}',
             details={"integration_id": str(integration_id)},
         )
     integration = (
@@ -1027,9 +996,7 @@ async def upsert_integration(
     # what must be checked: `ensure(..., "CanCreateChannel")` could only ever ask
     # "may this tenant add any channel at all", and the capability name never
     # matched a plan row anyway.
-    await EntitlementService.ensure_channel_allowed(
-        ctx.session, ctx.tenant_id, body.provider
-    )
+    await EntitlementService.ensure_channel_allowed(ctx.session, ctx.tenant_id, body.provider)
     integration = Integration(
         tenant_id=ctx.tenant_id,
         provider=body.provider,

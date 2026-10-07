@@ -102,9 +102,7 @@ COLLECTED_PAYMENT_STATUSES = ("captured", "partially_refunded", "refunded")
 REFUND_STATES = frozenset({"none", "partial", "full"})
 
 
-def to_money(
-    value: object, field: str = "amount", quantum: Decimal = MONEY_QUANTUM
-) -> Decimal:
+def to_money(value: object, field: str = "amount", quantum: Decimal = MONEY_QUANTUM) -> Decimal:
     """Coerce ``value`` to a ``Decimal`` at the currency's scale, rounding as
     Postgres will.
 
@@ -187,9 +185,7 @@ def lifetime_value(collected_gross: object, refunded: object) -> Decimal:
     return max(net_collected(collected_gross, refunded), Decimal("0.00"))
 
 
-def order_balance(
-    grand_total: object, settled_gross: object, refunded: object
-) -> Decimal:
+def order_balance(grand_total: object, settled_gross: object, refunded: object) -> Decimal:
     """What is still collectable on the order.
 
     ``grand_total - net_collected(...)``. May be negative when the order has
@@ -197,9 +193,7 @@ def order_balance(
     treat that as "nothing more may be collected", which ``>`` comparisons do
     naturally.
     """
-    return to_money(grand_total, "grand_total") - net_collected(
-        settled_gross, refunded
-    )
+    return to_money(grand_total, "grand_total") - net_collected(settled_gross, refunded)
 
 
 def compute_totals(
@@ -234,10 +228,7 @@ def compute_totals(
             raise ValueError(f"{field} must not be negative")
 
     grand = (
-        parts["subtotal"]
-        - parts["discount_total"]
-        + parts["shipping_total"]
-        + parts["tax_total"]
+        parts["subtotal"] - parts["discount_total"] + parts["shipping_total"] + parts["tax_total"]
     )
     if grand < 0:
         raise ValueError(

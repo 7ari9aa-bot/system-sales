@@ -167,12 +167,16 @@ async def _materialize_segments(session: AsyncSession, job: Job) -> dict:
     from app.modules.segments.service import Segment, SegmentService
 
     segments = (
-        await session.execute(
-            select(Segment).where(
-                Segment.tenant_id == job.tenant_id, Segment.is_active.is_(True)
+        (
+            await session.execute(
+                select(Segment).where(
+                    Segment.tenant_id == job.tenant_id, Segment.is_active.is_(True)
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     total = len(segments)
     counts: dict[str, int] = {}
@@ -198,7 +202,6 @@ async def _si_deep_analysis(session: AsyncSession, job: Job) -> dict:
     the shell FAILED — the merchant sees the honest outcome, never silence.
     """
     from app.modules.ai.agents.sales_intelligence.agent import run_sales_analysis
-    from app.modules.ai.models import Agent
     from app.modules.analytics.persistence import load_analysis
 
     shell = await load_analysis(session, job.tenant_id, uuid.UUID(job.correlation_id))
@@ -207,6 +210,7 @@ async def _si_deep_analysis(session: AsyncSession, job: Job) -> dict:
     question = shell["question"]
 
     from app.modules.ai.core.resolver import resolve_agent_by_kind
+
     try:
         agent = await resolve_agent_by_kind(session, job.tenant_id, "sales_intelligence")
     except Exception as exc:
@@ -262,46 +266,58 @@ async def claim_jobs(session: AsyncSession, tenant_id: uuid.UUID, limit: int) ->
     than a blind write.
     """
     candidate_ids = (
-        await session.execute(
-            select(Job.id)
-            .where(Job.tenant_id == tenant_id, Job.status.in_(_CLAIMABLE_STATUSES))
-            .order_by(Job.created_at)
-            .limit(limit)
-            .with_for_update(skip_locked=True)
+        (
+            await session.execute(
+                select(Job.id)
+                .where(Job.tenant_id == tenant_id, Job.status.in_(_CLAIMABLE_STATUSES))
+                .order_by(Job.created_at)
+                .limit(limit)
+                .with_for_update(skip_locked=True)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     if not candidate_ids:
         return []
 
     claimed_ids = (
-        await session.execute(
-            update(Job)
-            .where(
-                Job.id.in_(candidate_ids),
-                Job.tenant_id == tenant_id,
-                Job.status.in_(_CLAIMABLE_STATUSES),
+        (
+            await session.execute(
+                update(Job)
+                .where(
+                    Job.id.in_(candidate_ids),
+                    Job.tenant_id == tenant_id,
+                    Job.status.in_(_CLAIMABLE_STATUSES),
+                )
+                .values(
+                    status="processing",
+                    attempts=Job.attempts + 1,
+                    progress=0,
+                    updated_at=func.now(),
+                )
+                .returning(Job.id)
+                .execution_options(synchronize_session=False)
             )
-            .values(
-                status="processing",
-                attempts=Job.attempts + 1,
-                progress=0,
-                updated_at=func.now(),
-            )
-            .returning(Job.id)
-            .execution_options(synchronize_session=False)
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     if not claimed_ids:
         return []
 
     return (
-        await session.execute(
-            select(Job)
-            .where(Job.id.in_(claimed_ids))
-            .order_by(Job.created_at)
-            .execution_options(populate_existing=True)
+        (
+            await session.execute(
+                select(Job)
+                .where(Job.id.in_(claimed_ids))
+                .order_by(Job.created_at)
+                .execution_options(populate_existing=True)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
 
 async def finalize_job(
@@ -340,9 +356,7 @@ async def finalize_job(
         )
     ).scalar_one_or_none() is not None
     if not written:
-        logger.info(
-            "job_runner.terminal_write_skipped job=%s intended=%s", job.id, status
-        )
+        logger.info("job_runner.terminal_write_skipped job=%s intended=%s", job.id, status)
     # Keep the passed ORM row consistent with the row the database now holds
     # (including the "someone cancelled it" case the caller may want to assert).
     await session.refresh(job)
@@ -420,9 +434,7 @@ class JobRunner(StreamWorker):
                 await bind_tenant(session, tenant_id)
                 return await self.execute_claimed(session, tenant_id, job_id)
 
-    async def claim_for_tenant(
-        self, session: AsyncSession, tenant_id: uuid.UUID
-    ) -> list[Job]:
+    async def claim_for_tenant(self, session: AsyncSession, tenant_id: uuid.UUID) -> list[Job]:
         """Claim this tenant's next batch, or nothing when the tenant is deferred.
 
         Runs in the caller's transaction (mirrors ``RetentionWorker.run_once``),
@@ -445,9 +457,7 @@ class JobRunner(StreamWorker):
         example it was cancelled between the claim and this execution).
         """
         job = (
-            await session.execute(
-                select(Job).where(Job.tenant_id == tenant_id, Job.id == job_id)
-            )
+            await session.execute(select(Job).where(Job.tenant_id == tenant_id, Job.id == job_id))
         ).scalar_one_or_none()
         if job is None or job.status != "processing":
             logger.info(
@@ -498,6 +508,4 @@ class JobRunner(StreamWorker):
             )
             return
 
-        await finalize_job(
-            session, job, status="completed", result=result or {}, progress=100
-        )
+        await finalize_job(session, job, status="completed", result=result or {}, progress=100)

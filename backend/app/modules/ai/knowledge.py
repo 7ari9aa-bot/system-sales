@@ -32,9 +32,7 @@ async def _embed(
     return await gateway.embed(session, tenant_id, texts=texts)
 
 
-async def embed_text(
-    session: AsyncSession, tenant_id: uuid.UUID, text: str
-) -> list[float] | None:
+async def embed_text(session: AsyncSession, tenant_id: uuid.UUID, text: str) -> list[float] | None:
     """Embed one text, or None when no embedding model is configured.
 
     Governance writes (staff memories, §158) store a vector so recall can find

@@ -23,6 +23,7 @@ Response format (text/event-stream):
 
 Heartbeat (every 25 s) keeps the TCP connection alive through load balancers.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -186,15 +187,14 @@ async def _tenant_may_stream(tenant_id: str) -> bool:
             async with session.begin():
                 state = (
                     await session.execute(
-                        sa_select(Tenant.lifecycle_state).where(
-                            Tenant.id == uuid.UUID(tenant_id)
-                        )
+                        sa_select(Tenant.lifecycle_state).where(Tenant.id == uuid.UUID(tenant_id))
                     )
                 ).scalar_one_or_none()
     except Exception:  # noqa: BLE001
         logger.warning("sse.lifecycle_check_failed tenant=%s", tenant_id, exc_info=True)
         return True
     return tenant_may_use_api(state)
+
 
 router = APIRouter(prefix="/realtime", tags=["realtime"])
 
@@ -223,6 +223,7 @@ async def mint_stream_token(user: CurrentUserDep) -> StreamTokenOut:
         expires_in=STREAM_TOKEN_TTL_SECONDS,
     )
 
+
 # Streams the gateway fans-out.  Extend as new domain streams are added.
 _ALL_STREAMS = [
     "message.events",
@@ -231,8 +232,8 @@ _ALL_STREAMS = [
     "order.events",
 ]
 
-_HEARTBEAT_INTERVAL_S = 25   # seconds
-_BLOCK_MS = 5_000             # Redis XREAD block timeout per poll
+_HEARTBEAT_INTERVAL_S = 25  # seconds
+_BLOCK_MS = 5_000  # Redis XREAD block timeout per poll
 _MAX_PER_POLL = 50
 # A client cursor older than this is clamped: `?cursor=0-0` must never replay
 # the whole retained stream (cross-tenant history exfiltration risk).
@@ -356,20 +357,14 @@ async def _event_stream(
                 )
                 for msg_id_raw, fields in messages:
                     raw_id: str = (
-                        msg_id_raw.decode()
-                        if isinstance(msg_id_raw, bytes)
-                        else msg_id_raw
+                        msg_id_raw.decode() if isinstance(msg_id_raw, bytes) else msg_id_raw
                     )
                     last_ids[stream_key] = raw_id
 
                     # Decode payload AND meta — the outbox relay publishes
                     # them as two SEPARATE Redis fields (bus.py xadd), so the
                     # tenant claim lives in the meta field, not in the payload.
-                    raw_payload = (
-                        fields.get(b"payload")
-                        or fields.get("payload")
-                        or b"{}"
-                    )
+                    raw_payload = fields.get(b"payload") or fields.get("payload") or b"{}"
                     if isinstance(raw_payload, bytes):
                         raw_payload = raw_payload.decode()
                     raw_meta = fields.get(b"meta") or fields.get("meta") or b"{}"
@@ -381,9 +376,7 @@ async def _event_stream(
                     # by construction (finding 2). A frame that is not a valid
                     # envelope is dropped — fail CLOSED.
                     try:
-                        envelope = deserialize(
-                            {"payload": raw_payload, "meta": raw_meta}
-                        )
+                        envelope = deserialize({"payload": raw_payload, "meta": raw_meta})
                     except (ValidationError, KeyError, TypeError, ValueError):
                         continue
 
@@ -450,7 +443,10 @@ async def stream_events(
 
     logger.info(
         "sse.open user=%s tenant=%s streams=%s cursor=%s",
-        user_id, tenant_id, selected, cursor,
+        user_id,
+        tenant_id,
+        selected,
+        cursor,
     )
 
     return StreamingResponse(
@@ -464,7 +460,7 @@ async def stream_events(
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",   # Nginx/Caddy: disable proxy buffering
+            "X-Accel-Buffering": "no",  # Nginx/Caddy: disable proxy buffering
             "Connection": "keep-alive",
         },
     )

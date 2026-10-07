@@ -220,9 +220,7 @@ def _is_expired(record: IdempotencyKey) -> bool:
 async def _find(session: AsyncSession, scope: str, key: str) -> IdempotencyKey | None:
     return (
         await session.execute(
-            select(IdempotencyKey).where(
-                IdempotencyKey.scope == scope, IdempotencyKey.key == key
-            )
+            select(IdempotencyKey).where(IdempotencyKey.scope == scope, IdempotencyKey.key == key)
         )
     ).scalar_one_or_none()
 
@@ -338,9 +336,7 @@ class IdempotencyService:
         (a worker would, and workers are out of this workstream's file scope).
         """
         expired_ids = (
-            select(IdempotencyKey.id)
-            .where(IdempotencyKey.expires_at <= func.now())
-            .limit(limit)
+            select(IdempotencyKey.id).where(IdempotencyKey.expires_at <= func.now()).limit(limit)
         )
         result = await session.execute(
             delete(IdempotencyKey)
@@ -401,13 +397,9 @@ class DbIdempotencyStore:
             )
             await session.commit()
 
-    async def fail(
-        self, *, scope: str, key: str, status_code: int | None = None
-    ) -> None:
+    async def fail(self, *, scope: str, key: str, status_code: int | None = None) -> None:
         async with self._session_factory() as session:
-            await IdempotencyService.fail(
-                session, scope=scope, key=key, status_code=status_code
-            )
+            await IdempotencyService.fail(session, scope=scope, key=key, status_code=status_code)
             await session.commit()
 
     async def release(self, *, scope: str, key: str) -> None:
@@ -551,14 +543,10 @@ class IdempotencyMiddleware:
         body = await _read_body(receive)
         request_hash = body_hash(body)
         client = scope.get("client") or ("unknown", 0)
-        scope_key = idem_scope(
-            _tenant_from_headers(headers), method, path, client_ip=client[0]
-        )
+        scope_key = idem_scope(_tenant_from_headers(headers), method, path, client_ip=client[0])
 
         try:
-            claim = await self.store.begin(
-                scope=scope_key, key=raw_key, request_hash=request_hash
-            )
+            claim = await self.store.begin(scope=scope_key, key=raw_key, request_hash=request_hash)
         except Exception as exc:  # noqa: BLE001 — store unreachable
             # FAIL CLOSED. The record is the only thing standing between a
             # client retry and a duplicate charge; a 503 is recoverable, a
@@ -667,9 +655,7 @@ class IdempotencyMiddleware:
                 "idempotency_record_failed", error=str(exc), scope=scope_key
             )
 
-    async def _fail_quietly(
-        self, scope_key: str, key: str, status: int | None
-    ) -> None:
+    async def _fail_quietly(self, scope_key: str, key: str, status: int | None) -> None:
         try:
             await self.store.fail(scope=scope_key, key=key, status_code=status)
         except Exception as exc:  # noqa: BLE001
@@ -747,9 +733,7 @@ def require_version(if_match: str | None, current_version: int) -> None:
         )
 
 
-async def _current_version(
-    session: AsyncSession, model: Any, instance: Any
-) -> int | None:
+async def _current_version(session: AsyncSession, model: Any, instance: Any) -> int | None:
     mapper = sa_inspect(model)
     pk = mapper.primary_key[0]
     stmt = select(model.version).where(pk == getattr(instance, pk.key))

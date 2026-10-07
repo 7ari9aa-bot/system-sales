@@ -155,4 +155,3 @@ def csrf_satisfied(request: Request, *, cookie_authenticated: bool) -> bool:
     supplied = request.headers.get("x-csrf-token")
     stored = request.cookies.get(CSRF_COOKIE)
     return bool(supplied and stored and secrets.compare_digest(supplied, stored))
-

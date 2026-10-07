@@ -64,9 +64,7 @@ async def index_product_images(
     statuses = sorted(sellable_product_statuses())
 
     rows = (
-        await session.execute(
-            _IMAGES_SQL, {"tenant_id": str(tenant_id), "sellable": statuses}
-        )
+        await session.execute(_IMAGES_SQL, {"tenant_id": str(tenant_id), "sellable": statuses})
     ).all()
 
     indexed = 0
@@ -74,9 +72,7 @@ async def index_product_images(
         chunk = rows[start : start + batch_size]
         contents = []
         for row in chunk:
-            image_url = get_storage().resolve_product_image_url(
-                row.url, tenant_id=tenant_id
-            )
+            image_url = get_storage().resolve_product_image_url(row.url, tenant_id=tenant_id)
             if row.alt:
                 contents.append(MultimodalContent(image=image_url, text=row.alt))
             else:

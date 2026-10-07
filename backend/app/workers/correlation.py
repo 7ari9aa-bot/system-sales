@@ -54,9 +54,7 @@ CORRELATION_ATTR = "correlation_id"
 #: to a message, and an empty value would read like a bug rather than a scope.
 NO_SCOPE = "-"
 
-_log_correlation: ContextVar[str] = ContextVar(
-    "worker_log_correlation", default=NO_SCOPE
-)
+_log_correlation: ContextVar[str] = ContextVar("worker_log_correlation", default=NO_SCOPE)
 
 _factory_installed = False
 _previous_factory: Callable[..., logging.LogRecord] | None = None

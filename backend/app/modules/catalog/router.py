@@ -23,9 +23,7 @@ from app.modules.inventory.models import Warehouse
 router = APIRouter(tags=["catalog"])
 
 WriteCtx = Annotated[TenantContext, Depends(require_permission("products:write"))]
-CustomerWriteCtx = Annotated[
-    TenantContext, Depends(require_permission("customers:write"))
-]
+CustomerWriteCtx = Annotated[TenantContext, Depends(require_permission("customers:write"))]
 
 
 def _variant_out(variant) -> dict:
@@ -178,12 +176,14 @@ async def list_products(ctx: TenantCtxDep, limit: int = 100, offset: int = 0):
     result = []
     for product in products:
         variants = await CatalogService.list_variants(ctx.session, ctx.tenant_id, product.id)
-        result.append(_product_out(
-            product,
-            variants,
-            images_by_product.get(product.id, []),
-            tenant_id=ctx.tenant_id,
-        ))
+        result.append(
+            _product_out(
+                product,
+                variants,
+                images_by_product.get(product.id, []),
+                tenant_id=ctx.tenant_id,
+            )
+        )
     return result
 
 
@@ -294,16 +294,12 @@ async def set_variant_price(variant_id: UUID, body: SetPriceRequest, ctx: WriteC
 @router.patch("/variants/{variant_id}")
 async def update_variant(variant_id: UUID, body: UpdateVariantRequest, ctx: WriteCtx):
     fields = body.model_dump(exclude_unset=True)
-    variant = await CatalogService.update_variant(
-        ctx.session, ctx.tenant_id, variant_id, **fields
-    )
+    variant = await CatalogService.update_variant(ctx.session, ctx.tenant_id, variant_id, **fields)
     return _variant_out(variant)
 
 
 @router.post("/variants/{variant_id}/identifiers", status_code=201)
-async def add_variant_identifier(
-    variant_id: UUID, body: AddIdentifierRequest, ctx: WriteCtx
-):
+async def add_variant_identifier(variant_id: UUID, body: AddIdentifierRequest, ctx: WriteCtx):
     """§179: register a scan code on one sellable unit.
 
     (tenant, type, value) is unique, so the §179 resolver can promise exactly
@@ -337,36 +333,26 @@ async def resolve_identifier(identifier_type: str, value: str, ctx: TenantCtxDep
 
 
 @router.post("/products/{product_id}/options", status_code=201)
-async def add_product_option(
-    product_id: UUID, body: AddOptionRequest, ctx: WriteCtx
-):
+async def add_product_option(product_id: UUID, body: AddOptionRequest, ctx: WriteCtx):
     """§179/P2: one option axis on a product ("size", "color", ...)."""
-    option = await CatalogService.add_option(
-        ctx.session, ctx.tenant_id, product_id, body.name
-    )
+    option = await CatalogService.add_option(ctx.session, ctx.tenant_id, product_id, body.name)
     return _option_out(option, [])
 
 
 @router.get("/products/{product_id}/options")
 async def list_product_options(product_id: UUID, ctx: TenantCtxDep):
-    pairs = await CatalogService.list_product_options(
-        ctx.session, ctx.tenant_id, product_id
-    )
+    pairs = await CatalogService.list_product_options(ctx.session, ctx.tenant_id, product_id)
     return [_option_out(o, vs) for o, vs in pairs]
 
 
 @router.post("/options/{option_id}/values", status_code=201)
 async def add_option_value(option_id: UUID, body: AddOptionValueRequest, ctx: WriteCtx):
-    value = await CatalogService.add_option_value(
-        ctx.session, ctx.tenant_id, option_id, body.value
-    )
+    value = await CatalogService.add_option_value(ctx.session, ctx.tenant_id, option_id, body.value)
     return {"id": str(value.id), "option_id": str(value.option_id), "value": value.value}
 
 
 @router.post("/variants/{variant_id}/options")
-async def set_variant_options(
-    variant_id: UUID, body: SetVariantOptionsRequest, ctx: WriteCtx
-):
+async def set_variant_options(variant_id: UUID, body: SetVariantOptionsRequest, ctx: WriteCtx):
     """§179/P2: replace-all option graph for one variant.
 
     Missing option/value rows are created; the JSONB read model and the
@@ -491,9 +477,7 @@ async def create_brand(ctx: WriteCtx, body: CreateBrandRequest):
 
 @router.get("/brands")
 async def list_brands(ctx: TenantCtxDep, limit: int = 200, offset: int = 0):
-    rows = await CatalogService.list_brands(
-        ctx.session, ctx.tenant_id, limit=limit, offset=offset
-    )
+    rows = await CatalogService.list_brands(ctx.session, ctx.tenant_id, limit=limit, offset=offset)
     return [{"id": str(b.id), "name": b.name} for b in rows]
 
 
@@ -501,14 +485,18 @@ async def list_brands(ctx: TenantCtxDep, limit: int = 200, offset: int = 0):
 async def list_warehouses(ctx: TenantCtxDep, limit: int = 200, offset: int = 0):
     """Read-only warehouse list (the inventory module owns stock, not this)."""
     rows = (
-        await ctx.session.execute(
-            select(Warehouse)
-            .where(Warehouse.tenant_id == ctx.tenant_id)
-            .order_by(Warehouse.name.asc())
-            .limit(limit)
-            .offset(offset)
+        (
+            await ctx.session.execute(
+                select(Warehouse)
+                .where(Warehouse.tenant_id == ctx.tenant_id)
+                .order_by(Warehouse.name.asc())
+                .limit(limit)
+                .offset(offset)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return [
         {
             "id": str(w.id),

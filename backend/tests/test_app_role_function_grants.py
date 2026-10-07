@@ -151,9 +151,7 @@ def test_the_grants_run_after_the_role_is_created() -> None:
     for node in ast.walk(ast.parse(source)):
         target = node.target if isinstance(node, ast.AnnAssign) else None
         if isinstance(target, ast.Name) and target.id == "FUNCTION_EXECUTE_GRANTS":
-            declared = [
-                elt.value for elt in node.value.elts if isinstance(elt, ast.Constant)
-            ]
+            declared = [elt.value for elt in node.value.elts if isinstance(elt, ast.Constant)]
     assert declared, "provision.py declares no FUNCTION_EXECUTE_GRANTS"
     signatures = {sig.lower() for stmt in declared for sig in _grants_in(stmt)}
     missing = [sig for sig in MAINTENANCE_FUNCTIONS if sig.lower() not in signatures]
@@ -194,9 +192,7 @@ async def test_the_app_role_holds_execute_on_the_maintenance_functions(
     for signature in MAINTENANCE_FUNCTIONS:
         granted = (
             await db.execute(
-                text(
-                    "SELECT has_function_privilege(current_user, :sig, 'EXECUTE')"
-                ),
+                text("SELECT has_function_privilege(current_user, :sig, 'EXECUTE')"),
                 {"sig": signature},
             )
         ).scalar_one()

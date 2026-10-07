@@ -43,9 +43,7 @@ async def test_audit_write_carries_request_lineage(db, tenant_ctx) -> None:
     assert entry.request_id == "req-66-test"
     assert entry.correlation_id == "cor-66-test"
 
-    row = (
-        await db.execute(sa.select(AuditLog).where(AuditLog.id == entry.id))
-    ).scalar_one()
+    row = (await db.execute(sa.select(AuditLog).where(AuditLog.id == entry.id))).scalar_one()
     assert row.source == "automation"
     assert row.request_id == "req-66-test"
     assert row.correlation_id == "cor-66-test"

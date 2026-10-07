@@ -49,11 +49,7 @@ async def test_published_outbox_recovery_previews_and_replays_only_unprocessed(
     )
     await db.flush()
     processed.status = "published"
-    db.add(
-        ProcessedEvent(
-            consumer_name="message-worker", event_id=processed.id, status="done"
-        )
-    )
+    db.add(ProcessedEvent(consumer_name="message-worker", event_id=processed.id, status="done"))
 
     pending_aggregate_id = uuid.uuid4()
     pending_message_id = str(uuid.uuid4())
@@ -95,8 +91,7 @@ async def test_published_outbox_recovery_previews_and_replays_only_unprocessed(
     await db.flush()
     legacy.status = "published"
     legacy.meta = {
-        key: value for key, value in legacy.meta.items()
-        if key not in {"id", "outbox_id"}
+        key: value for key, value in legacy.meta.items() if key not in {"id", "outbox_id"}
     }
 
     # Legacy non-outbound messages lack a stable replay key and are left alone.
@@ -111,8 +106,7 @@ async def test_published_outbox_recovery_previews_and_replays_only_unprocessed(
     await db.flush()
     unsafe_legacy.status = "published"
     unsafe_legacy.meta = {
-        key: value for key, value in unsafe_legacy.meta.items()
-        if key not in {"id", "outbox_id"}
+        key: value for key, value in unsafe_legacy.meta.items() if key not in {"id", "outbox_id"}
     }
 
     bus = RecordingBus()
@@ -127,7 +121,8 @@ async def test_published_outbox_recovery_previews_and_replays_only_unprocessed(
     assert len(bus.published) == 2
     assert {stream for stream, _payload, _meta in bus.published} == {"message.events"}
     assert {meta["outbox_id"] for _stream, _payload, meta in bus.published} == {
-        str(pending_id), str(legacy.id)
+        str(pending_id),
+        str(legacy.id),
     }
 
 
@@ -138,6 +133,4 @@ async def test_published_outbox_recovery_rejects_unknown_stream() -> None:
 
 async def test_published_outbox_recovery_bounds_batch_size() -> None:
     with pytest.raises(ValueError, match="batch_size must be between"):
-        await replay_unprocessed_published(
-            RecordingBus(), "message.events", batch_size=0
-        )
+        await replay_unprocessed_published(RecordingBus(), "message.events", batch_size=0)

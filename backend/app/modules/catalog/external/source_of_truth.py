@@ -25,9 +25,15 @@ from app.core.errors import NotFoundError, ValidationError
 from app.core.model_kit import TenantMixin, TimestampMixin
 
 # Entity types that can have an external source-of-truth policy.
-_ENTITY_TYPES = frozenset({
-    "product", "inventory", "order", "customer", "payment",
-})
+_ENTITY_TYPES = frozenset(
+    {
+        "product",
+        "inventory",
+        "order",
+        "customer",
+        "payment",
+    }
+)
 
 # Source modes:
 #   INTERNAL   — our DB is the truth; external is a read-only copy
@@ -46,9 +52,14 @@ _SYNC_DIRECTIONS = frozenset({"inbound", "outbound", "bidirectional"})
 #   internal_wins  — internal version takes precedence
 #   latest_wins    — compare last_modified timestamps
 #   manual         — surface conflict for human resolution
-_CONFLICT_POLICIES = frozenset({
-    "external_wins", "internal_wins", "latest_wins", "manual",
-})
+_CONFLICT_POLICIES = frozenset(
+    {
+        "external_wins",
+        "internal_wins",
+        "latest_wins",
+        "manual",
+    }
+)
 
 
 class SourceOfTruthPolicy(TenantMixin, TimestampMixin, Base):
@@ -56,9 +67,7 @@ class SourceOfTruthPolicy(TenantMixin, TimestampMixin, Base):
 
     __tablename__ = "source_of_truth_policies"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     # The external provider this policy applies to (shopify, woocommerce, csv, ...)
     provider: Mapped[str] = mapped_column(String(63), nullable=False)
     # The entity type this policy governs
@@ -68,9 +77,7 @@ class SourceOfTruthPolicy(TenantMixin, TimestampMixin, Base):
     conflict_policy: Mapped[str] = mapped_column(String(15), nullable=False)
     # Tracking fields for reconciliation — TIMESTAMPTZ in the migration
     # (f9b0c1d2e3f4), so the model must declare timezone=True.
-    last_synced_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # External version marker (e.g. Shopify's updated_at or version_id)
     external_version: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Internal version marker (our row's updated_at or version column)
@@ -80,7 +87,9 @@ class SourceOfTruthPolicy(TenantMixin, TimestampMixin, Base):
 
     __table_args__ = (
         UniqueConstraint(
-            "tenant_id", "provider", "entity_type",
+            "tenant_id",
+            "provider",
+            "entity_type",
             name="uq_sot_tenant_provider_entity",
         ),
         Index("ix_sot_tenant_provider", "tenant_id", "provider"),
@@ -103,21 +112,13 @@ class SourceOfTruthService:
         config: dict | None = None,
     ) -> SourceOfTruthPolicy:
         if entity_type not in _ENTITY_TYPES:
-            raise ValidationError(
-                f"entity_type must be one of {sorted(_ENTITY_TYPES)}"
-            )
+            raise ValidationError(f"entity_type must be one of {sorted(_ENTITY_TYPES)}")
         if source_mode not in _SOURCE_MODES:
-            raise ValidationError(
-                f"source_mode must be one of {sorted(_SOURCE_MODES)}"
-            )
+            raise ValidationError(f"source_mode must be one of {sorted(_SOURCE_MODES)}")
         if sync_direction not in _SYNC_DIRECTIONS:
-            raise ValidationError(
-                f"sync_direction must be one of {sorted(_SYNC_DIRECTIONS)}"
-            )
+            raise ValidationError(f"sync_direction must be one of {sorted(_SYNC_DIRECTIONS)}")
         if conflict_policy not in _CONFLICT_POLICIES:
-            raise ValidationError(
-                f"conflict_policy must be one of {sorted(_CONFLICT_POLICIES)}"
-            )
+            raise ValidationError(f"conflict_policy must be one of {sorted(_CONFLICT_POLICIES)}")
 
         from sqlalchemy import select
 
@@ -186,9 +187,7 @@ class SourceOfTruthService:
             session, tenant_id, provider=provider, entity_type=entity_type
         )
         if policy is None:
-            raise NotFoundError(
-                f"no source-of-truth policy for {provider}/{entity_type}"
-            )
+            raise NotFoundError(f"no source-of-truth policy for {provider}/{entity_type}")
         policy.last_synced_at = datetime.now(UTC)
         if external_version is not None:
             policy.external_version = external_version

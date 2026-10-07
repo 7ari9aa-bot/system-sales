@@ -63,9 +63,7 @@ def safe_response(findings: list[Finding], store_facts: dict[str, str]) -> str:
                 + "؛ ".join(finding.confidence_reasons[:2])
                 + ")"
             )
-    lines.append(
-        "ملاحظة: ده ملخص آمن من النتايج المحسوبة — اسأل سؤال أدق للتحليل الكامل."
-    )
+    lines.append("ملاحظة: ده ملخص آمن من النتايج المحسوبة — اسأل سؤال أدق للتحليل الكامل.")
     _ = store_facts
     return "\n".join(lines)
 
@@ -106,4 +104,3 @@ def _digit_runs(text: str) -> list[str]:
     import re
 
     return re.findall(r"[0-9٠-٩][0-9٠-٩.,%]*", text)
-

@@ -6,6 +6,7 @@ These helpers replace every place in the codebase that does:
 with kind-aware resolution:
     SELECT agents WHERE kind = :kind AND is_active AND tenant_id = :tid
 """
+
 from __future__ import annotations
 
 import uuid
@@ -28,7 +29,8 @@ async def resolve_agent_by_kind(
     """
     agent = (
         await session.execute(
-            select(Agent).where(
+            select(Agent)
+            .where(
                 Agent.tenant_id == tenant_id,
                 Agent.kind == kind,
                 Agent.is_active.is_(True),
@@ -50,7 +52,8 @@ async def resolve_agent_by_kind_optional(
     """Same as ``resolve_agent_by_kind`` but returns None instead of raising."""
     return (
         await session.execute(
-            select(Agent).where(
+            select(Agent)
+            .where(
                 Agent.tenant_id == tenant_id,
                 Agent.kind == kind,
                 Agent.is_active.is_(True),
@@ -69,7 +72,8 @@ async def list_agents_by_kind(
     """All active agents of a given kind for a tenant."""
     rows = (
         await session.execute(
-            select(Agent).where(
+            select(Agent)
+            .where(
                 Agent.tenant_id == tenant_id,
                 Agent.kind == kind,
                 Agent.is_active.is_(True),

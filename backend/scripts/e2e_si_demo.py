@@ -120,11 +120,11 @@ async def main() -> int:
         await bind_tenant(analysis_session, tenant_id)
         result = await run_sales_analysis(
             analysis_session,
-        tenant_id,
-        agent_id=agent_id,
-        question="كام مبيعاتي آخر 30 يوم؟ وليه اتغيرت عن الشهر اللي قبله؟",
-        runner=AgentRunner(gateway=AIGateway()),
-    )
+            tenant_id,
+            agent_id=agent_id,
+            question="كام مبيعاتي آخر 30 يوم؟ وليه اتغيرت عن الشهر اللي قبله؟",
+            runner=AgentRunner(gateway=AIGateway()),
+        )
 
     print(f"\noutcome: {result.outcome.value}")
     print(f"answer:\n{result.answer}\n")

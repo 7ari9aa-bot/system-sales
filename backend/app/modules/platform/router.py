@@ -59,6 +59,7 @@ FEATURE_MAX_LEN = 127  # matches feature_flags.feature String(127)
 PageLimit = Annotated[int, Query(ge=1, le=schemas.PAGE_LIMIT_MAX)]
 PageOffset = Annotated[int, Query(ge=0)]
 
+
 # §160: Platform Admin is a SEPARATE plane from Tenant RBAC.
 # The claim is global (users.is_platform_admin, minted into the JWT at login)
 # and checked independently of the tenant context — a tenant admin has full
@@ -222,12 +223,16 @@ async def list_tenant_metric_definitions(ctx: TenantCtxDep):
     tenant and the tenant GUC is bound for RLS as defence in depth.
     """
     rows = (
-        await ctx.session.execute(
-            select(MetricDefinition)
-            .where(MetricDefinition.tenant_id == ctx.tenant_id)
-            .order_by(MetricDefinition.name, MetricDefinition.version.desc())
+        (
+            await ctx.session.execute(
+                select(MetricDefinition)
+                .where(MetricDefinition.tenant_id == ctx.tenant_id)
+                .order_by(MetricDefinition.name, MetricDefinition.version.desc())
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     existing = {
         (row.name, row.version): {field: getattr(row, field) for field in _DEFINITION_FIELDS}
@@ -250,12 +255,8 @@ async def list_tenant_metric_definitions(ctx: TenantCtxDep):
             }
             for row in rows
         ],
-        "missing": sorted(
-            {spec.name for spec in gap if (spec.name, spec.version) not in existing}
-        ),
-        "drifted": sorted(
-            {spec.name for spec in gap if (spec.name, spec.version) in existing}
-        ),
+        "missing": sorted({spec.name for spec in gap if (spec.name, spec.version) not in existing}),
+        "drifted": sorted({spec.name for spec in gap if (spec.name, spec.version) in existing}),
     }
 
 
@@ -344,9 +345,7 @@ async def _load_view(ctx: TenantContext, view_id: uuid.UUID) -> SavedView:
     """
     view = (
         await ctx.session.execute(
-            select(SavedView).where(
-                SavedView.tenant_id == ctx.tenant_id, SavedView.id == view_id
-            )
+            select(SavedView).where(SavedView.tenant_id == ctx.tenant_id, SavedView.id == view_id)
         )
     ).scalar_one_or_none()
     if view is None or not can_read_saved_view(view, user_id=ctx.user.id):
@@ -393,19 +392,21 @@ async def list_saved_views(
     if entity:
         conditions.append(SavedView.entity == entity)
     total = (
-        await ctx.session.execute(
-            select(func.count(SavedView.id)).where(*conditions)
-        )
+        await ctx.session.execute(select(func.count(SavedView.id)).where(*conditions))
     ).scalar_one()
     rows = (
-        await ctx.session.execute(
-            select(SavedView)
-            .where(*conditions)
-            .order_by(SavedView.name, SavedView.id)
-            .limit(limit)
-            .offset(offset)
+        (
+            await ctx.session.execute(
+                select(SavedView)
+                .where(*conditions)
+                .order_by(SavedView.name, SavedView.id)
+                .limit(limit)
+                .offset(offset)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return {
         "items": [_view_out(view) for view in rows],
         "total": int(total),
@@ -449,9 +450,7 @@ async def get_saved_view(ctx: TenantCtxDep, view_id: uuid.UUID):
 async def update_saved_view(ctx: TenantCtxDep, view_id: uuid.UUID, body: SavedViewUpdate):
     """Rename, re-scope or re-define a view the caller may modify."""
     view = await _load_view(ctx, view_id)
-    if not can_modify_saved_view(
-        view, user_id=ctx.user.id, permission_codes=ctx.permission_codes
-    ):
+    if not can_modify_saved_view(view, user_id=ctx.user.id, permission_codes=ctx.permission_codes):
         raise PermissionDeniedError("you may not modify this saved view")
     if body.visibility is not None and body.visibility not in SAVED_VIEW_VISIBILITIES:
         raise ValidationError(
@@ -472,9 +471,7 @@ async def update_saved_view(ctx: TenantCtxDep, view_id: uuid.UUID, body: SavedVi
 async def delete_saved_view(ctx: TenantCtxDep, view_id: uuid.UUID):
     """Delete a view the caller may modify."""
     view = await _load_view(ctx, view_id)
-    if not can_modify_saved_view(
-        view, user_id=ctx.user.id, permission_codes=ctx.permission_codes
-    ):
+    if not can_modify_saved_view(view, user_id=ctx.user.id, permission_codes=ctx.permission_codes):
         raise PermissionDeniedError("you may not modify this saved view")
     await ctx.session.delete(view)
     await ctx.session.flush()
@@ -579,9 +576,7 @@ async def _outbox_subsystem(ctx: TenantContext) -> dict:
 
         oldest = (
             await ctx.session.execute(
-                select(func.min(OutboxEvent.created_at)).where(
-                    OutboxEvent.status == "pending"
-                )
+                select(func.min(OutboxEvent.created_at)).where(OutboxEvent.status == "pending")
             )
         ).scalar_one_or_none()
     except Exception as exc:  # noqa: BLE001
@@ -707,9 +702,7 @@ async def system_diagnostics(ctx: TenantCtxDep) -> schemas.FullDiagnosticsOut:
     """Comprehensive system-wide diagnostic suite with root-cause analysis for every subsystem."""
     from app.modules.platform.diagnostics import SystemDiagnosticsService
 
-    report = await SystemDiagnosticsService.run_full_diagnostics(
-        ctx.session, ctx.tenant_id
-    )
+    report = await SystemDiagnosticsService.run_full_diagnostics(ctx.session, ctx.tenant_id)
     return schemas.FullDiagnosticsOut.model_validate(report)
 
 
@@ -718,9 +711,7 @@ async def remediate_system_issues(ctx: TenantCtxDep) -> schemas.RemediationResul
     """Instant auto-remediation for common silent failures (stuck events, workers)."""
     from app.modules.platform.diagnostics import SystemDiagnosticsService
 
-    result = await SystemDiagnosticsService.auto_remediate(
-        ctx.session, ctx.tenant_id
-    )
+    result = await SystemDiagnosticsService.auto_remediate(ctx.session, ctx.tenant_id)
     return schemas.RemediationResultOut.model_validate(result)
 
 
@@ -799,9 +790,7 @@ async def admin_get_tenant(ctx: TenantCtxDep, tenant_id: uuid.UUID):
     from app.modules.identity.models import Tenant
 
     tenant = (
-        await ctx.session.execute(
-            select(Tenant).where(Tenant.id == tenant_id)
-        )
+        await ctx.session.execute(select(Tenant).where(Tenant.id == tenant_id))
     ).scalar_one_or_none()
     if tenant is None:
         raise NotFoundError("tenant not found")
@@ -834,9 +823,7 @@ async def admin_get_tenant(ctx: TenantCtxDep, tenant_id: uuid.UUID):
     }
 
 
-@router.patch(
-    "/admin/tenants/{tenant_id}/status", response_model=schemas.TenantStatusOut
-)
+@router.patch("/admin/tenants/{tenant_id}/status", response_model=schemas.TenantStatusOut)
 async def admin_update_tenant_status(
     ctx: TenantCtxDep,
     tenant_id: uuid.UUID,
@@ -866,9 +853,7 @@ async def admin_update_tenant_status(
             details={"status": status, "allowed": sorted(STATE_POLICIES)},
         )
     tenant = (
-        await ctx.session.execute(
-            select(Tenant).where(Tenant.id == tenant_id)
-        )
+        await ctx.session.execute(select(Tenant).where(Tenant.id == tenant_id))
     ).scalar_one_or_none()
     if tenant is None:
         raise NotFoundError("tenant not found")
@@ -901,9 +886,7 @@ async def admin_update_tenant_status(
     }
 
 
-@router.post(
-    "/webhook-events/{event_id}/retry", response_model=schemas.WebhookRetryOut
-)
+@router.post("/webhook-events/{event_id}/retry", response_model=schemas.WebhookRetryOut)
 async def admin_retry_webhook_event(ctx: TenantCtxDep, event_id: uuid.UUID):
     """§24: replay a failed or dead-lettered inbound webhook ingress row.
 
@@ -955,7 +938,9 @@ async def admin_retry_webhook_event(ctx: TenantCtxDep, event_id: uuid.UUID):
         payload={"webhook_event_id": str(row.id)},
     )
     _audit_webhook_dlq_op(
-        ctx, row, action="webhook_event.retry_scheduled",
+        ctx,
+        row,
+        action="webhook_event.retry_scheduled",
         before={"processing_status": row.processing_status},
         after={"retry": "scheduled"},
     )
@@ -973,17 +958,13 @@ async def admin_retry_webhook_event(ctx: TenantCtxDep, event_id: uuid.UUID):
 # ---------------------------------------------------------------------------
 
 # Which statuses each close-out accepts — the law against silent drift.
-_WEBHOOK_IGNORE_FROM: frozenset[str] = frozenset(
-    {"pending", "processing", "failed", "dead"}
-)
+_WEBHOOK_IGNORE_FROM: frozenset[str] = frozenset({"pending", "processing", "failed", "dead"})
 _WEBHOOK_RESOLVE_FROM: frozenset[str] = frozenset({"failed", "dead", "ignored"})
 
 
 async def _load_webhook_event(ctx: TenantContext, event_id: uuid.UUID) -> WebhookEvent:
     row = (
-        await ctx.session.execute(
-            select(WebhookEvent).where(WebhookEvent.id == event_id)
-        )
+        await ctx.session.execute(select(WebhookEvent).where(WebhookEvent.id == event_id))
     ).scalar_one_or_none()
     if row is None:
         raise NotFoundError("webhook event not found")
@@ -1058,19 +1039,21 @@ async def admin_list_webhook_events(
     if provider is not None:
         conditions.append(WebhookEvent.provider == provider)
     total = (
-        await ctx.session.execute(
-            select(func.count(WebhookEvent.id)).where(*conditions)
-        )
+        await ctx.session.execute(select(func.count(WebhookEvent.id)).where(*conditions))
     ).scalar_one()
     rows = (
-        await ctx.session.execute(
-            select(WebhookEvent)
-            .where(*conditions)
-            .order_by(WebhookEvent.received_at.desc(), WebhookEvent.id.desc())
-            .limit(limit)
-            .offset(offset)
+        (
+            await ctx.session.execute(
+                select(WebhookEvent)
+                .where(*conditions)
+                .order_by(WebhookEvent.received_at.desc(), WebhookEvent.id.desc())
+                .limit(limit)
+                .offset(offset)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return {
         "total": int(total),
         "limit": limit,
@@ -1079,9 +1062,7 @@ async def admin_list_webhook_events(
     }
 
 
-@router.get(
-    "/webhook-events/{event_id}", response_model=schemas.WebhookEventDetailOut
-)
+@router.get("/webhook-events/{event_id}", response_model=schemas.WebhookEventDetailOut)
 async def admin_inspect_webhook_event(ctx: TenantCtxDep, event_id: uuid.UUID):
     """§24 Inspect: the full ingress row — envelope, attempts trail AND the
     raw payload, the evidence a replay/ignore/resolve decision is made on."""
@@ -1090,9 +1071,7 @@ async def admin_inspect_webhook_event(ctx: TenantCtxDep, event_id: uuid.UUID):
     return {**_webhook_event_summary(row), "payload": row.payload}
 
 
-@router.post(
-    "/webhook-events/{event_id}/ignore", response_model=schemas.WebhookCloseOut
-)
+@router.post("/webhook-events/{event_id}/ignore", response_model=schemas.WebhookCloseOut)
 async def admin_ignore_webhook_event(
     ctx: TenantCtxDep, event_id: uuid.UUID, reason: str | None = None
 ):
@@ -1112,16 +1091,16 @@ async def admin_ignore_webhook_event(
     before = row.processing_status
     row.processing_status = "ignored"
     _audit_webhook_dlq_op(
-        ctx, row, action="webhook_event.ignored",
+        ctx,
+        row,
+        action="webhook_event.ignored",
         before={"processing_status": before, "reason": reason},
         after={"processing_status": "ignored"},
     )
     return {"id": str(row.id), "status": "ignored"}
 
 
-@router.post(
-    "/webhook-events/{event_id}/resolve", response_model=schemas.WebhookCloseOut
-)
+@router.post("/webhook-events/{event_id}/resolve", response_model=schemas.WebhookCloseOut)
 async def admin_resolve_webhook_event(
     ctx: TenantCtxDep, event_id: uuid.UUID, reason: str | None = None
 ):
@@ -1141,7 +1120,9 @@ async def admin_resolve_webhook_event(
     before = row.processing_status
     row.processing_status = "resolved"
     _audit_webhook_dlq_op(
-        ctx, row, action="webhook_event.resolved",
+        ctx,
+        row,
+        action="webhook_event.resolved",
         before={"processing_status": before, "reason": reason},
         after={"processing_status": "resolved"},
     )
@@ -1197,9 +1178,7 @@ class BreakGlassValidateRequest(BaseModel):
     action: str
 
 
-@router.post(
-    "/admin/break-glass/validate", response_model=schemas.BreakGlassValidateOut
-)
+@router.post("/admin/break-glass/validate", response_model=schemas.BreakGlassValidateOut)
 async def admin_validate_break_glass(
     ctx: TenantCtxDep,
     body: BreakGlassValidateRequest,
@@ -1240,9 +1219,7 @@ class SecretRotateRequest(BaseModel):
     new_value: str = Field(min_length=1)
 
 
-@router.post(
-    "/secrets", response_model=schemas.SecretReferenceOut, status_code=201
-)
+@router.post("/secrets", response_model=schemas.SecretReferenceOut, status_code=201)
 async def create_secret_reference(
     body: SecretRefCreate,
     ctx: TenantContext = Depends(require_permission("settings:write")),
@@ -1279,9 +1256,7 @@ async def create_secret_reference(
     }
 
 
-@router.post(
-    "/secrets/{provider}/rotate", response_model=schemas.SecretRotatedOut
-)
+@router.post("/secrets/{provider}/rotate", response_model=schemas.SecretRotatedOut)
 async def rotate_secret(
     provider: str,
     body: SecretRotateRequest,
@@ -1350,9 +1325,7 @@ def _restore_job_payload(job: TenantRestoreJob) -> dict:
     }
 
 
-@router.post(
-    "/tenant-restores", response_model=schemas.TenantRestoreJobOut, status_code=201
-)
+@router.post("/tenant-restores", response_model=schemas.TenantRestoreJobOut, status_code=201)
 async def create_tenant_restore_job(
     body: TenantRestoreJobCreate,
     ctx: TenantContext = Depends(require_permission("settings:write")),
@@ -1373,20 +1346,14 @@ async def create_tenant_restore_job(
     return _restore_job_payload(job)
 
 
-@router.get(
-    "/tenant-restores/{job_id}", response_model=schemas.TenantRestoreJobOut
-)
+@router.get("/tenant-restores/{job_id}", response_model=schemas.TenantRestoreJobOut)
 async def get_tenant_restore_job(ctx: TenantCtxDep, job_id: uuid.UUID):
     """One restore job's status + extraction/validation/restore manifests."""
-    job = await TenantRestoreService.get_restore_job(
-        ctx.session, ctx.tenant_id, job_id
-    )
+    job = await TenantRestoreService.get_restore_job(ctx.session, ctx.tenant_id, job_id)
     return _restore_job_payload(job)
 
 
-@router.post(
-    "/tenant-restores/{job_id}/extract", response_model=schemas.TenantRestoreJobOut
-)
+@router.post("/tenant-restores/{job_id}/extract", response_model=schemas.TenantRestoreJobOut)
 async def extract_tenant_restore_job(
     job_id: uuid.UUID,
     ctx: TenantContext = Depends(require_permission("settings:write")),
@@ -1405,9 +1372,7 @@ async def extract_tenant_restore_job(
     return _restore_job_payload(job)
 
 
-@router.post(
-    "/tenant-restores/{job_id}/validate", response_model=schemas.TenantRestoreJobOut
-)
+@router.post("/tenant-restores/{job_id}/validate", response_model=schemas.TenantRestoreJobOut)
 async def validate_tenant_restore_job(
     job_id: uuid.UUID,
     ctx: TenantContext = Depends(require_permission("settings:write")),
@@ -1417,15 +1382,11 @@ async def validate_tenant_restore_job(
     Any conflict (row already live, id collision, tenant mismatch, failed
     extraction) FAILS the job; only a clean validation unlocks execute.
     """
-    job = await TenantRestoreService.validate_against_current(
-        ctx.session, ctx.tenant_id, job_id
-    )
+    job = await TenantRestoreService.validate_against_current(ctx.session, ctx.tenant_id, job_id)
     return _restore_job_payload(job)
 
 
-@router.post(
-    "/tenant-restores/{job_id}/execute", response_model=schemas.TenantRestoreJobOut
-)
+@router.post("/tenant-restores/{job_id}/execute", response_model=schemas.TenantRestoreJobOut)
 async def execute_tenant_restore_job(
     job_id: uuid.UUID,
     ctx: TenantContext = Depends(require_permission("settings:write")),
@@ -1435,9 +1396,7 @@ async def execute_tenant_restore_job(
     Refuses to run unless validation passed. Writes an audit row and stages
     ``tenant.restore.completed`` on the outbox in the same transaction.
     """
-    job = await TenantRestoreService.execute_restore(
-        ctx.session, ctx.tenant_id, job_id
-    )
+    job = await TenantRestoreService.execute_restore(ctx.session, ctx.tenant_id, job_id)
     return _restore_job_payload(job)
 
 
@@ -1483,9 +1442,7 @@ async def list_security_events(
     if event_type:
         conditions.append(SecurityEvent.event_type == event_type)
     total = (
-        await ctx.session.execute(
-            select(func.count(SecurityEvent.id)).where(*conditions)
-        )
+        await ctx.session.execute(select(func.count(SecurityEvent.id)).where(*conditions))
     ).scalar_one()
     stmt = (
         select(SecurityEvent)
@@ -1543,9 +1500,7 @@ async def list_security_events(
 #   under its own audit trail.
 # ---------------------------------------------------------------------------
 
-_OUTBOX_STATUSES: frozenset[str] = frozenset(
-    {"pending", "publishing", "published", "failed"}
-)
+_OUTBOX_STATUSES: frozenset[str] = frozenset({"pending", "publishing", "published", "failed"})
 
 
 def _outbox_event_summary(row: OutboxEvent) -> dict:
@@ -1586,19 +1541,21 @@ async def list_outbox_events(
     if status is not None:
         conditions.append(OutboxEvent.status == status)
     total = (
-        await ctx.session.execute(
-            select(func.count(OutboxEvent.id)).where(*conditions)
-        )
+        await ctx.session.execute(select(func.count(OutboxEvent.id)).where(*conditions))
     ).scalar_one()
     rows = (
-        await ctx.session.execute(
-            select(OutboxEvent)
-            .where(*conditions)
-            .order_by(OutboxEvent.created_at.desc(), OutboxEvent.id.desc())
-            .limit(limit)
-            .offset(offset)
+        (
+            await ctx.session.execute(
+                select(OutboxEvent)
+                .where(*conditions)
+                .order_by(OutboxEvent.created_at.desc(), OutboxEvent.id.desc())
+                .limit(limit)
+                .offset(offset)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return {
         "total": int(total),
         "limit": limit,
@@ -1607,9 +1564,7 @@ async def list_outbox_events(
     }
 
 
-@router.get(
-    "/outbox-events/{event_id}", response_model=schemas.OutboxEventDetailOut
-)
+@router.get("/outbox-events/{event_id}", response_model=schemas.OutboxEventDetailOut)
 async def inspect_outbox_event(
     event_id: uuid.UUID,
     ctx: TenantContext = Depends(require_permission("settings:read")),
@@ -1658,9 +1613,7 @@ async def inspect_outbox_event(
 #   ids — they render as JSON null, never as a string "null".
 # ---------------------------------------------------------------------------
 
-_AUDIT_SOURCES: frozenset[str] = frozenset(
-    {"human", "ai", "automation", "system", "integration"}
-)
+_AUDIT_SOURCES: frozenset[str] = frozenset({"human", "ai", "automation", "system", "integration"})
 
 
 @router.get("/audit-logs", response_model=schemas.AuditLogListOut)
@@ -1704,19 +1657,21 @@ async def list_audit_logs(
     if until is not None:
         conditions.append(AuditLog.created_at < until)
     total = (
-        await ctx.session.execute(
-            select(func.count(AuditLog.id)).where(*conditions)
-        )
+        await ctx.session.execute(select(func.count(AuditLog.id)).where(*conditions))
     ).scalar_one()
     rows = (
-        await ctx.session.execute(
-            select(AuditLog)
-            .where(*conditions)
-            .order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
-            .limit(limit)
-            .offset(offset)
+        (
+            await ctx.session.execute(
+                select(AuditLog)
+                .where(*conditions)
+                .order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+                .limit(limit)
+                .offset(offset)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return {
         "total": int(total),
         "limit": limit,

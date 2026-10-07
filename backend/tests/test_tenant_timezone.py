@@ -252,9 +252,7 @@ async def test_a_stored_zone_the_runtime_cannot_resolve_fails_closed() -> None:
     """The column is validated on write, but tzdata moves; a reader must refuse
     rather than fall back to a zone the merchant never chose."""
     with pytest.raises(UnknownTimezoneError):
-        await analytics_service.resolve_report_timezone(
-            _StubSession("Mars/Olympus_Mons"), TENANT
-        )
+        await analytics_service.resolve_report_timezone(_StubSession("Mars/Olympus_Mons"), TENANT)
 
 
 async def test_the_summary_reports_the_zone_and_which_layer_answered(
@@ -387,15 +385,15 @@ def test_a_zone_longer_than_the_column_is_refused() -> None:
 
 
 def test_the_timezone_write_route_is_registered() -> None:
-    assert any(
-        r.path == TIMEZONE_PATH and "PUT" in r.methods for r in tenants_router.routes
-    ), f"PUT {TIMEZONE_PATH} must be routed on tenants_router"
+    assert any(r.path == TIMEZONE_PATH and "PUT" in r.methods for r in tenants_router.routes), (
+        f"PUT {TIMEZONE_PATH} must be routed on tenants_router"
+    )
 
 
 def test_the_timezone_read_route_is_registered() -> None:
-    assert any(
-        r.path == TIMEZONE_PATH and "GET" in r.methods for r in tenants_router.routes
-    ), f"GET {TIMEZONE_PATH} must be routed on tenants_router"
+    assert any(r.path == TIMEZONE_PATH and "GET" in r.methods for r in tenants_router.routes), (
+        f"GET {TIMEZONE_PATH} must be routed on tenants_router"
+    )
 
 
 def test_the_timezone_routes_are_gated_like_the_currency_routes() -> None:
@@ -407,9 +405,9 @@ def test_the_timezone_routes_are_gated_like_the_currency_routes() -> None:
 
 def test_the_currency_read_route_is_still_gated() -> None:
     """§47's read must survive the sibling being added beside it."""
-    assert _permission_codes(
-        tenants_router.routes, "/tenants/{tenant_id}/currency", "GET"
-    ) == {"settings:read"}
+    assert _permission_codes(tenants_router.routes, "/tenants/{tenant_id}/currency", "GET") == {
+        "settings:read"
+    }
 
 
 # ======================================================= the schema ---------
@@ -545,19 +543,21 @@ async def test_setting_the_same_zone_twice_writes_one_audit_row(
     await db.flush()
 
     rows = (
-        await db.execute(
-            sa.select(AuditLog).where(
-                AuditLog.tenant_id == tenant_ctx.tenant_id,
-                AuditLog.action == "tenant.timezone_changed",
+        (
+            await db.execute(
+                sa.select(AuditLog).where(
+                    AuditLog.tenant_id == tenant_ctx.tenant_id,
+                    AuditLog.action == "tenant.timezone_changed",
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(rows) == 1
 
 
-async def test_an_unresolvable_zone_is_refused_and_not_stored(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_an_unresolvable_zone_is_refused_and_not_stored(db: AsyncSession, tenant_ctx) -> None:
     with pytest.raises(ValidationError, match="Mars/Olympus_Mons"):
         await TenantSettingsService.set_timezone(
             db, tenant_ctx.tenant_id, "Mars/Olympus_Mons", actor_user_id=tenant_ctx.user.id
@@ -606,9 +606,7 @@ async def test_clearing_the_zone_returns_the_tenant_to_the_deployment(
     assert tenant.timezone is None
 
 
-async def test_the_settings_route_sets_and_reads_the_zone(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_the_settings_route_sets_and_reads_the_zone(db: AsyncSession, tenant_ctx) -> None:
     async with _client(
         db,
         ctx_tenant_id=tenant_ctx.tenant_id,
@@ -671,9 +669,7 @@ async def test_a_route_refuses_a_zone_it_cannot_resolve(db: AsyncSession, tenant
     assert response.status_code == 400, response.text
 
 
-async def test_another_tenants_caller_cannot_set_the_zone(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_another_tenants_caller_cannot_set_the_zone(db: AsyncSession, tenant_ctx) -> None:
     async with _client(
         db,
         ctx_tenant_id=uuid.uuid4(),
@@ -687,9 +683,7 @@ async def test_another_tenants_caller_cannot_set_the_zone(
     assert response.status_code == 403, response.text
 
 
-async def test_a_writer_without_the_permission_is_refused(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_a_writer_without_the_permission_is_refused(db: AsyncSession, tenant_ctx) -> None:
     async with _client(
         db,
         ctx_tenant_id=tenant_ctx.tenant_id,
@@ -727,9 +721,7 @@ async def test_a_tenant_with_its_own_zone_gets_its_own_day_labels(
     own_rows = await analytics_service.daily_revenue_series(
         db, cairo, since=W1_SINCE, until=W1_UNTIL
     )
-    own_summary = await analytics_service.revenue_summary(
-        db, cairo, since=W1_SINCE, until=W1_UNTIL
-    )
+    own_summary = await analytics_service.revenue_summary(db, cairo, since=W1_SINCE, until=W1_UNTIL)
     assert [r["day"] for r in own_rows] == ["2026-03-15"]
     assert own_summary["timezone"] == "Africa/Cairo"
     assert own_summary["timezone_source"] == "tenant"

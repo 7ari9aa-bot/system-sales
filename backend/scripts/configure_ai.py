@@ -96,9 +96,7 @@ async def main() -> int:
                     "is_active": True,
                 }
                 if row is None:
-                    session.add(
-                        ModelConfig(tenant_id=tenant.id, alias=alias, **values)
-                    )
+                    session.add(ModelConfig(tenant_id=tenant.id, alias=alias, **values))
                 else:
                     for key, value in values.items():
                         setattr(row, key, value)

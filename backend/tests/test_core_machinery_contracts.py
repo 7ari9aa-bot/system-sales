@@ -33,7 +33,7 @@ from __future__ import annotations
 import logging
 import time
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import select
@@ -47,7 +47,6 @@ from app.core.pagination import decode_cursor, encode_cursor, paginate
 from app.core.saga import Saga, SagaManager, SagaStatus, SagaStepHandler
 from app.core.search import PostgresSearch
 from app.core.transitions import allowed, require_transition
-
 
 # ---------------------------------------------------------------------------
 # lease — the advisory lock is actually read, contended and released
@@ -306,9 +305,7 @@ def test_an_empty_permission_set_redacts_everything_sensitive() -> None:
 def test_secret_fields_redact_even_with_every_permission() -> None:
     """Secrets are ALWAYS redacted — no permission code buys them back."""
     data = {"password_hash": "h", "api_key": "sk-x", "access_token": "t", "name": "ok"}
-    out = redact_fields(
-        data, permission_codes={"pii:read", "internal:read", "admin:all"}
-    )
+    out = redact_fields(data, permission_codes={"pii:read", "internal:read", "admin:all"})
     assert out["password_hash"] is None
     assert out["api_key"] is None
     assert out["access_token"] is None
@@ -389,10 +386,7 @@ async def test_keyset_pagination_resumes_without_duplicates_or_skips(
 
     suffix = uuid.uuid4().hex[:8]
     db.add_all(
-        [
-            Customer(tenant_id=tenant_ctx.tenant_id, name=f"page-{suffix}-{i}")
-            for i in range(5)
-        ]
+        [Customer(tenant_id=tenant_ctx.tenant_id, name=f"page-{suffix}-{i}") for i in range(5)]
     )
     await db.flush()
 
@@ -439,9 +433,7 @@ def test_a_malformed_cursor_is_a_client_error_with_a_code() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_search_never_crosses_the_tenant_boundary(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_search_never_crosses_the_tenant_boundary(db: AsyncSession, tenant_ctx) -> None:
     from app.modules.catalog.models import Product
     from app.modules.customers.models import Customer
     from app.modules.identity.models import Tenant

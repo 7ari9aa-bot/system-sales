@@ -32,9 +32,7 @@ async def _warehouse(db: AsyncSession, tenant_id: uuid.UUID) -> Warehouse:
     return warehouse
 
 
-async def _customer_and_variant(
-    db: AsyncSession, tenant_id: uuid.UUID, stock: int = 10
-):
+async def _customer_and_variant(db: AsyncSession, tenant_id: uuid.UUID, stock: int = 10):
     customer = await CustomerService.get_or_create_by_identity(
         db,
         tenant_id,
@@ -69,11 +67,9 @@ async def _customer_and_variant(
 
 async def _order_events(db: AsyncSession, order_id: uuid.UUID) -> list[OutboxEvent]:
     return list(
-        (
-            await db.execute(
-                select(OutboxEvent).where(OutboxEvent.aggregate_id == order_id)
-            )
-        ).scalars().all()
+        (await db.execute(select(OutboxEvent).where(OutboxEvent.aggregate_id == order_id)))
+        .scalars()
+        .all()
     )
 
 
@@ -120,8 +116,8 @@ async def test_create_order_reserves_and_writes_outbox(db: AsyncSession, tenant_
 
     # Line snapshot.
     items = (
-        await db.execute(select(OrderItem).where(OrderItem.order_id == order.id))
-    ).scalars().all()
+        (await db.execute(select(OrderItem).where(OrderItem.order_id == order.id))).scalars().all()
+    )
     assert len(items) == 1
     item = items[0]
     assert item.variant_id == variant.id
@@ -133,10 +129,14 @@ async def test_create_order_reserves_and_writes_outbox(db: AsyncSession, tenant_
 
     # Status history None -> pending.
     history = (
-        await db.execute(
-            select(OrderStatusHistory).where(OrderStatusHistory.order_id == order.id)
+        (
+            await db.execute(
+                select(OrderStatusHistory).where(OrderStatusHistory.order_id == order.id)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(history) == 1
     assert history[0].from_status is None
     assert history[0].to_status == "pending"
@@ -181,8 +181,10 @@ async def test_create_order_bootstraps_main_warehouse(db: AsyncSession, tenant_c
     await db.flush()
 
     warehouses = (
-        await db.execute(select(Warehouse).where(Warehouse.tenant_id == tenant_id))
-    ).scalars().all()
+        (await db.execute(select(Warehouse).where(Warehouse.tenant_id == tenant_id)))
+        .scalars()
+        .all()
+    )
     assert len(warehouses) == 1
 
     balance = await _balance(db, tenant_id, variant.id, main.id)
@@ -191,9 +193,7 @@ async def test_create_order_bootstraps_main_warehouse(db: AsyncSession, tenant_c
     assert order.extra["warehouse_id"] == str(main.id)
 
 
-async def test_cancel_order_releases_stock_and_emits_event(
-    db: AsyncSession, tenant_ctx
-):
+async def test_cancel_order_releases_stock_and_emits_event(db: AsyncSession, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     customer, variant, wh = await _customer_and_variant(db, tenant_id, stock=10)
 
@@ -211,10 +211,14 @@ async def test_cancel_order_releases_stock_and_emits_event(
     assert balance.on_hand == 10
 
     history = (
-        await db.execute(
-            select(OrderStatusHistory).where(OrderStatusHistory.order_id == order.id)
+        (
+            await db.execute(
+                select(OrderStatusHistory).where(OrderStatusHistory.order_id == order.id)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert {h.to_status for h in history} == {"pending", "cancelled"}
     assert any(h.from_status == "pending" for h in history)
 
@@ -282,16 +286,18 @@ async def test_full_lifecycle_writes_history_and_events(db: AsyncSession, tenant
     await db.flush()
 
     history = (
-        await db.execute(
-            select(OrderStatusHistory).where(OrderStatusHistory.order_id == order.id)
+        (
+            await db.execute(
+                select(OrderStatusHistory).where(OrderStatusHistory.order_id == order.id)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert {h.to_status for h in history} == {"pending", *path}
 
     events = await _order_events(db, order.id)
-    status_events = [
-        e for e in events if e.payload["event_type"] == "order.status_changed"
-    ]
+    status_events = [e for e in events if e.payload["event_type"] == "order.status_changed"]
     assert len(status_events) == len(path)
 
 
@@ -320,9 +326,7 @@ async def test_add_payment_confirms_pending_order(db: AsyncSession, tenant_ctx):
         db, tenant_id, customer.id, [{"variant_id": variant.id, "quantity": 1}]
     )
 
-    payment = await OrderService.add_payment(
-        db, tenant_id, order.id, method="cash", amount="25.50"
-    )
+    payment = await OrderService.add_payment(db, tenant_id, order.id, method="cash", amount="25.50")
     await db.flush()
 
     assert payment.status == "captured"
@@ -380,9 +384,7 @@ async def test_register_refund_tracks_payment_state(db: AsyncSession, tenant_ctx
     # Pay the order's exact balance: the over-payment guard rejects anything
     # above it (the old test paid 100 on a 25.50 order, which is no longer
     # allowed by design).
-    payment = await OrderService.add_payment(
-        db, tenant_id, order.id, method="card", amount="25.50"
-    )
+    payment = await OrderService.add_payment(db, tenant_id, order.id, method="card", amount="25.50")
 
     # Refund scenario aligned to the real 25.50 balance (the old 30/71/70
     # amounts were built on the over-payment the guard now forbids).
@@ -405,9 +407,7 @@ async def test_register_refund_tracks_payment_state(db: AsyncSession, tenant_ctx
     assert Decimal(str(final.amount)) == Decimal("15.50")
 
     with pytest.raises(NotFoundError):
-        await OrderService.register_refund(
-            db, tenant_id, order.id, uuid.uuid4(), amount=10
-        )
+        await OrderService.register_refund(db, tenant_id, order.id, uuid.uuid4(), amount=10)
     await db.flush()
 
 
@@ -430,9 +430,7 @@ async def test_create_order_input_validation(db: AsyncSession, tenant_ctx):
     await db.flush()
 
 
-async def test_insufficient_stock_aborts_order_atomically(
-    db: AsyncSession, tenant_ctx
-):
+async def test_insufficient_stock_aborts_order_atomically(db: AsyncSession, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     customer, variant, wh = await _customer_and_variant(db, tenant_id, stock=1)
 
@@ -537,12 +535,8 @@ async def test_checkout_duplicate_lines_price_tiers_like_per_item_path(
     tenant_id = tenant_ctx.tenant_id
     customer, variant, wh = await _customer_and_variant(db, tenant_id, stock=100)
     # Ladder in the tenant's currency (EGP): 5+ units at 20.00, 10+ at 15.00.
-    await CatalogService.set_variant_price(
-        db, tenant_id, variant.id, "20.00", min_quantity=5
-    )
-    await CatalogService.set_variant_price(
-        db, tenant_id, variant.id, "15.00", min_quantity=10
-    )
+    await CatalogService.set_variant_price(db, tenant_id, variant.id, "20.00", min_quantity=5)
+    await CatalogService.set_variant_price(db, tenant_id, variant.id, "15.00", min_quantity=10)
     # A USD tier left on this EGP shop must never price a line (§47) — the
     # write path refuses it, so the read-side filter gets a raw row to ignore.
     db.add(
@@ -566,8 +560,8 @@ async def test_checkout_duplicate_lines_price_tiers_like_per_item_path(
     await db.flush()
 
     items = (
-        await db.execute(select(OrderItem).where(OrderItem.order_id == order.id))
-    ).scalars().all()
+        (await db.execute(select(OrderItem).where(OrderItem.order_id == order.id))).scalars().all()
+    )
     assert len(items) == len(quantities)
     priced = {item.quantity: item.unit_price for item in items}
 
@@ -589,9 +583,7 @@ async def test_checkout_duplicate_lines_price_tiers_like_per_item_path(
     assert balance.reserved == sum(quantities)
 
 
-async def test_checkout_reserves_in_variant_id_order(
-    db: AsyncSession, tenant_ctx, monkeypatch
-):
+async def test_checkout_reserves_in_variant_id_order(db: AsyncSession, tenant_ctx, monkeypatch):
     """The reserve loop walks variants in VARIANT-ID order, never the cart's.
 
     Two concurrent checkouts holding the same variants in opposite line orders

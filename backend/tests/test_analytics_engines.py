@@ -24,10 +24,7 @@ START = datetime(2026, 9, 1, tzinfo=UTC)
 
 
 def _flat_series(days: int, daily: str) -> dict:
-    return {
-        START + timedelta(days=i, hours=i % 20): Decimal(daily)
-        for i in range(days)
-    }
+    return {START + timedelta(days=i, hours=i % 20): Decimal(daily) for i in range(days)}
 
 
 def _customer_orders(counts: list[int], start_day: int) -> list[dict]:
@@ -35,14 +32,17 @@ def _customer_orders(counts: list[int], start_day: int) -> list[dict]:
     orders = []
     for customer, count in enumerate(counts):
         for nth in range(count):
-            orders.append({
-                "customer_id": f"c-{customer}",
-                "placed_at": START + timedelta(days=start_day + nth * 2),
-            })
+            orders.append(
+                {
+                    "customer_id": f"c-{customer}",
+                    "placed_at": START + timedelta(days=start_day + nth * 2),
+                }
+            )
     return orders
 
 
 # ------------------------------------------------------------ seasonality ---
+
 
 def test_weekday_profile_lifts_the_busy_day():
     daily = {}
@@ -82,6 +82,7 @@ def test_seasonality_with_no_previous_data_is_honest():
 
 # -------------------------------------------------------------- customers ---
 
+
 def test_customer_split_separates_new_from_returning():
     # Customer 0: one order BEFORE the window, one INSIDE → returning.
     # Customer 1: first order INSIDE the window → new.
@@ -111,6 +112,7 @@ def test_capability_surfaces_the_split():
 
 
 # ------------------------------------------------------------ fulfillment ---
+
 
 def _shipments(rows: list[tuple[str, str]]) -> list[dict]:
     return [

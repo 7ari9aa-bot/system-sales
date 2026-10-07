@@ -311,9 +311,7 @@ def test_the_row_gate_is_the_same_rule_as_the_month_gate() -> None:
     row = retention.evaluate_row_gate(
         tenant_active=True, retention_days=365, status=retention.POLICY_ACTIVE
     )
-    month = retention.evaluate_gate(
-        tenant_count=1, missing_policies=0, max_days=365
-    )
+    month = retention.evaluate_gate(tenant_count=1, missing_policies=0, max_days=365)
     assert row.reason == month.reason == retention.REASON_OK
     assert row.may_drop is True
     assert row.max_days == 365
@@ -377,9 +375,7 @@ async def test_every_delete_is_limited_and_carries_the_tenant() -> None:
     one: the explicit predicate is belt-and-suspenders next to RLS because
     ``webhook_events`` resolves its tenant itself (§130).
     """
-    session = _PurgeSession(
-        policy=(30, "active"), rowcounts=[500, 500, 7]
-    )
+    session = _PurgeSession(policy=(30, "active"), rowcounts=[500, 500, 7])
     result = await retention.purge_row_store(session, TENANT, MESSAGES)
     deletes = [s for s in session.statements if s.strip().upper().startswith("DELETE")]
     assert len(deletes) == 3, deletes
@@ -516,12 +512,8 @@ class _SweepSession:
             self.audit_writes += 1
             return _Result()
         if "retention_policies" in sql and "data_class" in params:
-            match = next(
-                (p for p in self.policies if p.data_class == params["data_class"]), None
-            )
-            return _Result(
-                ((match.retention_days, match.status),) if match else ()
-            )
+            match = next((p for p in self.policies if p.data_class == params["data_class"]), None)
+            return _Result(((match.retention_days, match.status),) if match else ())
         if "retention_policies" in sql:
             return _Result(tuple(self.policies))
         if sql.strip().upper().startswith("SELECT") and "storage_key" in sql:
@@ -741,9 +733,7 @@ async def _seed_ingress_event(
 
 async def _clear_policy(db: AsyncSession, tenant_id, data_class: str) -> None:
     await db.execute(
-        sa.text(
-            "DELETE FROM retention_policies WHERE tenant_id = :t AND data_class = :c"
-        ),
+        sa.text("DELETE FROM retention_policies WHERE tenant_id = :t AND data_class = :c"),
         {"t": str(tenant_id), "c": data_class},
     )
     await db.flush()
@@ -776,9 +766,7 @@ async def test_a_chosen_horizon_deletes_exactly_the_rows_past_the_boundary(
     boundary = await _seed_message(db, tenant_ctx.tenant_id, body="b", age_days=400)
     old = await _seed_message(db, tenant_ctx.tenant_id, body="a", age_days=800)
     recent = await _seed_message(db, tenant_ctx.tenant_id, body="c", age_days=10)
-    held = await _seed_message(
-        db, tenant_ctx.tenant_id, body="d", age_days=800, status="unknown"
-    )
+    held = await _seed_message(db, tenant_ctx.tenant_id, body="d", age_days=800, status="unknown")
     await retention.choose_policy(
         db, tenant_ctx.tenant_id, MESSAGES, retention_days=365, enabled=True
     )
@@ -853,9 +841,7 @@ async def test_ingress_rows_awaiting_human_hands_survive(db: AsyncSession, tenan
     assert await _exists(db, "webhook_events", fresh)
 
 
-async def test_another_tenants_rows_are_never_touched(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_another_tenants_rows_are_never_touched(db: AsyncSession, tenant_ctx) -> None:
     """The tenant predicate is explicit, and RLS is the backstop — both must hold
     for a store whose tenant column is resolved at ingress rather than by FK.
     """
@@ -867,9 +853,7 @@ async def test_another_tenants_rows_are_never_touched(
     # webhook_events is FORCE RLS, so even a neighbour's ingress row is written
     # with that tenant bound.
     await bind_tenant(db, other.id)
-    other_row = await _seed_ingress_event(
-        db, other.id, age_days=400, processing_status="processed"
-    )
+    other_row = await _seed_ingress_event(db, other.id, age_days=400, processing_status="processed")
     await bind_tenant(db, tenant_ctx.tenant_id)
 
     await _clear_policy(db, tenant_ctx.tenant_id, WEBHOOK_EVENTS)
@@ -889,17 +873,13 @@ async def test_another_tenants_rows_are_never_touched(
     await bind_tenant(db, tenant_ctx.tenant_id)
 
 
-async def test_run_once_sweeps_every_row_store_a_tenant_chose(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_run_once_sweeps_every_row_store_a_tenant_chose(db: AsyncSession, tenant_ctx) -> None:
     """The existing ``retention.run`` job is the wiring: no new job type, because
     a second purge job would be a second source of truth about the same rows.
     """
     for dc in (MESSAGES, WEBHOOK_EVENTS):
         await _clear_policy(db, tenant_ctx.tenant_id, dc)
-        await retention.choose_policy(
-            db, tenant_ctx.tenant_id, dc, retention_days=90, enabled=True
-        )
+        await retention.choose_policy(db, tenant_ctx.tenant_id, dc, retention_days=90, enabled=True)
     old_message = await _seed_message(db, tenant_ctx.tenant_id, body="gone", age_days=400)
     old_event = await _seed_ingress_event(
         db, tenant_ctx.tenant_id, age_days=400, processing_status="processed"
@@ -924,6 +904,6 @@ def test_the_row_purge_is_wired_into_a_job_that_is_already_seeded() -> None:
     assert "retention.run" in sw._HANDLERS
     handler_src = inspect.getsource(sw._handle_retention)
     assert "RetentionWorker.run_once" in handler_src
-    assert "retention.purge_row_store" not in str(
-        [name for name in sw.RECURRING_JOBS]
-    ), "a row purge must not grow its own recurring job type"
+    assert "retention.purge_row_store" not in str([name for name in sw.RECURRING_JOBS]), (
+        "a row purge must not grow its own recurring job type"
+    )

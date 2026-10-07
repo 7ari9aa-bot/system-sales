@@ -5,6 +5,7 @@ a contract), the list's ``limit``/``offset`` are bounded here and re-checked in
 the service, and a mark-read miss raises ``NotFoundError`` — HTTP 404 — instead
 of the 200-with-``detail`` the register filed as P3.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -58,9 +59,7 @@ async def list_notifications(
 async def unread_count(ctx: TenantCtxDep) -> schemas.UnreadCount:
     from app.modules.notifications.service import NotificationService
 
-    count = await NotificationService.unread_count(
-        ctx.session, ctx.tenant_id, ctx.user.id
-    )
+    count = await NotificationService.unread_count(ctx.session, ctx.tenant_id, ctx.user.id)
     return schemas.UnreadCount(count=count)
 
 
@@ -127,7 +126,5 @@ async def mark_many_read(body: MarkReadRequest, ctx: TenantCtxDep) -> schemas.Ma
 async def mark_all_read(ctx: TenantCtxDep) -> schemas.MarkReadResult:
     from app.modules.notifications.service import NotificationService
 
-    count = await NotificationService.mark_all_read(
-        ctx.session, ctx.tenant_id, ctx.user.id
-    )
+    count = await NotificationService.mark_all_read(ctx.session, ctx.tenant_id, ctx.user.id)
     return schemas.MarkReadResult(marked=count)

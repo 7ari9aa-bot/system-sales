@@ -52,7 +52,7 @@ MoneyStr = Annotated[
         pattern=r"^-?\d+\.\d{2}$",
         description=(
             "An amount as a Decimal STRING at the money scale (ADR-001/§47). "
-            "Absent money is null, never \"0.00\"."
+            'Absent money is null, never "0.00".'
         ),
     ),
 ]

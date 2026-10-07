@@ -29,11 +29,7 @@ class FakeConversation:
 
 
 def _conv(channel: str, hours_since_customer: float | None) -> FakeConversation:
-    anchor = (
-        None
-        if hours_since_customer is None
-        else NOW - timedelta(hours=hours_since_customer)
-    )
+    anchor = None if hours_since_customer is None else NOW - timedelta(hours=hours_since_customer)
     return FakeConversation(channel=channel, last_customer_message_at=anchor)
 
 

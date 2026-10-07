@@ -62,17 +62,13 @@ async def _set_state(db: AsyncSession, tenant_id: uuid.UUID, state: str) -> None
     `TenantLifecycleService.transition` is the real writer and has its own
     tests; here we only need the column the gate reads to hold a given value.
     """
-    tenant = (
-        await db.execute(select(Tenant).where(Tenant.id == tenant_id))
-    ).scalar_one()
+    tenant = (await db.execute(select(Tenant).where(Tenant.id == tenant_id))).scalar_one()
     tenant.lifecycle_state = state
     await db.flush()
 
 
 def _authed(tenant_ctx) -> AuthedUser:
-    return AuthedUser(
-        id=tenant_ctx.user.id, tenant_id=tenant_ctx.tenant_id, role_code="owner"
-    )
+    return AuthedUser(id=tenant_ctx.user.id, tenant_id=tenant_ctx.tenant_id, role_code="owner")
 
 
 # ----------------------------------------------------- pure allowlist -----
@@ -160,9 +156,7 @@ async def test_non_operational_tenant_still_reaches_recovery_routes(
     """Export and billing must keep working, or the tenant can never recover."""
     await _set_state(db, tenant_ctx.tenant_id, state)
 
-    ctx = await get_tenant_ctx(
-        _request("/api/v1/billing/subscription"), db, _authed(tenant_ctx)
-    )
+    ctx = await get_tenant_ctx(_request("/api/v1/billing/subscription"), db, _authed(tenant_ctx))
     assert ctx.tenant_id == tenant_ctx.tenant_id
 
 
@@ -305,9 +299,7 @@ async def test_sse_auth_refuses_to_open_a_stream_for_a_suspended_workspace(
     db: AsyncSession, tenant_ctx, sse_sessions
 ) -> None:
     """The endpoint's own gate, not just the helper it delegates to."""
-    token = create_access_token(
-        str(tenant_ctx.user.id), {"tenant_id": str(tenant_ctx.tenant_id)}
-    )
+    token = create_access_token(str(tenant_ctx.user.id), {"tenant_id": str(tenant_ctx.tenant_id)})
     request = _request("/api/v1/realtime/events", authorization=f"Bearer {token}")
 
     # Active: the stream opens.
@@ -321,9 +313,7 @@ async def test_sse_auth_refuses_to_open_a_stream_for_a_suspended_workspace(
     assert "suspended" in str(exc.value)
 
 
-async def test_unknown_lifecycle_state_denies_business_routes(
-    db: AsyncSession, tenant_ctx
-):
+async def test_unknown_lifecycle_state_denies_business_routes(db: AsyncSession, tenant_ctx):
     """Fail closed: an uninterpretable state must not grant access."""
     await _set_state(db, tenant_ctx.tenant_id, "who-knows")
 
@@ -344,11 +334,7 @@ async def test_blocked_tenant_is_denied_before_the_tenant_guc_is_switched(
     other = Tenant(slug=f"t-{uuid.uuid4().hex[:10]}", name="Suspended Co")
     db.add(other)
     await db.flush()
-    db.add(
-        TenantUser(
-            tenant_id=other.id, user_id=tenant_ctx.user.id, role_id=tenant_ctx.role.id
-        )
-    )
+    db.add(TenantUser(tenant_id=other.id, user_id=tenant_ctx.user.id, role_id=tenant_ctx.role.id))
     await db.flush()
     # The sessions UPDATE now runs behind the tenants RLS policy (fd2026100410),
     # which matches `id = app.tenant_id OR app.is_platform_admin = 'true'`. The
@@ -361,16 +347,13 @@ async def test_blocked_tenant_is_denied_before_the_tenant_guc_is_switched(
     await db.execute(sa.text("SELECT set_config('app.is_platform_admin', 'false', true)"))
 
     with pytest.raises(PermissionDeniedError):
-        await get_tenant_ctx(
-            _request("/api/v1/customers"), db, _authed(tenant_ctx), str(other.id)
-        )
+        await get_tenant_ctx(_request("/api/v1/customers"), db, _authed(tenant_ctx), str(other.id))
 
     bound = (
         await db.execute(sa.text("SELECT current_setting('app.tenant_id', true)"))
     ).scalar_one()
     assert bound == str(tenant_ctx.tenant_id), (
-        "the suspended tenant was bound before the gate rejected it: "
-        f"app.tenant_id={bound!r}"
+        f"the suspended tenant was bound before the gate rejected it: app.tenant_id={bound!r}"
     )
 
 
@@ -388,9 +371,7 @@ async def test_login_gate_allows_offboarding(db: AsyncSession, tenant_ctx):
 
 
 @pytest.mark.parametrize("state", ["suspended", "deleted"])
-async def test_login_gate_blocks_suspended_and_deleted(
-    db: AsyncSession, tenant_ctx, state: str
-):
+async def test_login_gate_blocks_suspended_and_deleted(db: AsyncSession, tenant_ctx, state: str):
     await _set_state(db, tenant_ctx.tenant_id, state)
 
     with pytest.raises(PermissionDeniedError) as exc:
@@ -469,9 +450,7 @@ async def test_suspended_default_tenant_does_not_lock_out_the_active_ones(
     )
 
 
-async def test_login_refuses_only_when_every_membership_is_blocked(
-    db: AsyncSession, tenant_ctx
-):
+async def test_login_refuses_only_when_every_membership_is_blocked(db: AsyncSession, tenant_ctx):
     """All memberships blocked → the original default's refusal stands."""
     other = await _second_membership(db, tenant_ctx, default=True)
     await _set_state(db, tenant_ctx.tenant_id, "suspended")

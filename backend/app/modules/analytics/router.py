@@ -321,9 +321,7 @@ def _zone_source(zone: object) -> str | None:
     return zone.source if isinstance(zone, ResolvedTimezone) else None
 
 
-def _window(
-    days: int, since: datetime | None, until: datetime
-) -> tuple[datetime, datetime]:
+def _window(days: int, since: datetime | None, until: datetime) -> tuple[datetime, datetime]:
     """The one ``[since, until)`` every figure in a payload shares.
 
     ``since`` wins when given; otherwise the trailing ``days``. A summary and a
@@ -463,9 +461,7 @@ async def daily_series(
     # ``tenants.timezone``, so resolving the chain here and the service
     # resolving it again produced two answers to one question: Cairo buckets
     # under a deployment-zone label.
-    zone = await analytics_service.resolve_report_timezone(
-        ctx.session, ctx.tenant_id, timezone
-    )
+    zone = await analytics_service.resolve_report_timezone(ctx.session, ctx.tenant_id, timezone)
     rows = await analytics_service.daily_revenue_series(
         ctx.session, ctx.tenant_id, since=since, until=until, timezone=zone
     )
@@ -645,6 +641,7 @@ async def analytics_overview(
 #   module cannot execute is a 4xx that names the fix, the way §47 refuses an
 #   unknown currency and ``set_timezone`` refuses an unresolvable zone.
 
+
 #: Two decimal-free integers and one enum: no money crosses these payloads, so
 #: no ``str(Decimal)`` rule applies. ``None`` still stays ``None`` — an
 #: unanswered question must not serialise as a zero-day horizon.
@@ -774,9 +771,7 @@ async def retention_position(ctx: AnalyticsReadCtx) -> dict[str, Any]:
     return {"policies": position, **_gate_block(gate)}
 
 
-@router.put(
-    "/retention/policies/{data_class}", response_model=schemas.RetentionPolicyWriteOut
-)
+@router.put("/retention/policies/{data_class}", response_model=schemas.RetentionPolicyWriteOut)
 async def choose_retention_policy(
     data_class: str, body: RetentionPolicyChoice, ctx: AnalyticsWriteCtx
 ) -> dict[str, Any]:
@@ -854,5 +849,3 @@ async def choose_retention_policy(
         },
     )
     return {"policy": chosen, **_gate_block(gate)}
-
-

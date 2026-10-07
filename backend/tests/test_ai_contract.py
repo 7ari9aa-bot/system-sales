@@ -173,8 +173,8 @@ def test_no_ai_route_answers_through_an_untyped_body() -> None:
         for r in _routes()
         if not (r.status_code == 204 and r.response_model is None) and _is_untyped(r.response_model)
     )
-    assert not untyped, (
-        "AI routes still answering through an untyped body:\n  " + "\n  ".join(untyped)
+    assert not untyped, "AI routes still answering through an untyped body:\n  " + "\n  ".join(
+        untyped
     )
 
 
@@ -207,7 +207,6 @@ def test_the_openapi_document_publishes_no_open_object_for_ai() -> None:
 def test_the_ai_surface_has_34_routes_to_cover() -> None:
     """Keeps the gate honest: a walk over an empty route list passes anything."""
     assert len(_routes()) == 34, f"expected 34 AI routes, found {len(_routes())}"
-
 
 
 def test_persisted_sales_analysis_publishes_its_evidence_and_findings() -> None:

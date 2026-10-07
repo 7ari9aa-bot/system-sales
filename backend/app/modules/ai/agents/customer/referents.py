@@ -85,6 +85,4 @@ def resolve_referent(utterance: str, shown_items: list[str]) -> Referent | None:
 def _at(shown_items: list[str], position: int, marker: str) -> Referent | None:
     if position < 1 or position > len(shown_items):
         return None
-    return Referent(
-        product_id=shown_items[position - 1], position=position, marker=marker
-    )
+    return Referent(product_id=shown_items[position - 1], position=position, marker=marker)

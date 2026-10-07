@@ -322,9 +322,7 @@ async def test_a_revoked_consent_is_refused(db, tenant_ctx):
         )
 
 
-async def test_a_transactional_send_is_not_blocked_by_missing_marketing_consent(
-    db, tenant_ctx
-):
+async def test_a_transactional_send_is_not_blocked_by_missing_marketing_consent(db, tenant_ctx):
     """No consent of any kind exists — a shipping notice must still go out."""
     _, conversation = await _customer_and_conversation(db, tenant_ctx.tenant_id)
 

@@ -110,9 +110,7 @@ def test_a_configured_holiday_closes_even_a_24_7_calendar() -> None:
     clock = _clock(holidays=["2026-09-21"])
     assert clock.is_open(_dt(2026, 9, 21, 10, 0)) is False
     # 30 minutes from the holiday itself lands at the next day's opening.
-    assert clock.add_business_minutes(_dt(2026, 9, 21, 10, 0), 30) == _dt(
-        2026, 9, 22, 0, 30
-    )
+    assert clock.add_business_minutes(_dt(2026, 9, 21, 10, 0), 30) == _dt(2026, 9, 22, 0, 30)
 
 
 def test_the_window_is_half_open_at_closing_time() -> None:
@@ -122,9 +120,7 @@ def test_the_window_is_half_open_at_closing_time() -> None:
     clock = _clock(hours=WEEKDAYS_9_TO_5)
     assert clock.is_open(_dt(2026, 9, 21, 17, 0)) is False
     # 30 min from exactly 17:00 Monday -> Tuesday 09:30, not Monday 17:30.
-    assert clock.add_business_minutes(_dt(2026, 9, 21, 17, 0), 30) == _dt(
-        2026, 9, 22, 9, 30
-    )
+    assert clock.add_business_minutes(_dt(2026, 9, 21, 17, 0), 30) == _dt(2026, 9, 22, 9, 30)
 
 
 # --- timezones -------------------------------------------------------------
@@ -172,10 +168,10 @@ def test_a_valid_calendar_passes() -> None:
 @pytest.mark.parametrize(
     "bad",
     [
-        {"7": [["09:00", "17:00"]]},           # invalid weekday
-        {"1": [["17:00", "09:00"]]},           # close before open
-        {"1": [["9am", "5pm"]]},               # not HH:MM
-        {"1": [["09:00"]]},                    # not a pair
+        {"7": [["09:00", "17:00"]]},  # invalid weekday
+        {"1": [["17:00", "09:00"]]},  # close before open
+        {"1": [["9am", "5pm"]]},  # not HH:MM
+        {"1": [["09:00"]]},  # not a pair
     ],
 )
 def test_a_malformed_calendar_is_refused(bad: dict) -> None:

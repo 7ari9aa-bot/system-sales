@@ -86,9 +86,7 @@ class _Session:
         if "retention_policies" in sql and "data_class" in (params or {}):
             wanted = params["data_class"]
             match = next((p for p in self._policies if p.data_class == wanted), None)
-            return _Result(
-                [(match.retention_days, match.status)] if match else []
-            )
+            return _Result([(match.retention_days, match.status)] if match else [])
         if "retention_policies" in sql:
             return _Result(self._policies)
         if sql.strip().upper().startswith("SELECT") and "storage_key" in sql:
@@ -184,8 +182,7 @@ def test_retentable_map_is_the_modules_allowlist_not_a_copy():
     """Two lists of "which tables may be destroyed" is how the wrong one drifts."""
     assert _RETENTABLE is not retention.ROW_LEVEL_DATA_CLASSES
     assert dict(_RETENTABLE) == {
-        dc: (spec.table, spec.ts_column)
-        for dc, spec in retention.ROW_LEVEL_DATA_CLASSES.items()
+        dc: (spec.table, spec.ts_column) for dc, spec in retention.ROW_LEVEL_DATA_CLASSES.items()
     }
 
 

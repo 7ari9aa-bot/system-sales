@@ -166,9 +166,9 @@ async def get_current_user(
         # before any tenant GUC is bound.
         auth_state = (
             await session.execute(
-                select(
-                    User.is_active, User.auth_version, User.is_platform_admin
-                ).where(User.id == user_id)
+                select(User.is_active, User.auth_version, User.is_platform_admin).where(
+                    User.id == user_id
+                )
             )
         ).one_or_none()
         if auth_state is None or not auth_state.is_active:
@@ -350,17 +350,13 @@ async def get_tenant_ctx(
     # an edge the module-boundary ratchet counts.
     tenant_row = (
         await session.execute(
-            sa.select(Tenant.lifecycle_state, Tenant.currency).where(
-                Tenant.id == tenant_id
-            )
+            sa.select(Tenant.lifecycle_state, Tenant.currency).where(Tenant.id == tenant_id)
         )
     ).first()
     if tenant_row is None:
         raise PermissionDeniedError("tenant not found")
     lifecycle_state, tenant_currency = tenant_row
-    if not tenant_may_use_api(lifecycle_state) and not _tenant_recovery_path(
-        request.url.path
-    ):
+    if not tenant_may_use_api(lifecycle_state) and not _tenant_recovery_path(request.url.path):
         raise PermissionDeniedError(
             f"workspace is {lifecycle_state} — only sign-in, billing, export "
             "and notifications are available"

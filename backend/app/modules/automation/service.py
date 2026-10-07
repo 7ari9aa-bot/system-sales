@@ -164,17 +164,15 @@ class WorkflowService:
         workflow = await WorkflowService.get(session, tenant_id, workflow_id)
         allowed = ALLOWED_STATUS_TRANSITIONS.get(workflow.status, frozenset())
         if status not in allowed:
-            hint = f" (allowed: {', '.join(sorted(allowed))})" if allowed else (
-                " - archived is terminal"
+            hint = (
+                f" (allowed: {', '.join(sorted(allowed))})"
+                if allowed
+                else (" - archived is terminal")
             )
-            raise ConflictError(
-                f"cannot move a {workflow.status} workflow to {status}{hint}"
-            )
+            raise ConflictError(f"cannot move a {workflow.status} workflow to {status}{hint}")
         # ONE statement, always version-bumped (even without If-Match) so an
         # ETag never goes stale silently on a concurrent unconditional write.
-        await apply_versioned_update(
-            session, workflow, expected_version, {"status": status}
-        )
+        await apply_versioned_update(session, workflow, expected_version, {"status": status})
         return workflow
 
     @staticmethod
@@ -224,10 +222,12 @@ class WorkflowService:
         """Execute one running execution against its pinned version."""
         execution = (
             await session.execute(
-                select(WorkflowExecution).where(
+                select(WorkflowExecution)
+                .where(
                     WorkflowExecution.tenant_id == tenant_id,
                     WorkflowExecution.id == execution_id,
-                ).with_for_update()
+                )
+                .with_for_update()
             )
         ).scalar_one_or_none()
         if execution is None:
@@ -251,8 +251,7 @@ class WorkflowService:
         # merchant withdrew, queueing notifications and webhooks on its behalf.
         if workflow.status != "active":
             raise ConflictError(
-                f"workflow {workflow.id} is {workflow.status}; only an active "
-                "workflow executes"
+                f"workflow {workflow.id} is {workflow.status}; only an active workflow executes"
             )
 
         try:

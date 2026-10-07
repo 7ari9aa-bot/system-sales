@@ -65,9 +65,7 @@ class MetricDefinition(BaseModel):
 
     name: str
     description: str
-    semantic_type: Literal[
-        "count", "money", "ratio", "pct", "duration", "composite"
-    ]
+    semantic_type: Literal["count", "money", "ratio", "pct", "duration", "composite"]
     value_definition: str  # what is summed/counted, in words
     attribution_event: str  # lifecycle event that OWNS the number
     attribution_timestamp: str  # the column carrying that event's time

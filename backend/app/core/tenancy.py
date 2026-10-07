@@ -82,12 +82,8 @@ class TenantConcurrencyGovernor:
         concurrency: int | None = None,
         queue_depth: int | None = None,
     ) -> None:
-        self.concurrency = (
-            default_tenant_concurrency() if concurrency is None else concurrency
-        )
-        self.queue_depth = (
-            DEFAULT_TENANT_QUEUE_DEPTH if queue_depth is None else queue_depth
-        )
+        self.concurrency = default_tenant_concurrency() if concurrency is None else concurrency
+        self.queue_depth = DEFAULT_TENANT_QUEUE_DEPTH if queue_depth is None else queue_depth
         self._slots: dict[str, asyncio.Semaphore] = {}
         self._in_flight: dict[str, int] = {}
         self._waiting: dict[str, int] = {}
@@ -105,9 +101,7 @@ class TenantConcurrencyGovernor:
             slots = asyncio.Semaphore(self.concurrency)
             self._slots[key] = slots
         if slots.locked() and self._waiting.get(key, 0) >= self.queue_depth:
-            raise TenantBusyError(
-                f"tenant {key} is at its concurrency cap with a full queue"
-            )
+            raise TenantBusyError(f"tenant {key} is at its concurrency cap with a full queue")
         self._waiting[key] = self._waiting.get(key, 0) + 1
         try:
             await slots.acquire()
@@ -176,16 +170,12 @@ async def resolve_tenant_currency(session: AsyncSession, tenant_id: UUID) -> str
     from app.modules.identity.models import Tenant
 
     code = (
-        await session.execute(
-            select(Tenant.currency).where(Tenant.id == tenant_id)
-        )
+        await session.execute(select(Tenant.currency).where(Tenant.id == tenant_id))
     ).scalar_one_or_none()
     return (code or DEFAULT_CURRENCY).upper()
 
 
-def set_current_scope(
-    workspace_id: UUID | str | None, location_id: UUID | str | None
-):
+def set_current_scope(workspace_id: UUID | str | None, location_id: UUID | str | None):
     """Bind the §151 scope for this context; returns a reset token."""
 
     def _uuid(value: UUID | str | None) -> UUID | None:

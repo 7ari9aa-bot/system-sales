@@ -168,11 +168,7 @@ def _drain_bound_max_backoff(outbox_module: Any) -> float:
     finally:
         outbox_module.get_settings = original_settings
         outbox_module.SessionLocal = original_session
-    marks = [
-        p
-        for sql, p in session.calls
-        if "status = 'failed'" in sql and "last_error" in sql
-    ]
+    marks = [p for sql, p in session.calls if "status = 'failed'" in sql and "last_error" in sql]
     assert marks, "the drain never ran the failed mark"
     return float(marks[0]["backoff_max_seconds"])
 
@@ -237,7 +233,7 @@ def test_mark_failed_backoff_is_exponential_in_attempts_and_bounded():
     assert "make_interval" in expr, "duration must be a pooler-safe interval expression"
     # exponential in attempts
     assert "attempts" in expr, "the backoff must derive from the attempt count"
-    assert ("power(" in expr.lower() or "2 ^" in expr or "**" in expr or "exp(" in expr.lower()), (
+    assert "power(" in expr.lower() or "2 ^" in expr or "**" in expr or "exp(" in expr.lower(), (
         f"the backoff must grow exponentially with attempts: {expr}"
     )
     # bounded
@@ -370,9 +366,7 @@ def test_drain_marks_a_failing_row_failed_with_a_future_not_before(monkeypatch):
     # The mark is the statement that writes last_error — the failed-row reclaim
     # also contains `status = 'failed'`, but only in its WHERE clause.
     marks = [
-        (sql, p)
-        for sql, p in session.calls
-        if "status = 'failed'" in sql and "last_error" in sql
+        (sql, p) for sql, p in session.calls if "status = 'failed'" in sql and "last_error" in sql
     ]
     assert marks, f"the relay never marked the failed row: {session.calls}"
     sql, params = marks[0]

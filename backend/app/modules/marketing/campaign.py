@@ -43,24 +43,14 @@ class CampaignRun(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
 
     __tablename__ = "campaign_runs"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid7
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid7)
     campaign_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("campaigns.id", ondelete="CASCADE")
     )
-    segment_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True
-    )
-    status: Mapped[str] = mapped_column(
-        String(15), server_default="queued"
-    )
-    started_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    segment_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    status: Mapped[str] = mapped_column(String(15), server_default="queued")
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     total_recipients: Mapped[int] = mapped_column(Integer, server_default="0")
     sent_count: Mapped[int] = mapped_column(Integer, server_default="0")
     failed_count: Mapped[int] = mapped_column(Integer, server_default="0")
@@ -70,9 +60,7 @@ class CampaignRun(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     cursor: Mapped[str | None] = mapped_column(String(64), nullable=True)
     last_error: Mapped[str | None] = mapped_column(Text)
 
-    __table_args__ = (
-        Index("ix_campaign_runs_tenant_status", "tenant_id", "status"),
-    )
+    __table_args__ = (Index("ix_campaign_runs_tenant_status", "tenant_id", "status"),)
 
 
 class CampaignExecutionService:

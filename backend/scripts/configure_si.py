@@ -54,13 +54,17 @@ async def configure_agent(session, tenant_id: uuid.UUID, *, api_key: str) -> uui
     await session.flush()
 
     agent = (
-        await session.execute(
-            select(Agent).where(
-                Agent.tenant_id == tenant_id,
-                Agent.is_active.is_(True),
+        (
+            await session.execute(
+                select(Agent).where(
+                    Agent.tenant_id == tenant_id,
+                    Agent.is_active.is_(True),
+                )
             )
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
     if agent is None:
         agent = Agent(
             tenant_id=tenant_id,
@@ -86,9 +90,7 @@ async def configure_agent(session, tenant_id: uuid.UUID, *, api_key: str) -> uui
     }
     for name in SI_TOOLS:
         if name not in existing:
-            session.add(
-                AgentTool(tenant_id=tenant_id, agent_id=agent.id, name=name, policy={})
-            )
+            session.add(AgentTool(tenant_id=tenant_id, agent_id=agent.id, name=name, policy={}))
     await session.flush()
     return agent.id
 
@@ -101,8 +103,9 @@ async def main(tenant_id: uuid.UUID, api_key: str) -> int:
         await bind_tenant(session, tenant_id)
         agent_id = await configure_agent(session, tenant_id, api_key=api_key)
         await session.commit()
-    print(f"configured: tenant={tenant_id} agent={agent_id} "
-          f"strong={STRONG_MODEL} fast={FAST_MODEL}")
+    print(
+        f"configured: tenant={tenant_id} agent={agent_id} strong={STRONG_MODEL} fast={FAST_MODEL}"
+    )
     return 0
 
 

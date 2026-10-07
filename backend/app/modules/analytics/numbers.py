@@ -26,8 +26,7 @@ _DIGIT_SCRIPTS = {
 }
 
 _FORMATS = frozenset(
-    {"int", "money", "pct", "pct_points", "date", "date_range", "delta_money",
-     "delta_pct", "count"}
+    {"int", "money", "pct", "pct_points", "date", "date_range", "delta_money", "delta_pct", "count"}
 )
 
 #: Non-measuring expressions that may contain number WORDS without a fact.
@@ -81,10 +80,7 @@ def render_placeholder(token: str, fmt: str, fact: MetricFact, policy: NumberPol
     elif fmt == "date":
         text = fact.period.start.date().isoformat()
     elif fmt == "date_range":
-        text = (
-            f"{fact.period.start.date().isoformat()} → "
-            f"{fact.period.end.date().isoformat()}"
-        )
+        text = f"{fact.period.start.date().isoformat()} → {fact.period.end.date().isoformat()}"
     else:  # pragma: no cover — _FORMATS membership guarantees the rest
         raise ValueError(f"unhandled format: {fmt}")
     return _script_convert(text, policy)

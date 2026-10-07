@@ -147,9 +147,7 @@ async def test_rejected_credentials_return_a_scrubbed_error() -> None:
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
         with pytest.raises(ValidationError) as caught:
-            await verify_channel_credentials(
-                "messenger", {"api_key": token}, {}, client=client
-            )
+            await verify_channel_credentials("messenger", {"api_key": token}, {}, client=client)
 
     assert token not in str(caught.value)
     assert "Authorization" not in str(caught.value)
@@ -177,9 +175,7 @@ async def test_provider_network_errors_are_retryable_and_scrubbed() -> None:
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(fail)) as client:
         with pytest.raises(ExternalProviderError) as caught:
-            await verify_channel_credentials(
-                "telegram", {"bot_token": token}, {}, client=client
-            )
+            await verify_channel_credentials("telegram", {"bot_token": token}, {}, client=client)
 
     assert caught.value.retryable is True
     assert token not in str(caught.value)
@@ -211,6 +207,7 @@ async def test_provider_throttling_and_outages_are_retryable_502s(status) -> Non
     down) is an ExternalProviderError — a 502 with retryable=True on the wire —
     never a raw 500 and never a non-retryable verdict that would strand the
     operator on a transient outage."""
+
     def respond(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(status, json={})
 
@@ -229,7 +226,7 @@ async def test_provider_malformed_payload_is_an_external_error_not_a_crash() -> 
     crashing with a 500 would leak transport details into the response."""
     for body in (b"<html>gateway timeout</html>", b'["not", "an", "object"]'):
 
-        def respond(_request: httpx.Request) -> httpx.Response:
+        def respond(_request: httpx.Request, body: bytes = body) -> httpx.Response:
             return httpx.Response(200, content=body)
 
         async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
@@ -243,10 +240,9 @@ async def test_redirects_are_never_followed() -> None:
     """follow_redirects=False is the SSRF/tuning guard: a provider (or anything
     between us and it) answering 302 must not be chased — the verification
     fails closed instead of submitting the credential to the redirect target."""
+
     def respond(_request: httpx.Request) -> httpx.Response:
-        return httpx.Response(
-            302, headers={"location": "https://attacker.example.test/catch"}
-        )
+        return httpx.Response(302, headers={"location": "https://attacker.example.test/catch"})
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
         with pytest.raises(ExternalProviderError):
@@ -268,23 +264,17 @@ def test_the_verifier_client_is_timeout_bounded(monkeypatch) -> None:  # noqa: A
             super().__init__(
                 *args,
                 transport=httpx.MockTransport(
-                    lambda _request: httpx.Response(
-                        200, json={"id": "345678901", "name": "Page"}
-                    )
+                    lambda _request: httpx.Response(200, json={"id": "345678901", "name": "Page"})
                 ),
                 **kwargs,
             )
 
-    monkeypatch.setattr(
-        "app.modules.platform.integration_verifier.httpx.AsyncClient", _SpyClient
-    )
+    monkeypatch.setattr("app.modules.platform.integration_verifier.httpx.AsyncClient", _SpyClient)
 
     import anyio
 
     async def _run() -> None:
-        result = await verify_channel_credentials(
-            "messenger", {"api_key": "page-secret"}, {}
-        )
+        result = await verify_channel_credentials("messenger", {"api_key": "page-secret"}, {})
         assert result.identity_config == {"account_id": "345678901"}
 
     anyio.run(_run)

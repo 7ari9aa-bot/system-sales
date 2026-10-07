@@ -102,18 +102,14 @@ class _NoUpsertService:
     """What the orders side looks like today: no external upsert at all."""
 
 
-def _product(
-    *, currency: str | None = "EGP", price: str = "19.99", pid: int = 111
-) -> dict:
+def _product(*, currency: str | None = "EGP", price: str = "19.99", pid: int = 111) -> dict:
     payload: dict[str, Any] = {
         "id": pid,
         "title": "Koshari Bowl",
         "handle": "koshari-bowl",
         "body_html": "<p>practical</p>",
         "status": "active",
-        "variants": [
-            {"id": 999, "title": "Default", "price": price, "sku": f"KB-{pid}"}
-        ],
+        "variants": [{"id": 999, "title": "Default", "price": price, "sku": f"KB-{pid}"}],
     }
     if currency is not None:
         payload["currency"] = currency
@@ -126,9 +122,7 @@ def _order(*, currency: str | None = "EGP", oid: int = 500) -> dict:
         "financial_status": "paid",
         "total_price": "250.00",
         "customer": {"id": 7},
-        "line_items": [
-            {"product_id": 111, "variant_id": 999, "quantity": 2, "price": "125.00"}
-        ],
+        "line_items": [{"product_id": 111, "variant_id": 999, "quantity": 2, "price": "125.00"}],
     }
     if currency is not None:
         payload["currency"] = currency
@@ -200,14 +194,10 @@ async def test_sync_products_defaults_to_the_catalog_service(
     async def _fake_upsert(session: Any, tenant_id: Any, **kwargs: Any) -> None:
         recorded.append(kwargs)
 
-    monkeypatch.setattr(
-        CatalogService, "upsert_from_external", staticmethod(_fake_upsert)
-    )
+    monkeypatch.setattr(CatalogService, "upsert_from_external", staticmethod(_fake_upsert))
     adapter, _seen = _adapter(products=[_product()], shop_currency="EGP")
 
-    report = await adapter.sync_products(
-        _FakeSession(), TENANT, tenant_currency="EGP"
-    )
+    report = await adapter.sync_products(_FakeSession(), TENANT, tenant_currency="EGP")
 
     assert report["synced"] == 1
     assert len(recorded) == 1
@@ -216,9 +206,7 @@ async def test_sync_products_defaults_to_the_catalog_service(
 async def test_a_service_refusal_is_a_conflict_not_a_lost_row() -> None:
     """The owning service's rejection is reported, not buried in errors."""
     adapter, _seen = _adapter(products=[_product()], shop_currency="EGP")
-    service = _SpyService(
-        error=ConflictError("this tenant prices in EGP; a USD price never sells")
-    )
+    service = _SpyService(error=ConflictError("this tenant prices in EGP; a USD price never sells"))
 
     report = await adapter.sync_products(
         _FakeSession(), TENANT, product_service=service, tenant_currency="EGP"
@@ -269,9 +257,7 @@ def test_the_adapter_carries_no_hardcoded_currency() -> None:
 
 def test_normalize_shopify_order_stamps_the_tenants_currency() -> None:
     """A SAR tenant's synced order is a SAR order, whatever the default was."""
-    matching = _normalize_shopify_order(
-        _order(currency="SAR"), tenant_currency="SAR"
-    )
+    matching = _normalize_shopify_order(_order(currency="SAR"), tenant_currency="SAR")
     assert matching["currency"] == "SAR"
     assert matching["total"] == "250.00"
 
@@ -291,28 +277,20 @@ def test_normalize_shopify_order_refuses_a_foreign_currency() -> None:
 def test_resolve_price_currency_rules() -> None:
     # a matching code passes through, upper-cased
     assert (
-        sa._resolve_price_currency(
-            "egp", subject="p", shop_currency=None, tenant_currency="EGP"
-        )
+        sa._resolve_price_currency("egp", subject="p", shop_currency=None, tenant_currency="EGP")
         == "EGP"
     )
     # nothing declared on the payload: the configured shop currency answers
     assert (
-        sa._resolve_price_currency(
-            None, subject="p", shop_currency="EGP", tenant_currency="EGP"
-        )
+        sa._resolve_price_currency(None, subject="p", shop_currency="EGP", tenant_currency="EGP")
         == "EGP"
     )
     # a different currency is a refusal, not a re-label
     with pytest.raises(ConflictError):
-        sa._resolve_price_currency(
-            "USD", subject="p", shop_currency=None, tenant_currency="EGP"
-        )
+        sa._resolve_price_currency("USD", subject="p", shop_currency=None, tenant_currency="EGP")
     # and an amount with no currency anywhere cannot be guessed at
     with pytest.raises(ConflictError):
-        sa._resolve_price_currency(
-            None, subject="p", shop_currency=None, tenant_currency="EGP"
-        )
+        sa._resolve_price_currency(None, subject="p", shop_currency=None, tenant_currency="EGP")
 
 
 async def test_foreign_currency_price_is_a_conflict_not_a_row() -> None:

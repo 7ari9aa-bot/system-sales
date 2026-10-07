@@ -102,7 +102,6 @@ ran and always declined. The routes add no decision of their own — they call
 or status at the boundary the way §47 refuses an unknown currency.
 """
 
-
 from __future__ import annotations
 
 import logging
@@ -456,9 +455,7 @@ class PurgePlan:
     pinned_by_days: int | None
 
 
-def evaluate_gate(
-    *, tenant_count: int, missing_policies: int, max_days: int | None
-) -> DropGate:
+def evaluate_gate(*, tenant_count: int, missing_policies: int, max_days: int | None) -> DropGate:
     """Pure consent rule, so it can be argued with (and tested) without a database.
 
     Every active tenant must have chosen — a missing row and a ``paused`` row
@@ -560,9 +557,7 @@ def build_purge_plan(
     )
 
 
-async def read_drop_gate(
-    session: AsyncSession, data_class: str = AI_USAGE_DATA_CLASS
-) -> DropGate:
+async def read_drop_gate(session: AsyncSession, data_class: str = AI_USAGE_DATA_CLASS) -> DropGate:
     """Ask the database how many tenants chose, then apply the rule in Python.
 
     The aggregate runs as ``SECURITY DEFINER`` because FORCE RLS would otherwise
@@ -615,9 +610,8 @@ async def policy_position(session: AsyncSession, tenant_id) -> list[dict[str, An
         entry: dict[str, Any] = {
             "data_class": data_class,
             "table": PARTITIONED_DATA_CLASSES[data_class] if partitioned else spec.table,
-            "purge_paths": (["row"] if spec is not None else []) + (
-                ["partition"] if partitioned else []
-            ),
+            "purge_paths": (["row"] if spec is not None else [])
+            + (["partition"] if partitioned else []),
             "chosen": chosen,
             "status": row[2] if row is not None else None,
             "retention_days": row[1] if row is not None else None,
@@ -660,9 +654,7 @@ async def policy_position(session: AsyncSession, tenant_id) -> list[dict[str, An
     return out
 
 
-async def read_policy(
-    session: AsyncSession, tenant_id, data_class: str
-) -> dict[str, Any] | None:
+async def read_policy(session: AsyncSession, tenant_id, data_class: str) -> dict[str, Any] | None:
     """This tenant's own row for one store, chosen or not.
 
     Only what an audit record needs to say what it replaced: a governance write
@@ -747,9 +739,7 @@ async def _partition_row_count(session: AsyncSession, name: str) -> int:
     # An identifier cannot be bound as a parameter, so the shape is validated
     # above and `name` is derived from the catalog's own child list, never from a
     # policy row or a request.
-    return int(
-        (await session.execute(text(f"SELECT count(*) FROM public.{name}"))).scalar_one()
-    )
+    return int((await session.execute(text(f"SELECT count(*) FROM public.{name}"))).scalar_one())
 
 
 async def purge_expired_partitions(session: AsyncSession, tenant_id) -> dict[str, Any]:
@@ -931,8 +921,7 @@ def _media_delete_sql(child_table: str) -> str:
     if not _NAME_RE.fullmatch(child_table):
         raise ValueError(f"not a media table: {child_table!r}")
     return (
-        f"DELETE FROM {child_table} "
-        f"WHERE id = ANY(CAST(:ids AS uuid[])) AND tenant_id = :tenant_id"
+        f"DELETE FROM {child_table} WHERE id = ANY(CAST(:ids AS uuid[])) AND tenant_id = :tenant_id"
     )
 
 
@@ -952,9 +941,7 @@ async def release_media_objects(keys: Sequence[str]) -> list[str]:
     try:
         return list(await get_storage().delete_objects(pending))
     except Exception as exc:  # a dead bucket is a reported leak, not a failed job
-        logger.warning(
-            "retention.media_release.unreachable keys=%d error=%s", len(pending), exc
-        )
+        logger.warning("retention.media_release.unreachable keys=%d error=%s", len(pending), exc)
         return pending
 
 
@@ -1003,11 +990,7 @@ async def purge_row_store(
         }
 
     tenant_active = bool(
-        (
-            await session.execute(
-                text(TENANT_IS_ACTIVE_SQL), {"tenant_id": str(tenant_id)}
-            )
-        ).scalar()
+        (await session.execute(text(TENANT_IS_ACTIVE_SQL), {"tenant_id": str(tenant_id)})).scalar()
     )
     policy = (
         await session.execute(
@@ -1050,8 +1033,8 @@ async def purge_row_store(
     # the cascade has nothing left to take silently.
     media_self = spec.media_key_column is not None
     gather_sql = _media_gather_sql(spec) if (media_self or spec.media_child) else None
-    child_table = spec.table if media_self else (
-        spec.media_child.table if spec.media_child else None
+    child_table = (
+        spec.table if media_self else (spec.media_child.table if spec.media_child else None)
     )
     media_delete_sql = _media_delete_sql(child_table) if child_table else None
     purge_sql = None if media_self else _row_purge_sql(spec)

@@ -103,9 +103,7 @@ async def test_the_escalation_is_capped_at_twenty_four_hours(redis_client: FakeR
     clock = _clock(at)
 
     async def _one_failure() -> float:
-        status = await record_failure(
-            redis_client, ip="1.2.3.4", email="a@x.com", clock=clock
-        )
+        status = await record_failure(redis_client, ip="1.2.3.4", email="a@x.com", clock=clock)
         assert status.locked
         return status.retry_after_seconds
 
@@ -195,9 +193,7 @@ async def service_redis(monkeypatch) -> AsyncIterator[FakeRedis]:
     from app.modules.identity import service as identity_service
 
     client = FakeRedis(decode_responses=True)
-    monkeypatch.setattr(
-        identity_service, "get_redis_or_none", lambda: client
-    )
+    monkeypatch.setattr(identity_service, "get_redis_or_none", lambda: client)
     yield client
     await client.aclose()
 
@@ -208,21 +204,15 @@ async def test_service_lockout_ops_flow_through_a_present_redis(
     """With Redis reachable, check/record_failure/reset execute for real."""
     from app.modules.identity import service as identity_service
 
-    status = await identity_service._lockout_op(
-        check, ip="9.9.9.9", email="flow@x.com"
-    )
+    status = await identity_service._lockout_op(check, ip="9.9.9.9", email="flow@x.com")
     assert status is not None
     assert status.locked is False
 
-    recorded = await identity_service._lockout_op(
-        record_failure, ip="9.9.9.9", email="flow@x.com"
-    )
+    recorded = await identity_service._lockout_op(record_failure, ip="9.9.9.9", email="flow@x.com")
     assert recorded is not None and recorded.failures == 1
 
     # reset returns None by contract — the point is that it did not degrade.
-    assert await identity_service._lockout_op(
-        reset, ip="9.9.9.9", email="flow@x.com"
-    ) is None
+    assert await identity_service._lockout_op(reset, ip="9.9.9.9", email="flow@x.com") is None
 
 
 async def test_service_lockout_ops_fail_open_when_redis_is_missing(
@@ -231,13 +221,9 @@ async def test_service_lockout_ops_fail_open_when_redis_is_missing(
     """No Redis at all ⇒ every op degrades to None and sign-in proceeds."""
     from app.modules.identity import service as identity_service
 
-    monkeypatch.setattr(
-        identity_service, "get_redis_or_none", lambda: None
-    )
+    monkeypatch.setattr(identity_service, "get_redis_or_none", lambda: None)
     for op in (check, record_failure, reset):
-        assert await identity_service._lockout_op(
-            op, ip="9.9.9.9", email="down@x.com"
-        ) is None
+        assert await identity_service._lockout_op(op, ip="9.9.9.9", email="down@x.com") is None
 
 
 async def test_service_lockout_ops_fail_open_when_redis_raises(
@@ -261,10 +247,6 @@ async def test_service_lockout_ops_fail_open_when_redis_raises(
         async def delete(self, *args, **kwargs):
             raise ConnectionError("redis is down")
 
-    monkeypatch.setattr(
-        identity_service, "get_redis_or_none", lambda: _DeadRedis()
-    )
+    monkeypatch.setattr(identity_service, "get_redis_or_none", lambda: _DeadRedis())
     for op in (check, record_failure, reset):
-        assert await identity_service._lockout_op(
-            op, ip="9.9.9.9", email="outage@x.com"
-        ) is None
+        assert await identity_service._lockout_op(op, ip="9.9.9.9", email="outage@x.com") is None

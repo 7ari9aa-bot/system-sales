@@ -93,9 +93,7 @@ async def test_auto_reply_injects_knowledge_context(db, tenant_ctx, monkeypatch)
         # §157: the auto-reply path speaks to the customer, so retrieval must
         # stay customer_facing-scoped even though the stub bypasses the DB.
         assert visibility == "customer_facing"
-        item = KnowledgeItem(
-            tenant_id=tid, title="Stock", source_type="text", content=SNIPPET
-        )
+        item = KnowledgeItem(tenant_id=tid, title="Stock", source_type="text", content=SNIPPET)
         return [(item, 0.1)]
 
     monkeypatch.setattr(ai_knowledge, "search_knowledge", fake_search)
@@ -146,7 +144,6 @@ async def test_auto_reply_survives_retrieval_failure_with_warning(
     assert _knowledge_blocks(calls) == []
     # ...and the loss was logged at WARNING, not silently.
     assert any(
-        record.levelno == logging.WARNING
-        and "WITHOUT knowledge context" in record.getMessage()
+        record.levelno == logging.WARNING and "WITHOUT knowledge context" in record.getMessage()
         for record in caplog.records
     )

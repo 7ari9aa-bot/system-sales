@@ -37,9 +37,7 @@ from app.core.errors import ValidationError
 MARKETING_PURPOSE = "marketing"
 
 # The purposes the Consent ledger records (see privacy/router.py ConsentGrant).
-CONSENT_PURPOSES = frozenset(
-    {"service_messages", MARKETING_PURPOSE, "ai_processing", "analytics"}
-)
+CONSENT_PURPOSES = frozenset({"service_messages", MARKETING_PURPOSE, "ai_processing", "analytics"})
 
 # Purposes that may NOT reach a customer without a currently-granted consent.
 #
@@ -60,8 +58,7 @@ def validate_purpose(purpose: str) -> str:
     normalized = purpose.strip().lower()
     if normalized not in CONSENT_PURPOSES:
         raise ValidationError(
-            f"unknown message purpose {purpose!r}; expected one of "
-            f"{sorted(CONSENT_PURPOSES)}"
+            f"unknown message purpose {purpose!r}; expected one of {sorted(CONSENT_PURPOSES)}"
         )
     return normalized
 

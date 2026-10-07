@@ -15,10 +15,9 @@ from __future__ import annotations
 import logging
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.ai.models import Agent
 from app.modules.ai.runtime import AgentRunner
 from app.modules.conversations.policy import OutboundBlockedError
 
@@ -53,9 +52,9 @@ async def _do_auto_reply(
     """Inner auto-reply logic (called under the conversation lease)."""
     # Lazy imports: conversations owns messages; AI is an optional layer.
     from app.core.events.writer import add_outbox_event
+    from app.modules.ai.core.resolver import resolve_agent_by_kind_optional
     from app.modules.conversations.service import ConversationService
 
-    from app.modules.ai.core.resolver import resolve_agent_by_kind_optional
     agent = await resolve_agent_by_kind_optional(session, tenant_id, "customer")
     if agent is None:
         return
@@ -91,9 +90,13 @@ async def _do_auto_reply(
     # Support multimodal / attachment-only intake: if body is absent, use placeholder
     if last_inbound.body and last_inbound.body.strip():
         user_body = last_inbound.body.strip()
-    elif last_inbound.content_type == "image" or (last_inbound.media_type and "image" in last_inbound.media_type):
+    elif last_inbound.content_type == "image" or (
+        last_inbound.media_type and "image" in last_inbound.media_type
+    ):
         user_body = "[Customer sent an image]"
-    elif last_inbound.content_type == "voice" or (last_inbound.media_type and "audio" in last_inbound.media_type):
+    elif last_inbound.content_type == "voice" or (
+        last_inbound.media_type and "audio" in last_inbound.media_type
+    ):
         user_body = "[Customer sent a voice note]"
     elif last_inbound.media_url:
         user_body = f"[Customer sent an attachment: {last_inbound.content_type}]"

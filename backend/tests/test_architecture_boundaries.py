@@ -6,6 +6,7 @@ These tests scan import statements to catch violations at CI time.
 We check BOTH top-level and lazy (function-scope) imports — a lazy import
 of another module's models is still a boundary violation.
 """
+
 import ast
 from pathlib import Path
 
@@ -18,8 +19,8 @@ SERVICE_FILES = sorted(MODULES_DIR.glob("*/service.py"))
 # with private repositories.
 # This list will shrink as we extract proper service contracts for them.
 _ALLOWED_CROSS_MODULE = {
-    "platform",   # AuditLog, SecurityEvent — shared infrastructure
-    "identity",   # Tenant, User — shared identity model
+    "platform",  # AuditLog, SecurityEvent — shared infrastructure
+    "identity",  # Tenant, User — shared identity model
 }
 
 

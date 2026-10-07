@@ -150,9 +150,7 @@ DECLARATIVE_ARTIFACTS: tuple[pathlib.Path, ...] = (
 #: Artifacts that start something but are not declarative (manual scripts).
 #: Scanned so the guard knows the pool IS runnable, never so it counts as
 #: deployed.
-OPERATIONAL_ARTIFACTS: tuple[pathlib.Path, ...] = (
-    BACKEND_ROOT / "scripts" / "deploy_railway.py",
-)
+OPERATIONAL_ARTIFACTS: tuple[pathlib.Path, ...] = (BACKEND_ROOT / "scripts" / "deploy_railway.py",)
 
 #: Artifacts whose start command boots the API tier. None of them may also boot
 #: a pool — see ``test_the_api_process_starts_no_worker_and_no_relay``.
@@ -202,9 +200,7 @@ def _stream_workers() -> set[type[StreamWorker]]:
     mid-layer) and is not something a deployment can start.
     """
     all_classes = {
-        obj
-        for obj in _classes_defined_in_workers().values()
-        if issubclass(obj, StreamWorker)
+        obj for obj in _classes_defined_in_workers().values() if issubclass(obj, StreamWorker)
     }
     return {
         cls
@@ -258,8 +254,7 @@ def _start_paths() -> dict[str, list[str]]:
 #: Worker classes that deliberately have no start path today, and why. Wiring
 #: one turns ``test_recorded_undispatched_workers_are_still_undispatched`` red,
 #: which is the guard telling its author to delete the entry.
-UNDISPATCHED_WORKERS: dict[str, str] = {
-}
+UNDISPATCHED_WORKERS: dict[str, str] = {}
 
 #: A topology whose declarative artifacts do not start every pool, and why that
 #: is recorded here rather than fixed in this file. This is the intended-vs-
@@ -335,9 +330,7 @@ def test_a_pool_name_binds_one_worker_class(pool: str) -> None:
     """
     cls = worker_run.POOLS[pool]
     twins = [other for other, other_cls in worker_run.POOLS.items() if other_cls is cls]
-    assert twins == [pool], (
-        f"{cls.__name__} is registered under {twins} — one class, one pool name"
-    )
+    assert twins == [pool], f"{cls.__name__} is registered under {twins} — one class, one pool name"
     assert cls.__name__ not in UNDISPATCHED_WORKERS, (
         f"pool:{pool} binds {cls.__name__}, which is recorded as intentionally "
         f"undispatched: the record and the deployment disagree"
@@ -362,9 +355,7 @@ def test_the_api_process_starts_no_worker_and_no_relay() -> None:
     } | {
         node.module
         for node in ast.walk(tree)
-        if isinstance(node, ast.ImportFrom)
-        and node.module
-        and not node.level
+        if isinstance(node, ast.ImportFrom) and node.module and not node.level
     }
     used = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
 
@@ -486,8 +477,7 @@ def test_each_topology_starts_every_pool_or_records_why_not() -> None:
         if reason is None:
             if uncovered:
                 offenders.append(
-                    f"topology {topology!r} starts no pool for {uncovered} and "
-                    f"records no reason"
+                    f"topology {topology!r} starts no pool for {uncovered} and records no reason"
                 )
         elif not uncovered:
             offenders.append(
@@ -639,9 +629,7 @@ def test_railway_iac_api_service_starts_no_pool() -> None:
         "scan anchors are stale or the api service stopped being the HTTP tier"
     )
     wrong = [cmd for cmd in start_commands if API_ENTRYPOINT not in cmd]
-    assert not wrong, (
-        f"api service start command(s) not against {API_ENTRYPOINT}: {wrong}"
-    )
+    assert not wrong, f"api service start command(s) not against {API_ENTRYPOINT}: {wrong}"
 
 
 def test_ci_never_starts_a_worker_pool() -> None:
@@ -676,9 +664,7 @@ def _produced_job_types() -> dict[str, str]:
                 continue
             func = node.func
             is_scheduled_job = isinstance(func, ast.Name) and func.id == "ScheduledJob"
-            is_typed_column_write = (
-                isinstance(func, ast.Attribute) and func.attr == "job_type"
-            )
+            is_typed_column_write = isinstance(func, ast.Attribute) and func.attr == "job_type"
             if not (is_scheduled_job or is_typed_column_write):
                 continue
             for keyword in node.keywords:

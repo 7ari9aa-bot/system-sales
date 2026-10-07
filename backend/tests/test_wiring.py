@@ -52,9 +52,7 @@ async def _warehouse(db: AsyncSession, tenant_id: uuid.UUID) -> Warehouse:
     return warehouse
 
 
-async def _customer_and_variant(
-    db: AsyncSession, tenant_id: uuid.UUID, stock: int = 10
-):
+async def _customer_and_variant(db: AsyncSession, tenant_id: uuid.UUID, stock: int = 10):
     customer = await CustomerService.get_or_create_by_identity(
         db,
         tenant_id,
@@ -112,7 +110,9 @@ async def _reservations(
                     InventoryReservation.order_id == order_id,
                 )
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
 
 
@@ -123,34 +123,30 @@ async def test_processed_event_dedupe_via_savepoint(db, tenant_ctx):
     """Duplicate (consumer_name, event_id) dies on the unique constraint; the
     savepoint rolls back and the session stays usable — exactly-once §127."""
     event_id = uuid.uuid4()
-    db.add(
-        ProcessedEvent(consumer_name="message-worker", event_id=event_id, status="done")
-    )
+    db.add(ProcessedEvent(consumer_name="message-worker", event_id=event_id, status="done"))
     await db.flush()
 
     with pytest.raises(IntegrityError):
         async with db.begin_nested():
-            db.add(
-                ProcessedEvent(
-                    consumer_name="message-worker", event_id=event_id, status="done"
-                )
-            )
+            db.add(ProcessedEvent(consumer_name="message-worker", event_id=event_id, status="done"))
             await db.flush()
 
     # The savepoint rollback leaves the session usable; a different event id
     # for the same consumer inserts fine and the original row is intact.
-    db.add(
-        ProcessedEvent(consumer_name="message-worker", event_id=uuid.uuid4(), status="done")
-    )
+    db.add(ProcessedEvent(consumer_name="message-worker", event_id=uuid.uuid4(), status="done"))
     await db.flush()
     rows = (
-        await db.execute(
-            select(ProcessedEvent).where(
-                ProcessedEvent.consumer_name == "message-worker",
-                ProcessedEvent.event_id == event_id,
+        (
+            await db.execute(
+                select(ProcessedEvent).where(
+                    ProcessedEvent.consumer_name == "message-worker",
+                    ProcessedEvent.event_id == event_id,
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(rows) == 1
     assert rows[0].status == "done"
 
@@ -206,9 +202,7 @@ async def test_add_payment_marks_reservation_converted(db, tenant_ctx):
     order = await OrderService.create_order(
         db, tenant_id, customer.id, [{"variant_id": variant.id, "quantity": 1}]
     )
-    payment = await OrderService.add_payment(
-        db, tenant_id, order.id, method="cash", amount="25.50"
-    )
+    payment = await OrderService.add_payment(db, tenant_id, order.id, method="cash", amount="25.50")
     await db.flush()
 
     assert payment.status == "captured"
@@ -276,13 +270,17 @@ async def test_message_canonical_columns(db, tenant_ctx):
 
     # Thread is queryable via the reply_to index column.
     threaded = (
-        await db.execute(
-            select(Message).where(
-                Message.tenant_id == tenant_id,
-                Message.reply_to_message_id == inbound.id,
+        (
+            await db.execute(
+                select(Message).where(
+                    Message.tenant_id == tenant_id,
+                    Message.reply_to_message_id == inbound.id,
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert [m.id for m in threaded] == [reply.id]
 
 
@@ -454,9 +452,7 @@ def test_relay_event_log_param_mapping_is_defensive():
     session = MagicMock()
     # The relay's §153 ordering probe reads result.scalar() synchronously —
     # mirror a real Result so the mock can't leak a coroutine into the guard.
-    session.execute = AsyncMock(
-        side_effect=lambda *a, **k: SimpleNamespace(scalar=lambda: None)
-    )
+    session.execute = AsyncMock(side_effect=lambda *a, **k: SimpleNamespace(scalar=lambda: None))
     created_at = datetime.now(UTC)
     row = {
         "id": uuid.uuid4(),
@@ -478,9 +474,7 @@ def test_relay_event_log_param_mapping_is_defensive():
 
     asyncio.run(relay._write_event_log(session, row, payload, meta))
 
-    insert_calls = [
-        c for c in session.execute.await_args_list if len(c.args) == 2
-    ]
+    insert_calls = [c for c in session.execute.await_args_list if len(c.args) == 2]
     params = insert_calls[-1].args[1]
     assert params["event_id"] == row["id"]
     assert params["event_type"] == "order.created"

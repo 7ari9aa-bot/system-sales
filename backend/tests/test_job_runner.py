@@ -169,9 +169,7 @@ async def test_a_cancelled_job_is_not_marked_successful(db, tenant_ctx):
     @register_job_handler("test.cancel_during")
     async def _cancel_during(session, job):
         # A user cancels the job mid-run, then the handler finishes anyway.
-        await session.execute(
-            update(Job).where(Job.id == job.id).values(status="cancelled")
-        )
+        await session.execute(update(Job).where(Job.id == job.id).values(status="cancelled"))
         return {"finished": True}
 
     job = await JobService.create(db, tenant_ctx.tenant_id, kind="test.cancel_during")
@@ -204,9 +202,7 @@ async def test_an_unknown_kind_fails_rather_than_staying_queued(db, tenant_ctx):
     assert "no handler" in stored.last_error
 
 
-async def test_a_database_error_is_recorded_and_still_counts_as_an_attempt(
-    db, tenant_ctx
-):
+async def test_a_database_error_is_recorded_and_still_counts_as_an_attempt(db, tenant_ctx):
     """A handler that poisons its transaction must not re-queue at attempts=0.
 
     The handler raises a genuine DB-level error (a duplicate primary key). If
@@ -223,9 +219,7 @@ async def test_a_database_error_is_recorded_and_still_counts_as_an_attempt(
             {"id": str(job.id), "tid": str(job.tenant_id)},
         )
 
-    job = await JobService.create(
-        db, tenant_ctx.tenant_id, kind="test.db_error", max_attempts=2
-    )
+    job = await JobService.create(db, tenant_ctx.tenant_id, kind="test.db_error", max_attempts=2)
     await db.flush()
 
     runner = _runner()
@@ -282,11 +276,7 @@ async def test_the_segment_handler_recomputes_and_records_a_real_result(db, tena
     from app.modules.customers.models import Customer
     from app.modules.segments.service import Segment, SegmentService
 
-    db.add(
-        Customer(
-            tenant_id=tenant_ctx.tenant_id, name="Ada", email="ada@example.com"
-        )
-    )
+    db.add(Customer(tenant_id=tenant_ctx.tenant_id, name="Ada", email="ada@example.com"))
     await db.flush()
     segment = await SegmentService.create(
         db,
@@ -294,9 +284,7 @@ async def test_the_segment_handler_recomputes_and_records_a_real_result(db, tena
         name="Has email",
         definition={"all": [{"field": "has_email", "op": "eq", "value": True}]},
     )
-    job = await JobService.create(
-        db, tenant_ctx.tenant_id, kind="segments.materialize"
-    )
+    job = await JobService.create(db, tenant_ctx.tenant_id, kind="segments.materialize")
     await db.flush()
 
     runner = _runner()
@@ -344,10 +332,7 @@ async def test_two_connections_cannot_claim_the_same_job(db_url):
         async with factory() as seed:
             async with seed.begin():
                 await seed.execute(
-                    text(
-                        "INSERT INTO tenants (id, slug, name) "
-                        "VALUES (:id, :slug, 'Claim race')"
-                    ),
+                    text("INSERT INTO tenants (id, slug, name) VALUES (:id, :slug, 'Claim race')"),
                     {"id": str(tenant_id), "slug": f"claim-{tenant_id.hex[:12]}"},
                 )
                 await bind_tenant(seed, tenant_id)
@@ -375,9 +360,7 @@ async def test_two_connections_cannot_claim_the_same_job(db_url):
             assert [j.id for j in claimed_a] == [job_id]
 
             # B must skip the locked row rather than block on it.
-            claimed_b = await asyncio.wait_for(
-                claim_jobs(session_b, tenant_id, 10), timeout=5
-            )
+            claimed_b = await asyncio.wait_for(claim_jobs(session_b, tenant_id, 10), timeout=5)
             assert claimed_b == []
         finally:
             await session_a.rollback()

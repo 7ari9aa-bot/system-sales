@@ -71,9 +71,7 @@ def _create_missing_hierarchy_tables(sync_conn, missing: list[str]) -> None:
     for name in missing:
         # Mark as test-created so teardown (and later runs) can distinguish
         # them from tables the integrator's migration created.
-        sync_conn.execute(
-            sa.text(f"COMMENT ON TABLE public.{name} IS '{_DDL_MARKER}'")
-        )
+        sync_conn.execute(sa.text(f"COMMENT ON TABLE public.{name} IS '{_DDL_MARKER}'"))
 
 
 async def _drop_marked_hierarchy_tables(engine) -> None:
@@ -192,15 +190,11 @@ def test_hierarchy_table_shapes():
     assert {c.name for c in ula.primary_key.columns} == {"user_id", "location_id"}
 
     ws_uqs = [
-        {c.name for c in u.columns}
-        for u in ws.constraints
-        if isinstance(u, sa.UniqueConstraint)
+        {c.name for c in u.columns} for u in ws.constraints if isinstance(u, sa.UniqueConstraint)
     ]
     assert {"tenant_id", "slug"} in ws_uqs
     loc_uqs = [
-        {c.name for c in u.columns}
-        for u in loc.constraints
-        if isinstance(u, sa.UniqueConstraint)
+        {c.name for c in u.columns} for u in loc.constraints if isinstance(u, sa.UniqueConstraint)
     ]
     assert {"tenant_id", "workspace_id", "code"} in loc_uqs
 
@@ -228,30 +222,30 @@ async def test_workspace_location_access_flow(hierarchy, db: AsyncSession, tenan
     db.add(ws)
     await db.flush()
 
-    loc = Location(
-        tenant_id=tenant_ctx.tenant_id, workspace_id=ws.id, name="Branch 1", code="BR1"
-    )
+    loc = Location(tenant_id=tenant_ctx.tenant_id, workspace_id=ws.id, name="Branch 1", code="BR1")
     db.add(loc)
     await db.flush()
 
     db.add(UserLocationAccess(user_id=tenant_ctx.user.id, location_id=loc.id))
     await db.flush()
 
-    got = (
-        await db.execute(sa.select(Location).where(Location.workspace_id == ws.id))
-    ).scalar_one()
+    got = (await db.execute(sa.select(Location).where(Location.workspace_id == ws.id))).scalar_one()
     assert got.id == loc.id
     assert got.tenant_id == tenant_ctx.tenant_id
     assert ws.is_active is True  # Python-side default visible after flush
     assert loc.is_active is True
 
     grants = (
-        await db.execute(
-            sa.select(UserLocationAccess).where(
-                UserLocationAccess.user_id == tenant_ctx.user.id
+        (
+            await db.execute(
+                sa.select(UserLocationAccess).where(
+                    UserLocationAccess.user_id == tenant_ctx.user.id
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert [g.location_id for g in grants] == [loc.id]
     assert all(g.role_override is None and g.created_at is not None for g in grants)
 
@@ -266,9 +260,7 @@ async def test_hierarchy_unique_constraints_fire(hierarchy, db: AsyncSession, te
     db.add_all([ws, other_ws])
     await db.flush()
 
-    loc = Location(
-        tenant_id=tenant_id, workspace_id=other_ws.id, name="Store 1", code="SAME"
-    )
+    loc = Location(tenant_id=tenant_id, workspace_id=other_ws.id, name="Store 1", code="SAME")
     db.add(loc)
     await db.flush()  # loc.id must exist before it is referenced below
 

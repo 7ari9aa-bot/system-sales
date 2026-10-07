@@ -46,23 +46,17 @@ async def test_hierarchy_tables_have_enable_and_force_rls(db: AsyncSession) -> N
         assert enabled and forced, f"{name} must be ENABLE + FORCE ROW LEVEL SECURITY"
 
 
-async def test_workspace_rows_are_invisible_to_other_tenants(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_workspace_rows_are_invisible_to_other_tenants(db: AsyncSession, tenant_ctx) -> None:
     ws = Workspace(tenant_id=tenant_ctx.tenant_id, name="North", slug="north")
     db.add(ws)
     await db.flush()
 
     await _rebind(db, uuid.uuid4())  # a stranger tenant
-    rows = (
-        await db.execute(select(Workspace).where(Workspace.id == ws.id))
-    ).scalars().all()
+    rows = (await db.execute(select(Workspace).where(Workspace.id == ws.id))).scalars().all()
     assert rows == [], "RLS — not the app filter — must hide the row"
 
     await _rebind(db, tenant_ctx.tenant_id)
-    mine = (
-        await db.execute(select(Workspace).where(Workspace.id == ws.id))
-    ).scalars().all()
+    mine = (await db.execute(select(Workspace).where(Workspace.id == ws.id))).scalars().all()
     assert [w.id for w in mine] == [ws.id]
 
 
@@ -79,37 +73,25 @@ async def test_workspace_insert_for_a_foreign_tenant_is_refused(
     await _rebind(db, tenant_ctx.tenant_id)
 
 
-async def test_location_rows_are_isolated_two_levels_deep(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_location_rows_are_isolated_two_levels_deep(db: AsyncSession, tenant_ctx) -> None:
     """locations carry tenant_id directly — the same guard must hold there too."""
-    ws = Workspace(
-        tenant_id=tenant_ctx.tenant_id, name="Ops", slug=f"ops-{uuid.uuid4().hex[:6]}"
-    )
+    ws = Workspace(tenant_id=tenant_ctx.tenant_id, name="Ops", slug=f"ops-{uuid.uuid4().hex[:6]}")
     db.add(ws)
     await db.flush()
-    loc = Location(
-        tenant_id=tenant_ctx.tenant_id, workspace_id=ws.id, name="Cairo-1", code="CAI1"
-    )
+    loc = Location(tenant_id=tenant_ctx.tenant_id, workspace_id=ws.id, name="Cairo-1", code="CAI1")
     db.add(loc)
     await db.flush()
 
     await _rebind(db, uuid.uuid4())
-    rows = (
-        await db.execute(select(Location).where(Location.id == loc.id))
-    ).scalars().all()
+    rows = (await db.execute(select(Location).where(Location.id == loc.id))).scalars().all()
     assert rows == []
 
     await _rebind(db, tenant_ctx.tenant_id)
-    mine = (
-        await db.execute(select(Location).where(Location.id == loc.id))
-    ).scalars().all()
+    mine = (await db.execute(select(Location).where(Location.id == loc.id))).scalars().all()
     assert [row.id for row in mine] == [loc.id]
 
 
-async def test_location_access_is_self_or_tenant_owner(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_location_access_is_self_or_tenant_owner(db: AsyncSession, tenant_ctx) -> None:
     """§151 Q3 policy: a grant row is visible to the member it names AND to
     the tenant's owner (the admin who issues grants) — and to nobody else.
     The owner clause mirrors who holds ``settings:write`` in ROLE_MATRIX."""
@@ -134,39 +116,43 @@ async def test_location_access_is_self_or_tenant_owner(
     )
     db.add(member)
     await db.flush()
-    db.add(
-        UserLocationAccess(
-            user_id=member.id, location_id=loc.id, granted_by=tenant_ctx.user.id
-        )
-    )
+    db.add(UserLocationAccess(user_id=member.id, location_id=loc.id, granted_by=tenant_ctx.user.id))
     await db.flush()
 
     # The issuing owner sees it (Q3 admin OR-clause, migration f151ee151ee1).
     rows = (
-        await db.execute(
-            select(UserLocationAccess).where(UserLocationAccess.user_id == member.id)
+        (
+            await db.execute(
+                select(UserLocationAccess).where(UserLocationAccess.user_id == member.id)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert [g.location_id for g in rows] == [loc.id], "owner sees grants it manages"
 
     # The named member sees their own row.
-    await db.execute(
-        text("SELECT set_config('app.user_id', :u, true)"), {"u": str(member.id)}
-    )
+    await db.execute(text("SELECT set_config('app.user_id', :u, true)"), {"u": str(member.id)})
     mine = (
-        await db.execute(
-            select(UserLocationAccess).where(UserLocationAccess.user_id == member.id)
+        (
+            await db.execute(
+                select(UserLocationAccess).where(UserLocationAccess.user_id == member.id)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert [g.location_id for g in mine] == [loc.id]
 
     # An unrelated user sees nothing — even with this tenant bound.
-    await db.execute(
-        text("SELECT set_config('app.user_id', :u, true)"), {"u": str(uuid.uuid4())}
-    )
+    await db.execute(text("SELECT set_config('app.user_id', :u, true)"), {"u": str(uuid.uuid4())})
     stranger = (
-        await db.execute(
-            select(UserLocationAccess).where(UserLocationAccess.user_id == member.id)
+        (
+            await db.execute(
+                select(UserLocationAccess).where(UserLocationAccess.user_id == member.id)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert stranger == [], "RLS — not the app filter — must hide the grant"

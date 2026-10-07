@@ -146,9 +146,7 @@ async def test_staff_can_edit_invalidate_and_delete_a_memory(
         assert await db.get(Memory, uuid.UUID(memory_id)) is None
 
 
-async def test_memory_routes_require_the_write_permission(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_memory_routes_require_the_write_permission(db: AsyncSession, tenant_ctx) -> None:
     ctx = _ctx(db, tenant_ctx, set())  # no settings:write
     transport = ASGITransport(app=_app(db, ctx))
     async with AsyncClient(transport=transport, base_url="http://test") as client:

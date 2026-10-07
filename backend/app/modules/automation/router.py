@@ -87,9 +87,7 @@ def _execution_dict(execution: WorkflowExecution) -> dict:
         "result": execution.result,
         "error": execution.error,
         "started_at": execution.started_at.isoformat(),
-        "finished_at": (
-            execution.finished_at.isoformat() if execution.finished_at else None
-        ),
+        "finished_at": (execution.finished_at.isoformat() if execution.finished_at else None),
     }
 
 
@@ -103,8 +101,10 @@ async def list_workflows(
     if status is not None:
         stmt = stmt.where(Workflow.status == status)
     rows = (
-        await ctx.session.execute(stmt.order_by(Workflow.created_at.desc()).limit(200))
-    ).scalars().all()
+        (await ctx.session.execute(stmt.order_by(Workflow.created_at.desc()).limit(200)))
+        .scalars()
+        .all()
+    )
     return [_workflow_dict(workflow) for workflow in rows]
 
 
@@ -164,9 +164,7 @@ async def run_workflow_execution(ctx: WriteCtx, execution_id: uuid.UUID):
 
 
 @router.get("/{workflow_id}")
-async def get_workflow(
-    ctx: TenantCtxDep, workflow_id: uuid.UUID, response: Response
-):
+async def get_workflow(ctx: TenantCtxDep, workflow_id: uuid.UUID, response: Response):
     """Fetch one workflow by id (§17: version in the body + strong ETag)."""
     workflow = await WorkflowService.get(ctx.session, ctx.tenant_id, workflow_id)
     apply_etag(response, workflow.version)
@@ -253,15 +251,19 @@ async def list_workflow_versions(ctx: TenantCtxDep, workflow_id: uuid.UUID):
     """List the definition snapshots of one workflow (newest first)."""
     await WorkflowService.get(ctx.session, ctx.tenant_id, workflow_id)
     rows = (
-        await ctx.session.execute(
-            select(WorkflowVersion)
-            .where(
-                WorkflowVersion.tenant_id == ctx.tenant_id,
-                WorkflowVersion.workflow_id == workflow_id,
+        (
+            await ctx.session.execute(
+                select(WorkflowVersion)
+                .where(
+                    WorkflowVersion.tenant_id == ctx.tenant_id,
+                    WorkflowVersion.workflow_id == workflow_id,
+                )
+                .order_by(WorkflowVersion.version.desc())
             )
-            .order_by(WorkflowVersion.version.desc())
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return [
         {
             "version": version.version,
@@ -281,14 +283,18 @@ async def list_workflow_executions(
     """List executions of one workflow (newest first)."""
     await WorkflowService.get(ctx.session, ctx.tenant_id, workflow_id)
     rows = (
-        await ctx.session.execute(
-            select(WorkflowExecution)
-            .where(
-                WorkflowExecution.tenant_id == ctx.tenant_id,
-                WorkflowExecution.workflow_id == workflow_id,
+        (
+            await ctx.session.execute(
+                select(WorkflowExecution)
+                .where(
+                    WorkflowExecution.tenant_id == ctx.tenant_id,
+                    WorkflowExecution.workflow_id == workflow_id,
+                )
+                .order_by(WorkflowExecution.started_at.desc())
+                .limit(limit)
             )
-            .order_by(WorkflowExecution.started_at.desc())
-            .limit(limit)
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return [_execution_dict(execution) for execution in rows]

@@ -56,9 +56,7 @@ def test_switch_tenant_carries_the_target_tenant_in_the_typed_body(operations):
 
     operation = operations["/api/v1/auth/switch-tenant"]["post"]
 
-    query_names = {
-        p.get("name") for p in operation.get("parameters", []) if p.get("in") == "query"
-    }
+    query_names = {p.get("name") for p in operation.get("parameters", []) if p.get("in") == "query"}
     assert not (query_names & TENANT_PARAMETER_NAMES), query_names
 
     body = operation.get("requestBody", {}).get("content", {}).get("application/json", {})

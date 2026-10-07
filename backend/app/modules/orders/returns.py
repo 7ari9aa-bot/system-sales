@@ -117,9 +117,7 @@ class RestockReturnedLines(SagaStepHandler):
                 await InventoryService.release(
                     session, tenant_id, item.variant_id, warehouse_id, item.quantity
                 )
-                released.append(
-                    {"variant_id": str(item.variant_id), "quantity": item.quantity}
-                )
+                released.append({"variant_id": str(item.variant_id), "quantity": item.quantity})
             else:
                 await InventoryService.move(
                     session,
@@ -132,9 +130,7 @@ class RestockReturnedLines(SagaStepHandler):
                     reference_type="order",
                     reference_id=order.id,
                 )
-                restocked.append(
-                    {"variant_id": str(item.variant_id), "quantity": item.quantity}
-                )
+                restocked.append({"variant_id": str(item.variant_id), "quantity": item.quantity})
 
         # The durable reservation rows (§140) must not outlive the order they
         # held stock for, whatever state they are in.
@@ -236,8 +232,7 @@ class CloseReturnedOrder(SagaStepHandler):
             # No legal place to go back to: say so loudly rather than leaving
             # the order in a state nothing predicted.
             raise RuntimeError(
-                f"cannot restore order {order.id} to {restored!r} after a "
-                "failed return"
+                f"cannot restore order {order.id} to {restored!r} after a failed return"
             )
         session.add(
             OrderStatusHistory(

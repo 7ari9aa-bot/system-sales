@@ -29,9 +29,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.db import Base
 from app.core.model_kit import TenantMixin
 
-ACCOUNT_TYPES: frozenset[str] = frozenset(
-    {"ASSET", "LIABILITY", "EQUITY", "REVENUE", "EXPENSE"}
-)
+ACCOUNT_TYPES: frozenset[str] = frozenset({"ASSET", "LIABILITY", "EQUITY", "REVENUE", "EXPENSE"})
 ENTRY_TYPES: frozenset[str] = frozenset({"DEBIT", "CREDIT"})
 TRANSACTION_STATUSES: frozenset[str] = frozenset({"DRAFT", "POSTED", "VOID"})
 
@@ -56,9 +54,7 @@ class ChartOfAccount(TenantMixin, Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
 
-    entries: Mapped[list[FinancialEntry]] = relationship(
-        "FinancialEntry", back_populates="account"
-    )
+    entries: Mapped[list[FinancialEntry]] = relationship("FinancialEntry", back_populates="account")
 
     __table_args__ = (
         UniqueConstraint("tenant_id", "code", name="uq_chart_of_accounts_tenant_code"),
@@ -135,9 +131,7 @@ class FinancialEntry(TenantMixin, Base):
     transaction: Mapped[FinancialTransaction] = relationship(
         "FinancialTransaction", back_populates="entries"
     )
-    account: Mapped[ChartOfAccount] = relationship(
-        "ChartOfAccount", back_populates="entries"
-    )
+    account: Mapped[ChartOfAccount] = relationship("ChartOfAccount", back_populates="entries")
 
     __table_args__ = (
         Index("ix_financial_entries_tenant_account", "tenant_id", "account_id"),

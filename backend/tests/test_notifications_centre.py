@@ -124,9 +124,7 @@ async def test_list_filters_by_kind(db: AsyncSession, tenant_ctx):
     await _notify(db, tenant_id, user_id, kind="order_paid", body="b", minutes=20)
     await _notify(db, tenant_id, user_id, kind="order_paid", body="c", minutes=30)
 
-    only_paid = await NotificationService.list_for_user(
-        db, tenant_id, user_id, kind="order_paid"
-    )
+    only_paid = await NotificationService.list_for_user(db, tenant_id, user_id, kind="order_paid")
     assert [r.body for r in only_paid] == ["c", "b"]
 
 
@@ -136,15 +134,11 @@ async def test_list_filters_unread_only(db: AsyncSession, tenant_ctx):
     await _notify(db, tenant_id, user_id, body="unread", minutes=20)
     await NotificationService.mark_read(db, tenant_id, user_id, read_one.id)
 
-    unread = await NotificationService.list_for_user(
-        db, tenant_id, user_id, unread_only=True
-    )
+    unread = await NotificationService.list_for_user(db, tenant_id, user_id, unread_only=True)
     assert [r.body for r in unread] == ["unread"]
 
 
-async def test_list_never_returns_another_users_notifications(
-    db: AsyncSession, tenant_ctx
-):
+async def test_list_never_returns_another_users_notifications(db: AsyncSession, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     other = await _other_user(db)
     await _notify(db, tenant_id, other.id, body="not yours", minutes=10)
@@ -156,9 +150,7 @@ async def test_list_never_returns_another_users_notifications(
 # ------------------------------------------------------------ summary -----
 
 
-async def test_summary_counts_total_unread_and_by_kind(
-    db: AsyncSession, tenant_ctx
-):
+async def test_summary_counts_total_unread_and_by_kind(db: AsyncSession, tenant_ctx):
     tenant_id, user_id = tenant_ctx.tenant_id, tenant_ctx.user.id
     first = await _notify(db, tenant_id, user_id, kind="sla_breach", body="a", minutes=10)
     await _notify(db, tenant_id, user_id, kind="sla_breach", body="b", minutes=20)
@@ -175,9 +167,7 @@ async def test_summary_counts_total_unread_and_by_kind(
 
 
 async def test_summary_on_an_empty_inbox_is_zeroed(db: AsyncSession, tenant_ctx):
-    summary = await NotificationService.summary(
-        db, tenant_ctx.tenant_id, tenant_ctx.user.id
-    )
+    summary = await NotificationService.summary(db, tenant_ctx.tenant_id, tenant_ctx.user.id)
     assert summary == {"total": 0, "unread": 0, "by_kind": []}
 
 
@@ -214,9 +204,7 @@ async def test_mark_read_is_idempotent(db: AsyncSession, tenant_ctx):
     assert second.read_at == stamped
 
 
-async def test_mark_read_cannot_touch_another_users_notification(
-    db: AsyncSession, tenant_ctx
-):
+async def test_mark_read_cannot_touch_another_users_notification(db: AsyncSession, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     other = await _other_user(db)
     theirs = await _notify(db, tenant_id, other.id, minutes=10)
@@ -225,9 +213,7 @@ async def test_mark_read_cannot_touch_another_users_notification(
         await NotificationService.mark_read(db, tenant_id, tenant_ctx.user.id, theirs.id)
 
 
-async def test_mark_many_read_only_touches_the_given_ids(
-    db: AsyncSession, tenant_ctx
-):
+async def test_mark_many_read_only_touches_the_given_ids(db: AsyncSession, tenant_ctx):
     tenant_id, user_id = tenant_ctx.tenant_id, tenant_ctx.user.id
     a = await _notify(db, tenant_id, user_id, body="a", minutes=10)
     b = await _notify(db, tenant_id, user_id, body="b", minutes=20)
@@ -236,9 +222,7 @@ async def test_mark_many_read_only_touches_the_given_ids(
     marked = await NotificationService.mark_many_read(db, tenant_id, user_id, [a.id, b.id])
     assert marked == 2
 
-    unread = await NotificationService.list_for_user(
-        db, tenant_id, user_id, unread_only=True
-    )
+    unread = await NotificationService.list_for_user(db, tenant_id, user_id, unread_only=True)
     assert [r.body for r in unread] == ["c"]
 
 
@@ -258,9 +242,7 @@ async def test_mark_many_read_is_scoped_to_the_caller(db: AsyncSession, tenant_c
     assert len(still_unread) == 1
 
 
-async def test_mark_all_read_reports_the_count_and_is_scoped(
-    db: AsyncSession, tenant_ctx
-):
+async def test_mark_all_read_reports_the_count_and_is_scoped(db: AsyncSession, tenant_ctx):
     tenant_id, user_id = tenant_ctx.tenant_id, tenant_ctx.user.id
     other = await _other_user(db)
     await _notify(db, tenant_id, user_id, body="a", minutes=10)
@@ -271,9 +253,7 @@ async def test_mark_all_read_reports_the_count_and_is_scoped(
     assert marked == 2
 
     # The other user's notification must still be unread.
-    unread = await NotificationService.list_for_user(
-        db, tenant_id, other.id, unread_only=True
-    )
+    unread = await NotificationService.list_for_user(db, tenant_id, other.id, unread_only=True)
     assert [r.id for r in unread] == [theirs.id]
 
     # And a second sweep finds nothing left to do.
@@ -299,9 +279,7 @@ async def test_create_dedups_on_dedup_key(db: AsyncSession, tenant_ctx):
     assert await NotificationService.unread_count(db, tenant_id, user_id) == 1
 
 
-async def test_create_relies_on_the_channel_server_default(
-    db: AsyncSession, tenant_ctx
-):
+async def test_create_relies_on_the_channel_server_default(db: AsyncSession, tenant_ctx):
     """create() never sets `channel`.
 
     The model declares server_default="inapp" for it, so SQLAlchemy omits the
@@ -313,8 +291,6 @@ async def test_create_relies_on_the_channel_server_default(
         db, tenant_ctx.tenant_id, tenant_ctx.user.id, kind="system", body="hi"
     )
     stored = (
-        await db.execute(
-            select(Notification.channel).where(Notification.id == notif.id)
-        )
+        await db.execute(select(Notification.channel).where(Notification.id == notif.id))
     ).scalar_one()
     assert stored == "inapp"

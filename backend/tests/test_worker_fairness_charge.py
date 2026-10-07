@@ -36,9 +36,7 @@ def _fake_redis(monkeypatch):
 
     fake = FakeRedis(decode_responses=True)
     monkeypatch.setattr(fairness, "get_redis", lambda: fake)
-    return fake, fairness._budget_key(
-        TENANT, fairness.ResourceType.WORKER_SECONDS
-    )
+    return fake, fairness._budget_key(TENANT, fairness.ResourceType.WORKER_SECONDS)
 
 
 async def test_successful_handler_charges_worker_seconds(monkeypatch):

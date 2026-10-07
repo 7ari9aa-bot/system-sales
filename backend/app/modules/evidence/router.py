@@ -142,16 +142,14 @@ async def list_facts(
     total = (
         await ctx.session.execute(select(func.count(EvidenceFact.fact_id)).where(*conditions))
     ).scalar_one()
-    rows = (
-        await ctx.session.execute(
-            select(EvidenceFact)
-            .where(*conditions)
-            # created_at shares one now() across a transaction; fact_id is the
-            # tie-break that makes the ORDER a total order (house rule).
-            .order_by(EvidenceFact.created_at.desc(), EvidenceFact.fact_id.desc())
-            .limit(limit)
-            .offset(offset)
-        )
+    rows = await ctx.session.execute(
+        select(EvidenceFact)
+        .where(*conditions)
+        # created_at shares one now() across a transaction; fact_id is the
+        # tie-break that makes the ORDER a total order (house rule).
+        .order_by(EvidenceFact.created_at.desc(), EvidenceFact.fact_id.desc())
+        .limit(limit)
+        .offset(offset)
     )
     return {
         "items": [_fact_dict(fact) for fact in rows.scalars().all()],
@@ -203,14 +201,12 @@ async def list_sets(
             select(func.count(EvidenceSet.evidence_set_id)).where(*conditions)
         )
     ).scalar_one()
-    rows = (
-        await ctx.session.execute(
-            select(EvidenceSet)
-            .where(*conditions)
-            .order_by(EvidenceSet.created_at.desc(), EvidenceSet.evidence_set_id.desc())
-            .limit(limit)
-            .offset(offset)
-        )
+    rows = await ctx.session.execute(
+        select(EvidenceSet)
+        .where(*conditions)
+        .order_by(EvidenceSet.created_at.desc(), EvidenceSet.evidence_set_id.desc())
+        .limit(limit)
+        .offset(offset)
     )
     return {
         "items": [
@@ -234,9 +230,7 @@ async def list_sets(
 @router.get("/sets/{evidence_set_id}", response_model=schemas.SetOut)
 async def get_set(ctx: TenantCtxDep, evidence_set_id: uuid.UUID):
     """One set with its staleness provenance re-derived from the facts."""
-    assembled = await EvidenceService.get_evidence_set(
-        ctx.session, ctx.tenant_id, evidence_set_id
-    )
+    assembled = await EvidenceService.get_evidence_set(ctx.session, ctx.tenant_id, evidence_set_id)
     row = assembled.evidence_set
     return {
         "evidence_set_id": row.evidence_set_id,

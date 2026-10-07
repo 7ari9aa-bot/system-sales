@@ -56,9 +56,7 @@ from app.modules.orders.money import (
 from app.modules.orders.service import OrderService
 from app.modules.platform.models import OutboxEvent
 
-SERVICE_TREE = ast.parse(
-    pathlib.Path(orders_service.__file__).read_text(encoding="utf-8")
-)
+SERVICE_TREE = ast.parse(pathlib.Path(orders_service.__file__).read_text(encoding="utf-8"))
 
 
 # ---------------------------------------------------------------------------
@@ -227,8 +225,7 @@ def test_the_money_rules_are_reached_from_the_real_service_methods() -> None:
 def test_the_orders_service_imports_the_money_module() -> None:
     """The rules live in ``orders.money`` and are imported, not re-implemented."""
     assert any(
-        isinstance(node, ast.ImportFrom)
-        and node.module == "app.modules.orders.money"
+        isinstance(node, ast.ImportFrom) and node.module == "app.modules.orders.money"
         for node in SERVICE_TREE.body
     )
 
@@ -285,11 +282,9 @@ async def _order_with_stock(
 
 async def _payments(db: AsyncSession, order_id: uuid.UUID) -> list[OrderPayment]:
     return list(
-        (
-            await db.execute(
-                select(OrderPayment).where(OrderPayment.order_id == order_id)
-            )
-        ).scalars().all()
+        (await db.execute(select(OrderPayment).where(OrderPayment.order_id == order_id)))
+        .scalars()
+        .all()
     )
 
 
@@ -303,28 +298,28 @@ async def test_a_partially_refunded_amount_can_still_be_collected(
     """
     tenant_id = tenant_ctx.tenant_id
     order = await _order_with_stock(db, tenant_id)
-    payment = await OrderService.add_payment(
-        db, tenant_id, order.id, method="cash", amount="25.50"
-    )
+    payment = await OrderService.add_payment(db, tenant_id, order.id, method="cash", amount="25.50")
     await OrderService.register_refund(
         db, tenant_id, order.id, payment.id, amount="10.00", reason="partial return"
     )
 
-    again = await OrderService.add_payment(
-        db, tenant_id, order.id, method="cash", amount="10.00"
-    )
+    again = await OrderService.add_payment(db, tenant_id, order.id, method="cash", amount="10.00")
     assert again.amount == Decimal("10.00")
 
     # Read the ledger back independently of the service: gross settled minus
     # refunds is exactly the order total — never more.
     payments = await _payments(db, order.id)
     refunds = (
-        await db.execute(
-            select(Refund)
-            .join(OrderPayment, OrderPayment.id == Refund.payment_id)
-            .where(OrderPayment.order_id == order.id, Refund.status != "rejected")
+        (
+            await db.execute(
+                select(Refund)
+                .join(OrderPayment, OrderPayment.id == Refund.payment_id)
+                .where(OrderPayment.order_id == order.id, Refund.status != "rejected")
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert sorted(p.amount for p in payments) == [Decimal("10.00"), Decimal("25.50")]
     gross = sum((p.amount for p in payments), Decimal("0"))
     returned = sum((r.amount for r in refunds), Decimal("0"))
@@ -333,9 +328,7 @@ async def test_a_partially_refunded_amount_can_still_be_collected(
 
     # …and the guard still refuses the cent that would exceed the total.
     with pytest.raises(ConflictError):
-        await OrderService.add_payment(
-            db, tenant_id, order.id, method="cash", amount="0.01"
-        )
+        await OrderService.add_payment(db, tenant_id, order.id, method="cash", amount="0.01")
     await db.flush()
 
 
@@ -345,9 +338,7 @@ async def test_reconcile_refuses_to_downgrade_a_capture_so_it_cannot_be_recharge
     """The double charge: a stale ``failed`` report must not free the amount."""
     tenant_id = tenant_ctx.tenant_id
     order = await _order_with_stock(db, tenant_id)
-    payment = await OrderService.add_payment(
-        db, tenant_id, order.id, method="card", amount="25.50"
-    )
+    payment = await OrderService.add_payment(db, tenant_id, order.id, method="card", amount="25.50")
 
     with pytest.raises(ConflictError):
         await OrderService.reconcile_payment(
@@ -357,21 +348,15 @@ async def test_reconcile_refuses_to_downgrade_a_capture_so_it_cannot_be_recharge
 
     # The order still reads as paid, so the same money cannot be taken twice.
     with pytest.raises(ConflictError):
-        await OrderService.add_payment(
-            db, tenant_id, order.id, method="cash", amount="25.50"
-        )
+        await OrderService.add_payment(db, tenant_id, order.id, method="cash", amount="25.50")
     await db.flush()
 
 
-async def test_reconcile_refuses_to_invent_a_refund(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_reconcile_refuses_to_invent_a_refund(db: AsyncSession, tenant_ctx) -> None:
     """A provider-reported refund without a ``refunds`` row is not applied."""
     tenant_id = tenant_ctx.tenant_id
     order = await _order_with_stock(db, tenant_id)
-    payment = await OrderService.add_payment(
-        db, tenant_id, order.id, method="card", amount="25.50"
-    )
+    payment = await OrderService.add_payment(db, tenant_id, order.id, method="card", amount="25.50")
 
     with pytest.raises(ConflictError):
         await OrderService.reconcile_payment(
@@ -379,9 +364,7 @@ async def test_reconcile_refuses_to_invent_a_refund(
         )
     assert payment.status == "captured"
     assert (
-        await db.execute(
-            select(Refund).where(Refund.payment_id == payment.id)
-        )
+        await db.execute(select(Refund).where(Refund.payment_id == payment.id))
     ).scalars().all() == []
     await db.flush()
 
@@ -392,9 +375,7 @@ async def test_an_order_cannot_be_marked_refunded_while_money_is_held(
     """The status is a money claim: it needs the ledger, not just the operator."""
     tenant_id = tenant_ctx.tenant_id
     order = await _order_with_stock(db, tenant_id)
-    payment = await OrderService.add_payment(
-        db, tenant_id, order.id, method="cash", amount="25.50"
-    )
+    payment = await OrderService.add_payment(db, tenant_id, order.id, method="cash", amount="25.50")
     for status in ("processing", "shipped", "delivered", "completed"):
         await OrderService.change_status(db, tenant_id, order.id, status)
 
@@ -403,17 +384,13 @@ async def test_an_order_cannot_be_marked_refunded_while_money_is_held(
     assert order.status == "completed"
 
     # The ledger path does move it, and only once the money is actually back.
-    await OrderService.register_refund(
-        db, tenant_id, order.id, payment.id, amount="25.50"
-    )
+    await OrderService.register_refund(db, tenant_id, order.id, payment.id, amount="25.50")
     assert payment.status == "refunded"
     assert order.status == "refunded"
     await db.flush()
 
 
-async def test_both_money_events_reach_a_consumer_as_decimals(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_both_money_events_reach_a_consumer_as_decimals(db: AsyncSession, tenant_ctx) -> None:
     """``order.created`` and ``order.refunded`` must agree on the value's type.
 
     The refund event published ``float(refund_amount)`` while ``order.created``
@@ -423,19 +400,17 @@ async def test_both_money_events_reach_a_consumer_as_decimals(
     """
     tenant_id = tenant_ctx.tenant_id
     order = await _order_with_stock(db, tenant_id)
-    payment = await OrderService.add_payment(
-        db, tenant_id, order.id, method="cash", amount="25.50"
-    )
+    payment = await OrderService.add_payment(db, tenant_id, order.id, method="cash", amount="25.50")
     await OrderService.register_refund(
         db, tenant_id, order.id, payment.id, amount="5.25", reason="goodwill"
     )
     await db.flush()
 
     events = (
-        await db.execute(
-            select(OutboxEvent).where(OutboxEvent.aggregate_id == order.id)
-        )
-    ).scalars().all()
+        (await db.execute(select(OutboxEvent).where(OutboxEvent.aggregate_id == order.id)))
+        .scalars()
+        .all()
+    )
     by_type = {e.payload["event_type"]: e for e in events}
 
     def consumer_view(event_type: str) -> dict:

@@ -71,9 +71,7 @@ logger = logging.getLogger(__name__)
 class MediaStorage(Protocol):
     """The slice of the storage port this pipeline needs (injectable in tests)."""
 
-    async def fetch(
-        self, url: str, *, max_bytes: int | None = MAX_MEDIA_BYTES
-    ) -> FetchedMedia: ...
+    async def fetch(self, url: str, *, max_bytes: int | None = MAX_MEDIA_BYTES) -> FetchedMedia: ...
 
     async def store(
         self,
@@ -254,12 +252,8 @@ class MediaService:
 
         try:
             fetched = await storage.fetch(media_url, max_bytes=MAX_MEDIA_BYTES)
-            mime = check_media_policy(
-                content_type=fetched.content_type, size=len(fetched.data)
-            )
-            stored = await storage.store(
-                fetched, prefix="media", original_url=media_url
-            )
+            mime = check_media_policy(content_type=fetched.content_type, size=len(fetched.data))
+            stored = await storage.store(fetched, prefix="media", original_url=media_url)
         except ValidationError as exc:
             # Refused by the size cap in the port, or by policy here.
             logger.warning(
@@ -269,9 +263,7 @@ class MediaService:
                 media_url,
                 exc.message,
             )
-            return await MediaService._mark_failed(
-                session, attachment, declared_media_type
-            )
+            return await MediaService._mark_failed(session, attachment, declared_media_type)
         except Exception as exc:
             # EVERY other storage failure — httpx transport/status errors,
             # boto3/botocore ClientError, a missing boto3, an OSError from the
@@ -288,9 +280,7 @@ class MediaService:
                 type(exc).__name__,
                 exc,
             )
-            return await MediaService._mark_failed(
-                session, attachment, declared_media_type
-            )
+            return await MediaService._mark_failed(session, attachment, declared_media_type)
 
         attachment.storage_key = stored.storage_key
         attachment.mime_type = mime

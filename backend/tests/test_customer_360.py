@@ -143,9 +143,7 @@ async def test_list_events_refuses_an_unknown_customer(db: AsyncSession, tenant_
 # ------------------------------------------------------------------- 360 ---
 
 
-async def test_360_on_a_bare_customer_is_empty_not_an_error(
-    db: AsyncSession, tenant_ctx
-):
+async def test_360_on_a_bare_customer_is_empty_not_an_error(db: AsyncSession, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     customer = await _customer(db, tenant_id)
 
@@ -161,9 +159,7 @@ async def test_360_on_a_bare_customer_is_empty_not_an_error(
     assert Decimal(record["payments"]["outstanding"]) == Decimal("0")
 
 
-async def test_360_orders_and_payments_belong_to_this_customer_only(
-    db: AsyncSession, tenant_ctx
-):
+async def test_360_orders_and_payments_belong_to_this_customer_only(db: AsyncSession, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     mine = await _customer(db, tenant_id, "Mine")
     theirs = await _customer(db, tenant_id, "Theirs")
@@ -181,16 +177,12 @@ async def test_360_orders_and_payments_belong_to_this_customer_only(
     assert record["payments"]["payment_count"] == 1
 
 
-async def test_360_excludes_cancelled_orders_from_committed_value(
-    db: AsyncSession, tenant_ctx
-):
+async def test_360_excludes_cancelled_orders_from_committed_value(db: AsyncSession, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     customer = await _customer(db, tenant_id)
 
     await _order(db, tenant_id, customer.id, minutes=10, total="300.00")
-    await _order(
-        db, tenant_id, customer.id, minutes=20, total="500.00", status="cancelled"
-    )
+    await _order(db, tenant_id, customer.id, minutes=20, total="500.00", status="cancelled")
 
     record = await Customer360Service.build(db, tenant_id, customer.id)
 
@@ -200,9 +192,7 @@ async def test_360_excludes_cancelled_orders_from_committed_value(
     assert Decimal(record["payments"]["orders_total"]) == Decimal("300.00")
 
 
-async def test_360_outstanding_is_committed_minus_net_collected(
-    db: AsyncSession, tenant_ctx
-):
+async def test_360_outstanding_is_committed_minus_net_collected(db: AsyncSession, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     customer = await _customer(db, tenant_id)
 
@@ -247,9 +237,7 @@ async def test_360_refunds_reduce_net_collected(db: AsyncSession, tenant_ctx):
     assert Decimal(record["payments"]["outstanding"]) == Decimal("100.00")
 
 
-async def test_360_timeline_merges_every_source_newest_first(
-    db: AsyncSession, tenant_ctx
-):
+async def test_360_timeline_merges_every_source_newest_first(db: AsyncSession, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     customer = await _customer(db, tenant_id)
 
@@ -290,9 +278,7 @@ async def test_360_timeline_respects_its_limit(db: AsyncSession, tenant_ctx):
     for minutes in range(1, 12):
         await _order(db, tenant_id, customer.id, minutes=minutes)
 
-    record = await Customer360Service.build(
-        db, tenant_id, customer.id, limit=20, timeline_limit=5
-    )
+    record = await Customer360Service.build(db, tenant_id, customer.id, limit=20, timeline_limit=5)
 
     assert len(record["timeline"]) == 5
     # The newest five, not the oldest.
@@ -361,9 +347,7 @@ async def test_360_stats_report_open_tasks_and_unread(db: AsyncSession, tenant_c
 # --------------------------------------------------- cross-tenant guards ---
 
 
-async def test_360_cannot_read_a_customer_from_another_tenant(
-    db: AsyncSession, tenant_ctx
-):
+async def test_360_cannot_read_a_customer_from_another_tenant(db: AsyncSession, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     customer = await _customer(db, tenant_id)
 
@@ -409,9 +393,7 @@ async def test_order_list_filter_composes_with_status(db: AsyncSession, tenant_c
     assert confirmed[0].status == "confirmed"
 
 
-async def test_events_written_by_record_event_are_readable(
-    db: AsyncSession, tenant_ctx
-):
+async def test_events_written_by_record_event_are_readable(db: AsyncSession, tenant_ctx):
     """The timeline was write-only before; this is the round trip."""
     tenant_id = tenant_ctx.tenant_id
     customer = await _customer(db, tenant_id)
@@ -421,10 +403,10 @@ async def test_events_written_by_record_event_are_readable(
     )
 
     stored = (
-        await db.execute(
-            select(CustomerEvent).where(CustomerEvent.customer_id == customer.id)
-        )
-    ).scalars().all()
+        (await db.execute(select(CustomerEvent).where(CustomerEvent.customer_id == customer.id)))
+        .scalars()
+        .all()
+    )
     assert len(stored) == 1
 
     events = await CustomerService.list_events(db, tenant_id, customer.id)

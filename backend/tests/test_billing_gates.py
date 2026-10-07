@@ -78,17 +78,13 @@ def _app_for(db: AsyncSession, tenant_id: uuid.UUID, *, permissions: set[str]):
 async def _usage_count(db: AsyncSession, tenant_id: uuid.UUID) -> int:
     return (
         await db.execute(
-            select(func.count())
-            .select_from(UsageRecord)
-            .where(UsageRecord.tenant_id == tenant_id)
+            select(func.count()).select_from(UsageRecord).where(UsageRecord.tenant_id == tenant_id)
         )
     ).scalar_one()
 
 
 async def _post(app, path: str, payload: dict):
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         return await client.post(path, json=payload)
 
 
@@ -96,31 +92,27 @@ async def _post(app, path: str, payload: dict):
 
 
 def test_recording_usage_is_a_billing_write() -> None:
-    assert _permission_codes(billing_router.routes, "/billing/usage", "POST") == {
-        "billing:write"
-    }
+    assert _permission_codes(billing_router.routes, "/billing/usage", "POST") == {"billing:write"}
 
 
 def test_the_writes_that_were_already_gated_stay_gated() -> None:
     """Pinned so a refactor cannot quietly drop them while 'simplifying'."""
-    assert _permission_codes(
-        billing_router.routes, "/billing/start-trial", "POST"
-    ) == {"billing:write"}
-    assert _permission_codes(
-        billing_router.routes, "/billing/periods/close", "POST"
-    ) == {"billing:write"}
-    assert _permission_codes(
-        webhooks_router.routes, "/webhook-endpoints", "POST"
-    ) == {"settings:write"}
+    assert _permission_codes(billing_router.routes, "/billing/start-trial", "POST") == {
+        "billing:write"
+    }
+    assert _permission_codes(billing_router.routes, "/billing/periods/close", "POST") == {
+        "billing:write"
+    }
+    assert _permission_codes(webhooks_router.routes, "/webhook-endpoints", "POST") == {
+        "settings:write"
+    }
 
 
 def test_the_billing_reads_stay_open_to_every_member() -> None:
     """A tenant under §48 recovery must still see its own subscription; the gate
     belongs on writes, not on reading one's own bill."""
     assert _permission_codes(billing_router.routes, "/billing/subscription", "GET") == set()
-    assert _permission_codes(
-        billing_router.routes, "/billing/periods/snapshot", "GET"
-    ) == set()
+    assert _permission_codes(billing_router.routes, "/billing/periods/snapshot", "GET") == set()
 
 
 # --------------------------------------------------------- refusal, for real --
@@ -142,9 +134,7 @@ async def test_usage_post_refuses_a_member_without_billing_write(
     assert await _usage_count(db, tenant_ctx.tenant_id) == 0
 
 
-async def test_usage_post_records_for_a_member_who_has_it(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_usage_post_records_for_a_member_who_has_it(db: AsyncSession, tenant_ctx) -> None:
     app = _app_for(db, tenant_ctx.tenant_id, permissions={"billing:write"})
 
     response = await _post(
@@ -156,9 +146,7 @@ async def test_usage_post_records_for_a_member_who_has_it(
     assert await _usage_count(db, tenant_ctx.tenant_id) == 1
 
 
-async def test_a_negative_usage_row_is_still_rejected(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_a_negative_usage_row_is_still_rejected(db: AsyncSession, tenant_ctx) -> None:
     """The gate must not become the only defence: `quantity > 0` was already the
     model's rule, and a caller with billing:write must not erase a period."""
     app = _app_for(db, tenant_ctx.tenant_id, permissions={"billing:write"})

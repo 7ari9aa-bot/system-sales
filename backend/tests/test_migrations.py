@@ -21,9 +21,7 @@ from pathlib import Path
 import pytest
 
 VERSIONS_DIR = Path(__file__).resolve().parent.parent / "migrations" / "versions"
-HARDENING_MIGRATION = (
-    VERSIONS_DIR / "b2c3d4e5f6a7_hardening_rls_segments_worker_columns.py"
-)
+HARDENING_MIGRATION = VERSIONS_DIR / "b2c3d4e5f6a7_hardening_rls_segments_worker_columns.py"
 CHANNEL_IDENTITY_MIGRATION = VERSIONS_DIR / "db6022a13691_secure_channel_identity_routing.py"
 TELEGRAM_BOT_IDENTITY_MIGRATION = VERSIONS_DIR / "fbc2a817d901_telegram_bot_identity_uniqueness.py"
 TELEGRAM_LEGACY_PAUSE_MIGRATION = (
@@ -122,9 +120,7 @@ def test_no_migration_issues_multiple_statements_per_execute() -> None:
             count = _statement_count(sql)
             if count > 1:
                 offenders.append(f"{path.name} ({count} statements): {sql.strip()[:60]}")
-    assert not offenders, "op.execute() called with multiple statements:\n" + "\n".join(
-        offenders
-    )
+    assert not offenders, "op.execute() called with multiple statements:\n" + "\n".join(offenders)
 
 
 def test_migration_files_are_importable() -> None:
@@ -258,9 +254,7 @@ def _effective_sql(sql: str) -> str:
     The two copies are allowed to carry different explanatory comments — what
     must not diverge is the SQL that actually runs.
     """
-    lines = [
-        line for line in sql.splitlines() if not line.strip().startswith("--")
-    ]
+    lines = [line for line in sql.splitlines() if not line.strip().startswith("--")]
     return " ".join(" ".join(lines).split())
 
 
@@ -273,9 +267,9 @@ def test_resolver_sql_matches_between_migration_and_provision() -> None:
     import ast
 
     module, _ = _load_migration(CHANNEL_TENANT_ROUTING_MIGRATION)
-    provision_source = (
-        VERSIONS_DIR.parent.parent / "scripts" / "provision.py"
-    ).read_text(encoding="utf-8")
+    provision_source = (VERSIONS_DIR.parent.parent / "scripts" / "provision.py").read_text(
+        encoding="utf-8"
+    )
     provision_sql = None
     for node in ast.walk(ast.parse(provision_source)):
         if isinstance(node, ast.Assign):
@@ -472,8 +466,7 @@ async def test_not_null_server_defaults_exist_in_the_database(db) -> None:
 
     assert not problems, (
         "model declares server_default for NOT NULL column(s) that the database "
-        "has no default for; SQLAlchemy omits them on INSERT: "
-        + ", ".join(sorted(problems))
+        "has no default for; SQLAlchemy omits them on INSERT: " + ", ".join(sorted(problems))
     )
 
 
@@ -549,13 +542,10 @@ async def test_new_public_tables_are_not_granted_to_anon(db) -> None:
         pytest.skip("no default ACLs for the current role in public")
 
     leaked = [
-        f"{objtype}: {acl}"
-        for objtype, acl in rows
-        if "anon=" in acl or "authenticated=" in acl
+        f"{objtype}: {acl}" for objtype, acl in rows if "anon=" in acl or "authenticated=" in acl
     ]
     assert not leaked, (
-        "default privileges still grant the public anon roles on new public "
-        f"objects: {leaked}"
+        f"default privileges still grant the public anon roles on new public objects: {leaked}"
     )
 
 

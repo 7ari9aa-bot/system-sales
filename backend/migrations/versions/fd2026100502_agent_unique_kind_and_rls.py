@@ -3,7 +3,6 @@
 from collections.abc import Sequence
 
 from alembic import op
-import sqlalchemy as sa
 
 
 revision: str = "fd2026100502"
@@ -107,16 +106,6 @@ def upgrade() -> None:
             IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'restore_test_runs') THEN
                 ALTER TABLE public.restore_test_runs ENABLE ROW LEVEL SECURITY;
             END IF;
-
-            -- Explicit service_role policies on system infra tables to avoid advisory warnings
-            FOR tbl IN (
-                SELECT unnest(ARRAY['idempotency_keys', 'outbox_events', 'processed_events', 'dr_policy', 'restore_test_runs', 'alembic_version']) AS tname
-            ) LOOP
-                IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = tbl.tname) THEN
-                    EXECUTE format('DROP POLICY IF EXISTS service_role_all ON %I', tbl.tname);
-                    EXECUTE format('CREATE POLICY service_role_all ON %I FOR ALL TO service_role USING (true) WITH CHECK (true)', tbl.tname);
-                END IF;
-            END LOOP;
         END $$;
         """
     )

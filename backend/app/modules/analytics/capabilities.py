@@ -206,9 +206,7 @@ async def compare_periods(
             "current": str(current_fact.value),
             "previous": str(previous_fact.value),
             "delta": str(comparison.delta),
-            "delta_pct": str(comparison.delta_pct)
-            if comparison.delta_pct is not None
-            else None,
+            "delta_pct": str(comparison.delta_pct) if comparison.delta_pct is not None else None,
         },
         data_quality=DataQuality(status=DataQualityStatus.COMPLETE),
         cost=CapabilityCost(duration_ms=int((time.monotonic() - started) * 1000)),
@@ -232,9 +230,7 @@ async def breakdown_metric(
         session, context.tenant_id, metric_name, period, dimension=dimension
     )
     is_money = metric(metric_name).semantic_type == "money"
-    summary = {
-        key: str(value if is_money else count) for key, value, count in rows
-    }
+    summary = {key: str(value if is_money else count) for key, value, count in rows}
     status = "ok" if rows else "no_data"
     return CapabilityResult(
         capability=f"breakdown_metric:{metric_name}:{dimension}",
@@ -284,16 +280,8 @@ async def analyze_drivers(
     for fact in (orders_now, orders_prev, revenue_now, revenue_prev):
         store.add_fact(fact)
 
-    aov_now = (
-        _q(revenue_now.value / orders_now.value)
-        if orders_now.value
-        else Decimal("0")
-    )
-    aov_prev = (
-        _q(revenue_prev.value / orders_prev.value)
-        if orders_prev.value
-        else Decimal("0")
-    )
+    aov_now = _q(revenue_now.value / orders_now.value) if orders_now.value else Decimal("0")
+    aov_prev = _q(revenue_prev.value / orders_prev.value) if orders_prev.value else Decimal("0")
     orders_part, aov_part, total = orders_vs_aov(
         orders_before=orders_prev.value,
         aov_before=aov_prev,
@@ -350,8 +338,7 @@ def get_data_status() -> CapabilityResult:
         evidence_ids=[],
         summary={
             "metrics": sorted(
-                metric(n).name
-                for n in ("orders_placed", "delivered_revenue", "collected_revenue")
+                metric(n).name for n in ("orders_placed", "delivered_revenue", "collected_revenue")
             ),
             "maturity_curves": "not built yet — same-age comparisons pending history",
         },
@@ -389,9 +376,7 @@ def analyze_seasonality(
     )
 
 
-def analyze_customers(
-    orders: list[dict], *, window_start: datetime
-) -> CapabilityResult:
+def analyze_customers(orders: list[dict], *, window_start: datetime) -> CapabilityResult:
     """§5.4 — new vs returning in the window (identity v1: raw customer ids)."""
     split = customer_split(orders, window_start)
     total = split["new"] + split["returning"]
@@ -405,15 +390,11 @@ def analyze_customers(
             "identity_quality": "raw customer ids — unification lands later",
         },
         data_quality=DataQuality(status=DataQualityStatus.COMPLETE),
-        limitations=[
-            "identity resolution not applied — near-duplicate customers may split"
-        ],
+        limitations=["identity resolution not applied — near-duplicate customers may split"],
     )
 
 
-def analyze_fulfillment(
-    shipments: list[dict], *, minimum_volume: int = 10
-) -> CapabilityResult:
+def analyze_fulfillment(shipments: list[dict], *, minimum_volume: int = 10) -> CapabilityResult:
     """§5.7 — carrier performance from real shipment statuses."""
     carriers = fulfillment_by_carrier(shipments, minimum_volume=minimum_volume)
     return CapabilityResult(
@@ -434,7 +415,5 @@ def analyze_fulfillment(
             ]
         },
         data_quality=DataQuality(status=DataQualityStatus.COMPLETE),
-        limitations=[
-            f"carriers under the {minimum_volume}-shipment minimum are omitted"
-        ],
+        limitations=[f"carriers under the {minimum_volume}-shipment minimum are omitted"],
     )

@@ -288,9 +288,7 @@ async def _handle_journey_resume(session, tenant_id, payload: dict) -> dict:
     run_id = payload.get("run_id")
     if not run_id:
         raise ValidationError("journey.resume payload carries no run_id")
-    run = await JourneyExecutionService.resume_after_delay(
-        session, tenant_id, UUID(str(run_id))
-    )
+    run = await JourneyExecutionService.resume_after_delay(session, tenant_id, UUID(str(run_id)))
     if run is None:
         return {"skipped": "not waiting", "run_id": str(run_id)}
     return {"run_id": str(run.id), "status": run.status, "step": run.current_step}
@@ -320,9 +318,7 @@ async def ensure_recurring_jobs() -> None:
     # `tenants` itself carries no RLS, so the enumeration needs no context.
     async with SessionLocal() as session:
         tenant_ids = (
-            (await session.execute(sa_select(Tenant.id).where(Tenant.is_active)))
-            .scalars()
-            .all()
+            (await session.execute(sa_select(Tenant.id).where(Tenant.is_active))).scalars().all()
         )
 
     now = datetime.now(UTC)
@@ -440,9 +436,7 @@ class SchedulerWorker(StreamWorker):
 
         async with SessionLocal() as session:
             tenant_ids = (
-                (await session.execute(select(Tenant.id).where(Tenant.is_active)))
-                .scalars()
-                .all()
+                (await session.execute(select(Tenant.id).where(Tenant.is_active))).scalars().all()
             )
 
         processed = 0
@@ -458,27 +452,28 @@ class SchedulerWorker(StreamWorker):
         processed = 0
         now = datetime.now(UTC)
         rows = (
-            await session.execute(
-                select(ScheduledJob)
-                .where(
-                    ScheduledJob.tenant_id == tenant_id,
-                    ScheduledJob.status.in_(["queued", "retrying"]),
-                    ScheduledJob.run_at <= now,
-                    (ScheduledJob.next_attempt_at.is_(None))
-                    | (ScheduledJob.next_attempt_at <= now),
+            (
+                await session.execute(
+                    select(ScheduledJob)
+                    .where(
+                        ScheduledJob.tenant_id == tenant_id,
+                        ScheduledJob.status.in_(["queued", "retrying"]),
+                        ScheduledJob.run_at <= now,
+                        (ScheduledJob.next_attempt_at.is_(None))
+                        | (ScheduledJob.next_attempt_at <= now),
+                    )
+                    .with_for_update(skip_locked=True)
+                    .limit(10)
                 )
-                .with_for_update(skip_locked=True)
-                .limit(10)
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         for job in rows:
             if job.idempotency_key:
                 claimed = (
                     await session.execute(
-                        text(
-                            "SELECT pg_try_advisory_xact_lock("
-                            "hashtext(:key))"
-                        ),
+                        text("SELECT pg_try_advisory_xact_lock(hashtext(:key))"),
                         {"key": job.idempotency_key},
                     )
                 ).scalar()
@@ -510,15 +505,11 @@ class SchedulerWorker(StreamWorker):
                 else:
                     job.status = "retrying"
                     base = min(2.0 * (2 ** (job.attempts - 1)), 300.0)
-                    job.next_attempt_at = now + timedelta(
-                        seconds=random.uniform(0, base)
-                    )
+                    job.next_attempt_at = now + timedelta(seconds=random.uniform(0, base))
             processed += 1
         return processed
 
-    async def _reschedule_recurring(
-        self, session, job: ScheduledJob, now: datetime
-    ) -> bool:
+    async def _reschedule_recurring(self, session, job: ScheduledJob, now: datetime) -> bool:
         """Recurring sweeps re-arm the SAME row for their next occurrence.
 
         Returns True when the job was re-armed (caller must not mark it

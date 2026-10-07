@@ -254,8 +254,9 @@ class Customer360Order(BaseModel):
     number: str
     status: str
     currency: str | None = None
-    grand_total: str = Field(description="str(Decimal) — the ORDERS router ships "
-                              "the same column the same way (§47).")
+    grand_total: str = Field(
+        description="str(Decimal) — the ORDERS router ships the same column the same way (§47)."
+    )
     channel: str | None = None
     placed_at: str | None = None
     created_at: str | None = None

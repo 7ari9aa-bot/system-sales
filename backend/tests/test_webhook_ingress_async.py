@@ -72,9 +72,7 @@ def _digest(raw: bytes) -> str:
 # ------------------------------------------------------------- the route ---
 
 
-async def test_route_persists_and_queues_without_ingesting_inline(
-    monkeypatch, db, tenant_ctx
-):
+async def test_route_persists_and_queues_without_ingesting_inline(monkeypatch, db, tenant_ctx):
     """The request path must NOT run the ingest block — persist + queue + ACK."""
     calls: list[Any] = []
 
@@ -82,9 +80,7 @@ async def test_route_persists_and_queues_without_ingesting_inline(
         calls.append((args, kwargs))
         return 0
 
-    monkeypatch.setattr(
-        IngestService, "process_webhook_event", staticmethod(_never_inline)
-    )
+    monkeypatch.setattr(IngestService, "process_webhook_event", staticmethod(_never_inline))
 
     payload = _wa_payload("wamid.async-1")
     response = await _call_route(monkeypatch, db, tenant_ctx.tenant_id, payload)
@@ -94,18 +90,14 @@ async def test_route_persists_and_queues_without_ingesting_inline(
 
     digest = _digest(json.dumps(payload).encode())
     row = (
-        await db.execute(
-            select(WebhookEvent).where(WebhookEvent.external_event_id == digest)
-        )
+        await db.execute(select(WebhookEvent).where(WebhookEvent.external_event_id == digest))
     ).scalar_one()
     assert row.tenant_id == tenant_ctx.tenant_id
     assert row.processing_status == "pending"
 
     staged = (
         await db.execute(
-            select(OutboxEvent).where(
-                OutboxEvent.payload["event_type"].astext == "webhook.ingest"
-            )
+            select(OutboxEvent).where(OutboxEvent.payload["event_type"].astext == "webhook.ingest")
         )
     ).scalar_one()
     assert staged.aggregate_id == row.id
@@ -113,9 +105,7 @@ async def test_route_persists_and_queues_without_ingesting_inline(
     assert staged.payload["webhook_event_id"] == str(row.id)
 
 
-async def test_a_replayed_delivery_is_acked_once_and_queued_once(
-    monkeypatch, db, tenant_ctx
-):
+async def test_a_replayed_delivery_is_acked_once_and_queued_once(monkeypatch, db, tenant_ctx):
     payload = _wa_payload("wamid.async-dupe")
     first = await _call_route(monkeypatch, db, tenant_ctx.tenant_id, payload)
     second = await _call_route(monkeypatch, db, tenant_ctx.tenant_id, payload)
@@ -123,21 +113,23 @@ async def test_a_replayed_delivery_is_acked_once_and_queued_once(
     assert first["queued"] is True
     assert second.get("duplicate") is True
     rows = (
-        await db.execute(
-            select(OutboxEvent).where(
-                OutboxEvent.payload["event_type"].astext == "webhook.ingest"
+        (
+            await db.execute(
+                select(OutboxEvent).where(
+                    OutboxEvent.payload["event_type"].astext == "webhook.ingest"
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(rows) == 1
 
 
 async def test_unknown_tenant_still_acks_without_queuing(monkeypatch, db, tenant_ctx):
     """Unattributed deliveries are ACKed (no existence leak) — the raw row
     cannot be written under FORCE-RLS without a tenant; pinned behavior."""
-    response = await _call_route(
-        monkeypatch, db, None, _wa_payload("wamid.async-nope")
-    )
+    response = await _call_route(monkeypatch, db, None, _wa_payload("wamid.async-nope"))
     assert response == {"ok": True}
 
 
@@ -168,19 +160,21 @@ async def test_worker_processes_a_queued_ingest_event(db, tenant_ctx):
     ).scalar_one()
     assert stored.processing_status == "processed"
     inbound = (
-        await db.execute(
-            select(Message).where(
-                Message.tenant_id == tenant_ctx.tenant_id,
-                Message.direction == "inbound",
+        (
+            await db.execute(
+                select(Message).where(
+                    Message.tenant_id == tenant_ctx.tenant_id,
+                    Message.direction == "inbound",
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(inbound) == 1
 
 
-async def test_worker_quarantines_a_failing_ingest_under_the_budget(
-    db, tenant_ctx, monkeypatch
-):
+async def test_worker_quarantines_a_failing_ingest_under_the_budget(db, tenant_ctx, monkeypatch):
     async def _explodes(session, **kwargs):
         raise RuntimeError("worker-side failure")
 
@@ -229,11 +223,15 @@ async def test_a_redelivered_event_for_a_processed_row_is_a_noop(db, tenant_ctx)
 
     assert await ingest_queued_webhook_event(db, tenant_ctx.tenant_id, row.id) == 0
     inbound = (
-        await db.execute(
-            select(Message.id).where(
-                Message.tenant_id == tenant_ctx.tenant_id,
-                Message.direction == "inbound",
+        (
+            await db.execute(
+                select(Message.id).where(
+                    Message.tenant_id == tenant_ctx.tenant_id,
+                    Message.direction == "inbound",
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert inbound == []

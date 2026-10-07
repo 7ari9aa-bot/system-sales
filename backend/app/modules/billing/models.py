@@ -54,9 +54,7 @@ class Plan(IdMixin, TimestampMixin, Base):
 class Subscription(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "subscriptions"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     plan_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("plans.id", ondelete="RESTRICT")
     )
@@ -70,17 +68,13 @@ class Subscription(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     )
     cancel_at_period_end: Mapped[bool] = mapped_column(default=False, server_default="false")
 
-    __table_args__ = (
-        Index("ix_subscriptions_tenant_status", "tenant_id", "status"),
-    )
+    __table_args__ = (Index("ix_subscriptions_tenant_status", "tenant_id", "status"),)
 
 
 class Entitlement(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "entitlements"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     subscription_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("subscriptions.id", ondelete="CASCADE")
     )
@@ -101,9 +95,7 @@ class Entitlement(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
 class UsageRecord(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "usage_records"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     # feature: ai_tokens | messages | orders
     feature: Mapped[str] = mapped_column(String(63))
     quantity: Mapped[float] = mapped_column(Numeric(14, 2), default=0, server_default="0")
@@ -150,9 +142,7 @@ class Invoice(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
 
     __tablename__ = "invoices"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     subscription_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("subscriptions.id", ondelete="SET NULL"), nullable=True
     )

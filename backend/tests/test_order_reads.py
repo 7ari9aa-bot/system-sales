@@ -42,9 +42,7 @@ async def _variant(db: AsyncSession, tenant_id: uuid.UUID, *, sku: str | None = 
     product = await CatalogService.create_product(
         db, tenant_id, title="Reads", slug=f"r-{uuid.uuid4().hex[:10]}"
     )
-    await CatalogService.update_product(
-        db, tenant_id, product.id, status="active"
-    )
+    await CatalogService.update_product(db, tenant_id, product.id, status="active")
     return await CatalogService.add_variant(
         db,
         tenant_id,
@@ -60,9 +58,7 @@ async def _buyer(db: AsyncSession, tenant_id: uuid.UUID):
     )
 
 
-async def _order(
-    db: AsyncSession, tenant_id: uuid.UUID, *, customer=None, qty: int = 1
-):
+async def _order(db: AsyncSession, tenant_id: uuid.UUID, *, customer=None, qty: int = 1):
     variant = await _variant(db, tenant_id)
     await InventoryService.move(
         db,
@@ -121,8 +117,7 @@ def test_the_order_list_advertises_the_staff_filters():
     from app.main import create_app
 
     params = {
-        p["name"]
-        for p in create_app().openapi()["paths"]["/api/v1/orders"]["get"]["parameters"]
+        p["name"] for p in create_app().openapi()["paths"]["/api/v1/orders"]["get"]["parameters"]
     }
     assert {"status", "customer_id", "number", "created_from", "created_to"} <= params
 
@@ -140,9 +135,7 @@ def test_a_naive_date_bound_is_read_as_utc():
 # ------------------------------------------------------------ list filters ----
 
 
-async def test_filtering_by_customer_returns_only_that_customer(
-    db: AsyncSession, tenant_ctx
-):
+async def test_filtering_by_customer_returns_only_that_customer(db: AsyncSession, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     anna = await _buyer(db, tenant_id)
     beshoy = await _buyer(db, tenant_id)
@@ -157,9 +150,7 @@ async def test_filtering_by_customer_returns_only_that_customer(
     await db.flush()
 
 
-async def test_filtering_by_number_is_partial_and_case_insensitive(
-    db: AsyncSession, tenant_ctx
-):
+async def test_filtering_by_number_is_partial_and_case_insensitive(db: AsyncSession, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     first = await _order(db, tenant_id)
     second = await _order(db, tenant_id)
@@ -170,9 +161,7 @@ async def test_filtering_by_number_is_partial_and_case_insensitive(
     # The other order is really there — the empty-ish result above is the
     # filter working, not the table being empty.
     assert second.number != first.number
-    assert await OrderService.list_orders(db, tenant_id, number=second.number) == [
-        second
-    ]
+    assert await OrderService.list_orders(db, tenant_id, number=second.number) == [second]
     assert await OrderService.list_orders(db, tenant_id, number="no-such-number") == []
     await db.flush()
 
@@ -180,8 +169,10 @@ async def test_filtering_by_number_is_partial_and_case_insensitive(
 async def test_the_date_range_bounds_are_inclusive(db: AsyncSession, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     base = datetime(2026, 3, 1, tzinfo=UTC)
-    old, mid, recent = await _order(db, tenant_id), await _order(db, tenant_id), await _order(
-        db, tenant_id
+    old, mid, recent = (
+        await _order(db, tenant_id),
+        await _order(db, tenant_id),
+        await _order(db, tenant_id),
     )
     await _stamp(db, old.id, base)
     await _stamp(db, mid.id, base + timedelta(days=10))
@@ -198,46 +189,42 @@ async def test_the_date_range_bounds_are_inclusive(db: AsyncSession, tenant_ctx)
             db, tenant_id, created_from=mid_ts, created_to=mid_ts
         )
     } == {mid.id}
-    assert {
-        o.id for o in await OrderService.list_orders(db, tenant_id, created_to=mid_ts)
-    } == {old.id, mid.id}
-    assert {
-        o.id
-        for o in await OrderService.list_orders(db, tenant_id, created_from=mid_ts)
-    } == {mid.id, recent.id}
+    assert {o.id for o in await OrderService.list_orders(db, tenant_id, created_to=mid_ts)} == {
+        old.id,
+        mid.id,
+    }
+    assert {o.id for o in await OrderService.list_orders(db, tenant_id, created_from=mid_ts)} == {
+        mid.id,
+        recent.id,
+    }
     # ... and a window that contains no stamp contains no order.
     assert (
+        await OrderService.list_orders(db, tenant_id, created_from=outside, created_to=outside)
+        == []
+    )
+    await db.flush()
+
+
+async def test_a_foreign_tenant_reads_nothing_through_the_new_filters(db: AsyncSession, tenant_ctx):
+    tenant_id = tenant_ctx.tenant_id
+    order = await _order(db, tenant_id)
+    stranger = uuid.uuid4()
+
+    assert await OrderService.list_orders(db, stranger, number=order.number) == []
+    assert await OrderService.list_orders(db, stranger, customer_id=order.customer_id) == []
+    assert (
         await OrderService.list_orders(
-            db, tenant_id, created_from=outside, created_to=outside
+            db, stranger, created_from=datetime.now(UTC) - timedelta(days=1)
         )
         == []
     )
     await db.flush()
 
 
-async def test_a_foreign_tenant_reads_nothing_through_the_new_filters(
-    db: AsyncSession, tenant_ctx
-):
-    tenant_id = tenant_ctx.tenant_id
-    order = await _order(db, tenant_id)
-    stranger = uuid.uuid4()
-
-    assert await OrderService.list_orders(db, stranger, number=order.number) == []
-    assert await OrderService.list_orders(
-        db, stranger, customer_id=order.customer_id
-    ) == []
-    assert await OrderService.list_orders(
-        db, stranger, created_from=datetime.now(UTC) - timedelta(days=1)
-    ) == []
-    await db.flush()
-
-
 # ------------------------------------------------- payments / history reads ----
 
 
-async def test_list_payments_returns_the_order_s_payments(
-    db: AsyncSession, tenant_ctx
-):
+async def test_list_payments_returns_the_order_s_payments(db: AsyncSession, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     paid = await _order(db, tenant_id, qty=2)
     unpaid = await _order(db, tenant_id)
@@ -252,23 +239,17 @@ async def test_list_payments_returns_the_order_s_payments(
     await db.flush()
 
 
-async def test_payments_are_not_readable_through_another_tenant(
-    db: AsyncSession, tenant_ctx
-):
+async def test_payments_are_not_readable_through_another_tenant(db: AsyncSession, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     order = await _order(db, tenant_id)
-    await OrderService.add_payment(
-        db, tenant_id, order.id, method="cash", amount=Decimal("40.00")
-    )
+    await OrderService.add_payment(db, tenant_id, order.id, method="cash", amount=Decimal("40.00"))
 
     with pytest.raises(NotFoundError):
         await OrderService.list_payments(db, uuid.uuid4(), order.id)
     await db.flush()
 
 
-async def test_status_history_is_the_order_s_timeline_in_order(
-    db: AsyncSession, tenant_ctx
-):
+async def test_status_history_is_the_order_s_timeline_in_order(db: AsyncSession, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     order = await _order(db, tenant_id)
     await OrderService.change_status(db, tenant_id, order.id, "confirmed")
@@ -305,18 +286,14 @@ async def test_status_history_is_the_order_s_timeline_in_order(
     await db.flush()
 
 
-async def test_status_history_is_not_readable_through_another_tenant(
-    db: AsyncSession, tenant_ctx
-):
+async def test_status_history_is_not_readable_through_another_tenant(db: AsyncSession, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     order = await _order(db, tenant_id)
 
     with pytest.raises(NotFoundError):
         await OrderService.list_status_history(db, uuid.uuid4(), order.id)
     assert (
-        await db.execute(
-            select(OrderStatusHistory).where(OrderStatusHistory.order_id == order.id)
-        )
+        await db.execute(select(OrderStatusHistory).where(OrderStatusHistory.order_id == order.id))
     ).scalars().all() != []
     await db.flush()
 
@@ -369,9 +346,7 @@ async def test_shipping_update_is_written_not_merged(db: AsyncSession, tenant_ct
     await db.flush()
 
 
-async def test_shipping_update_records_an_audit_entry(
-    db: AsyncSession, tenant_ctx
-):
+async def test_shipping_update_records_an_audit_entry(db: AsyncSession, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     order = await _order(db, tenant_id)
     await OrderService.update_shipping(
@@ -383,14 +358,18 @@ async def test_shipping_update_records_an_audit_entry(
     )
 
     rows = (
-        await db.execute(
-            select(AuditLog).where(
-                AuditLog.resource_type == "order",
-                AuditLog.resource_id == str(order.id),
-                AuditLog.action == "order.shipping_updated",
+        (
+            await db.execute(
+                select(AuditLog).where(
+                    AuditLog.resource_type == "order",
+                    AuditLog.resource_id == str(order.id),
+                    AuditLog.action == "order.shipping_updated",
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(rows) == 1
     assert rows[0].tenant_id == tenant_id
     assert rows[0].actor_user_id == tenant_ctx.user.id
@@ -414,9 +393,7 @@ async def test_shipping_update_refuses_a_stale_version(db: AsyncSession, tenant_
     await db.flush()
 
 
-async def test_shipping_update_refuses_an_order_that_already_left(
-    db: AsyncSession, tenant_ctx
-):
+async def test_shipping_update_refuses_an_order_that_already_left(db: AsyncSession, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     order = await _order(db, tenant_id)
     for status in ("confirmed", "processing", "shipped"):
@@ -429,9 +406,7 @@ async def test_shipping_update_refuses_an_order_that_already_left(
     await db.flush()
 
 
-async def test_shipping_update_requires_something_to_change(
-    db: AsyncSession, tenant_ctx
-):
+async def test_shipping_update_requires_something_to_change(db: AsyncSession, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     order = await _order(db, tenant_id)
 
@@ -440,9 +415,7 @@ async def test_shipping_update_requires_something_to_change(
     await db.flush()
 
 
-async def test_a_foreign_tenant_cannot_touch_an_order_s_shipping(
-    db: AsyncSession, tenant_ctx
-):
+async def test_a_foreign_tenant_cannot_touch_an_order_s_shipping(db: AsyncSession, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     order = await _order(db, tenant_id)
 
@@ -451,9 +424,7 @@ async def test_a_foreign_tenant_cannot_touch_an_order_s_shipping(
             db, uuid.uuid4(), order.id, shipping_address={"city": "Nowhere"}
         )
     with pytest.raises(NotFoundError):
-        await OrderService.update_shipping(
-            db, uuid.uuid4(), order.id, shipping_method="courier"
-        )
+        await OrderService.update_shipping(db, uuid.uuid4(), order.id, shipping_method="courier")
     await db.flush()
 
 
@@ -502,9 +473,7 @@ def _detail_order(**over):
 def _detail_out(**over) -> dict:
     from app.modules.orders.router import _order_detail_out
 
-    return _order_detail_out(
-        _detail_order(**over), _DETAIL_POSITION, permission_codes={"pii:read"}
-    )
+    return _order_detail_out(_detail_order(**over), _DETAIL_POSITION, permission_codes={"pii:read"})
 
 
 def test_the_detail_read_carries_where_the_parcel_is_going():
@@ -548,9 +517,7 @@ def test_the_address_on_the_detail_read_follows_the_pii_guard():
     not PII, and the money position is never redacted."""
     from app.modules.orders.router import _order_detail_out
 
-    payload = _order_detail_out(
-        _detail_order(), _DETAIL_POSITION, permission_codes=set()
-    )
+    payload = _order_detail_out(_detail_order(), _DETAIL_POSITION, permission_codes=set())
     assert payload["shipping_address"] is None
     assert payload["shipping_method"] == "courier"
     assert payload["net_collected"] == "40.00"
@@ -601,9 +568,7 @@ async def test_the_detail_route_answers_the_address_a_correction_stored(
     await db.flush()
 
 
-async def test_the_detail_route_hides_the_address_without_pii_read(
-    db: AsyncSession, tenant_ctx
-):
+async def test_the_detail_route_hides_the_address_without_pii_read(db: AsyncSession, tenant_ctx):
     """DB-backed (CI-only): the guard is on the route, not only the builder."""
     from fastapi import Response
 
@@ -622,9 +587,7 @@ async def test_the_detail_route_hides_the_address_without_pii_read(
 
     ctx = TenantContext(
         session=db,
-        user=AuthedUser(
-            id=tenant_ctx.user.id, tenant_id=tenant_id, role_code="owner"
-        ),
+        user=AuthedUser(id=tenant_ctx.user.id, tenant_id=tenant_id, role_code="owner"),
         tenant_id=tenant_id,
         role_code="owner",
         permission_codes=set(),  # an owner-less staffer role without pii:read
@@ -678,8 +641,7 @@ async def test_the_shipping_write_does_not_echo_back_what_the_read_withholds(
     )
 
     assert payload["shipping_address"] is None, (
-        "the write echoed an address the same caller cannot read: "
-        f"{payload['shipping_address']!r}"
+        f"the write echoed an address the same caller cannot read: {payload['shipping_address']!r}"
     )
     # What the write is actually about stays — the staffer must see the change
     # land, and the new CAS token must ride back for the next conditional write.
@@ -724,9 +686,7 @@ async def test_the_shipping_write_echoes_the_address_to_a_pii_reader(
     assert payload["shipping_address"] == address
 
 
-async def test_the_shipping_write_requires_the_write_permission(
-    db: AsyncSession, tenant_ctx
-):
+async def test_the_shipping_write_requires_the_write_permission(db: AsyncSession, tenant_ctx):
     """A write route without the gate re-dispatches a parcel for anyone."""
     from httpx import ASGITransport, AsyncClient
 
@@ -750,9 +710,7 @@ async def test_the_shipping_write_requires_the_write_permission(
 
     app = create_app()
     app.dependency_overrides[get_tenant_ctx] = _fake_ctx
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.patch(
             f"/api/v1/orders/{uuid.uuid4()}/shipping",
             json={"shipping_address": {"city": "Cairo"}},

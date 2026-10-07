@@ -97,8 +97,10 @@ async def list_consents(
     if status is not None:
         stmt = stmt.where(Consent.status == status)
     rows = (
-        await ctx.session.execute(stmt.order_by(Consent.captured_at.desc()).limit(200))
-    ).scalars().all()
+        (await ctx.session.execute(stmt.order_by(Consent.captured_at.desc()).limit(200)))
+        .scalars()
+        .all()
+    )
     return [_consent_dict(consent) for consent in rows]
 
 
@@ -169,8 +171,10 @@ async def list_data_requests(
     if request_type is not None:
         stmt = stmt.where(DataSubjectRequest.request_type == request_type)
     rows = (
-        await ctx.session.execute(stmt.order_by(DataSubjectRequest.created_at.desc()).limit(200))
-    ).scalars().all()
+        (await ctx.session.execute(stmt.order_by(DataSubjectRequest.created_at.desc()).limit(200)))
+        .scalars()
+        .all()
+    )
     return [_dsr_dict(request) for request in rows]
 
 

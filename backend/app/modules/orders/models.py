@@ -30,9 +30,7 @@ from app.core.model_kit import (
 class Order(TenantMixin, TimestampMixin, WorkspaceScopeMixin, VersionMixin, Base):
     __tablename__ = "orders"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     number: Mapped[str] = mapped_column(String(31))
     customer_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("customers.id", ondelete="CASCADE")
@@ -72,9 +70,7 @@ class OrderItem(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base
 
     __tablename__ = "order_items"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     order_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orders.id", ondelete="CASCADE")
     )
@@ -87,17 +83,13 @@ class OrderItem(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base
     unit_price: Mapped[float] = mapped_column(MONEY)
     total: Mapped[float] = mapped_column(MONEY)
 
-    __table_args__ = (
-        Index("ix_order_items_tenant_order", "tenant_id", "order_id"),
-    )
+    __table_args__ = (Index("ix_order_items_tenant_order", "tenant_id", "order_id"),)
 
 
 class OrderStatusHistory(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "order_status_history"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     order_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orders.id", ondelete="CASCADE")
     )
@@ -108,17 +100,13 @@ class OrderStatusHistory(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMi
     )
     note: Mapped[str | None] = mapped_column(String(512))
 
-    __table_args__ = (
-        Index("ix_order_history_tenant_order", "tenant_id", "order_id"),
-    )
+    __table_args__ = (Index("ix_order_history_tenant_order", "tenant_id", "order_id"),)
 
 
 class Shipment(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "shipments"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     order_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orders.id", ondelete="CASCADE")
     )
@@ -130,17 +118,13 @@ class Shipment(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     label_url: Mapped[str | None] = mapped_column(Text)
 
-    __table_args__ = (
-        Index("ix_shipments_tenant_order", "tenant_id", "order_id"),
-    )
+    __table_args__ = (Index("ix_shipments_tenant_order", "tenant_id", "order_id"),)
 
 
 class OrderPayment(TenantMixin, TimestampMixin, WorkspaceScopeMixin, VersionMixin, Base):
     __tablename__ = "order_payments"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     order_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orders.id", ondelete="CASCADE")
     )
@@ -158,17 +142,13 @@ class OrderPayment(TenantMixin, TimestampMixin, WorkspaceScopeMixin, VersionMixi
     provider_ref: Mapped[str | None] = mapped_column(String(255))
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    __table_args__ = (
-        Index("ix_order_payments_tenant_order", "tenant_id", "order_id"),
-    )
+    __table_args__ = (Index("ix_order_payments_tenant_order", "tenant_id", "order_id"),)
 
 
 class Refund(TenantMixin, TimestampMixin, WorkspaceScopeMixin, VersionMixin, Base):
     __tablename__ = "refunds"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     payment_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("order_payments.id", ondelete="CASCADE")
     )
@@ -181,6 +161,4 @@ class Refund(TenantMixin, TimestampMixin, WorkspaceScopeMixin, VersionMixin, Bas
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
 
-    __table_args__ = (
-        Index("ix_refunds_tenant_payment", "tenant_id", "payment_id"),
-    )
+    __table_args__ = (Index("ix_refunds_tenant_payment", "tenant_id", "payment_id"),)

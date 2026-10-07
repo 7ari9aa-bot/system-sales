@@ -7,11 +7,13 @@ Validates:
 - Contract Invariant: AgentUpdateRequest schema does not allow mutating kind.
 - Canonical Provisioning: Idempotent provisioning and tool syncing.
 """
+
 from __future__ import annotations
 
 import uuid
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from app.modules.ai.core.registry import (
     AgentCapability,
@@ -45,7 +47,7 @@ def test_registry_registration_and_queries() -> None:
     assert AgentRegistry.is_tool_authorized("customer", "unknown_tool_xyz") is False
 
     # Sales Intelligence authorization checks
-    si_defn = AgentRegistry.get("sales_intelligence")
+    assert AgentRegistry.get("sales_intelligence") is not None
     assert AgentRegistry.is_tool_authorized("sales_intelligence", "si_analyze_drivers") is True
     assert AgentRegistry.is_tool_authorized("sales_intelligence", "create_order") is False
 
@@ -96,13 +98,23 @@ async def test_runtime_tool_isolation_enforcement() -> None:
 
     # Suppose DB contains 3 tools linked to a customer agent:
     # 2 legitimate customer tools + 1 injected SI tool
-    legit_tool1 = AgentTool(tenant_id=tenant_id, agent_id=agent_id, name="search_products", is_active=True)
-    legit_tool2 = AgentTool(tenant_id=tenant_id, agent_id=agent_id, name="create_order", is_active=True)
-    injected_tool = AgentTool(tenant_id=tenant_id, agent_id=agent_id, name="si_analyze_drivers", is_active=True)
+    legit_tool1 = AgentTool(
+        tenant_id=tenant_id, agent_id=agent_id, name="search_products", is_active=True
+    )
+    legit_tool2 = AgentTool(
+        tenant_id=tenant_id, agent_id=agent_id, name="create_order", is_active=True
+    )
+    injected_tool = AgentTool(
+        tenant_id=tenant_id, agent_id=agent_id, name="si_analyze_drivers", is_active=True
+    )
 
     mock_session = AsyncMock()
     mock_execute_result = MagicMock()
-    mock_execute_result.scalars.return_value.all.return_value = [legit_tool1, legit_tool2, injected_tool]
+    mock_execute_result.scalars.return_value.all.return_value = [
+        legit_tool1,
+        legit_tool2,
+        injected_tool,
+    ]
     mock_session.execute.return_value = mock_execute_result
 
     # When loading tools with agent_kind="customer"
@@ -133,9 +145,10 @@ async def test_agent_3_extensibility_e2e_lifecycle() -> None:
     6. Execute unauthorized cross-agent tool through runtime -> status=denied.
     """
     from pydantic import BaseModel
+
     from app.modules.ai.models import Agent, AgentRun
-    from app.modules.ai.tools import ToolSpec, register_tool
     from app.modules.ai.providers import ToolCallRequest
+    from app.modules.ai.tools import ToolSpec, register_tool
 
     # Step 1: Register custom Agent #3
     agent3_defn = AgentDefinition(
@@ -144,7 +157,11 @@ async def test_agent_3_extensibility_e2e_lifecycle() -> None:
         description="Monitors stock levels, reconciles warehouses, and triggers supplier POs.",
         definition_version=1,
         capabilities=[
-            AgentCapability(name="inv_check_reorder_level", description="Check reorder thresholds", required=True),
+            AgentCapability(
+                name="inv_check_reorder_level",
+                description="Check reorder thresholds",
+                required=True,
+            ),
         ],
         system_prompt_template="You are the inventory operations assistant.",
         default_model="fast",
@@ -152,7 +169,11 @@ async def test_agent_3_extensibility_e2e_lifecycle() -> None:
         allowed_tools=["inv_check_reorder_level"],
         task_types=["stock_reorder", "inventory_audit"],
         guardrail_profile="internal",
-        provisioning_policy={"is_canonical": True, "auto_provision": True, "singleton_per_tenant": True},
+        provisioning_policy={
+            "is_canonical": True,
+            "auto_provision": True,
+            "singleton_per_tenant": True,
+        },
     )
     AgentRegistry.register(agent3_defn, allow_override=True)
 
@@ -187,8 +208,12 @@ async def test_agent_3_extensibility_e2e_lifecycle() -> None:
     # Step 5: Test runtime loading with isolation
     tenant_id = uuid.uuid4()
     agent_id = uuid.uuid4()
-    tool_authorized = AgentTool(tenant_id=tenant_id, agent_id=agent_id, name="inv_check_reorder_level", is_active=True)
-    tool_unauthorized = AgentTool(tenant_id=tenant_id, agent_id=agent_id, name="create_order", is_active=True)
+    tool_authorized = AgentTool(
+        tenant_id=tenant_id, agent_id=agent_id, name="inv_check_reorder_level", is_active=True
+    )
+    tool_unauthorized = AgentTool(
+        tenant_id=tenant_id, agent_id=agent_id, name="create_order", is_active=True
+    )
 
     mock_session = AsyncMock()
     mock_res = MagicMock()

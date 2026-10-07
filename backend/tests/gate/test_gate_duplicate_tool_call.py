@@ -79,12 +79,8 @@ async def test_gate_a_replayed_tool_call_executes_its_handler_exactly_once(
     runner = AgentRunner()
     request = ToolCallRequest(id="call-1", name=TOOL_NAME, arguments={})
 
-    first = await runner._execute_tool(
-        db, tid, run=run, agent_tools=[agent_tool], request=request
-    )
-    second = await runner._execute_tool(
-        db, tid, run=run, agent_tools=[agent_tool], request=request
-    )
+    first = await runner._execute_tool(db, tid, run=run, agent_tools=[agent_tool], request=request)
+    second = await runner._execute_tool(db, tid, run=run, agent_tools=[agent_tool], request=request)
 
     assert calls == [1], f"the handler ran {len(calls)} times for one tool_call_id"
     assert first["status"] == "ok" and second["status"] == "ok"
@@ -93,7 +89,9 @@ async def test_gate_a_replayed_tool_call_executes_its_handler_exactly_once(
 
     rows = (
         await db.execute(
-            select(func.count()).select_from(ToolCall).where(
+            select(func.count())
+            .select_from(ToolCall)
+            .where(
                 ToolCall.tenant_id == tid,
                 ToolCall.idempotency_key == f"{run.id}:call-1",
             )
@@ -134,11 +132,17 @@ async def test_gate_a_different_tool_call_id_is_a_distinct_action(
 
     runner = AgentRunner()
     await runner._execute_tool(
-        db, tid, run=run, agent_tools=[agent_tool],
+        db,
+        tid,
+        run=run,
+        agent_tools=[agent_tool],
         request=ToolCallRequest(id="call-a", name=TOOL_NAME, arguments={}),
     )
     await runner._execute_tool(
-        db, tid, run=run, agent_tools=[agent_tool],
+        db,
+        tid,
+        run=run,
+        agent_tools=[agent_tool],
         request=ToolCallRequest(id="call-b", name=TOOL_NAME, arguments={}),
     )
     assert calls == [1, 2], "two distinct tool_call_ids must each execute once"

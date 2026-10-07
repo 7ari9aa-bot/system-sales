@@ -111,9 +111,7 @@ class WebhookWorker(StreamWorker):
                 # suspended tenant learns why it was suspended, and the API
                 # allowlist in identity.deps keeps /notifications reachable for
                 # exactly that reason.
-                await defer_unless_tenant_allows(
-                    session, tenant_id, "allows_automation"
-                )
+                await defer_unless_tenant_allows(session, tenant_id, "allows_automation")
                 delivery = await WebhookDispatcher.deliver(
                     session, tenant_id, uuid.UUID(delivery_id)
                 )
@@ -150,17 +148,13 @@ class WebhookWorker(StreamWorker):
                 await bind_tenant(session, tenant_id)
                 # §48 — a non-operational tenant's ingress is deferred, not
                 # dead-lettered: it resumes if the tenant is reactivated.
-                await defer_unless_tenant_allows(
-                    session, tenant_id, "allows_channels"
-                )
+                await defer_unless_tenant_allows(session, tenant_id, "allows_channels")
                 retried = await retry_failed_webhook_events(
                     session,
                     tenant_id,
                     event_id=uuid.UUID(str(event_id)) if event_id else None,
                 )
-                logger.info(
-                    "webhook.retry_swept tenant=%s rows=%s", tenant_id, retried
-                )
+                logger.info("webhook.retry_swept tenant=%s rows=%s", tenant_id, retried)
 
     async def _ingest_queued_event(self, envelope: EventEnvelope) -> None:
         """§22: run the ingest block the request path deliberately skipped.
@@ -176,12 +170,8 @@ class WebhookWorker(StreamWorker):
         async with SessionLocal() as session:
             async with session.begin():
                 await bind_tenant(session, tenant_id)
-                await defer_unless_tenant_allows(
-                    session, tenant_id, "allows_channels"
-                )
-                await ingest_queued_webhook_event(
-                    session, tenant_id, uuid.UUID(str(event_id))
-                )
+                await defer_unless_tenant_allows(session, tenant_id, "allows_channels")
+                await ingest_queued_webhook_event(session, tenant_id, uuid.UUID(str(event_id)))
 
 
 async def retry_failed_webhook_events(
@@ -244,9 +234,7 @@ async def retry_failed_webhook_events(
             )
         except Exception as exc:  # noqa: BLE001 — §24: recorded on the row
             await IngestService.mark_webhook_event_failed(session, row.id, exc)
-            logger.warning(
-                "webhook.retry_failed event=%s err=%s", row.id, exc
-            )
+            logger.warning("webhook.retry_failed event=%s err=%s", row.id, exc)
         handled += 1
     return handled
 

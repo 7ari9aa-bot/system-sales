@@ -58,9 +58,7 @@ async def _tenant_ids(session: AsyncSession) -> list[tuple[str, str]]:
     """(id, slug) for every tenant. `tenants` carries no RLS, so no GUC needed."""
     from app.modules.identity.models import Tenant
 
-    rows = (
-        await session.execute(select(Tenant.id, Tenant.slug).order_by(Tenant.created_at))
-    ).all()
+    rows = (await session.execute(select(Tenant.id, Tenant.slug).order_by(Tenant.created_at))).all()
     return [(str(tid), slug) for tid, slug in rows]
 
 

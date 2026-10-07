@@ -136,18 +136,20 @@ class InstagramAdapter(ChannelAdapter):
 
         mid = message.get("mid")
 
-        return [InboundMessage(
-            channel="instagram",
-            channel_message_id=mid,
-            customer_ref=str(sender.get("id", "")),
-            customer_name=None,
-            body=text,
-            media_url=media_url,
-            media_type=content_type if media_url else None,
-            content_type=content_type,
-            conversation_ref=str(recipient.get("id", "")),
-            raw=payload,
-        )]
+        return [
+            InboundMessage(
+                channel="instagram",
+                channel_message_id=mid,
+                customer_ref=str(sender.get("id", "")),
+                customer_name=None,
+                body=text,
+                media_url=media_url,
+                media_type=content_type if media_url else None,
+                content_type=content_type,
+                conversation_ref=str(recipient.get("id", "")),
+                raw=payload,
+            )
+        ]
 
     async def send(
         self,

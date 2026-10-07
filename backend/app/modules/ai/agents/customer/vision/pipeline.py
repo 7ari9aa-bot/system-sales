@@ -54,9 +54,7 @@ async def run_vision_match(
         reranker_ok = False
 
     decision_input = [
-        ScoredCandidate(
-            candidate=candidate, score=score, embedding_rank=candidate.retrieval_rank
-        )
+        ScoredCandidate(candidate=candidate, score=score, embedding_rank=candidate.retrieval_rank)
         for candidate, score in scored
     ]
     confidence, reason = decide(decision_input, reranker_ok=reranker_ok)

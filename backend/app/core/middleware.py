@@ -70,14 +70,14 @@ from app.core.security import decode_token
 from app.core.tenancy import TenantBusyError, TenantConcurrencyGovernor
 
 EXEMPT_PATHS = {"/healthz", "/readyz", "/docs", "/openapi.json"}
-AUTH_LIMIT = 10          # per window, per IP — credential-granting /auth/* actions
+AUTH_LIMIT = 10  # per window, per IP — credential-granting /auth/* actions
 # Session-surface /auth/* endpoints (me / refresh / logout): still bounded, but
 # a user refreshing a token or checking who they are must not compete with an
 # attacker brute-forcing login — so they do NOT share the strict bucket and do
 # NOT fail closed on a Redis outage.
 AUTH_SESSION_LIMIT = 60
-DEFAULT_LIMIT = 300      # per window, per IP — everything else
-PUBLIC_LIMIT = 120       # per window, per IP — webchat/webhook ingress
+DEFAULT_LIMIT = 300  # per window, per IP — everything else
+PUBLIC_LIMIT = 120  # per window, per IP — webchat/webhook ingress
 API_PREFIX = "/api/v1"
 
 # /auth/* subpaths that hand out or rotate credentials. EVERYTHING under
@@ -90,9 +90,9 @@ _AUTH_SESSION_PATHS = frozenset({"/auth/me", "/auth/refresh", "/auth/logout"})
 # generous: they are blast-radius caps for a noisy or compromised caller, not
 # fairness quotas. Kept as constants because config.py is owned by another
 # workstream; they should move to Settings.
-TENANT_LIMIT = 3000      # per window, across a whole tenant
-USER_LIMIT = 600         # per window, per authenticated user
-ENDPOINT_LIMIT = 120     # per window, per caller per route shape
+TENANT_LIMIT = 3000  # per window, across a whole tenant
+USER_LIMIT = 600  # per window, per authenticated user
+ENDPOINT_LIMIT = 120  # per window, per caller per route shape
 
 # Generous for JSON APIs (the largest legitimate body is a webhook batch) but
 # far below what it takes to exhaust a worker's memory.
@@ -107,9 +107,7 @@ _PRODUCT_IMAGE_UPLOAD_PATH = re.compile(r"^/products/[0-9a-fA-F-]{36}/images/upl
 _ID_SEGMENT = re.compile(r"^[0-9a-fA-F-]{16,}$|^\d+$")
 
 
-def _client_ip(
-    request: Request, *, trusted_proxy_count: int | None = None
-) -> str:
+def _client_ip(request: Request, *, trusted_proxy_count: int | None = None) -> str:
     """Client IP that an attacker cannot freely rotate.
 
     Each of the TRUSTED_PROXY_COUNT proxies in front of this process APPENDS
@@ -144,7 +142,7 @@ def _client_ip(
 def _bucket_for(path: str) -> tuple[str, int]:
     """Classify by the path relative to the /api/v1 mount point."""
     if path.startswith(API_PREFIX):
-        path = path[len(API_PREFIX):]
+        path = path[len(API_PREFIX) :]
     if path.startswith("/auth/"):
         # me/refresh/logout are session maintenance, not credential entry
         # points — a lighter bucket keeps routine dashboard traffic from
@@ -193,18 +191,14 @@ def _principal_from_request(request: Request) -> _Principal:
         return _Principal()
     if payload.get("type") != "access":
         return _Principal()
-    return _Principal(
-        user_id=payload.get("sub"), tenant_id=payload.get("tenant_id")
-    )
+    return _Principal(user_id=payload.get("sub"), tenant_id=payload.get("tenant_id"))
 
 
 def _endpoint_key(path: str) -> str:
     if path.startswith(API_PREFIX):
-        path = path[len(API_PREFIX):]
+        path = path[len(API_PREFIX) :]
     parts = [
-        ":id" if _ID_SEGMENT.match(segment) else segment
-        for segment in path.split("/")
-        if segment
+        ":id" if _ID_SEGMENT.match(segment) else segment for segment in path.split("/") if segment
     ]
     return "/" + "/".join(parts[:4])
 
@@ -257,9 +251,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # where Redis is available (CI runs a Redis service) and harmless where
         # it is not (throughput tiers fail open) — but an auth-bucket request
         # with Redis down WILL get a 429, by design.
-        self.enabled = (
-            get_settings().environment != "test" if enabled is None else enabled
-        )
+        self.enabled = get_settings().environment != "test" if enabled is None else enabled
         self._client = client  # injectable for tests; lazily defaults to Redis
         self._limiter: LayeredRateLimiter | None = None
         # §144: per-tenant in-flight cap. Redis-free by design — it keeps
@@ -291,9 +283,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 exc = RateLimitExceededError("try again later")
                 return JSONResponse(
                     status_code=exc.http_status,
-                    content=build_error_body(
-                        exc, request_id=request_id_contextvar.get()
-                    ),
+                    content=build_error_body(exc, request_id=request_id_contextvar.get()),
                 )
             return await self._call_with_slot(request, call_next, principal)
 
@@ -367,9 +357,7 @@ async def _emit_error(send, exc: DomainError) -> None:
     Takes a ``DomainError`` so the body is built by ``build_error_body`` — the
     single place that defines the shape — instead of being hand-assembled here.
     """
-    body = json.dumps(
-        build_error_body(exc, request_id=request_id_contextvar.get())
-    ).encode()
+    body = json.dumps(build_error_body(exc, request_id=request_id_contextvar.get())).encode()
     await send(
         {
             "type": "http.response.start",
@@ -403,12 +391,9 @@ class BodySizeLimitMiddleware:
 
         route_path = scope.get("path", "")
         if route_path.startswith(API_PREFIX):
-            route_path = route_path[len(API_PREFIX):]
+            route_path = route_path[len(API_PREFIX) :]
         max_bytes = self.max_bytes
-        if (
-            scope.get("method") == "POST"
-            and _PRODUCT_IMAGE_UPLOAD_PATH.fullmatch(route_path)
-        ):
+        if scope.get("method") == "POST" and _PRODUCT_IMAGE_UPLOAD_PATH.fullmatch(route_path):
             max_bytes = MAX_PRODUCT_IMAGE_UPLOAD_BYTES
 
         declared = _header(scope, b"content-length")
@@ -512,4 +497,3 @@ class SecurityHeadersMiddleware:
             await send(message)
 
         await self.app(scope, receive, send_wrapper)
-

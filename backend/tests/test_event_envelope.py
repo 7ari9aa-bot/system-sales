@@ -257,9 +257,7 @@ async def _gateway_frames(
 
 
 def _frame_data(frame: bytes) -> dict[str, Any]:
-    line = next(
-        ln for ln in frame.decode().split("\n") if ln.startswith("data:")
-    )
+    line = next(ln for ln in frame.decode().split("\n") if ln.startswith("data:"))
     return json.loads(line[len("data:") :].strip())
 
 
@@ -484,6 +482,7 @@ async def test_v12_decision_and_effect_ids_round_trip(monkeypatch: pytest.Monkey
 
     # Relay writing to event_log captures both ids
     from app.core.events.outbox import OutboxRelay
+
     meta = json.loads(fields["meta"])
     payload = {"event_type": "order.created", **json.loads(fields["payload"])}
     row = {

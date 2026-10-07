@@ -23,7 +23,9 @@ class WebsitePlatformError(RuntimeError):
         self.details = details or {}
 
 
-async def _request(method: str, path: str, *, json: dict | None = None, use_partner_key: bool = True) -> Any:
+async def _request(
+    method: str, path: str, *, json: dict | None = None, use_partner_key: bool = True
+) -> Any:
     settings = get_settings()
     if use_partner_key and not settings.website_platform_api_key:
         raise WebsitePlatformError(500, "WP_NOT_CONFIGURED", "WEBSITE_PLATFORM_API_KEY is not set")
@@ -36,7 +38,12 @@ async def _request(method: str, path: str, *, json: dict | None = None, use_part
     if res.status_code >= 400:
         try:
             body = res.json()
-            raise WebsitePlatformError(res.status_code, body.get("code", "UNKNOWN"), body.get("message", res.text[:200]), body.get("details"))
+            raise WebsitePlatformError(
+                res.status_code,
+                body.get("code", "UNKNOWN"),
+                body.get("message", res.text[:200]),
+                body.get("details"),
+            )
         except ValueError as exc:
             raise WebsitePlatformError(res.status_code, "NON_JSON", res.text[:200]) from exc
     if res.status_code == 204 or not res.content:
@@ -48,7 +55,15 @@ async def resolve_website(external_tenant_id: str) -> dict:
     return await _request("GET", f"/api/v1/partner/websites?externalUserId={external_tenant_id}")
 
 
-async def provision_website(*, email: str, external_tenant_id: str, tenant_name: str, website_name: str, template_id: str | None, display_name: str | None = None) -> dict:
+async def provision_website(
+    *,
+    email: str,
+    external_tenant_id: str,
+    tenant_name: str,
+    website_name: str,
+    template_id: str | None,
+    display_name: str | None = None,
+) -> dict:
     return await _request(
         "POST",
         "/api/v1/partner/websites",

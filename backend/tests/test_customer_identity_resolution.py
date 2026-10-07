@@ -195,7 +195,11 @@ async def test_update_customer_refuses_an_unparseable_email_without_touching_db(
 
 async def _mk_customer(db: AsyncSession, tenant_id: uuid.UUID, **fields: object) -> Customer:
     return await CustomerService.get_or_create_by_identity(
-        db, tenant_id, "whatsapp", f"wa-{uuid.uuid4().hex[:12]}", **fields  # type: ignore[arg-type]
+        db,
+        tenant_id,
+        "whatsapp",
+        f"wa-{uuid.uuid4().hex[:12]}",
+        **fields,  # type: ignore[arg-type]
     )
 
 
@@ -228,9 +232,7 @@ async def test_get_refuses_a_merged_away_customer_in_db(db: AsyncSession, tenant
     assert live.id == canonical.id
 
 
-async def test_identity_resolution_never_hands_back_a_tombstone(
-    db: AsyncSession, tenant_ctx
-):
+async def test_identity_resolution_never_hands_back_a_tombstone(db: AsyncSession, tenant_ctx):
     """The channel handle belongs to a deleted person: refuse, never resurrect."""
     tenant_id = tenant_ctx.tenant_id
     external_id = f"wa-{uuid.uuid4().hex[:12]}"
@@ -349,9 +351,7 @@ async def test_two_concurrent_merges_of_one_source_admit_exactly_one(
     async with engine.connect() as boot:
         async with boot.begin():
             await boot.execute(
-                sa.text(
-                    "INSERT INTO tenants (id, slug, name) VALUES (:id, :slug, :name)"
-                ),
+                sa.text("INSERT INTO tenants (id, slug, name) VALUES (:id, :slug, :name)"),
                 {
                     "id": tenant_id,
                     "slug": f"merge-{uuid.uuid4().hex[:10]}",
@@ -392,9 +392,7 @@ async def test_two_concurrent_merges_of_one_source_admit_exactly_one(
                 else:
                     outcomes.append("merged")
 
-        await asyncio.gather(
-            racer(canonical_a.id), racer(canonical_b.id)
-        )
+        await asyncio.gather(racer(canonical_a.id), racer(canonical_b.id))
         assert sorted(outcomes) == ["merged", "refused"], (
             f"one merge must win and one must refuse, got {outcomes}"
         )
@@ -405,29 +403,28 @@ async def test_two_concurrent_merges_of_one_source_admit_exactly_one(
             await bind_tenant(check, tenant_id)
             redirect = (
                 await check.execute(
-                    sa.text(
-                        "SELECT merged_into_customer_id FROM customers "
-                        "WHERE id = :s"
-                    ),
+                    sa.text("SELECT merged_into_customer_id FROM customers WHERE id = :s"),
                     {"s": source.id},
                 )
             ).scalar_one()
             assert redirect in (canonical_a.id, canonical_b.id)
             others = (
-                await check.execute(
-                    sa.text(
-                        "SELECT id FROM customers WHERE tenant_id = :t "
-                        "AND id <> :s AND merged_into_customer_id IS NULL"
-                    ),
-                    {"t": tenant_id, "s": source.id},
+                (
+                    await check.execute(
+                        sa.text(
+                            "SELECT id FROM customers WHERE tenant_id = :t "
+                            "AND id <> :s AND merged_into_customer_id IS NULL"
+                        ),
+                        {"t": tenant_id, "s": source.id},
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             assert len(others) == 2, "both canonicals stay live"
     finally:
         async with sessions() as cleanup:
             await bind_tenant(cleanup, tenant_id)
-            await cleanup.execute(
-                sa.text("DELETE FROM tenants WHERE id = :t"), {"t": tenant_id}
-            )
+            await cleanup.execute(sa.text("DELETE FROM tenants WHERE id = :t"), {"t": tenant_id})
             await cleanup.commit()
         await engine.dispose()

@@ -236,9 +236,7 @@ def _history_out(entry: OrderStatusHistory) -> dict:
         "order_id": str(entry.order_id),
         "from_status": entry.from_status,
         "to_status": entry.to_status,
-        "changed_by_user_id": (
-            str(entry.changed_by_user_id) if entry.changed_by_user_id else None
-        ),
+        "changed_by_user_id": (str(entry.changed_by_user_id) if entry.changed_by_user_id else None),
         "note": entry.note,
         "created_at": entry.created_at.isoformat(),
     }
@@ -314,9 +312,7 @@ async def cancel_order(
 ):
     """Cancel an open order and release its reserved stock (idempotent via
     the row lock: two concurrent cancels cannot double-release)."""
-    await OrderService.cancel_order(
-        ctx.session, ctx.tenant_id, order_id, by_user_id=ctx.user.id
-    )
+    await OrderService.cancel_order(ctx.session, ctx.tenant_id, order_id, by_user_id=ctx.user.id)
     return {"ok": True}
 
 
@@ -368,9 +364,7 @@ def _shipment_out(shipment: Shipment) -> dict:
         "tracking_number": shipment.tracking_number,
         "status": shipment.status,
         "shipped_at": shipment.shipped_at.isoformat() if shipment.shipped_at else None,
-        "delivered_at": (
-            shipment.delivered_at.isoformat() if shipment.delivered_at else None
-        ),
+        "delivered_at": (shipment.delivered_at.isoformat() if shipment.delivered_at else None),
         "label_url": shipment.label_url,
     }
 

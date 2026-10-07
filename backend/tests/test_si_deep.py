@@ -26,7 +26,9 @@ async def _stage(db, tenant_ctx, question="ليه المبيعات قلت؟"):
     db.add(
         Agent(
             tenant_id=tenant_ctx.tenant_id,
-            name="SI Agent", model="strong", system_prompt="analyze",
+            name="SI Agent",
+            model="strong",
+            system_prompt="analyze",
         )
     )
     await db.flush()
@@ -55,9 +57,7 @@ def _fake_result(answer: str) -> AnalysisResult:
     )
 
 
-async def test_handler_runs_the_analysis_and_finalizes_the_shell(
-    db, tenant_ctx, monkeypatch
-):
+async def test_handler_runs_the_analysis_and_finalizes_the_shell(db, tenant_ctx, monkeypatch):
     analysis_id, job = await _stage(db, tenant_ctx)
 
     async def fake_run(session, tenant_id, **kwargs):
@@ -86,15 +86,15 @@ async def test_handler_failure_marks_the_shell_failed(db, tenant_ctx, monkeypatc
     db.add(
         Agent(
             tenant_id=tenant_ctx.tenant_id,
-            name="SI Agent", model="strong", system_prompt="analyze",
+            name="SI Agent",
+            model="strong",
+            system_prompt="analyze",
         )
     )
     await db.flush()
     from app.modules.analytics.persistence import create_pending_analysis
 
-    analysis_id = await create_pending_analysis(
-        db, tenant_ctx.tenant_id, question="سؤال"
-    )
+    analysis_id = await create_pending_analysis(db, tenant_ctx.tenant_id, question="سؤال")
 
     async def fake_run(session, tenant_id, **kwargs):
         raise ExternalProviderError("provider down")

@@ -60,9 +60,7 @@ def detect_anomalies(
         by_weekday.setdefault(day.weekday(), []).append(float(value))
     medians = {weekday: _median(vals) for weekday, vals in by_weekday.items()}
 
-    residuals = {
-        day: float(value) - medians[day.weekday()] for day, value in series.items()
-    }
+    residuals = {day: float(value) - medians[day.weekday()] for day, value in series.items()}
     median_residual = _median(list(residuals.values()))
     mad = _median([abs(r - median_residual) for r in residuals.values()])
     robust_std = mad * _MAD_TO_STD
@@ -165,6 +163,7 @@ def seasonality_explains(
 
 # ------------------------------------------------------ customers (§5.4) ----
 
+
 def customer_split(orders: list[dict], window_start: datetime) -> dict[str, int]:
     """New vs returning customers in a window.
 
@@ -181,15 +180,12 @@ def customer_split(orders: list[dict], window_start: datetime) -> dict[str, int]
             first_order[customer] = placed
         if placed >= window_start:
             window_orders[customer] = placed
-    new = sum(
-        1
-        for customer in window_orders
-        if first_order[customer] >= window_start
-    )
+    new = sum(1 for customer in window_orders if first_order[customer] >= window_start)
     return {"new": new, "returning": len(window_orders) - new}
 
 
 # ---------------------------------------------------- fulfillment (§5.7) ----
+
 
 @dataclass(frozen=True, slots=True)
 class CarrierPerformance:

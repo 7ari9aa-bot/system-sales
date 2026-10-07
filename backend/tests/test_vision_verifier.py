@@ -15,9 +15,7 @@ from app.modules.catalog.models import Product, ProductVariant
 from app.modules.inventory.models import InventoryBalance, Warehouse
 
 
-async def _seed_product(
-    db, tenant_id, *, title: str, status: str = "active"
-) -> Product:
+async def _seed_product(db, tenant_id, *, title: str, status: str = "active") -> Product:
     product = Product(
         tenant_id=tenant_id,
         title=title,
@@ -105,12 +103,8 @@ async def test_variantless_product_verifies_with_zero_variants(db, tenant_ctx):
 
 async def test_stock_sums_across_warehouses_and_shortage_negates(db, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
-    wh_a = Warehouse(
-        tenant_id=tenant_id, name="A", code=f"WA-{uuid.uuid4().hex[:6].upper()}"
-    )
-    wh_b = Warehouse(
-        tenant_id=tenant_id, name="B", code=f"WB-{uuid.uuid4().hex[:6].upper()}"
-    )
+    wh_a = Warehouse(tenant_id=tenant_id, name="A", code=f"WA-{uuid.uuid4().hex[:6].upper()}")
+    wh_b = Warehouse(tenant_id=tenant_id, name="B", code=f"WB-{uuid.uuid4().hex[:6].upper()}")
     db.add_all([wh_a, wh_b])
     await db.flush()
 

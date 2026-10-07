@@ -100,14 +100,10 @@ async def _publish(client, *, tenant_id: uuid.UUID, order_ref: str) -> str:
     )
     wire = serialize(envelope)
     bus = RedisStreamsBus(client)
-    return await bus.publish(
-        STREAM, json.loads(wire["payload"]), json.loads(wire["meta"])
-    )
+    return await bus.publish(STREAM, json.loads(wire["payload"]), json.loads(wire["meta"]))
 
 
-async def _publish_at(
-    client, entry_id: str, *, tenant_id: uuid.UUID, order_ref: str
-) -> str:
+async def _publish_at(client, entry_id: str, *, tenant_id: uuid.UUID, order_ref: str) -> str:
     """Publish with an EXPLICIT stream id.
 
     Redis hands out `<epoch-ms>-<seq>`, so two events in the same millisecond
@@ -135,11 +131,8 @@ async def _publish_at(
     return entry_id
 
 
-
 def _decode(frame: bytes) -> dict[str, Any]:
-    data_line = next(
-        line for line in frame.decode().split("\n") if line.startswith("data:")
-    )
+    data_line = next(line for line in frame.decode().split("\n") if line.startswith("data:"))
     return json.loads(data_line[len("data:") :].strip())
 
 
@@ -235,9 +228,7 @@ async def test_gate_a_cursor_of_zero_never_replays_the_retained_stream(
         STREAM,
         {
             "id": "forged",
-            "payload": json.dumps(
-                {"event_type": "order.created", "order_ref": "ANCIENT"}
-            ),
+            "payload": json.dumps({"event_type": "order.created", "order_ref": "ANCIENT"}),
             "meta": json.dumps({"type": "order.created"}),
         },
         id=ancient,
@@ -263,9 +254,7 @@ async def test_gate_an_ancient_cursor_is_clamped_on_the_server_clock(
     # A cursor inside the window is passed through UNCHANGED: XREAD is already
     # exclusive of the id it is given, so bumping it would skip an entry.
     recent_ms = int(time.time() * 1000)
-    assert (await rt._build_cursor(f"{recent_ms}-3", [STREAM]))[STREAM] == (
-        f"{recent_ms}-3"
-    )
+    assert (await rt._build_cursor(f"{recent_ms}-3", [STREAM]))[STREAM] == (f"{recent_ms}-3")
     # No cursor at all -> "now" only; a fresh client never gets a backlog.
     assert (await rt._build_cursor(None, [STREAM]))[STREAM] == "$"
 
@@ -286,9 +275,7 @@ async def test_gate_a_reconnect_never_delivers_another_tenants_event(
 
     resumed = await _collect(mine, cursor=first[-1]["id"])
     assert [f["payload"]["order_ref"] for f in resumed] == ["MINE-2"]
-    assert all(
-        "THEIRS" not in f["payload"]["order_ref"] for f in first + resumed
-    )
+    assert all("THEIRS" not in f["payload"]["order_ref"] for f in first + resumed)
 
 
 async def test_gate_a_frame_without_a_valid_envelope_is_dropped_not_streamed(
@@ -312,9 +299,7 @@ async def test_gate_a_frame_without_a_valid_envelope_is_dropped_not_streamed(
     assert [f["payload"]["order_ref"] for f in frames] == ["OK"]
 
 
-async def test_gate_a_suspended_workspace_has_its_stream_closed(
-    monkeypatch, fake_redis
-) -> None:
+async def test_gate_a_suspended_workspace_has_its_stream_closed(monkeypatch, fake_redis) -> None:
     """§149/§48: revalidation is not connect-time only.
 
     A stream outlives the request that opened it, so the workspace state is

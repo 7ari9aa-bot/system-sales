@@ -55,10 +55,7 @@ _WORKER_TREE = ast.parse(_WORKER_SRC)
 
 def _func(tree: ast.AST, name: str) -> ast.AST | None:
     for node in ast.walk(tree):
-        if (
-            isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
-            and node.name == name
-        ):
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.name == name:
             return node
     return None
 
@@ -120,9 +117,7 @@ def test_the_registered_handler_calls_expire_stale() -> None:
     fn = _func(_WORKER_TREE, "_handle_expire_reservations")
     assert fn is not None, "_handle_expire_reservations was renamed or deleted"
     attrs = _method_names(fn)
-    assert "expire_stale" in attrs, (
-        "the expire_reservations handler no longer calls expire_stale()"
-    )
+    assert "expire_stale" in attrs, "the expire_reservations handler no longer calls expire_stale()"
 
 
 def test_a_producer_inserts_the_recurring_row_idempotently() -> None:
@@ -218,9 +213,7 @@ async def _seed_stale_hold(
     )
     reservation = (
         await db.execute(
-            select(InventoryReservation).where(
-                InventoryReservation.order_id == order.id
-            )
+            select(InventoryReservation).where(InventoryReservation.order_id == order.id)
         )
     ).scalar_one()
     assert reservation.status == "ACTIVE"
@@ -250,9 +243,7 @@ class _NoBus:
         return None
 
 
-async def test_a_due_expire_job_runs_the_sweep_end_to_end(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_a_due_expire_job_runs_the_sweep_end_to_end(db: AsyncSession, tenant_ctx) -> None:
     """THE chain: driving the scheduler's claim loop on a due `expire_reservations`
     row must flip the stale reservation and write its release row — never by
     calling expire_stale() directly (it isn't imported/called in this test)."""
@@ -272,9 +263,7 @@ async def test_a_due_expire_job_runs_the_sweep_end_to_end(
             .execution_options(populate_existing=True)
         )
     ).scalar_one()
-    assert refreshed.status == "EXPIRED", (
-        "the scheduler ran but the stale hold did not expire"
-    )
+    assert refreshed.status == "EXPIRED", "the scheduler ran but the stale hold did not expire"
 
     # The release row is the ledger fact that the sweep freed availability, and
     # it names the reservation it released.
@@ -336,8 +325,7 @@ async def test_a_due_expire_job_runs_the_sweep_end_to_end(
     job = (
         await db.execute(
             select(ScheduledJob).where(
-                ScheduledJob.idempotency_key
-                == f"recurring:expire_reservations:{tenant_id}"
+                ScheduledJob.idempotency_key == f"recurring:expire_reservations:{tenant_id}"
             )
         )
     ).scalar_one()

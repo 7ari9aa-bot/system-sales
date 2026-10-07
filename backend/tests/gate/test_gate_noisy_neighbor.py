@@ -80,10 +80,7 @@ async def test_gate_consumers_cannot_collectively_overrun_one_budget(
     units = limit // 50  # the budget admits exactly 50 of these
 
     results = await asyncio.gather(
-        *(
-            consume(tenant, ResourceType.MESSAGES_OUTBOUND, units=units)
-            for _ in range(BUYERS)
-        )
+        *(consume(tenant, ResourceType.MESSAGES_OUTBOUND, units=units) for _ in range(BUYERS))
     )
     admitted = sum(results)
 
@@ -217,9 +214,7 @@ async def _cleanup(engine: AsyncEngine, *tenant_ids: uuid.UUID) -> None:
                 )
         async with factory() as session, session.begin():
             for tid in tenant_ids:
-                await session.execute(
-                    text("DELETE FROM tenants WHERE id = :t"), {"t": tid}
-                )
+                await session.execute(text("DELETE FROM tenants WHERE id = :t"), {"t": tid})
     except Exception:  # noqa: BLE001 — cleanup must never mask an assertion
         pass
 
@@ -229,10 +224,14 @@ async def _statuses(engine: AsyncEngine, tenant_id: uuid.UUID) -> dict[str, int]
     async with factory() as session, session.begin():
         await bind_tenant(session, tenant_id)
         rows = (
-            await session.execute(
-                select(ScheduledJob.status).where(ScheduledJob.tenant_id == tenant_id)
+            (
+                await session.execute(
+                    select(ScheduledJob.status).where(ScheduledJob.tenant_id == tenant_id)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
     tally: dict[str, int] = {}
     for status in rows:
         tally[status] = tally.get(status, 0) + 1
@@ -246,9 +245,7 @@ async def _counts(engine: AsyncEngine, tenant_id: uuid.UUID) -> list[int]:
         return list(
             (
                 await session.execute(
-                    select(ScheduledJob.attempts).where(
-                        ScheduledJob.tenant_id == tenant_id
-                    )
+                    select(ScheduledJob.attempts).where(ScheduledJob.tenant_id == tenant_id)
                 )
             )
             .scalars()
@@ -296,9 +293,7 @@ async def test_gate_a_bulk_backlog_never_starves_a_quiet_tenant(
     the real system behaviour; the assertions below are scoped to this test's
     own tenants only.
     """
-    noisy, quiet = await _seed_backlog(
-        committed_engine, noisy_jobs=TENANT_A_JOBS, quiet_jobs=1
-    )
+    noisy, quiet = await _seed_backlog(committed_engine, noisy_jobs=TENANT_A_JOBS, quiet_jobs=1)
     try:
         processed = await _run_one_poll(monkeypatch, committed_engine)
 
@@ -329,9 +324,7 @@ async def test_gate_two_scheduler_replicas_split_the_backlog_and_double_run_noth
     `attempts = 2` (both replicas ran it), which is a duplicated side effect
     in every real handler those jobs drive.
     """
-    noisy, quiet = await _seed_backlog(
-        committed_engine, noisy_jobs=TENANT_A_JOBS, quiet_jobs=3
-    )
+    noisy, quiet = await _seed_backlog(committed_engine, noisy_jobs=TENANT_A_JOBS, quiet_jobs=3)
 
     async def replica() -> int:
         total = 0
@@ -343,9 +336,7 @@ async def test_gate_two_scheduler_replicas_split_the_backlog_and_double_run_noth
         pytest.fail("scheduler replicas did not drain the backlog in 30 cycles")
 
     try:
-        await asyncio.wait_for(
-            asyncio.gather(*(replica() for _ in range(2))), timeout=180
-        )
+        await asyncio.wait_for(asyncio.gather(*(replica() for _ in range(2))), timeout=180)
 
         for tenant_id, expected in ((noisy, TENANT_A_JOBS), (quiet, 3)):
             statuses = await _statuses(committed_engine, tenant_id)
@@ -354,8 +345,6 @@ async def test_gate_two_scheduler_replicas_split_the_backlog_and_double_run_noth
                 f"jobs were stranded by the race: {statuses}"
             )
             attempts = await _counts(committed_engine, tenant_id)
-            assert max(attempts) == 1, (
-                f"a job ran twice under two replicas (attempts={attempts})"
-            )
+            assert max(attempts) == 1, f"a job ran twice under two replicas (attempts={attempts})"
     finally:
         await _cleanup(committed_engine, noisy, quiet)

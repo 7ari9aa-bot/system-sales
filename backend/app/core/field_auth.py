@@ -14,41 +14,47 @@ from __future__ import annotations
 from typing import Any
 
 # Fields that are PII — redacted for anyone without the pii:read permission.
-PII_FIELDS: frozenset[str] = frozenset({
-    "phone",
-    "email",
-    "address",
-    "date_of_birth",
-    "national_id",
-    "payment_method",
-    "card_number",
-    "card_last4",
-    "bank_account",
-})
+PII_FIELDS: frozenset[str] = frozenset(
+    {
+        "phone",
+        "email",
+        "address",
+        "date_of_birth",
+        "national_id",
+        "payment_method",
+        "card_number",
+        "card_last4",
+        "bank_account",
+    }
+)
 
 # Fields that are internal — redacted for anyone without the internal:read permission.
-INTERNAL_FIELDS: frozenset[str] = frozenset({
-    "supplier_cost",
-    "internal_margin",
-    "cost",
-    "profit",
-    "markup",
-    "wholesale_price",
-    "internal_notes",
-    "internal_tags",
-})
+INTERNAL_FIELDS: frozenset[str] = frozenset(
+    {
+        "supplier_cost",
+        "internal_margin",
+        "cost",
+        "profit",
+        "markup",
+        "wholesale_price",
+        "internal_notes",
+        "internal_tags",
+    }
+)
 
 # Fields that are secret — never exposed through the API, only through SecretStorePort.
-SECRET_FIELDS: frozenset[str] = frozenset({
-    "password_hash",
-    "api_key",
-    "access_token",
-    "refresh_token",
-    "webhook_secret",
-    "credentials",
-    "secret_value",
-    "vault_key",
-})
+SECRET_FIELDS: frozenset[str] = frozenset(
+    {
+        "password_hash",
+        "api_key",
+        "access_token",
+        "refresh_token",
+        "webhook_secret",
+        "credentials",
+        "secret_value",
+        "vault_key",
+    }
+)
 
 
 def redact_fields(

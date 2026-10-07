@@ -412,19 +412,17 @@ async def test_gate_concurrent_workers_run_the_effect_once(race_db):
     event = _event()
     consumer = _consumer("dedupe-gate-race")
     workers = [
-        _CountingWorker(bus, effects, consumer=consumer, delay=GATE_EFFECT_S)
-        for _ in range(RACERS)
+        _CountingWorker(bus, effects, consumer=consumer, delay=GATE_EFFECT_S) for _ in range(RACERS)
     ]
     barrier = asyncio.Barrier(RACERS)
 
     try:
+
         async def racer(w: _CountingWorker) -> None:
             await barrier.wait()  # all connections open, THEN they collide
             await w._process_event(event)
 
-        await asyncio.wait_for(
-            asyncio.gather(*(racer(w) for w in workers)), timeout=30
-        )
+        await asyncio.wait_for(asyncio.gather(*(racer(w) for w in workers)), timeout=30)
 
         assert len(effects) == 1, (
             f"the effect ran {len(effects)} times for one event id — two workers "

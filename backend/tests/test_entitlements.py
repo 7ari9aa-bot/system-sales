@@ -104,9 +104,7 @@ async def _subscription(db, tenant_id, *, features: dict | None = None) -> Subsc
 
 
 async def _entitle(db, tenant_id, subscription, feature: str, **kw) -> Entitlement:
-    row = Entitlement(
-        tenant_id=tenant_id, subscription_id=subscription.id, feature=feature, **kw
-    )
+    row = Entitlement(tenant_id=tenant_id, subscription_id=subscription.id, feature=feature, **kw)
     db.add(row)
     await db.flush()
     return row
@@ -119,9 +117,7 @@ async def test_no_subscription_is_unrestricted(db, tenant_ctx):
     """The fail-open default. Without it, turning enforcement on would have
     silently blocked every tenant that has not been put on a plan yet."""
     assert await EntitlementService.can(db, tenant_ctx.tenant_id, "CanUseAI") is True
-    assert (
-        await EntitlementService.can(db, tenant_ctx.tenant_id, "CanSendCampaign") is True
-    )
+    assert await EntitlementService.can(db, tenant_ctx.tenant_id, "CanSendCampaign") is True
     # ensure() must not raise either
     await EntitlementService.ensure(db, tenant_ctx.tenant_id, "CanAddUser")
 
@@ -204,16 +200,12 @@ async def test_seat_usage_counts_memberships_not_usage_records(db, tenant_ctx):
     for seats — a state, not a per-period quantity.
     """
     expected = len(
-        (
-            await db.execute(
-                select(TenantUser).where(TenantUser.tenant_id == tenant_ctx.tenant_id)
-            )
-        ).scalars().all()
+        (await db.execute(select(TenantUser).where(TenantUser.tenant_id == tenant_ctx.tenant_id)))
+        .scalars()
+        .all()
     )
     assert expected >= 1  # the owner from the fixture
-    assert await BillingService.used_this_period(
-        db, tenant_ctx.tenant_id, "max_users"
-    ) == expected
+    assert await BillingService.used_this_period(db, tenant_ctx.tenant_id, "max_users") == expected
 
 
 async def test_the_seat_limit_actually_blocks(db, tenant_ctx):
@@ -226,9 +218,7 @@ async def test_the_seat_limit_actually_blocks(db, tenant_ctx):
         await EntitlementService.ensure(db, tenant_ctx.tenant_id, "CanAddUser")
 
 
-async def test_a_seat_limit_above_current_usage_allows_the_next_seat(
-    db, tenant_ctx
-):
+async def test_a_seat_limit_above_current_usage_allows_the_next_seat(db, tenant_ctx):
     subscription = await _subscription(db, tenant_ctx.tenant_id)
     await _entitle(db, tenant_ctx.tenant_id, subscription, "max_users", limit_value=5)
 
@@ -240,37 +230,25 @@ async def test_a_seat_limit_above_current_usage_allows_the_next_seat(
 
 
 async def test_channel_allowlist_permits_listed_channels(db, tenant_ctx):
-    await _subscription(
-        db, tenant_ctx.tenant_id, features={"channels": ["whatsapp", "webchat"]}
-    )
+    await _subscription(db, tenant_ctx.tenant_id, features={"channels": ["whatsapp", "webchat"]})
 
-    assert await EntitlementService.channel_allowed(
-        db, tenant_ctx.tenant_id, "whatsapp"
-    )
+    assert await EntitlementService.channel_allowed(db, tenant_ctx.tenant_id, "whatsapp")
     assert await EntitlementService.channel_allowed(db, tenant_ctx.tenant_id, "webchat")
 
 
 async def test_channel_allowlist_refuses_unlisted_channels(db, tenant_ctx):
-    await _subscription(
-        db, tenant_ctx.tenant_id, features={"channels": ["whatsapp", "webchat"]}
-    )
+    await _subscription(db, tenant_ctx.tenant_id, features={"channels": ["whatsapp", "webchat"]})
 
-    assert not await EntitlementService.channel_allowed(
-        db, tenant_ctx.tenant_id, "telegram"
-    )
+    assert not await EntitlementService.channel_allowed(db, tenant_ctx.tenant_id, "telegram")
     with pytest.raises(RateLimitExceededError):
-        await EntitlementService.ensure_channel_allowed(
-            db, tenant_ctx.tenant_id, "telegram"
-        )
+        await EntitlementService.ensure_channel_allowed(db, tenant_ctx.tenant_id, "telegram")
 
 
 async def test_wildcard_channels_allows_everything(db, tenant_ctx):
     await _subscription(db, tenant_ctx.tenant_id, features={"channels": "*"})
 
     for channel in ("whatsapp", "telegram", "anything-at-all"):
-        assert await EntitlementService.channel_allowed(
-            db, tenant_ctx.tenant_id, channel
-        ), channel
+        assert await EntitlementService.channel_allowed(db, tenant_ctx.tenant_id, channel), channel
 
 
 async def test_no_subscription_leaves_channels_unrestricted(db, tenant_ctx):
@@ -281,12 +259,8 @@ async def test_an_empty_channel_list_blocks_every_channel(db, tenant_ctx):
     """`CanCreateChannel` with no channel named = "may they add any channel"."""
     await _subscription(db, tenant_ctx.tenant_id, features={"channels": []})
 
-    assert not await EntitlementService.can(
-        db, tenant_ctx.tenant_id, "CanCreateChannel"
-    )
-    assert not await EntitlementService.channel_allowed(
-        db, tenant_ctx.tenant_id, "whatsapp"
-    )
+    assert not await EntitlementService.can(db, tenant_ctx.tenant_id, "CanCreateChannel")
+    assert not await EntitlementService.channel_allowed(db, tenant_ctx.tenant_id, "whatsapp")
 
 
 async def test_can_create_channel_is_true_when_the_plan_lists_one(db, tenant_ctx):

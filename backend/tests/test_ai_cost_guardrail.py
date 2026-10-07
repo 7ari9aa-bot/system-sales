@@ -84,9 +84,7 @@ def test_the_run_result_carries_the_guardrail_verdict() -> None:
     assert AgentRunResult(content="hi").guardrail_decision == "allow"
 
 
-async def test_the_runner_withholds_content_the_guardrail_rejects(
-    db, tenant_ctx, monkeypatch
-):
+async def test_the_runner_withholds_content_the_guardrail_rejects(db, tenant_ctx, monkeypatch):
     """DB-backed: an actual run whose output trips the guardrail must return no
     content, whichever caller invoked it."""
     from app.modules.ai.gateway import AIGateway

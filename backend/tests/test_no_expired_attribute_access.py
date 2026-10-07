@@ -40,9 +40,7 @@ SAFE_BASES = frozenset(
 
 def _functions(tree: ast.AST) -> list[ast.AST]:
     return [
-        node
-        for node in ast.walk(tree)
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
     ]
 
 
@@ -68,9 +66,7 @@ def _names_bound_before(fn: ast.AST, line: int) -> set[str]:
         names.add(arg.arg)
     for node in ast.walk(fn):
         if isinstance(node, ast.Assign) and node.lineno < line:
-            names.update(
-                t.id for t in node.targets if isinstance(t, ast.Name)
-            )
+            names.update(t.id for t in node.targets if isinstance(t, ast.Name))
         elif (
             isinstance(node, ast.AnnAssign)
             and node.lineno < line
@@ -100,9 +96,7 @@ def test_no_attribute_access_on_an_object_expire_all_detached() -> None:
                     and isinstance(node.value, ast.Name)
                     and node.value.id in risky
                 ):
-                    offenders.append(
-                        f"{path.name}:{node.lineno}  {node.value.id}.{node.attr}"
-                    )
+                    offenders.append(f"{path.name}:{node.lineno}  {node.value.id}.{node.attr}")
 
     assert not offenders, (
         "attribute access AFTER expire_all() on an object that was bound earlier.\n"

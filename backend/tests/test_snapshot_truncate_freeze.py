@@ -104,10 +104,7 @@ from app.modules.billing.service import BillingSnapshotService
 
 BACKEND = Path(__file__).resolve().parent.parent
 MIGRATION_PATH = (
-    BACKEND
-    / "migrations"
-    / "versions"
-    / "a9b0c1d2e3f4_invoice_snapshot_truncate_freeze.py"
+    BACKEND / "migrations" / "versions" / "a9b0c1d2e3f4_invoice_snapshot_truncate_freeze.py"
 )
 PROVISION_PATH = BACKEND / "scripts" / "provision.py"
 
@@ -388,9 +385,7 @@ async def test_the_app_role_holds_no_truncate_privilege(db: AsyncSession) -> Non
         )
     granted = (
         await db.execute(
-            text(
-                "SELECT has_table_privilege(current_user, 'public.invoices', 'TRUNCATE')"
-            )
+            text("SELECT has_table_privilege(current_user, 'public.invoices', 'TRUNCATE')")
         )
     ).scalar_one()
     # Vacuity guard: `False` is only interesting if this connection is the role
@@ -426,9 +421,7 @@ async def test_the_app_role_holds_no_truncate_privilege(db: AsyncSession) -> Non
     )
 
 
-async def test_the_database_refuses_truncating_invoices(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_the_database_refuses_truncating_invoices(db: AsyncSession, tenant_ctx) -> None:
     """THE rule this change adds. Raw SQL, so only the database can satisfy it.
 
     A savepoint isolates the aborted statement; without it the surrounding test
@@ -443,14 +436,11 @@ async def test_the_database_refuses_truncating_invoices(
 
     message = str(exc.value)
     assert GUARD_MESSAGE in message or "permission denied for table invoices" in message, (
-        "TRUNCATE was refused by something other than the snapshot freeze: "
-        f"{message}"
+        f"TRUNCATE was refused by something other than the snapshot freeze: {message}"
     )
 
     surviving = (
-        await db.execute(
-            text("SELECT count(*) FROM invoices WHERE id = :id"), {"id": invoice_id}
-        )
+        await db.execute(text("SELECT count(*) FROM invoices WHERE id = :id"), {"id": invoice_id})
     ).scalar_one()
     assert surviving == 1, "a TRUNCATE erased a closed billing period"
 
@@ -477,9 +467,7 @@ async def test_an_update_of_a_closed_snapshot_is_still_refused(
     )
 
     total = (
-        await db.execute(
-            text("SELECT total FROM invoices WHERE id = :id"), {"id": invoice_id}
-        )
+        await db.execute(text("SELECT total FROM invoices WHERE id = :id"), {"id": invoice_id})
     ).scalar_one()
     assert total == Decimal("0.00")
 
@@ -523,9 +511,7 @@ async def test_truncate_is_revoked_schema_wide(db: AsyncSession) -> None:
         pytest.skip(f"{user!r} is a superuser/BYPASSRLS: privileges are not enforced")
     granted = (
         await db.execute(
-            text(
-                "SELECT has_table_privilege(current_user, 'public.usage_records', 'TRUNCATE')"
-            )
+            text("SELECT has_table_privilege(current_user, 'public.usage_records', 'TRUNCATE')")
         )
     ).scalar_one()
     assert granted is False, (

@@ -159,9 +159,7 @@ async def list_agents(ctx: TenantCtxDep) -> list[AgentOut]:
 
 
 @router.post("/sales/analyses")
-async def create_sales_analysis(
-    ctx: TenantCtxDep, body: SalesAnalysisRequest
-) -> SalesAnalysisOut:
+async def create_sales_analysis(ctx: TenantCtxDep, body: SalesAnalysisRequest) -> SalesAnalysisOut:
     """§12.1 — one sales question → one evidence-backed analysis.
 
     The store's first active agent runs the investigation with the SI tools
@@ -173,9 +171,7 @@ async def create_sales_analysis(
     )
     from app.modules.ai.core.resolver import resolve_agent_by_kind
 
-    agent = await resolve_agent_by_kind(
-        ctx.session, ctx.tenant_id, "sales_intelligence"
-    )
+    agent = await resolve_agent_by_kind(ctx.session, ctx.tenant_id, "sales_intelligence")
 
     await ensure_si_tools(ctx.session, ctx.tenant_id, agent.id)
     result = await run_sales_analysis(
@@ -215,18 +211,14 @@ async def create_deep_analysis(
     cannot otherwise receive); the Job row is the control surface the
     dashboard polls. 202 Accepted — the analysis has NOT run yet."""
     from app.modules.ai.agents.sales_intelligence.agent import ensure_si_tools
+    from app.modules.ai.core.resolver import resolve_agent_by_kind
     from app.modules.analytics.persistence import create_pending_analysis
     from app.modules.platform.service import JobService
-    from app.modules.ai.core.resolver import resolve_agent_by_kind
 
-    agent = await resolve_agent_by_kind(
-        ctx.session, ctx.tenant_id, "sales_intelligence"
-    )
+    agent = await resolve_agent_by_kind(ctx.session, ctx.tenant_id, "sales_intelligence")
 
     await ensure_si_tools(ctx.session, ctx.tenant_id, agent.id)
-    analysis_id = await create_pending_analysis(
-        ctx.session, ctx.tenant_id, question=body.question
-    )
+    analysis_id = await create_pending_analysis(ctx.session, ctx.tenant_id, question=body.question)
     job = await JobService.create(
         ctx.session,
         ctx.tenant_id,
@@ -235,9 +227,7 @@ async def create_deep_analysis(
         correlation_id=str(analysis_id),
     )
     await ctx.session.commit()
-    return SalesDeepAnalysisQueuedOut(
-        job_id=job.id, analysis_id=analysis_id, status="queued"
-    )
+    return SalesDeepAnalysisQueuedOut(job_id=job.id, analysis_id=analysis_id, status="queued")
 
 
 @router.get("/sales/analyses/{analysis_id}", response_model=SalesAnalysisStoredOut)
@@ -276,9 +266,9 @@ async def get_sales_analysis(ctx: TenantCtxDep, analysis_id: uuid.UUID) -> Sales
 
 @router.post("/agents", status_code=201)
 async def create_agent(ctx: SettingsCtx, body: AgentCreateRequest) -> AgentOut:
+    from app.core.errors import ConflictError, ValidationError
     from app.modules.ai.core.registry import AgentRegistry
     from app.modules.ai.models import AgentTool
-    from app.core.errors import ConflictError, ValidationError
 
     defn = AgentRegistry.get_or_none(body.kind)
     if defn is None:
@@ -297,9 +287,7 @@ async def create_agent(ctx: SettingsCtx, body: AgentCreateRequest) -> AgentOut:
             )
         ).scalar_one_or_none()
         if existing is not None:
-            raise ConflictError(
-                f"Agent of kind '{body.kind}' already exists for this tenant"
-            )
+            raise ConflictError(f"Agent of kind '{body.kind}' already exists for this tenant")
 
     model = body.model or defn.default_model
     system_prompt = body.system_prompt or defn.system_prompt_template
@@ -598,6 +586,7 @@ async def delete_memory(memory_id: uuid.UUID, ctx: SettingsCtx) -> None:
 # NOT happened. These routes are how a human releases (or kills) it — without
 # them the run would wait forever with no way to decide.
 
+
 class ApprovalDecisionRequest(BaseModel):
     decision: str = Field(description="APPROVED | REJECTED | CANCELLED")
     reason: str | None = Field(default=None, max_length=512)
@@ -702,9 +691,7 @@ async def trace_correlation(correlation_id: str, ctx: TenantCtxDep):
 
 
 @router.get("/trace/summary", response_model=TraceSummaryOut)
-async def trace_summary(
-    ctx: TenantCtxDep, days: Annotated[int, Query(ge=1, le=365)] = 7
-):
+async def trace_summary(ctx: TenantCtxDep, days: Annotated[int, Query(ge=1, le=365)] = 7):
     return await AITraceService.summary(ctx.session, ctx.tenant_id, days=days)
 
 
@@ -883,9 +870,7 @@ async def evaluation_status(agent_version_id: uuid.UUID, ctx: TenantCtxDep):
 async def approve_evaluation(agent_version_id: uuid.UUID, ctx: SettingsCtx):
     from app.modules.ai.evaluation import AIEvaluationService
 
-    ev = await AIEvaluationService.approve_rollout(
-        ctx.session, ctx.tenant_id, agent_version_id
-    )
+    ev = await AIEvaluationService.approve_rollout(ctx.session, ctx.tenant_id, agent_version_id)
     return _evaluation_out(ev)
 
 
@@ -895,7 +880,9 @@ async def approve_evaluation(agent_version_id: uuid.UUID, ctx: SettingsCtx):
 @router.get("/handovers", response_model=HandoverList)
 async def list_handovers(
     ctx: TenantCtxDep,
-    status: Annotated[str | None, Query(description="Filter by pending | claimed | resolved")] = None,
+    status: Annotated[
+        str | None, Query(description="Filter by pending | claimed | resolved")
+    ] = None,
 ):
     query = select(AIHandover).where(AIHandover.tenant_id == ctx.tenant_id)
     if status:
@@ -941,8 +928,7 @@ async def claim_handover(
     handover.claimed_by_user_id = ctx.user_id
     await ctx.session.execute(
         text(
-            "UPDATE conversations SET assignee_user_id = :uid "
-            "WHERE id = :cid AND tenant_id = :tid"
+            "UPDATE conversations SET assignee_user_id = :uid WHERE id = :cid AND tenant_id = :tid"
         ),
         {
             "uid": str(ctx.user_id),
@@ -990,4 +976,3 @@ async def resolve_handover(
         note=handover.note,
         created_at=handover.created_at.isoformat() if handover.created_at else None,
     )
-

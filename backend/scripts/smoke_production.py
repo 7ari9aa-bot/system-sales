@@ -102,9 +102,7 @@ async def _admin_cleanup(slug: str, email: str) -> str:
             ).scalar_one_or_none()
             if tenant is None:
                 return "nothing to delete"
-            await conn.execute(
-                text("DELETE FROM tenants WHERE id = :id"), {"id": str(tenant)}
-            )
+            await conn.execute(text("DELETE FROM tenants WHERE id = :id"), {"id": str(tenant)})
             await conn.execute(text("DELETE FROM users WHERE email = :email"), {"email": email})
         await engine.dispose()
         return "deleted"
@@ -142,9 +140,7 @@ async def main() -> int:
     )
     _record("POST /auth/register", status != -1, f"status={status}")
 
-    status, tokens = c.call(
-        "POST", "/api/v1/auth/login", {"email": email, "password": PASSWORD}
-    )
+    status, tokens = c.call("POST", "/api/v1/auth/login", {"email": email, "password": PASSWORD})
     ok = status != -1 and isinstance(tokens, dict) and tokens.get("access_token")
     _record("POST /auth/login", bool(ok), f"status={status}")
     if not ok:

@@ -44,9 +44,7 @@ async def main() -> int:
     async with session_factory()() as session:
         async with session.begin():
             demo = (
-                await session.execute(
-                    sa.select(Tenant).where(Tenant.slug == "demo-store")
-                )
+                await session.execute(sa.select(Tenant).where(Tenant.slug == "demo-store"))
             ).scalar_one_or_none()
             if demo is not None:
                 print("demo tenant already exists — nothing to do")
@@ -85,7 +83,6 @@ async def main() -> int:
             session.add(warehouse)
             await session.flush()
 
-
             for title, sku, price in products_spec:
                 product = await CatalogService.create_product(
                     session,
@@ -122,8 +119,12 @@ async def main() -> int:
             customer_ids = {}
             for name, phone in customers_spec:
                 customer = await CustomerService.get_or_create_by_identity(
-                    session, tenant.id,
-                    channel="whatsapp", external_id=phone, name=name, phone=phone
+                    session,
+                    tenant.id,
+                    channel="whatsapp",
+                    external_id=phone,
+                    name=name,
+                    phone=phone,
                 )
                 customer_ids[name] = customer.id
 
@@ -132,21 +133,31 @@ async def main() -> int:
                 session, tenant.id, customer_id=customer_ids["أحمد محمود"], channel="whatsapp"
             )
             await ConversationService.add_message(
-                session, tenant.id, conversation_id=convo.id,
-                direction="inbound", sender_type="customer",
-                body="عندك مقاس L من الهودي؟", channel_message_id=f"seed-{uuid.uuid4().hex[:8]}",
+                session,
+                tenant.id,
+                conversation_id=convo.id,
+                direction="inbound",
+                sender_type="customer",
+                body="عندك مقاس L من الهودي؟",
+                channel_message_id=f"seed-{uuid.uuid4().hex[:8]}",
             )
             await ConversationService.add_message(
-                session, tenant.id, conversation_id=convo.id,
-                direction="outbound", sender_type="agent",
+                session,
+                tenant.id,
+                conversation_id=convo.id,
+                direction="outbound",
+                sender_type="agent",
                 body="أيوة متوفر! السعر 299 جنيه وشحن لحد الباب.",
             )
             convo2 = await ConversationService.get_or_create(
                 session, tenant.id, customer_id=customer_ids["سارة إبراهيم"], channel="whatsapp"
             )
             await ConversationService.add_message(
-                session, tenant.id, conversation_id=convo2.id,
-                direction="inbound", sender_type="customer",
+                session,
+                tenant.id,
+                conversation_id=convo2.id,
+                direction="inbound",
+                sender_type="customer",
                 body="عايزة أتابع طلبي",
                 channel_message_id=f"seed-{uuid.uuid4().hex[:8]}",
             )
@@ -176,18 +187,28 @@ async def main() -> int:
             )
             for name, _phone in customers_spec:
                 await MarketingService.record_touchpoint(
-                    session, tenant.id, customer_id=customer_ids[name],
-                    source="facebook", medium="cpc", campaign_id=campaign.id,
+                    session,
+                    tenant.id,
+                    customer_id=customer_ids[name],
+                    source="facebook",
+                    medium="cpc",
+                    campaign_id=campaign.id,
                     click_id=f"fbseed-{uuid.uuid4().hex[:6]}",
                 )
             await MarketingService.record_conversion(
-                session, tenant.id, customer_id=customer_ids["أحمد محمود"],
-                type="purchase", value=Decimal("299.00"),
+                session,
+                tenant.id,
+                customer_id=customer_ids["أحمد محمود"],
+                type="purchase",
+                value=Decimal("299.00"),
                 occurred_at=datetime.now(UTC),
             )
             await MarketingService.record_conversion(
-                session, tenant.id, customer_id=customer_ids["سارة إبراهيم"],
-                type="purchase", value=Decimal("387.50"),
+                session,
+                tenant.id,
+                customer_id=customer_ids["سارة إبراهيم"],
+                type="purchase",
+                value=Decimal("387.50"),
                 occurred_at=datetime.now(UTC) - timedelta(days=3),
             )
             print("marketing seeded")

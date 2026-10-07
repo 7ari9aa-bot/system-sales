@@ -36,9 +36,7 @@ async def run_restore_test(database_url: str) -> bool:
             # 1. Verify core tables exist
             tables = conn.execute(
                 text(
-                    "SELECT tablename FROM pg_tables "
-                    "WHERE schemaname = 'public' "
-                    "ORDER BY tablename"
+                    "SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename"
                 )
             ).fetchall()
             table_names = {t[0] for t in tables}
@@ -83,17 +81,14 @@ async def run_restore_test(database_url: str) -> bool:
 
             customer_count = conn.execute(
                 text(
-                    "SELECT count(*) FROM customers "
-                    "WHERE tenant_id = :tid AND deleted_at IS NULL"
+                    "SELECT count(*) FROM customers WHERE tenant_id = :tid AND deleted_at IS NULL"
                 ),
                 {"tid": tenant_id},
             ).scalar()
             print(f"  [OK] Tenant {tenant_id} has {customer_count} customers")
 
             # 5. Verify audit log has entries (proves write path works)
-            audit_count = conn.execute(
-                text("SELECT count(*) FROM audit_log")
-            ).scalar()
+            audit_count = conn.execute(text("SELECT count(*) FROM audit_log")).scalar()
             if audit_count == 0:
                 print("WARN: audit_log is empty — backup may be from a fresh install")
             else:

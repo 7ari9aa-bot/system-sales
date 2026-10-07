@@ -37,9 +37,7 @@ from app.modules.identity.models import (
 
 async def _guc(session: AsyncSession, name: str) -> str | None:
     value = (
-        await session.execute(
-            sa.text("SELECT current_setting(:guc, true)"), {"guc": name}
-        )
+        await session.execute(sa.text("SELECT current_setting(:guc, true)"), {"guc": name})
     ).scalar()
     # set_config(guc, NULL) stores ''; the canonical NULLIF(...,'') guard
     # treats '' exactly like unset — both mean "unbound", so the test does too.
@@ -125,9 +123,7 @@ async def test_resolve_scope_refuses_foreign_workspace(db: AsyncSession, tenant_
         )
 
 
-async def test_resolve_scope_refuses_location_without_grant(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_resolve_scope_refuses_location_without_grant(db: AsyncSession, tenant_ctx) -> None:
     ws = await _seed_workspace(db, tenant_ctx.tenant_id)
     loc = await _seed_location(db, ws)
     with pytest.raises(PermissionDeniedError):
@@ -174,9 +170,7 @@ async def test_resolve_scope_refuses_location_outside_bound_workspace(
         )
 
 
-async def test_resolve_scope_refuses_foreign_tenant_location(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_resolve_scope_refuses_foreign_tenant_location(db: AsyncSession, tenant_ctx) -> None:
     other = Tenant(slug=f"other-{uuid.uuid4().hex[:8]}", name="Other")
     db.add(other)
     await db.flush()
@@ -235,26 +229,18 @@ async def test_get_tenant_ctx_refuses_unganted_location_header(
 
     user = AuthedUser(id=tenant_ctx.user.id, tenant_id=tenant_ctx.tenant_id, role_code="owner")
     with pytest.raises(PermissionDeniedError):
-        await get_tenant_ctx(
-            _fake_request(), db, user, x_location_id=str(loc.id)
-        )
+        await get_tenant_ctx(_fake_request(), db, user, x_location_id=str(loc.id))
 
     # The failure must not have left a scope bound on the transaction.
     assert await _guc(db, "app.location_id") is None
 
 
-async def test_get_tenant_ctx_rejects_malformed_scope_headers(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_get_tenant_ctx_rejects_malformed_scope_headers(db: AsyncSession, tenant_ctx) -> None:
     user = AuthedUser(id=tenant_ctx.user.id, tenant_id=tenant_ctx.tenant_id, role_code="owner")
     with pytest.raises(PermissionDeniedError):
-        await get_tenant_ctx(
-            _fake_request(), db, user, x_workspace_id="not-a-uuid"
-        )
+        await get_tenant_ctx(_fake_request(), db, user, x_workspace_id="not-a-uuid")
     with pytest.raises(PermissionDeniedError):
-        await get_tenant_ctx(
-            _fake_request(), db, user, x_location_id="12345"
-        )
+        await get_tenant_ctx(_fake_request(), db, user, x_location_id="12345")
 
 
 # ---------------------------------------------------------- bind transport ---

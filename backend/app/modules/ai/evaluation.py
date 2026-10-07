@@ -3,6 +3,7 @@ before rollout. Records evaluation runs, reports status, gates canary
 rollout behind explicit human approval, and automates rollback when
 canary metrics degrade.
 """
+
 from __future__ import annotations
 
 import logging
@@ -86,9 +87,7 @@ class AIEvaluationService:
             session, tenant_id, agent_version_id
         )
         if evaluation is None:
-            raise NotFoundError(
-                f"no evaluation found for agent {agent_version_id}"
-            )
+            raise NotFoundError(f"no evaluation found for agent {agent_version_id}")
         if evaluation.status not in ("passed", "approved"):
             raise ValidationError(
                 f"cannot approve evaluation with status '{evaluation.status}' "
@@ -152,7 +151,9 @@ class AIEvaluationService:
         if success_rate < CANARY_METRIC_THRESHOLD:
             logger.warning(
                 "ai.canary_metric_degraded eval=%s success_rate=%.2f threshold=%.2f — rolling back",
-                evaluation_id, success_rate, CANARY_METRIC_THRESHOLD,
+                evaluation_id,
+                success_rate,
+                CANARY_METRIC_THRESHOLD,
             )
             return await AIEvaluationService.rollback_canary(
                 session, tenant_id, evaluation_id, reason="metric_degradation"
@@ -177,7 +178,9 @@ class AIEvaluationService:
 
         logger.info(
             "ai.canary_ramped eval=%s from=%d%% to=%d%%",
-            evaluation_id, current_pct, next_pct,
+            evaluation_id,
+            current_pct,
+            next_pct,
         )
         return evaluation
 
@@ -229,7 +232,8 @@ class AIEvaluationService:
 
         logger.info(
             "ai.canary_rolled_back eval=%s reason=%s",
-            evaluation_id, reason,
+            evaluation_id,
+            reason,
         )
         return evaluation
 
@@ -244,9 +248,7 @@ class AIEvaluationService:
         The AI runtime calls this to decide whether to use the canary
         version or the stable version for a given run.
         """
-        evaluation = await AIEvaluationService.get_evaluation_status(
-            session, tenant_id, agent_id
-        )
+        evaluation = await AIEvaluationService.get_evaluation_status(session, tenant_id, agent_id)
         if evaluation is None or evaluation.rollout_status is None:
             return 0
         if evaluation.rollout_status.startswith("canary_"):

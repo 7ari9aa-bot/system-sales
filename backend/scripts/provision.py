@@ -71,35 +71,35 @@ def _rls_statements() -> list[str]:
     guard = f"NULLIF(current_setting('{GUC}', true), '')::uuid"
 
     for name in _tenant_tables():
-        stmts.append(f'ALTER TABLE public.{name} ENABLE ROW LEVEL SECURITY;')
+        stmts.append(f"ALTER TABLE public.{name} ENABLE ROW LEVEL SECURITY;")
         if name not in FORCE_EXEMPT:
-            stmts.append(f'ALTER TABLE public.{name} FORCE ROW LEVEL SECURITY;')
-        stmts.append(f'DROP POLICY IF EXISTS tenant_isolation ON public.{name};')
+            stmts.append(f"ALTER TABLE public.{name} FORCE ROW LEVEL SECURITY;")
+        stmts.append(f"DROP POLICY IF EXISTS tenant_isolation ON public.{name};")
         if name == "tenant_users":
             # Membership discovery at login: a user may see/claim their own
             # rows via app.user_id before any tenant context exists.
             user_guard = f"NULLIF(current_setting('{USER_GUC}', true), '')::uuid"
             stmts.append(
-                f'CREATE POLICY tenant_isolation ON public.{name} '
-                f'USING (tenant_id = {guard} OR user_id = {user_guard}) '
-                f'WITH CHECK (tenant_id = {guard} OR user_id = {user_guard});'
+                f"CREATE POLICY tenant_isolation ON public.{name} "
+                f"USING (tenant_id = {guard} OR user_id = {user_guard}) "
+                f"WITH CHECK (tenant_id = {guard} OR user_id = {user_guard});"
             )
         else:
             stmts.append(
-                f'CREATE POLICY tenant_isolation ON public.{name} '
-                f'USING (tenant_id = {guard}) WITH CHECK (tenant_id = {guard});'
+                f"CREATE POLICY tenant_isolation ON public.{name} "
+                f"USING (tenant_id = {guard}) WITH CHECK (tenant_id = {guard});"
             )
 
     for name, (parent, fk_col) in ASSOCIATION_VIA.items():
-        stmts.append(f'ALTER TABLE public.{name} ENABLE ROW LEVEL SECURITY;')
-        stmts.append(f'ALTER TABLE public.{name} FORCE ROW LEVEL SECURITY;')
-        stmts.append(f'DROP POLICY IF EXISTS tenant_isolation ON public.{name};')
+        stmts.append(f"ALTER TABLE public.{name} ENABLE ROW LEVEL SECURITY;")
+        stmts.append(f"ALTER TABLE public.{name} FORCE ROW LEVEL SECURITY;")
+        stmts.append(f"DROP POLICY IF EXISTS tenant_isolation ON public.{name};")
         stmts.append(
-            f'CREATE POLICY tenant_isolation ON public.{name} '
-            f'USING (EXISTS (SELECT 1 FROM public.{parent} p WHERE p.id = {name}.{fk_col} '
-            f'AND p.tenant_id = {guard})) '
-            f'WITH CHECK (EXISTS (SELECT 1 FROM public.{parent} p WHERE p.id = {name}.{fk_col} '
-            f'AND p.tenant_id = {guard}));'
+            f"CREATE POLICY tenant_isolation ON public.{name} "
+            f"USING (EXISTS (SELECT 1 FROM public.{parent} p WHERE p.id = {name}.{fk_col} "
+            f"AND p.tenant_id = {guard})) "
+            f"WITH CHECK (EXISTS (SELECT 1 FROM public.{parent} p WHERE p.id = {name}.{fk_col} "
+            f"AND p.tenant_id = {guard}));"
         )
 
     # user_location_access (spec §151): tenant-scoping comes from the location
@@ -117,13 +117,13 @@ def _rls_statements() -> list[str]:
         ula_user_guard = f"NULLIF(current_setting('{USER_GUC}', true), '')::uuid"
         ula_self = f"user_id = {ula_user_guard}"
         ula_tenancy = f"public._location_tenant_allowed({ula_user_guard}, {ula}.location_id)"
-        stmts.append(f'ALTER TABLE public.{ula} ENABLE ROW LEVEL SECURITY;')
-        stmts.append(f'ALTER TABLE public.{ula} FORCE ROW LEVEL SECURITY;')
-        stmts.append(f'DROP POLICY IF EXISTS location_access ON public.{ula};')
+        stmts.append(f"ALTER TABLE public.{ula} ENABLE ROW LEVEL SECURITY;")
+        stmts.append(f"ALTER TABLE public.{ula} FORCE ROW LEVEL SECURITY;")
+        stmts.append(f"DROP POLICY IF EXISTS location_access ON public.{ula};")
         stmts.append(
-            f'CREATE POLICY location_access ON public.{ula} '
-            f'USING ({ula_self} OR {ula_tenancy}) '
-            f'WITH CHECK (({ula_self} AND {ula_tenancy}) OR {ula_tenancy});'
+            f"CREATE POLICY location_access ON public.{ula} "
+            f"USING ({ula_self} OR {ula_tenancy}) "
+            f"WITH CHECK (({ula_self} AND {ula_tenancy}) OR {ula_tenancy});"
         )
 
     # audit_logs / security_events (fd2026100409 G-01): append-only, split per
@@ -134,27 +134,27 @@ def _rls_statements() -> list[str]:
     for audit, force in (("audit_logs", True), ("security_events", True)):
         if audit not in Base.metadata.tables:
             continue
-        stmts.append(f'ALTER TABLE public.{audit} ENABLE ROW LEVEL SECURITY;')
+        stmts.append(f"ALTER TABLE public.{audit} ENABLE ROW LEVEL SECURITY;")
         if force:
-            stmts.append(f'ALTER TABLE public.{audit} FORCE ROW LEVEL SECURITY;')
+            stmts.append(f"ALTER TABLE public.{audit} FORCE ROW LEVEL SECURITY;")
         for policy in (
             "tenant_isolation",
             f"{audit}_insert",
             f"{audit}_tenant_read",
             f"{audit}_system_read",
         ):
-            stmts.append(f'DROP POLICY IF EXISTS {policy} ON public.{audit};')
+            stmts.append(f"DROP POLICY IF EXISTS {policy} ON public.{audit};")
         stmts.append(
-            f'CREATE POLICY {audit}_insert ON public.{audit} FOR INSERT '
-            f'WITH CHECK (tenant_id IS NULL OR tenant_id = {guard});'
+            f"CREATE POLICY {audit}_insert ON public.{audit} FOR INSERT "
+            f"WITH CHECK (tenant_id IS NULL OR tenant_id = {guard});"
         )
         stmts.append(
-            f'CREATE POLICY {audit}_tenant_read ON public.{audit} FOR SELECT '
-            f'USING (tenant_id = {guard});'
+            f"CREATE POLICY {audit}_tenant_read ON public.{audit} FOR SELECT "
+            f"USING (tenant_id = {guard});"
         )
         stmts.append(
-            f'CREATE POLICY {audit}_system_read ON public.{audit} FOR SELECT '
-            f'USING (tenant_id IS NULL AND {admin_guard});'
+            f"CREATE POLICY {audit}_system_read ON public.{audit} FOR SELECT "
+            f"USING (tenant_id IS NULL AND {admin_guard});"
         )
     return stmts
 
@@ -234,8 +234,7 @@ PRIVILEGE_REFREEZE: tuple[str, ...] = (
     # The isolation hardening (fd2026100409): the blanket ALL above re-opens
     # what the audit closed — re-freeze on every provision run so a fresh
     # database converges to the hardened state.
-    "REVOKE TRUNCATE, REFERENCES, TRIGGER, MAINTAIN "
-    "ON ALL TABLES IN SCHEMA public FROM sales_app",
+    "REVOKE TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON ALL TABLES IN SCHEMA public FROM sales_app",
     "REVOKE UPDATE, DELETE ON public.inventory_movements FROM sales_app",
     "REVOKE UPDATE, DELETE ON public.financial_entries FROM sales_app",
     "REVOKE UPDATE, DELETE ON public.effect_ledger FROM sales_app",
@@ -294,22 +293,36 @@ ROLES = [
 ]
 
 RESOURCES = [
-    "customers", "conversations", "products", "inventory", "orders",
-    "marketing", "ai", "analytics", "settings", "billing",
+    "customers",
+    "conversations",
+    "products",
+    "inventory",
+    "orders",
+    "marketing",
+    "ai",
+    "analytics",
+    "settings",
+    "billing",
 ]
 ACTIONS = ["read", "write"]
 
 ROLE_MATRIX: dict[str, list[str]] = {
     "owner": [f"{r}:{a}" for r in RESOURCES for a in ACTIONS],
     "manager": [
-        f"{r}:{a}" for r in RESOURCES for a in ACTIONS
+        f"{r}:{a}"
+        for r in RESOURCES
+        for a in ACTIONS
         if not (r in ("settings", "billing") and a == "write")
     ],
     "staff": [
-        "customers:read", "customers:write",
-        "conversations:read", "conversations:write",
-        "products:read", "inventory:read",
-        "orders:read", "orders:write",
+        "customers:read",
+        "customers:write",
+        "conversations:read",
+        "conversations:write",
+        "products:read",
+        "inventory:read",
+        "orders:read",
+        "orders:write",
         "analytics:read",
     ],
 }
@@ -400,7 +413,9 @@ async def seed(conn: asyncpg.Connection) -> None:
             VALUES (gen_random_uuid(), $1, $2, $3)
             ON CONFLICT (code) DO NOTHING
             """,
-            code, name, description,
+            code,
+            name,
+            description,
         )
 
     for resource in RESOURCES:
@@ -412,7 +427,9 @@ async def seed(conn: asyncpg.Connection) -> None:
                 VALUES (gen_random_uuid(), $1, $2, $3)
                 ON CONFLICT (code) DO NOTHING
                 """,
-                code, resource, action,
+                code,
+                resource,
+                action,
             )
 
     for role_code, allowed in ROLE_MATRIX.items():
@@ -423,7 +440,8 @@ async def seed(conn: asyncpg.Connection) -> None:
             WHERE r.code = $1 AND p.code = ANY($2::text[])
             ON CONFLICT DO NOTHING
             """,
-            role_code, allowed,
+            role_code,
+            allowed,
         )
 
     for code, name, price, features in PLANS:
@@ -434,7 +452,10 @@ async def seed(conn: asyncpg.Connection) -> None:
                 INSERT INTO plans (id, code, name, price, currency, features)
                 VALUES (gen_random_uuid(), $1, $2, $3, 'EGP', $4::jsonb)
                 """,
-                code, name, price, json.dumps(features),
+                code,
+                name,
+                price,
+                json.dumps(features),
             )
 
     counts = await conn.fetchrow(
@@ -484,8 +505,7 @@ async def main() -> None:
         await conn.execute(CHANNEL_TENANT_FN_SQL)
         await conn.execute(CHANNEL_TENANT_FN_REVOKE)
         await conn.execute(
-            "GRANT EXECUTE ON FUNCTION public.resolve_channel_tenant(text, text) "
-            "TO sales_app"
+            "GRANT EXECUTE ON FUNCTION public.resolve_channel_tenant(text, text) TO sales_app"
         )
         await seed(conn)
     finally:

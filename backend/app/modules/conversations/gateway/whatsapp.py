@@ -129,9 +129,7 @@ class WhatsAppAdapter:
                     )
         return updates
 
-    def _extract_content(
-        self, msg: dict
-    ) -> tuple[str | None, str | None, str | None, str]:
+    def _extract_content(self, msg: dict) -> tuple[str | None, str | None, str | None, str]:
         """Normalize one provider message.
 
         Returns (body, media_url, media_type, canonical content_type). The

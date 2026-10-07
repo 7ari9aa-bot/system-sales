@@ -45,8 +45,6 @@ async def rerank_candidates(
     scored: list[tuple[Candidate, float]] = []
     for entry in results:
         if not 0 <= entry.index < len(candidates):
-            raise ValueError(
-                f"rerank index {entry.index} outside 0..{len(candidates) - 1}"
-            )
+            raise ValueError(f"rerank index {entry.index} outside 0..{len(candidates) - 1}")
         scored.append((candidates[entry.index], entry.score))
     return scored

@@ -33,11 +33,16 @@ def _resolve_tenant_key(x_wp_key: str = Header(...)) -> UUID:
     mapping = get_settings().website_platform_tenant_keys or {}
     tenant_id = mapping.get(x_wp_key)
     if not tenant_id:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid website-platform key")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid website-platform key"
+        )
     try:
         return UUID(tenant_id)
     except ValueError as exc:  # misconfigured mapping — fail loud, not silent
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="tenant id in mapping is not a uuid") from exc
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="tenant id in mapping is not a uuid",
+        ) from exc
 
 
 @router.get("/website-platform/catalog/products")
@@ -48,17 +53,22 @@ async def website_platform_products(
 ) -> dict:
     """Sellable catalog projection for the website platform (read-only).
 
-        Filters on the catalog's OWN vocabulary — ``active`` is the state a
-        product must hold to sell (M4), so it is the state the storefront can
-        render. A ``published`` literal does not exist in the domain.
-        """
+    Filters on the catalog's OWN vocabulary — ``active`` is the state a
+    product must hold to sell (M4), so it is the state the storefront can
+    render. A ``published`` literal does not exist in the domain.
+    """
     await bind_tenant(db, key_tenant)
     capped = max(1, min(limit, 500))
 
     product_rows = (
-        (await db.execute(
-            select(Product).where(Product.status == "active").order_by(Product.created_at.desc()).limit(capped)
-        ))
+        (
+            await db.execute(
+                select(Product)
+                .where(Product.status == "active")
+                .order_by(Product.created_at.desc())
+                .limit(capped)
+            )
+        )
         .scalars()
         .all()
     )
@@ -67,20 +77,26 @@ async def website_platform_products(
 
     product_ids = [p.id for p in product_rows]
     variant_rows = (
-        (await db.execute(
-            select(ProductVariant)
-            .where(ProductVariant.product_id.in_(product_ids), ProductVariant.is_active.is_(True))
-            .order_by(ProductVariant.price.asc())
-        ))
+        (
+            await db.execute(
+                select(ProductVariant)
+                .where(
+                    ProductVariant.product_id.in_(product_ids), ProductVariant.is_active.is_(True)
+                )
+                .order_by(ProductVariant.price.asc())
+            )
+        )
         .scalars()
         .all()
     )
     image_rows = (
-        (await db.execute(
-            select(ProductImage)
-            .where(ProductImage.product_id.in_(product_ids))
-            .order_by(ProductImage.position.asc())
-        ))
+        (
+            await db.execute(
+                select(ProductImage)
+                .where(ProductImage.product_id.in_(product_ids))
+                .order_by(ProductImage.position.asc())
+            )
+        )
         .scalars()
         .all()
     )
@@ -113,10 +129,9 @@ async def website_platform_products(
                     else None
                 ),
                 "image": (
-                    get_storage().resolve_product_image_url(
-                        image.url, tenant_id=key_tenant
-                    )
-                    if image else None
+                    get_storage().resolve_product_image_url(image.url, tenant_id=key_tenant)
+                    if image
+                    else None
                 ),
                 "availability": {"status": "available" if variant is not None else "unavailable"},
             }

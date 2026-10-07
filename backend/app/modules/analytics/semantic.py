@@ -201,7 +201,7 @@ def freshness_policies() -> dict[str, FreshnessPolicy]:
 
 
 async def load_store_metric_profile(
-    session: Any, tenant_id: Any
+    session: object, tenant_id: object
 ) -> StoreMetricProfile:
     """Load store metric profile from persistent settings if configured,
     otherwise falling back to default StoreMetricProfile."""
@@ -211,7 +211,9 @@ async def load_store_metric_profile(
         row = (
             await session.execute(
                 text(
-                    "SELECT value FROM platform_settings WHERE tenant_id = :tid AND key = 'primary_sales_metric'"
+                    "SELECT value FROM platform_settings"
+                    " WHERE tenant_id = :tid"
+                    " AND key = 'primary_sales_metric'"
                 ),
                 {"tid": str(tenant_id)},
             )
@@ -221,4 +223,3 @@ async def load_store_metric_profile(
     except Exception:
         pass
     return StoreMetricProfile()
-

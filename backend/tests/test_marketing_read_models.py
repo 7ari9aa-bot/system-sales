@@ -187,10 +187,9 @@ async def test_a_day_that_refunded_more_than_it_collected_ships_both_halves(
 
     assert row["net_revenue"] == "0.00"
     assert row["refund_excess"] == "10.00"
-    assert (
-        Decimal(row["gross_revenue"]) - Decimal(row["refunded_amount"])
-        == Decimal(row["net_revenue"]) - Decimal(row["refund_excess"])
-    )
+    assert Decimal(row["gross_revenue"]) - Decimal(row["refunded_amount"]) == Decimal(
+        row["net_revenue"]
+    ) - Decimal(row["refund_excess"])
 
 
 async def test_daily_orders_forwards_the_callers_zone(monkeypatch) -> None:
@@ -212,9 +211,7 @@ def test_daily_orders_exposes_the_zone_as_a_parameter() -> None:
 
 def test_daily_orders_route_publishes_the_zone_parameter() -> None:
     """The rule is only honoured if it can reach the wire."""
-    params = create_app().openapi()["paths"]["/api/v1/analytics/daily-orders"]["get"][
-        "parameters"
-    ]
+    params = create_app().openapi()["paths"]["/api/v1/analytics/daily-orders"]["get"]["parameters"]
     assert "timezone" in {p["name"] for p in params}
 
 
@@ -298,9 +295,9 @@ async def test_orders_summary_never_labels_a_number_plain_revenue(monkeypatch) -
     assert Decimal(summary["gross_revenue"]) - Decimal(summary["refunded_amount"]) == (
         Decimal(summary["net_revenue"]) - Decimal(summary["refund_excess"])
     )
-    assert all(
-        not isinstance(v, Decimal) for v in summary.values()
-    ), "marketing's contract is Decimal-free JSON"
+    assert all(not isinstance(v, Decimal) for v in summary.values()), (
+        "marketing's contract is Decimal-free JSON"
+    )
 
 
 async def test_orders_summary_carries_the_tenants_currency_not_a_literal(
@@ -343,8 +340,12 @@ async def test_dashboard_orders_block_is_the_same_named_pair(monkeypatch) -> Non
         }
 
     async def health(session, tenant_id, *, low_stock_threshold=2):
-        return {"low_stock_threshold": 2, "low_stock_count": 0, "out_of_stock_count": 0,
-                "healthy_count": 0}
+        return {
+            "low_stock_threshold": 2,
+            "low_stock_count": 0,
+            "out_of_stock_count": 0,
+            "healthy_count": 0,
+        }
 
     monkeypatch.setattr(analytics_service, "revenue_summary", fake)
     monkeypatch.setattr(analytics_service, "stock_health", health)

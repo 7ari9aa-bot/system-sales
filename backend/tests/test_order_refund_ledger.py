@@ -63,9 +63,7 @@ def test_no_provider_report_can_assert_a_refund_on_its_own() -> None:
     row is ``reconciliation_refusal`` refusing it for every current state.
     """
     assert orders_service._PAYMENT_PROVIDER_STATUSES["refunded"] == "refunded"
-    assert orders_service._PAYMENT_PROVIDER_STATUSES["partially_refunded"] == (
-        "partially_refunded"
-    )
+    assert orders_service._PAYMENT_PROVIDER_STATUSES["partially_refunded"] == ("partially_refunded")
     for current in ("captured", "pending", "authorized", "unknown", "failed", "refunded"):
         for observed in ("refunded", "partially_refunded"):
             if observed == current:
@@ -136,18 +134,14 @@ def test_the_refund_endpoint_is_inside_the_idempotency_allow_list() -> None:
 async def _tenant_ledger(db: AsyncSession, order_id: uuid.UUID):
     """The order's money read back from the rows, not from the service."""
     payments = list(
-        (
-            await db.execute(
-                sa.select(OrderPayment).where(OrderPayment.order_id == order_id)
-            )
-        ).scalars().all()
+        (await db.execute(sa.select(OrderPayment).where(OrderPayment.order_id == order_id)))
+        .scalars()
+        .all()
     )
     refunds = list(
-        (
-            await db.execute(
-                sa.select(Refund).where(Refund.payment_id.in_([p.id for p in payments]))
-            )
-        ).scalars().all()
+        (await db.execute(sa.select(Refund).where(Refund.payment_id.in_([p.id for p in payments]))))
+        .scalars()
+        .all()
         if payments
         else []
     )
@@ -155,9 +149,7 @@ async def _tenant_ledger(db: AsyncSession, order_id: uuid.UUID):
         (p.amount for p in payments if p.status in orders_money.SETTLED_PAYMENT_STATUSES),
         Decimal("0"),
     )
-    returned = sum(
-        (r.amount for r in refunds if r.status != "rejected"), Decimal("0")
-    )
+    returned = sum((r.amount for r in refunds if r.status != "rejected"), Decimal("0"))
     return payments, refunds, orders_money.net_collected(gross, returned)
 
 
@@ -189,7 +181,10 @@ async def _order(db: AsyncSession, tenant_id: uuid.UUID, *, price: str = "40.00"
         db, tenant_id, variant.id, warehouse.id, direction="in", quantity=50, reason="purchase"
     )
     order = await OrderService.create_order(
-        db, tenant_id, customer.id, [{"variant_id": variant.id, "quantity": 1}],
+        db,
+        tenant_id,
+        customer.id,
+        [{"variant_id": variant.id, "quantity": 1}],
         warehouse_id=warehouse.id,
     )
     return customer, order
@@ -205,9 +200,7 @@ async def test_a_captured_payment_cannot_go_back_to_failed_without_a_refund_row(
     """
     tenant_id = tenant_ctx.tenant_id
     _customer, order = await _order(db, tenant_id)
-    payment = await OrderService.add_payment(
-        db, tenant_id, order.id, method="card", amount="40.00"
-    )
+    payment = await OrderService.add_payment(db, tenant_id, order.id, method="card", amount="40.00")
     await db.flush()
     _payments, _refunds, before = await _tenant_ledger(db, order.id)
     assert before == Decimal("40.00")
@@ -219,9 +212,7 @@ async def test_a_captured_payment_cannot_go_back_to_failed_without_a_refund_row(
     await db.flush()
 
     payment_row = (
-        await db.execute(
-            sa.select(OrderPayment).where(OrderPayment.id == payment.id)
-        )
+        await db.execute(sa.select(OrderPayment).where(OrderPayment.id == payment.id))
     ).scalar_one()
     assert payment_row.status == "captured"
     assert (
@@ -251,9 +242,7 @@ async def test_a_provider_reported_refund_never_writes_the_ledger_itself(
     """
     tenant_id = tenant_ctx.tenant_id
     _customer, order = await _order(db, tenant_id)
-    payment = await OrderService.add_payment(
-        db, tenant_id, order.id, method="card", amount="40.00"
-    )
+    payment = await OrderService.add_payment(db, tenant_id, order.id, method="card", amount="40.00")
 
     with pytest.raises(ConflictError):
         await OrderService.reconcile_payment(
@@ -273,9 +262,7 @@ async def test_the_refund_endpoint_creates_exactly_one_row_per_refund(
     """``POST /orders/{id}/payments/{pid}/refunds`` against the real router."""
     tenant_id = tenant_ctx.tenant_id
     customer, order = await _order(db, tenant_id)
-    payment = await OrderService.add_payment(
-        db, tenant_id, order.id, method="cash", amount="40.00"
-    )
+    payment = await OrderService.add_payment(db, tenant_id, order.id, method="cash", amount="40.00")
     app = _build_app(
         store=SessionStore(db),
         tenant_id=tenant_id,
@@ -300,9 +287,7 @@ async def test_the_refund_endpoint_creates_exactly_one_row_per_refund(
     assert Decimal(str(payments[0].amount)) == Decimal("40.00")
     assert payments[0].status == "partially_refunded"
     stored = (
-        await db.execute(
-            sa.select(Customer.lifetime_value).where(Customer.id == customer.id)
-        )
+        await db.execute(sa.select(Customer.lifetime_value).where(Customer.id == customer.id))
     ).scalar_one()
     assert Decimal(str(stored)) == net, "lifetime_value disagrees with the ledger"
 
@@ -313,9 +298,7 @@ async def test_a_double_submit_of_one_refund_intent_creates_one_row(
     """One ``Idempotency-Key``, two HTTP calls, one unit of money out."""
     tenant_id = tenant_ctx.tenant_id
     customer, order = await _order(db, tenant_id)
-    payment = await OrderService.add_payment(
-        db, tenant_id, order.id, method="cash", amount="40.00"
-    )
+    payment = await OrderService.add_payment(db, tenant_id, order.id, method="cash", amount="40.00")
     app = _build_app(
         store=SessionStore(db),
         tenant_id=tenant_id,
@@ -339,17 +322,13 @@ async def test_a_double_submit_of_one_refund_intent_creates_one_row(
     assert len(refunds) == 1, f"a retried refund booked {len(refunds)} rows"
     assert net == Decimal("25.00")
     stored = (
-        await db.execute(
-            sa.select(Customer.lifetime_value).where(Customer.id == customer.id)
-        )
+        await db.execute(sa.select(Customer.lifetime_value).where(Customer.id == customer.id))
     ).scalar_one()
     assert Decimal(str(stored)) == Decimal("25.00")
 
     # The same key with a DIFFERENT amount is a client bug, not a retry.
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        conflict = await client.post(
-            url, json={"amount": "30.00"}, headers={KEY_HEADER: key}
-        )
+        conflict = await client.post(url, json={"amount": "30.00"}, headers={KEY_HEADER: key})
     assert conflict.status_code == 409, conflict.text
     _payments, refunds, net = await _tenant_ledger(db, order.id)
     assert len(refunds) == 1 and net == Decimal("25.00")
@@ -367,15 +346,9 @@ async def test_two_refunds_of_one_capture_book_two_rows_and_no_more_money(
     """
     tenant_id = tenant_ctx.tenant_id
     _customer, order = await _order(db, tenant_id)
-    payment = await OrderService.add_payment(
-        db, tenant_id, order.id, method="cash", amount="40.00"
-    )
-    await OrderService.register_refund(
-        db, tenant_id, order.id, payment.id, amount="10.00"
-    )
-    await OrderService.register_refund(
-        db, tenant_id, order.id, payment.id, amount="30.00"
-    )
+    payment = await OrderService.add_payment(db, tenant_id, order.id, method="cash", amount="40.00")
+    await OrderService.register_refund(db, tenant_id, order.id, payment.id, amount="10.00")
+    await OrderService.register_refund(db, tenant_id, order.id, payment.id, amount="30.00")
     await db.flush()
 
     rows, refunds, net = await _tenant_ledger(db, order.id)
@@ -386,8 +359,6 @@ async def test_two_refunds_of_one_capture_book_two_rows_and_no_more_money(
     assert sum((p.amount for p in rows), Decimal("0")) == Decimal("40.00")
     # Nothing more can leave: a third refund has no captured money behind it.
     with pytest.raises(ConflictError):
-        await OrderService.register_refund(
-            db, tenant_id, order.id, payment.id, amount="0.01"
-        )
+        await OrderService.register_refund(db, tenant_id, order.id, payment.id, amount="0.01")
     rows, refunds, net = await _tenant_ledger(db, order.id)
     assert len(refunds) == 2 and net == Decimal("0.00"), "a refused refund booked a row"

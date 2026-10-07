@@ -60,6 +60,4 @@ async def test_erasing_a_live_subject_still_works(
     report = await DeletionService.propagate_customer_deletion(
         db, tenant_ctx.tenant_id, b.id, reason="data_subject_request"
     )
-    assert {"domain_tombstone", "memories_deleted"} <= {
-        step["step"] for step in report["steps"]
-    }
+    assert {"domain_tombstone", "memories_deleted"} <= {step["step"] for step in report["steps"]}

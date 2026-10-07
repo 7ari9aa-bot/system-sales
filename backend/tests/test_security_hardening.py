@@ -247,9 +247,7 @@ async def test_ingest_dedupe_scope_includes_tenant(monkeypatch) -> None:
         captured["key"] = key
         return True  # short-circuit: no DB work needed
 
-    monkeypatch.setattr(
-        IngestService, "already_processed", staticmethod(fake_already_processed)
-    )
+    monkeypatch.setattr(IngestService, "already_processed", staticmethod(fake_already_processed))
     tenant_id = uuid.uuid4()
     message = InboundMessage(
         channel="webchat",

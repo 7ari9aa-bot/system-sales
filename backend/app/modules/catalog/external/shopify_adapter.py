@@ -105,9 +105,7 @@ class ShopifyAdapter:
                 params=params,
             )
             if resp.status_code != 200:
-                raise ExternalProviderError(
-                    f"Shopify orders fetch failed: HTTP {resp.status_code}"
-                )
+                raise ExternalProviderError(f"Shopify orders fetch failed: HTTP {resp.status_code}")
             data = resp.json()
             return data.get("orders", [])
 
@@ -159,9 +157,7 @@ class ShopifyAdapter:
         front: a three-decimal currency in a two-decimal column loses a minor
         unit on every price.
         """
-        code = (
-            tenant_currency or await resolve_tenant_currency(session, tenant_id)
-        ).upper()
+        code = (tenant_currency or await resolve_tenant_currency(session, tenant_id)).upper()
         refusal = storage_refusal(code)
         if refusal:
             raise ValidationError(f"{_CHANNEL} sync refused: {refusal}")
@@ -191,22 +187,20 @@ class ShopifyAdapter:
         )
         if policy is None or policy.source_mode == "internal":
             return {
-                "synced": 0, "skipped": 0, "conflicts": 0,
-                "errors": 0, "reason": "internal_source",
+                "synced": 0,
+                "skipped": 0,
+                "conflicts": 0,
+                "errors": 0,
+                "reason": "internal_source",
             }
 
-        products = await self.fetch_products(
-            since=policy.last_synced_at
-        )
+        products = await self.fetch_products(since=policy.last_synced_at)
         report = {"synced": 0, "skipped": 0, "conflicts": 0, "errors": 0}
 
         for shopify_product in products:
             try:
                 external_version = shopify_product.get("updated_at", "")
-                if (
-                    policy.external_version
-                    and external_version <= policy.external_version
-                ):
+                if policy.external_version and external_version <= policy.external_version:
                     report["skipped"] += 1
                     continue
 
@@ -224,8 +218,12 @@ class ShopifyAdapter:
 
                 # Delegate to the application service
                 await service.upsert_from_external(
-                    session, tenant_id, external_ref=str(shopify_product["id"]),
-                    data=normalized, source=_CHANNEL, currency=currency,
+                    session,
+                    tenant_id,
+                    external_ref=str(shopify_product["id"]),
+                    data=normalized,
+                    source=_CHANNEL,
+                    currency=currency,
                 )
                 report["synced"] += 1
             except ConflictError as exc:
@@ -238,8 +236,10 @@ class ShopifyAdapter:
                 report["errors"] += 1
 
         await SourceOfTruthService.mark_synced(
-            session, tenant_id,
-            provider=_CHANNEL, entity_type="product",
+            session,
+            tenant_id,
+            provider=_CHANNEL,
+            entity_type="product",
             external_version=datetime.now(UTC).isoformat(),
         )
         return report
@@ -274,8 +274,11 @@ class ShopifyAdapter:
         )
         if policy is None or policy.source_mode == "internal":
             return {
-                "synced": 0, "skipped": 0, "conflicts": 0,
-                "errors": 0, "reason": "internal_source",
+                "synced": 0,
+                "skipped": 0,
+                "conflicts": 0,
+                "errors": 0,
+                "reason": "internal_source",
             }
 
         orders = await self.fetch_orders(since=policy.last_synced_at)
@@ -289,8 +292,12 @@ class ShopifyAdapter:
                     shop_currency=self._shop_currency,
                 )
                 await order_service.upsert_from_external(
-                    session, tenant_id, external_ref=str(shopify_order["id"]),
-                    data=normalized, source=_CHANNEL, currency=currency,
+                    session,
+                    tenant_id,
+                    external_ref=str(shopify_order["id"]),
+                    data=normalized,
+                    source=_CHANNEL,
+                    currency=currency,
                 )
                 report["synced"] += 1
             except ConflictError as exc:
@@ -301,8 +308,10 @@ class ShopifyAdapter:
                 report["errors"] += 1
 
         await SourceOfTruthService.mark_synced(
-            session, tenant_id,
-            provider=_CHANNEL, entity_type="order",
+            session,
+            tenant_id,
+            provider=_CHANNEL,
+            entity_type="order",
         )
         return report
 

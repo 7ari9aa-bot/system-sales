@@ -116,9 +116,7 @@ async def _seed_world(db, tenant_id: uuid.UUID) -> dict:
 async def test_orders_placed_excludes_deleted_and_out_of_window(db, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     await _seed_world(db, tenant_id)
-    fact = await compute_fact(
-        db, tenant_id, "orders_placed", _period(), fact_id="F1"
-    )
+    fact = await compute_fact(db, tenant_id, "orders_placed", _period(), fact_id="F1")
     assert fact.value == 3  # 4 minus the soft-deleted one; the 45-day-old is out
     assert fact.unit == "count"
     assert fact.maturity_status is MaturityStatus.MATURE
@@ -127,9 +125,7 @@ async def test_orders_placed_excludes_deleted_and_out_of_window(db, tenant_ctx):
 async def test_channel_filter_binds_to_the_orders_table(db, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     await _seed_world(db, tenant_id)
-    web = await compute_fact(
-        db, tenant_id, "orders_placed", _period(), channel="web", fact_id="F1"
-    )
+    web = await compute_fact(db, tenant_id, "orders_placed", _period(), channel="web", fact_id="F1")
     assert web.value == 2
     assert web.filters == {"channel": "web"}
 
@@ -137,9 +133,7 @@ async def test_channel_filter_binds_to_the_orders_table(db, tenant_ctx):
 async def test_delivered_revenue_counts_only_delivered_shipments(db, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     await _seed_world(db, tenant_id)
-    fact = await compute_fact(
-        db, tenant_id, "delivered_revenue", _period(), fact_id="F1"
-    )
+    fact = await compute_fact(db, tenant_id, "delivered_revenue", _period(), fact_id="F1")
     # Only web_a has a DELIVERED shipment — 100.0.
     assert fact.value == Decimal("100")
     assert fact.unit == "money"
@@ -148,12 +142,8 @@ async def test_delivered_revenue_counts_only_delivered_shipments(db, tenant_ctx)
 async def test_collected_and_refund_facts(db, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     await _seed_world(db, tenant_id)
-    collected = await compute_fact(
-        db, tenant_id, "collected_revenue", _period(), fact_id="F1"
-    )
-    refunds = await compute_fact(
-        db, tenant_id, "refund_amount", _period(), fact_id="F2"
-    )
+    collected = await compute_fact(db, tenant_id, "collected_revenue", _period(), fact_id="F1")
+    refunds = await compute_fact(db, tenant_id, "refund_amount", _period(), fact_id="F2")
     assert collected.value == Decimal("100")
     assert refunds.value == Decimal("20")
 
@@ -162,9 +152,7 @@ async def test_foreign_tenant_compute_returns_zero(db, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     await _seed_world(db, tenant_id)
     # A different tenant's run compiles the same statement — and sees NOTHING.
-    fact = await compute_fact(
-        db, uuid.uuid4(), "orders_placed", _period(), fact_id="F1"
-    )
+    fact = await compute_fact(db, uuid.uuid4(), "orders_placed", _period(), fact_id="F1")
     assert fact.value == 0
 
 
@@ -173,15 +161,11 @@ async def test_composite_metrics_are_rejected_not_improvised(db, tenant_ctx):
         compile_metric("net_revenue", tenant_ctx.tenant_id, _period())
 
 
-async def test_unknown_channel_dimension_rejected_where_the_column_does_not_exist(
-    db, tenant_ctx
-):
+async def test_unknown_channel_dimension_rejected_where_the_column_does_not_exist(db, tenant_ctx):
     # shipments carry no channel column — the compiler refuses instead of
     # silently dropping the filter (§4.3).
     with pytest.raises(UnsupportedFilter):
-        compile_metric(
-            "shipped_orders", tenant_ctx.tenant_id, _period(), channel="web"
-        )
+        compile_metric("shipped_orders", tenant_ctx.tenant_id, _period(), channel="web")
 
 
 async def test_status_history_rows_exist_for_seeded_orders(db, tenant_ctx):
@@ -199,11 +183,15 @@ async def test_status_history_rows_exist_for_seeded_orders(db, tenant_ctx):
     )
     await db.flush()
     rows = (
-        await db.execute(
-            select(OrderStatusHistory).where(
-                OrderStatusHistory.tenant_id == tenant_id,
-                OrderStatusHistory.order_id == world["web_a"].id,
+        (
+            await db.execute(
+                select(OrderStatusHistory).where(
+                    OrderStatusHistory.tenant_id == tenant_id,
+                    OrderStatusHistory.order_id == world["web_a"].id,
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(rows) == 1 and rows[0].to_status == "fulfilled"

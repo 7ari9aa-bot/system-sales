@@ -187,16 +187,14 @@ async def list_decisions(
     total = (
         await ctx.session.execute(select(func.count(Decision.decision_id)).where(*conditions))
     ).scalar_one()
-    rows = (
-        await ctx.session.execute(
-            select(Decision)
-            .where(*conditions)
-            # created_at shares one now() across a transaction; decision_id is
-            # the tie-break that makes the ORDER a total order (house rule).
-            .order_by(Decision.created_at.desc(), Decision.decision_id.desc())
-            .limit(limit)
-            .offset(offset)
-        )
+    rows = await ctx.session.execute(
+        select(Decision)
+        .where(*conditions)
+        # created_at shares one now() across a transaction; decision_id is
+        # the tie-break that makes the ORDER a total order (house rule).
+        .order_by(Decision.created_at.desc(), Decision.decision_id.desc())
+        .limit(limit)
+        .offset(offset)
     )
     return {
         "items": [_decision_dict(row) for row in rows.scalars().all()],
@@ -271,9 +269,7 @@ async def execute_decision(decision_id: uuid.UUID, ctx: WriteCtx):
 
 
 @router.post("/{decision_id}/dependencies", response_model=schemas.DependencyOut, status_code=201)
-async def record_dependency(
-    decision_id: uuid.UUID, body: DependencyRecord, ctx: WriteCtx
-):
+async def record_dependency(decision_id: uuid.UUID, body: DependencyRecord, ctx: WriteCtx):
     """Pin one resource version into the decision's dependency snapshot; the
     decision's dependency_snapshot_hash is re-derived and stored."""
     dependency = await DecisionService.record_dependency(
@@ -319,14 +315,12 @@ async def list_dependencies(
             select(func.count(DecisionDependency.dependency_id)).where(*conditions)
         )
     ).scalar_one()
-    rows = (
-        await ctx.session.execute(
-            select(DecisionDependency)
-            .where(*conditions)
-            .order_by(DecisionDependency.dependency_id)
-            .limit(limit)
-            .offset(offset)
-        )
+    rows = await ctx.session.execute(
+        select(DecisionDependency)
+        .where(*conditions)
+        .order_by(DecisionDependency.dependency_id)
+        .limit(limit)
+        .offset(offset)
     )
     return {
         "items": [_dependency_dict(row) for row in rows.scalars().all()],

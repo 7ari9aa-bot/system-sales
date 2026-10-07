@@ -210,10 +210,14 @@ async def test_transition_persists_a_tenant_scoped_security_event(
     )
 
     rows = (
-        await db.execute(
-            select(SecurityEvent).where(SecurityEvent.event_type == "tenant_suspended")
+        (
+            await db.execute(
+                select(SecurityEvent).where(SecurityEvent.event_type == "tenant_suspended")
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(rows) == 1
     assert rows[0].tenant_id == tenant_ctx.tenant_id
     assert rows[0].actor_user_id == tenant_ctx.user.id
@@ -244,10 +248,14 @@ async def test_tenant_scoped_event_lands_without_a_bound_context(
 
     await bind_tenant(db, tenant_ctx.tenant_id)  # re-bind so the read is allowed
     rows = (
-        await db.execute(
-            select(SecurityEvent).where(SecurityEvent.event_type == "tenant_suspended")
+        (
+            await db.execute(
+                select(SecurityEvent).where(SecurityEvent.event_type == "tenant_suspended")
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(rows) == 1
     assert rows[0].tenant_id == tenant_ctx.tenant_id
 
@@ -269,7 +277,9 @@ class _SpyEvents:
         self.calls: list[dict] = []
         spy = self
 
-        async def _capture(event_type, *, details=None, ip=None, tenant_id=None, actor_user_id=None):
+        async def _capture(
+            event_type, *, details=None, ip=None, tenant_id=None, actor_user_id=None
+        ):
             spy.calls.append(
                 {
                     "event_type": event_type,
@@ -313,9 +323,7 @@ async def test_every_mfa_challenge_rejection_emits_one_coarse_event(
     cid = await mfa.start_challenge(uid, tid, redis=fakeredis_client)
     for _ in range(mfa.CHALLENGE_MAX_FAILURES):
         with pytest.raises(PermissionDeniedError):
-            await mfa.check_challenge_code(
-                None, challenge_id=cid, code="000000", ip="203.0.113.9"
-            )
+            await mfa.check_challenge_code(None, challenge_id=cid, code="000000", ip="203.0.113.9")
 
     assert [c["event_type"] for c in spy.calls] == ["mfa_verify_failure"] * (
         mfa.CHALLENGE_MAX_FAILURES
@@ -333,9 +341,7 @@ async def test_every_mfa_challenge_rejection_emits_one_coarse_event(
     assert all(c["ip"] == "203.0.113.9" for c in spy.calls)
 
 
-async def test_break_glass_use_and_reject_are_both_audited(
-    monkeypatch, fakeredis_client
-) -> None:
+async def test_break_glass_use_and_reject_are_both_audited(monkeypatch, fakeredis_client) -> None:
     from app.core import break_glass as bg
 
     spy = _SpyEvents(monkeypatch, bg)
@@ -359,11 +365,17 @@ async def test_break_glass_use_and_reject_are_both_audited(
     # The USE validates and is audited; the immediate second presentation
     # is REJECTED and audited too.
     assert await bg.validate_capability(
-        token, tenant_id=tid, user_id=uid, action="tenant_status_change",
+        token,
+        tenant_id=tid,
+        user_id=uid,
+        action="tenant_status_change",
         redis=fakeredis_client,
     )
     assert not await bg.validate_capability(
-        token, tenant_id=tid, user_id=uid, action="tenant_status_change",
+        token,
+        tenant_id=tid,
+        user_id=uid,
+        action="tenant_status_change",
         redis=fakeredis_client,
     )
     assert [c["event_type"] for c in spy.calls] == [
@@ -385,7 +397,10 @@ async def test_break_glass_use_and_reject_are_both_audited(
     # silent — the use at the protected action is its own event.
     spy.calls.clear()
     assert not await bg.peek_capability(
-        token, tenant_id=tid, user_id=uid, action="tenant_status_change",
+        token,
+        tenant_id=tid,
+        user_id=uid,
+        action="tenant_status_change",
         redis=fakeredis_client,
     )
     assert [c["event_type"] for c in spy.calls] == ["break_glass_reject"]

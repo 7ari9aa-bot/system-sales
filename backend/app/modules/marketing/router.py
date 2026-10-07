@@ -271,9 +271,7 @@ async def record_conversion(ctx: WriteCtx, body: ConversionRequest):
     }
 
 
-@router.get(
-    "/marketing/campaigns/{campaign_id}/conversions", response_model=ConversionListOut
-)
+@router.get("/marketing/campaigns/{campaign_id}/conversions", response_model=ConversionListOut)
 async def list_campaign_conversions(
     campaign_id: uuid.UUID,
     ctx: TenantCtxDep,
@@ -384,9 +382,7 @@ async def analytics_daily_orders(
     ] = None,
 ):
     """Daily buckets on the MERCHANT's day, with gross/net money named apart."""
-    rows = await analytics.daily_orders(
-        ctx.session, ctx.tenant_id, days=days, timezone=timezone
-    )
+    rows = await analytics.daily_orders(ctx.session, ctx.tenant_id, days=days, timezone=timezone)
     # A bounded trailing series, so ``next_cursor`` is null and still present:
     # one list reader serves every list in these two modules (gap P8).
     return {"items": rows, "next_cursor": None}

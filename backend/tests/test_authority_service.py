@@ -156,10 +156,15 @@ class TestAuthorityLeases:
         decision = await _make_approved_decision(db, tid)
         grant = await _make_grant(db, tid)
         cmd_hash = compute_command_hash(
-            str(tid), action="test", resource={}, arguments={}, purpose="test",
+            str(tid),
+            action="test",
+            resource={},
+            arguments={},
+            purpose="test",
         )
         lease, token = await AuthorityService.mint_lease(
-            db, tid,
+            db,
+            tid,
             grant_id=grant.grant_id,
             decision_id=decision.decision_id,
             command_hash=cmd_hash,
@@ -174,11 +179,16 @@ class TestAuthorityLeases:
         decision = await _make_approved_decision(db, tid)
         grant = await _make_grant(db, tid)
         cmd_hash = compute_command_hash(
-            str(tid), action="test", resource={}, arguments={}, purpose="test",
+            str(tid),
+            action="test",
+            resource={},
+            arguments={},
+            purpose="test",
         )
         with pytest.raises(ValidationError, match="TTL"):
             await AuthorityService.mint_lease(
-                db, tid,
+                db,
+                tid,
                 grant_id=grant.grant_id,
                 decision_id=decision.decision_id,
                 command_hash=cmd_hash,
@@ -190,11 +200,16 @@ class TestAuthorityLeases:
         decision = await _make_approved_decision(db, tid)
         grant = await _make_grant(db, tid)
         cmd_hash = compute_command_hash(
-            str(tid), action="test", resource={}, arguments={}, purpose="test",
+            str(tid),
+            action="test",
+            resource={},
+            arguments={},
+            purpose="test",
         )
         with pytest.raises(ValidationError, match="TTL"):
             await AuthorityService.mint_lease(
-                db, tid,
+                db,
+                tid,
                 grant_id=grant.grant_id,
                 decision_id=decision.decision_id,
                 command_hash=cmd_hash,
@@ -207,7 +222,8 @@ class TestAuthorityLeases:
         grant = await _make_grant(db, tid)
         with pytest.raises(ValidationError, match="command_hash"):
             await AuthorityService.mint_lease(
-                db, tid,
+                db,
+                tid,
                 grant_id=grant.grant_id,
                 decision_id=decision.decision_id,
                 command_hash="not-a-sha256-hash",
@@ -219,11 +235,16 @@ class TestAuthorityLeases:
         grant = await _make_grant(db, tid)
         await AuthorityService.revoke_grant(db, tid, grant.grant_id)
         cmd_hash = compute_command_hash(
-            str(tid), action="test", resource={}, arguments={}, purpose="test",
+            str(tid),
+            action="test",
+            resource={},
+            arguments={},
+            purpose="test",
         )
         with pytest.raises(ConflictError, match="ACTIVE"):
             await AuthorityService.mint_lease(
-                db, tid,
+                db,
+                tid,
                 grant_id=grant.grant_id,
                 decision_id=decision.decision_id,
                 command_hash=cmd_hash,
@@ -232,15 +253,23 @@ class TestAuthorityLeases:
     async def test_mint_lease_unapproved_decision_rejected(self, tenant_ctx):
         db, tid = tenant_ctx.session, tenant_ctx.tenant_id
         decision = await DecisionService.propose(
-            db, tid, action="test", risk_level="LOW",
+            db,
+            tid,
+            action="test",
+            risk_level="LOW",
         )
         grant = await _make_grant(db, tid)
         cmd_hash = compute_command_hash(
-            str(tid), action="test", resource={}, arguments={}, purpose="test",
+            str(tid),
+            action="test",
+            resource={},
+            arguments={},
+            purpose="test",
         )
         with pytest.raises(ConflictError, match="APPROVED"):
             await AuthorityService.mint_lease(
-                db, tid,
+                db,
+                tid,
                 grant_id=grant.grant_id,
                 decision_id=decision.decision_id,
                 command_hash=cmd_hash,
@@ -252,11 +281,16 @@ class TestAuthorityLeases:
         grant = await _make_grant(db, tid, max_budget=Decimal("100.00"))
         budget = await _make_budget(db, tid)
         cmd_hash = compute_command_hash(
-            str(tid), action="test", resource={}, arguments={}, purpose="test",
+            str(tid),
+            action="test",
+            resource={},
+            arguments={},
+            purpose="test",
         )
         with pytest.raises(ConflictError, match="exceeds"):
             await AuthorityService.mint_lease(
-                db, tid,
+                db,
+                tid,
                 grant_id=grant.grant_id,
                 decision_id=decision.decision_id,
                 command_hash=cmd_hash,
@@ -269,10 +303,15 @@ class TestAuthorityLeases:
         decision = await _make_approved_decision(db, tid)
         grant = await _make_grant(db, tid)
         cmd_hash = compute_command_hash(
-            str(tid), action="test", resource={}, arguments={}, purpose="test",
+            str(tid),
+            action="test",
+            resource={},
+            arguments={},
+            purpose="test",
         )
         lease, token = await AuthorityService.mint_lease(
-            db, tid,
+            db,
+            tid,
             grant_id=grant.grant_id,
             decision_id=decision.decision_id,
             command_hash=cmd_hash,
@@ -290,10 +329,15 @@ class TestAuthorityLeases:
         decision = await _make_approved_decision(db, tid)
         grant = await _make_grant(db, tid)
         cmd_hash = compute_command_hash(
-            str(tid), action="test", resource={}, arguments={}, purpose="test",
+            str(tid),
+            action="test",
+            resource={},
+            arguments={},
+            purpose="test",
         )
         lease, _ = await AuthorityService.mint_lease(
-            db, tid,
+            db,
+            tid,
             grant_id=grant.grant_id,
             decision_id=decision.decision_id,
             command_hash=cmd_hash,
@@ -307,10 +351,15 @@ class TestAuthorityLeases:
         decision = await _make_approved_decision(db, tid)
         grant = await _make_grant(db, tid)
         cmd_hash = compute_command_hash(
-            str(tid), action="test", resource={}, arguments={}, purpose="test",
+            str(tid),
+            action="test",
+            resource={},
+            arguments={},
+            purpose="test",
         )
         lease, _ = await AuthorityService.mint_lease(
-            db, tid,
+            db,
+            tid,
             grant_id=grant.grant_id,
             decision_id=decision.decision_id,
             command_hash=cmd_hash,
@@ -335,21 +384,28 @@ class TestAutonomyBudgets:
         db, tid = tenant_ctx.session, tenant_ctx.tenant_id
         with pytest.raises(ValidationError, match="greater than zero"):
             await AuthorityService.create_budget(
-                db, tid, name="bad", total_limit=Decimal("0"),
+                db,
+                tid,
+                name="bad",
+                total_limit=Decimal("0"),
             )
 
     async def test_create_budget_negative_limit_rejected(self, tenant_ctx):
         db, tid = tenant_ctx.session, tenant_ctx.tenant_id
         with pytest.raises(ValidationError, match="greater than zero"):
             await AuthorityService.create_budget(
-                db, tid, name="bad", total_limit=Decimal("-100"),
+                db,
+                tid,
+                name="bad",
+                total_limit=Decimal("-100"),
             )
 
     async def test_create_child_budget_within_parent(self, tenant_ctx):
         db, tid = tenant_ctx.session, tenant_ctx.tenant_id
         parent = await _make_budget(db, tid, total_limit=Decimal("10000.00"), name="parent")
         child = await AuthorityService.create_budget(
-            db, tid,
+            db,
+            tid,
             name="child",
             total_limit=Decimal("5000.00"),
             parent_budget_id=parent.budget_id,
@@ -362,7 +418,8 @@ class TestAutonomyBudgets:
         parent = await _make_budget(db, tid, total_limit=Decimal("1000.00"), name="parent")
         with pytest.raises(ConflictError, match="exceeds"):
             await AuthorityService.create_budget(
-                db, tid,
+                db,
+                tid,
                 name="child",
                 total_limit=Decimal("2000.00"),
                 parent_budget_id=parent.budget_id,
@@ -372,7 +429,8 @@ class TestAutonomyBudgets:
         db, tid = tenant_ctx.session, tenant_ctx.tenant_id
         with pytest.raises(NotFoundError):
             await AuthorityService.create_budget(
-                db, tid,
+                db,
+                tid,
                 name="orphan",
                 total_limit=Decimal("100.00"),
                 parent_budget_id=uuid.uuid4(),
@@ -400,7 +458,10 @@ class TestBudgetReservations:
         db, tid = tenant_ctx.session, tenant_ctx.tenant_id
         budget = await _make_budget(db, tid, total_limit=Decimal("1000.00"))
         reservation = await AuthorityService.reserve_budget(
-            db, tid, budget_id=budget.budget_id, amount=Decimal("200.00"),
+            db,
+            tid,
+            budget_id=budget.budget_id,
+            amount=Decimal("200.00"),
         )
         assert reservation.status == "RESERVED"
         assert reservation.amount == Decimal("200.00")
@@ -412,14 +473,20 @@ class TestBudgetReservations:
         budget = await _make_budget(db, tid, total_limit=Decimal("500.00"))
         with pytest.raises(ConflictError, match="Insufficient"):
             await AuthorityService.reserve_budget(
-                db, tid, budget_id=budget.budget_id, amount=Decimal("600.00"),
+                db,
+                tid,
+                budget_id=budget.budget_id,
+                amount=Decimal("600.00"),
             )
 
     async def test_commit_reservation(self, tenant_ctx):
         db, tid = tenant_ctx.session, tenant_ctx.tenant_id
         budget = await _make_budget(db, tid, total_limit=Decimal("1000.00"))
         reservation = await AuthorityService.reserve_budget(
-            db, tid, budget_id=budget.budget_id, amount=Decimal("300.00"),
+            db,
+            tid,
+            budget_id=budget.budget_id,
+            amount=Decimal("300.00"),
         )
         await AuthorityService.commit_reservation(db, tid, reservation.reservation_id)
         await db.refresh(budget)
@@ -432,7 +499,10 @@ class TestBudgetReservations:
         db, tid = tenant_ctx.session, tenant_ctx.tenant_id
         budget = await _make_budget(db, tid, total_limit=Decimal("1000.00"))
         reservation = await AuthorityService.reserve_budget(
-            db, tid, budget_id=budget.budget_id, amount=Decimal("400.00"),
+            db,
+            tid,
+            budget_id=budget.budget_id,
+            amount=Decimal("400.00"),
         )
         await AuthorityService.release_reservation(db, tid, reservation.reservation_id)
         await db.refresh(budget)
@@ -444,7 +514,10 @@ class TestBudgetReservations:
         db, tid = tenant_ctx.session, tenant_ctx.tenant_id
         budget = await _make_budget(db, tid, total_limit=Decimal("1000.00"))
         reservation = await AuthorityService.reserve_budget(
-            db, tid, budget_id=budget.budget_id, amount=Decimal("100.00"),
+            db,
+            tid,
+            budget_id=budget.budget_id,
+            amount=Decimal("100.00"),
         )
         await AuthorityService.commit_reservation(db, tid, reservation.reservation_id)
         # Second commit should be a no-op
@@ -456,7 +529,10 @@ class TestBudgetReservations:
         db, tid = tenant_ctx.session, tenant_ctx.tenant_id
         budget = await _make_budget(db, tid, total_limit=Decimal("1000.00"))
         reservation = await AuthorityService.reserve_budget(
-            db, tid, budget_id=budget.budget_id, amount=Decimal("100.00"),
+            db,
+            tid,
+            budget_id=budget.budget_id,
+            amount=Decimal("100.00"),
         )
         await AuthorityService.release_reservation(db, tid, reservation.reservation_id)
         # Second release should be a no-op
@@ -468,15 +544,24 @@ class TestBudgetReservations:
         db, tid = tenant_ctx.session, tenant_ctx.tenant_id
         budget = await _make_budget(db, tid, total_limit=Decimal("1000.00"))
         await AuthorityService.reserve_budget(
-            db, tid, budget_id=budget.budget_id, amount=Decimal("400.00"),
+            db,
+            tid,
+            budget_id=budget.budget_id,
+            amount=Decimal("400.00"),
         )
         await AuthorityService.reserve_budget(
-            db, tid, budget_id=budget.budget_id, amount=Decimal("400.00"),
+            db,
+            tid,
+            budget_id=budget.budget_id,
+            amount=Decimal("400.00"),
         )
         # Third reservation that exceeds remaining headroom
         with pytest.raises(ConflictError, match="Insufficient"):
             await AuthorityService.reserve_budget(
-                db, tid, budget_id=budget.budget_id, amount=Decimal("300.00"),
+                db,
+                tid,
+                budget_id=budget.budget_id,
+                amount=Decimal("300.00"),
             )
         await db.refresh(budget)
         assert budget.reserved_amount == Decimal("800.00")

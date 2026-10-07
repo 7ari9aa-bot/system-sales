@@ -7,6 +7,7 @@ instead of directly constructing Task models. This ensures:
 - The AI tool cannot bypass the service layer (§13-14)
 - Future hooks (audit, events) are in one place
 """
+
 from __future__ import annotations
 
 import uuid
@@ -119,9 +120,7 @@ class TaskService:
             task.status = status
         if priority is not None:
             if priority < PRIORITY_MIN or priority > PRIORITY_MAX:
-                raise ValidationError(
-                    "priority must be 1 (high), 2 (normal), or 3 (low)"
-                )
+                raise ValidationError("priority must be 1 (high), 2 (normal), or 3 (low)")
             task.priority = priority
         if assignee_user_id is not None:
             task.assignee_user_id = assignee_user_id

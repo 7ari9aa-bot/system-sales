@@ -142,9 +142,7 @@ class FakeStore:
             "content_type": content_type,
         }
 
-    async def fail(
-        self, *, scope: str, key: str, status_code: int | None = None
-    ) -> None:
+    async def fail(self, *, scope: str, key: str, status_code: int | None = None) -> None:
         self.fails += 1
         record = self.records[(scope, key)]
         record["status"] = "failed"
@@ -213,9 +211,7 @@ async def _run(
     }
     await app(scope, receive, send)
     start = next(m for m in sent if m["type"] == "http.response.start")
-    payload = b"".join(
-        m.get("body", b"") for m in sent if m["type"] == "http.response.body"
-    )
+    payload = b"".join(m.get("body", b"") for m in sent if m["type"] == "http.response.body")
     response_headers = {k.decode().lower(): v.decode() for k, v in start["headers"]}
     return start["status"], payload, response_headers
 
@@ -257,9 +253,7 @@ async def test_header_is_optional_and_path_must_be_allowlisted() -> None:
     # Allow-listed path, no header → plain pass-through.
     await _run(app, headers=[])
     # Header present but path not allow-listed → plain pass-through.
-    await _run(
-        app, path="/api/v1/customers", headers=[(b"idempotency-key", b"key-2")]
-    )
+    await _run(app, path="/api/v1/customers", headers=[(b"idempotency-key", b"key-2")])
 
     assert counter["calls"] == 2
     assert store.completes == 0
@@ -512,16 +506,12 @@ async def _get(app: FastAPI, *, token: str | None = None, ip: str = "8.8.8.8"):
     headers = _ip_headers(ip)
     if token:
         headers["authorization"] = f"Bearer {token}"
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         return await client.get("/api/v1/orders", headers=headers)
 
 
 def _token(user_id: uuid.UUID, tenant_id: uuid.UUID) -> str:
-    return create_access_token(
-        str(user_id), {"tenant_id": str(tenant_id), "role": "owner"}
-    )
+    return create_access_token(str(user_id), {"tenant_id": str(tenant_id), "role": "owner"})
 
 
 async def test_tenant_tier_refuses_past_its_limit(monkeypatch) -> None:
@@ -570,9 +560,7 @@ async def test_user_tier_refuses_past_its_limit(monkeypatch) -> None:
     responses = []
     for i in range(3):
         # Distinct IPs so ONLY the user tier can deny.
-        responses.append(
-            await _get(app, token=_token(user_id, tenant_id), ip=f"7.7.7.{i + 1}")
-        )
+        responses.append(await _get(app, token=_token(user_id, tenant_id), ip=f"7.7.7.{i + 1}"))
 
     assert [r.status_code for r in responses] == [200, 200, 429]
     assert responses[2].json()["tier"] == "user"
@@ -615,9 +603,7 @@ async def test_cookie_authenticated_requests_still_key_the_tenant_tier(monkeypat
     app = _rate_app(client)
     token = _token(uuid.uuid4(), uuid.uuid4())
 
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as http:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http:
         first = await http.get(
             ORDERS_PATH, headers=_ip_headers("5.5.5.1"), cookies={"access_token": token}
         )
@@ -637,9 +623,7 @@ async def test_auth_bucket_fails_closed_when_redis_is_down() -> None:
             raise RuntimeError("redis down")
 
     app = _rate_app(ExplodingRedis())
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         auth = await client.post("/api/v1/auth/login", headers=_ip_headers("1.1.1.1"))
         api = await client.get("/api/v1/orders", headers=_ip_headers("1.1.1.1"))
 
@@ -657,9 +641,7 @@ async def test_idempotency_same_key_performs_effect_once(db, tenant_ctx) -> None
     digest = body_hash(ORDERS_BODY)
     effects = 0
 
-    claim = await IdempotencyService.begin(
-        db, scope=scope, key="key-1", request_hash=digest
-    )
+    claim = await IdempotencyService.begin(db, scope=scope, key="key-1", request_hash=digest)
     assert claim.outcome == NEW
     if claim.outcome == NEW:
         effects += 1
@@ -672,9 +654,7 @@ async def test_idempotency_same_key_performs_effect_once(db, tenant_ctx) -> None
         content_type="application/json",
     )
 
-    replay = await IdempotencyService.begin(
-        db, scope=scope, key="key-1", request_hash=digest
-    )
+    replay = await IdempotencyService.begin(db, scope=scope, key="key-1", request_hash=digest)
     assert replay.outcome == REPLAY
     if replay.outcome == NEW:
         effects += 1
@@ -700,13 +680,9 @@ async def test_idempotency_scope_isolates_tenants(db, tenant_ctx) -> None:
     scope_a = idem_scope(uuid.uuid4(), "POST", ORDERS_PATH)
     scope_b = idem_scope(uuid.uuid4(), "POST", ORDERS_PATH)
 
-    first = await IdempotencyService.begin(
-        db, scope=scope_a, key="shared", request_hash=digest
-    )
+    first = await IdempotencyService.begin(db, scope=scope_a, key="shared", request_hash=digest)
     # The same client-chosen key under another tenant is a new reservation.
-    second = await IdempotencyService.begin(
-        db, scope=scope_b, key="shared", request_hash=digest
-    )
+    second = await IdempotencyService.begin(db, scope=scope_b, key="shared", request_hash=digest)
     assert first.outcome == NEW
     assert second.outcome == NEW
 
@@ -799,9 +775,7 @@ async def test_expired_key_is_reclaimed_on_claim(db, tenant_ctx) -> None:
     )
     await db.flush()
 
-    claim = await IdempotencyService.begin(
-        db, scope=scope, key="old", request_hash=digest
-    )
+    claim = await IdempotencyService.begin(db, scope=scope, key="old", request_hash=digest)
     assert claim.outcome == NEW, "an expired key must not block a new attempt"
 
 
@@ -838,10 +812,10 @@ async def test_purge_expired_removes_only_expired_keys(db, tenant_ctx) -> None:
     # from another run must not make this flaky.
     assert removed >= 1
     remaining = (
-        await db.execute(
-            sa.select(IdempotencyKey.key).where(IdempotencyKey.scope == scope)
-        )
-    ).scalars().all()
+        (await db.execute(sa.select(IdempotencyKey.key).where(IdempotencyKey.scope == scope)))
+        .scalars()
+        .all()
+    )
     assert remaining == ["live"]
 
 
@@ -859,10 +833,11 @@ async def test_a_retried_webhook_endpoint_registration_creates_exactly_one_endpo
     """
     from datetime import UTC, datetime
 
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
     from app.main import create_app
     from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
     from app.modules.platform.models import IdempotencyKey, WebhookEndpoint
-    from sqlalchemy.ext.asyncio import async_sessionmaker
 
     # The middleware's store opens its own session (SessionLocal read at
     # construction time, i.e. inside create_app) — bind it to the test
@@ -875,9 +850,7 @@ async def test_a_retried_webhook_endpoint_registration_creates_exactly_one_endpo
     # The register route re-validates the target URL at write time (S6); the
     # test URL is deliberately fake, so the guard is bypassed here — it is
     # pinned by test_webhook_dispatcher.py on its own.
-    monkeypatch.setattr(
-        "app.modules.platform.service.assert_public_url", lambda url: None
-    )
+    monkeypatch.setattr("app.modules.platform.service.assert_public_url", lambda url: None)
 
     app = create_app()
 
@@ -898,16 +871,10 @@ async def test_a_retried_webhook_endpoint_registration_creates_exactly_one_endpo
 
     body = {"url": "https://hooks.example.test/salesos", "events": ["order.paid"]}
     headers = {"Idempotency-Key": "reg-e2e-1"}
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
-        first = await client.post(
-            "/api/v1/webhook-endpoints", json=body, headers=headers
-        )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        first = await client.post("/api/v1/webhook-endpoints", json=body, headers=headers)
         # A client that lost the first response retries the SAME request.
-        second = await client.post(
-            "/api/v1/webhook-endpoints", json=body, headers=headers
-        )
+        second = await client.post("/api/v1/webhook-endpoints", json=body, headers=headers)
 
     assert first.status_code == 201, first.text
     assert second.status_code == 201, second.text
@@ -918,23 +885,24 @@ async def test_a_retried_webhook_endpoint_registration_creates_exactly_one_endpo
     )
 
     endpoints = (
-        await db.execute(
-            sa.select(WebhookEndpoint).where(
-                WebhookEndpoint.tenant_id == tenant_ctx.tenant_id
+        (
+            await db.execute(
+                sa.select(WebhookEndpoint).where(WebhookEndpoint.tenant_id == tenant_ctx.tenant_id)
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(endpoints) == 1, (
-        "the documented 2.1 failure mode was a second ACTIVE endpoint from a "
-        "retried registration"
+        "the documented 2.1 failure mode was a second ACTIVE endpoint from a retried registration"
     )
 
     # And the reservation is retained for the retention window, not released.
     stored = (
-        await db.execute(
-            sa.select(IdempotencyKey).where(IdempotencyKey.key == "reg-e2e-1")
-        )
-    ).scalars().all()
+        (await db.execute(sa.select(IdempotencyKey).where(IdempotencyKey.key == "reg-e2e-1")))
+        .scalars()
+        .all()
+    )
     assert [r.status for r in stored] == ["processed"]
     assert all(r.expires_at > datetime.now(UTC) for r in stored), (
         "expires_at must sit inside the 7-day retention window"

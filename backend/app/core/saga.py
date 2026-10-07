@@ -62,17 +62,13 @@ class Saga(TenantMixin, TimestampMixin, Base):
 
     __tablename__ = "sagas"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid7
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid7)
     # The business process type: order_fulfillment, refund, onboarding, etc.
     saga_type: Mapped[str] = mapped_column(String(63))
     # The aggregate this saga orchestrates (e.g. order_id)
     aggregate_type: Mapped[str] = mapped_column(String(63))
     aggregate_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
-    status: Mapped[str] = mapped_column(
-        String(20), server_default="running"
-    )
+    status: Mapped[str] = mapped_column(String(20), server_default="running")
     # Current step index (0-based)
     current_step: Mapped[int] = mapped_column(Integer, server_default="0")
     # Step results: [{step, status, result, compensated}]
@@ -83,9 +79,7 @@ class Saga(TenantMixin, TimestampMixin, Base):
     # The migration created this TIMESTAMP WITH TIME ZONE; a naive column here
     # meant the first real write (this module had no caller) would subtract an
     # aware `completed_at` from naive `created_at` and raise at runtime.
-    completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         Index("ix_sagas_tenant_status", "tenant_id", "status"),
@@ -197,9 +191,7 @@ class SagaManager:
         if saga.status != SagaStatus.RUNNING.value:
             raise ValidationError(f"saga is {saga.status}, cannot execute")
 
-        handler = SagaManager._handlers.get(
-            (saga.saga_type, saga.current_step)
-        )
+        handler = SagaManager._handlers.get((saga.saga_type, saga.current_step))
         if handler is None:
             # No more steps — saga is complete
             saga.status = SagaStatus.COMPLETED.value
@@ -216,9 +208,7 @@ class SagaManager:
             return saga
 
         try:
-            result = await handler.execute(
-                session, tenant_id, saga, saga.context
-            )
+            result = await handler.execute(session, tenant_id, saga, saga.context)
             saga.step_results = [
                 *saga.step_results,
                 {
@@ -260,26 +250,22 @@ class SagaManager:
         # after its undo had run. Work on a copy and write the list back.
         results = [dict(r) for r in saga.step_results]
         completed_steps = [
-            r["step"]
-            for r in results
-            if r.get("status") == SagaStepStatus.COMPLETED.value
+            r["step"] for r in results if r.get("status") == SagaStepStatus.COMPLETED.value
         ]
         by_step = {r["step"]: r for r in results}
         for step_index in reversed(completed_steps):
-            handler = SagaManager._handlers.get(
-                (saga.saga_type, step_index)
-            )
+            handler = SagaManager._handlers.get((saga.saga_type, step_index))
             if handler is None:
                 continue
             try:
-                await handler.compensate(
-                    session, tenant_id, saga, saga.context
-                )
+                await handler.compensate(session, tenant_id, saga, saga.context)
                 by_step[step_index]["status"] = SagaStepStatus.COMPENSATED.value
             except Exception as exc:
                 logger.error(
                     "saga %s step %d compensation failed: %s",
-                    saga.id, step_index, exc,
+                    saga.id,
+                    step_index,
+                    exc,
                 )
                 by_step[step_index]["status"] = SagaStepStatus.FAILED.value
                 by_step[step_index]["compensation_error"] = str(exc)

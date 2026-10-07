@@ -34,7 +34,6 @@ from app.core.security import (
     create_visitor_token,
 )
 
-
 # ---------------------------------------------------------------- helpers --
 
 
@@ -92,9 +91,7 @@ async def _get(
 
 
 def _token(user_id: uuid.UUID, tenant_id: uuid.UUID) -> str:
-    return create_access_token(
-        str(user_id), {"tenant_id": str(tenant_id), "role": "owner"}
-    )
+    return create_access_token(str(user_id), {"tenant_id": str(tenant_id), "role": "owner"})
 
 
 # ---------------------------------------------- 1. token type + cookies ----
@@ -160,15 +157,9 @@ async def test_cookie_sessions_key_the_tenant_tier(monkeypatch) -> None:
     app = _app(client)
     tenant_id = uuid.uuid4()
 
-    first = await _get(
-        app, cookie_token=_token(uuid.uuid4(), tenant_id), ip="7.7.7.1"
-    )
-    second = await _get(
-        app, cookie_token=_token(uuid.uuid4(), tenant_id), ip="7.7.7.2"
-    )
-    third = await _get(
-        app, cookie_token=_token(uuid.uuid4(), tenant_id), ip="7.7.7.3"
-    )
+    first = await _get(app, cookie_token=_token(uuid.uuid4(), tenant_id), ip="7.7.7.1")
+    second = await _get(app, cookie_token=_token(uuid.uuid4(), tenant_id), ip="7.7.7.2")
+    third = await _get(app, cookie_token=_token(uuid.uuid4(), tenant_id), ip="7.7.7.3")
     assert first.status_code == 200
     assert second.status_code == 200
     assert third.status_code == 429
@@ -222,9 +213,7 @@ async def test_the_session_surface_fails_open_when_redis_is_down() -> None:
             raise RuntimeError("redis down")
 
     app = _app(ExplodingRedis())
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         login = await client.post("/api/v1/auth/login", headers=_ip_headers("1.1.1.1"))
         refresh = await client.post("/api/v1/auth/refresh", headers=_ip_headers("1.1.1.1"))
         me = await client.get("/api/v1/auth/me", headers=_ip_headers("1.1.1.1"))
@@ -238,11 +227,11 @@ async def test_refresh_does_not_burn_the_login_budget(monkeypatch) -> None:
     monkeypatch.setattr("app.core.middleware.get_settings", lambda: _Settings())
     client = FakeRedis(decode_responses=True)
     app = _app(client)
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as http:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http:
         for _ in range(mw.AUTH_LIMIT + 2):
-            assert (await http.post("/api/v1/auth/refresh", headers=_ip_headers("2.2.2.2"))).status_code == 200
+            assert (
+                await http.post("/api/v1/auth/refresh", headers=_ip_headers("2.2.2.2"))
+            ).status_code == 200
 
         login = await http.post("/api/v1/auth/login", headers=_ip_headers("2.2.2.2"))
     assert login.status_code == 200, "session polling must not exhaust the strict bucket"
@@ -258,9 +247,7 @@ def _request_with_xff(value: str | None) -> Request:
 
 
 def _ip_of(value: str | None, *, trusted: int) -> str:
-    return mw._client_ip(
-        _request_with_xff(value), trusted_proxy_count=trusted
-    )
+    return mw._client_ip(_request_with_xff(value), trusted_proxy_count=trusted)
 
 
 def test_one_trusted_proxy_reads_the_last_hop() -> None:
@@ -291,6 +278,4 @@ def test_the_default_comes_from_settings(monkeypatch) -> None:
         trusted_proxy_count = 2
 
     monkeypatch.setattr("app.core.middleware.get_settings", lambda: _TwoProxies())
-    assert (
-        mw._client_ip(_request_with_xff("203.0.113.7, 198.51.100.1")) == "203.0.113.7"
-    )
+    assert mw._client_ip(_request_with_xff("203.0.113.7, 198.51.100.1")) == "203.0.113.7"

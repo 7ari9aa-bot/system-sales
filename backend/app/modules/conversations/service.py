@@ -418,8 +418,7 @@ class ConversationService:
         )
         if before_created_at is not None and before_id is not None:
             stmt = stmt.where(
-                tuple_(Message.created_at, Message.id)
-                < tuple_(before_created_at, before_id)
+                tuple_(Message.created_at, Message.id) < tuple_(before_created_at, before_id)
             )
         elif before_created_at is not None:
             stmt = stmt.where(Message.created_at < before_created_at)
@@ -549,13 +548,15 @@ class ConversationService:
                 f"Reconciled from '{old_status}' after "
                 f"{stuck_threshold_minutes}m: provider unacknowledged"
             )
-            results.append({
-                "message_id": str(msg.id),
-                "tenant_id": str(msg.tenant_id),
-                "conversation_id": str(msg.conversation_id),
-                "old_status": old_status,
-                "new_status": "failed",
-            })
+            results.append(
+                {
+                    "message_id": str(msg.id),
+                    "tenant_id": str(msg.tenant_id),
+                    "conversation_id": str(msg.conversation_id),
+                    "old_status": old_status,
+                    "new_status": "failed",
+                }
+            )
         if results:
             await session.flush()
         return results

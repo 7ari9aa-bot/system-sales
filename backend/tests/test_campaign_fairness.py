@@ -54,9 +54,7 @@ def _add_outbox_call_sites() -> list[_CallSite]:
     found: list[_CallSite] = []
     for path in APP_DIR.rglob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"))
-        awaited_calls = {
-            id(node.value) for node in ast.walk(tree) if isinstance(node, ast.Await)
-        }
+        awaited_calls = {id(node.value) for node in ast.walk(tree) if isinstance(node, ast.Await)}
         for node in ast.walk(tree):
             if (
                 isinstance(node, ast.Call)
@@ -89,9 +87,7 @@ def test_no_add_outbox_call_site_passes_a_stream_kwarg():
 def test_every_add_outbox_call_is_awaited():
     """add_outbox_event is async — an unawaited call is a silent no-op
     (coroutine discarded) that breaks the event half of the transaction."""
-    offenders = [
-        f"{c.file}:{c.lineno}" for c in _add_outbox_call_sites() if not c.awaited
-    ]
+    offenders = [f"{c.file}:{c.lineno}" for c in _add_outbox_call_sites() if not c.awaited]
     assert offenders == [], f"add_outbox_event called without await: {offenders}"
 
 
@@ -112,9 +108,7 @@ def test_every_literal_event_type_is_registered():
 
 
 async def _campaign(db, tenant_id, name="Fairness Camp"):
-    campaign = await MarketingService.create_campaign(
-        db, tenant_id, name=name, provider="facebook"
-    )
+    campaign = await MarketingService.create_campaign(db, tenant_id, name=name, provider="facebook")
     campaign.status = "active"
     await db.flush()
     return campaign
@@ -166,9 +160,7 @@ def _fake_redis(monkeypatch, tenant_id):
 
     fake = FakeRedis(decode_responses=True)
     monkeypatch.setattr(fairness, "get_redis", lambda: fake)
-    return fake, fairness._budget_key(
-        tenant_id, fairness.ResourceType.MESSAGES_OUTBOUND
-    )
+    return fake, fairness._budget_key(tenant_id, fairness.ResourceType.MESSAGES_OUTBOUND)
 
 
 # -------------------------------------------------------- the worker pump --
@@ -181,28 +173,34 @@ async def test_pump_completes_a_run_without_an_audience(db, tenant_ctx):
 
     tenant_id = tenant_ctx.tenant_id
     campaign = await _campaign(db, tenant_id)
-    run = await CampaignExecutionService.start_campaign(
-        db, tenant_id, campaign_id=campaign.id
-    )
+    run = await CampaignExecutionService.start_campaign(db, tenant_id, campaign_id=campaign.id)
 
     outcome = await process_campaign_run_event(db, tenant_id, run.id)
     assert outcome == "completed"
     assert run.status == CampaignRunStatus.COMPLETED.value
     completed = (
-        await db.execute(
-            select(OutboxEvent).where(
-                OutboxEvent.payload["event_type"].astext == "campaign.run.completed"
+        (
+            await db.execute(
+                select(OutboxEvent).where(
+                    OutboxEvent.payload["event_type"].astext == "campaign.run.completed"
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(completed) == 1
     batched = (
-        await db.execute(
-            select(OutboxEvent).where(
-                OutboxEvent.payload["event_type"].astext == "campaign.run.batch"
+        (
+            await db.execute(
+                select(OutboxEvent).where(
+                    OutboxEvent.payload["event_type"].astext == "campaign.run.batch"
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert batched == []
 
 
@@ -243,12 +241,16 @@ async def test_pump_caps_a_batch_at_the_outbound_budget_and_queues_the_next(
     assert counter_now == (limit - 1) + run.sent_count
 
     batched = (
-        await db.execute(
-            select(OutboxEvent).where(
-                OutboxEvent.payload["event_type"].astext == "campaign.run.batch"
+        (
+            await db.execute(
+                select(OutboxEvent).where(
+                    OutboxEvent.payload["event_type"].astext == "campaign.run.batch"
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(batched) == 1
     assert batched[0].aggregate_id == run.id
     assert batched[0].stream == "campaign_run.events"
@@ -257,9 +259,7 @@ async def test_pump_caps_a_batch_at_the_outbound_budget_and_queues_the_next(
     assert batched[0].not_before > datetime.now(UTC)
 
 
-async def test_pump_defers_when_the_outbound_budget_is_exhausted(
-    monkeypatch, db, tenant_ctx
-):
+async def test_pump_defers_when_the_outbound_budget_is_exhausted(monkeypatch, db, tenant_ctx):
     """No remaining budget is NOT a failure: the event is deferred (§48-style,
     attempts untouched) and the run stays exactly where it was."""
     from app.workers.base import DeferredError
@@ -283,9 +283,7 @@ async def test_pump_defers_when_the_outbound_budget_is_exhausted(
     assert run.cursor is None
 
 
-async def test_pump_defers_when_the_worker_time_budget_is_exhausted(
-    monkeypatch, db, tenant_ctx
-):
+async def test_pump_defers_when_the_worker_time_budget_is_exhausted(monkeypatch, db, tenant_ctx):
     """§144 tiering in practice: the BULK tier is gated by WORKER_SECONDS
     too — message budget intact, worker time spent → defer, do not starve."""
     from app.core import fairness
@@ -302,9 +300,7 @@ async def test_pump_defers_when_the_worker_time_budget_is_exhausted(
     )
 
     fake, _ = _fake_redis(monkeypatch, tenant_id)
-    worker_key = fairness._budget_key(
-        tenant_id, fairness.ResourceType.WORKER_SECONDS
-    )
+    worker_key = fairness._budget_key(tenant_id, fairness.ResourceType.WORKER_SECONDS)
     await fake.set(worker_key, 3_600)  # the full daily worker-time budget
 
     with pytest.raises(DeferredError):
@@ -317,19 +313,21 @@ async def test_pump_of_a_paused_run_is_a_noop(db, tenant_ctx):
 
     tenant_id = tenant_ctx.tenant_id
     campaign = await _campaign(db, tenant_id)
-    run = await CampaignExecutionService.start_campaign(
-        db, tenant_id, campaign_id=campaign.id
-    )
+    run = await CampaignExecutionService.start_campaign(db, tenant_id, campaign_id=campaign.id)
     await CampaignExecutionService.pause(db, tenant_id, run.id)
 
     assert await process_campaign_run_event(db, tenant_id, run.id) == "not_running"
     batched = (
-        await db.execute(
-            select(OutboxEvent).where(
-                OutboxEvent.payload["event_type"].astext == "campaign.run.batch"
+        (
+            await db.execute(
+                select(OutboxEvent).where(
+                    OutboxEvent.payload["event_type"].astext == "campaign.run.batch"
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert batched == []
 
 
@@ -345,9 +343,7 @@ async def test_start_campaign_stages_a_run_started_envelope(db, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     campaign = await _campaign(db, tenant_id)
 
-    run = await CampaignExecutionService.start_campaign(
-        db, tenant_id, campaign_id=campaign.id
-    )
+    run = await CampaignExecutionService.start_campaign(db, tenant_id, campaign_id=campaign.id)
 
     row = (
         await db.execute(
@@ -363,20 +359,14 @@ async def test_start_campaign_stages_a_run_started_envelope(db, tenant_ctx):
     assert row.payload["campaign_id"] == str(campaign.id)
 
 
-async def test_completing_an_empty_run_stages_the_completed_envelope(
-    db, tenant_ctx
-):
+async def test_completing_an_empty_run_stages_the_completed_envelope(db, tenant_ctx):
     """A run with no audience completes on its first batch and the completion
     is an event like everything else (§19: mutations, then outbox)."""
     tenant_id = tenant_ctx.tenant_id
     campaign = await _campaign(db, tenant_id, name="Empty Camp")
-    run = await CampaignExecutionService.start_campaign(
-        db, tenant_id, campaign_id=campaign.id
-    )
+    run = await CampaignExecutionService.start_campaign(db, tenant_id, campaign_id=campaign.id)
 
-    finished = await CampaignExecutionService.process_batch(
-        db, tenant_id, run.id, batch_size=10
-    )
+    finished = await CampaignExecutionService.process_batch(db, tenant_id, run.id, batch_size=10)
     assert finished.status == CampaignRunStatus.COMPLETED.value
 
     row = (

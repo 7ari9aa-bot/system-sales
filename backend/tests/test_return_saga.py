@@ -59,9 +59,7 @@ async def _stocked_variant(
     # the fixture publishes it — this file is about the return saga, not about
     # what checkout refuses (that is test_checkout_rules.py).
     await CatalogService.update_product(db, tenant_id, product.id, status="active")
-    variant = await CatalogService.add_variant(
-        db, tenant_id, product.id, price="40.00"
-    )
+    variant = await CatalogService.add_variant(db, tenant_id, product.id, price="40.00")
     warehouse = Warehouse(
         tenant_id=tenant_id,
         name="Returns WH",
@@ -117,11 +115,7 @@ async def _order_at(
     # Read the live status from the DB rather than trusting the object: a
     # captured payment moves a `pending` order to `confirmed` by itself, and
     # `_transition` writes through a compare-and-swap UPDATE.
-    at = _RANK[
-        (
-            await db.execute(select(Order.status).where(Order.id == order.id))
-        ).scalar_one()
-    ]
+    at = _RANK[(await db.execute(select(Order.status).where(Order.id == order.id))).scalar_one()]
     for step in _PATH:
         if not at < _RANK[step] <= _RANK[status]:
             continue
@@ -135,9 +129,7 @@ async def _order_at(
 
 
 async def _balance(db: AsyncSession, tenant_id, variant, warehouse):
-    balance = await InventoryService.get_balance(
-        db, tenant_id, variant.id, warehouse.id
-    )
+    balance = await InventoryService.get_balance(db, tenant_id, variant.id, warehouse.id)
     await db.refresh(balance)
     return balance
 
@@ -321,9 +313,7 @@ async def test_returning_a_paid_order_puts_the_stock_back(db, tenant_ctx) -> Non
     sold = await _balance(db, tenant_id, variant, warehouse)
     assert sold.on_hand == 7  # 10 in, 3 converted to a sale
 
-    await ReturnsService.process_return(
-        db, tenant_id, order.id, by_user_id=tenant_ctx.user.id
-    )
+    await ReturnsService.process_return(db, tenant_id, order.id, by_user_id=tenant_ctx.user.id)
 
     back = await _balance(db, tenant_id, variant, warehouse)
     assert back.on_hand == 10
@@ -339,9 +329,7 @@ async def test_a_paid_return_writes_one_ledger_row_per_line(db, tenant_ctx) -> N
     await ReturnsService.process_return(db, tenant_id, order.id)
 
     restocked = [m for m in await _movements(db, order.id) if m.reason == "return"]
-    assert [(m.direction, m.quantity, m.variant_id) for m in restocked] == [
-        ("in", 3, variant.id)
-    ]
+    assert [(m.direction, m.quantity, m.variant_id) for m in restocked] == [("in", 3, variant.id)]
     assert restocked[0].warehouse_id == warehouse.id
     assert restocked[0].balance_after == 10
 
@@ -398,10 +386,7 @@ async def test_a_returned_order_is_not_returnable_again(db, tenant_ctx) -> None:
 
     with pytest.raises(ConflictError):
         await ReturnsService.process_return(db, tenant_id, order.id)
-    assert (
-        len((await db.execute(select(Saga).where(Saga.aggregate_id == order.id))).all())
-        == 1
-    )
+    assert len((await db.execute(select(Saga).where(Saga.aggregate_id == order.id))).all()) == 1
 
 
 # ----------------------------------------- the return process: cash on delivery ----
@@ -433,9 +418,7 @@ async def test_returning_an_unpaid_order_releases_the_hold(db, tenant_ctx) -> No
     reservations = list(
         (
             await db.execute(
-                select(InventoryReservation).where(
-                    InventoryReservation.order_id == order.id
-                )
+                select(InventoryReservation).where(InventoryReservation.order_id == order.id)
             )
         )
         .scalars()
@@ -447,9 +430,7 @@ async def test_returning_an_unpaid_order_releases_the_hold(db, tenant_ctx) -> No
 # --------------------------------------------------------- compensation ----
 
 
-async def test_when_the_close_step_fails_the_restock_is_undone(
-    db, tenant_ctx, monkeypatch
-) -> None:
+async def test_when_the_close_step_fails_the_restock_is_undone(db, tenant_ctx, monkeypatch) -> None:
     """The reason the engine exists: units that went back on the shelf must come
     back off, or the ledger reports stock the warehouse does not have.
     """
@@ -471,14 +452,14 @@ async def test_when_the_close_step_fails_the_restock_is_undone(
     # _movements is order-scoped, so the warehouse's inbound `purchase` row is
     # not in this list. What must be here is the capture's `out/sale`, the
     # restock's `in/return`, and the compensation that takes them out again.
-    assert sorted(
-        (m.direction, m.reason) for m in await _movements(db, order.id)
-    ) == [("in", "return"), ("out", "return_reversal"), ("out", "sale")]
+    assert sorted((m.direction, m.reason) for m in await _movements(db, order.id)) == [
+        ("in", "return"),
+        ("out", "return_reversal"),
+        ("out", "sale"),
+    ]
     fresh = (await db.execute(select(Order).where(Order.id == order.id))).scalar_one()
     assert fresh.status == "shipped"
-    saga = (
-        await db.execute(select(Saga).where(Saga.aggregate_id == order.id))
-    ).scalar_one()
+    saga = (await db.execute(select(Saga).where(Saga.aggregate_id == order.id))).scalar_one()
     assert saga.status == SagaStatus.FAILED.value
 
 
@@ -512,9 +493,7 @@ async def test_an_undone_release_restores_the_reservation_it_released(
     rows = (
         (
             await db.execute(
-                select(InventoryReservation).where(
-                    InventoryReservation.order_id == order.id
-                )
+                select(InventoryReservation).where(InventoryReservation.order_id == order.id)
             )
         )
         .scalars()
@@ -631,8 +610,6 @@ async def test_return_requires_orders_write(db: AsyncSession, tenant_ctx) -> Non
         return ctx
 
     app.dependency_overrides[get_tenant_ctx] = _ctx
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post(f"/api/v1/orders/{order.id}/return", json={})
     assert response.status_code == 403

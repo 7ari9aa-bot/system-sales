@@ -68,10 +68,7 @@ NEXT_PERIOD_END = date(2026, 10, 1)
 
 def _feature_totals(invoice: Invoice) -> dict[str, str]:
     """The frozen per-feature lines, exactly as stored in the snapshot."""
-    return {
-        line["feature"]: line["quantity"]
-        for line in (invoice.extra or {}).get("snapshot", [])
-    }
+    return {line["feature"]: line["quantity"] for line in (invoice.extra or {}).get("snapshot", [])}
 
 
 async def _record_usage_on(
@@ -188,9 +185,7 @@ async def test_the_close_route_writes_a_snapshot_the_read_route_returns(
     assert written["period_start"] == PERIOD_START.isoformat()
     assert written["period_end"] == PERIOD_END.isoformat()
 
-    read = await get_billing_snapshot(
-        ctx, period_start=PERIOD_START, period_end=PERIOD_END
-    )
+    read = await get_billing_snapshot(ctx, period_start=PERIOD_START, period_end=PERIOD_END)
     assert read["invoice_id"] == written["invoice_id"]
     assert read["features"] == written["features"]
 
@@ -298,9 +293,7 @@ async def test_aggregation_totals_are_per_feature_and_period_bounded(
     }
 
 
-async def test_ai_usage_is_metered_from_its_real_source(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_ai_usage_is_metered_from_its_real_source(db: AsyncSession, tenant_ctx) -> None:
     """`ai_usage` is the REAL source of AI usage, so the meter must read it.
 
     `ai.usage.record_usage` is called from the model runtime and nothing ever
@@ -563,9 +556,7 @@ async def test_an_overlapping_period_is_refused(db: AsyncSession, tenant_ctx) ->
 
     db.expire_all()
     invoices = (
-        (await db.execute(select(Invoice).where(Invoice.tenant_id == tenant_id)))
-        .scalars()
-        .all()
+        (await db.execute(select(Invoice).where(Invoice.tenant_id == tenant_id))).scalars().all()
     )
     assert len(invoices) == 1, "a refused overlap must not have written an invoice"
 
@@ -672,7 +663,5 @@ async def test_concurrent_overlapping_closes_cannot_both_succeed(db_url: str) ->
         async with factory() as cleanup:
             async with cleanup.begin():
                 await bind_tenant(cleanup, tenant_id)
-                await cleanup.execute(
-                    text("DELETE FROM tenants WHERE id = :t"), {"t": tenant_id}
-                )
+                await cleanup.execute(text("DELETE FROM tenants WHERE id = :t"), {"t": tenant_id})
         await engine.dispose()

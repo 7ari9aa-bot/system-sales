@@ -56,8 +56,7 @@ async def test_product_row_reaches_the_catalog_upsert_contract() -> None:
     )
 
     assert report.imported == 1, (
-        f"the importer called a method the real service does not define: "
-        f"{report.error_details}"
+        f"the importer called a method the real service does not define: {report.error_details}"
     )
     assert report.errors == 0 and report.success
     service.upsert_from_external.assert_awaited_once()
@@ -188,9 +187,7 @@ async def test_customer_import_delegates_when_the_method_exists() -> None:
         def __init__(self) -> None:
             self.calls: list[dict[str, Any]] = []
 
-        async def create_from_import(
-            self, session: Any, tenant_id: Any, **kwargs: Any
-        ) -> None:
+        async def create_from_import(self, session: Any, tenant_id: Any, **kwargs: Any) -> None:
             self.calls.append(kwargs)
 
     stub = _Stub()
@@ -216,7 +213,9 @@ async def test_customer_import_conflict_is_a_conflict_not_a_generic_error() -> N
     service.create_from_import.side_effect = ConflictError("phone already exists")
 
     report = await CSVImportService.import_customers(
-        _session(), TENANT, raw_csv="name,phone\nAisha,+201001234567\n",
+        _session(),
+        TENANT,
+        raw_csv="name,phone\nAisha,+201001234567\n",
         customer_service=service,
     )
 
@@ -229,9 +228,7 @@ async def test_customer_import_conflict_is_a_conflict_not_a_generic_error() -> N
 # ---------------------------------------------------------- end to end (DB) ----
 async def _products(db: AsyncSession, tenant_id: uuid.UUID) -> list[Product]:
     return list(
-        (await db.execute(select(Product).where(Product.tenant_id == tenant_id)))
-        .scalars()
-        .all()
+        (await db.execute(select(Product).where(Product.tenant_id == tenant_id))).scalars().all()
     )
 
 
@@ -251,17 +248,13 @@ async def test_csv_product_row_lands_as_a_real_product(db: AsyncSession, tenant_
     assert product.attributes["_source"] == "csv"
     assert product.attributes["_external_id"] == "koshari-bowl"
     variant = (
-        await db.execute(
-            select(ProductVariant).where(ProductVariant.tenant_id == tenant_id)
-        )
+        await db.execute(select(ProductVariant).where(ProductVariant.tenant_id == tenant_id))
     ).scalar_one()
     assert variant.sku == "KB-1"
     assert variant.price == Decimal("19.99")
 
 
-async def test_reuploaded_csv_updates_the_row_it_already_owns(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_reuploaded_csv_updates_the_row_it_already_owns(db: AsyncSession, tenant_ctx) -> None:
     """The import path and the Shopify path share one upsert — no duplicates."""
     tenant_id = tenant_ctx.tenant_id
     await CSVImportService.import_products(
@@ -269,9 +262,9 @@ async def test_reuploaded_csv_updates_the_row_it_already_owns(
     )
     # Quoted, because the new title carries a comma: an unquoted one shifts
     # every column right and the row fails on "price" for the wrong reason.
-    renamed = _PRODUCTS_CSV.replace(
-        "Koshari Bowl", '"Koshari Bowl, large"'
-    ).replace("19.99", "17.50")
+    renamed = _PRODUCTS_CSV.replace("Koshari Bowl", '"Koshari Bowl, large"').replace(
+        "19.99", "17.50"
+    )
 
     report = await CSVImportService.import_products(
         db, tenant_id, raw_csv=renamed, product_service=None
@@ -283,9 +276,7 @@ async def test_reuploaded_csv_updates_the_row_it_already_owns(
     assert len(products) == 1
     assert products[0].title == "Koshari Bowl, large"
     variant = (
-        await db.execute(
-            select(ProductVariant).where(ProductVariant.tenant_id == tenant_id)
-        )
+        await db.execute(select(ProductVariant).where(ProductVariant.tenant_id == tenant_id))
     ).scalar_one()
     assert variant.price == Decimal("17.50")
 
@@ -308,9 +299,7 @@ async def test_foreign_currency_row_writes_nothing(db: AsyncSession, tenant_ctx)
 # --------------------------------------- DB: the REAL CustomerService intake ----
 async def _customers(db: AsyncSession, tenant_id: uuid.UUID) -> list[Customer]:
     return list(
-        (await db.execute(select(Customer).where(Customer.tenant_id == tenant_id)))
-        .scalars()
-        .all()
+        (await db.execute(select(Customer).where(Customer.tenant_id == tenant_id))).scalars().all()
     )
 
 
@@ -355,15 +344,23 @@ async def test_create_from_import_refuses_a_normalised_phone_duplicate(
     """
     tenant_id = tenant_ctx.tenant_id
     await CustomerService.create_from_import(
-        db, tenant_id, name="Sameh", phone="01001234567",
-        source="csv_import", tags=None,
+        db,
+        tenant_id,
+        name="Sameh",
+        phone="01001234567",
+        source="csv_import",
+        tags=None,
     )
     await db.flush()
 
     with pytest.raises(ConflictError):
         await CustomerService.create_from_import(
-            db, tenant_id, name="Sameh Again", phone="+20 100 123 4567",
-            source="csv_import", tags=None,
+            db,
+            tenant_id,
+            name="Sameh Again",
+            phone="+20 100 123 4567",
+            source="csv_import",
+            tags=None,
         )
 
     # The refused row wrote nothing.
@@ -390,20 +387,20 @@ async def test_csv_customer_row_lands_through_the_real_service(
     assert customer.phone == "+201001234567"
 
 
-async def test_csv_reupload_collides_on_the_normalised_number(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_csv_reupload_collides_on_the_normalised_number(db: AsyncSession, tenant_ctx) -> None:
     """Second run, same human spelled differently: a conflict, never a clone."""
     tenant_id = tenant_ctx.tenant_id
     await CSVImportService.import_customers(
-        db, tenant_id,
+        db,
+        tenant_id,
         raw_csv="name,phone\nAisha,01001234567\n",
         customer_service=CustomerService,
     )
     await db.flush()
 
     report = await CSVImportService.import_customers(
-        db, tenant_id,
+        db,
+        tenant_id,
         raw_csv="name,phone\nAisha,+201001234567\n",
         customer_service=CustomerService,
     )
@@ -458,15 +455,11 @@ def _app(session: AsyncSession, tenant_id: uuid.UUID, actor_user_id: uuid.UUID):
 
 
 async def _post_import(app, path: str, csv: str):
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         return await client.post(path, json={"csv": csv})
 
 
-async def test_customer_import_route_drives_the_whole_path(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_customer_import_route_drives_the_whole_path(db: AsyncSession, tenant_ctx) -> None:
     tenant_id = tenant_ctx.tenant_id
     app = _app(db, tenant_id, tenant_ctx.user.id)
 
@@ -493,8 +486,12 @@ async def test_customer_import_route_conflict_is_not_a_green_lie(
     """
     tenant_id = tenant_ctx.tenant_id
     await CustomerService.create_from_import(
-        db, tenant_id, name="Aisha", phone="01001234567",
-        source="csv_import", tags=None,
+        db,
+        tenant_id,
+        name="Aisha",
+        phone="01001234567",
+        source="csv_import",
+        tags=None,
     )
     await db.flush()
     app = _app(db, tenant_id, tenant_ctx.user.id)
@@ -515,9 +512,7 @@ async def test_product_import_route_is_reachable(db: AsyncSession, tenant_ctx) -
     tenant_id = tenant_ctx.tenant_id
     app = _app(db, tenant_id, tenant_ctx.user.id)
 
-    response = await _post_import(
-        app, "/api/v1/imports/products", _PRODUCTS_CSV
-    )
+    response = await _post_import(app, "/api/v1/imports/products", _PRODUCTS_CSV)
 
     assert response.status_code == 200, response.text
     body = response.json()
@@ -542,10 +537,6 @@ async def test_import_route_requires_write_permission(db: AsyncSession, tenant_c
         return ctx
 
     app.dependency_overrides[get_tenant_ctx] = _override
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
-        response = await client.post(
-            "/api/v1/imports/customers", json={"csv": "name\nAisha\n"}
-        )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/api/v1/imports/customers", json={"csv": "name\nAisha\n"})
     assert response.status_code == 403

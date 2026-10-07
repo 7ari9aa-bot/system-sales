@@ -29,9 +29,8 @@ import pytest
 
 from app.core.errors import NotFoundError, ValidationError
 from app.modules.platform import diagnostics as diag
-from app.modules.platform.dr import DRService
 from app.modules.platform.diagnostics import SystemDiagnosticsService
-
+from app.modules.platform.dr import DRService
 
 # ----------------------------------------------------------------- DR drill
 
@@ -100,7 +99,11 @@ async def test_health_demands_a_recent_pass_not_a_configured_intent(db) -> None:
     # A pass from 8 days ago is outside the weekly window.
     run = await DRService.start_restore_test(db)
     await DRService.complete_restore_test(
-        db, run.id, passed=True, restore_duration_seconds=60, data_loss_seconds=0,
+        db,
+        run.id,
+        passed=True,
+        restore_duration_seconds=60,
+        data_loss_seconds=0,
         checks=dict(_DRILL_CHECKS),
     )
     policy = await DRService.get_policy(db)
@@ -128,7 +131,11 @@ async def test_a_completed_drill_cannot_be_overwritten(db) -> None:
     of the one control that proves backups work. The drill is one-shot."""
     run = await DRService.start_restore_test(db)
     run = await DRService.complete_restore_test(
-        db, run.id, passed=True, restore_duration_seconds=90, data_loss_seconds=0,
+        db,
+        run.id,
+        passed=True,
+        restore_duration_seconds=90,
+        data_loss_seconds=0,
         checks=dict(_DRILL_CHECKS),
     )
     original_status = run.status
@@ -137,8 +144,13 @@ async def test_a_completed_drill_cannot_be_overwritten(db) -> None:
 
     with pytest.raises(ValidationError, match="already completed"):
         await DRService.complete_restore_test(
-            db, run.id, passed=False, restore_duration_seconds=1, data_loss_seconds=1,
-            checks={}, errors="retry after the fact",
+            db,
+            run.id,
+            passed=False,
+            restore_duration_seconds=1,
+            data_loss_seconds=1,
+            checks={},
+            errors="retry after the fact",
         )
 
     await db.refresh(run)
@@ -155,8 +167,12 @@ async def test_completing_an_unknown_run_is_a_404_not_a_bare_valueerror(db) -> N
     error envelope (and any future route) speaks 404, not a raw ValueError."""
     with pytest.raises(NotFoundError):
         await DRService.complete_restore_test(
-            db, uuid.uuid4(), passed=True, restore_duration_seconds=1,
-            data_loss_seconds=1, checks={},
+            db,
+            uuid.uuid4(),
+            passed=True,
+            restore_duration_seconds=1,
+            data_loss_seconds=1,
+            checks={},
         )
 
 
@@ -205,9 +221,7 @@ async def test_a_broken_integrity_probe_is_degraded_never_healthy() -> None:
     """Fail-first: the pre-fix except branch reported status "healthy" with no
     error — a broken invariant query read as "no anomalies detected", the
     exact silent failure this engine exists to surface."""
-    finding = await SystemDiagnosticsService.check_data_integrity(
-        _RaisingSession(), uuid.uuid4()
-    )
+    finding = await SystemDiagnosticsService.check_data_integrity(_RaisingSession(), uuid.uuid4())
 
     assert finding["status"] == "degraded"
     assert "RuntimeError" in (finding["error"] or "")

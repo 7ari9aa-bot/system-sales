@@ -108,9 +108,7 @@ async def register(body: schemas.RegisterRequest, session: DbSession, response: 
 
 
 @router.post("/auth/verify-email", status_code=204)
-async def verify_email(
-    body: schemas.VerifyEmailRequest, session: DbSession, response: Response
-):
+async def verify_email(body: schemas.VerifyEmailRequest, session: DbSession, response: Response):
     """Consume a verification link and mark the account's email proven.
 
     Verification is what accept_invitation requires of an existing account
@@ -136,8 +134,7 @@ async def resend_verification(
     await service.AuthService.request_email_verification(session, email=str(body.email))
     response.headers["Cache-Control"] = "no-store"
     return {
-        "message": "If the account needs verification, a confirmation email "
-        "will be sent shortly."
+        "message": "If the account needs verification, a confirmation email will be sent shortly."
     }
 
 
@@ -168,9 +165,7 @@ async def request_password_reset(
     """
     await service.AuthService.request_password_reset(session, email=str(body.email))
     response.headers["Cache-Control"] = "no-store"
-    return {
-        "message": "If the account exists, password reset instructions will be sent shortly."
-    }
+    return {"message": "If the account exists, password reset instructions will be sent shortly."}
 
 
 @router.post("/auth/password-reset/confirm", status_code=204)
@@ -180,9 +175,7 @@ async def confirm_password_reset(
     response: Response,
 ):
     """Consume a reset link and revoke all sessions issued before the reset."""
-    await service.AuthService.reset_password(
-        session, token=body.token, password=body.password
-    )
+    await service.AuthService.reset_password(session, token=body.token, password=body.password)
     response.headers["Cache-Control"] = "no-store"
     return Response(status_code=204, headers={"Cache-Control": "no-store"})
 
@@ -255,6 +248,7 @@ async def switch_tenant(
 
 
 # ---------- §146 MFA (TOTP) ----------
+
 
 class MfaVerifyRequest(BaseModel):
     """Body for POST /auth/mfa/verify — the login challenge's second step.
@@ -358,9 +352,7 @@ async def mfa_disable(
     from app.core.mfa import disable_mfa
 
     _user_agent, ip = _client_meta(request)
-    await disable_mfa(
-        session, user_id=user.id, code=body.code, backup_code=body.backup_code, ip=ip
-    )
+    await disable_mfa(session, user_id=user.id, code=body.code, backup_code=body.backup_code, ip=ip)
     return Response(status_code=204)
 
 
@@ -441,9 +433,7 @@ async def create_invitation(
     # row directly was a 500 on every successful invite: Invitation carries
     # role_id, and InvitationOut's role_code had no attribute to read.
     role_code = (
-        await ctx.session.execute(
-            sa.select(Role.code).where(Role.id == invitation.role_id)
-        )
+        await ctx.session.execute(sa.select(Role.code).where(Role.id == invitation.role_id))
     ).scalar_one_or_none()
     return schemas.InvitationOut(
         id=invitation.id,
@@ -533,8 +523,7 @@ async def transition_tenant_lifecycle(
         # §146 step-up for the owner's one destructive request.
         if not body.password:
             raise PermissionDeniedError(
-                "re-authentication (your password) is required to request "
-                "offboarding"
+                "re-authentication (your password) is required to request offboarding"
             )
         from app.core.security import verify_password_async
 
@@ -549,9 +538,7 @@ async def transition_tenant_lifecycle(
     else:
         # `suspended` is in neither set: it is the billing system's and the
         # platform's lever, never tenant-requestable.
-        raise PermissionDeniedError(
-            f"tenant admins may only request offboarding, not {body.state}"
-        )
+        raise PermissionDeniedError(f"tenant admins may only request offboarding, not {body.state}")
     tenant = await service.TenantLifecycleService.transition(
         ctx.session,
         tenant_id,
@@ -692,9 +679,7 @@ async def export_tenant_data(
         content=export,
         headers={
             "Cache-Control": "no-store",
-            "Content-Disposition": (
-                f'attachment; filename="sales-os-export-{tenant_id}.json"'
-            ),
+            "Content-Disposition": (f'attachment; filename="sales-os-export-{tenant_id}.json"'),
             "X-Export-Schema-Version": "1.0",
         },
     )
@@ -739,9 +724,7 @@ async def list_workspaces(ctx: TenantContext = Depends(require_permission("setti
     return schemas.WorkspaceListOut(items=list(rows))
 
 
-@hierarchy_router.post(
-    "/workspaces", response_model=schemas.WorkspaceOut, status_code=201
-)
+@hierarchy_router.post("/workspaces", response_model=schemas.WorkspaceOut, status_code=201)
 async def create_workspace(
     body: schemas.WorkspaceCreate,
     ctx: TenantContext = Depends(require_permission("settings:write")),
@@ -751,9 +734,7 @@ async def create_workspace(
     )
 
 
-@hierarchy_router.get(
-    "/workspaces/{workspace_id}", response_model=schemas.WorkspaceOut
-)
+@hierarchy_router.get("/workspaces/{workspace_id}", response_model=schemas.WorkspaceOut)
 async def get_workspace(
     workspace_id: uuid.UUID,
     ctx: TenantContext = Depends(require_permission("settings:read")),
@@ -761,9 +742,7 @@ async def get_workspace(
     return await service.HierarchyService.get_workspace(ctx.session, ctx.tenant_id, workspace_id)
 
 
-@hierarchy_router.patch(
-    "/workspaces/{workspace_id}", response_model=schemas.WorkspaceOut
-)
+@hierarchy_router.patch("/workspaces/{workspace_id}", response_model=schemas.WorkspaceOut)
 async def update_workspace(
     workspace_id: uuid.UUID,
     body: schemas.WorkspaceUpdate,
@@ -785,9 +764,7 @@ async def list_locations(
     workspace_id: uuid.UUID,
     ctx: TenantContext = Depends(require_permission("settings:read")),
 ):
-    rows = await service.HierarchyService.list_locations(
-        ctx.session, ctx.tenant_id, workspace_id
-    )
+    rows = await service.HierarchyService.list_locations(ctx.session, ctx.tenant_id, workspace_id)
     return schemas.LocationListOut(items=list(rows))
 
 
@@ -810,9 +787,7 @@ async def create_location(
     )
 
 
-@hierarchy_router.patch(
-    "/locations/{location_id}", response_model=schemas.LocationOut
-)
+@hierarchy_router.patch("/locations/{location_id}", response_model=schemas.LocationOut)
 async def update_location(
     location_id: uuid.UUID,
     body: schemas.LocationUpdate,
@@ -835,9 +810,7 @@ async def list_location_access(
     location_id: uuid.UUID,
     ctx: TenantContext = Depends(require_permission("settings:read")),
 ):
-    rows = await service.HierarchyService.list_access(
-        ctx.session, ctx.tenant_id, location_id
-    )
+    rows = await service.HierarchyService.list_access(ctx.session, ctx.tenant_id, location_id)
     return schemas.LocationAccessListOut(items=list(rows))
 
 
@@ -861,9 +834,7 @@ async def grant_location_access(
     )
 
 
-@hierarchy_router.delete(
-    "/locations/{location_id}/access/{user_id}", status_code=204
-)
+@hierarchy_router.delete("/locations/{location_id}/access/{user_id}", status_code=204)
 async def revoke_location_access(
     location_id: uuid.UUID,
     user_id: uuid.UUID,
@@ -873,4 +844,3 @@ async def revoke_location_access(
         ctx.session, ctx.tenant_id, location_id, user_id=user_id
     )
     return Response(status_code=204)
-

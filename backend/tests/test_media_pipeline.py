@@ -62,9 +62,7 @@ class FakeStorage:
         self.fetch_calls = 0
         self.store_calls = 0
 
-    async def fetch(
-        self, url: str, *, max_bytes: int | None = MAX_MEDIA_BYTES
-    ) -> FetchedMedia:
+    async def fetch(self, url: str, *, max_bytes: int | None = MAX_MEDIA_BYTES) -> FetchedMedia:
         self.fetch_calls += 1
         if self.error is not None:
             raise self.error
@@ -236,6 +234,7 @@ async def test_storage_refuses_an_oversized_stream_without_content_length(
     monkeypatch,
 ) -> None:
     """A hostile server can omit Content-Length; the streaming cap still holds."""
+
     async def chunks():
         yield b"x" * 2048
         yield b"y" * 2048
@@ -439,9 +438,7 @@ async def test_oversized_media_is_refused_and_not_stored(db, tenant_ctx):
     assert storage.store_calls == 0
 
 
-async def test_provider_fetch_failure_is_recorded_not_swallowed(
-    db, tenant_ctx, caplog
-):
+async def test_provider_fetch_failure_is_recorded_not_swallowed(db, tenant_ctx, caplog):
     tenant_id = tenant_ctx.tenant_id
     conversation = await _conversation(db, tenant_id)
     storage = FakeStorage(error=httpx.ConnectError("provider unreachable"))
@@ -457,9 +454,7 @@ async def test_provider_fetch_failure_is_recorded_not_swallowed(
     assert any("media.ingest_failed" in r.message for r in caplog.records)
 
 
-async def test_storage_write_failure_does_not_cost_the_message(
-    db, tenant_ctx, caplog
-):
+async def test_storage_write_failure_does_not_cost_the_message(db, tenant_ctx, caplog):
     """The critical case: `store()` raises something that is neither a
     ValidationError nor an httpx error (a boto3/botocore ClientError).
 

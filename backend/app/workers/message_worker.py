@@ -215,9 +215,7 @@ class MessageWorker(StreamWorker):
                             )
                             await session.flush()
                     except IntegrityError:
-                        logger.info(
-                            "received.event_already_processed id=%s", envelope.id
-                        )
+                        logger.info("received.event_already_processed id=%s", envelope.id)
                         return
                     # §126: one state-mutating processor per conversation.
                     async with conversation_lease(session, uuid.UUID(conversation_id)):
@@ -228,9 +226,7 @@ class MessageWorker(StreamWorker):
                         await transcribe_inbound_voice(
                             session, tenant_id, message_id=envelope.aggregate_id
                         )
-                        await maybe_auto_reply(
-                            session, tenant_id, uuid.UUID(conversation_id)
-                        )
+                        await maybe_auto_reply(session, tenant_id, uuid.UUID(conversation_id))
         except ImportError:
             logger.debug("ai.hooks not installed — skipping auto-reply")
         # NOTE: no broad swallow here. An AI/provider failure must roll the
@@ -300,9 +296,7 @@ class MessageWorker(StreamWorker):
                         )
                         await session.flush()
                 except IntegrityError:
-                    logger.info(
-                        "outbound.event_already_processed id=%s", envelope.id
-                    )
+                    logger.info("outbound.event_already_processed id=%s", envelope.id)
                     return
                 await self._apply_outcome(
                     session, tenant_id, message_id, plan, status, provider_id, error
@@ -326,9 +320,7 @@ class MessageWorker(StreamWorker):
         """
         message = (
             await session.execute(
-                select(Message).where(
-                    Message.tenant_id == tenant_id, Message.id == message_id
-                )
+                select(Message).where(Message.tenant_id == tenant_id, Message.id == message_id)
             )
         ).scalar_one_or_none()
         if message is None:
@@ -338,11 +330,7 @@ class MessageWorker(StreamWorker):
         # for manual reconciliation (delivery webhooks may still flip the
         # message status afterwards).
         if message.status in ("unknown", "sending"):
-            reason = (
-                _UNKNOWN_REASON
-                if message.status == "unknown"
-                else _STUCK_SENDING_REASON
-            )
+            reason = _UNKNOWN_REASON if message.status == "unknown" else _STUCK_SENDING_REASON
             logger.warning(
                 "outbound.requires_reconciliation id=%s status=%s",
                 message.id,
@@ -352,9 +340,7 @@ class MessageWorker(StreamWorker):
         # Idempotent re-delivery guard: never resend something already in
         # flight or delivered (dedupe on republish/replay).
         if message.status != "queued":
-            logger.info(
-                "outbound.skip_not_queued id=%s status=%s", message.id, message.status
-            )
+            logger.info("outbound.skip_not_queued id=%s status=%s", message.id, message.status)
             return None
 
         conversation = (
@@ -422,9 +408,7 @@ class MessageWorker(StreamWorker):
             .values(status="sending")
         )
         if claim.rowcount == 0:
-            logger.info(
-                "outbound.claim_lost id=%s — another worker claimed it", message.id
-            )
+            logger.info("outbound.claim_lost id=%s — another worker claimed it", message.id)
             return None
         await session.flush()
         # §68: integration credentials are encrypted at rest — decrypt lazily,
@@ -435,9 +419,7 @@ class MessageWorker(StreamWorker):
         if integration is not None:
             from app.modules.platform.service import IntegrationCredentialsService
 
-            credentials_config = await IntegrationCredentialsService.decrypt(
-                session, integration
-            )
+            credentials_config = await IntegrationCredentialsService.decrypt(session, integration)
         return _SendPlan(
             adapter=adapter,
             credentials=ProviderCredentials(config=credentials_config),
@@ -464,9 +446,7 @@ class MessageWorker(StreamWorker):
         try:
             provider_id = await plan.adapter.send(plan.credentials, plan.outbound)
         except Exception as exc:  # noqa: BLE001 — classified below
-            logger.exception(
-                "outbound.send_failed message=%s", plan.outbound.message_id
-            )
+            logger.exception("outbound.send_failed message=%s", plan.outbound.message_id)
             return _classify_send_failure(exc), None, str(exc)[:500]
         return "sent", provider_id, None
 
@@ -483,9 +463,7 @@ class MessageWorker(StreamWorker):
         """Phase 3: terminal status, committed atomically with ProcessedEvent."""
         message = (
             await session.execute(
-                select(Message).where(
-                    Message.tenant_id == tenant_id, Message.id == message_id
-                )
+                select(Message).where(Message.tenant_id == tenant_id, Message.id == message_id)
             )
         ).scalar_one_or_none()
         if message is None:
@@ -546,9 +524,6 @@ def _classify_send_failure(exc: Exception) -> str:
     if isinstance(exc, HTTPError):
         return "unknown"
     text = str(exc).lower()
-    if any(
-        marker in text
-        for marker in ("timeout", "timed out", "connection", "unreachable")
-    ):
+    if any(marker in text for marker in ("timeout", "timed out", "connection", "unreachable")):
         return "unknown"
     return "failed"

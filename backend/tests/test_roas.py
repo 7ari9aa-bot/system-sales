@@ -225,18 +225,14 @@ async def test_the_summary_route_says_budget_roas_and_not_roas(
     async def _ctx() -> TenantContext:
         return TenantContext(
             session=db,
-            user=AuthedUser(
-                id=tenant_ctx.user.id, tenant_id=tenant_id, role_code="owner"
-            ),
+            user=AuthedUser(id=tenant_ctx.user.id, tenant_id=tenant_id, role_code="owner"),
             tenant_id=tenant_id,
             role_code="owner",
             permission_codes=set(),
         )
 
     app.dependency_overrides[get_tenant_ctx] = _ctx
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get("/api/v1/analytics/summary")
 
     assert response.status_code == 200, response.text

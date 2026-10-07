@@ -102,9 +102,7 @@ async def test_gate_an_unknown_payment_resolves_to_captured_without_a_second_cha
     assert resolved.status == "captured"
     assert resolved.paid_at is not None, "a capture must stamp when the money arrived"
     # §140/§139 side effects applied: the pending order was confirmed.
-    order_now = (
-        await db.execute(select(Order).where(Order.id == order.id))
-    ).scalar_one()
+    order_now = (await db.execute(select(Order).where(Order.id == order.id))).scalar_one()
     assert order_now.status == "confirmed"
 
     # Re-reporting the SAME captured result is an idempotent no-op: exactly one

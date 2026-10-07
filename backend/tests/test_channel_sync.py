@@ -27,9 +27,7 @@ from app.modules.errors import ConflictError
 from tests.test_shopify_adapter import _adapter, _product
 
 
-async def _external_products_channel(
-    db: AsyncSession, tenant_id: uuid.UUID
-) -> None:
+async def _external_products_channel(db: AsyncSession, tenant_id: uuid.UUID) -> None:
     """§161: nothing syncs until the tenant says the store owns its products."""
     await SourceOfTruthService.upsert_policy(
         db,
@@ -54,9 +52,7 @@ async def _reset_version_gate(db: AsyncSession, tenant_id: uuid.UUID) -> None:
 async def _rows(db: AsyncSession, tenant_id: uuid.UUID) -> list[Product]:
     """Every product this tenant has — the sync may not leave a second one."""
     return list(
-        (
-            await db.execute(select(Product).where(Product.tenant_id == tenant_id))
-        ).scalars().all()
+        (await db.execute(select(Product).where(Product.tenant_id == tenant_id))).scalars().all()
     )
 
 
@@ -85,9 +81,7 @@ async def test_sync_products_writes_a_real_product_and_variant(
     assert variants[0].price == Decimal("19.99")
 
 
-async def test_resync_updates_the_row_it_already_owns(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_resync_updates_the_row_it_already_owns(db: AsyncSession, tenant_ctx) -> None:
     tenant_id = tenant_ctx.tenant_id
     await _external_products_channel(db, tenant_id)
     first, _seen = _adapter(products=[_product(price="19.99")], shop_currency="EGP")
@@ -104,25 +98,19 @@ async def test_resync_updates_the_row_it_already_owns(
     assert len(products) == 1, "a re-sync must update, not duplicate"
     assert products[0].title == "Koshari Bowl, large"
     variants = list(
-        (
-            await db.execute(
-                select(ProductVariant).where(ProductVariant.tenant_id == tenant_id)
-            )
-        ).scalars().all()
+        (await db.execute(select(ProductVariant).where(ProductVariant.tenant_id == tenant_id)))
+        .scalars()
+        .all()
     )
     assert len(variants) == 1
     assert variants[0].price == Decimal("17.50")
 
 
-async def test_a_foreign_currency_price_lands_nothing(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_a_foreign_currency_price_lands_nothing(db: AsyncSession, tenant_ctx) -> None:
     """Refusal at the boundary: a tenant's money is one currency (§47)."""
     tenant_id = tenant_ctx.tenant_id
     await _external_products_channel(db, tenant_id)
-    adapter, _seen = _adapter(
-        products=[_product(currency="USD")], shop_currency="USD"
-    )
+    adapter, _seen = _adapter(products=[_product(currency="USD")], shop_currency="USD")
 
     report = await adapter.sync_products(db, tenant_id)
 
@@ -149,9 +137,7 @@ async def test_upsert_from_external_refuses_a_foreign_currency(
 
     counted = (
         await db.execute(
-            select(func.count()).select_from(Product).where(
-                Product.tenant_id == tenant_id
-            )
+            select(func.count()).select_from(Product).where(Product.tenant_id == tenant_id)
         )
     ).scalar_one()
     assert counted == 0
@@ -213,9 +199,7 @@ def _sync_app(db: AsyncSession, tenant_ctx) -> object:
     app = create_app()
     ctx = TenantContext(
         session=db,
-        user=AuthedUser(
-            id=tenant_ctx.user.id, tenant_id=tenant_ctx.tenant_id, role_code="owner"
-        ),
+        user=AuthedUser(id=tenant_ctx.user.id, tenant_id=tenant_ctx.tenant_id, role_code="owner"),
         tenant_id=tenant_ctx.tenant_id,
         role_code="owner",
         permission_codes={"settings:write"},
@@ -251,9 +235,7 @@ async def test_failed_recheck_demotes_to_reauth_required_and_audits(
     async def reject(_provider, _credentials, _config, *, client=None):
         raise DomainValidationError("The provider rejected these credentials.")
 
-    monkeypatch.setattr(
-        "app.modules.customers.router.verify_channel_credentials", reject
-    )
+    monkeypatch.setattr("app.modules.customers.router.verify_channel_credentials", reject)
 
     async with AsyncClient(
         transport=ASGITransport(app=_sync_app(db, tenant_ctx)), base_url="http://test"
@@ -268,9 +250,9 @@ async def test_failed_recheck_demotes_to_reauth_required_and_audits(
 
     await db.refresh(row)
     assert row.status == "reauth_required"
-    assert decrypt_credentials_dict(row.credentials) == {
-        "access_token": "live-provider-secret"
-    }, "a state sync must not rewrite credentials"
+    assert decrypt_credentials_dict(row.credentials) == {"access_token": "live-provider-secret"}, (
+        "a state sync must not rewrite credentials"
+    )
 
     audit = (
         await db.execute(
@@ -294,9 +276,7 @@ async def test_successful_recheck_rearms_the_channel_without_credential_writes(
         assert credentials == {"access_token": "live-provider-secret"}
         return VerifiedChannel({"phone_number_id": "201008888888"}, "Shop")
 
-    monkeypatch.setattr(
-        "app.modules.customers.router.verify_channel_credentials", approve
-    )
+    monkeypatch.setattr("app.modules.customers.router.verify_channel_credentials", approve)
 
     async with AsyncClient(
         transport=ASGITransport(app=_sync_app(db, tenant_ctx)), base_url="http://test"
@@ -311,9 +291,9 @@ async def test_successful_recheck_rearms_the_channel_without_credential_writes(
 
     await db.refresh(row)
     assert row.status == "active"
-    assert decrypt_credentials_dict(row.credentials) == {
-        "access_token": "live-provider-secret"
-    }, "a re-verification must not rewrite the stored credential"
+    assert decrypt_credentials_dict(row.credentials) == {"access_token": "live-provider-secret"}, (
+        "a re-verification must not rewrite the stored credential"
+    )
     assert row.config["_connection"]["verified_at"]
 
     audit = (
@@ -351,9 +331,7 @@ async def test_channel_state_only_resolves_traffic_while_active(
             sa_text("SELECT public.resolve_channel_tenant('whatsapp', :k)"), {"k": key}
         )
 
-    assert (await _resolve()).scalar() is None, (
-        "reauth_required must not receive provider traffic"
-    )
+    assert (await _resolve()).scalar() is None, "reauth_required must not receive provider traffic"
     row.status = "active"
     await db.flush()
     assert str((await _resolve()).scalar()) == str(tenant_ctx.tenant_id)

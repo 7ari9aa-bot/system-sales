@@ -35,13 +35,17 @@ def _patch_gateway(monkeypatch, results) -> dict:
 async def _seed(db, tenant_id, agent_with_tools: bool = True):
     if agent_with_tools:
         agent = Agent(
-            tenant_id=tenant_id, name="SI Agent", model="fast",
+            tenant_id=tenant_id,
+            name="SI Agent",
+            model="fast",
             system_prompt="analyze",
         )
         db.add(agent)
         await db.flush()
         for name in (
-            "si_get_metric", "si_compare_periods", "si_breakdown",
+            "si_get_metric",
+            "si_compare_periods",
+            "si_breakdown",
             "si_analyze_drivers",
         ):
             db.add(AgentTool(tenant_id=tenant_id, agent_id=agent.id, name=name))
@@ -83,15 +87,21 @@ async def test_orchestrator_rejects_a_free_number_with_the_safe_response(
             content=None,
             tool_calls=[
                 ToolCallRequest(
-                    id="c1", name="si_get_metric",
+                    id="c1",
+                    name="si_get_metric",
                     arguments={"metric_name": "orders_placed", "days": 30},
                 )
             ],
-            tokens_in=1, tokens_out=1, raw_model="m",
+            tokens_in=1,
+            tokens_out=1,
+            raw_model="m",
         ),
         ChatCompletionResult(
             content="المبيعات 1200 EGP وده رغم إن الهدف كان 99",
-            tool_calls=[], tokens_in=1, tokens_out=1, raw_model="m",
+            tool_calls=[],
+            tokens_in=1,
+            tokens_out=1,
+            raw_model="m",
         ),
     ]
     _patch_gateway(monkeypatch, results)
@@ -115,22 +125,26 @@ async def test_grounded_answer_passes_through(db, tenant_ctx, monkeypatch):
             content=None,
             tool_calls=[
                 ToolCallRequest(
-                    id="c1", name="si_get_metric",
+                    id="c1",
+                    name="si_get_metric",
                     arguments={"metric_name": "orders_placed", "days": 30},
                 )
             ],
-            tokens_in=1, tokens_out=1, raw_model="m",
+            tokens_in=1,
+            tokens_out=1,
+            raw_model="m",
         ),
         ChatCompletionResult(
             content="عدد الطلبات الموضوعة الشهر ده: 1",
-            tool_calls=[], tokens_in=1, tokens_out=1, raw_model="m",
+            tool_calls=[],
+            tokens_in=1,
+            tokens_out=1,
+            raw_model="m",
         ),
     ]
     _patch_gateway(monkeypatch, results)
 
-    result = await run_sales_analysis(
-        db, tenant_id, agent_id=agent.id, question="كام طلب؟"
-    )
+    result = await run_sales_analysis(db, tenant_id, agent_id=agent.id, question="كام طلب؟")
     assert result.outcome.value == "ANSWERED"
     assert result.answer == "عدد الطلبات الموضوعة الشهر ده: 1"
     assert "1" in " ".join(str(p["value"]) for p in result.facts)
@@ -162,11 +176,14 @@ async def test_unknown_metric_fails_the_tool_loudly(db, tenant_ctx, monkeypatch)
             content=None,
             tool_calls=[
                 ToolCallRequest(
-                    id="c1", name="si_get_metric",
+                    id="c1",
+                    name="si_get_metric",
                     arguments={"metric_name": "profit_margin"},
                 )
             ],
-            tokens_in=1, tokens_out=1, raw_model="m",
+            tokens_in=1,
+            tokens_out=1,
+            raw_model="m",
         ),
         ChatCompletionResult(
             content="تمام", tool_calls=[], tokens_in=1, tokens_out=1, raw_model="m"
@@ -174,13 +191,9 @@ async def test_unknown_metric_fails_the_tool_loudly(db, tenant_ctx, monkeypatch)
     ]
     _patch_gateway(monkeypatch, results)
 
-    result = await run_sales_analysis(
-        db, tenant_id, agent_id=agent.id, question="المكسب؟"
-    )
+    result = await run_sales_analysis(db, tenant_id, agent_id=agent.id, question="المكسب؟")
     # The tool call FAILED loudly (unknown metric) — the run continued, but
     # no fact was fabricated: the facts list stays empty.
     assert result.facts == []
-    metric_call = next(
-        c for c in result.tool_calls_made if c["name"] == "si_get_metric"
-    )
+    metric_call = next(c for c in result.tool_calls_made if c["name"] == "si_get_metric")
     assert metric_call["status"] == "error"

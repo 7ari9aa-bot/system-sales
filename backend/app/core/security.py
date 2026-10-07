@@ -35,9 +35,7 @@ def _bcrypt_material(password: str) -> bytes:
     The bcrypt salt and cost still protect every stored hash. Domain separation
     prevents this digest from being reused as an unrelated application hash.
     """
-    digest = hashlib.sha256(
-        b"sales-os:password:v1\0" + password.encode("utf-8")
-    ).hexdigest()
+    digest = hashlib.sha256(b"sales-os:password:v1\0" + password.encode("utf-8")).hexdigest()
     return digest.encode("ascii")
 
 
@@ -102,9 +100,7 @@ def _create_token(subject: str, ttl_seconds: int, token_type: str, claims: dict[
 
 def create_access_token(user_id: str, claims: dict[str, Any] | None = None) -> str:
     settings = get_settings()
-    return _create_token(
-        user_id, settings.access_token_ttl_seconds, "access", claims or {}
-    )
+    return _create_token(user_id, settings.access_token_ttl_seconds, "access", claims or {})
 
 
 def create_oauth_state_token(
@@ -120,9 +116,7 @@ def create_oauth_state_token(
 
 def create_refresh_token(user_id: str, claims: dict[str, Any] | None = None) -> str:
     settings = get_settings()
-    return _create_token(
-        user_id, settings.refresh_token_ttl_seconds, "refresh", claims or {}
-    )
+    return _create_token(user_id, settings.refresh_token_ttl_seconds, "refresh", claims or {})
 
 
 STREAM_TOKEN_TTL_SECONDS = 300
@@ -178,14 +172,10 @@ def decode_token(token: str) -> dict[str, Any]:
     if kid:
         if kid == _kid(settings.jwt_secret):
             candidates = [settings.jwt_secret]
-        elif settings.jwt_secret_previous and kid == _kid(
-            settings.jwt_secret_previous
-        ):
+        elif settings.jwt_secret_previous and kid == _kid(settings.jwt_secret_previous):
             candidates = [settings.jwt_secret_previous]
         else:
-            raise jwt.InvalidTokenError(
-                "token kid does not match any configured signing secret"
-            )
+            raise jwt.InvalidTokenError("token kid does not match any configured signing secret")
     else:
         candidates = [settings.jwt_secret]
         if settings.jwt_secret_previous:
@@ -209,8 +199,10 @@ def decode_token(token: str) -> dict[str, Any]:
             # Any other decode error (expired, bad aud) is final: the signature
             # already verified, so trying another secret cannot help.
             last_error = exc
-    raise last_error if last_error is not None else jwt.InvalidTokenError(
-        "no signing secret available"
+    raise (
+        last_error
+        if last_error is not None
+        else jwt.InvalidTokenError("no signing secret available")
     )
 
 

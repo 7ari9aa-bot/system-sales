@@ -124,9 +124,7 @@ def _events_of(calls) -> list[dict]:
 
 async def test_a_successful_effect_counts_processed_and_charges_seconds(recorded, monkeypatch):
     _claimed(monkeypatch)
-    monkeypatch.setattr(
-        "app.core.fairness.consume", _failing_consume, raising=False
-    )
+    monkeypatch.setattr("app.core.fairness.consume", _failing_consume, raising=False)
     bus = _RecorderBus()
     worker = _RecordingWorker(bus)
 
@@ -211,9 +209,7 @@ async def test_exhausted_attempts_count_dead_lettered(recorded, monkeypatch) -> 
     assert bus.dlq
 
 
-async def test_a_defer_counts_deferred_without_touching_the_retry_budget(
-    recorded, monkeypatch
-):
+async def test_a_defer_counts_deferred_without_touching_the_retry_budget(recorded, monkeypatch):
     _claimed(monkeypatch)
     bus = _RecorderBus()
     worker = _RecordingWorker(bus, outcome="deferred")

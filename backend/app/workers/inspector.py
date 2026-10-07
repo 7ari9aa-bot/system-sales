@@ -87,9 +87,7 @@ def _describe_entry(entry_id: str, fields: dict[str, Any]) -> dict[str, Any]:
     return item
 
 
-async def list_dlq(
-    client: aioredis.Redis, stream: str, count: int = 20
-) -> list[dict[str, Any]]:
+async def list_dlq(client: aioredis.Redis, stream: str, count: int = 20) -> list[dict[str, Any]]:
     """List the oldest DLQ entries with the §19 envelope parsed.
 
     Each item: entry_id (Redis Streams id), id (envelope id), type, tenant_id,

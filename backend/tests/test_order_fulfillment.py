@@ -43,9 +43,7 @@ async def _warehouse(db: AsyncSession, tenant_id: uuid.UUID) -> Warehouse:
     return warehouse
 
 
-async def _order(
-    db: AsyncSession, tenant_id: uuid.UUID, *, stock: int = 10, qty: int = 1
-) -> Order:
+async def _order(db: AsyncSession, tenant_id: uuid.UUID, *, stock: int = 10, qty: int = 1) -> Order:
     """A placed order (stock reserved, `pending`), the saga's starting point."""
     customer = await CustomerService.get_or_create_by_identity(
         db,
@@ -61,9 +59,7 @@ async def _order(
     # this fixture's whole job is to hand back an order that got placed, so it
     # publishes the product first.
     await CatalogService.update_product(db, tenant_id, product.id, status="active")
-    variant = await CatalogService.add_variant(
-        db, tenant_id, product.id, price="40.00"
-    )
+    variant = await CatalogService.add_variant(db, tenant_id, product.id, price="40.00")
     await InventoryService.move(
         db,
         tenant_id,
@@ -102,27 +98,21 @@ async def test_checkout_leaves_the_saga_at_stock_reserved(db: AsyncSession, tena
     order = await _order(db, tenant_id)
     await db.flush()
 
-    row = (
-        await db.execute(select(Order).where(Order.id == order.id))
-    ).scalar_one()
+    row = (await db.execute(select(Order).where(Order.id == order.id))).scalar_one()
     assert row.process_state == "stock_reserved"
 
 
 async def test_capture_advances_the_saga_to_paid(db: AsyncSession, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     order = await _order(db, tenant_id)
-    await OrderService.add_payment(
-        db, tenant_id, order.id, method="cash", amount=Decimal("40.00")
-    )
+    await OrderService.add_payment(db, tenant_id, order.id, method="cash", amount=Decimal("40.00"))
     await db.flush()
 
     row = (await db.execute(select(Order).where(Order.id == order.id))).scalar_one()
     assert row.process_state == "paid"
 
 
-async def test_a_second_capture_does_not_fail_for_saga_bookkeeping(
-    db: AsyncSession, tenant_ctx
-):
+async def test_a_second_capture_does_not_fail_for_saga_bookkeeping(db: AsyncSession, tenant_ctx):
     """Split payments are normal; a saga already at `paid` must not 409 them.
 
     The advance is bookkeeping for an event that really happened, not a human
@@ -140,16 +130,12 @@ async def test_a_second_capture_does_not_fail_for_saga_bookkeeping(
     assert row.process_state == "paid"
 
 
-async def test_delivery_advances_the_saga_to_fulfilled(
-    db: AsyncSession, tenant_ctx
-):
+async def test_delivery_advances_the_saga_to_fulfilled(db: AsyncSession, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     order = await _order(db, tenant_id)
     # The capture itself confirms the pending order, so the next step is the
     # one a merchant takes after that: processing.
-    await OrderService.add_payment(
-        db, tenant_id, order.id, method="cash", amount=Decimal("40.00")
-    )
+    await OrderService.add_payment(db, tenant_id, order.id, method="cash", amount=Decimal("40.00"))
     await OrderService.change_status(db, tenant_id, order.id, "processing")
     await OrderService.change_status(db, tenant_id, order.id, "shipped")
     await OrderService.change_status(db, tenant_id, order.id, "delivered")
@@ -179,9 +165,7 @@ async def test_explicit_saga_command_stays_strict(db: AsyncSession, tenant_ctx):
     order = await _order(db, tenant_id)
 
     with pytest.raises(ConflictError):
-        await OrderService.transition_process_state(
-            db, tenant_id, order.id, "created"
-        )
+        await OrderService.transition_process_state(db, tenant_id, order.id, "created")
     await db.flush()
 
 
@@ -214,19 +198,21 @@ async def test_create_shipment_records_the_carrier_and_ships_the_order(
     assert row.status == "shipped"
     # Going through the one status path means the audit trail exists too.
     history = (
-        await db.execute(
-            select(OrderStatusHistory).where(
-                OrderStatusHistory.order_id == order.id,
-                OrderStatusHistory.to_status == "shipped",
+        (
+            await db.execute(
+                select(OrderStatusHistory).where(
+                    OrderStatusHistory.order_id == order.id,
+                    OrderStatusHistory.to_status == "shipped",
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(history) == 1
 
 
-async def test_create_shipment_requires_a_processing_order(
-    db: AsyncSession, tenant_ctx
-):
+async def test_create_shipment_requires_a_processing_order(db: AsyncSession, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     order = await _order(db, tenant_id)
 
@@ -249,9 +235,7 @@ async def test_shipment_delivery_advances_the_order(db: AsyncSession, tenant_ctx
     )
 
     for status in ("picked_up", "in_transit", "delivered"):
-        shipment = await OrderService.set_shipment_status(
-            db, tenant_id, shipment.id, status
-        )
+        shipment = await OrderService.set_shipment_status(db, tenant_id, shipment.id, status)
     await db.flush()
 
     assert shipment.delivered_at is not None
@@ -259,9 +243,7 @@ async def test_shipment_delivery_advances_the_order(db: AsyncSession, tenant_ctx
     assert row.status == "delivered"
 
 
-async def test_shipment_status_machine_rejects_an_illegal_jump(
-    db: AsyncSession, tenant_ctx
-):
+async def test_shipment_status_machine_rejects_an_illegal_jump(db: AsyncSession, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     order = await _order(db, tenant_id)
     await _to_processing(db, tenant_id, order)
@@ -281,9 +263,7 @@ async def test_shipment_status_machine_rejects_an_illegal_jump(
     await db.flush()
 
 
-async def test_a_shipment_is_not_visible_to_another_tenant(
-    db: AsyncSession, tenant_ctx
-):
+async def test_a_shipment_is_not_visible_to_another_tenant(db: AsyncSession, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     order = await _order(db, tenant_id)
     await _to_processing(db, tenant_id, order)
@@ -296,9 +276,7 @@ async def test_a_shipment_is_not_visible_to_another_tenant(
     assert await OrderService.list_shipments(db, uuid.uuid4(), order.id) == []
 
 
-async def test_list_shipments_returns_the_order_s_own_rows(
-    db: AsyncSession, tenant_ctx
-):
+async def test_list_shipments_returns_the_order_s_own_rows(db: AsyncSession, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     order = await _order(db, tenant_id)
     await _to_processing(db, tenant_id, order)

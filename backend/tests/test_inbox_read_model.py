@@ -237,8 +237,18 @@ async def test_page_answers_every_element_137_names() -> None:
 
 async def test_a_conversation_with_no_messages_still_pages() -> None:
     """A brand-new conversation has no message and no SLA row: NULLS LAST, not missing."""
-    session = RecordingSession([_row(id=CONVERSATION, status="open", channel="webchat",
-                                     customer_id=CUSTOMER, created_at=NOW, unread_count=0)])
+    session = RecordingSession(
+        [
+            _row(
+                id=CONVERSATION,
+                status="open",
+                channel="webchat",
+                customer_id=CUSTOMER,
+                created_at=NOW,
+                unread_count=0,
+            )
+        ]
+    )
     item = (await InboxQuery.page(session, TENANT, limit=50))[0]
     assert item["last_message_preview"] is None
     assert item["last_message_at"] is None
@@ -334,9 +344,13 @@ def test_keyset_cursor_still_accepts_the_shape_it_shipped_with() -> None:
     from app.core.pagination import decode_cursor
     from app.modules.conversations.inbox import decode_keyset
 
-    legacy = base64.urlsafe_b64encode(
-        json.dumps({"created_at": NOW.isoformat(), "id": str(CONVERSATION)}).encode()
-    ).decode().rstrip("=")
+    legacy = (
+        base64.urlsafe_b64encode(
+            json.dumps({"created_at": NOW.isoformat(), "id": str(CONVERSATION)}).encode()
+        )
+        .decode()
+        .rstrip("=")
+    )
     assert decode_keyset(legacy) == decode_cursor(legacy)
 
 
@@ -670,8 +684,12 @@ async def test_unread_cannot_drift_from_the_facts_it_projects(db, inbox_seed) ->
     assert before[0]["unread_count"] == 2
 
     await ConversationService.add_message(
-        db, TENANT, conversation_id=inbox_seed.conversation.id,
-        direction="inbound", sender_type="customer", body="أخرى",
+        db,
+        TENANT,
+        conversation_id=inbox_seed.conversation.id,
+        direction="inbound",
+        sender_type="customer",
+        body="أخرى",
     )
     await ConversationService.mark_read(db, TENANT, inbox_seed.conversation.id)
 
@@ -685,7 +703,9 @@ async def test_unread_cannot_drift_from_the_facts_it_projects(db, inbox_seed) ->
 
     inbound = (
         await db.execute(
-            sa_select(func.count()).select_from(Message).where(
+            sa_select(func.count())
+            .select_from(Message)
+            .where(
                 Message.conversation_id == inbox_seed.conversation.id,
                 Message.direction == "inbound",
             )
@@ -737,9 +757,7 @@ async def test_page_is_tenant_isolated(db, inbox_seed) -> None:
     assert [i["id"] for i in page] == [str(inbox_seed.conversation.id)]
 
     db.add(
-        Conversation(
-            tenant_id=OTHER_TENANT, customer_id=other.id, channel="webchat", status="open"
-        )
+        Conversation(tenant_id=OTHER_TENANT, customer_id=other.id, channel="webchat", status="open")
     )
     with pytest.raises(Exception) as excinfo:  # RLS violation → ProgrammingError
         await db.flush()

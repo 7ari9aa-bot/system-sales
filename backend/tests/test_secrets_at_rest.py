@@ -124,17 +124,13 @@ class TestRotation:
         with pytest.raises(SecretKeyError):
             validate_rotation_candidate("!!! not base64 !!!", current=current)
         with pytest.raises(SecretKeyError):
-            validate_rotation_candidate(
-                base64.b64encode(b"tiny").decode(), current=current
-            )
+            validate_rotation_candidate(base64.b64encode(b"tiny").decode(), current=current)
 
 
 class TestPersistedCredentials:
     """DB-backed: credentials at rest are ciphertext, reads audit once."""
 
-    async def test_credentials_stored_encrypted_and_reads_audited(
-        self, db, tenant_ctx
-    ):
+    async def test_credentials_stored_encrypted_and_reads_audited(self, db, tenant_ctx):
         import sqlalchemy as sa
 
         from app.core.secrets import get_envelope_store
@@ -173,8 +169,7 @@ class TestPersistedCredentials:
                 await db.execute(
                     sa.select(AuditLog).where(
                         AuditLog.tenant_id == tenant_ctx.tenant.id,
-                        AuditLog.action
-                        == IntegrationCredentialsService.READ_ACTION,
+                        AuditLog.action == IntegrationCredentialsService.READ_ACTION,
                         AuditLog.resource_id == str(integration.id),
                     )
                 )

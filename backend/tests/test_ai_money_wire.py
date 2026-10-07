@@ -127,9 +127,7 @@ def _policy(*, hard_cap: Decimal, on_exceed: str = "block") -> SimpleNamespace:
 async def test_enforce_budget_ships_spend_and_cap_as_decimal_strings() -> None:
     """§47: the 200 response carries the same money shape as the error path."""
     payload = _wire(
-        await enforce_budget(
-            _BudgetSession(policies=[_policy(hard_cap=CAP)], spend=SPEND), TENANT
-        )
+        await enforce_budget(_BudgetSession(policies=[_policy(hard_cap=CAP)], spend=SPEND), TENANT)
     )
 
     assert isinstance(payload["spend"], str), f"spend left as {type(payload['spend'])}"
@@ -156,9 +154,7 @@ async def test_the_budget_view_and_the_block_error_name_the_same_money() -> None
     blocked = _wire(raised.value.details)
 
     under_cap = _wire(
-        await enforce_budget(
-            _BudgetSession(policies=[_policy(hard_cap=CAP)], spend=SPEND), TENANT
-        )
+        await enforce_budget(_BudgetSession(policies=[_policy(hard_cap=CAP)], spend=SPEND), TENANT)
     )
 
     assert blocked["cap"] == under_cap["cap"] == "9999999999.87654321"
@@ -174,9 +170,7 @@ async def test_the_budget_percentage_stays_a_number_because_it_is_a_percentage()
     assertion is the guard against an over-broad "stringify everything" fix.
     """
     payload = _wire(
-        await enforce_budget(
-            _BudgetSession(policies=[_policy(hard_cap=CAP)], spend=SPEND), TENANT
-        )
+        await enforce_budget(_BudgetSession(policies=[_policy(hard_cap=CAP)], spend=SPEND), TENANT)
     )
 
     assert isinstance(payload["ratio"], float), payload["ratio"]
@@ -304,17 +298,11 @@ async def test_the_voice_worker_books_the_decimal_estimate_not_a_float(
     monkeypatch.setattr(message_worker, "settle_reservation", fake_settle)
     monkeypatch.setattr(message_worker, "record_usage", fake_record)
     monkeypatch.setattr(message_worker, "stt_cost_estimate", lambda attachment: SPEND)
-    monkeypatch.setattr(
-        message_worker.VoiceService, "transcribe", staticmethod(fake_transcribe)
-    )
+    monkeypatch.setattr(message_worker.VoiceService, "transcribe", staticmethod(fake_transcribe))
 
-    attachment = SimpleNamespace(
-        id=uuid.uuid4(), duration=45, transcription_status="pending"
-    )
+    attachment = SimpleNamespace(id=uuid.uuid4(), duration=45, transcription_status="pending")
     session = _VoiceNoteSession(attachment)
-    text = await message_worker.transcribe_inbound_voice(
-        session, TENANT, message_id=uuid.uuid4()
-    )
+    text = await message_worker.transcribe_inbound_voice(session, TENANT, message_id=uuid.uuid4())
 
     assert text == "مرحبا"
     assert len(booked) == 1, booked

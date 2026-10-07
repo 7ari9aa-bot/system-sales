@@ -90,9 +90,7 @@ def _params(db, tenant_ctx, **overrides) -> TurnInput:
 
 async def test_empty_turn_short_circuits_without_calling_the_runner(db, tenant_ctx):
     runner = FakeRunner(_result())
-    outcome = await run_customer_turn(
-        db, _params(db, tenant_ctx, body=None), runner=runner
-    )
+    outcome = await run_customer_turn(db, _params(db, tenant_ctx, body=None), runner=runner)
     assert outcome.reply is None
     assert outcome.blocked_reason == "empty_turn"
     assert runner.calls == []
@@ -104,14 +102,16 @@ async def test_photo_turn_runs_vision_and_shows_verified_products(db, tenant_ctx
     async def fake_vision(session, tenant_id, *, image_url, text_hint=None):
         captured["image_url"] = image_url
         captured["text_hint"] = text_hint
-        return _vision([
-            {
-                "product_id": PRODUCT_A,
-                "title": "عباية سوداء",
-                "verified": True,
-                "available_variants": 2,
-            }
-        ])
+        return _vision(
+            [
+                {
+                    "product_id": PRODUCT_A,
+                    "title": "عباية سوداء",
+                    "verified": True,
+                    "available_variants": 2,
+                }
+            ]
+        )
 
     monkeypatch.setattr(turn_module, "run_vision_match", fake_vision)
     runner = FakeRunner(_result())
@@ -138,9 +138,7 @@ async def test_photo_turn_runs_vision_and_shows_verified_products(db, tenant_ctx
     assert outcome.vision[0]["candidates"][0]["product_id"] == PRODUCT_A
 
 
-async def test_photo_without_a_minted_url_is_counted_not_interpreted(
-    db, tenant_ctx, monkeypatch
-):
+async def test_photo_without_a_minted_url_is_counted_not_interpreted(db, tenant_ctx, monkeypatch):
     seen: list = []
 
     async def fake_vision(session, tenant_id, *, image_url, text_hint=None):
@@ -215,9 +213,7 @@ async def test_ungrounded_numeral_blocks_the_reply(db, tenant_ctx):
     runner = FakeRunner(
         _result(
             content="السعر 199 جنيه والخصم 30%",
-            tool_calls=[
-                {"name": "get_product", "status": "ok", "result": {"price": "149.00"}}
-            ],
+            tool_calls=[{"name": "get_product", "status": "ok", "result": {"price": "149.00"}}],
         )
     )
     outcome = await run_customer_turn(db, _params(db, tenant_ctx), runner=runner)

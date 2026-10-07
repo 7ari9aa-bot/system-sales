@@ -21,13 +21,17 @@ from app.modules.errors import NotFoundError
 
 async def _identity_count(db: AsyncSession, tenant_id: uuid.UUID, customer_id: uuid.UUID) -> int:
     rows = (
-        await db.execute(
-            select(CustomerIdentity).where(
-                CustomerIdentity.tenant_id == tenant_id,
-                CustomerIdentity.customer_id == customer_id,
+        (
+            await db.execute(
+                select(CustomerIdentity).where(
+                    CustomerIdentity.tenant_id == tenant_id,
+                    CustomerIdentity.customer_id == customer_id,
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return len(rows)
 
 
@@ -38,9 +42,7 @@ async def test_get_or_create_by_identity_dedups(db: AsyncSession, tenant_ctx):
     first = await CustomerService.get_or_create_by_identity(
         db, tenant_id, "whatsapp", external_id, name="Nour", phone="+201000000001"
     )
-    second = await CustomerService.get_or_create_by_identity(
-        db, tenant_id, "whatsapp", external_id
-    )
+    second = await CustomerService.get_or_create_by_identity(db, tenant_id, "whatsapp", external_id)
 
     assert second.id == first.id
     assert first.name == "Nour"
@@ -50,9 +52,7 @@ async def test_get_or_create_by_identity_dedups(db: AsyncSession, tenant_ctx):
     await db.flush()
 
 
-async def test_same_phone_attaches_identity_to_existing_customer(
-    db: AsyncSession, tenant_ctx
-):
+async def test_same_phone_attaches_identity_to_existing_customer(db: AsyncSession, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     phone = f"+2011{uuid.uuid4().hex[:8]}"
 
@@ -96,22 +96,16 @@ async def test_add_tag_is_idempotent_and_remove_works(db: AsyncSession, tenant_c
     await CustomerService.add_tag(db, tenant_id, customer.id, "wholesale")
 
     links = (
-        await db.execute(
-            select(customer_tags).where(customer_tags.c.customer_id == customer.id)
-        )
+        await db.execute(select(customer_tags).where(customer_tags.c.customer_id == customer.id))
     ).all()
     assert len(links) == 2
-    tags = (
-        await db.execute(select(Tag).where(Tag.tenant_id == tenant_id))
-    ).scalars().all()
+    tags = (await db.execute(select(Tag).where(Tag.tenant_id == tenant_id))).scalars().all()
     assert {t.name for t in tags} == {"vip", "wholesale"}
     assert tag.name == "vip"
 
     await CustomerService.remove_tag(db, tenant_id, customer.id, "vip")
     remaining = (
-        await db.execute(
-            select(customer_tags).where(customer_tags.c.customer_id == customer.id)
-        )
+        await db.execute(select(customer_tags).where(customer_tags.c.customer_id == customer.id))
     ).all()
     assert len(remaining) == 1
     await db.flush()
@@ -128,9 +122,7 @@ async def test_add_note_and_record_event(db: AsyncSession, tenant_ctx):
     )
     assert note.body == "Prefers evening delivery"
     assert note.author_user_id == tenant_ctx.user.id
-    stored_note = (
-        await db.execute(select(Note).where(Note.id == note.id))
-    ).scalar_one()
+    stored_note = (await db.execute(select(Note).where(Note.id == note.id))).scalar_one()
     assert stored_note.customer_id == customer.id
 
     event = await CustomerService.record_event(
@@ -205,8 +197,11 @@ async def test_identity_merge_full_flow(db, tenant_ctx):
         db, tenant_ctx.tenant_id, customer_id=cust_b.id, channel="whatsapp"
     )
     await add_outbox_event(
-        db, aggregate_type="customer", aggregate_id=cust_b.id,
-        event_type="customer.merged", tenant_id=tenant_ctx.tenant_id,
+        db,
+        aggregate_type="customer",
+        aggregate_id=cust_b.id,
+        event_type="customer.merged",
+        tenant_id=tenant_ctx.tenant_id,
     )
 
     canonical_id = await IdentityMergeService.merge(
@@ -223,9 +218,7 @@ async def test_identity_merge_full_flow(db, tenant_ctx):
     away_merged = await db.scalar(
         select(Customer.merged_into_customer_id).where(Customer.id == cust_b.id)
     )
-    away_merged_at = await db.scalar(
-        select(Customer.merged_at).where(Customer.id == cust_b.id)
-    )
+    away_merged_at = await db.scalar(select(Customer.merged_at).where(Customer.id == cust_b.id))
     assert away_merged == cust_a.id
     assert away_merged_at is not None
 
@@ -237,13 +230,22 @@ async def test_identity_merge_full_flow(db, tenant_ctx):
 
     # merge event + audit + outbox exist
     merge_event = (
-        await db.execute(select(IdentityMergeEvent).where(
-            IdentityMergeEvent.tenant_id == tenant_ctx.tenant_id))
-    ).scalars().all()
+        (
+            await db.execute(
+                select(IdentityMergeEvent).where(
+                    IdentityMergeEvent.tenant_id == tenant_ctx.tenant_id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
     assert len(merge_event) == 1
     audit = (
-        await db.execute(select(AuditLog).where(AuditLog.action == "customer.merged"))
-    ).scalars().all()
+        (await db.execute(select(AuditLog).where(AuditLog.action == "customer.merged")))
+        .scalars()
+        .all()
+    )
     assert len(audit) == 1
 
     # candidate creation service exists and validates distinct customers
@@ -251,17 +253,17 @@ async def test_identity_merge_full_flow(db, tenant_ctx):
 
     try:
         await IdentityMergeService.create_merge_candidate(
-            db, tenant_ctx.tenant_id,
-            customer_a_id=cust_a.id, customer_b_id=cust_a.id,
+            db,
+            tenant_ctx.tenant_id,
+            customer_a_id=cust_a.id,
+            customer_b_id=cust_a.id,
         )
         raise AssertionError("self-candidate must be rejected")
     except ConflictError:
         pass
 
 
-async def test_a_tombstoned_phone_never_adopts_a_new_channel_identity(
-    db: AsyncSession, tenant_ctx
-):
+async def test_a_tombstoned_phone_never_adopts_a_new_channel_identity(db: AsyncSession, tenant_ctx):
     """§143: contact resolution skips dead rows, so an erased customer's phone
     cannot quietly become the handle for a new live record."""
     from app.core.errors import ConflictError
@@ -280,8 +282,12 @@ async def test_a_tombstoned_phone_never_adopts_a_new_channel_identity(
         )
 
     rows = (
-        await db.execute(
-            select(Customer).where(Customer.tenant_id == tenant_id, Customer.phone == phone)
+        (
+            await db.execute(
+                select(Customer).where(Customer.tenant_id == tenant_id, Customer.phone == phone)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert [c.id for c in rows] == [gone.id]

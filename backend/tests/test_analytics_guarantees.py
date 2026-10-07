@@ -27,6 +27,7 @@ from app.modules.analytics.validators import validate_finding, validate_response
 
 # ------------------------------------------------------------- maturity ---
 
+
 def test_maturity_three_states_from_the_ratio():
     assert maturity_status(0.99) is MaturityStatus.MATURE
     assert maturity_status(0.5) is MaturityStatus.PARTIALLY_MATURE
@@ -43,6 +44,7 @@ def test_maturity_ratio_outside_unit_interval_fails():
 
 
 # -------------------------------------------------------------- numbers ---
+
 
 def _fact(value: str, fact_id: str = "F1") -> object:
     from datetime import timedelta
@@ -72,9 +74,7 @@ def _fact(value: str, fact_id: str = "F1") -> object:
 
 
 def test_render_money_placeholder():
-    rendered, problems = render_answer(
-        "المبيعات {{F1:money}}", {"F1": _fact("123456.78")}
-    )
+    rendered, problems = render_answer("المبيعات {{F1:money}}", {"F1": _fact("123456.78")})
     assert problems == []
     assert "123,457 EGP" in rendered
 
@@ -108,6 +108,7 @@ def test_free_numerals_found_after_render():
 
 
 # ----------------------------------------------------------- confidence ---
+
 
 def test_confidence_caps_table():
     base = dict(
@@ -152,6 +153,7 @@ def test_hypothesis_is_never_high_even_on_perfect_data():
 
 
 # ----------------------------------------------------------- validators ---
+
 
 def _finding(**overrides) -> Finding:
     base = dict(
@@ -202,15 +204,14 @@ def test_response_validator_catches_free_numbers_and_survivors():
 def test_response_validator_blocks_high_confidence_hypothesis():
     draft = AnswerDraft(
         text="x",
-        findings=[
-            _finding(type="HYPOTHESIS", confidence="HIGH")
-        ],
+        findings=[_finding(type="HYPOTHESIS", confidence="HIGH")],
     )
     problems = validate_response(draft, "نص بدون أرقام")
     assert any("HYPOTHESIS" in p for p in problems)
 
 
 # ------------------------------------------------------------- coverage ---
+
 
 def test_coverage_floor_per_family():
     verdict = missing_coverage(

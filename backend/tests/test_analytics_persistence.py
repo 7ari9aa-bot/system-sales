@@ -120,12 +120,16 @@ async def test_analysis_events_staged_through_the_outbox(db, tenant_ctx):
         payload={"question": "كام المبيعات؟"},
     )
     events = (
-        await db.execute(
-            select(OutboxEvent).where(
-                OutboxEvent.aggregate_id == analysis_id,
+        (
+            await db.execute(
+                select(OutboxEvent).where(
+                    OutboxEvent.aggregate_id == analysis_id,
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(events) == 1
     assert events[0].payload["event_type"] == "ai.analysis.started"
     assert events[0].payload["analysis_id"] == str(analysis_id)

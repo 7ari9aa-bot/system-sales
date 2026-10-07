@@ -140,9 +140,7 @@ def test_a_rewrite_that_would_step_on_an_existing_canonical_row_is_a_collision()
     two legacy spellings — rewriting the local one is what raises 23505."""
     tenant = uuid.uuid4()
     holder, mover = uuid.uuid4(), uuid.uuid4()
-    groups = find_canonical_collisions(
-        [(tenant, holder, EGYPT), (tenant, mover, "00201001234567")]
-    )
+    groups = find_canonical_collisions([(tenant, holder, EGYPT), (tenant, mover, "00201001234567")])
     assert [str(i) for i in groups[0]["row_ids"]] == sorted([str(holder), str(mover)])
 
 
@@ -155,9 +153,9 @@ def test_collisions_are_per_tenant_and_ordered_deterministically() -> None:
         (b, uuid.uuid4(), "0100-123-4567"),
     ]
     groups = find_canonical_collisions(rows)
-    assert [str(g["tenant_id"]) for g in groups] == sorted(
-        [str(a), str(b)]
-    ), "groups must come back in a stable order or the migration is not deterministic"
+    assert [str(g["tenant_id"]) for g in groups] == sorted([str(a), str(b)]), (
+        "groups must come back in a stable order or the migration is not deterministic"
+    )
     assert all(g["canonical"] == EGYPT for g in groups)
 
 
@@ -187,9 +185,7 @@ def test_the_data_quality_route_shadows_no_customer_id_route() -> None:
     registered FIRST."""
     paths = [r.path for r in router.routes]
     assert "/customers/contact-data-issues" in paths
-    assert paths.index("/customers/contact-data-issues") < paths.index(
-        "/customers/{customer_id}"
-    )
+    assert paths.index("/customers/contact-data-issues") < paths.index("/customers/{customer_id}")
 
 
 # ---------------------------------------------------------------------------
@@ -255,18 +251,14 @@ async def _legacy(
 
 async def _stored(db: AsyncSession, customer_id: uuid.UUID) -> tuple[str | None, dict]:
     row = (
-        await db.execute(
-            select(Customer.phone, Customer.extra).where(Customer.id == customer_id)
-        )
+        await db.execute(select(Customer.phone, Customer.extra).where(Customer.id == customer_id))
     ).one()
     return row[0], row[1] or {}
 
 
 async def test_upgrade_rewrites_reversible_values_in_place(db: AsyncSession, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
-    phone_id = await _legacy(
-        db, tenant_id, phone="01001234567", email="  Ali.Hassan@EXAMPLE.com "
-    )
+    phone_id = await _legacy(db, tenant_id, phone="01001234567", email="  Ali.Hassan@EXAMPLE.com ")
     spaced_id = await _legacy(db, tenant_id, phone="+20 999 888 7766")
 
     await _drive(db, "upgrade")
@@ -337,13 +329,17 @@ async def test_a_marked_row_is_queryable_by_its_mark(db: AsyncSession, tenant_ct
     await _drive(db, "upgrade")
 
     marked = (
-        await db.execute(
-            select(Customer.id).where(
-                Customer.tenant_id == tenant_id,
-                func.jsonb_extract_path(Customer.extra, *FLAG_PATH).isnot(None),
+        (
+            await db.execute(
+                select(Customer.id).where(
+                    Customer.tenant_id == tenant_id,
+                    func.jsonb_extract_path(Customer.extra, *FLAG_PATH).isnot(None),
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert marked == [row_id], "only the row the migration marked comes back"
 
 
@@ -374,15 +370,11 @@ async def test_upgrade_is_idempotent(db: AsyncSession, tenant_ctx):
     await _drive(db, "upgrade")
 
     before = (
-        await db.execute(
-            select(Customer.id, Customer.phone, Customer.extra).order_by(Customer.id)
-        )
+        await db.execute(select(Customer.id, Customer.phone, Customer.extra).order_by(Customer.id))
     ).all()
     await _drive(db, "upgrade")
     after = (
-        await db.execute(
-            select(Customer.id, Customer.phone, Customer.extra).order_by(Customer.id)
-        )
+        await db.execute(select(Customer.id, Customer.phone, Customer.extra).order_by(Customer.id))
     ).all()
 
     assert [(r[0], r[1], r[2]) for r in before] == [(r[0], r[1], r[2]) for r in after]
@@ -417,9 +409,7 @@ async def test_downgrade_restores_every_value_it_changed(db: AsyncSession, tenan
     )
 
 
-async def test_the_report_lists_every_marked_row_for_the_tenant(
-    db: AsyncSession, tenant_ctx
-):
+async def test_the_report_lists_every_marked_row_for_the_tenant(db: AsyncSession, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     corrupted_id = await _legacy(db, tenant_id, phone=FABRICATED)
     clash_a_id = await _legacy(db, tenant_id, phone=EGYPT)
@@ -451,9 +441,7 @@ async def test_the_report_is_scoped_to_the_caller_tenant(db: AsyncSession, tenan
     assert await CustomerService.contact_data_quality_report(db, other) == []
 
 
-async def test_the_endpoint_redacts_every_phone_column_it_returns(
-    db: AsyncSession, tenant_ctx
-):
+async def test_the_endpoint_redacts_every_phone_column_it_returns(db: AsyncSession, tenant_ctx):
     """§146 redacts by field NAME, and the report renames phones — so the
     renamed keys have to be on the redaction list too."""
     from types import SimpleNamespace
@@ -479,14 +467,13 @@ async def test_the_endpoint_redacts_every_phone_column_it_returns(
     assert item["suspected_phone"] is None
     assert item["issues"] == ["phone_legacy_default_country"]
 
+
 # ---------------------------------------------------------------------------
 # E — the PATCH branch that writes columns directly still has to normalize.
 # ---------------------------------------------------------------------------
 
 
-async def test_the_if_match_patch_branch_stores_a_canonical_phone(
-    db: AsyncSession, tenant_ctx
-):
+async def test_the_if_match_patch_branch_stores_a_canonical_phone(db: AsyncSession, tenant_ctx):
     """``apply_versioned_update`` takes plain column values into one UPDATE, so
     it never passed through the service's normalization: a drawer PATCHing with
     an ETag wrote the raw spelling straight into the uniqueness key."""

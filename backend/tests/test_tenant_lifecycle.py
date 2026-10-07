@@ -162,11 +162,7 @@ def test_bad_transitions_are_refused_before_touching_the_database(
     target: str, reason: str | None
 ) -> None:
     with pytest.raises(ValidationError):
-        asyncio.run(
-            TenantLifecycleService.transition(
-                _NoDb(), uuid.uuid4(), target, reason=reason
-            )
-        )
+        asyncio.run(TenantLifecycleService.transition(_NoDb(), uuid.uuid4(), target, reason=reason))
 
 
 @pytest.mark.parametrize(
@@ -194,9 +190,7 @@ def test_a_non_string_reason_fails_closed(reason: object) -> None:
     AttributeError (500) before the guard existed."""
     with pytest.raises(ValidationError):
         asyncio.run(
-            TenantLifecycleService.transition(
-                _NoDb(), uuid.uuid4(), "suspended", reason=reason
-            )
+            TenantLifecycleService.transition(_NoDb(), uuid.uuid4(), "suspended", reason=reason)
         )
 
 
@@ -234,9 +228,7 @@ def _owner_ctx(db, tenant_ctx, *, is_platform_admin: bool = False) -> TenantCont
 
 
 @pytest.mark.parametrize("target", ["active", "past_due", "grace", "deleted"])
-async def test_billing_controlled_transitions_require_platform_admin(
-    db, tenant_ctx, target: str
-):
+async def test_billing_controlled_transitions_require_platform_admin(db, tenant_ctx, target: str):
     """→active/→past_due/→grace/→deleted restore service or steer billing."""
     body = LifecycleTransitionRequest(state=target, reason="self-service attempt")
     with pytest.raises(PermissionDeniedError, match="platform admin"):
@@ -281,9 +273,7 @@ async def test_owner_offboarding_with_the_password_transitions(
     body = LifecycleTransitionRequest(
         state="offboarding", reason="closing shop", password="secret-password"
     )
-    out = await transition_tenant_lifecycle(
-        tenant_ctx.tenant_id, body, _owner_ctx(db, tenant_ctx)
-    )
+    out = await transition_tenant_lifecycle(tenant_ctx.tenant_id, body, _owner_ctx(db, tenant_ctx))
     assert out.lifecycle_state == "offboarding"
     assert out.deletion_scheduled_at is not None
 
@@ -326,6 +316,7 @@ async def test_platform_admin_member_may_move_the_state(
 # draws: past_due, suspended, offboarding, deleted.
 
 import httpx  # noqa: E402
+
 from app.main import create_app  # noqa: E402
 from app.modules.identity.deps import get_db, get_tenant_ctx  # noqa: E402
 

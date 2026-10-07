@@ -34,9 +34,7 @@ def _media() -> list[dict]:
 
 
 async def _seed(db, tenant_id):
-    db.add(
-        Agent(tenant_id=tenant_id, name="Sales Agent", model="fast", system_prompt="s")
-    )
+    db.add(Agent(tenant_id=tenant_id, name="Sales Agent", model="fast", system_prompt="s"))
     customer = Customer(tenant_id=tenant_id, name="Media Customer")
     db.add(customer)
     await db.flush()
@@ -69,14 +67,18 @@ def _patch_runner(monkeypatch, media: list[dict], shown: list[str]) -> None:
 
 async def _outbound(db, tenant_id, conversation_id) -> list:
     rows = (
-        await db.execute(
-            select(conv_models.Message).where(
-                conv_models.Message.tenant_id == tenant_id,
-                conv_models.Message.conversation_id == conversation_id,
-                conv_models.Message.direction == "outbound",
+        (
+            await db.execute(
+                select(conv_models.Message).where(
+                    conv_models.Message.tenant_id == tenant_id,
+                    conv_models.Message.conversation_id == conversation_id,
+                    conv_models.Message.direction == "outbound",
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return list(rows)
 
 
@@ -91,9 +93,7 @@ async def _state(db, tenant_id, conversation_id) -> ConversationAgentState | Non
     ).scalar_one_or_none()
 
 
-async def test_media_delivered_after_text_with_outbox_and_state(
-    db, tenant_ctx, monkeypatch
-):
+async def test_media_delivered_after_text_with_outbox_and_state(db, tenant_ctx, monkeypatch):
     tenant_id = tenant_ctx.tenant_id
     product_id = str(uuid.uuid4())
     conversation = await _seed(db, tenant_id)
@@ -109,17 +109,19 @@ async def test_media_delivered_after_text_with_outbox_and_state(
     assert image_message.body is None
 
     events = (
-        await db.execute(
-            select(OutboxEvent).where(
-                OutboxEvent.aggregate_id.in_([str(m.id) for m in outbound])
+        (
+            await db.execute(
+                select(OutboxEvent).where(
+                    OutboxEvent.aggregate_id.in_([str(m.id) for m in outbound])
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     # ONE event per delivered message — text and image alike — each routed
     # as message.outbound and stamped with the tenant in the envelope meta.
-    assert {str(event.aggregate_id) for event in events} == {
-        str(m.id) for m in outbound
-    }
+    assert {str(event.aggregate_id) for event in events} == {str(m.id) for m in outbound}
     for event in events:
         assert event.payload["event_type"] == "message.outbound"
         assert str(event.meta["tenant_id"]) == str(tenant_id)
@@ -131,9 +133,7 @@ async def test_media_delivered_after_text_with_outbox_and_state(
     assert state.state_version == 1
 
 
-async def test_no_resend_same_image_never_delivered_twice(
-    db, tenant_ctx, monkeypatch
-):
+async def test_no_resend_same_image_never_delivered_twice(db, tenant_ctx, monkeypatch):
     tenant_id = tenant_ctx.tenant_id
     conversation = await _seed(db, tenant_id)
     _patch_runner(monkeypatch, media=_media(), shown=[])
@@ -152,9 +152,7 @@ async def test_no_resend_same_image_never_delivered_twice(
     assert state.state_version == 1
 
 
-async def test_new_image_appends_and_bumps_state_version(
-    db, tenant_ctx, monkeypatch
-):
+async def test_new_image_appends_and_bumps_state_version(db, tenant_ctx, monkeypatch):
     tenant_id = tenant_ctx.tenant_id
     conversation = await _seed(db, tenant_id)
     _patch_runner(monkeypatch, media=_media(), shown=[])

@@ -64,9 +64,7 @@ async def _member(db: AsyncSession, tenant_ctx) -> User:
     db.add(member)
     await db.flush()
     db.add(
-        TenantUser(
-            tenant_id=tenant_ctx.tenant_id, user_id=member.id, role_id=tenant_ctx.role.id
-        )
+        TenantUser(tenant_id=tenant_ctx.tenant_id, user_id=member.id, role_id=tenant_ctx.role.id)
     )
     await db.flush()
     return member
@@ -98,9 +96,7 @@ async def test_workspace_create_list_update(db: AsyncSession, tenant_ctx) -> Non
 async def test_workspace_slug_conflicts_within_tenant(db: AsyncSession, tenant_ctx) -> None:
     app = _app(_make_ctx(db, tenant_ctx, ALL_PERMS))
     async with await _http(app) as client:
-        first = await client.post(
-            "/api/v1/hierarchy/workspaces", json={"name": "A", "slug": "dup"}
-        )
+        first = await client.post("/api/v1/hierarchy/workspaces", json={"name": "A", "slug": "dup"})
         assert first.status_code == 201
         second = await client.post(
             "/api/v1/hierarchy/workspaces", json={"name": "B", "slug": "dup"}
@@ -136,9 +132,7 @@ async def test_location_crud_under_workspace(db: AsyncSession, tenant_ctx) -> No
     app = _app(_make_ctx(db, tenant_ctx, ALL_PERMS))
     async with await _http(app) as client:
         ws = (
-            await client.post(
-                "/api/v1/hierarchy/workspaces", json={"name": "HQ", "slug": "hq"}
-            )
+            await client.post("/api/v1/hierarchy/workspaces", json={"name": "HQ", "slug": "hq"})
         ).json()
 
         loc = await client.post(
@@ -180,9 +174,7 @@ async def test_location_grant_revoke_flow(db: AsyncSession, tenant_ctx) -> None:
     app = _app(_make_ctx(db, tenant_ctx, ALL_PERMS))
     async with await _http(app) as client:
         ws = (
-            await client.post(
-                "/api/v1/hierarchy/workspaces", json={"name": "HQ", "slug": "hq"}
-            )
+            await client.post("/api/v1/hierarchy/workspaces", json={"name": "HQ", "slug": "hq"})
         ).json()
         loc = (
             await client.post(
@@ -210,9 +202,7 @@ async def test_location_grant_revoke_flow(db: AsyncSession, tenant_ctx) -> None:
         items = rows.json()["items"]
         assert [r["user_id"] for r in items] == [str(member.id)]
 
-        revoked = await client.delete(
-            f"/api/v1/hierarchy/locations/{loc['id']}/access/{member.id}"
-        )
+        revoked = await client.delete(f"/api/v1/hierarchy/locations/{loc['id']}/access/{member.id}")
         assert revoked.status_code == 204
         after = await client.get(f"/api/v1/hierarchy/locations/{loc['id']}/access")
         assert after.json()["items"] == []
@@ -222,9 +212,7 @@ async def test_grant_refuses_non_member(db: AsyncSession, tenant_ctx) -> None:
     app = _app(_make_ctx(db, tenant_ctx, ALL_PERMS))
     async with await _http(app) as client:
         ws = (
-            await client.post(
-                "/api/v1/hierarchy/workspaces", json={"name": "HQ", "slug": "hq"}
-            )
+            await client.post("/api/v1/hierarchy/workspaces", json={"name": "HQ", "slug": "hq"})
         ).json()
         loc = (
             await client.post(
@@ -245,9 +233,7 @@ async def test_read_permitted_without_write_and_write_refused_for_readers(
     async with await _http(app) as client:
         ok = await client.get("/api/v1/hierarchy/workspaces")
         assert ok.status_code == 200
-        denied = await client.post(
-            "/api/v1/hierarchy/workspaces", json={"name": "X", "slug": "x"}
-        )
+        denied = await client.post("/api/v1/hierarchy/workspaces", json={"name": "X", "slug": "x"})
         assert denied.status_code == 403
 
 

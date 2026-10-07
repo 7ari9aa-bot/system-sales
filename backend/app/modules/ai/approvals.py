@@ -37,9 +37,7 @@ def payload_fingerprint(payload: dict | None) -> str:
     approval on the action NAME alone and would execute whatever arguments the
     run computed the second time around.
     """
-    canonical = json.dumps(
-        payload or {}, sort_keys=True, separators=(",", ":"), default=str
-    )
+    canonical = json.dumps(payload or {}, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
@@ -178,10 +176,7 @@ class ApprovalService:
             raise NotFoundError("approval request not found")
         if request.status != "PENDING":
             raise ValidationError(f"approval already {request.status}")
-        if (
-            request.expires_at is not None
-            and request.expires_at < datetime.now(UTC)
-        ):
+        if request.expires_at is not None and request.expires_at < datetime.now(UTC):
             request.status = "EXPIRED"
             raise ValidationError("approval request expired")
 
@@ -248,9 +243,7 @@ class ApprovalService:
         ).scalar_one_or_none()
 
     @staticmethod
-    async def consume(
-        session: AsyncSession, request: ApprovalRequest
-    ) -> ApprovalRequest:
+    async def consume(session: AsyncSession, request: ApprovalRequest) -> ApprovalRequest:
         """Mark the approval as used — the action it authorized has run."""
         request.consumed_at = datetime.now(UTC)
         await session.flush()
@@ -276,10 +269,14 @@ class ApprovalService:
         if status:
             stmt = stmt.where(ApprovalRequest.status == status)
         rows = (
-            await session.execute(
-                stmt.order_by(ApprovalRequest.created_at.desc()).limit(limit + 1)
+            (
+                await session.execute(
+                    stmt.order_by(ApprovalRequest.created_at.desc()).limit(limit + 1)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return list(rows[:limit]), len(rows) > limit
 
     @staticmethod

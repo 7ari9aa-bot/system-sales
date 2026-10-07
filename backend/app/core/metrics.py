@@ -192,8 +192,7 @@ CATALOGUE: tuple[MetricDefinition, ...] = (
     MetricDefinition(
         name="metrics_collection_failures_total",
         help_text=(
-            "Times a collector could not answer, so an absent series never reads "
-            "as a healthy zero."
+            "Times a collector could not answer, so an absent series never reads as a healthy zero."
         ),
         type="counter",
         label_names=("collector",),
@@ -275,9 +274,7 @@ def _validate(name: str, labels: Mapping[str, Any]) -> dict[str, str]:
     declared = definition.label_names
     given = tuple(labels)
     if set(given) != set(declared):
-        raise MetricDefinitionError(
-            f"{name} takes labels {declared!r}, got {given!r}"
-        )
+        raise MetricDefinitionError(f"{name} takes labels {declared!r}, got {given!r}")
     for key in declared:
         if key not in ALLOWED_LABEL_KEYS:
             raise MetricDefinitionError(
@@ -294,8 +291,7 @@ def _validate(name: str, labels: Mapping[str, Any]) -> dict[str, str]:
         allowed = definition.allowed_values.get(key)
         if allowed is not None and value not in set(allowed):
             raise MetricValueError(
-                f"{name}{{{key}={value!r}}}: outcome is a closed set "
-                f"{sorted(allowed)}"
+                f"{name}{{{key}={value!r}}}: outcome is a closed set {sorted(allowed)}"
             )
     return {key: str(labels[key]) for key in declared}
 
@@ -336,8 +332,7 @@ async def increment(
     definition = _BY_NAME[name]
     if definition.type != "counter":
         raise MetricDefinitionError(
-            f"{name} is a {definition.type}: its value is a measurement, "
-            f"not something to increment"
+            f"{name} is a {definition.type}: its value is a measurement, not something to increment"
         )
     if value < 0:
         raise MetricDefinitionError(f"{name}: counters only go up, got {value!r}")
@@ -589,9 +584,7 @@ async def render_prometheus(
             for s in samples
             if s.name == "metrics_collection_failures_total"
         }
-        samples = [
-            s for s in samples if s.name != "metrics_collection_failures_total"
-        ]
+        samples = [s for s in samples if s.name != "metrics_collection_failures_total"]
         for collector, count in sorted(local_failures.items()):
             try:
                 await increment(

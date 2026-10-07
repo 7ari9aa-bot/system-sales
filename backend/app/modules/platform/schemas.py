@@ -535,4 +535,3 @@ class RemediationResultOut(BaseModel):
     actions_taken: list[str]
     reclaimed_outbox_events: int
     timestamp: str
-

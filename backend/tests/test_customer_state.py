@@ -52,9 +52,7 @@ async def test_second_patch_appends_deduplicates_and_bumps(db, tenant_ctx):
     conversation_id = await _seed_conversation(db, tenant_id)
     await apply_patch(db, tenant_id, conversation_id, {"shown_items": ["p-1"]})
 
-    state = await apply_patch(
-        db, tenant_id, conversation_id, {"shown_items": ["p-1", "p-2"]}
-    )
+    state = await apply_patch(db, tenant_id, conversation_id, {"shown_items": ["p-1", "p-2"]})
     # p-1 already there: only p-2 grew the state, order preserved.
     assert state.shown_items == ["p-1", "p-2"]
     assert state.state_version == 2
@@ -72,9 +70,7 @@ async def test_noop_patch_leaves_version_alone(db, tenant_ctx):
 async def test_lists_never_shrink_through_a_patch(db, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     conversation_id = await _seed_conversation(db, tenant_id)
-    await apply_patch(
-        db, tenant_id, conversation_id, {"sent_media": ["img-1", "img-2"]}
-    )
+    await apply_patch(db, tenant_id, conversation_id, {"sent_media": ["img-1", "img-2"]})
 
     state = await apply_patch(db, tenant_id, conversation_id, {"sent_media": ["img-1"]})
     assert state.sent_media == ["img-1", "img-2"]
@@ -83,17 +79,13 @@ async def test_lists_never_shrink_through_a_patch(db, tenant_ctx):
 async def test_unknown_patch_keys_fail_loudly(db, tenant_ctx):
     conversation_id = await _seed_conversation(db, tenant_ctx.tenant_id)
     with pytest.raises(DomainError, match="unknown state patch keys"):
-        await apply_patch(
-            db, tenant_ctx.tenant_id, conversation_id, {"mood": "angry"}
-        )
+        await apply_patch(db, tenant_ctx.tenant_id, conversation_id, {"mood": "angry"})
 
 
 async def test_non_string_values_fail(db, tenant_ctx):
     conversation_id = await _seed_conversation(db, tenant_ctx.tenant_id)
     with pytest.raises(DomainError, match="list of strings"):
-        await apply_patch(
-            db, tenant_ctx.tenant_id, conversation_id, {"shown_items": [1, 2]}
-        )
+        await apply_patch(db, tenant_ctx.tenant_id, conversation_id, {"shown_items": [1, 2]})
 
 
 async def test_stale_expected_version_fails_instead_of_overwriting(db, tenant_ctx):

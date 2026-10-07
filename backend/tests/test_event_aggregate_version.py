@@ -71,11 +71,9 @@ async def _fresh_events(
     """Outbox rows for the aggregate not seen yet — emission order, tracked by
     id because every row in one transaction shares the same created_at."""
     rows = list(
-        (
-            await db.execute(
-                select(OutboxEvent).where(OutboxEvent.aggregate_id == aggregate_id)
-            )
-        ).scalars().all()
+        (await db.execute(select(OutboxEvent).where(OutboxEvent.aggregate_id == aggregate_id)))
+        .scalars()
+        .all()
     )
     fresh = [row for row in rows if row.id not in seen]
     seen.update(row.id for row in fresh)
@@ -100,9 +98,7 @@ async def test_order_events_carry_the_rows_real_increasing_versions(
         channel="whatsapp",
         shipping_address={"city": "Cairo"},
     )
-    db_version = (
-        await db.execute(select(Order.version).where(Order.id == order.id))
-    ).scalar_one()
+    db_version = (await db.execute(select(Order.version).where(Order.id == order.id))).scalar_one()
     created = await _fresh_events(db, order.id, seen)
     assert [e.payload["event_type"] for e in created] == ["order.created"]
     assert [e.meta["aggregate_version"] for e in created] == [db_version]
@@ -165,7 +161,9 @@ async def test_privacy_events_carry_the_customers_real_version(
                     OutboxEvent.aggregate_id == customer.id,
                 )
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
     assert {e.payload["event_type"] for e in events} == {
         "privacy.customer_purge_required",

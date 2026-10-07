@@ -99,9 +99,13 @@ async def paginate(
             if order_desc
             else tuple_(created_at_col, id_col) > cursor_tuple
         )
-    order = (created_at_col.desc(), id_col.desc()) if order_desc else (
-        created_at_col.asc(),
-        id_col.asc(),
+    order = (
+        (created_at_col.desc(), id_col.desc())
+        if order_desc
+        else (
+            created_at_col.asc(),
+            id_col.asc(),
+        )
     )
     stmt = stmt.order_by(*order).limit(limit + 1)
     rows = list((await session.execute(stmt)).scalars().all())

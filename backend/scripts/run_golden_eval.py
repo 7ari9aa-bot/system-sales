@@ -146,9 +146,7 @@ async def main() -> int:
             await seed_store(session, tenant_id, store)
             result = await evaluate_scenario(session, tenant_id, store)
             await session.commit()  # keep each scenario's data for forensics
-        scenarios_run.append(
-            (scenario.value, result.passed, tenant_id, result.checks)
-        )
+        scenarios_run.append((scenario.value, result.passed, tenant_id, result.checks))
 
     failures = 0
     print(f"seed={args.seed}")

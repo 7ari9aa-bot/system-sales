@@ -89,8 +89,7 @@ async def _seed_two_windows(db, tenant_id: uuid.UUID) -> None:
                     payment_id=payment.id,
                     amount=float(refund),
                     status="processed",
-                    processed_at=today_start
-                    - timedelta(days=order_days - 2),
+                    processed_at=today_start - timedelta(days=order_days - 2),
                 )
             )
 
@@ -125,9 +124,7 @@ async def test_compare_periods_delta_and_pct(db, tenant_ctx):
     await _seed_two_windows(db, tenant_ctx.tenant_id)
     context = CapabilityContext(tenant_id=tenant_ctx.tenant_id, profile=_profile())
     store = EvidenceStore()
-    result = await compare_periods(
-        db, context, store, metric_name="delivered_revenue", days=DAYS
-    )
+    result = await compare_periods(db, context, store, metric_name="delivered_revenue", days=DAYS)
     assert result.status == "ok"
     assert result.summary["current"] == "1200.00"
     assert result.summary["previous"] == "800.00"

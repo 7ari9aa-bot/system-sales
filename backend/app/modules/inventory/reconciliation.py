@@ -143,11 +143,13 @@ class InventoryReconciliationService:
                     InventoryBalance.variant_id,
                     latest.c.position.label("expected"),
                     InventoryBalance.on_hand.label("actual"),
-                ).join(
+                )
+                .join(
                     latest,
                     (latest.c.warehouse_id == InventoryBalance.warehouse_id)
                     & (latest.c.variant_id == InventoryBalance.variant_id),
-                ).where(
+                )
+                .where(
                     InventoryBalance.tenant_id == tenant_id,
                     InventoryBalance.on_hand != latest.c.position,
                 )
@@ -263,9 +265,7 @@ class InventoryReconciliationService:
         if finding is None:
             raise NotFoundError(f"finding {finding_id} not found")
         if finding.status != "OPEN":
-            raise ConflictError(
-                f"finding {finding_id} is already {finding.status}"
-            )
+            raise ConflictError(f"finding {finding_id} is already {finding.status}")
         finding.status = "RESOLVED"
         finding.resolved_at = datetime.now(UTC)
         finding.resolved_by = resolved_by

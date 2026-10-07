@@ -63,9 +63,7 @@ def test_invalid_inputs_are_refused(bad: TemplateInput) -> None:
 
 
 def test_variable_count_is_bounded() -> None:
-    too_many = TemplateInput(
-        name="t", body_text="b", variables=tuple(f"v{i}" for i in range(50))
-    )
+    too_many = TemplateInput(name="t", body_text="b", variables=tuple(f"v{i}" for i in range(50)))
     with pytest.raises(ValidationError):
         _validate(too_many)
 
@@ -133,8 +131,4 @@ def test_rejection_requires_a_reason() -> None:
     import asyncio
 
     with pytest.raises(ValidationError):
-        asyncio.run(
-            TemplateService.reject(
-                _NoDb(), None, None, reason="   ", reviewer="staff"
-            )
-        )
+        asyncio.run(TemplateService.reject(_NoDb(), None, None, reason="   ", reviewer="staff"))

@@ -32,9 +32,7 @@ async def _stocked_variant(
     product = await CatalogService.create_product(
         db, tenant_id, title="Stocked Product", slug=f"s-{uuid.uuid4().hex[:10]}"
     )
-    variant = await CatalogService.add_variant(
-        db, tenant_id, product.id, price="10.00"
-    )
+    variant = await CatalogService.add_variant(db, tenant_id, product.id, price="10.00")
     if qty:
         await InventoryService.move(
             db,
@@ -60,9 +58,7 @@ async def test_move_in_out_and_adjust(db: AsyncSession, tenant_ctx):
     await InventoryService.move(
         db, tenant_id, variant.id, wh.id, direction="out", quantity=3, reason="sale"
     )
-    assert (
-        await InventoryService.get_balance(db, tenant_id, variant.id, wh.id)
-    ).on_hand == 7
+    assert (await InventoryService.get_balance(db, tenant_id, variant.id, wh.id)).on_hand == 7
 
     moved = await InventoryService.move(
         db,
@@ -74,9 +70,7 @@ async def test_move_in_out_and_adjust(db: AsyncSession, tenant_ctx):
         reason="adjustment",
     )
     assert moved.balance_after == 5
-    assert (
-        await InventoryService.get_balance(db, tenant_id, variant.id, wh.id)
-    ).on_hand == 5
+    assert (await InventoryService.get_balance(db, tenant_id, variant.id, wh.id)).on_hand == 5
 
     movements = await InventoryService.list_movements(db, tenant_id, variant.id)
     assert len(movements) == 3
@@ -85,9 +79,7 @@ async def test_move_in_out_and_adjust(db: AsyncSession, tenant_ctx):
     await db.flush()
 
 
-async def test_list_movements_without_a_variant_is_the_tenant_ledger(
-    db: AsyncSession, tenant_ctx
-):
+async def test_list_movements_without_a_variant_is_the_tenant_ledger(db: AsyncSession, tenant_ctx):
     """The route's `variant_id` is an OPTIONAL filter, so the service must be
     able to say "no filter". It compared `variant_id == NULL` instead, which
     matches no row — the ledger endpoint returned [] on its default call.
@@ -196,9 +188,7 @@ async def test_transfer_moves_stock_between_warehouses(db: AsyncSession, tenant_
     assert completed.status == "completed"
     assert completed.completed_at is not None
 
-    source_balance = await InventoryService.get_balance(
-        db, tenant_id, variant.id, source.id
-    )
+    source_balance = await InventoryService.get_balance(db, tenant_id, variant.id, source.id)
     destination_balance = await InventoryService.get_balance(
         db, tenant_id, variant.id, destination.id
     )

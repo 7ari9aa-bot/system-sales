@@ -50,7 +50,7 @@ class _Policy:
 
 
 def test_no_policy_still_gets_a_cap() -> None:
-    """"No policy" must never mean "no limit"."""
+    """ "No policy" must never mean "no limit"."""
     cap, on_exceed = _resolve_cap([], None)
     assert cap > 0, "a tenant with no budget policy is uncapped"
     assert on_exceed == "block"
@@ -104,13 +104,13 @@ async def _owner_notifications(db: AsyncSession, tenant_id) -> list[Notification
                     Notification.kind == "ai_budget_threshold",
                 )
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
 
 
-async def test_crossing_a_threshold_notifies_the_owner(
-    db: AsyncSession, tenant_ctx
-):
+async def test_crossing_a_threshold_notifies_the_owner(db: AsyncSession, tenant_ctx):
     """The whole point of §42: tell someone before the cap stops the AI."""
     await _raise_budget_alerts(
         db, tenant_ctx.tenant_id, cap=Decimal("100"), committed=Decimal("85")
@@ -154,18 +154,14 @@ async def test_crossing_a_higher_threshold_alerts_again(db: AsyncSession, tenant
 
 
 async def test_an_unusable_cap_raises_no_alert(db: AsyncSession, tenant_ctx):
-    await _raise_budget_alerts(
-        db, tenant_ctx.tenant_id, cap=Decimal("0"), committed=Decimal("10")
-    )
+    await _raise_budget_alerts(db, tenant_ctx.tenant_id, cap=Decimal("0"), committed=Decimal("10"))
     assert await _owner_notifications(db, tenant_ctx.tenant_id) == []
 
 
 # --------------------------------------------- the cap is actually enforced --
 
 
-async def test_a_tenant_with_no_policy_is_still_capped(
-    db: AsyncSession, tenant_ctx, monkeypatch
-):
+async def test_a_tenant_with_no_policy_is_still_capped(db: AsyncSession, tenant_ctx, monkeypatch):
     """The default must actually block, not just be reported."""
     import app.modules.ai.gateway as gateway
 
@@ -191,7 +187,5 @@ async def test_a_tenant_below_the_default_cap_can_reserve(
     monkeypatch.setattr(gateway, "_month_spend", _spend(Decimal("0")))
     monkeypatch.setattr(gateway, "_reserved_spend", _spend(Decimal("0")))
 
-    reservation_id = await reserve_budget(
-        db, tenant_ctx.tenant_id, estimated_cost=Decimal("0.01")
-    )
+    reservation_id = await reserve_budget(db, tenant_ctx.tenant_id, estimated_cost=Decimal("0.01"))
     assert reservation_id is not None, "a tenant under its cap could not reserve budget"

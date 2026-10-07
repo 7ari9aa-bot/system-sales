@@ -30,9 +30,7 @@ async def _variant_with_ean(db, tenant_ctx, value: str = "1234567890123"):
     variant = await CatalogService.add_variant(
         db, tenant_ctx.tenant_id, product.id, title="أسود / L", price="150.00"
     )
-    await CatalogService.add_identifier(
-        db, tenant_ctx.tenant_id, variant.id, "ean", value
-    )
+    await CatalogService.add_identifier(db, tenant_ctx.tenant_id, variant.id, "ean", value)
     return variant
 
 
@@ -71,14 +69,10 @@ async def test_same_value_across_types_is_two_rows(db, tenant_ctx):
 
 async def test_cross_tenant_resolve_is_none(db, tenant_ctx):
     await _variant_with_ean(db, tenant_ctx, "4444444444444")
-    resolved = await CatalogService.resolve_identifier(
-        db, uuid.uuid4(), "ean", "4444444444444"
-    )
+    resolved = await CatalogService.resolve_identifier(db, uuid.uuid4(), "ean", "4444444444444")
     assert resolved is None
 
 
 async def test_unknown_type_is_refused_before_any_query(db, tenant_ctx):
     with pytest.raises(ValidationError):
-        await CatalogService.resolve_identifier(
-            db, tenant_ctx.tenant_id, "ean13", "5555555555555"
-        )
+        await CatalogService.resolve_identifier(db, tenant_ctx.tenant_id, "ean13", "5555555555555")

@@ -116,9 +116,7 @@ async def test_an_access_token_in_the_query_string_is_refused(monkeypatch) -> No
     """The narrowing itself: what the old code accepted, it must now refuse."""
     _install_fake_sessions(monkeypatch)
 
-    access = create_access_token(
-        str(USER_ID), {"tenant_id": str(TENANT_ID), "role": "staff"}
-    )
+    access = create_access_token(str(USER_ID), {"tenant_id": str(TENANT_ID), "role": "staff"})
     with pytest.raises(PermissionDeniedError) as excinfo:
         await _sse_auth(_request(query_token=access), token=access)
     assert "stream-scoped" in str(excinfo.value)

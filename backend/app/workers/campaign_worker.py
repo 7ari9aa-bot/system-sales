@@ -85,9 +85,7 @@ async def process_campaign_run_event(
 
     run = (
         await session.execute(
-            select(CampaignRun).where(
-                CampaignRun.tenant_id == tenant_id, CampaignRun.id == run_id
-            )
+            select(CampaignRun).where(CampaignRun.tenant_id == tenant_id, CampaignRun.id == run_id)
         )
     ).scalar_one_or_none()
     if run is None or run.status != CampaignRunStatus.RUNNING.value:
@@ -108,9 +106,7 @@ async def process_campaign_run_event(
             "tenant worker-time budget exhausted",
             delay_seconds=_BUDGET_RETRY_DELAY_SECONDS,
         )
-    batch_size = min(
-        CampaignExecutionService.DEFAULT_BATCH_SIZE, int(budget.remaining)
-    )
+    batch_size = min(CampaignExecutionService.DEFAULT_BATCH_SIZE, int(budget.remaining))
 
     previous_sent = run.sent_count
     run = await CampaignExecutionService.process_batch(
@@ -159,9 +155,7 @@ class CampaignWorker(StreamWorker):
                 # DeferredError raised inside (budget or lifecycle) reaches
                 # the base worker's defer path with the transaction rolled
                 # back and nothing consumed.
-                await defer_unless_tenant_allows(
-                    session, tenant_id, "allows_automation"
-                )
+                await defer_unless_tenant_allows(session, tenant_id, "allows_automation")
                 outcome = await process_campaign_run_event(
                     session, tenant_id, envelope.aggregate_id
                 )

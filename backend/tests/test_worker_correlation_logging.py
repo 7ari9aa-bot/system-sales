@@ -185,9 +185,7 @@ async def test_every_line_emitted_while_a_message_is_in_scope_names_its_correlat
     assert not missing, f"worker lines without the message's correlation id: {missing}"
 
 
-async def test_the_runtime_lines_of_a_failed_message_also_carry_the_id(
-    worker_env, caplog
-) -> None:
+async def test_the_runtime_lines_of_a_failed_message_also_carry_the_id(worker_env, caplog) -> None:
     """``worker.handle_failed`` / ``worker.permanent_failure`` are the lines that
     matter most and the ones a contextvar-only fix would still miss: they are
     emitted by the runtime, not by the handler."""
@@ -200,18 +198,14 @@ async def test_the_runtime_lines_of_a_failed_message_also_carry_the_id(
     names = [msg for msg, _ in _worker_lines(caplog)]
     runtime = [n for n in names if n.startswith("worker.")]
     assert runtime, f"no runtime lines captured, got: {names}"
-    missing = [
-        msg for msg, cid in _worker_lines(caplog) if cid != CORRELATION_ID
-    ]
+    missing = [msg for msg, cid in _worker_lines(caplog) if cid != CORRELATION_ID]
     assert not missing, f"runtime lines missing the correlation id: {missing}"
 
 
 # ------------------------------------------------------------------- rendering
 
 
-async def test_the_shipped_worker_log_format_renders_the_correlation_id(
-    worker_env, caplog
-) -> None:
+async def test_the_shipped_worker_log_format_renders_the_correlation_id(worker_env, caplog) -> None:
     """An attribute nobody formats is as invisible as a missing one.
 
     ``app/workers/run.py`` owns the worker process's ``logging`` format string;
@@ -256,9 +250,7 @@ async def test_a_message_with_no_envelope_correlation_id_still_gets_a_stable_one
     )
 
 
-async def test_two_different_messages_do_not_share_a_correlation_id(
-    worker_env, caplog
-) -> None:
+async def test_two_different_messages_do_not_share_a_correlation_id(worker_env, caplog) -> None:
     caplog.set_level(logging.INFO)
     worker = _Worker(_FakeBus())
 
@@ -441,9 +433,7 @@ async def test_a_reclaimed_message_is_logged_under_the_same_correlation_id(
     await worker._process(first_delivery)
     caplog.clear()
 
-    reclaimed = await bus.reclaim_stale(
-        original.stream, "test-workers", "c-2", min_idle_ms=0
-    )
+    reclaimed = await bus.reclaim_stale(original.stream, "test-workers", "c-2", min_idle_ms=0)
     assert reclaimed, "reclaim returned nothing — the test would prove nothing"
     await worker._process(reclaimed[0])
 

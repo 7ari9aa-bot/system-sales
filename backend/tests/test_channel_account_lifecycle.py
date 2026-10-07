@@ -49,9 +49,7 @@ def _app(db: AsyncSession, tenant_ctx) -> object:
     app = create_app()
     ctx = TenantContext(
         session=db,
-        user=AuthedUser(
-            id=tenant_ctx.user.id, tenant_id=tenant_ctx.tenant_id, role_code="owner"
-        ),
+        user=AuthedUser(id=tenant_ctx.user.id, tenant_id=tenant_ctx.tenant_id, role_code="owner"),
         tenant_id=tenant_ctx.tenant_id,
         role_code="owner",
         permission_codes={"settings:write"},
@@ -144,9 +142,7 @@ async def test_same_status_reupsert_is_idempotent(db: AsyncSession, tenant_ctx) 
     async with AsyncClient(
         transport=ASGITransport(app=_app(db, tenant_ctx)), base_url="http://test"
     ) as client:
-        created = await client.post(
-            "/api/v1/integrations", json=_body("active", token=first_token)
-        )
+        created = await client.post("/api/v1/integrations", json=_body("active", token=first_token))
         assert created.status_code == 201
 
         refreshed = await client.post(
@@ -244,33 +240,25 @@ async def test_verify_and_disconnect_refuse_a_row_another_tenant_owns(
     assert row.status == "active", "a refused action must not change the foreign row"
 
 
-async def test_disconnect_requires_explicit_confirmation(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_disconnect_requires_explicit_confirmation(db: AsyncSession, tenant_ctx) -> None:
     """The destructive gate: a defaulted body must not cut a live channel."""
     row = await _channel_row(db, tenant_ctx.tenant_id)
 
     async with AsyncClient(
         transport=ASGITransport(app=_app(db, tenant_ctx)), base_url="http://test"
     ) as client:
-        refused = await client.post(
-            f"/api/v1/integrations/{row.id}/disconnect", json={}
-        )
+        refused = await client.post(f"/api/v1/integrations/{row.id}/disconnect", json={})
 
     assert refused.status_code == 400, "disconnect without confirm=true is refused"
     assert (await db.get(Integration, row.id)).status == "active"
 
 
-async def test_disconnect_disables_the_channels_ingress(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_disconnect_disables_the_channels_ingress(db: AsyncSession, tenant_ctx) -> None:
     """Checklist 5, second half: after disconnect the channel's tenant-
     resolution key stops matching, so provider deliveries can no longer be
     attributed (and therefore ingested) for this tenant."""
     phone_key = "201009999999"
-    row = await _channel_row(
-        db, tenant_ctx.tenant_id, config={"phone_number_id": phone_key}
-    )
+    row = await _channel_row(db, tenant_ctx.tenant_id, config={"phone_number_id": phone_key})
 
     def _resolve():
         return db.execute(

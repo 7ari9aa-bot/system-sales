@@ -348,13 +348,17 @@ class NotificationService:
     @staticmethod
     async def list(session, tenant_id: uuid.UUID, limit: int = 50) -> list[Notification]:
         rows = (
-            await session.execute(
-                select(Notification)
-                .where(Notification.tenant_id == tenant_id)
-                .order_by(Notification.created_at.desc())
-                .limit(limit)
+            (
+                await session.execute(
+                    select(Notification)
+                    .where(Notification.tenant_id == tenant_id)
+                    .order_by(Notification.created_at.desc())
+                    .limit(limit)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return list(rows)
 
 
@@ -445,9 +449,7 @@ class WebhookService:
         return endpoint
 
     @staticmethod
-    async def list_endpoints(
-        session, tenant_id: uuid.UUID
-    ) -> list[WebhookEndpoint]:
+    async def list_endpoints(session, tenant_id: uuid.UUID) -> list[WebhookEndpoint]:
         """Every endpoint the tenant registered, oldest first.
 
         The read half of the registry surface. Unpaginated on the same grounds
@@ -535,13 +537,17 @@ class WebhookService:
         payload: dict,
     ) -> list[WebhookDelivery]:
         endpoints = (
-            await session.execute(
-                select(WebhookEndpoint).where(
-                    WebhookEndpoint.tenant_id == tenant_id,
-                    WebhookEndpoint.is_active.is_(True),
+            (
+                await session.execute(
+                    select(WebhookEndpoint).where(
+                        WebhookEndpoint.tenant_id == tenant_id,
+                        WebhookEndpoint.is_active.is_(True),
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         deliveries = []
         for endpoint in endpoints:
             if endpoint.events and event_name not in endpoint.events:

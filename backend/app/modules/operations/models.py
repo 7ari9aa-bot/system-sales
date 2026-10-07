@@ -27,9 +27,7 @@ class Task(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
 
     __tablename__ = "tasks"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid7
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid7)
     title: Mapped[str] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text)
     assignee_user_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -55,9 +53,7 @@ class SLAPolicy(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
 
     __tablename__ = "sla_policies"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid7
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid7)
     name: Mapped[str] = mapped_column(String(255))
     first_response_minutes: Mapped[int] = mapped_column(Integer, server_default="60")
     resolution_minutes: Mapped[int] = mapped_column(Integer, server_default="1440")
@@ -66,9 +62,7 @@ class SLAPolicy(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     # allowed: active | paused
     status: Mapped[str] = mapped_column(String(15), server_default="active")
 
-    __table_args__ = (
-        Index("ix_sla_policies_tenant", "tenant_id", "status"),
-    )
+    __table_args__ = (Index("ix_sla_policies_tenant", "tenant_id", "status"),)
 
 
 class BusinessCalendar(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
@@ -80,18 +74,14 @@ class BusinessCalendar(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
 
     __tablename__ = "business_calendars"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid7
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid7)
     name: Mapped[str] = mapped_column(String(255))
     timezone: Mapped[str] = mapped_column(String(63), server_default="Africa/Cairo")
     hours: Mapped[dict] = mapped_column(JSONB, server_default="{}")
     holidays: Mapped[list] = mapped_column(JSONB, server_default="[]")
     is_default: Mapped[bool] = mapped_column(Boolean, server_default="false")
 
-    __table_args__ = (
-        Index("ix_calendars_tenant", "tenant_id", "is_default"),
-    )
+    __table_args__ = (Index("ix_calendars_tenant", "tenant_id", "is_default"),)
 
 
 class SLAEvent(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
@@ -99,9 +89,7 @@ class SLAEvent(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
 
     __tablename__ = "sla_events"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid7
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid7)
     conversation_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("conversations.id", ondelete="CASCADE")
     )

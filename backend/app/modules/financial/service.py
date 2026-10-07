@@ -353,15 +353,19 @@ class FinancialService:
     ) -> TrialBalanceOut:
         """Generate a complete Trial Balance aggregating debits and credits per account."""
         accounts = (
-            await session.execute(
-                select(ChartOfAccount)
-                .where(
-                    ChartOfAccount.tenant_id == tenant_id,
-                    ChartOfAccount.is_active.is_(True),
+            (
+                await session.execute(
+                    select(ChartOfAccount)
+                    .where(
+                        ChartOfAccount.tenant_id == tenant_id,
+                        ChartOfAccount.is_active.is_(True),
+                    )
+                    .order_by(ChartOfAccount.code)
                 )
-                .order_by(ChartOfAccount.code)
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         items: list[TrialBalanceItem] = []
         grand_debits = Decimal("0.0000")
@@ -426,4 +430,3 @@ class FinancialService:
     def get_payment_adapter() -> PaymentPort:
         """Return the active payment adapter (Sandbox by default)."""
         return SandboxPaymentAdapter()
-

@@ -202,9 +202,7 @@ async def break_glass(
         }
     )
     client = redis if redis is not None else get_redis()
-    await client.set(
-        _capability_key(token), payload, ex=CAPABILITY_TTL_MINUTES * 60
-    )
+    await client.set(_capability_key(token), payload, ex=CAPABILITY_TTL_MINUTES * 60)
 
     # 3. Notify platform admins (if any admin user ids were provided)
     if admin_user_ids:
@@ -301,9 +299,7 @@ async def peek_capability(
     return matched
 
 
-def _payload_matches(
-    raw, *, tenant_id: uuid.UUID, user_id: uuid.UUID, action: str
-) -> bool:
+def _payload_matches(raw, *, tenant_id: uuid.UUID, user_id: uuid.UUID, action: str) -> bool:
     if raw is None:
         return False
     try:

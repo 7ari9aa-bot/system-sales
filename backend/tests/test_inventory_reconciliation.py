@@ -54,9 +54,7 @@ async def _variant_and_balance(db, tenant_ctx):
 
 async def test_clean_ledger_creates_no_findings(db, tenant_ctx):
     await _variant_and_balance(db, tenant_ctx)
-    summary = await InventoryReconciliationService.reconcile_tenant(
-        db, tenant_ctx.tenant_id
-    )
+    summary = await InventoryReconciliationService.reconcile_tenant(db, tenant_ctx.tenant_id)
     assert summary["findings_created"] == 0
 
 
@@ -71,9 +69,7 @@ async def test_projection_drift_becomes_a_finding(db, tenant_ctx):
         )
         .values(on_hand=8)
     )
-    summary = await InventoryReconciliationService.reconcile_tenant(
-        db, tenant_ctx.tenant_id
-    )
+    summary = await InventoryReconciliationService.reconcile_tenant(db, tenant_ctx.tenant_id)
     assert summary["projection_mismatches"] == 1
     assert summary["findings_created"] == 1
     rows = await InventoryReconciliationService.list_findings(
@@ -84,9 +80,7 @@ async def test_projection_drift_becomes_a_finding(db, tenant_ctx):
     assert rows[0].expected == 3
     assert rows[0].actual == 8
     # Idempotent per run: the same open discrepancy is not re-recorded.
-    again = await InventoryReconciliationService.reconcile_tenant(
-        db, tenant_ctx.tenant_id
-    )
+    again = await InventoryReconciliationService.reconcile_tenant(db, tenant_ctx.tenant_id)
     assert again["findings_created"] == 0
 
 
@@ -104,9 +98,7 @@ async def test_forged_chain_row_becomes_a_finding(db, tenant_ctx):
         )
     )
     await db.flush()
-    summary = await InventoryReconciliationService.reconcile_tenant(
-        db, tenant_ctx.tenant_id
-    )
+    summary = await InventoryReconciliationService.reconcile_tenant(db, tenant_ctx.tenant_id)
     assert summary["chain_mismatches"] == 1
     rows = await InventoryReconciliationService.list_findings(
         db, tenant_ctx.tenant_id, status="OPEN"
@@ -167,9 +159,7 @@ async def test_replayed_ledger_matches_the_projection_order_independently(db, te
         quantity=1,
         reason="sale",
     )
-    summary = await InventoryReconciliationService.reconcile_tenant(
-        db, tenant_ctx.tenant_id
-    )
+    summary = await InventoryReconciliationService.reconcile_tenant(db, tenant_ctx.tenant_id)
     assert summary["chain_mismatches"] == 0
     assert summary["findings_created"] == 0
     balance = (

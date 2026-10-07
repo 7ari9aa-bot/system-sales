@@ -54,9 +54,7 @@ class NotificationDigest(TenantMixin, TimestampMixin, Base):
 
     __tablename__ = "notification_digests"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid7
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid7)
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE")
     )
@@ -68,12 +66,8 @@ class NotificationDigest(TenantMixin, TimestampMixin, Base):
     latest_payload: Mapped[dict] = mapped_column(JSONB, server_default="{}")
     # First and last occurrence — TIMESTAMPTZ in the migration (§166), so the
     # model must declare timezone=True or asyncpg gets a naive datetime.
-    first_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
-    last_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    first_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     # allowed: pending | delivered | expired
     status: Mapped[str] = mapped_column(String(15), server_default="pending")
     # Delivery channels: {in_app: bool, email: bool, push: bool}
@@ -83,8 +77,6 @@ class NotificationDigest(TenantMixin, TimestampMixin, Base):
         Index("ix_notif_digests_tenant_user_status", "tenant_id", "user_id", "status"),
         Index("ix_notif_digests_dedupe", "dedupe_key", "status"),
     )
-
-
 
 
 class NotificationAggregator:
@@ -110,9 +102,7 @@ class NotificationAggregator:
             return True
 
         # Check quiet hours
-        pref = await NotificationAggregator._get_preference(
-            session, tenant_id, user_id
-        )
+        pref = await NotificationAggregator._get_preference(session, tenant_id, user_id)
         if pref and NotificationAggregator._in_quiet_hours(pref):
             return False
 

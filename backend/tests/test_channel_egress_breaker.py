@@ -120,13 +120,24 @@ def _failing() -> httpx.AsyncClient:
 
 # Every (adapter, breaker name, credentials) triple for the newly-wired channels.
 CHANNELS = [
-    pytest.param(messenger_adapter, PROVIDER_MESSENGER,
-                 ProviderCredentials(config={"api_key": "PAGE-TOKEN"}), id="messenger"),
-    pytest.param(instagram_adapter, PROVIDER_INSTAGRAM,
-                 ProviderCredentials(config={"api_key": "IG-TOKEN", "account_id": "IG-1"}),
-                 id="instagram"),
-    pytest.param(email_adapter, PROVIDER_EMAIL,
-                 ProviderCredentials(config={"api_key": "ESP-KEY"}), id="email"),
+    pytest.param(
+        messenger_adapter,
+        PROVIDER_MESSENGER,
+        ProviderCredentials(config={"api_key": "PAGE-TOKEN"}),
+        id="messenger",
+    ),
+    pytest.param(
+        instagram_adapter,
+        PROVIDER_INSTAGRAM,
+        ProviderCredentials(config={"api_key": "IG-TOKEN", "account_id": "IG-1"}),
+        id="instagram",
+    ),
+    pytest.param(
+        email_adapter,
+        PROVIDER_EMAIL,
+        ProviderCredentials(config={"api_key": "ESP-KEY"}),
+        id="email",
+    ),
 ]
 
 
@@ -188,9 +199,7 @@ def test_every_named_breaker_constant_has_a_caller(constant: str) -> None:
     """
     defining = (BACKEND_ROOT / "app" / "core" / "circuit_breaker.py").resolve()
     callers = {
-        p
-        for p in _app_source_files()
-        if p.resolve() != defining and _uses_name(p, constant)
+        p for p in _app_source_files() if p.resolve() != defining and _uses_name(p, constant)
     }
     assert callers, (
         f"{constant} is declared in circuit_breaker.py but never used at a call "
@@ -239,18 +248,36 @@ def test_a_gateway_that_calls_out_routes_through_the_breaker(path: pathlib.Path)
 # --------------------------------------------------------------------------
 
 EGRESS = [
-    pytest.param(whatsapp_adapter, PROVIDER_WHATSAPP,
-                 ProviderCredentials(config={"phone_number_id": "P", "access_token": "T"}),
-                 id="whatsapp"),
-    pytest.param(telegram_adapter, PROVIDER_TELEGRAM,
-                 ProviderCredentials(config={"bot_token": "BOT"}), id="telegram"),
-    pytest.param(messenger_adapter, PROVIDER_MESSENGER,
-                 ProviderCredentials(config={"api_key": "PAGE-TOKEN"}), id="messenger"),
-    pytest.param(instagram_adapter, PROVIDER_INSTAGRAM,
-                 ProviderCredentials(config={"api_key": "IG-TOKEN", "account_id": "IG-1"}),
-                 id="instagram"),
-    pytest.param(email_adapter, PROVIDER_EMAIL,
-                 ProviderCredentials(config={"api_key": "ESP-KEY"}), id="email"),
+    pytest.param(
+        whatsapp_adapter,
+        PROVIDER_WHATSAPP,
+        ProviderCredentials(config={"phone_number_id": "P", "access_token": "T"}),
+        id="whatsapp",
+    ),
+    pytest.param(
+        telegram_adapter,
+        PROVIDER_TELEGRAM,
+        ProviderCredentials(config={"bot_token": "BOT"}),
+        id="telegram",
+    ),
+    pytest.param(
+        messenger_adapter,
+        PROVIDER_MESSENGER,
+        ProviderCredentials(config={"api_key": "PAGE-TOKEN"}),
+        id="messenger",
+    ),
+    pytest.param(
+        instagram_adapter,
+        PROVIDER_INSTAGRAM,
+        ProviderCredentials(config={"api_key": "IG-TOKEN", "account_id": "IG-1"}),
+        id="instagram",
+    ),
+    pytest.param(
+        email_adapter,
+        PROVIDER_EMAIL,
+        ProviderCredentials(config={"api_key": "ESP-KEY"}),
+        id="email",
+    ),
 ]
 
 
@@ -292,9 +319,7 @@ async def test_half_open_admits_one_probe_then_recloses_or_reopens(
     clock["t"] += _Settings.circuit_breaker_recovery_seconds - 1
     contacted = {"n": 0}
     with pytest.raises(CircuitOpenError):
-        await adapter.send(
-            credentials, _outbound(), _client=_counting(contacted)
-        )
+        await adapter.send(credentials, _outbound(), _client=_counting(contacted))
     assert contacted["n"] == 0
 
     # At the timeout: one healthy probe closes it (half_open_successes = 1).

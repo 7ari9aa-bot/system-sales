@@ -55,16 +55,14 @@ async def test_register_login_refresh_logout(db):
     assert claims["sub"] == str(user.id)
     assert claims["tenant_id"] == str(tenant.id)
 
-    pair2, _user, tenant_id2 = await AuthService.refresh(
-        db, refresh_token=pair.refresh_token
-    )
+    pair2, _user, tenant_id2 = await AuthService.refresh(db, refresh_token=pair.refresh_token)
     assert tenant_id2 == tenant.id
     # rotation: old refresh token must be revoked
     revoked = (
-        await db.execute(
-            select(RefreshToken).where(RefreshToken.token_hash != "")
-        )
-    ).scalars().all()
+        (await db.execute(select(RefreshToken).where(RefreshToken.token_hash != "")))
+        .scalars()
+        .all()
+    )
     assert any(r.revoked_at is not None for r in revoked)
 
     await AuthService.logout(db, refresh_token=pair2.refresh_token)
@@ -120,8 +118,10 @@ async def test_refresh_token_reuse_revokes_family(db, app_sessions_on_test_conne
     with pytest.raises(PermissionDeniedError):
         await AuthService.refresh(db, refresh_token=pair.refresh_token)
     remaining = (
-        await db.execute(select(RefreshToken).where(RefreshToken.user_id == user_id))
-    ).scalars().all()
+        (await db.execute(select(RefreshToken).where(RefreshToken.user_id == user_id)))
+        .scalars()
+        .all()
+    )
     assert remaining
     assert all(r.revoked_at is not None for r in remaining)
 
@@ -179,6 +179,7 @@ async def test_unknown_role_rejected(db, tenant_ctx):
 
 
 # ---------------------------------------------- invite privilege escalation --
+
 
 async def test_owner_invitation_requires_platform_admin(db, tenant_ctx):
     """An owner cannot mint another owner (audit finding 7)."""
@@ -252,6 +253,7 @@ async def test_invite_role_hierarchy_matrix(
 
 # -------------------------------------------------- account pre-hijack guard --
 
+
 async def test_register_duplicate_email_raises_the_distinguishable_subclass(db):
     """A taken address re-queues verification and raises EmailAlreadyRegistered.
 
@@ -278,18 +280,18 @@ async def test_register_duplicate_email_raises_the_distinguishable_subclass(db):
             full_name="Second Owner",
         )
     # nothing about the existing account changed; no second tenant was created
-    reloaded = (
-        await db.execute(select(User).where(User.id == user.id))
-    ).scalar_one()
+    reloaded = (await db.execute(select(User).where(User.id == user.id))).scalar_one()
     assert reloaded.email == email
     # a verification token was (re-)queued for the legitimate owner
     queued = (
-        await db.execute(
-            select(EmailVerificationToken).where(
-                EmailVerificationToken.user_id == user.id
+        (
+            await db.execute(
+                select(EmailVerificationToken).where(EmailVerificationToken.user_id == user.id)
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert queued, "the duplicate path must still offer the owner a way in"
 
 
@@ -308,9 +310,7 @@ async def test_email_verification_marks_the_account_verified(db):
 
     row = (
         await db.execute(
-            select(EmailVerificationToken).where(
-                EmailVerificationToken.user_id == user.id
-            )
+            select(EmailVerificationToken).where(EmailVerificationToken.user_id == user.id)
         )
     ).scalar_one()
     from app.core.secrets import get_envelope_store
@@ -347,9 +347,7 @@ async def test_password_reset_heals_an_unverified_account(db):
     )
     await AuthService.request_password_reset(db, email=email)
     reset_row = (
-        await db.execute(
-            select(PasswordResetToken).where(PasswordResetToken.user_id == user.id)
-        )
+        await db.execute(select(PasswordResetToken).where(PasswordResetToken.user_id == user.id))
     ).scalar_one()
     from app.core.secrets import get_envelope_store
 
@@ -359,9 +357,7 @@ async def test_password_reset_heals_an_unverified_account(db):
     assert user.email_verified is True
 
 
-async def test_accept_invitation_refuses_an_unverified_existing_account(
-    db, tenant_ctx
-):
+async def test_accept_invitation_refuses_an_unverified_existing_account(db, tenant_ctx):
     """The invitation must not bind to an unproven account (pre-hijack).
 
     An account whose email was never verified may be an attacker's
@@ -430,6 +426,7 @@ async def test_accept_invitation_refuses_an_unverified_existing_account(
 
 # ------------------------------------------------------------ switch-tenant --
 
+
 async def test_switch_tenant_requires_a_live_refresh_token(db, tenant_ctx):
     """Half a credential pair must not mint a fresh token family.
 
@@ -441,9 +438,7 @@ async def test_switch_tenant_requires_a_live_refresh_token(db, tenant_ctx):
     owner = (
         await db.execute(select(User).where(User.id == tenant_ctx.user.id))
     ).scalar_one()  # refreshed: is_active is loaded from the row
-    pair, _u, _t = await AuthService.login(
-        db, email=owner.email, password="secret-password"
-    )
+    pair, _u, _t = await AuthService.login(db, email=owner.email, password="secret-password")
 
     for bad in ("", "not-a-real-refresh-token", None):
         with pytest.raises(PermissionDeniedError):
@@ -457,14 +452,12 @@ async def test_switch_tenant_requires_a_live_refresh_token(db, tenant_ctx):
     )
     assert new_pair.refresh_token != pair.refresh_token
     rows = (
-        await db.execute(
-            select(RefreshToken).where(RefreshToken.user_id == owner.id)
-        )
-    ).scalars().all()
+        (await db.execute(select(RefreshToken).where(RefreshToken.user_id == owner.id)))
+        .scalars()
+        .all()
+    )
     old_rows = [
-        r
-        for r in rows
-        if r.token_hash == hashlib.sha256(pair.refresh_token.encode()).hexdigest()
+        r for r in rows if r.token_hash == hashlib.sha256(pair.refresh_token.encode()).hexdigest()
     ]
     assert old_rows and all(r.revoked_at is not None for r in old_rows)
     new_rows = [
@@ -497,9 +490,7 @@ async def test_duplicate_slug_conflict(db):
 
 
 async def test_profile_update(db, tenant_ctx):
-    updated = await UserService.update_profile(
-        db, tenant_ctx.user.id, full_name="Renamed Owner"
-    )
+    updated = await UserService.update_profile(db, tenant_ctx.user.id, full_name="Renamed Owner")
     assert updated.full_name == "Renamed Owner"
 
 
@@ -509,9 +500,7 @@ async def test_rbac_permission_matrix(db, tenant_ctx):
     assert "settings:write" in owner_perms
     assert "orders:write" in owner_perms
 
-    staff_role = (
-        await db.execute(select(Role).where(Role.code == "staff"))
-    ).scalar_one()
+    staff_role = (await db.execute(select(Role).where(Role.code == "staff"))).scalar_one()
     staff_perms = await _role_permissions(db, staff_role.id)
     assert "conversations:write" in staff_perms
     assert "settings:write" not in staff_perms
@@ -522,8 +511,12 @@ async def test_register_minimal_email_password_only(db):
     name derive from the email local part, slug dedupes automatically."""
     email = f"hamed.adel-{uuid.uuid4().hex[:6]}@gmail.com"
     user, tenant = await AuthService.register(
-        db, tenant_name=None, tenant_slug=None, email=email,
-        password="Probe-1234", full_name=None,
+        db,
+        tenant_name=None,
+        tenant_slug=None,
+        email=email,
+        password="Probe-1234",
+        full_name=None,
     )
     assert user.email == email
     assert user.full_name == "Hamed Adel"
@@ -535,12 +528,20 @@ async def test_register_minimal_slug_collision_dedupes(db):
     """Two minimal signups with the same email local part get distinct slugs."""
     local = f"collision-{uuid.uuid4().hex[:4]}"
     _u1, t1 = await AuthService.register(
-        db, tenant_name=None, tenant_slug=None, email=f"{local}@test.local",
-        password="Probe-1234", full_name=None,
+        db,
+        tenant_name=None,
+        tenant_slug=None,
+        email=f"{local}@test.local",
+        password="Probe-1234",
+        full_name=None,
     )
     u2, t2 = await AuthService.register(
-        db, tenant_name=None, tenant_slug=None, email=f"{local}@other.local",
-        password="Probe-1234", full_name=None,
+        db,
+        tenant_name=None,
+        tenant_slug=None,
+        email=f"{local}@other.local",
+        password="Probe-1234",
+        full_name=None,
     )
     assert t1.slug != t2.slug
     assert t2.slug.startswith(t1.slug)  # نفس الأساس + لاحقة تفريد
@@ -638,9 +639,7 @@ async def test_e2e_login_mfa_refresh_grace_replay_then_reuse_revokes_family(
         full_name="E2E Owner",
     )
     enrolled = await mfa.enroll_mfa(db, user_id=user.id)
-    backup_codes = await mfa.confirm_mfa(
-        db, user_id=user.id, code=mfa._totp(enrolled.secret)
-    )
+    backup_codes = await mfa.confirm_mfa(db, user_id=user.id, code=mfa._totp(enrolled.secret))
     assert len(backup_codes) == mfa.BACKUP_CODE_COUNT
     # captured pre-expiry: the final select runs after expire_all (a raw
     # UPDATE bypasses the identity map, and reading user.id after expiry
@@ -661,9 +660,7 @@ async def test_e2e_login_mfa_refresh_grace_replay_then_reuse_revokes_family(
     pair2, _u2, _t2 = await AuthService.refresh(db, refresh_token=pair1.refresh_token)
     assert pair2.refresh_token != pair1.refresh_token
     row1 = (
-        await db.execute(
-            select(RefreshToken).where(RefreshToken.token_hash == pair1_hash)
-        )
+        await db.execute(select(RefreshToken).where(RefreshToken.token_hash == pair1_hash))
     ).scalar_one()
     assert row1.revoked_at is not None
     rotated_at = row1.revoked_at
@@ -674,9 +671,7 @@ async def test_e2e_login_mfa_refresh_grace_replay_then_reuse_revokes_family(
     pair3, _u3, _t3 = await AuthService.refresh(db, refresh_token=pair1.refresh_token)
     assert pair3.refresh_token not in {pair1.refresh_token, pair2.refresh_token}
     await db.refresh(row1)
-    assert row1.revoked_at == rotated_at, (
-        "the tolerated replay must not extend the window"
-    )
+    assert row1.revoked_at == rotated_at, "the tolerated replay must not extend the window"
 
     # -- reuse AFTER the window: backdate pair1's revocation past the grace
     # window, expire the identity map (the raw UPDATE bypasses it), replay.
@@ -692,10 +687,10 @@ async def test_e2e_login_mfa_refresh_grace_replay_then_reuse_revokes_family(
         await AuthService.refresh(db, refresh_token=pair1.refresh_token)
 
     remaining = (
-        await db.execute(
-            select(RefreshToken).where(RefreshToken.user_id == user_id)
-        )
-    ).scalars().all()
+        (await db.execute(select(RefreshToken).where(RefreshToken.user_id == user_id)))
+        .scalars()
+        .all()
+    )
     assert remaining
     assert all(r.revoked_at is not None for r in remaining), (
         "reuse past the window must revoke EVERY live token the user owns — "

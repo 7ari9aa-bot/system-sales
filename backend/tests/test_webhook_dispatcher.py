@@ -43,9 +43,7 @@ def _bypass_dns_guard(monkeypatch):
     consumer module (the same pattern tests/test_media_pipeline.py uses).
     The SSRF test deliberately does NOT use this fixture — it exercises the
     real guard with a literal metadata IP, which is rejected before any DNS."""
-    monkeypatch.setattr(
-        "app.modules.platform.service.assert_public_url", lambda url: url
-    )
+    monkeypatch.setattr("app.modules.platform.service.assert_public_url", lambda url: url)
 
 
 def _sign_body_only(secret: str, body: bytes) -> str:
@@ -111,9 +109,7 @@ async def test_signature_covers_the_timestamp_not_the_body_alone(
     assert timestamp.isdigit(), "the timestamp header is unix seconds"
 
     # The recipe from the dispatcher docstring verifies the delivery...
-    assert signature == _sign_with_timestamp(
-        SECRET, timestamp, captured["body"]
-    )
+    assert signature == _sign_with_timestamp(SECRET, timestamp, captured["body"])
     # ...and the old body-only signature is dead — replaying a captured
     # delivery with a forged fresh timestamp breaks the HMAC.
     assert signature != _sign_body_only(SECRET, captured["body"])
@@ -274,7 +270,9 @@ async def test_registration_issues_a_secret_once_and_audits(db, tenant_ctx, _byp
     assert endpoint.secret not in str(audits[0].after)
 
 
-async def test_rotation_replaces_the_secret_exactly_once_and_audits(db, tenant_ctx, _bypass_dns_guard):
+async def test_rotation_replaces_the_secret_exactly_once_and_audits(
+    db, tenant_ctx, _bypass_dns_guard
+):
     """Rotate returns a NEW secret on the row (the router surfaces it once);
     the old secret is gone in the same flush, and the audit row records the
     rotation without ever carrying the new secret."""

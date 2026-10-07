@@ -96,9 +96,7 @@ class MemoryStore:
             "content_type": content_type,
         }
 
-    async def fail(
-        self, *, scope: str, key: str, status_code: int | None = None
-    ) -> None:
+    async def fail(self, *, scope: str, key: str, status_code: int | None = None) -> None:
         self._records.pop((scope, key), None)
 
     async def release(self, *, scope: str, key: str) -> None:
@@ -133,12 +131,8 @@ class SessionStore:
             content_type=content_type,
         )
 
-    async def fail(
-        self, *, scope: str, key: str, status_code: int | None = None
-    ) -> None:
-        await IdempotencyService.fail(
-            self._session, scope=scope, key=key, status_code=status_code
-        )
+    async def fail(self, *, scope: str, key: str, status_code: int | None = None) -> None:
+        await IdempotencyService.fail(self._session, scope=scope, key=key, status_code=status_code)
 
     async def release(self, *, scope: str, key: str) -> None:
         await IdempotencyService.release(self._session, scope=scope, key=key)
@@ -173,9 +167,7 @@ def _build_app(
     async def _ctx() -> TenantContext:
         return TenantContext(
             session=session,
-            user=AuthedUser(
-                id=user_id or uuid.uuid4(), tenant_id=tenant_id, role_code="owner"
-            ),
+            user=AuthedUser(id=user_id or uuid.uuid4(), tenant_id=tenant_id, role_code="owner"),
             tenant_id=tenant_id,
             role_code="owner",
             permission_codes={"orders:write"},
@@ -329,12 +321,16 @@ async def test_order_creation_is_idempotent_against_the_database(db, tenant_ctx)
     order_id = uuid.UUID(first.json()["id"])
 
     orders = (
-        await db.execute(
-            sa.select(Order).where(
-                Order.tenant_id == tenant_id, Order.customer_id == customer.id
+        (
+            await db.execute(
+                sa.select(Order).where(
+                    Order.tenant_id == tenant_id, Order.customer_id == customer.id
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(orders) == 1, "the retry must not create a second order"
 
     # The stock hold is part of the same unit of work as the order: replayed
@@ -352,10 +348,10 @@ async def test_order_creation_is_idempotent_against_the_database(db, tenant_ctx)
 
     # ...and the order.created event is staged exactly once.
     events = (
-        await db.execute(
-            sa.select(OutboxEvent).where(OutboxEvent.aggregate_id == order_id)
-        )
-    ).scalars().all()
+        (await db.execute(sa.select(OutboxEvent).where(OutboxEvent.aggregate_id == order_id)))
+        .scalars()
+        .all()
+    )
     assert len(events) == 1
 
 
@@ -382,10 +378,14 @@ async def test_order_creation_conflicts_on_key_reuse_against_the_database(db, te
     assert conflict.json()["error"]["code"] == "conflict"
 
     orders = (
-        await db.execute(
-            sa.select(Order).where(
-                Order.tenant_id == tenant_id, Order.customer_id == customer.id
+        (
+            await db.execute(
+                sa.select(Order).where(
+                    Order.tenant_id == tenant_id, Order.customer_id == customer.id
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(orders) == 1

@@ -390,9 +390,7 @@ async def test_choosing_delegates_to_the_modules_only_writer(
     assert response.json()["policy"] == recorder.result
 
 
-@pytest.mark.parametrize(
-    ("status", "enabled"), [("active", True), ("paused", False)]
-)
+@pytest.mark.parametrize(("status", "enabled"), [("active", True), ("paused", False)])
 async def test_the_two_published_statuses_map_to_opt_in_and_opt_out(
     monkeypatch: pytest.MonkeyPatch, status: str, enabled: bool
 ) -> None:
@@ -410,9 +408,7 @@ async def test_the_two_published_statuses_map_to_opt_in_and_opt_out(
     )
     monkeypatch.setattr(retention, "choose_policy", recorder)
     monkeypatch.setattr(analytics_router, "write_audit_row", _Recorder())
-    response = await _choose(
-        _RecordingSession(), body={"retention_days": 390, "status": status}
-    )
+    response = await _choose(_RecordingSession(), body={"retention_days": 390, "status": status})
     assert response.status_code == 200, response.text
     assert recorder.kwargs[0]["enabled"] is enabled
 
@@ -544,9 +540,7 @@ async def test_a_store_this_door_cannot_execute_is_refused_naming_the_fix(
     monkeypatch.setattr(analytics_router, "write_audit_row", _Recorder())
     session = _ForbiddenSession()
 
-    response = await _choose(
-        session, data_class, body={"retention_days": 500, "status": "active"}
-    )
+    response = await _choose(session, data_class, body={"retention_days": 500, "status": "active"})
 
     assert 400 <= response.status_code < 500
     assert choose.calls == []
@@ -598,18 +592,14 @@ def _context_for(db: AsyncSession, tenant_ctx, permissions: set[str]) -> TenantC
     """
     return TenantContext(
         session=db,
-        user=AuthedUser(
-            id=tenant_ctx.user.id, tenant_id=tenant_ctx.tenant_id, role_code="owner"
-        ),
+        user=AuthedUser(id=tenant_ctx.user.id, tenant_id=tenant_ctx.tenant_id, role_code="owner"),
         tenant_id=tenant_ctx.tenant_id,
         role_code="owner",
         permission_codes=set(permissions),
     )
 
 
-def _app_for(
-    db: AsyncSession, tenant_ctx, permissions: set[str]
-):
+def _app_for(db: AsyncSession, tenant_ctx, permissions: set[str]):
     """The app, driven over a REAL database with the fixture's own tenancy.
 
     The module-level ``_app`` is for the DB-free cases, where the fabricated
@@ -641,9 +631,7 @@ def _app_for(
 
 
 async def _position_over_real_db(db: AsyncSession, tenant_ctx) -> dict:
-    transport = ASGITransport(
-        app=_app_for(db, tenant_ctx, {"analytics:read", "analytics:write"})
-    )
+    transport = ASGITransport(app=_app_for(db, tenant_ctx, {"analytics:read", "analytics:write"}))
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.get(POSITION_PATH)
     assert response.status_code == 200, response.text
@@ -654,17 +642,14 @@ async def _aggregate(db: AsyncSession) -> tuple[int, int, int | None]:
     """The counts the database computes, read directly — the third opinion in the
     drift guard: SQL, ``evaluate_gate``, and the route."""
     row = (
-        (
-            await db.execute(
-                sa.text(
-                    "SELECT tenant_count, missing_policies, max_days "
-                    "FROM public.retention_drop_horizon(:dc)"
-                ),
-                {"dc": AI_USAGE},
-            )
+        await db.execute(
+            sa.text(
+                "SELECT tenant_count, missing_policies, max_days "
+                "FROM public.retention_drop_horizon(:dc)"
+            ),
+            {"dc": AI_USAGE},
         )
-        .one()
-    )
+    ).one()
     return int(row[0]), int(row[1]), None if row[2] is None else int(row[2])
 
 
@@ -683,9 +668,7 @@ async def test_a_tenant_that_never_chose_reads_as_no_policy_and_blocks(
     assert entry["status"] is None
 
     count, missing, max_days = await _aggregate(db)
-    gate = retention.evaluate_gate(
-        tenant_count=count, missing_policies=missing, max_days=max_days
-    )
+    gate = retention.evaluate_gate(tenant_count=count, missing_policies=missing, max_days=max_days)
     assert payload["blocked_reason"] == (None if gate.may_drop else gate.reason)
     assert payload["gate"]["missing_policies"] == missing
     assert missing >= 1, "a tenant that never chose must count as not chosen"
@@ -792,8 +775,7 @@ async def test_an_illegal_choice_writes_no_policy_and_no_audit_row(
     rows = (
         await db.execute(
             sa.text(
-                "SELECT count(*) FROM retention_policies "
-                "WHERE tenant_id = :t AND data_class = :c"
+                "SELECT count(*) FROM retention_policies WHERE tenant_id = :t AND data_class = :c"
             ),
             {"t": str(tenant_ctx.tenant_id), "c": AI_USAGE},
         )
@@ -801,9 +783,7 @@ async def test_an_illegal_choice_writes_no_policy_and_no_audit_row(
     assert rows == 0
     audits = (
         await db.execute(
-            sa.text(
-                "SELECT count(*) FROM audit_logs WHERE action = :a AND tenant_id = :t"
-            ),
+            sa.text("SELECT count(*) FROM audit_logs WHERE action = :a AND tenant_id = :t"),
             {"a": retention.CHOOSE_AUDIT_ACTION, "t": str(tenant_ctx.tenant_id)},
         )
     ).scalar_one()

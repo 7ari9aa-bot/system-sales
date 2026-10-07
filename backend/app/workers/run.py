@@ -113,9 +113,7 @@ async def main(pools: list[str], *, stop: asyncio.Event | None = None) -> None:
         # re-raised below — crash-only supervision, the platform restarts.
         await asyncio.wait([*tasks, stop_task], return_when=asyncio.FIRST_COMPLETED)
         if stop.is_set():
-            logger.info(
-                "workers.draining pools=%s grace_seconds=%s", pools, DRAIN_GRACE_SECONDS
-            )
+            logger.info("workers.draining pools=%s grace_seconds=%s", pools, DRAIN_GRACE_SECONDS)
             for worker in workers:
                 worker.stop()
             relay.stop()

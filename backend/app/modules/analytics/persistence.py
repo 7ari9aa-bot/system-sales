@@ -35,9 +35,12 @@ async def save_analysis(
 ) -> uuid.UUID:
     """Persist one published analysis; returns the evidence id."""
     pack_dict = pack.model_dump(mode="json")
-    content_hash = pack.content_hash or hashlib.sha256(
-        json.dumps(pack_dict, sort_keys=True, separators=(",", ":"), default=str).encode()
-    ).hexdigest()
+    content_hash = (
+        pack.content_hash
+        or hashlib.sha256(
+            json.dumps(pack_dict, sort_keys=True, separators=(",", ":"), default=str).encode()
+        ).hexdigest()
+    )
     row = AnalysisEvidence(
         tenant_id=tenant_id,
         run_id=run_id,
@@ -83,13 +86,17 @@ async def load_analysis(
     if row is None:
         return None
     finding_rows = (
-        await session.execute(
-            select(AnalysisFinding).where(
-                AnalysisFinding.tenant_id == tenant_id,
-                AnalysisFinding.evidence_id == row.id,
+        (
+            await session.execute(
+                select(AnalysisFinding).where(
+                    AnalysisFinding.tenant_id == tenant_id,
+                    AnalysisFinding.evidence_id == row.id,
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return {
         "analysis_id": str(row.id),
         "run_id": str(row.run_id) if row.run_id else None,

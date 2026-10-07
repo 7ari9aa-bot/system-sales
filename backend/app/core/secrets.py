@@ -154,9 +154,7 @@ class InMemorySecretStore:
         new_ver = self._version_counter.get(key, 0) + 1
         self._version_counter[key] = new_ver
         old_versions.append(
-            SecretVersion(
-                value=new_value, version=new_ver, created_at=now, expires_at=None
-            )
+            SecretVersion(value=new_value, version=new_ver, created_at=now, expires_at=None)
         )
         self._store[key] = old_versions
         return new_ver
@@ -473,13 +471,9 @@ class EnvelopeSecretStore:
     def encrypt(self, plaintext: str) -> str:
         dek = AESGCM.generate_key(bit_length=256)
         wrap_nonce = os.urandom(self._NONCE_BYTES)
-        wrapped = wrap_nonce + AESGCM(self._keks[0]).encrypt(
-            wrap_nonce, dek, self._WRAP_AAD
-        )
+        wrapped = wrap_nonce + AESGCM(self._keks[0]).encrypt(wrap_nonce, dek, self._WRAP_AAD)
         nonce = os.urandom(self._NONCE_BYTES)
-        ciphertext = nonce + AESGCM(dek).encrypt(
-            nonce, plaintext.encode("utf-8"), self._DATA_AAD
-        )
+        ciphertext = nonce + AESGCM(dek).encrypt(nonce, plaintext.encode("utf-8"), self._DATA_AAD)
         return (
             self.PREFIX
             + base64.b64encode(wrapped).decode("ascii")
@@ -625,9 +619,7 @@ def validate_rotation_candidate(
     carried = candidate.encrypt(candidate.decrypt(legacy_ciphertext).value)
     result = candidate.decrypt(carried)
     if result.was_plaintext or result.value != canary:
-        raise SecretKeyError(
-            "rotation canary round-trip failed — refusing the new master key"
-        )
+        raise SecretKeyError("rotation canary round-trip failed — refusing the new master key")
     return candidate
 
 

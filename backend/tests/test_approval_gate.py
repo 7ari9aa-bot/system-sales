@@ -61,23 +61,17 @@ def _patch_gateway(monkeypatch, results: list[ChatCompletionResult]) -> None:
 
 
 async def _agent(db, tenant_id) -> Agent:
-    agent = Agent(
-        tenant_id=tenant_id, name="Ops Agent", model="fast", system_prompt="Be careful."
-    )
+    agent = Agent(tenant_id=tenant_id, name="Ops Agent", model="fast", system_prompt="Be careful.")
     db.add(agent)
     await db.flush()
-    db.add(
-        AgentTool(tenant_id=tenant_id, agent_id=agent.id, name=DANGEROUS_TOOL, policy={})
-    )
+    db.add(AgentTool(tenant_id=tenant_id, agent_id=agent.id, name=DANGEROUS_TOOL, policy={}))
     await db.flush()
     return agent
 
 
 def _request_call() -> ChatCompletionResult:
     return _result(
-        tool_calls=[
-            ToolCallRequest(id="c1", name=DANGEROUS_TOOL, arguments={"note": "now"})
-        ]
+        tool_calls=[ToolCallRequest(id="c1", name=DANGEROUS_TOOL, arguments={"note": "now"})]
     )
 
 
@@ -121,10 +115,14 @@ async def test_high_risk_tool_does_not_execute_before_approval(db, tenant_ctx, m
     assert EXECUTED == [], "a HIGH-risk tool ran before a human approved it"
 
     approvals = (
-        await db.execute(
-            select(ApprovalRequest).where(ApprovalRequest.tenant_id == tenant_ctx.tenant_id)
+        (
+            await db.execute(
+                select(ApprovalRequest).where(ApprovalRequest.tenant_id == tenant_ctx.tenant_id)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(approvals) == 1
     assert approvals[0].status == "PENDING"
     assert approvals[0].action == DANGEROUS_TOOL
@@ -132,15 +130,11 @@ async def test_high_risk_tool_does_not_execute_before_approval(db, tenant_ctx, m
     # The arguments are captured so the human can see what they are approving.
     assert approvals[0].payload.get("arguments", {}).get("note") == "now"
 
-    run = (
-        await db.execute(select(AgentRun).where(AgentRun.agent_id == agent.id))
-    ).scalars().one()
+    run = (await db.execute(select(AgentRun).where(AgentRun.agent_id == agent.id))).scalars().one()
     assert run.status == "WAITING_APPROVAL"
 
 
-async def test_an_approved_action_executes_once_and_is_consumed(
-    db, tenant_ctx, monkeypatch
-):
+async def test_an_approved_action_executes_once_and_is_consumed(db, tenant_ctx, monkeypatch):
     """Resume: the granted approval releases exactly one execution."""
     EXECUTED.clear()
     register_tool(
@@ -167,10 +161,14 @@ async def test_an_approved_action_executes_once_and_is_consumed(
     assert EXECUTED == []
 
     approval = (
-        await db.execute(
-            select(ApprovalRequest).where(ApprovalRequest.tenant_id == tenant_ctx.tenant_id)
+        (
+            await db.execute(
+                select(ApprovalRequest).where(ApprovalRequest.tenant_id == tenant_ctx.tenant_id)
+            )
         )
-    ).scalars().one()
+        .scalars()
+        .one()
+    )
     await ApprovalService.decide(
         db,
         tenant_ctx.tenant_id,
@@ -192,16 +190,14 @@ async def test_an_approved_action_executes_once_and_is_consumed(
 
     assert EXECUTED == ["now"], "the approved action did not execute exactly once"
     refreshed = (
-        await db.execute(
-            select(ApprovalRequest).where(ApprovalRequest.id == approval.id)
-        )
-    ).scalars().one()
+        (await db.execute(select(ApprovalRequest).where(ApprovalRequest.id == approval.id)))
+        .scalars()
+        .one()
+    )
     assert refreshed.consumed_at is not None, "the approval was not consumed"
 
 
-async def test_a_consumed_approval_does_not_authorize_a_second_run(
-    db, tenant_ctx, monkeypatch
-):
+async def test_a_consumed_approval_does_not_authorize_a_second_run(db, tenant_ctx, monkeypatch):
     """One approval = one action. Otherwise a resume loop would re-fire it."""
     EXECUTED.clear()
     register_tool(
@@ -225,10 +221,14 @@ async def test_a_consumed_approval_does_not_authorize_a_second_run(
         conversation_id=conversation_id,
     )
     approval = (
-        await db.execute(
-            select(ApprovalRequest).where(ApprovalRequest.tenant_id == tenant_ctx.tenant_id)
+        (
+            await db.execute(
+                select(ApprovalRequest).where(ApprovalRequest.tenant_id == tenant_ctx.tenant_id)
+            )
         )
-    ).scalars().one()
+        .scalars()
+        .one()
+    )
     await ApprovalService.decide(
         db,
         tenant_ctx.tenant_id,

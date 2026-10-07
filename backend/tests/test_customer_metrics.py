@@ -68,9 +68,10 @@ def test_confident_wrong_rate_is_the_governing_metric():
 
 
 def test_propose_thresholds_from_distributions():
-    correct = [_hit(f"p-{i}", s, ("p-other", s - 0.30)) for i, s in enumerate(
-        [0.90, 0.88, 0.86, 0.84, 0.82, 0.80, 0.78, 0.76, 0.74, 0.72]
-    )]
+    correct = [
+        _hit(f"p-{i}", s, ("p-other", s - 0.30))
+        for i, s in enumerate([0.90, 0.88, 0.86, 0.84, 0.82, 0.80, 0.78, 0.76, 0.74, 0.72])
+    ]
     foreign = [_foreign(0.30), _foreign(0.25), _foreign(0.10)]
     proposed = propose_thresholds(correct + foreign)
 
@@ -80,9 +81,7 @@ def test_propose_thresholds_from_distributions():
     assert proposed["gap_min"] == 0.3
     # The credibility line sits midway between the foreign ceiling and the
     # measured high floor.
-    assert proposed["rerank_floor"] == round(
-        (0.30 + proposed["high_floor"]) / 2, 3
-    )
+    assert proposed["rerank_floor"] == round((0.30 + proposed["high_floor"]) / 2, 3)
 
 
 def test_propose_thresholds_with_no_usable_data_is_safe():

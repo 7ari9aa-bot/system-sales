@@ -45,9 +45,7 @@ from app.core.model_kit import (
 class Agent(TenantMixin, TimestampMixin, WorkspaceScopeMixin, VersionMixin, Base):
     __tablename__ = "agents"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     kind: Mapped[str] = mapped_column(String(63), server_default="customer")
     name: Mapped[str] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text)
@@ -59,17 +57,13 @@ class Agent(TenantMixin, TimestampMixin, WorkspaceScopeMixin, VersionMixin, Base
     run_limits: Mapped[dict] = mapped_column(JSONB, server_default="{}")
     is_active: Mapped[bool] = mapped_column(default=True, server_default="true")
 
-    __table_args__ = (
-        UniqueConstraint("tenant_id", "kind", name="uq_agents_tenant_kind"),
-    )
+    __table_args__ = (UniqueConstraint("tenant_id", "kind", name="uq_agents_tenant_kind"),)
 
 
 class AgentTool(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "agent_tools"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     agent_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("agents.id", ondelete="CASCADE")
     )
@@ -86,9 +80,7 @@ class AgentTool(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
 class Prompt(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "prompts"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     agent_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("agents.id", ondelete="SET NULL"), nullable=True
     )
@@ -106,9 +98,7 @@ class Prompt(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
 class ModelConfig(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "model_configs"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     # alias: fast | strong | cheap | embedding | fallback
     alias: Mapped[str] = mapped_column(String(31))
     provider: Mapped[str] = mapped_column(String(31))
@@ -122,9 +112,7 @@ class ModelConfig(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
 class Memory(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "memories"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     customer_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("customers.id", ondelete="SET NULL"), nullable=True
     )
@@ -138,33 +126,25 @@ class Memory(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     actor_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    verified_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     confidence: Mapped[float] = mapped_column(Numeric(5, 4), server_default="0.5")
     # §158: staff can take a claim out of service without losing the audit
     # trail — allowed: active | invalidated
     status: Mapped[str] = mapped_column(String(15), server_default="active")
-    invalidated_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    invalidated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # kind: summary | preference | fact
     kind: Mapped[str] = mapped_column(String(15))
     content: Mapped[str] = mapped_column(Text)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(1536), nullable=True)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    __table_args__ = (
-        Index("ix_memories_tenant_customer", "tenant_id", "customer_id"),
-    )
+    __table_args__ = (Index("ix_memories_tenant_customer", "tenant_id", "customer_id"),)
 
 
 class KnowledgeItem(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "knowledge_items"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     title: Mapped[str] = mapped_column(String(255))
     # source_type: text | file | url | qa
     source_type: Mapped[str] = mapped_column(String(15))
@@ -175,9 +155,7 @@ class KnowledgeItem(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     status: Mapped[str] = mapped_column(String(15), server_default="pending")
     # §157 visibility: retrieval filters on this BEFORE context injection
     # allowed: customer_facing | staff_only | internal | admin_only
-    visibility: Mapped[str] = mapped_column(
-        String(15), server_default="customer_facing"
-    )
+    visibility: Mapped[str] = mapped_column(String(15), server_default="customer_facing")
 
     # §45 full text — DATABASE-DERIVED, never assign. Complements the pgvector
     # `embedding`: the vector answers "what is about this", this answers "what
@@ -195,17 +173,13 @@ class KnowledgeItem(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
         nullable=True,
     )
 
-    __table_args__ = (
-        Index("ix_knowledge_tenant_status", "tenant_id", "status"),
-    )
+    __table_args__ = (Index("ix_knowledge_tenant_status", "tenant_id", "status"),)
 
 
 class AgentRun(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "agent_runs"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     agent_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("agents.id", ondelete="CASCADE")
     )
@@ -237,9 +211,7 @@ class AgentRun(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base)
 class ToolCall(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "tool_calls"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     run_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("agent_runs.id", ondelete="CASCADE")
     )
@@ -263,18 +235,14 @@ class ToolCall(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base)
 
     __table_args__ = (
         Index("ix_tool_calls_tenant_run", "tenant_id", "run_id"),
-        UniqueConstraint(
-            "tenant_id", "idempotency_key", name="uq_tool_calls_tenant_idempotency"
-        ),
+        UniqueConstraint("tenant_id", "idempotency_key", name="uq_tool_calls_tenant_idempotency"),
     )
 
 
 class ModelCall(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "model_calls"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     run_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("agent_runs.id", ondelete="SET NULL"), nullable=True
     )
@@ -289,9 +257,7 @@ class ModelCall(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base
     # status: ok | error
     status: Mapped[str] = mapped_column(String(15), server_default="ok")
 
-    __table_args__ = (
-        Index("ix_model_calls_tenant_created", "tenant_id", "created_at"),
-    )
+    __table_args__ = (Index("ix_model_calls_tenant_created", "tenant_id", "created_at"),)
 
 
 class AIUsage(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
@@ -322,9 +288,7 @@ class AIUsage(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
 
     # (id, period_date): both columns are `primary_key=True`, and declaration
     # order puts `id` first, which is the column order the migrated key has.
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     # The bucket's business day, and the partition key — so it is part of the
     # identity, not merely a column that happens to be indexed.
     period_date: Mapped[date] = mapped_column(Date, primary_key=True)
@@ -353,9 +317,7 @@ class ApprovalRequest(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
 
     __tablename__ = "approval_requests"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     run_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("agent_runs.id", ondelete="CASCADE")
     )
@@ -389,9 +351,7 @@ class ApprovalRequest(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     rejection_reason: Mapped[str | None] = mapped_column(Text)
 
-    __table_args__ = (
-        Index("ix_approvals_tenant_status", "tenant_id", "status", "expires_at"),
-    )
+    __table_args__ = (Index("ix_approvals_tenant_status", "tenant_id", "status", "expires_at"),)
 
 
 class BudgetPolicy(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
@@ -399,9 +359,7 @@ class BudgetPolicy(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
 
     __tablename__ = "ai_budget_policies"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     scope: Mapped[str] = mapped_column(String(15), server_default="tenant")  # tenant|agent
     agent_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("agents.id", ondelete="CASCADE")
@@ -423,9 +381,7 @@ class AIProviderPolicy(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
 
     __tablename__ = "ai_provider_policies"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     provider: Mapped[str] = mapped_column(String(31))
     # allowed: allowed | denied
     status: Mapped[str] = mapped_column(String(15), server_default="allowed")
@@ -441,9 +397,7 @@ class AIProviderPolicy(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     retention_terms: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
 
-    __table_args__ = (
-        UniqueConstraint("tenant_id", "provider", name="uq_ai_provider_policy"),
-    )
+    __table_args__ = (UniqueConstraint("tenant_id", "provider", name="uq_ai_provider_policy"),)
 
 
 class AIHandover(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
@@ -451,9 +405,7 @@ class AIHandover(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Bas
 
     __tablename__ = "ai_handovers"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     conversation_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("conversations.id", ondelete="CASCADE")
     )
@@ -469,9 +421,7 @@ class AIHandover(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Bas
     )
     note: Mapped[str | None] = mapped_column(Text)
 
-    __table_args__ = (
-        Index("ix_handovers_tenant_status", "tenant_id", "status", "created_at"),
-    )
+    __table_args__ = (Index("ix_handovers_tenant_status", "tenant_id", "status", "created_at"),)
 
 
 class AIEvaluation(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
@@ -479,9 +429,7 @@ class AIEvaluation(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
 
     __tablename__ = "ai_evaluations"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     agent_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("agents.id", ondelete="CASCADE")
     )
@@ -494,9 +442,7 @@ class AIEvaluation(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     rollout_status: Mapped[str] = mapped_column(String(15), server_default="none")
     notes: Mapped[str | None] = mapped_column(Text)
 
-    __table_args__ = (
-        Index("ix_evaluations_tenant_agent", "tenant_id", "agent_id", "created_at"),
-    )
+    __table_args__ = (Index("ix_evaluations_tenant_agent", "tenant_id", "agent_id", "created_at"),)
 
 
 class AIBudgetReservation(TenantMixin, AppendOnlyCreatedAtMixin, Base):
@@ -516,9 +462,7 @@ class AIBudgetReservation(TenantMixin, AppendOnlyCreatedAtMixin, Base):
 
     __tablename__ = "ai_budget_reservations"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     agent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     amount: Mapped[Decimal] = mapped_column(AI_COST, nullable=False)
     # allowed: active | settled | expired
@@ -526,9 +470,7 @@ class AIBudgetReservation(TenantMixin, AppendOnlyCreatedAtMixin, Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    __table_args__ = (
-        Index("ix_ai_budget_reservations_active", "tenant_id", "status"),
-    )
+    __table_args__ = (Index("ix_ai_budget_reservations_active", "tenant_id", "status"),)
 
 
 class ProductEmbedding(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
@@ -544,9 +486,7 @@ class ProductEmbedding(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixi
 
     __tablename__ = "product_embeddings"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     product_image_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("product_images.id", ondelete="CASCADE")
     )
@@ -588,9 +528,7 @@ class ProductAttribute(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixi
 
     __tablename__ = "product_attributes"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     product_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("products.id", ondelete="CASCADE")
     )
@@ -622,9 +560,7 @@ class ConversationAgentState(TenantMixin, TimestampMixin, WorkspaceScopeMixin, B
 
     __tablename__ = "conversation_agent_states"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     conversation_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("conversations.id", ondelete="CASCADE"), unique=True
     )

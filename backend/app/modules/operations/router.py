@@ -87,10 +87,14 @@ async def list_tasks(
             Task.related_entity_id == customer_id,
         )
     rows = (
-        await ctx.session.execute(
-            stmt.order_by(Task.created_at.desc(), Task.id.desc()).limit(limit).offset(offset)
+        (
+            await ctx.session.execute(
+                stmt.order_by(Task.created_at.desc(), Task.id.desc()).limit(limit).offset(offset)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return [
         TaskSummary(
             id=t.id,
@@ -179,10 +183,10 @@ async def list_sla_policies(ctx: TenantCtxDep):
     from app.modules.operations.models import SLAPolicy
 
     rows = (
-        await ctx.session.execute(
-            select(SLAPolicy).where(SLAPolicy.tenant_id == ctx.tenant_id)
-        )
-    ).scalars().all()
+        (await ctx.session.execute(select(SLAPolicy).where(SLAPolicy.tenant_id == ctx.tenant_id)))
+        .scalars()
+        .all()
+    )
     return SLAPolicyList(items=[_policy_out(p) for p in rows])
 
 
@@ -201,12 +205,16 @@ async def upsert_sla_policy(
 
     if body.is_default:
         for row in (
-            await ctx.session.execute(
-                select(SLAPolicy).where(
-                    SLAPolicy.tenant_id == ctx.tenant_id, SLAPolicy.is_default.is_(True)
+            (
+                await ctx.session.execute(
+                    select(SLAPolicy).where(
+                        SLAPolicy.tenant_id == ctx.tenant_id, SLAPolicy.is_default.is_(True)
+                    )
                 )
             )
-        ).scalars().all():
+            .scalars()
+            .all()
+        ):
             row.is_default = False
         await ctx.session.flush()
 
@@ -244,10 +252,14 @@ async def list_business_calendars(ctx: TenantCtxDep):
     from app.modules.operations.models import BusinessCalendar
 
     rows = (
-        await ctx.session.execute(
-            select(BusinessCalendar).where(BusinessCalendar.tenant_id == ctx.tenant_id)
+        (
+            await ctx.session.execute(
+                select(BusinessCalendar).where(BusinessCalendar.tenant_id == ctx.tenant_id)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return BusinessCalendarList(items=[_calendar_out(c) for c in rows])
 
 
@@ -269,13 +281,17 @@ async def upsert_business_calendar(
 
     if body.is_default:
         for row in (
-            await ctx.session.execute(
-                select(BusinessCalendar).where(
-                    BusinessCalendar.tenant_id == ctx.tenant_id,
-                    BusinessCalendar.is_default.is_(True),
+            (
+                await ctx.session.execute(
+                    select(BusinessCalendar).where(
+                        BusinessCalendar.tenant_id == ctx.tenant_id,
+                        BusinessCalendar.is_default.is_(True),
+                    )
                 )
             )
-        ).scalars().all():
+            .scalars()
+            .all()
+        ):
             row.is_default = False
         await ctx.session.flush()
 
@@ -320,16 +336,20 @@ async def sla_risk(ctx: TenantCtxDep, limit: Annotated[int, Query(ge=1, le=200)]
 
     clock = await SlaService.resolve_clock(ctx.session, ctx.tenant_id)
     rows = (
-        await ctx.session.execute(
-            select(SLAEvent)
-            .where(
-                SLAEvent.tenant_id == ctx.tenant_id,
-                SLAEvent.status.in_(("running", "breached")),
+        (
+            await ctx.session.execute(
+                select(SLAEvent)
+                .where(
+                    SLAEvent.tenant_id == ctx.tenant_id,
+                    SLAEvent.status.in_(("running", "breached")),
+                )
+                .order_by(SLAEvent.deadline_at.asc())
+                .limit(limit)
             )
-            .order_by(SLAEvent.deadline_at.asc())
-            .limit(limit)
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     now = datetime.now(UTC)
     items = []
@@ -347,11 +367,7 @@ async def sla_risk(ctx: TenantCtxDep, limit: Annotated[int, Query(ge=1, le=200)]
                 minutes_remaining=remaining,
                 # "at risk" = still running but under a quarter of the window
                 # left, which is what an agent needs to triage by.
-                at_risk=bool(
-                    row.status == "running"
-                    and remaining is not None
-                    and remaining <= 15
-                ),
+                at_risk=bool(row.status == "running" and remaining is not None and remaining <= 15),
             )
         )
     return SLARiskList(items=items, timezone=clock.timezone_name)
@@ -451,10 +467,14 @@ async def list_jobs(
     if kind:
         stmt = stmt.where(Job.kind == kind)
     rows = (
-        await ctx.session.execute(
-            stmt.order_by(Job.created_at.desc(), Job.id.desc()).limit(limit).offset(offset)
+        (
+            await ctx.session.execute(
+                stmt.order_by(Job.created_at.desc(), Job.id.desc()).limit(limit).offset(offset)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return JobList(items=[_job_out(job) for job in rows])
 
 
@@ -605,9 +625,9 @@ async def measure_all_slos(ctx: TenantCtxDep):
     """§168: compute every SLO's compliance for the tenant."""
     from app.modules.operations.slo_service import measure_all_slos
 
-    return SLOMeasurementList(items=[_slo_out(r) for r in await measure_all_slos(
-        ctx.session, ctx.tenant_id
-    )])
+    return SLOMeasurementList(
+        items=[_slo_out(r) for r in await measure_all_slos(ctx.session, ctx.tenant_id)]
+    )
 
 
 @sla_router.get("/slos/{slo_name}", response_model=SLOMeasurement)
@@ -655,9 +675,7 @@ async def cancel_scheduled_job(
     return ScheduledJobStatusResult(id=job.id, status=job.status)
 
 
-@router.post(
-    "/scheduled-jobs/{job_id}/reschedule", response_model=ScheduledJobRescheduleResult
-)
+@router.post("/scheduled-jobs/{job_id}/reschedule", response_model=ScheduledJobRescheduleResult)
 async def reschedule_scheduled_job(
     job_id: uuid.UUID,
     body: ScheduledJobReschedule,

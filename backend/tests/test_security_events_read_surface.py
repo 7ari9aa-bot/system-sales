@@ -62,9 +62,9 @@ def _permission_codes(routes, path: str, method: str) -> set[str]:
 
 
 def test_the_security_events_route_is_registered_on_the_platform_router() -> None:
-    assert any(
-        r.path == ROUTE_PATH and "GET" in r.methods for r in platform_router.routes
-    ), "security_events has writers but no reader — §67 needs its query surface"
+    assert any(r.path == ROUTE_PATH and "GET" in r.methods for r in platform_router.routes), (
+        "security_events has writers but no reader — §67 needs its query surface"
+    )
 
 
 def test_listing_security_events_is_gated_by_settings_read() -> None:
@@ -288,6 +288,5 @@ async def test_list_is_newest_first(db, tenant_ctx) -> None:
     seq = [i["details"]["n"] for i in items]
     assert seq == [2, 1], f"newest first, as numbers: {seq!r}"
     assert all(isinstance(v, int) and not isinstance(v, bool) for v in seq), (
-        "non-money numbers stay ints on the wire, got "
-        f"{[type(v).__name__ for v in seq]}"
+        f"non-money numbers stay ints on the wire, got {[type(v).__name__ for v in seq]}"
     )

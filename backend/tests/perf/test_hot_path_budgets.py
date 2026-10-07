@@ -102,9 +102,7 @@ async def _measure(
     return samples
 
 
-async def _seed_orderable_stock(
-    db: AsyncSession, tenant_id: uuid.UUID
-) -> tuple[Any, Any]:
+async def _seed_orderable_stock(db: AsyncSession, tenant_id: uuid.UUID) -> tuple[Any, Any]:
     """A published product/variant with deep stock + a buyer, for checkout.
 
     Reuses the exact recipe tests/test_order_idempotency.py::_seed_checkout uses
@@ -208,15 +206,9 @@ async def test_hot_path_latency_budgets(db, tenant_ctx) -> None:  # noqa: ANN001
         f"p95={profile_p95:7.1f}ms  budget={BUDGET_GET_360_MS:.0f}ms"
     )
 
-    assert create_p95 <= BUDGET_CREATE_ORDER_MS, (
-        f"create_order p95 breached budget{report}"
-    )
-    assert revenue_p95 <= BUDGET_REVENUE_SUMMARY_MS, (
-        f"revenue_summary p95 breached budget{report}"
-    )
-    assert profile_p95 <= BUDGET_GET_360_MS, (
-        f"get_360 p95 breached budget{report}"
-    )
+    assert create_p95 <= BUDGET_CREATE_ORDER_MS, f"create_order p95 breached budget{report}"
+    assert revenue_p95 <= BUDGET_REVENUE_SUMMARY_MS, f"revenue_summary p95 breached budget{report}"
+    assert profile_p95 <= BUDGET_GET_360_MS, f"get_360 p95 breached budget{report}"
 
 
 # --- tiny time helpers (avoid importing app datetime utils into the harness) --

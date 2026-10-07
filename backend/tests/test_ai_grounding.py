@@ -32,8 +32,12 @@ def test_substring_matches_both_precisions():
 
 def test_facts_come_from_ok_results_only():
     calls = [
-        {"name": "search_products", "status": "ok", "args": {"query": "widget"},
-         "result": {"results": [{"price": "25.50", "sku": "BW-1"}]}},
+        {
+            "name": "search_products",
+            "status": "ok",
+            "args": {"query": "widget"},
+            "result": {"results": [{"price": "25.50", "sku": "BW-1"}]},
+        },
         {"name": "check_stock", "status": "error", "args": {}, "result": {"error": "boom"}},
         {"name": "create_order", "status": "denied", "args": {}, "result": {"error": "x"}},
     ]
@@ -73,8 +77,12 @@ def test_non_order_tool_args_do_not_leak_in():
 
 def test_bools_and_nones_are_not_facts():
     calls = [
-        {"name": "get_customer", "status": "ok", "args": {},
-         "result": {"is_blocked": False, "phone": None, "name": "سالم"}}
+        {
+            "name": "get_customer",
+            "status": "ok",
+            "args": {},
+            "result": {"is_blocked": False, "phone": None, "name": "سالم"},
+        }
     ]
     facts = facts_from_tool_calls(calls)
     assert "False" not in facts and "None" not in facts

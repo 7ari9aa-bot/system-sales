@@ -85,9 +85,7 @@ async def _seed(engine: AsyncEngine, *, on_hand: int) -> tuple[uuid.UUID, uuid.U
         product = await CatalogService.create_product(
             session, tenant_id, title="Last Unit", slug=f"p-{uuid.uuid4().hex[:10]}"
         )
-        variant = await CatalogService.add_variant(
-            session, tenant_id, product.id, price="10.00"
-        )
+        variant = await CatalogService.add_variant(session, tenant_id, product.id, price="10.00")
         variant_id = variant.id
         if on_hand:
             await InventoryService.move(
@@ -142,9 +140,7 @@ async def _race_reservations(
                 await bind_tenant(session, tenant_id)
                 await barrier.wait()
                 try:
-                    await InventoryService.reserve(
-                        session, tenant_id, variant_id, warehouse_id, 1
-                    )
+                    await InventoryService.reserve(session, tenant_id, variant_id, warehouse_id, 1)
                 except InsufficientStockError:
                     return "insufficient"
                 return "reserved"
@@ -171,9 +167,7 @@ async def _balance(engine: AsyncEngine, tenant_id: uuid.UUID, variant_id: uuid.U
 async def test_gate_last_unit_is_sold_exactly_once(committed_engine):
     tenant_id, warehouse_id, variant_id = await _seed(committed_engine, on_hand=1)
     try:
-        outcomes = await _race_reservations(
-            committed_engine, tenant_id, warehouse_id, variant_id
-        )
+        outcomes = await _race_reservations(committed_engine, tenant_id, warehouse_id, variant_id)
         tally = Counter(outcomes)
 
         assert tally["reserved"] == 1, f"oversold: {dict(tally)}"
@@ -188,9 +182,7 @@ async def test_gate_stock_is_split_without_overshoot(committed_engine):
     """3 units, 6 buyers: exactly 3 win, and reserved lands on 3 — not 4, 5 or 6."""
     tenant_id, warehouse_id, variant_id = await _seed(committed_engine, on_hand=3)
     try:
-        outcomes = await _race_reservations(
-            committed_engine, tenant_id, warehouse_id, variant_id
-        )
+        outcomes = await _race_reservations(committed_engine, tenant_id, warehouse_id, variant_id)
         tally = Counter(outcomes)
 
         assert tally["reserved"] == 3, f"oversold or undersold: {dict(tally)}"
@@ -211,9 +203,7 @@ async def test_gate_first_touch_balance_row_converges(committed_engine):
     try:
         assert await _balance(committed_engine, tenant_id, variant_id) == []
 
-        outcomes = await _race_reservations(
-            committed_engine, tenant_id, warehouse_id, variant_id
-        )
+        outcomes = await _race_reservations(committed_engine, tenant_id, warehouse_id, variant_id)
 
         assert Counter(outcomes) == {"insufficient": BUYERS}
         assert await _balance(committed_engine, tenant_id, variant_id) == [(0, 0)]
@@ -241,4 +231,3 @@ async def test_gate_uses_a_separate_connection_per_buyer(committed_engine):
 
     pids = await asyncio.gather(*(backend_pid() for _ in range(BUYERS)))
     assert len(set(pids)) == BUYERS, f"buyers shared connections: {pids}"
-

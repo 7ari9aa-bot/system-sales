@@ -86,9 +86,7 @@ def test_scoped_tools_never_expose_customer_id(name: str, valid_args: dict) -> N
     spec = get_tool(name)
     properties = tool_to_openai_schema(spec)["function"]["parameters"]["properties"]
     assert "customer_id" not in properties
-    dumped = spec.args_schema(
-        **valid_args, **{"customer_id": str(uuid.uuid4())}
-    ).model_dump()
+    dumped = spec.args_schema(**valid_args, **{"customer_id": str(uuid.uuid4())}).model_dump()
     assert "customer_id" not in dumped
 
 
@@ -130,9 +128,7 @@ async def test_search_knowledge_requests_customer_facing_visibility(monkeypatch)
     public = _Item("Shipping", "Orders ship in 2 days.", "customer_facing")
     internal = _Item("Margins", "We pay 12 EGP per unit.", "staff_only")
 
-    async def _fake_search(
-        session, tenant_id, query, *, limit=5, visibility="customer_facing"
-    ):
+    async def _fake_search(session, tenant_id, query, *, limit=5, visibility="customer_facing"):
         calls.append(
             {"tenant_id": tenant_id, "query": query, "limit": limit, "visibility": visibility}
         )
@@ -197,9 +193,7 @@ async def test_malformed_binding_is_a_controlled_tool_error() -> None:
     with pytest.raises(DomainError):
         await get_tool("add_task").handler(None, uuid.uuid4(), title="Follow up", context=bad)
     with pytest.raises(DomainError):
-        await get_tool("get_order").handler(
-            None, uuid.uuid4(), order_id=uuid.uuid4(), context=bad
-        )
+        await get_tool("get_order").handler(None, uuid.uuid4(), order_id=uuid.uuid4(), context=bad)
 
 
 # ------------------------------------------------------------ DB-backed -----
@@ -232,9 +226,7 @@ async def _order(
 
 
 async def _variant(db: AsyncSession, tenant_id: uuid.UUID) -> ProductVariant:
-    product = Product(
-        tenant_id=tenant_id, title="Widget", slug=f"w-{uuid.uuid4().hex[:8]}"
-    )
+    product = Product(tenant_id=tenant_id, title="Widget", slug=f"w-{uuid.uuid4().hex[:8]}")
     db.add(product)
     await db.flush()
     variant = ProductVariant(
@@ -252,9 +244,7 @@ async def _variant(db: AsyncSession, tenant_id: uuid.UUID) -> ProductVariant:
 async def test_get_customer_returns_the_bound_customer(db: AsyncSession, tenant_ctx) -> None:
     customer = await _customer(db, tenant_ctx.tenant_id, name="Bound Customer")
     spec = get_tool("get_customer")
-    result = await spec.handler(
-        db, tenant_ctx.tenant_id, context={"customer_id": str(customer.id)}
-    )
+    result = await spec.handler(db, tenant_ctx.tenant_id, context={"customer_id": str(customer.id)})
     assert result["customer_id"] == str(customer.id)
     assert result["name"] == "Bound Customer"
     assert result["lifetime_value"] == str(customer.lifetime_value)
@@ -343,9 +333,7 @@ async def test_add_task_links_the_bound_customer(db: AsyncSession, tenant_ctx) -
     customer = await _customer(db, tenant_id)
     spec = get_tool("add_task")
     kwargs = spec.args_schema(title="Call back tomorrow", priority=1).model_dump()
-    result = await spec.handler(
-        db, tenant_id, **kwargs, context={"customer_id": str(customer.id)}
-    )
+    result = await spec.handler(db, tenant_id, **kwargs, context={"customer_id": str(customer.id)})
 
     task = (
         await db.execute(select(Task).where(Task.id == uuid.UUID(result["task_id"])))
@@ -377,9 +365,7 @@ async def test_add_tag_uses_the_bound_customer(db: AsyncSession, tenant_ctx) -> 
     tenant_id = tenant_ctx.tenant_id
     customer = await _customer(db, tenant_id)
     spec = get_tool("add_tag")
-    result = await spec.handler(
-        db, tenant_id, tag="vip", context={"customer_id": str(customer.id)}
-    )
+    result = await spec.handler(db, tenant_id, tag="vip", context={"customer_id": str(customer.id)})
     assert result == {"customer_id": str(customer.id), "tag": "vip"}
 
     tags = await CustomerService.list_tags(db, tenant_id, customer.id)
@@ -449,9 +435,7 @@ def _search_patterns(query: str) -> tuple[str, list[str]]:
         ("%_%", r"\%\_\%"),
     ],
 )
-def test_search_products_escapes_like_wildcards(
-    query: str, expected_core: str
-) -> None:
+def test_search_products_escapes_like_wildcards(query: str, expected_core: str) -> None:
     """A7: a search term must narrow, never widen — escape LIKE metacharacters.
 
     The handler wraps the (escaped) term in the wildcards IT chooses, so a

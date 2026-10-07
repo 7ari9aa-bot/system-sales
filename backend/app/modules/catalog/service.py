@@ -54,9 +54,7 @@ class CatalogService:
     # ----------------------------------------------------------- product ----
 
     @staticmethod
-    async def get_product(
-        session: AsyncSession, tenant_id: UUID, product_id: UUID
-    ) -> Product:
+    async def get_product(session: AsyncSession, tenant_id: UUID, product_id: UUID) -> Product:
         product = (
             await session.execute(
                 select(Product).where(
@@ -133,8 +131,7 @@ class CatalogService:
                 raise ValueError(f"{required} must not be null")
         if "status" in fields and fields["status"] not in _PRODUCT_STATUSES:
             raise ValueError(
-                f"status must be one of {sorted(_PRODUCT_STATUSES)}, "
-                f"got {fields['status']!r}"
+                f"status must be one of {sorted(_PRODUCT_STATUSES)}, got {fields['status']!r}"
             )
 
         product = await CatalogService.get_product(session, tenant_id, product_id)
@@ -157,16 +154,18 @@ class CatalogService:
         return product
 
     @staticmethod
-    async def archive_product(
-        session: AsyncSession, tenant_id: UUID, product_id: UUID
-    ) -> Product:
+    async def archive_product(session: AsyncSession, tenant_id: UUID, product_id: UUID) -> Product:
         return await CatalogService.update_product(
             session, tenant_id, product_id, status="archived"
         )
 
     @staticmethod
     async def _find_external_product(
-        session: AsyncSession, tenant_id: UUID, *, slug: str, source: str,
+        session: AsyncSession,
+        tenant_id: UUID,
+        *,
+        slug: str,
+        source: str,
         external_ref: str,
     ) -> Product | None:
         """The row this external record already owns, if any.
@@ -177,9 +176,7 @@ class CatalogService:
         """
         by_slug = (
             await session.execute(
-                select(Product).where(
-                    Product.tenant_id == tenant_id, Product.slug == slug
-                )
+                select(Product).where(Product.tenant_id == tenant_id, Product.slug == slug)
             )
         ).scalar_one_or_none()
         if by_slug is not None:
@@ -240,13 +237,9 @@ class CatalogService:
             fields: dict = {"title": title}
             if data.get("description"):
                 fields["description"] = data["description"]
-            product = await CatalogService.update_product(
-                session, tenant_id, product.id, **fields
-            )
+            product = await CatalogService.update_product(session, tenant_id, product.id, **fields)
         if product.slug != slug:
-            product = await CatalogService.update_product(
-                session, tenant_id, product.id, slug=slug
-            )
+            product = await CatalogService.update_product(session, tenant_id, product.id, slug=slug)
         # Applies to both paths: a new product is born a draft, and the store
         # saying "active" is the merchant's decision, not ours to delay.
         status = data.get("status")
@@ -298,9 +291,7 @@ class CatalogService:
                 )
             ).scalar_one_or_none()
             if variant is not None and variant.product_id != product.id:
-                raise ConflictError(
-                    f"variant SKU '{sku}' already belongs to another product"
-                )
+                raise ConflictError(f"variant SKU '{sku}' already belongs to another product")
         if variant is None and title is not None:
             variant = (
                 await session.execute(
@@ -479,8 +470,7 @@ class CatalogService:
         currency = (currency or tenant_currency).upper()
         if currency != tenant_currency:
             raise ConflictError(
-                f"this tenant prices in {tenant_currency}; a {currency} tier "
-                "could never be sold"
+                f"this tenant prices in {tenant_currency}; a {currency} tier could never be sold"
             )
 
         row = (
@@ -533,18 +523,22 @@ class CatalogService:
         anyway, and a price lookup should not re-query for it.
         """
         tier = (
-            await session.execute(
-                select(ProductPrice.unit_price)
-                .where(
-                    ProductPrice.tenant_id == tenant_id,
-                    ProductPrice.variant_id == variant.id,
-                    ProductPrice.currency == currency.upper(),
-                    ProductPrice.min_quantity <= quantity,
+            (
+                await session.execute(
+                    select(ProductPrice.unit_price)
+                    .where(
+                        ProductPrice.tenant_id == tenant_id,
+                        ProductPrice.variant_id == variant.id,
+                        ProductPrice.currency == currency.upper(),
+                        ProductPrice.min_quantity <= quantity,
+                    )
+                    .order_by(ProductPrice.min_quantity.desc(), ProductPrice.id)
+                    .limit(1)
                 )
-                .order_by(ProductPrice.min_quantity.desc(), ProductPrice.id)
-                .limit(1)
             )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
         return variant.price if tier is None else tier
 
     @staticmethod
@@ -564,13 +558,17 @@ class CatalogService:
         if not variant_ids:
             return {}
         rows = (
-            await session.execute(
-                select(ProductVariant).where(
-                    ProductVariant.tenant_id == tenant_id,
-                    ProductVariant.id.in_(variant_ids),
+            (
+                await session.execute(
+                    select(ProductVariant).where(
+                        ProductVariant.tenant_id == tenant_id,
+                        ProductVariant.id.in_(variant_ids),
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return {v.id: v for v in rows}
 
     @staticmethod
@@ -638,9 +636,7 @@ class CatalogService:
     # ------------------------------------------------- brands/categories ----
 
     @staticmethod
-    async def create_brand(
-        session: AsyncSession, tenant_id: UUID, *, name: str
-    ) -> Brand:
+    async def create_brand(session: AsyncSession, tenant_id: UUID, *, name: str) -> Brand:
         brand = Brand(tenant_id=tenant_id, name=name)
         try:
             async with session.begin_nested():
@@ -701,9 +697,7 @@ class CatalogService:
                 session, tenant_id, variant_id, include_inactive=True
             )
             if bound_variant.product_id != product_id:
-                raise ValidationError(
-                    "variant does not belong to this product"
-                )
+                raise ValidationError("variant does not belong to this product")
         highest = (
             await session.execute(
                 select(func.max(ProductImage.position)).where(
@@ -731,15 +725,19 @@ class CatalogService:
         """The product's gallery in display order."""
         await CatalogService.get_product(session, tenant_id, product_id)
         rows = (
-            await session.execute(
-                select(ProductImage)
-                .where(
-                    ProductImage.tenant_id == tenant_id,
-                    ProductImage.product_id == product_id,
+            (
+                await session.execute(
+                    select(ProductImage)
+                    .where(
+                        ProductImage.tenant_id == tenant_id,
+                        ProductImage.product_id == product_id,
+                    )
+                    .order_by(ProductImage.position.asc(), ProductImage.id.asc())
                 )
-                .order_by(ProductImage.position.asc(), ProductImage.id.asc())
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return list(rows)
 
     @staticmethod
@@ -750,19 +748,23 @@ class CatalogService:
         if not product_ids:
             return {}
         rows = (
-            await session.execute(
-                select(ProductImage)
-                .where(
-                    ProductImage.tenant_id == tenant_id,
-                    ProductImage.product_id.in_(product_ids),
-                )
-                .order_by(
-                    ProductImage.product_id.asc(),
-                    ProductImage.position.asc(),
-                    ProductImage.id.asc(),
+            (
+                await session.execute(
+                    select(ProductImage)
+                    .where(
+                        ProductImage.tenant_id == tenant_id,
+                        ProductImage.product_id.in_(product_ids),
+                    )
+                    .order_by(
+                        ProductImage.product_id.asc(),
+                        ProductImage.position.asc(),
+                        ProductImage.id.asc(),
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         grouped: dict[UUID, list[ProductImage]] = {}
         for image in rows:
             grouped.setdefault(image.product_id, []).append(image)
@@ -773,14 +775,18 @@ class CatalogService:
         session: AsyncSession, tenant_id: UUID, *, limit: int = 200, offset: int = 0
     ) -> list[Brand]:
         rows = (
-            await session.execute(
-                select(Brand)
-                .where(Brand.tenant_id == tenant_id)
-                .order_by(Brand.name.asc())
-                .limit(limit)
-                .offset(offset)
+            (
+                await session.execute(
+                    select(Brand)
+                    .where(Brand.tenant_id == tenant_id)
+                    .order_by(Brand.name.asc())
+                    .limit(limit)
+                    .offset(offset)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return list(rows)
 
     @staticmethod
@@ -788,14 +794,18 @@ class CatalogService:
         session: AsyncSession, tenant_id: UUID, *, limit: int = 200, offset: int = 0
     ) -> list[Category]:
         rows = (
-            await session.execute(
-                select(Category)
-                .where(Category.tenant_id == tenant_id)
-                .order_by(Category.name.asc())
-                .limit(limit)
-                .offset(offset)
+            (
+                await session.execute(
+                    select(Category)
+                    .where(Category.tenant_id == tenant_id)
+                    .order_by(Category.name.asc())
+                    .limit(limit)
+                    .offset(offset)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return list(rows)
 
     @staticmethod
@@ -803,14 +813,18 @@ class CatalogService:
         session: AsyncSession, tenant_id: UUID, *, limit: int = 100, offset: int = 0
     ) -> list[Product]:
         rows = (
-            await session.execute(
-                select(Product)
-                .where(Product.tenant_id == tenant_id)
-                .order_by(Product.created_at.desc())
-                .limit(limit)
-                .offset(offset)
+            (
+                await session.execute(
+                    select(Product)
+                    .where(Product.tenant_id == tenant_id)
+                    .order_by(Product.created_at.desc())
+                    .limit(limit)
+                    .offset(offset)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return list(rows)
 
     @staticmethod
@@ -818,15 +832,19 @@ class CatalogService:
         session: AsyncSession, tenant_id: UUID, product_id: UUID
     ) -> list[ProductVariant]:
         rows = (
-            await session.execute(
-                select(ProductVariant)
-                .where(
-                    ProductVariant.tenant_id == tenant_id,
-                    ProductVariant.product_id == product_id,
+            (
+                await session.execute(
+                    select(ProductVariant)
+                    .where(
+                        ProductVariant.tenant_id == tenant_id,
+                        ProductVariant.product_id == product_id,
+                    )
+                    .order_by(ProductVariant.created_at)
                 )
-                .order_by(ProductVariant.created_at)
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return list(rows)
 
     @staticmethod
@@ -837,13 +855,17 @@ class CatalogService:
         if not product_ids:
             return {}
         rows = (
-            await session.execute(
-                select(Product).where(
-                    Product.tenant_id == tenant_id,
-                    Product.id.in_(product_ids),
+            (
+                await session.execute(
+                    select(Product).where(
+                        Product.tenant_id == tenant_id,
+                        Product.id.in_(product_ids),
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return {p.id: p for p in rows}
 
     # -------------------------------------------------------- identifiers ----
@@ -851,9 +873,7 @@ class CatalogService:
     @staticmethod
     def _clean_identifier(identifier_type: str, value: str) -> str:
         if identifier_type not in IDENTIFIER_TYPES:
-            raise ValidationError(
-                f"identifier type must be one of {sorted(IDENTIFIER_TYPES)}"
-            )
+            raise ValidationError(f"identifier type must be one of {sorted(IDENTIFIER_TYPES)}")
         cleaned = value.strip()
         if not cleaned:
             raise ValidationError("identifier value must not be empty")
@@ -930,15 +950,19 @@ class CatalogService:
         session: AsyncSession, tenant_id: UUID, variant_id: UUID
     ) -> list[ProductIdentifier]:
         rows = (
-            await session.execute(
-                select(ProductIdentifier)
-                .where(
-                    ProductIdentifier.tenant_id == tenant_id,
-                    ProductIdentifier.variant_id == variant_id,
+            (
+                await session.execute(
+                    select(ProductIdentifier)
+                    .where(
+                        ProductIdentifier.tenant_id == tenant_id,
+                        ProductIdentifier.variant_id == variant_id,
+                    )
+                    .order_by(ProductIdentifier.created_at, ProductIdentifier.id)
                 )
-                .order_by(ProductIdentifier.created_at, ProductIdentifier.id)
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return list(rows)
 
     @staticmethod
@@ -1091,9 +1115,7 @@ class CatalogService:
             async with session.begin_nested():
                 await session.flush()
         except IntegrityError:
-            raise ConflictError(
-                f"option '{cleaned}' already exists on this product"
-            ) from None
+            raise ConflictError(f"option '{cleaned}' already exists on this product") from None
         return row
 
     @staticmethod
@@ -1121,9 +1143,7 @@ class CatalogService:
             async with session.begin_nested():
                 await session.flush()
         except IntegrityError:
-            raise ConflictError(
-                f"value '{cleaned}' already exists on this option"
-            ) from None
+            raise ConflictError(f"value '{cleaned}' already exists on this option") from None
         return row
 
     @staticmethod
@@ -1133,30 +1153,36 @@ class CatalogService:
         """The product's option axes with their values, in creation order."""
         await CatalogService.get_product(session, tenant_id, product_id)
         options = (
-            await session.execute(
-                select(ProductOption)
-                .where(
-                    ProductOption.tenant_id == tenant_id,
-                    ProductOption.product_id == product_id,
+            (
+                await session.execute(
+                    select(ProductOption)
+                    .where(
+                        ProductOption.tenant_id == tenant_id,
+                        ProductOption.product_id == product_id,
+                    )
+                    .order_by(ProductOption.created_at.asc(), ProductOption.id.asc())
                 )
-                .order_by(ProductOption.created_at.asc(), ProductOption.id.asc())
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         option_ids = [o.id for o in options]
         values_by_option: dict[UUID, list[ProductOptionValue]] = {}
         if option_ids:
             values = (
-                await session.execute(
-                    select(ProductOptionValue)
-                    .where(
-                        ProductOptionValue.tenant_id == tenant_id,
-                        ProductOptionValue.option_id.in_(option_ids),
-                    )
-                    .order_by(
-                        ProductOptionValue.created_at.asc(), ProductOptionValue.id.asc()
+                (
+                    await session.execute(
+                        select(ProductOptionValue)
+                        .where(
+                            ProductOptionValue.tenant_id == tenant_id,
+                            ProductOptionValue.option_id.in_(option_ids),
+                        )
+                        .order_by(ProductOptionValue.created_at.asc(), ProductOptionValue.id.asc())
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             for v in values:
                 values_by_option.setdefault(v.option_id, []).append(v)
         return [(o, values_by_option.get(o.id, [])) for o in options]

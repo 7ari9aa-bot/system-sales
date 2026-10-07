@@ -384,9 +384,7 @@ async def test_merging_two_customers_is_not_an_offered_resolution(
 # ---------------------------------------------------------------------------
 
 
-async def test_an_unknown_customer_is_a_404_shaped_refusal(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_an_unknown_customer_is_a_404_shaped_refusal(db: AsyncSession, tenant_ctx) -> None:
     async with _client(db, tenant_ctx, WRITE) as client:
         response = await client.post(
             RESOLVE_PATH_TPL.format(uuid.uuid4()),
@@ -403,9 +401,13 @@ async def test_resolving_a_closed_issue_answers_with_the_servers_real_state(
     and the refusal says so."""
     row_id = await _marked(db, tenant_ctx.tenant_id, flag=dict(_COLLISION_MARK))
     async with _client(db, tenant_ctx, WRITE) as client:
-        first = await client.post(RESOLVE_PATH_TPL.format(row_id), json={
-            "issue": COLLISION_ISSUE, "resolution": "confirm_distinct",
-        })
+        first = await client.post(
+            RESOLVE_PATH_TPL.format(row_id),
+            json={
+                "issue": COLLISION_ISSUE,
+                "resolution": "confirm_distinct",
+            },
+        )
         assert first.status_code == 200, first.text
         stale = await client.post(
             RESOLVE_PATH_TPL.format(row_id),
@@ -423,9 +425,7 @@ async def test_resolving_a_closed_issue_answers_with_the_servers_real_state(
     assert set(await _flag(db, row_id)) == {"revision"}
 
 
-async def test_a_row_that_was_never_marked_refuses_resolution(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_a_row_that_was_never_marked_refuses_resolution(db: AsyncSession, tenant_ctx) -> None:
     plain = Customer(id=uuid.uuid4(), tenant_id=tenant_ctx.tenant_id, name="Clean", phone=EGYPT)
     db.add(plain)
     await db.flush()
@@ -504,8 +504,7 @@ async def test_foreign_quarantined_rows_are_invisible_and_unresolvable(
             "revision": "d5a1c7e94b02",
         }, "the foreign mark is untouched"
         assert (
-            await db.scalar(select(Customer.phone).where(Customer.id == foreign_id))
-            == FABRICATED
+            await db.scalar(select(Customer.phone).where(Customer.id == foreign_id)) == FABRICATED
         ), "a refused resolve may not rewrite another tenant's contact"
         assert await _audit_rows(db, foreign_id) == []
 
@@ -642,13 +641,13 @@ async def test_the_queue_lists_the_mark_the_raw_value_and_the_collision_peer(
     assert clash["peer_customer_ids"] == [str(holder.id)]
 
 
-async def test_tombstoned_customers_leave_the_queue(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_tombstoned_customers_leave_the_queue(db: AsyncSession, tenant_ctx) -> None:
     """A dead row cannot be worked: resolve refuses it, so the queue must not
     promise it. It is not a quarantined CONTACT any more."""
     archived_id = await _marked(
-        db, tenant_ctx.tenant_id, flag=dict(_REVIEW_MARK),
+        db,
+        tenant_ctx.tenant_id,
+        flag=dict(_REVIEW_MARK),
     )
     survivor = Customer(
         id=uuid.uuid4(), tenant_id=tenant_ctx.tenant_id, name="Survivor", phone=EGYPT

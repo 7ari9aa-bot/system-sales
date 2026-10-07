@@ -123,9 +123,7 @@ async def test_agent_run_calls_tool_then_answers(db, tenant_ctx, monkeypatch):
     assert any(m["role"] == "tool" for m in calls["messages"])
 
     run = (
-        (await db.execute(select(AgentRun).where(AgentRun.tenant_id == tenant_id)))
-        .scalars()
-        .one()
+        (await db.execute(select(AgentRun).where(AgentRun.tenant_id == tenant_id))).scalars().one()
     )
     assert run.status == "succeeded"
     assert run.tokens_in == 40
@@ -136,9 +134,7 @@ async def test_agent_run_calls_tool_then_answers(db, tenant_ctx, monkeypatch):
     assert run.error is None
 
     tc_row = (
-        (await db.execute(select(ToolCall).where(ToolCall.tenant_id == tenant_id)))
-        .scalars()
-        .one()
+        (await db.execute(select(ToolCall).where(ToolCall.tenant_id == tenant_id))).scalars().one()
     )
     assert tc_row.run_id == run.id
     assert tc_row.name == "search_products"
@@ -154,9 +150,7 @@ async def test_agent_run_calls_tool_then_answers(db, tenant_ctx, monkeypatch):
 
     # Usage rollup written by the finalize step.
     usage = (
-        (await db.execute(select(AIUsage).where(AIUsage.tenant_id == tenant_id)))
-        .scalars()
-        .one()
+        (await db.execute(select(AIUsage).where(AIUsage.tenant_id == tenant_id))).scalars().one()
     )
     assert usage.agent_id == agent.id
     assert usage.tokens_in == 40
@@ -192,11 +186,7 @@ async def test_agent_run_uses_configured_step_limit(db, tenant_ctx, monkeypatch)
     assert calls["count"] == 1
     assert result.content is None
 
-    run = (
-        (await db.execute(select(AgentRun).where(AgentRun.agent_id == agent.id)))
-        .scalars()
-        .one()
-    )
+    run = (await db.execute(select(AgentRun).where(AgentRun.agent_id == agent.id))).scalars().one()
     assert run.status == "timeout"
     assert run.error == "run limit hit: max_steps"
 
@@ -207,9 +197,7 @@ async def test_agent_run_denies_tool_by_policy(db, tenant_ctx, monkeypatch):
 
     results = [
         _result(
-            tool_calls=[
-                ToolCallRequest(id="c1", name="search_products", arguments={"query": "x"})
-            ]
+            tool_calls=[ToolCallRequest(id="c1", name="search_products", arguments={"query": "x"})]
         ),
         _result(content="I cannot check the catalog.", tokens_in=5, tokens_out=2),
     ]
@@ -223,18 +211,14 @@ async def test_agent_run_denies_tool_by_policy(db, tenant_ctx, monkeypatch):
     assert result.content == "I cannot check the catalog."
 
     tc_row = (
-        (await db.execute(select(ToolCall).where(ToolCall.tenant_id == tenant_id)))
-        .scalars()
-        .one()
+        (await db.execute(select(ToolCall).where(ToolCall.tenant_id == tenant_id))).scalars().one()
     )
     assert tc_row.status == "denied"
     assert tc_row.error == "tool denied by policy"
     assert tc_row.result is None
 
     run = (
-        (await db.execute(select(AgentRun).where(AgentRun.tenant_id == tenant_id)))
-        .scalars()
-        .one()
+        (await db.execute(select(AgentRun).where(AgentRun.tenant_id == tenant_id))).scalars().one()
     )
     assert run.status == "succeeded"
 
@@ -246,9 +230,7 @@ async def test_agent_run_denies_tool_not_enabled_for_agent(db, tenant_ctx, monke
     await db.flush()
 
     results = [
-        _result(
-            tool_calls=[ToolCallRequest(id="c1", name="check_stock", arguments={})]
-        ),
+        _result(tool_calls=[ToolCallRequest(id="c1", name="check_stock", arguments={})]),
         _result(content="Sorry, no tools.", tokens_in=3, tokens_out=1),
     ]
     _patch_gateway_chat(monkeypatch, results)
@@ -259,9 +241,7 @@ async def test_agent_run_denies_tool_not_enabled_for_agent(db, tenant_ctx, monke
 
     assert result.tool_calls_made[0]["status"] == "denied"
     tc_row = (
-        (await db.execute(select(ToolCall).where(ToolCall.tenant_id == tenant_id)))
-        .scalars()
-        .one()
+        (await db.execute(select(ToolCall).where(ToolCall.tenant_id == tenant_id))).scalars().one()
     )
     assert tc_row.status == "denied"
     assert tc_row.error == "tool not enabled for this agent"
@@ -282,9 +262,7 @@ async def test_agent_run_failed_on_gateway_error(db, tenant_ctx, monkeypatch):
         )
 
     run = (
-        (await db.execute(select(AgentRun).where(AgentRun.tenant_id == tenant_id)))
-        .scalars()
-        .one()
+        (await db.execute(select(AgentRun).where(AgentRun.tenant_id == tenant_id))).scalars().one()
     )
     assert run.status == "failed"
     assert "no model configured" in run.error
@@ -293,9 +271,7 @@ async def test_agent_run_failed_on_gateway_error(db, tenant_ctx, monkeypatch):
 
 async def test_run_unknown_agent_raises_not_found(db, tenant_ctx):
     with pytest.raises(NotFoundError):
-        await AgentRunner().run(
-            db, tenant_ctx.tenant_id, agent_id=uuid.uuid4(), user_message="hi"
-        )
+        await AgentRunner().run(db, tenant_ctx.tenant_id, agent_id=uuid.uuid4(), user_message="hi")
 
 
 # ------------------------------------------------------------------ tools ---
@@ -328,9 +304,7 @@ def test_create_order_tool_registered_without_orders_dependency():
 async def test_check_stock_tool_sums_across_warehouses(db, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     variant = await _seed_variant(db, tenant_id)
-    warehouse = Warehouse(
-        tenant_id=tenant_id, name="WH", code=f"W-{uuid.uuid4().hex[:6].upper()}"
-    )
+    warehouse = Warehouse(tenant_id=tenant_id, name="WH", code=f"W-{uuid.uuid4().hex[:6].upper()}")
     db.add(warehouse)
     await db.flush()
     db.add(
@@ -390,9 +364,7 @@ class _StubSession:
 
 
 def _stub_variant(price):
-    return SimpleNamespace(
-        id=uuid.uuid4(), title="Blue Widget M", sku="BW-1", price=price
-    )
+    return SimpleNamespace(id=uuid.uuid4(), title="Blue Widget M", sku="BW-1", price=price)
 
 
 async def test_search_products_price_crosses_as_exact_string():
@@ -422,9 +394,7 @@ async def test_null_price_stays_null_not_zero():
     rows = [(variant, "Blue Widget")]
     search = await _search_products(_StubSession(rows), uuid.uuid4(), query="widget")
     assert search["results"][0]["price"] is None
-    price = await _get_variant_price(
-        _StubSession(rows), uuid.uuid4(), variant_id=variant.id
-    )
+    price = await _get_variant_price(_StubSession(rows), uuid.uuid4(), variant_id=variant.id)
     assert price["price"] is None
 
 

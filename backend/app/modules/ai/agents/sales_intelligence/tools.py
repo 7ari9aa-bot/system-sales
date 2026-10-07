@@ -34,9 +34,7 @@ def _context(tenant_id: uuid.UUID):
     from app.modules.analytics.capabilities import CapabilityContext
     from app.modules.analytics.semantic import StoreMetricProfile
 
-    return CapabilityContext(
-        tenant_id=tenant_id, profile=StoreMetricProfile()
-    )
+    return CapabilityContext(tenant_id=tenant_id, profile=StoreMetricProfile())
 
 
 def _fact_payload(fact) -> dict:
@@ -58,8 +56,13 @@ class SIGetMetricArgs(BaseModel):
 
 
 async def _si_get_metric(
-    session: AsyncSession, tenant_id: uuid.UUID, *, metric_name: str, days: int = 30,
-    channel: str | None = None, context: dict | None = None,
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    metric_name: str,
+    days: int = 30,
+    channel: str | None = None,
+    context: dict | None = None,
 ) -> dict:
     from app.modules.analytics.capabilities import EvidenceStore, get_metric
     from app.modules.analytics.semantic import metric
@@ -89,7 +92,11 @@ class SIComparePeriodsArgs(BaseModel):
 
 
 async def _si_compare_periods(
-    session: AsyncSession, tenant_id: uuid.UUID, *, metric_name: str, days: int = 30,
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    metric_name: str,
+    days: int = 30,
     context: dict | None = None,
 ) -> dict:
     from app.modules.analytics.capabilities import EvidenceStore, compare_periods
@@ -105,9 +112,7 @@ async def _si_compare_periods(
         "status": result.status,
         "summary": result.summary,
         "facts": [
-            _fact_payload(store.facts[eid])
-            for eid in result.evidence_ids
-            if eid in store.facts
+            _fact_payload(store.facts[eid]) for eid in result.evidence_ids if eid in store.facts
         ],
     }
 
@@ -119,15 +124,24 @@ class SIBreakdownArgs(BaseModel):
 
 
 async def _si_breakdown(
-    session: AsyncSession, tenant_id: uuid.UUID, *, metric_name: str,
-    dimension: str = "channel", days: int = 30, context: dict | None = None,
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    metric_name: str,
+    dimension: str = "channel",
+    days: int = 30,
+    context: dict | None = None,
 ) -> dict:
     from app.modules.analytics.capabilities import EvidenceStore, breakdown_metric
 
     store = EvidenceStore()
     result = await breakdown_metric(
-        session, _context(tenant_id), store,
-        metric_name=metric_name, dimension=dimension, days=days,
+        session,
+        _context(tenant_id),
+        store,
+        metric_name=metric_name,
+        dimension=dimension,
+        days=days,
     )
     return {
         "capability": result.capability,
@@ -142,7 +156,10 @@ class SIDriversArgs(BaseModel):
 
 
 async def _si_analyze_drivers(
-    session: AsyncSession, tenant_id: uuid.UUID, *, days: int = 30,
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    days: int = 30,
     context: dict | None = None,
 ) -> dict:
     from app.modules.analytics.capabilities import EvidenceStore, analyze_drivers
@@ -155,9 +172,7 @@ async def _si_analyze_drivers(
         "summary": result.summary,
         "assumptions": [a.statement for a in result.assumptions],
         "facts": [
-            _fact_payload(store.facts[eid])
-            for eid in result.evidence_ids
-            if eid in store.facts
+            _fact_payload(store.facts[eid]) for eid in result.evidence_ids if eid in store.facts
         ],
     }
 
@@ -167,7 +182,10 @@ class SIExplainArgs(BaseModel):
 
 
 async def _si_explain_metric(
-    session: AsyncSession, tenant_id: uuid.UUID, *, metric_name: str,
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    metric_name: str,
     context: dict | None = None,
 ) -> dict:
     from app.modules.analytics.capabilities import explain_metric
@@ -185,7 +203,10 @@ class SIStatusArgs(BaseModel):
 
 
 async def _si_data_status(
-    session: AsyncSession, tenant_id: uuid.UUID, *, context: dict | None = None,
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    context: dict | None = None,
 ) -> dict:
     from app.modules.analytics.capabilities import get_data_status
 
@@ -292,7 +313,10 @@ class SISeasonalityArgs(BaseModel):
 
 
 async def _si_analyze_seasonality(
-    session: AsyncSession, tenant_id: uuid.UUID, *, days: int = 30,
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    days: int = 30,
     context: dict | None = None,
 ) -> dict:
     """§5.3 v1 — reads the store's REAL daily revenue and checks whether
@@ -336,7 +360,10 @@ class SICustomersArgs(BaseModel):
 
 
 async def _si_analyze_customers(
-    session: AsyncSession, tenant_id: uuid.UUID, *, days: int = 30,
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    days: int = 30,
     context: dict | None = None,
 ) -> dict:
     """§5.4 v1 — new vs returning from the store's real orders."""
@@ -358,9 +385,7 @@ async def _si_analyze_customers(
             {"tenant_id": str(tenant_id), "start": current.start, "end": current.end},
         )
     ).all()
-    orders = [
-        {"customer_id": r.customer_id, "placed_at": r.placed_at} for r in rows
-    ]
+    orders = [{"customer_id": r.customer_id, "placed_at": r.placed_at} for r in rows]
     result = analyze_customers(orders, window_start=current.start)
     return {
         "capability": result.capability,
@@ -376,8 +401,12 @@ class SIFulfillmentArgs(BaseModel):
 
 
 async def _si_analyze_fulfillment(
-    session: AsyncSession, tenant_id: uuid.UUID, *, days: int = 30,
-    minimum_volume: int = 10, context: dict | None = None,
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    days: int = 30,
+    minimum_volume: int = 10,
+    context: dict | None = None,
 ) -> dict:
     """§5.7 v1 — carrier performance from the store's real shipments."""
 
@@ -395,8 +424,12 @@ async def _si_analyze_fulfillment(
         )
     ).all()
     shipments = [
-        {"carrier": r.carrier, "status": r.status,
-         "shipped_at": r.shipped_at, "delivered_at": r.delivered_at}
+        {
+            "carrier": r.carrier,
+            "status": r.status,
+            "shipped_at": r.shipped_at,
+            "delivered_at": r.delivered_at,
+        }
         for r in rows
     ]
     result = analyze_fulfillment(shipments, minimum_volume=minimum_volume)

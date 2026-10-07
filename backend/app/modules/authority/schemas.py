@@ -128,6 +128,7 @@ class AutonomyBudgetOut(BaseModel):
 
 class ExecuteCommandRequest(BaseModel):
     """Payload to execute an approved command via an Authority Lease."""
+
     lease_token: str = Field(description="Plaintext bearer lease token")
     action: str
     resource: dict[str, Any] = Field(default_factory=dict)

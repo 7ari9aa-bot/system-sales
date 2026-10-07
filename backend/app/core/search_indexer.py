@@ -126,7 +126,8 @@ class SearchIndexerService:
             )
         elif action == "upsert":
             document = await self._build_document(
-                session, tenant_id,
+                session,
+                tenant_id,
                 entity_type=aggregate_type,
                 entity_id=aggregate_id,
                 payload=payload,

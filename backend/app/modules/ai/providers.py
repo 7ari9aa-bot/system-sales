@@ -143,8 +143,7 @@ class AIProvider:
 
         if response.status_code >= 400:
             raise ExternalProviderError(
-                f"chat completion failed with HTTP {response.status_code}: "
-                f"{response.text[:300]}",
+                f"chat completion failed with HTTP {response.status_code}: {response.text[:300]}",
                 details={"status_code": response.status_code},
             )
 

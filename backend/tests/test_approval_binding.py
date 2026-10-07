@@ -56,9 +56,7 @@ def _result(content=None, tool_calls=None) -> ChatCompletionResult:
 def _call(note: str) -> ChatCompletionResult:
     """A HIGH-risk call carrying `note` — the argument the binding must cover."""
     return _result(
-        tool_calls=[
-            ToolCallRequest(id="c1", name=DANGEROUS_TOOL, arguments={"note": note})
-        ]
+        tool_calls=[ToolCallRequest(id="c1", name=DANGEROUS_TOOL, arguments={"note": note})]
     )
 
 
@@ -85,9 +83,7 @@ def _register() -> None:
 
 
 async def _agent(db, tenant_id) -> Agent:
-    agent = Agent(
-        tenant_id=tenant_id, name="Ops Agent", model="fast", system_prompt="Be careful."
-    )
+    agent = Agent(tenant_id=tenant_id, name="Ops Agent", model="fast", system_prompt="Be careful.")
     db.add(agent)
     await db.flush()
     db.add(AgentTool(tenant_id=tenant_id, agent_id=agent.id, name=DANGEROUS_TOOL, policy={}))
@@ -124,10 +120,10 @@ async def _approve(db, tenant_ctx, approval) -> None:
 
 async def _only_approval(db, tenant_id) -> ApprovalRequest:
     return (
-        await db.execute(
-            select(ApprovalRequest).where(ApprovalRequest.tenant_id == tenant_id)
-        )
-    ).scalars().one()
+        (await db.execute(select(ApprovalRequest).where(ApprovalRequest.tenant_id == tenant_id)))
+        .scalars()
+        .one()
+    )
 
 
 # ------------------------------------------------------- the fingerprint ---
@@ -198,9 +194,7 @@ async def test_the_request_records_the_payload_hash(db, tenant_ctx, monkeypatch)
     assert approval.payload_hash == payload_fingerprint(approval.payload)
 
 
-async def test_an_approval_does_not_authorize_DIFFERENT_arguments(
-    db, tenant_ctx, monkeypatch
-):
+async def test_an_approval_does_not_authorize_DIFFERENT_arguments(db, tenant_ctx, monkeypatch):
     """THE regression test for G-02.
 
     A human approves `note="now"`. The resumed run asks for `note="evil"`. The
@@ -235,30 +229,33 @@ async def test_an_approval_does_not_authorize_DIFFERENT_arguments(
     )
 
     assert EXECUTED == [], (
-        "an approval granted for one set of arguments executed a different set: "
-        f"{EXECUTED}"
+        f"an approval granted for one set of arguments executed a different set: {EXECUTED}"
     )
     # The approved-but-unused approval must still be untouched...
     refreshed = (
-        await db.execute(select(ApprovalRequest).where(ApprovalRequest.id == approval.id))
-    ).scalars().one()
+        (await db.execute(select(ApprovalRequest).where(ApprovalRequest.id == approval.id)))
+        .scalars()
+        .one()
+    )
     assert refreshed.consumed_at is None, "the wrong approval was consumed"
     # ...and the new arguments get their OWN pending request.
     pending = (
-        await db.execute(
-            select(ApprovalRequest).where(
-                ApprovalRequest.tenant_id == tenant_ctx.tenant_id,
-                ApprovalRequest.status == "PENDING",
+        (
+            await db.execute(
+                select(ApprovalRequest).where(
+                    ApprovalRequest.tenant_id == tenant_ctx.tenant_id,
+                    ApprovalRequest.status == "PENDING",
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(pending) == 1, "different arguments must ask for a fresh approval"
     assert pending[0].payload.get("arguments", {}).get("note") == "evil"
 
 
-async def test_matching_arguments_still_resume_and_execute_once(
-    db, tenant_ctx, monkeypatch
-):
+async def test_matching_arguments_still_resume_and_execute_once(db, tenant_ctx, monkeypatch):
     """The binding must not break the legitimate resume path."""
     EXECUTED.clear()
     _register()
@@ -377,14 +374,14 @@ async def test_a_stale_approval_is_not_auto_continued(db, tenant_ctx, monkeypatc
 
     assert EXECUTED == [], "a stale approval was auto-continued"
     refreshed = (
-        await db.execute(select(ApprovalRequest).where(ApprovalRequest.id == approval.id))
-    ).scalars().one()
+        (await db.execute(select(ApprovalRequest).where(ApprovalRequest.id == approval.id)))
+        .scalars()
+        .one()
+    )
     assert refreshed.consumed_at is None
 
 
-async def test_request_is_idempotent_for_the_same_arguments(
-    db, tenant_ctx, monkeypatch
-):
+async def test_request_is_idempotent_for_the_same_arguments(db, tenant_ctx, monkeypatch):
     """Re-entering the gate must not pile up duplicate pending requests."""
     EXECUTED.clear()
     _register()
@@ -402,11 +399,15 @@ async def test_request_is_idempotent_for_the_same_arguments(
         )
 
     rows = (
-        await db.execute(
-            select(ApprovalRequest).where(
-                ApprovalRequest.tenant_id == tenant_ctx.tenant_id,
-                ApprovalRequest.status == "PENDING",
+        (
+            await db.execute(
+                select(ApprovalRequest).where(
+                    ApprovalRequest.tenant_id == tenant_ctx.tenant_id,
+                    ApprovalRequest.status == "PENDING",
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(rows) == 1, f"expected one pending approval, got {len(rows)}"

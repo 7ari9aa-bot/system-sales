@@ -271,9 +271,7 @@ def test_every_operations_route_has_a_typed_response() -> None:
         for (method, path), endpoint in mounted.items()
         if _success_component(document, method, path) is None
     )
-    assert not untyped, (
-        "these routes return a body OpenAPI cannot name:\n  " + "\n  ".join(untyped)
-    )
+    assert not untyped, "these routes return a body OpenAPI cannot name:\n  " + "\n  ".join(untyped)
 
 
 def test_the_typed_response_gate_can_fail() -> None:
@@ -482,9 +480,7 @@ async def test_update_task_status_rejects_an_out_of_range_priority() -> None:
 
     session = RecordingSession(row=task)
     with pytest.raises(ValidationError):
-        await update_task_status(
-            _ctx(session), task.id, TaskUpdate.model_construct(priority=99)
-        )
+        await update_task_status(_ctx(session), task.id, TaskUpdate.model_construct(priority=99))
 
     assert task.priority == 2, "the row was written before it was refused"
 

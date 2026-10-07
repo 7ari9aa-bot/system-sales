@@ -230,9 +230,7 @@ class MessageTemplate(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
 
     __tablename__ = "message_templates"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(127))
     # allowed: draft | submitted | approved | rejected | paused | archived
     status: Mapped[str] = mapped_column(String(15), server_default="draft")
@@ -252,9 +250,7 @@ class MessageTemplate(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
 class TemplateApproval(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "template_approvals"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     template_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("message_templates.id", ondelete="CASCADE")
     )
@@ -270,9 +266,7 @@ class Attachment(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Bas
 
     __tablename__ = "attachments"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     conversation_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("conversations.id", ondelete="SET NULL")
     )
@@ -308,6 +302,7 @@ class Attachment(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Bas
 
 # ------------------------------------------- §36 Voice Gateway ----
 
+
 class PhoneNumber(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     """§36: a phone number owned/rented by the tenant for voice calls.
 
@@ -317,9 +312,7 @@ class PhoneNumber(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
 
     __tablename__ = "phone_numbers"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     # E.164 format: +9665XXXXXXXX
     number: Mapped[str] = mapped_column(String(20), nullable=False)
     provider: Mapped[str] = mapped_column(String(31))  # twilio | vonage | ...
@@ -343,9 +336,7 @@ class Call(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
 
     __tablename__ = "calls"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     conversation_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True
     )
@@ -382,9 +373,7 @@ class CallSession(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
 
     __tablename__ = "call_sessions"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     call_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("calls.id", ondelete="CASCADE"), nullable=False
     )
@@ -396,9 +385,7 @@ class CallSession(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    __table_args__ = (
-        Index("ix_call_sessions_tenant_call", "tenant_id", "call_id"),
-    )
+    __table_args__ = (Index("ix_call_sessions_tenant_call", "tenant_id", "call_id"),)
 
 
 class CallLeg(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
@@ -410,9 +397,7 @@ class CallLeg(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
 
     __tablename__ = "call_legs"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     call_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("calls.id", ondelete="CASCADE"), nullable=False
     )
@@ -428,6 +413,4 @@ class CallLeg(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     duration_seconds: Mapped[int | None] = mapped_column()
     provider_leg_id: Mapped[str | None] = mapped_column(String(255))
 
-    __table_args__ = (
-        Index("ix_call_legs_tenant_call", "tenant_id", "call_id"),
-    )
+    __table_args__ = (Index("ix_call_legs_tenant_call", "tenant_id", "call_id"),)

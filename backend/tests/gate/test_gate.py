@@ -83,8 +83,12 @@ async def test_gate_worker_replay_skips_sent(db, tenant_ctx):
         db, tenant_ctx.tenant_id, customer_id=customer.id, channel="webchat"
     )
     message = await ConversationService.add_message(
-        db, tenant_ctx.tenant_id, conversation_id=convo.id,
-        direction="outbound", sender_type="agent", body="sent already",
+        db,
+        tenant_ctx.tenant_id,
+        conversation_id=convo.id,
+        direction="outbound",
+        sender_type="agent",
+        body="sent already",
     )
     message.status = "sent"
     await db.flush()
@@ -137,8 +141,12 @@ async def test_gate_send_attempt_writes_a_delivery_attempt_row(db, tenant_ctx):
         db, tenant_ctx.tenant_id, customer_id=customer.id, channel="webchat"
     )
     message = await ConversationService.add_message(
-        db, tenant_ctx.tenant_id, conversation_id=convo.id,
-        direction="outbound", sender_type="agent", body="audit me",
+        db,
+        tenant_ctx.tenant_id,
+        conversation_id=convo.id,
+        direction="outbound",
+        sender_type="agent",
+        body="audit me",
     )
     await db.flush()
 
@@ -157,16 +165,12 @@ async def test_gate_send_attempt_writes_a_delivery_attempt_row(db, tenant_ctx):
         ),
         set_channel_message_id=True,
     )
-    await worker._apply_outcome(
-        db, tenant_ctx.tenant_id, message.id, plan, "sent", "prov-99", None
-    )
+    await worker._apply_outcome(db, tenant_ctx.tenant_id, message.id, plan, "sent", "prov-99", None)
 
     stored = await db.get(Message, message.id)
     assert stored.status == "sent"
     row = (
-        await db.execute(
-            select(DeliveryAttempt).where(DeliveryAttempt.message_id == message.id)
-        )
+        await db.execute(select(DeliveryAttempt).where(DeliveryAttempt.message_id == message.id))
     ).scalar_one()
     assert row.tenant_id == tenant_ctx.tenant_id
     assert row.provider == "webchat"
@@ -199,9 +203,7 @@ async def test_gate_conversation_lease_exclusive(db, tenant_ctx):
         try:
             # Match lease.py's key derivation EXACTLY: uuid-int mod 2^63.
             key = uuid.UUID(str(convo.id)).int % (2**63 - 1)
-            acquired = await other.fetchval(
-                "SELECT pg_try_advisory_lock($1)", key
-            )
+            acquired = await other.fetchval("SELECT pg_try_advisory_lock($1)", key)
             assert acquired is False, "second connection acquired the lease!"
             await other.execute("SELECT pg_advisory_unlock($1)", key)
         finally:
@@ -217,14 +219,20 @@ async def test_gate_ai_budget_block(db, tenant_ctx, monkeypatch):
 
     db.add(
         BudgetPolicy(
-            tenant_id=tenant_ctx.tenant_id, scope="tenant", period="monthly",
-            hard_cap=10, on_exceed="block",
+            tenant_id=tenant_ctx.tenant_id,
+            scope="tenant",
+            period="monthly",
+            hard_cap=10,
+            on_exceed="block",
         )
     )
     db.add(
         AIUsage(
-            tenant_id=tenant_ctx.tenant_id, period_date=datetime.now(UTC).date(),
-            tokens_in=0, tokens_out=0, cost=11,
+            tenant_id=tenant_ctx.tenant_id,
+            period_date=datetime.now(UTC).date(),
+            tokens_in=0,
+            tokens_out=0,
+            cost=11,
         )
     )
     await db.flush()
@@ -274,20 +282,22 @@ async def test_gate_merge_remaps_and_tombstones(db, tenant_ctx):
     ).scalar_one_or_none()
     print("DEBUG for-update select:", _dbg2)
     await IdentityMergeService.merge(
-        db, tenant_ctx.tenant_id,
-        canonical_customer_id=cust_a.id, merged_away_customer_id=cust_b.id,
+        db,
+        tenant_ctx.tenant_id,
+        canonical_customer_id=cust_a.id,
+        merged_away_customer_id=cust_b.id,
     )
     merged_row = (
-        await db.execute(
-            select(Customer.merged_into_customer_id).where(Customer.id == cust_b.id)
-        )
+        await db.execute(select(Customer.merged_into_customer_id).where(Customer.id == cust_b.id))
     ).scalar_one()
     assert merged_row == cust_a.id
     # cust_b was merged away (tombstoned) → can no longer be canonical
     with pytest.raises(NotFoundError):
         await IdentityMergeService.merge(
-            db, tenant_ctx.tenant_id,
-            canonical_customer_id=cust_b.id, merged_away_customer_id=cust_a.id,
+            db,
+            tenant_ctx.tenant_id,
+            canonical_customer_id=cust_b.id,
+            merged_away_customer_id=cust_a.id,
         )
 
 
@@ -322,21 +332,27 @@ async def test_gate_approval_expiry(db, tenant_ctx):
     from app.modules.ai.models import ApprovalRequest
 
     request = await ApprovalService.request(
-        db, tenant_ctx.tenant_id,
-        run_id=None, conversation_id=None,
-        entity_type="order", entity_id="42", action="create_order",
-        payload={"total": 100}, ttl_minutes=-1,  # already expired
+        db,
+        tenant_ctx.tenant_id,
+        run_id=None,
+        conversation_id=None,
+        entity_type="order",
+        entity_id="42",
+        action="create_order",
+        payload={"total": 100},
+        ttl_minutes=-1,  # already expired
     )
     await db.flush()
     with pytest.raises(ValidationError):
         await ApprovalService.decide(
-            db, tenant_ctx.tenant_id, request.id,
-            decision="APPROVED", decided_by_user_id=tenant_ctx.user.id,
+            db,
+            tenant_ctx.tenant_id,
+            request.id,
+            decision="APPROVED",
+            decided_by_user_id=tenant_ctx.user.id,
         )
     refreshed = (
-        await db.execute(
-            select(ApprovalRequest).where(ApprovalRequest.id == request.id)
-        )
+        await db.execute(select(ApprovalRequest).where(ApprovalRequest.id == request.id))
     ).scalar_one()
     assert refreshed.status == "EXPIRED"
 
@@ -349,8 +365,12 @@ async def test_gate_webhook_tenant_resolution(db, tenant_ctx):
     public_key = f"pk-gate-{uuid.uuid4().hex[:10]}"
     db.add(
         Integration(
-            tenant_id=tenant_ctx.tenant_id, provider="webchat", kind="channel",
-            status="connected", config={"public_key": public_key}, credentials={},
+            tenant_id=tenant_ctx.tenant_id,
+            provider="webchat",
+            kind="channel",
+            status="connected",
+            config={"public_key": public_key},
+            credentials={},
         )
     )
     await db.flush()
@@ -370,8 +390,11 @@ async def test_gate_deletion_propagation(db, tenant_ctx):
     from app.modules.privacy.service import DeletionService
 
     customer = await CustomerService.get_or_create_by_identity(
-        db, tenant_ctx.tenant_id, channel="whatsapp",
-        external_id=f"del-{uuid.uuid4().hex[:8]}", name="To Delete",
+        db,
+        tenant_ctx.tenant_id,
+        channel="whatsapp",
+        external_id=f"del-{uuid.uuid4().hex[:8]}",
+        name="To Delete",
     )
     cid = customer.id
     report = await DeletionService.propagate_customer_deletion(
@@ -382,16 +405,14 @@ async def test_gate_deletion_propagation(db, tenant_ctx):
     assert "memories_deleted" in steps
     assert "dsr_closed" in steps
     tombstone = (
-        await db.execute(
-            select(Customer.deleted_at).where(Customer.id == cid)
-        )
+        await db.execute(select(Customer.deleted_at).where(Customer.id == cid))
     ).scalar_one()
     assert tombstone is not None
     audits = (
         await db.execute(
-            select(func.count()).select_from(AuditLog).where(
-                AuditLog.action == "privacy.customer_deleted"
-            )
+            select(func.count())
+            .select_from(AuditLog)
+            .where(AuditLog.action == "privacy.customer_deleted")
         )
     ).scalar_one()
     assert audits >= 1
@@ -405,8 +426,10 @@ async def test_gate_outbox_skip_locked(db, tenant_ctx):
     await add_outbox_event(
         db,
         tenant_id=tenant_ctx.tenant_id,
-        aggregate_type="test", aggregate_id=uuid.uuid5(uuid.NAMESPACE_URL, "relay-1"),
-        event_type="test.relay", payload={"n": 1},
+        aggregate_type="test",
+        aggregate_id=uuid.uuid5(uuid.NAMESPACE_URL, "relay-1"),
+        event_type="test.relay",
+        payload={"n": 1},
     )
     await db.flush()
     # Verify the outbox row exists and is unprocessed
@@ -464,15 +487,14 @@ async def test_gate_ai_stale_run_cancellation(db, tenant_ctx):
         import asyncpg
 
         from app.core.config import get_settings
+
         dsn = get_settings().database_url_app_admin.replace(
             "postgresql+asyncpg://", "postgresql://"
         )
         other = await asyncpg.connect(dsn, timeout=15)
         try:
             key = uuid.UUID(str(convo.id)).int % (2**63 - 1)
-            acquired = await other.fetchval(
-                "SELECT pg_try_advisory_lock($1)", key
-            )
+            acquired = await other.fetchval("SELECT pg_try_advisory_lock($1)", key)
             assert acquired is False, "stale run acquired the lease — no serialization!"
         finally:
             await other.close()
@@ -512,8 +534,10 @@ async def test_gate_redis_outbox_buffer(db, tenant_ctx):
     await add_outbox_event(
         db,
         tenant_id=tenant_ctx.tenant_id,
-        aggregate_type="test", aggregate_id=uuid.uuid5(uuid.NAMESPACE_URL, "redis-out"),
-        event_type="test.redis_out", payload={"check": True},
+        aggregate_type="test",
+        aggregate_id=uuid.uuid5(uuid.NAMESPACE_URL, "redis-out"),
+        event_type="test.redis_out",
+        payload={"check": True},
     )
     await db.flush()
     from app.modules.platform.models import OutboxEvent
@@ -548,11 +572,7 @@ async def test_gate_dlq_replay(db, tenant_ctx):
     await db.flush()
     # The event must be queryable
     row = (
-        await db.execute(
-            select(WebhookEvent).where(
-                WebhookEvent.external_event_id == "dlq-test-1"
-            )
-        )
+        await db.execute(select(WebhookEvent).where(WebhookEvent.external_event_id == "dlq-test-1"))
     ).scalar_one()
     assert row.processing_status == "dead"
     # Replay = reset status to pending
@@ -575,21 +595,33 @@ async def test_gate_payment_unknown_reconciliation(db, tenant_ctx):
 
     # Create a customer + order with a payment in 'unknown' state
     customer = await CustomerService.get_or_create_by_identity(
-        db, tenant_ctx.tenant_id, channel="webchat",
-        external_id=f"pay-gate-{uuid.uuid4().hex[:8]}", name="Pay Gate",
+        db,
+        tenant_ctx.tenant_id,
+        channel="webchat",
+        external_id=f"pay-gate-{uuid.uuid4().hex[:8]}",
+        name="Pay Gate",
     )
     order = Order(
-        tenant_id=tenant_ctx.tenant_id, number=f"GATE-PAY-{uuid.uuid4().hex[:4]}",
-        customer_id=customer.id, status="pending", currency="EGP",
-        grand_total=Decimal("100"), subtotal=Decimal("100"),
-        discount_total=Decimal("0"), shipping_total=Decimal("0"),
-        tax_total=Decimal("0"), placed_at=datetime.now(UTC),
+        tenant_id=tenant_ctx.tenant_id,
+        number=f"GATE-PAY-{uuid.uuid4().hex[:4]}",
+        customer_id=customer.id,
+        status="pending",
+        currency="EGP",
+        grand_total=Decimal("100"),
+        subtotal=Decimal("100"),
+        discount_total=Decimal("0"),
+        shipping_total=Decimal("0"),
+        tax_total=Decimal("0"),
+        placed_at=datetime.now(UTC),
     )
     db.add(order)
     await db.flush()
     payment = OrderPayment(
-        tenant_id=tenant_ctx.tenant_id, order_id=order.id,
-        method="manual", status="unknown", amount=Decimal("100"),
+        tenant_id=tenant_ctx.tenant_id,
+        order_id=order.id,
+        method="manual",
+        status="unknown",
+        amount=Decimal("100"),
         currency="EGP",
     )
     db.add(payment)
@@ -597,14 +629,20 @@ async def test_gate_payment_unknown_reconciliation(db, tenant_ctx):
 
     # Reconcile with provider_status="captured" -> should move to "captured"
     result = await OrderService.reconcile_payment(
-        db, tenant_ctx.tenant_id, order.id, payment.id,
+        db,
+        tenant_ctx.tenant_id,
+        order.id,
+        payment.id,
         provider_status="captured",
     )
     assert result.status == "captured", f"expected captured, got {result.status}"
 
     # Reconciling again with the SAME status is a no-op (idempotent)
     result2 = await OrderService.reconcile_payment(
-        db, tenant_ctx.tenant_id, order.id, payment.id,
+        db,
+        tenant_ctx.tenant_id,
+        order.id,
+        payment.id,
         provider_status="captured",
     )
     assert result2.status == "captured"  # unchanged — not re-charged
@@ -621,14 +659,18 @@ async def test_gate_inventory_oversell(db, tenant_ctx):
 
     # Create a product + variant with small stock
     product = Product(
-        tenant_id=tenant_ctx.tenant_id, title="Gate Stock Test",
-        slug=f"gate-stock-{uuid.uuid4().hex[:8]}", status="active",
+        tenant_id=tenant_ctx.tenant_id,
+        title="Gate Stock Test",
+        slug=f"gate-stock-{uuid.uuid4().hex[:8]}",
+        status="active",
     )
     db.add(product)
     await db.flush()
     variant = ProductVariant(
-        tenant_id=tenant_ctx.tenant_id, product_id=product.id,
-        sku=f"GATE-OVERSELL-{uuid.uuid4().hex[:4]}", price=Decimal("10"),
+        tenant_id=tenant_ctx.tenant_id,
+        product_id=product.id,
+        sku=f"GATE-OVERSELL-{uuid.uuid4().hex[:4]}",
+        price=Decimal("10"),
         title="Gate Variant",
     )
     db.add(variant)
@@ -637,19 +679,21 @@ async def test_gate_inventory_oversell(db, tenant_ctx):
     # Get default warehouse and set on-hand to 5
     warehouse = await InventoryService.get_default_warehouse(db, tenant_ctx.tenant_id)
     await InventoryService.move(
-        db, tenant_ctx.tenant_id, variant.id, warehouse.id,
-        direction="in", quantity=5, reason="purchase",
+        db,
+        tenant_ctx.tenant_id,
+        variant.id,
+        warehouse.id,
+        direction="in",
+        quantity=5,
+        reason="purchase",
     )
     # Reserve 3 (ok)
-    await InventoryService.reserve(
-        db, tenant_ctx.tenant_id, variant.id, warehouse.id, 3
-    )
+    await InventoryService.reserve(db, tenant_ctx.tenant_id, variant.id, warehouse.id, 3)
     # Reserve 3 more (only 2 left) -> must fail
     import pytest
+
     with pytest.raises(DomainError):  # Conflict | Validation | InsufficientStock
-        await InventoryService.reserve(
-            db, tenant_ctx.tenant_id, variant.id, warehouse.id, 3
-        )
+        await InventoryService.reserve(db, tenant_ctx.tenant_id, variant.id, warehouse.id, 3)
 
 
 # --- 22. Realtime reconnect/resync (§149) ---
@@ -674,8 +718,10 @@ async def test_gate_event_schema_versioning(db, tenant_ctx):
     await add_outbox_event(
         db,
         tenant_id=tenant_ctx.tenant_id,
-        aggregate_type="test", aggregate_id=uuid.uuid5(uuid.NAMESPACE_URL, "schema-v"),
-        event_type="test.schema", payload={"v": 1},
+        aggregate_type="test",
+        aggregate_id=uuid.uuid5(uuid.NAMESPACE_URL, "schema-v"),
+        event_type="test.schema",
+        payload={"v": 1},
     )
     await db.flush()
     from app.modules.platform.models import OutboxEvent

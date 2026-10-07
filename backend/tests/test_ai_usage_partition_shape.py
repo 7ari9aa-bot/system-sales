@@ -251,10 +251,7 @@ def test_the_partition_key_is_in_every_unique_key_of_the_parent() -> None:
     )
     assert re.search(r"UNIQUE \(tenant_id, period_date, agent_id\)", src)
     lowered = src.lower()
-    assert (
-        "id is no longer globally unique" in lowered
-        or "no longer database-enforced" in lowered
-    )
+    assert "id is no longer globally unique" in lowered or "no longer database-enforced" in lowered
 
 
 # ------------------------------------------------------ live shape (DB-gated) --
@@ -403,13 +400,13 @@ async def test_primary_key_and_natural_key_include_the_partition_key(db: AsyncSe
         )
     ).all()
     defs = {name: definition for name, definition in conns}
-    assert any(
-        k == "PRIMARY KEY (id, period_date)" for k, v in defs.items() for k in [v]
-    ), defs
+    assert any(k == "PRIMARY KEY (id, period_date)" for k, v in defs.items() for k in [v]), defs
     assert "uq_ai_usage_tenant_period_agent" in defs
-    assert defs["uq_ai_usage_tenant_period_agent"] == (
-        "UNIQUE INDEX (tenant_id, period_date, agent_id)"
-    ) or "period_date" in defs["uq_ai_usage_tenant_period_agent"], defs
+    assert (
+        defs["uq_ai_usage_tenant_period_agent"]
+        == ("UNIQUE INDEX (tenant_id, period_date, agent_id)")
+        or "period_date" in defs["uq_ai_usage_tenant_period_agent"]
+    ), defs
 
 
 async def test_the_legacy_snapshot_survives_as_a_plain_table(db: AsyncSession) -> None:
@@ -530,9 +527,7 @@ async def test_the_daily_upsert_still_converges_on_a_partitioned_table(
 
     from app.modules.ai.usage import record_usage
 
-    agent = Agent(
-        tenant_id=tenant_ctx.tenant_id, name="Partition Upsert Probe", model="fast"
-    )
+    agent = Agent(tenant_id=tenant_ctx.tenant_id, name="Partition Upsert Probe", model="fast")
     db.add(agent)
     await db.flush()
 

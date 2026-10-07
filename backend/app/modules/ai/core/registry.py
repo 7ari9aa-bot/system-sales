@@ -16,6 +16,7 @@ Architecture invariants
 * **Fail-Closed by default.** Duplicate registrations or broken definitions halt startup
   rather than running in an invalid, degraded state.
 """
+
 from __future__ import annotations
 
 import importlib
@@ -122,8 +123,7 @@ class AgentRegistry:
     def get(cls, kind: str) -> AgentDefinition:
         if kind not in cls._definitions:
             raise ValueError(
-                f"Agent kind '{kind}' is not registered. "
-                f"Known kinds: {sorted(cls._definitions)}"
+                f"Agent kind '{kind}' is not registered. Known kinds: {sorted(cls._definitions)}"
             )
         return cls._definitions[kind]
 

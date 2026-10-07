@@ -398,9 +398,7 @@ def test_gate_a_current_row_is_read_through_the_same_mapping_as_its_producer() -
     wire = serialize(envelope)
     row = _row()
 
-    rebuilt = relay._envelope_for_log(
-        row, json.loads(wire["payload"]), json.loads(wire["meta"])
-    )
+    rebuilt = relay._envelope_for_log(row, json.loads(wire["payload"]), json.loads(wire["meta"]))
 
     assert rebuilt is not None
     assert rebuilt.id == envelope.id

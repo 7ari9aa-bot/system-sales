@@ -51,9 +51,9 @@ def _permission_codes(routes, path: str, method: str) -> set[str]:
 def test_the_currency_read_route_is_registered() -> None:
     """The endpoint the frontend needs to know which symbol to render."""
     path = "/tenants/{tenant_id}/currency"
-    assert any(
-        r.path == path and "GET" in r.methods for r in tenants_router.routes
-    ), "GET /tenants/{tenant_id}/currency must be routed on tenants_router"
+    assert any(r.path == path and "GET" in r.methods for r in tenants_router.routes), (
+        "GET /tenants/{tenant_id}/currency must be routed on tenants_router"
+    )
 
 
 def test_reading_the_currency_is_gated_by_a_permission() -> None:
@@ -102,9 +102,7 @@ async def test_a_permitted_caller_reads_their_own_tenants_currency(
     assert body == {"tenant_id": str(tenant_ctx.tenant_id), "currency": "SAR"}
 
 
-async def test_a_caller_from_another_tenant_cannot_read_it(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_a_caller_from_another_tenant_cannot_read_it(db: AsyncSession, tenant_ctx) -> None:
     """Tenancy is the point: the tenant id in the path must match the caller's."""
     async with _client(db, ctx_tenant_id=uuid.uuid4(), perms={"settings:read"}) as client:
         response = await client.get(f"/api/v1/tenants/{tenant_ctx.tenant_id}/currency")
@@ -112,9 +110,7 @@ async def test_a_caller_from_another_tenant_cannot_read_it(
     assert response.status_code == 403, response.text
 
 
-async def test_a_reader_without_the_permission_is_refused(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_a_reader_without_the_permission_is_refused(db: AsyncSession, tenant_ctx) -> None:
     async with _client(db, ctx_tenant_id=tenant_ctx.tenant_id, perms=set()) as client:
         response = await client.get(f"/api/v1/tenants/{tenant_ctx.tenant_id}/currency")
 

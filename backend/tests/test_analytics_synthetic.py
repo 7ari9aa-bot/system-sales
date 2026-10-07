@@ -21,12 +21,8 @@ from scripts.run_golden_eval import seed_store
 def test_generation_is_deterministic_under_a_seed():
     first = generate_store(Scenario.BASELINE, seed=42)
     second = generate_store(Scenario.BASELINE, seed=42)
-    assert [o["placed_at"] for o in first.orders] == [
-        o["placed_at"] for o in second.orders
-    ]
-    assert [o["grand_total"] for o in first.orders] == [
-        o["grand_total"] for o in second.orders
-    ]
+    assert [o["placed_at"] for o in first.orders] == [o["placed_at"] for o in second.orders]
+    assert [o["grand_total"] for o in first.orders] == [o["grand_total"] for o in second.orders]
 
 
 @pytest.mark.parametrize(

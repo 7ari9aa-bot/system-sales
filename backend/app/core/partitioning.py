@@ -210,9 +210,7 @@ async def ensure_partition_for_month(
     return created.scalar()
 
 
-async def ensure_month_partitions(
-    session: AsyncSession, *, months_ahead: int = 3
-) -> list[str]:
+async def ensure_month_partitions(session: AsyncSession, *, months_ahead: int = 3) -> list[str]:
     """Ensure this month plus the next ``months_ahead`` exist, for every table
     on the maintenance allowlist. Returns the partitions actually created.
 

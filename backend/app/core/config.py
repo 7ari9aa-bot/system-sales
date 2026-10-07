@@ -348,13 +348,9 @@ class Settings(BaseSettings):
         # silently makes the rotation a no-op.
         if self.jwt_secret_previous:
             if len(self.jwt_secret_previous.encode()) < 32:
-                raise ValueError(
-                    f"JWT_SECRET_PREVIOUS must be at least 32 bytes {where}"
-                )
+                raise ValueError(f"JWT_SECRET_PREVIOUS must be at least 32 bytes {where}")
             if self.jwt_secret_previous == self.jwt_secret:
-                raise ValueError(
-                    f"JWT_SECRET_PREVIOUS must differ from JWT_SECRET {where}"
-                )
+                raise ValueError(f"JWT_SECRET_PREVIOUS must differ from JWT_SECRET {where}")
         if self.trusted_proxy_count < 0:
             raise ValueError(f"TRUSTED_PROXY_COUNT must not be negative {where}")
         if self.service_token_internal in _INSECURE_SERVICE_TOKENS:
@@ -368,9 +364,7 @@ class Settings(BaseSettings):
         except (binascii.Error, ValueError) as exc:
             raise ValueError(f"SECRETS_MASTER_KEY must be base64 {where}") from exc
         if len(decoded_master) < 32:
-            raise ValueError(
-                f"SECRETS_MASTER_KEY must decode to at least 32 bytes {where}"
-            )
+            raise ValueError(f"SECRETS_MASTER_KEY must decode to at least 32 bytes {where}")
         if self.cors_origins.strip() == "*":
             raise ValueError(f"CORS_ORIGINS must not be * {where}")
 
@@ -380,10 +374,7 @@ class Settings(BaseSettings):
             self.s3_access_key_id,
             self.s3_secret_access_key,
         )
-        if (
-            any(value.strip() for value in s3_values)
-            and not self.object_storage_configured
-        ):
+        if any(value.strip() for value in s3_values) and not self.object_storage_configured:
             raise ValueError(
                 "S3_ENDPOINT, S3_REGION, S3_BUCKET, S3_ACCESS_KEY_ID and "
                 f"S3_SECRET_ACCESS_KEY must be configured together {where}"
@@ -410,9 +401,7 @@ class Settings(BaseSettings):
                 or storage_endpoint.fragment
                 or (self.is_secure_environment and storage_endpoint.scheme != "https")
             ):
-                raise ValueError(
-                    f"S3_ENDPOINT must be an HTTPS S3-compatible endpoint {where}"
-                )
+                raise ValueError(f"S3_ENDPOINT must be an HTTPS S3-compatible endpoint {where}")
         if self.supabase_storage_configured:
             storage_url = urlsplit(self.supabase_url)
             if (
@@ -425,9 +414,7 @@ class Settings(BaseSettings):
                 or storage_url.fragment
                 or (self.is_secure_environment and storage_url.scheme != "https")
             ):
-                raise ValueError(
-                    f"SUPABASE_URL must be a project HTTPS URL without a path {where}"
-                )
+                raise ValueError(f"SUPABASE_URL must be a project HTTPS URL without a path {where}")
         if not 1 <= self.s3_signed_url_ttl_seconds <= 7 * 24 * 60 * 60:
             raise ValueError("S3_SIGNED_URL_TTL_SECONDS must be between 1 and 604800")
 
@@ -493,8 +480,7 @@ class Settings(BaseSettings):
         # down for a cosmetic problem. It is logged loudly instead.
         if self.debug:
             logger.warning(
-                "config.debug_enabled_in_secure_environment environment=%s — "
-                "set DEBUG=false",
+                "config.debug_enabled_in_secure_environment environment=%s — set DEBUG=false",
                 self.environment,
             )
         return self

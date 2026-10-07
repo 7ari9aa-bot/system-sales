@@ -82,9 +82,7 @@ async def _rows(db: AsyncSession, variant_id: uuid.UUID) -> list[InventoryMoveme
     return list(
         (
             await db.execute(
-                select(InventoryMovement).where(
-                    InventoryMovement.variant_id == variant_id
-                )
+                select(InventoryMovement).where(InventoryMovement.variant_id == variant_id)
             )
         )
         .scalars()
@@ -114,9 +112,7 @@ async def _released_rows(db: AsyncSession, variant_id: uuid.UUID) -> list[Invent
 async def _reservation(db: AsyncSession, order_id: uuid.UUID) -> InventoryReservation:
     return (
         await db.execute(
-            select(InventoryReservation).where(
-                InventoryReservation.order_id == order_id
-            )
+            select(InventoryReservation).where(InventoryReservation.order_id == order_id)
         )
     ).scalar_one()
 
@@ -143,9 +139,7 @@ async def _order_holding_stock(
 # ------------------------------------------------------- the hold row -------
 
 
-async def test_a_reserve_writes_exactly_one_availability_row(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_a_reserve_writes_exactly_one_availability_row(db: AsyncSession, tenant_ctx) -> None:
     tenant_id = tenant_ctx.tenant_id
     wh = await _warehouse(db, tenant_id)
     variant = await _stocked_variant(db, tenant_id, wh.id, qty=10)
@@ -153,9 +147,7 @@ async def test_a_reserve_writes_exactly_one_availability_row(
     await InventoryService.reserve(db, tenant_id, variant.id, wh.id, 4)
 
     holds = await _held_rows(db, variant.id)
-    assert _shape(holds, "reason", "quantity", "balance_after") == [
-        ("reservation", 4, 10)
-    ]
+    assert _shape(holds, "reason", "quantity", "balance_after") == [("reservation", 4, 10)]
     # A hold moves availability, never the physical position.
     assert holds[0].reference_type is None
     balance = await InventoryService.get_balance(db, tenant_id, variant.id, wh.id)
@@ -175,9 +167,7 @@ async def test_a_failed_reserve_writes_nothing(db: AsyncSession, tenant_ctx) -> 
         await InventoryService.reserve(db, tenant_id, variant.id, wh.id, 2)
 
     assert await _held_rows(db, variant.id) == []
-    assert (
-        await InventoryService.get_balance(db, tenant_id, variant.id, wh.id)
-    ).reserved == 0
+    assert (await InventoryService.get_balance(db, tenant_id, variant.id, wh.id)).reserved == 0
 
 
 # ----------------------------------------------------- the release row ------
@@ -241,18 +231,14 @@ async def test_a_partial_release_records_the_partial(db: AsyncSession, tenant_ct
 
     await InventoryService.release(db, tenant_id, variant.id, wh.id, 2)
 
-    assert (
-        await InventoryService.get_balance(db, tenant_id, variant.id, wh.id)
-    ).reserved == 3
+    assert (await InventoryService.get_balance(db, tenant_id, variant.id, wh.id)).reserved == 3
     assert [m.quantity for m in await _released_rows(db, variant.id)] == [2]
 
 
 # ------------------------------------------------- the reservation filter ---
 
 
-async def test_movements_can_be_read_back_per_reservation(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_movements_can_be_read_back_per_reservation(db: AsyncSession, tenant_ctx) -> None:
     """`GET /inventory/movements?reservation_id=` is only promised because the
     linkage exists: this is the pair, in one query."""
     tenant_id = tenant_ctx.tenant_id
@@ -261,9 +247,7 @@ async def test_movements_can_be_read_back_per_reservation(
 
     await InventoryService.release(db, tenant_id, variant.id, wh.id, 3)
 
-    rows = await InventoryService.list_movements(
-        db, tenant_id, reservation_id=reservation.id
-    )
+    rows = await InventoryService.list_movements(db, tenant_id, reservation_id=reservation.id)
     assert _shape(rows, "direction", "reason", "quantity") == [
         ("hold", "reservation", 3),
         ("release", "reservation_release", 3),
@@ -300,9 +284,7 @@ async def test_the_reservation_filter_returns_that_pair_and_nothing_else(
 
     assert await InventoryReservationService.convert(db, tenant_id, orders[0].id) == 1
 
-    rows = await InventoryService.list_movements(
-        db, tenant_id, reservation_id=settled.id
-    )
+    rows = await InventoryService.list_movements(db, tenant_id, reservation_id=settled.id)
     assert _shape(rows, "direction", "quantity") == [
         ("hold", 3),
         ("release", 3),
@@ -321,17 +303,13 @@ async def test_an_unknown_reason_filter_is_a_refusal_not_an_empty_200(
     from app.modules.errors import ValidationError
 
     with pytest.raises(ValidationError):
-        await InventoryService.list_movements(
-            db, tenant_ctx.tenant_id, reason="whatever-i-liked"
-        )
+        await InventoryService.list_movements(db, tenant_ctx.tenant_id, reason="whatever-i-liked")
 
 
 # ------------------------------------------- the paths that settle a hold ---
 
 
-async def test_capture_releases_the_hold_and_sells_once(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_capture_releases_the_hold_and_sells_once(db: AsyncSession, tenant_ctx) -> None:
     """No double count: converting a reservation decrements `on_hand` exactly
     once (the `out`/sale row) and closes the hold with its own row."""
     tenant_id = tenant_ctx.tenant_id
@@ -349,17 +327,15 @@ async def test_capture_releases_the_hold_and_sells_once(
         ("release", "reservation_release", 3),
     ]
     # Only the physical rows add up to the position; the pair nets to zero.
-    physical = sum(
-        m.quantity for m in rows if m.direction == "in"
-    ) - sum(m.quantity for m in rows if m.direction == "out")
+    physical = sum(m.quantity for m in rows if m.direction == "in") - sum(
+        m.quantity for m in rows if m.direction == "out"
+    )
     assert physical == balance.on_hand
     reservation = await _reservation(db, order.id)
     assert [m.reference_id for m in rows if m.direction == "release"] == [reservation.id]
 
 
-async def test_the_expiry_sweep_states_what_it_released(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_the_expiry_sweep_states_what_it_released(db: AsyncSession, tenant_ctx) -> None:
     """`expire_stale` freed availability and used to write nothing, so an
     abandoned cart looked like stock that was never held."""
     tenant_id = tenant_ctx.tenant_id
@@ -386,9 +362,7 @@ async def test_a_return_restocks_once_after_capture(db: AsyncSession, tenant_ctx
 
     tenant_id = tenant_ctx.tenant_id
     order, variant, wh = await _order_holding_stock(db, tenant_id, qty=3)
-    await OrderService.add_payment(
-        db, tenant_id, order.id, method="cash", amount=Decimal("30.00")
-    )
+    await OrderService.add_payment(db, tenant_id, order.id, method="cash", amount=Decimal("30.00"))
     for status in ("processing", "shipped"):
         await OrderService.change_status(db, tenant_id, order.id, status)
 
@@ -420,9 +394,7 @@ async def test_a_cancelled_order_records_one_release_for_its_hold(
     balance = await InventoryService.get_balance(db, tenant_id, variant.id, wh.id)
     assert (balance.on_hand, balance.reserved) == (10, 0)
     assert [m.quantity for m in await _released_rows(db, variant.id)] == [3]
-    assert [m.reference_id for m in await _released_rows(db, variant.id)] == [
-        reservation.id
-    ]
+    assert [m.reference_id for m in await _released_rows(db, variant.id)] == [reservation.id]
     assert (await _reservation(db, order.id)).status == "CANCELLED"
 
 
@@ -463,9 +435,7 @@ async def test_two_concurrent_reserves_on_the_last_unit_admit_exactly_one(
     async with engine.connect() as boot:
         async with boot.begin():
             await boot.execute(
-                sa.text(
-                    "INSERT INTO tenants (id, slug, name) VALUES (:id, :slug, :name)"
-                ),
+                sa.text("INSERT INTO tenants (id, slug, name) VALUES (:id, :slug, :name)"),
                 {
                     "id": tenant_id,
                     "slug": f"race-{uuid.uuid4().hex[:10]}",
@@ -473,7 +443,7 @@ async def test_two_concurrent_reserves_on_the_last_unit_admit_exactly_one(
                 },
             )
 
-    wh_id = variant_id = product_id = None
+    wh_id = variant_id = None
     outcomes: list[str] = []
     try:
         # Seed with real commits: a warehouse and an active variant on a
@@ -493,12 +463,8 @@ async def test_two_concurrent_reserves_on_the_last_unit_admit_exactly_one(
                 title="Race Product",
                 slug=f"race-{uuid.uuid4().hex[:10]}",
             )
-            await CatalogService.update_product(
-                seed, tenant_id, product.id, status="active"
-            )
-            variant = await CatalogService.add_variant(
-                seed, tenant_id, product.id, price="10.00"
-            )
+            await CatalogService.update_product(seed, tenant_id, product.id, status="active")
+            variant = await CatalogService.add_variant(seed, tenant_id, product.id, price="10.00")
             await InventoryService.move(
                 seed,
                 tenant_id,
@@ -509,15 +475,13 @@ async def test_two_concurrent_reserves_on_the_last_unit_admit_exactly_one(
                 reason="purchase",
             )
             await seed.commit()
-            wh_id, variant_id, product_id = wh.id, variant.id, product.id
+            wh_id, variant_id = wh.id, variant.id
 
         async def racer() -> None:
             async with sessions() as session:
                 await bind_tenant(session, tenant_id)
                 try:
-                    await InventoryService.reserve(
-                        session, tenant_id, variant_id, wh_id, 1
-                    )
+                    await InventoryService.reserve(session, tenant_id, variant_id, wh_id, 1)
                     await session.commit()
                 except InsufficientStockError:
                     await session.rollback()
@@ -535,17 +499,19 @@ async def test_two_concurrent_reserves_on_the_last_unit_admit_exactly_one(
         async with sessions() as check:
             await bind_tenant(check, tenant_id)
             holds = (
-                await check.execute(
-                    select(InventoryMovement).where(
-                        InventoryMovement.variant_id == variant_id,
-                        InventoryMovement.direction == "hold",
+                (
+                    await check.execute(
+                        select(InventoryMovement).where(
+                            InventoryMovement.variant_id == variant_id,
+                            InventoryMovement.direction == "hold",
+                        )
                     )
                 )
-            ).scalars().all()
-            assert len(holds) == 1, [m.quantity for m in holds]
-            balance = await InventoryService.get_balance(
-                check, tenant_id, variant_id, wh_id
+                .scalars()
+                .all()
             )
+            assert len(holds) == 1, [m.quantity for m in holds]
+            balance = await InventoryService.get_balance(check, tenant_id, variant_id, wh_id)
             assert (balance.on_hand, balance.reserved) == (1, 1)
     finally:
         # Leave nothing behind: balances and movements first, then the variant
@@ -556,8 +522,6 @@ async def test_two_concurrent_reserves_on_the_last_unit_admit_exactly_one(
         # on — so the suite leaves nothing behind by construction.
         async with sessions() as cleanup:
             await bind_tenant(cleanup, tenant_id)
-            await cleanup.execute(
-                sa.text("DELETE FROM tenants WHERE id = :t"), {"t": tenant_id}
-            )
+            await cleanup.execute(sa.text("DELETE FROM tenants WHERE id = :t"), {"t": tenant_id})
             await cleanup.commit()
         await engine.dispose()

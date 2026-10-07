@@ -118,26 +118,24 @@ async def test_sell_runs_the_whole_commerce_chain(db, tenant_ctx):
     )
     assert result["receipt_number"].startswith("POS-")
 
-    order = (
-        await db.execute(select(Order).where(Order.id == result["order_id"]))
-    ).scalar_one()
+    order = (await db.execute(select(Order).where(Order.id == result["order_id"]))).scalar_one()
     assert order.channel == "pos"
     assert order.grand_total == Decimal("25.00")
     payment = (
-        await db.execute(
-            select(OrderPayment).where(OrderPayment.order_id == order.id)
-        )
+        await db.execute(select(OrderPayment).where(OrderPayment.order_id == order.id))
     ).scalar_one()
     assert payment.status == "captured"
     # §140: the captured payment settled the reservation — the POS never
     # touched the balance itself.
     (reservation,) = (
-        await db.execute(
-            select(InventoryReservation).where(
-                InventoryReservation.order_id == order.id
+        (
+            await db.execute(
+                select(InventoryReservation).where(InventoryReservation.order_id == order.id)
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert reservation.status == "CONVERTED"
     balance = await InventoryService.list_balances(db, tenant_ctx.tenant_id)
     mine = [b for b in balance if b.variant_id == variant.id]
@@ -174,12 +172,16 @@ async def test_close_stores_the_variance_and_publishes_once(db, tenant_ctx):
             db, tenant_ctx.tenant_id, pos_session.id, counted_cash="30.00"
         )
     events = (
-        await db.execute(
-            select(OutboxEvent).where(
-                OutboxEvent.aggregate_type == "pos_session",
+        (
+            await db.execute(
+                select(OutboxEvent).where(
+                    OutboxEvent.aggregate_type == "pos_session",
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     # The outbox is cross-tenant: the tenant rides in the §19 meta envelope
     # and the event type is the payload's first key.
     assert any(
@@ -194,9 +196,7 @@ async def test_sell_on_a_closed_session_is_refused(db, tenant_ctx):
     pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
     variant = await _sellable_variant(db, tenant_ctx)
     customer = await _customer(db, tenant_ctx)
-    await PosService.close_session(
-        db, tenant_ctx.tenant_id, pos_session.id, counted_cash="0.00"
-    )
+    await PosService.close_session(db, tenant_ctx.tenant_id, pos_session.id, counted_cash="0.00")
     with pytest.raises(ConflictError):
         await PosService.sell(
             db,

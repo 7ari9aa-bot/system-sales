@@ -130,17 +130,13 @@ def test_whatsapp_signature_is_hmac_over_the_raw_body(monkeypatch):
     assert whatsapp_adapter.check_signature(headers, tampered) is False
     # Signature computed over the wrong secret.
     assert (
-        whatsapp_adapter.check_signature(
-            {"x-hub-signature-256": _wa_sign("attacker", raw)}, raw
-        )
+        whatsapp_adapter.check_signature({"x-hub-signature-256": _wa_sign("attacker", raw)}, raw)
         is False
     )
 
 
 @pytest.mark.parametrize("adapter_name", ["instagram", "messenger"])
-def test_meta_channel_signature_is_hmac_over_the_bare_digest(
-    monkeypatch, adapter_name
-):
+def test_meta_channel_signature_is_hmac_over_the_bare_digest(monkeypatch, adapter_name):
     """Instagram and Messenger validate the same way WhatsApp does: the hex
     digest is compared WITHOUT the `sha256=` prefix. These two channels
     shipped comparing the PREFIXED header against the bare digest — every
@@ -148,9 +144,7 @@ def test_meta_channel_signature_is_hmac_over_the_bare_digest(
     while the WhatsApp-only tests stayed green."""
     import importlib
 
-    module = importlib.import_module(
-        f"app.modules.conversations.gateway.{adapter_name}"
-    )
+    module = importlib.import_module(f"app.modules.conversations.gateway.{adapter_name}")
     adapter = getattr(module, f"{adapter_name}_adapter")
     monkeypatch.setattr(
         f"app.modules.conversations.gateway.{adapter_name}.get_settings",
@@ -163,12 +157,7 @@ def test_meta_channel_signature_is_hmac_over_the_bare_digest(
 
     tampered = raw.replace(b"changes", b"changed")
     assert adapter.check_signature(headers, tampered) is False
-    assert (
-        adapter.check_signature(
-            {"x-hub-signature-256": _wa_sign("attacker", raw)}, raw
-        )
-        is False
-    )
+    assert adapter.check_signature({"x-hub-signature-256": _wa_sign("attacker", raw)}, raw) is False
     # Missing / malformed header.
     assert whatsapp_adapter.check_signature({}, raw) is False
     assert whatsapp_adapter.check_signature({"x-hub-signature-256": "deadbeef"}, raw) is False
@@ -219,18 +208,14 @@ def test_telegram_signature_fails_closed_without_a_configured_secret(monkeypatch
 
 
 @pytest.mark.parametrize("adapter_name", ["messenger", "instagram"])
-def test_meta_channel_handshake_fails_closed_without_a_verify_token(
-    monkeypatch, adapter_name
-):
+def test_meta_channel_handshake_fails_closed_without_a_verify_token(monkeypatch, adapter_name):
     """The GET handshake had the same hole the WhatsApp adapter closed: with
     the verify token unset (empty default), an EMPTY `hub.verify_token`
     compared equal to the configured value and the endpoint answered with the
     caller's own challenge. Not configured = cannot verify = reject."""
     import importlib
 
-    module = importlib.import_module(
-        f"app.modules.conversations.gateway.{adapter_name}"
-    )
+    module = importlib.import_module(f"app.modules.conversations.gateway.{adapter_name}")
     adapter = getattr(module, f"{adapter_name}_adapter")
     monkeypatch.setattr(
         f"app.modules.conversations.gateway.{adapter_name}.get_settings",
@@ -245,15 +230,11 @@ def test_meta_channel_handshake_fails_closed_without_a_verify_token(
 
 
 @pytest.mark.parametrize("adapter_name", ["messenger", "instagram"])
-def test_meta_channel_handshake_completes_only_with_the_configured_token(
-    monkeypatch, adapter_name
-):
+def test_meta_channel_handshake_completes_only_with_the_configured_token(monkeypatch, adapter_name):
     """The fail-closed guard must not take the happy path down with it."""
     import importlib
 
-    module = importlib.import_module(
-        f"app.modules.conversations.gateway.{adapter_name}"
-    )
+    module = importlib.import_module(f"app.modules.conversations.gateway.{adapter_name}")
     adapter = getattr(module, f"{adapter_name}_adapter")
     monkeypatch.setattr(
         f"app.modules.conversations.gateway.{adapter_name}.get_settings",
@@ -348,9 +329,7 @@ async def test_whatsapp_non_json_success_body_is_a_provider_error():
         200, text="<html>502 Bad Gateway</html>", headers={"content-type": "text/html"}
     )
     with pytest.raises(ExternalProviderError):
-        await whatsapp_adapter.send(
-            _direct_credentials(), _outbound(), _client=_always(response)
-        )
+        await whatsapp_adapter.send(_direct_credentials(), _outbound(), _client=_always(response))
 
 
 async def test_whatsapp_error_shaped_200_is_a_provider_error():
@@ -430,8 +409,7 @@ async def test_a_successful_send_still_returns_the_provider_id():
     """The failure handling must not swallow the happy path."""
     wa = _always(httpx.Response(200, json={"messages": [{"id": "wamid.out1"}]}))
     assert (
-        await whatsapp_adapter.send(_direct_credentials(), _outbound(), _client=wa)
-        == "wamid.out1"
+        await whatsapp_adapter.send(_direct_credentials(), _outbound(), _client=wa) == "wamid.out1"
     )
 
     tg = _always(httpx.Response(200, json={"ok": True, "result": {"message_id": 77}}))
@@ -492,11 +470,7 @@ def _signed_headers(scheme: str, secret: str, raw: bytes) -> dict[str, str]:
     if scheme == "email-sendgrid":
         return {"authorization": f"Bearer {secret}"}
     if scheme == "email-mailgun":
-        return {
-            "x-mailgun-signature": hmac.new(
-                secret.encode(), raw, hashlib.sha256
-            ).hexdigest()
-        }
+        return {"x-mailgun-signature": hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()}
     raise KeyError(scheme)
 
 
@@ -521,9 +495,7 @@ _OWN_SECRET_ATTR = {
 
 
 @pytest.mark.parametrize(("scheme", "adapter"), _SIGNED_SURFACES)
-def test_a_body_signed_with_another_providers_secret_is_rejected(
-    monkeypatch, scheme, adapter
-):
+def test_a_body_signed_with_another_providers_secret_is_rejected(monkeypatch, scheme, adapter):
     """Checklist 1, per channel: a payload authenticated with provider B's
     secret must NEVER pass channel A. Every pair of distinct secrets is
     exercised, plus the positive control (its own secret passes)."""
@@ -542,9 +514,7 @@ def test_a_body_signed_with_another_providers_secret_is_rejected(
 
 
 @pytest.mark.parametrize(("scheme", "adapter"), _SIGNED_SURFACES)
-def test_a_hostile_non_ascii_signature_header_is_rejected_not_a_500(
-    monkeypatch, scheme, adapter
-):
+def test_a_hostile_non_ascii_signature_header_is_rejected_not_a_500(monkeypatch, scheme, adapter):
     """compare_digest raises TypeError on non-ASCII str — a hostile header
     must come back as a plain False (403 at the edge), never a 500. The
     comparisons therefore run on encoded bytes."""
@@ -566,15 +536,8 @@ def test_email_signature_fails_closed_without_a_configured_secret(monkeypatch):
     raw = b'{"from": "x@y.z"}'
     for adapter in (email_adapter, EmailAdapter(provider="mailgun")):
         assert adapter.check_signature({}, raw) is False
-        assert (
-            adapter.check_signature({"authorization": "Bearer guess"}, raw) is False
-        )
-        assert (
-            adapter.check_signature(
-                {"x-mailgun-signature": "a" * 64}, raw
-            )
-            is False
-        )
+        assert adapter.check_signature({"authorization": "Bearer guess"}, raw) is False
+        assert adapter.check_signature({"x-mailgun-signature": "a" * 64}, raw) is False
 
 
 def test_email_signature_accepts_only_the_configured_credential(monkeypatch):
@@ -589,16 +552,10 @@ def test_email_signature_accepts_only_the_configured_credential(monkeypatch):
     sendgrid = email_adapter
     assert sendgrid.check_signature({"authorization": f"Bearer {secret}"}, raw) is True
     # Same header WITHOUT the last character: rejected.
-    assert (
-        sendgrid.check_signature({"authorization": f"Bearer {secret[:-1]}"}, raw)
-        is False
-    )
+    assert sendgrid.check_signature({"authorization": f"Bearer {secret[:-1]}"}, raw) is False
     # The Bearer credential is NOT a body HMAC: swapping schemes must not pass.
     body_hmac = hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
-    assert (
-        sendgrid.check_signature({"authorization": f"Bearer {body_hmac}"}, raw)
-        is False
-    )
+    assert sendgrid.check_signature({"authorization": f"Bearer {body_hmac}"}, raw) is False
 
     mailgun = EmailAdapter(provider="mailgun")
     good = hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
@@ -653,9 +610,7 @@ async def test_email_send_returns_a_provider_message_id():
 
 
 @pytest.mark.parametrize(("scheme", "adapter"), _SIGNED_SURFACES)
-def test_every_signed_channel_fails_closed_without_its_secret(
-    monkeypatch, scheme, adapter
-):
+def test_every_signed_channel_fails_closed_without_its_secret(monkeypatch, scheme, adapter):
     """Checklist 1, per channel, unconditional: an EMPTY secret rejects ALL
     traffic in ANY environment — there is no permissive mode to reach."""
     empty = type("S", (), {attr: "" for attr in _ALL_SECRETS})()
@@ -671,6 +626,4 @@ def test_every_signed_channel_fails_closed_without_its_secret(
             monkeypatch.setattr(f"{module}.get_settings", lambda: empty)
     raw = b'{"entry": []}'
     assert adapter.check_signature({}, raw) is False, scheme
-    assert (
-        adapter.check_signature(_signed_headers(scheme, "anything", raw), raw) is False
-    ), scheme
+    assert adapter.check_signature(_signed_headers(scheme, "anything", raw), raw) is False, scheme

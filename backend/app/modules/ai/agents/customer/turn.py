@@ -113,14 +113,10 @@ def _context_lines(
     """
     lines: list[str] = []
     if state_shown:
-        lines.append(
-            "المنتجات اللي اعرضت على العميل بالترتيب: "
-            + ", ".join(state_shown)
-        )
+        lines.append("المنتجات اللي اعرضت على العميل بالترتيب: " + ", ".join(state_shown))
     if referent is not None:
         lines.append(
-            f"العميل يقصد العنصر رقم {referent.position} "
-            f"(معرّف المنتج: {referent.product_id})."
+            f"العميل يقصد العنصر رقم {referent.position} (معرّف المنتج: {referent.product_id})."
         )
     elif not vision_results and any(
         marker in normalize_arabic(turn.text or "") for marker in _POINTING_MARKERS
@@ -128,8 +124,7 @@ def _context_lines(
         # No vision result means no photo to be the "ده" — a bare pointing
         # marker with nothing it can resolve to is the ask, never a guess.
         lines.append(
-            "العميل أشار بعلامة ترتيب لكن مفيش عنصر مطابق في اللي اتعرض — "
-            "اسأله بدل ما تخمّن."
+            "العميل أشار بعلامة ترتيب لكن مفيش عنصر مطابق في اللي اتعرض — اسأله بدل ما تخمّن."
         )
     for result in vision_results:
         top = ", ".join(
@@ -205,9 +200,7 @@ async def run_customer_turn(
         )
     skipped_photos = len(turn.image_keys) - processed
 
-    context = _context_lines(
-        turn, shown, referent, vision_results, skipped_photos
-    )
+    context = _context_lines(turn, shown, referent, vision_results, skipped_photos)
     user_message = _message_text(turn, bool(vision_results))
     if not user_message and not context:
         # Nothing actionable arrived (e.g. an empty body after stripping).
@@ -258,12 +251,8 @@ async def run_customer_turn(
     # only and deduped, so re-applying against a fresh read is idempotent.
     new_shown = list(result.shown_product_ids)
     for vr in vision_results:
-        new_shown.extend(
-            c["product_id"] for c in vr.candidates if c.get("verified")
-        )
-    new_media = [
-        str(m["image_id"]) for m in result.media if m.get("image_id") is not None
-    ]
+        new_shown.extend(c["product_id"] for c in vr.candidates if c.get("verified"))
+    new_media = [str(m["image_id"]) for m in result.media if m.get("image_id") is not None]
     final_version = state_version
     if new_shown or new_media:
         patch: dict[str, list[str]] = {}
@@ -280,9 +269,7 @@ async def run_customer_turn(
                 expected_version=state_version,
             )
         except StaleStateError:
-            patched = await apply_patch(
-                session, params.tenant_id, params.conversation_id, patch
-            )
+            patched = await apply_patch(session, params.tenant_id, params.conversation_id, patch)
         final_version = patched.state_version
 
     return TurnOutcome(

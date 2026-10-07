@@ -133,9 +133,7 @@ def _app(
     app = create_app()
     ctx = TenantContext(
         session=session,  # type: ignore[arg-type]
-        user=AuthedUser(
-            id=user_id or uuid.uuid4(), tenant_id=tenant_id, role_code="owner"
-        ),
+        user=AuthedUser(id=user_id or uuid.uuid4(), tenant_id=tenant_id, role_code="owner"),
         tenant_id=tenant_id,
         role_code="owner",
         permission_codes=permissions,

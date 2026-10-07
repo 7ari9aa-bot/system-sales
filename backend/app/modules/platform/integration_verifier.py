@@ -96,9 +96,7 @@ async def _json_response(
             f"{provider} returned an invalid verification response."
         ) from None
     if not isinstance(payload, dict):
-        raise ExternalProviderError(
-            f"{provider} returned an invalid verification response."
-        )
+        raise ExternalProviderError(f"{provider} returned an invalid verification response.")
     if payload.get("error"):
         raise ValidationError(
             "The provider rejected these credentials or required permissions are missing."
@@ -202,6 +200,7 @@ async def verify_channel_credentials(
     finally:
         if owns_client:
             await http.aclose()
+
 
 async def configure_telegram_webhook(
     credentials: dict[str, Any],

@@ -325,9 +325,7 @@ async def test_the_voice_worker_books_transcription_into_the_platform_bucket(
 
     attachment = SimpleNamespace(id=uuid.uuid4(), duration=45, transcription_status="pending")
     session = _VoiceNoteSession(attachment)
-    text = await message_worker.transcribe_inbound_voice(
-        session, TENANT, message_id=uuid.uuid4()
-    )
+    text = await message_worker.transcribe_inbound_voice(session, TENANT, message_id=uuid.uuid4())
 
     assert text == "مرحبا"
     assert len(booked) == 1, booked
@@ -389,8 +387,11 @@ def test_the_natural_key_is_unchanged_and_still_cannot_arbitrate_null() -> None:
     assertion is the one that turns RED if someone "fixes" it there instead.
     """
     table = AIUsage.__table__
-    natural = next(c for c in table.constraints if getattr(c, "name", None) ==
-                   "uq_ai_usage_tenant_period_agent")
+    natural = next(
+        c
+        for c in table.constraints
+        if getattr(c, "name", None) == "uq_ai_usage_tenant_period_agent"
+    )
 
     assert [c.name for c in natural.columns] == ["tenant_id", "period_date", "agent_id"]
     assert getattr(natural, "where", None) is None, "a partial UNIQUE is a schema change"
@@ -485,7 +486,8 @@ async def test_agent_less_writes_converge_into_one_row_on_postgres(db, tenant_ct
 
 
 async def test_the_agent_bucket_still_converges_on_the_natural_key(
-    db, tenant_ctx  # noqa: ANN001
+    db,
+    tenant_ctx,  # noqa: ANN001
 ) -> None:
     """The path that already worked must keep working on the same target.
 
@@ -538,9 +540,7 @@ def _sql_statements_of_this_module() -> list[str]:
     return [
         ast.literal_eval(node.args[0])
         for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-        and getattr(node.func, "id", None) == "sa_text"
-        and node.args
+        if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "sa_text" and node.args
     ]
 
 
@@ -581,4 +581,3 @@ def test_the_audit_aggregates_over_the_uuid_identity_are_postgres_legal() -> Non
     for sql in agent_scoped:
         assert "GROUP BY agent_id" in sql, sql
         assert not _UUID_IDENTITY_AGGREGATE.search(sql), sql
-

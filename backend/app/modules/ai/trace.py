@@ -91,9 +91,7 @@ def _latency_ms(run: AgentRun) -> int | None:
 
 class AITraceService:
     @staticmethod
-    async def for_run(
-        session: AsyncSession, tenant_id: uuid.UUID, run_id: uuid.UUID
-    ) -> dict:
+    async def for_run(session: AsyncSession, tenant_id: uuid.UUID, run_id: uuid.UUID) -> dict:
         """The admin view for one run: run + model calls + tool calls.
 
         ``NotFoundError`` when the run does not belong to this tenant (RLS makes
@@ -112,25 +110,33 @@ class AITraceService:
             raise NotFoundError(f"agent run {run_id} not found")
 
         model_calls = (
-            await session.execute(
-                select(ModelCall)
-                .where(ModelCall.tenant_id == tenant_id, ModelCall.run_id == run_id)
-                .order_by(ModelCall.created_at.asc())
+            (
+                await session.execute(
+                    select(ModelCall)
+                    .where(ModelCall.tenant_id == tenant_id, ModelCall.run_id == run_id)
+                    .order_by(ModelCall.created_at.asc())
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         tool_calls = (
-            await session.execute(
-                select(ToolCall)
-                .where(ToolCall.tenant_id == tenant_id, ToolCall.run_id == run_id)
-                .order_by(ToolCall.created_at.asc())
+            (
+                await session.execute(
+                    select(ToolCall)
+                    .where(ToolCall.tenant_id == tenant_id, ToolCall.run_id == run_id)
+                    .order_by(ToolCall.created_at.asc())
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         # "Which model did this run actually use?" — the last successful call is
         # the one that produced the answer; fall back to the first recorded.
-        chosen = next(
-            (c for c in reversed(model_calls) if c.status == "ok"), None
-        ) or (model_calls[0] if model_calls else None)
+        chosen = next((c for c in reversed(model_calls) if c.status == "ok"), None) or (
+            model_calls[0] if model_calls else None
+        )
 
         errors = [run.error] if run.error else []
         errors.extend(c.error for c in tool_calls if c.error)
@@ -198,21 +204,23 @@ class AITraceService:
             pass
 
         rows = (
-            await session.execute(
-                select(AgentRun)
-                .where(
-                    AgentRun.tenant_id == tenant_id,
-                    or_(*conditions),
+            (
+                await session.execute(
+                    select(AgentRun)
+                    .where(
+                        AgentRun.tenant_id == tenant_id,
+                        or_(*conditions),
+                    )
+                    .order_by(AgentRun.created_at.asc())
                 )
-                .order_by(AgentRun.created_at.asc())
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return [_run_summary(run) for run in rows]
 
     @staticmethod
-    async def summary(
-        session: AsyncSession, tenant_id: uuid.UUID, *, days: int = 7
-    ) -> dict:
+    async def summary(session: AsyncSession, tenant_id: uuid.UUID, *, days: int = 7) -> dict:
         """Rollup for the last ``days`` days: runs, failures, fallback, tokens, cost.
 
         ``fallback`` counts ``model_calls`` routed to the ``fallback`` alias —
@@ -223,9 +231,7 @@ class AITraceService:
             await session.execute(
                 select(
                     func.count(AgentRun.id),
-                    func.count(AgentRun.id).filter(
-                        AgentRun.status.in_(FAILED_STATUSES)
-                    ),
+                    func.count(AgentRun.id).filter(AgentRun.status.in_(FAILED_STATUSES)),
                     func.coalesce(func.sum(AgentRun.tokens_in), 0),
                     func.coalesce(func.sum(AgentRun.tokens_out), 0),
                     func.coalesce(func.sum(AgentRun.cost), 0),

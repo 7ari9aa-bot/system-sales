@@ -142,9 +142,7 @@ async def test_a_draft_product_is_refused_at_checkout(db: AsyncSession, tenant_c
     await db.flush()
 
 
-async def test_an_archived_parent_takes_its_active_variant_down(
-    db: AsyncSession, tenant_ctx
-):
+async def test_an_archived_parent_takes_its_active_variant_down(db: AsyncSession, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     _product_row, variant = await _product(db, tenant_id, status="archived")
     assert variant.is_active is True  # the variant itself still looks sellable
@@ -166,9 +164,7 @@ async def test_an_active_product_still_checks_out(db: AsyncSession, tenant_ctx):
     assert order.grand_total == Decimal("75.00")
 
 
-async def test_the_agent_tool_refuses_a_draft_product_too(
-    db: AsyncSession, tenant_ctx
-):
+async def test_the_agent_tool_refuses_a_draft_product_too(db: AsyncSession, tenant_ctx):
     """Same gate for the chatbot: the customer cannot order what is in draft."""
     from app.modules.ai.tools import get_tool
 

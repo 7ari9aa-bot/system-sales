@@ -56,9 +56,7 @@ class _CapturingUpdate:
 
 def _literal_sql(statement: Any) -> str:
     return str(
-        statement.compile(
-            dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
-        )
+        statement.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True})
     )
 
 
@@ -71,9 +69,7 @@ async def test_the_budgets_last_failure_dead_letters_the_row(monkeypatch) -> Non
     )
     session = _CapturingUpdate()
     # attempts=2 → this is failure #3 → the budget is spent.
-    await IngestService.mark_webhook_event_failed(
-        session, uuid.uuid4(), RuntimeError("boom")
-    )
+    await IngestService.mark_webhook_event_failed(session, uuid.uuid4(), RuntimeError("boom"))
     sql = _literal_sql(session.statement)
     assert "CASE" in sql, "status must be derived from the attempts budget"
     assert "'dead'" in sql
@@ -86,9 +82,7 @@ async def test_a_row_with_budget_left_stays_failed_for_the_sweep(monkeypatch) ->
         lambda: SimpleNamespace(worker_max_attempts=3),
     )
     session = _CapturingUpdate()
-    await IngestService.mark_webhook_event_failed(
-        session, uuid.uuid4(), RuntimeError("boom")
-    )
+    await IngestService.mark_webhook_event_failed(session, uuid.uuid4(), RuntimeError("boom"))
     # The guard compares the POST-increment attempts against the budget:
     # attempts + 1 >= max → dead, else failed. Both branches exist, and the
     # increment rides in the same statement.
@@ -100,9 +94,7 @@ async def test_a_row_with_budget_left_stays_failed_for_the_sweep(monkeypatch) ->
 # ------------------------------------------------------- CI-only behaviour --
 
 
-async def test_sweep_dead_letters_after_the_last_allowed_failure(
-    db, tenant_ctx, monkeypatch
-):
+async def test_sweep_dead_letters_after_the_last_allowed_failure(db, tenant_ctx, monkeypatch):
     """Three strikes: attempts 2 with a budget of 3 — the next failure is the
     last one the queue tolerates; the row must land in dead."""
     monkeypatch.setattr(
@@ -116,8 +108,11 @@ async def test_sweep_dead_letters_after_the_last_allowed_failure(
     monkeypatch.setattr(IngestService, "ingest", _always_explodes)
 
     row = await _ingress_row(
-        db, tenant_ctx.tenant_id, _wa_payload("wamid.dlq-final"),
-        status="failed", attempts=2,
+        db,
+        tenant_ctx.tenant_id,
+        _wa_payload("wamid.dlq-final"),
+        status="failed",
+        attempts=2,
     )
     assert await retry_failed_webhook_events(db, tenant_ctx.tenant_id) == 1
     stored = await _reload(db, row.id)
@@ -139,8 +134,11 @@ async def test_the_automatic_sweep_never_touches_dead_rows(db, tenant_ctx, monke
     monkeypatch.setattr(IngestService, "ingest", _always_explodes)
 
     row = await _ingress_row(
-        db, tenant_ctx.tenant_id, _wa_payload("wamid.dlq-quiet"),
-        status="dead", attempts=3,
+        db,
+        tenant_ctx.tenant_id,
+        _wa_payload("wamid.dlq-quiet"),
+        status="dead",
+        attempts=3,
     )
     assert await retry_failed_webhook_events(db, tenant_ctx.tenant_id) == 0
     stored = await _reload(db, row.id)
@@ -152,23 +150,24 @@ async def test_an_explicit_worker_retry_replays_a_dead_row(db, tenant_ctx):
     """§24 Replay: the WebhookWorker path must accept an event_id pointing at
     a dead row — that is how an admin-staged retry lands."""
     row = await _ingress_row(
-        db, tenant_ctx.tenant_id, _wa_payload("wamid.dlq-replay"),
-        status="dead", attempts=3,
+        db,
+        tenant_ctx.tenant_id,
+        _wa_payload("wamid.dlq-replay"),
+        status="dead",
+        attempts=3,
     )
-    assert (
-        await retry_failed_webhook_events(db, tenant_ctx.tenant_id, event_id=row.id)
-        == 1
-    )
+    assert await retry_failed_webhook_events(db, tenant_ctx.tenant_id, event_id=row.id) == 1
     stored = await _reload(db, row.id)
     assert stored.processing_status == "processed"
 
 
-async def test_admin_retry_accepts_a_dead_row_and_stages_the_worker_event(
-    db, tenant_ctx
-):
+async def test_admin_retry_accepts_a_dead_row_and_stages_the_worker_event(db, tenant_ctx):
     row = await _ingress_row(
-        db, tenant_ctx.tenant_id, _wa_payload("wamid.dlq-admin-retry"),
-        status="dead", attempts=3,
+        db,
+        tenant_ctx.tenant_id,
+        _wa_payload("wamid.dlq-admin-retry"),
+        status="dead",
+        attempts=3,
     )
     result = await admin_retry_webhook_event(_admin_ctx(tenant_ctx), row.id)
     assert result["retry"] == "scheduled"
@@ -184,8 +183,11 @@ async def test_admin_retry_accepts_a_dead_row_and_stages_the_worker_event(
 
 async def test_admin_retry_still_refuses_processed_rows(db, tenant_ctx):
     row = await _ingress_row(
-        db, tenant_ctx.tenant_id, _wa_payload("wamid.done"),
-        status="processed", attempts=1,
+        db,
+        tenant_ctx.tenant_id,
+        _wa_payload("wamid.done"),
+        status="processed",
+        attempts=1,
     )
     with pytest.raises(ValidationError):
         await admin_retry_webhook_event(_admin_ctx(tenant_ctx), row.id)
@@ -194,12 +196,13 @@ async def test_admin_retry_still_refuses_processed_rows(db, tenant_ctx):
 # ------------------------------------------- ignore / resolve (DLQ close-out)
 
 
-async def test_ignore_moves_a_dead_row_to_ignored_and_audits_the_decision(
-    db, tenant_ctx
-):
+async def test_ignore_moves_a_dead_row_to_ignored_and_audits_the_decision(db, tenant_ctx):
     row = await _ingress_row(
-        db, tenant_ctx.tenant_id, _wa_payload("wamid.dlq-ignore"),
-        status="dead", attempts=3,
+        db,
+        tenant_ctx.tenant_id,
+        _wa_payload("wamid.dlq-ignore"),
+        status="dead",
+        attempts=3,
     )
     result = await admin_ignore_webhook_event(
         _admin_ctx(tenant_ctx), row.id, reason="provider sent junk"
@@ -208,9 +211,7 @@ async def test_ignore_moves_a_dead_row_to_ignored_and_audits_the_decision(
     stored = await _reload(db, row.id)
     assert stored.processing_status == "ignored"  # the row is NOT deleted
     audit = (
-        await db.execute(
-            select(AuditLog).where(AuditLog.action == "webhook_event.ignored")
-        )
+        await db.execute(select(AuditLog).where(AuditLog.action == "webhook_event.ignored"))
     ).scalar_one()
     assert audit.resource_id == str(row.id)
     assert "provider sent junk" in str(audit.before | audit.after or {})
@@ -218,8 +219,11 @@ async def test_ignore_moves_a_dead_row_to_ignored_and_audits_the_decision(
 
 async def test_resolved_is_a_valid_close_out_from_failed_or_dead(db, tenant_ctx):
     dead = await _ingress_row(
-        db, tenant_ctx.tenant_id, _wa_payload("wamid.dlq-resolve"),
-        status="dead", attempts=3,
+        db,
+        tenant_ctx.tenant_id,
+        _wa_payload("wamid.dlq-resolve"),
+        status="dead",
+        attempts=3,
     )
     result = await admin_resolve_webhook_event(
         _admin_ctx(tenant_ctx), dead.id, reason="fixed upstream, re-keyed manually"
@@ -241,8 +245,11 @@ async def test_resolved_is_a_valid_close_out_from_failed_or_dead(db, tenant_ctx)
 )
 async def test_illegal_dlq_transitions_are_refused(db, tenant_ctx, op, from_status):
     row = await _ingress_row(
-        db, tenant_ctx.tenant_id, _wa_payload(f"wamid.bad-{from_status}-{op}"),
-        status=from_status, attempts=1,
+        db,
+        tenant_ctx.tenant_id,
+        _wa_payload(f"wamid.bad-{from_status}-{op}"),
+        status=from_status,
+        attempts=1,
     )
     fn = admin_ignore_webhook_event if op == "ignore" else admin_resolve_webhook_event
     with pytest.raises(ValidationError):
@@ -251,8 +258,11 @@ async def test_illegal_dlq_transitions_are_refused(db, tenant_ctx, op, from_stat
 
 async def test_dlq_ops_require_the_platform_admin_claim(db, tenant_ctx):
     row = await _ingress_row(
-        db, tenant_ctx.tenant_id, _wa_payload("wamid.dlq-noauth"),
-        status="dead", attempts=3,
+        db,
+        tenant_ctx.tenant_id,
+        _wa_payload("wamid.dlq-noauth"),
+        status="dead",
+        attempts=3,
     )
     ctx = _admin_ctx(tenant_ctx, platform_admin=False)
     with pytest.raises(PermissionDeniedError):
@@ -266,12 +276,18 @@ async def test_dlq_ops_require_the_platform_admin_claim(db, tenant_ctx):
 
 async def test_list_returns_the_tenants_ingress_rows_with_filters(db, tenant_ctx):
     await _ingress_row(
-        db, tenant_ctx.tenant_id, _wa_payload("wamid.list-a"),
-        status="dead", attempts=3,
+        db,
+        tenant_ctx.tenant_id,
+        _wa_payload("wamid.list-a"),
+        status="dead",
+        attempts=3,
     )
     await _ingress_row(
-        db, tenant_ctx.tenant_id, _wa_payload("wamid.list-b"),
-        status="processed", attempts=1,
+        db,
+        tenant_ctx.tenant_id,
+        _wa_payload("wamid.list-b"),
+        status="processed",
+        attempts=1,
     )
     listing = await admin_list_webhook_events(
         _admin_ctx(tenant_ctx), status=None, provider=None, limit=50, offset=0
@@ -298,9 +314,7 @@ async def test_list_rejects_an_unknown_status_filter(db, tenant_ctx):
 
 async def test_inspect_returns_the_full_row_including_payload(db, tenant_ctx):
     payload = _wa_payload("wamid.inspect")
-    row = await _ingress_row(
-        db, tenant_ctx.tenant_id, payload, status="dead", attempts=3
-    )
+    row = await _ingress_row(db, tenant_ctx.tenant_id, payload, status="dead", attempts=3)
     detail = await admin_inspect_webhook_event(_admin_ctx(tenant_ctx), row.id)
     assert detail["id"] == str(row.id)
     assert detail["payload"]["entry"] == payload["entry"]
@@ -318,8 +332,11 @@ async def test_a_dead_row_lists_the_investigation_fields(db, tenant_ctx):
     the summary so an operator can decide replay/ignore/resolve without
     opening every row's raw payload."""
     row = await _ingress_row(
-        db, tenant_ctx.tenant_id, _wa_payload("wamid.dlq-triage"),
-        status="dead", attempts=3,
+        db,
+        tenant_ctx.tenant_id,
+        _wa_payload("wamid.dlq-triage"),
+        status="dead",
+        attempts=3,
     )
     await db.execute(
         update(WebhookEvent)
@@ -373,9 +390,7 @@ async def test_repeated_restarts_deliver_at_least_once_and_then_exactly_once(
         lambda: SimpleNamespace(worker_max_attempts=3),
     )
 
-    row = await _ingress_row(
-        db, tenant_ctx.tenant_id, payload, status="failed", attempts=1
-    )
+    row = await _ingress_row(db, tenant_ctx.tenant_id, payload, status="failed", attempts=1)
 
     # Restart 2: retried, counted, still failing.
     assert await retry_failed_webhook_events(db, tenant_ctx.tenant_id) == 1
@@ -395,10 +410,7 @@ async def test_repeated_restarts_deliver_at_least_once_and_then_exactly_once(
 
     # The dependency recovers; the human replay re-runs the same block.
     monkeypatch.setattr(IngestService, "ingest", real_ingest)
-    assert (
-        await retry_failed_webhook_events(db, tenant_ctx.tenant_id, event_id=row.id)
-        == 1
-    )
+    assert await retry_failed_webhook_events(db, tenant_ctx.tenant_id, event_id=row.id) == 1
     stored = await _reload(db, row.id)
     assert stored.processing_status == "processed"
     # Idempotent handler: the message exists exactly once, despite the row

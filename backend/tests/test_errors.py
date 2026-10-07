@@ -29,9 +29,7 @@ CASES = [
 
 
 @pytest.mark.parametrize(("error_cls", "code", "http_status"), CASES)
-def test_error_contract(
-    error_cls: type[DomainError], code: str, http_status: int
-) -> None:
+def test_error_contract(error_cls: type[DomainError], code: str, http_status: int) -> None:
     err = error_cls("something broke", details={"key": "value"})
 
     assert isinstance(err, Exception)

@@ -84,55 +84,57 @@ async def evaluate_scenario(
     previous_revenue = await compute_fact(
         session, tenant_id, "delivered_revenue", previous, fact_id="F0"
     )
-    orders_current = await compute_fact(
-        session, tenant_id, "orders_placed", current, fact_id="F0"
-    )
+    orders_current = await compute_fact(session, tenant_id, "orders_placed", current, fact_id="F0")
     evidence.add_fact(current_revenue)
     evidence.add_fact(previous_revenue)
     evidence.add_fact(orders_current)
 
     if store.scenario is Scenario.AOV_DECLINE:
         result = await analyze_drivers(session, context, evidence, days=30)
-        checks.append((
-            "aov driver dominates",
-            abs(Decimal(result.summary["aov_contribution"]))
-            >= abs(Decimal(result.summary["orders_contribution"])),
-            result.summary,
-        ))
-        checks.append((
-            "revenue actually fell",
-            Decimal(result.summary["total_delta"]) < 0,
-            result.summary,
-        ))
+        checks.append(
+            (
+                "aov driver dominates",
+                abs(Decimal(result.summary["aov_contribution"]))
+                >= abs(Decimal(result.summary["orders_contribution"])),
+                result.summary,
+            )
+        )
+        checks.append(
+            (
+                "revenue actually fell",
+                Decimal(result.summary["total_delta"]) < 0,
+                result.summary,
+            )
+        )
 
     if store.scenario is Scenario.ORDERS_DECLINE:
         result = await analyze_drivers(session, context, evidence, days=30)
-        checks.append((
-            "orders driver dominates",
-            abs(Decimal(result.summary["orders_contribution"]))
-            >= abs(Decimal(result.summary["aov_contribution"])),
-            result.summary,
-        ))
+        checks.append(
+            (
+                "orders driver dominates",
+                abs(Decimal(result.summary["orders_contribution"]))
+                >= abs(Decimal(result.summary["aov_contribution"])),
+                result.summary,
+            )
+        )
 
     if store.scenario is Scenario.REFUND_SPIKE:
-        refunds = await compute_fact(
-            session, tenant_id, "refund_amount", current, fact_id="F0"
-        )
+        refunds = await compute_fact(session, tenant_id, "refund_amount", current, fact_id="F0")
         delivered = await compute_fact(
             session, tenant_id, "delivered_revenue", current, fact_id="F0"
         )
         ratio = refunds.value / delivered.value if delivered.value else Decimal(0)
-        checks.append((
-            "refunds eat a large share of the current window",
-            ratio >= Decimal("0.15"),
-            f"refunds={refunds.value} delivered={delivered.value} ratio={ratio:.2f}",
-        ))
+        checks.append(
+            (
+                "refunds eat a large share of the current window",
+                ratio >= Decimal("0.15"),
+                f"refunds={refunds.value} delivered={delivered.value} ratio={ratio:.2f}",
+            )
+        )
 
     if store.scenario is Scenario.REVENUE_SPIKE:
         series = {
-            datetime.fromisoformat(order["placed_at"]).date(): Decimal(
-                str(order["grand_total"])
-            )
+            datetime.fromisoformat(order["placed_at"]).date(): Decimal(str(order["grand_total"]))
             for order in store.orders
         }
         daily: dict = {}
@@ -141,11 +143,13 @@ async def evaluate_scenario(
         anomalies = detect_anomalies(daily)
         expected = set(store.manifest.get("anomaly_days", []))
         found = {a.day.isoformat() for a in anomalies}
-        checks.append((
-            "the planted spike is found (and deduped to one day)",
-            found == expected,
-            f"found={sorted(found)} expected={sorted(expected)}",
-        ))
+        checks.append(
+            (
+                "the planted spike is found (and deduped to one day)",
+                found == expected,
+                f"found={sorted(found)} expected={sorted(expected)}",
+            )
+        )
 
     if store.scenario is Scenario.IMMATURE_TAIL:
         # The tail itself (the last 3 days) must carry NO delivered revenue —
@@ -180,11 +184,13 @@ async def evaluate_scenario(
                 },
             )
         ).scalar_one()
-        checks.append((
-            "orders placed in the tail have NO delivered shipments yet",
-            delivered_for_tail_orders == 0,
-            f"tail_orders_delivered={delivered_for_tail_orders}",
-        ))
+        checks.append(
+            (
+                "orders placed in the tail have NO delivered shipments yet",
+                delivered_for_tail_orders == 0,
+                f"tail_orders_delivered={delivered_for_tail_orders}",
+            )
+        )
 
     if store.scenario is Scenario.CHANNEL_SHIFT:
         from app.modules.analytics.compiler import compute_breakdown
@@ -195,19 +201,23 @@ async def evaluate_scenario(
         by_channel = {key: count for key, count, _n in rows}
         retail = by_channel.get("retail", 0)
         web = by_channel.get("web", 0)
-        checks.append((
-            "retail took a real share of the current window",
-            retail > 0 and retail >= web // 4,
-            f"by_channel={by_channel}",
-        ))
+        checks.append(
+            (
+                "retail took a real share of the current window",
+                retail > 0 and retail >= web // 4,
+                f"by_channel={by_channel}",
+            )
+        )
 
     if store.scenario is Scenario.BASELINE:
-        checks.append((
-            "flat store: revenue is stable across windows (±25%)",
-            abs(current_revenue.value - previous_revenue.value)
-            <= previous_revenue.value * Decimal("0.25"),
-            f"current={current_revenue.value} previous={previous_revenue.value}",
-        ))
+        checks.append(
+            (
+                "flat store: revenue is stable across windows (±25%)",
+                abs(current_revenue.value - previous_revenue.value)
+                <= previous_revenue.value * Decimal("0.25"),
+                f"current={current_revenue.value} previous={previous_revenue.value}",
+            )
+        )
 
     return GoldenResult(
         scenario=store.scenario,

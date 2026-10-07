@@ -32,9 +32,7 @@ from app.core.model_kit import (
 class Campaign(TenantMixin, TimestampMixin, WorkspaceScopeMixin, VersionMixin, Base):
     __tablename__ = "campaigns"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255))
     # allowed: facebook | google | tiktok | snapchat | manual
     provider: Mapped[str] = mapped_column(String(31))
@@ -56,9 +54,7 @@ class Campaign(TenantMixin, TimestampMixin, WorkspaceScopeMixin, VersionMixin, B
 class AdSet(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "ad_sets"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     campaign_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("campaigns.id", ondelete="CASCADE")
     )
@@ -75,9 +71,7 @@ class AdSet(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
 class Ad(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "ads"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     ad_set_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("ad_sets.id", ondelete="CASCADE")
     )
@@ -95,14 +89,12 @@ class Touchpoint(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Bas
 
     __tablename__ = "touchpoints"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     customer_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("customers.id", ondelete="SET NULL")
     )
-    source: Mapped[str | None] = mapped_column(String(63))   # utm_source
-    medium: Mapped[str | None] = mapped_column(String(63))   # utm_medium
+    source: Mapped[str | None] = mapped_column(String(63))  # utm_source
+    medium: Mapped[str | None] = mapped_column(String(63))  # utm_medium
     campaign_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("campaigns.id", ondelete="SET NULL")
     )
@@ -119,9 +111,7 @@ class Touchpoint(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Bas
     session_key: Mapped[str | None] = mapped_column(String(64))
 
     __table_args__ = (
-        Index(
-            "ix_touchpoints_tenant_customer_created", "tenant_id", "customer_id", "created_at"
-        ),
+        Index("ix_touchpoints_tenant_customer_created", "tenant_id", "customer_id", "created_at"),
         Index("ix_touchpoints_tenant_click", "tenant_id", "click_id"),
     )
 
@@ -129,9 +119,7 @@ class Touchpoint(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Bas
 class Lead(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "leads"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     customer_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("customers.id", ondelete="SET NULL")
     )
@@ -155,9 +143,7 @@ class Lead(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
 class Conversion(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "conversions"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     customer_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("customers.id", ondelete="SET NULL")
     )
@@ -180,9 +166,7 @@ class Conversion(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
         # to live here, because a SELECT-then-INSERT check races. ``order_id``
         # NULL rows stay unlimited: Postgres treats NULLs as distinct, so
         # anonymous (non-order) conversions are unaffected.
-        UniqueConstraint(
-            "tenant_id", "order_id", "type", name="uq_conversions_tenant_order_type"
-        ),
+        UniqueConstraint("tenant_id", "order_id", "type", name="uq_conversions_tenant_order_type"),
     )
 
 
@@ -191,9 +175,7 @@ class Attribution(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Ba
 
     __tablename__ = "attributions"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     conversion_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("conversions.id", ondelete="CASCADE")
     )

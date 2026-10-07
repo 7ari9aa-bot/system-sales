@@ -155,9 +155,7 @@ class InventoryReservation(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdM
     # it, so that a hold written before the reservation row existed (Orders
     # reserves, then inserts the order, then registers the line) is still
     # reachable from `GET /inventory/movements?reservation_id=...`.
-    hold_movement_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True
-    )
+    hold_movement_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     # allowed: ACTIVE | EXPIRED | CONVERTED | CANCELLED
     status: Mapped[str] = mapped_column(String(15), server_default="ACTIVE")
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -199,16 +197,12 @@ class InventoryReconciliationFinding(
     check_kind: Mapped[str] = mapped_column(String(15))
     # For a chain finding: the offending ledger row. No FK on purpose — the
     # ledger is append-only history and the finding must outlive nothing of it.
-    movement_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True
-    )
+    movement_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     expected: Mapped[int] = mapped_column(BigInteger)
     actual: Mapped[int] = mapped_column(BigInteger)
     # allowed: OPEN | RESOLVED
     status: Mapped[str] = mapped_column(String(15), server_default="OPEN")
-    resolved_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     resolved_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),

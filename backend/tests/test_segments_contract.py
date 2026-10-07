@@ -541,9 +541,7 @@ async def test_an_in_rule_selects_exactly_the_matching_customers(
     assert set(matched_both) == {blocked.id, open_customer.id}, matched_both
 
 
-async def test_the_http_surface_round_trips_a_typed_segment(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_the_http_surface_round_trips_a_typed_segment(db: AsyncSession, tenant_ctx) -> None:
     """Create → read back: every declared field arrives, none renamed away.
 
     CI-only. This is the case that catches a response model typing the right
@@ -606,6 +604,4 @@ def test_no_segment_route_answers_without_a_declared_model() -> None:
             or getattr(route.response_model, "model_fields", None) == {}
         )
     )
-    assert not untyped, (
-        "routes still answering through an untyped body:\n  " + "\n  ".join(untyped)
-    )
+    assert not untyped, "routes still answering through an untyped body:\n  " + "\n  ".join(untyped)

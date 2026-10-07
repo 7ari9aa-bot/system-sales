@@ -50,38 +50,28 @@ def validate_finding(finding: Finding) -> list[str]:
     # declared field says.
     asserts_cause = any(marker in text for marker in _CAUSAL_MARKERS)
     if asserts_cause and finding.relationship is not Relationship.CAUSAL:
-        problems.append(
-            "causal wording requires CAUSAL evidence (experiment or causal method)"
-        )
+        problems.append("causal wording requires CAUSAL evidence (experiment or causal method)")
     if finding.relationship in (
         Relationship.TEMPORAL_ASSOCIATION,
         Relationship.CORRELATION,
     ):
         if not any(hedge in text for hedge in _ASSOCIATION_HEDGES):
-            problems.append(
-                "association findings must hedge (coincided / may have contributed)"
-            )
-    if finding.type == "HYPOTHESIS" and not any(
-        hedge in text for hedge in _HYPOTHESIS_HEDGES
-    ):
+            problems.append("association findings must hedge (coincided / may have contributed)")
+    if finding.type == "HYPOTHESIS" and not any(hedge in text for hedge in _HYPOTHESIS_HEDGES):
         problems.append("hypotheses must be phrased as hypotheses")
     if not finding.evidence_refs:
         problems.append("finding has no evidence")
     return problems
 
 
-def validate_response(
-    draft: AnswerDraft, rendered_text: str
-) -> list[str]:
+def validate_response(draft: AnswerDraft, rendered_text: str) -> list[str]:
     """§10.3 — the response gate. ``rendered_text`` is the draft's text
     AFTER the number renderer ran; problems mean REJECT (one regeneration,
     then the deterministic safe response — the caller owns that policy)."""
     problems: list[str] = []
     if re.search(r"\{\{[A-Za-z0-9_]+:[a-z_]+\}\}", rendered_text):
         problems.append("unrendered placeholder survived into the answer")
-    for numeral in free_numerals(
-        rendered_text, allowlist=_LINGUISTIC_ALLOWLIST
-    ):
+    for numeral in free_numerals(rendered_text, allowlist=_LINGUISTIC_ALLOWLIST):
         problems.append(f"free number in answer: {numeral}")
     for finding in draft.findings:
         if finding.confidence == "HIGH" and finding.type == "HYPOTHESIS":

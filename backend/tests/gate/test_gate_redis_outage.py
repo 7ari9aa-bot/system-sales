@@ -104,8 +104,9 @@ async def _rows(db, ids: list[str]) -> dict[str, dict[str, Any]]:
         ),
         {"ids": ids},
     )
-    return {r.id: {"status": r.status, "attempts": r.attempts, "error": r.last_error}
-            for r in result}
+    return {
+        r.id: {"status": r.status, "attempts": r.attempts, "error": r.last_error} for r in result
+    }
 
 
 async def _event_log_count(db, ids: list[str]) -> int:
@@ -202,9 +203,7 @@ async def test_gate_relay_crash_between_claim_and_publish_is_reclaimed(
     assert (await _rows(db, [event_id]))[event_id]["status"] == "published"
 
 
-async def test_gate_recent_publishing_row_is_not_stolen(
-    db, tenant_ctx, relay_on_test_connection
-):
+async def test_gate_recent_publishing_row_is_not_stolen(db, tenant_ctx, relay_on_test_connection):
     """The reclaim must not race a LIVE relay: a fresh 'publishing' row is left alone."""
     bus = SwitchableBus()
     relay = OutboxRelay(bus)
@@ -248,9 +247,7 @@ async def _failed_schedule(db, event_id: str):
     """Return a failed row's (status, not_before, attempts) as Postgres sees them."""
     row = (
         await db.execute(
-            text(
-                "SELECT status, not_before, attempts FROM outbox_events WHERE id = :i"
-            ),
+            text("SELECT status, not_before, attempts FROM outbox_events WHERE id = :i"),
             {"i": event_id},
         )
     ).first()
@@ -285,9 +282,7 @@ async def test_gate_a_failed_row_is_not_hammered_once_per_drain(
     assert not_before is not None, "a failed row earned no durable cool-down schedule"
     # now() is transaction time; the schedule must sit in the future so the next
     # drain cannot claim it. Compare against Postgres's own clock.
-    is_future = (
-        await db.execute(text(_COOL_DOWN_PROBE_SQL), {"nb": not_before})
-    ).scalar_one()
+    is_future = (await db.execute(text(_COOL_DOWN_PROBE_SQL), {"nb": not_before})).scalar_one()
     assert is_future, f"failed row's not_before is not in the future: {not_before}"
     assert attempts == 1
 
@@ -297,9 +292,7 @@ async def test_gate_a_failed_row_is_not_hammered_once_per_drain(
     await relay._drain_once(batch=BATCH, max_attempts=MAX_ATTEMPTS)
     second_publishes = len([i for i in bus.outbox_ids() if i == event_id])
 
-    assert first_publishes == 0 and second_publishes == 0, (
-        "the relay published during a down bus"
-    )
+    assert first_publishes == 0 and second_publishes == 0, "the relay published during a down bus"
     status2, _, _ = await _failed_schedule(db, event_id)
     assert status2 == "failed", (
         "a not-yet-due failed row was re-queued before its cool-down elapsed — "

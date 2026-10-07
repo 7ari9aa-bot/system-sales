@@ -25,9 +25,7 @@ from app.modules.errors import NotFoundError
 
 def _body_properties(path: str, method: str = "post") -> set[str]:
     spec = create_app().openapi()
-    schema = spec["paths"][path][method]["requestBody"]["content"]["application/json"][
-        "schema"
-    ]
+    schema = spec["paths"][path][method]["requestBody"]["content"]["application/json"]["schema"]
     name = schema["$ref"].rsplit("/", 1)[-1]
     return set(spec["components"]["schemas"][name]["properties"])
 
@@ -82,9 +80,7 @@ async def test_add_image_appends_in_position_order(db: AsyncSession, tenant_ctx)
     tenant_id = tenant_ctx.tenant_id
     product = await _product(db, tenant_id)
 
-    first = await CatalogService.add_image(
-        db, tenant_id, product.id, url="https://cdn.test/1.jpg"
-    )
+    first = await CatalogService.add_image(db, tenant_id, product.id, url="https://cdn.test/1.jpg")
     second = await CatalogService.add_image(
         db, tenant_id, product.id, url="https://cdn.test/2.jpg", alt="أزرق"
     )
@@ -96,9 +92,7 @@ async def test_add_image_appends_in_position_order(db: AsyncSession, tenant_ctx)
     assert rows[1].alt == "أزرق"
 
 
-async def test_add_image_refuses_a_product_that_is_not_there(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_add_image_refuses_a_product_that_is_not_there(db: AsyncSession, tenant_ctx) -> None:
     with pytest.raises(NotFoundError):
         await CatalogService.add_image(
             db, tenant_ctx.tenant_id, uuid.uuid4(), url="https://cdn.test/1.jpg"

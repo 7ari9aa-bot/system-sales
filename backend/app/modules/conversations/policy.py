@@ -110,9 +110,7 @@ class MessagingPolicyService:
             )
 
         anchor = getattr(conversation, "last_customer_message_at", None)
-        expires = (
-            anchor + timedelta(hours=policy.window_hours) if anchor is not None else None
-        )
+        expires = anchor + timedelta(hours=policy.window_hours) if anchor is not None else None
         if expires is not None and now < expires:
             return OutboundDecision(
                 allowed=True,
@@ -127,8 +125,7 @@ class MessagingPolicyService:
             return OutboundDecision(
                 allowed=False,
                 reason=(
-                    "outside the customer-service window and this channel has no "
-                    "template flow"
+                    "outside the customer-service window and this channel has no template flow"
                 ),
                 requires_template=True,
                 window_expires_at=expires,
@@ -137,8 +134,7 @@ class MessagingPolicyService:
             return OutboundDecision(
                 allowed=False,
                 reason=(
-                    f"outside the {policy.window_hours}h window: an approved "
-                    "template is required"
+                    f"outside the {policy.window_hours}h window: an approved template is required"
                 ),
                 requires_template=True,
                 window_expires_at=expires,

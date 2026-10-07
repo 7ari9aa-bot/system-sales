@@ -193,18 +193,14 @@ class TestUserRowIsolation:
             ),
             {"id": str(token_id), "uid": str(user_id), "th": secrets.token_hex(32)},
         )
-        blocked = await db.execute(
-            sa.text("DELETE FROM users WHERE id = :u"), {"u": str(user_id)}
-        )
+        blocked = await db.execute(sa.text("DELETE FROM users WHERE id = :u"), {"u": str(user_id)})
         assert blocked.rowcount == 0, "a user with live sessions must not be purgeable"
 
         await db.execute(
             sa.text("UPDATE refresh_tokens SET revoked_at = now() WHERE id = :r"),
             {"r": str(token_id)},
         )
-        purged = await db.execute(
-            sa.text("DELETE FROM users WHERE id = :u"), {"u": str(user_id)}
-        )
+        purged = await db.execute(sa.text("DELETE FROM users WHERE id = :u"), {"u": str(user_id)})
         assert purged.rowcount == 1, "teardown after revocation must keep working"
 
 
@@ -260,9 +256,7 @@ class TestTenantIsolation:
         )
         assert granted.rowcount == 1
 
-        purged = await db.execute(
-            sa.text("DELETE FROM tenants WHERE id = :t"), {"t": str(other)}
-        )
+        purged = await db.execute(sa.text("DELETE FROM tenants WHERE id = :t"), {"t": str(other)})
         assert purged.rowcount == 1
 
     async def test_platform_admin_guc_admits_the_break_glass_write(self, db):
@@ -280,18 +274,14 @@ class TestTenantIsolation:
             {"id": str(other), "slug": f"bg-{uuid.uuid4().hex[:10]}"},
         )
         try:
-            await db.execute(
-                sa.text("SELECT set_config('app.is_platform_admin', 'true', true)")
-            )
+            await db.execute(sa.text("SELECT set_config('app.is_platform_admin', 'true', true)"))
             granted = await db.execute(
                 sa.text("UPDATE tenants SET lifecycle_state = 'suspended' WHERE id = :t"),
                 {"t": str(other)},
             )
             assert granted.rowcount == 1, "the break-glass admission must keep §147 alive"
         finally:
-            await db.execute(
-                sa.text("SELECT set_config('app.is_platform_admin', 'false', true)")
-            )
+            await db.execute(sa.text("SELECT set_config('app.is_platform_admin', 'false', true)"))
         still_deleted_nothing = await db.execute(
             sa.text("DELETE FROM tenants WHERE id = :t"), {"t": str(other)}
         )
@@ -322,15 +312,11 @@ class TestReferencePlaneIsSelectOnly:
         )
 
     async def test_reads_still_work(self, db):
-        codes = (
-            await db.execute(sa.text("SELECT count(*) FROM roles"))
-        ).scalar_one()
+        codes = (await db.execute(sa.text("SELECT count(*) FROM roles"))).scalar_one()
         assert codes >= 1, "the seeded roles must stay readable"
 
     async def test_alembic_version_is_not_writable(self, db):
-        await _expect_permission_denied(
-            db, sa.text("UPDATE alembic_version SET version_num = 'x'")
-        )
+        await _expect_permission_denied(db, sa.text("UPDATE alembic_version SET version_num = 'x'"))
         await _expect_permission_denied(db, sa.text("DELETE FROM alembic_version"))
 
     async def test_dr_policy_writes_remain_open_pending_app_change(self, db):
@@ -346,9 +332,7 @@ class TestReferencePlaneIsSelectOnly:
         """
         row_id = uuid.uuid4()
         await db.execute(
-            sa.text(
-                "INSERT INTO dr_policy (id, rpo_minutes) VALUES (:id, 5)"
-            ),
+            sa.text("INSERT INTO dr_policy (id, rpo_minutes) VALUES (:id, 5)"),
             {"id": str(row_id)},
         )
         stamped = await db.execute(

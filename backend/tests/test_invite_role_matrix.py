@@ -186,9 +186,7 @@ def test_the_http_matrix_covers_every_actor_and_invited_exactly_once() -> None:
 
 
 @pytest.mark.parametrize(("inviter", "invited"), sorted(SERVICE_INVITE_MATRIX))
-async def test_service_invite_matrix(
-    db, tenant_ctx, inviter: str, invited: str
-) -> None:
+async def test_service_invite_matrix(db, tenant_ctx, inviter: str, invited: str) -> None:
     """Every service-layer cell has one pinned verdict (see SERVICE_INVITE_MATRIX).
 
     ``allow`` cells additionally assert the invitation carries the role the
@@ -216,9 +214,7 @@ async def test_service_invite_matrix(
 
     invitation = await TenantService.invite(db, **kwargs)
     assert invitation.status == "pending"
-    expected_role = (
-        await db.execute(select(Role).where(Role.code == invited))
-    ).scalar_one()
+    expected_role = (await db.execute(select(Role).where(Role.code == invited))).scalar_one()
     assert invitation.role_id == expected_role.id, (
         "the invitation must carry the database-resolved role id — it is the "
         "exact value accept_invitation binds as the new membership's role"
@@ -328,9 +324,7 @@ async def test_http_invite_matrix(
 # --- the two focused facts the matrix depends on -----------------------------
 
 
-async def test_the_inviter_role_is_read_from_the_membership_row_not_a_claim(
-    db, tenant_ctx
-) -> None:
+async def test_the_inviter_role_is_read_from_the_membership_row_not_a_claim(db, tenant_ctx) -> None:
     """The hierarchy guard is fed by get_tenant_ctx's DB read, never a JWT claim.
 
     The identity token pair carries NO role claim at all (_issue_pair mints
@@ -341,9 +335,7 @@ async def test_the_inviter_role_is_read_from_the_membership_row_not_a_claim(
     """
     from fastapi import Request
 
-    staff_role = (
-        await db.execute(select(Role).where(Role.code == "staff"))
-    ).scalar_one()
+    staff_role = (await db.execute(select(Role).where(Role.code == "staff"))).scalar_one()
     staff_user = User(
         email=f"staff-{uuid.uuid4().hex[:10]}@test.local",
         password_hash="not-a-real-hash",
@@ -410,9 +402,7 @@ async def test_accept_binds_the_invitation_role_verbatim(db, tenant_ctx) -> None
         invited_by=tenant_ctx.user.id,
         inviter_role_code="owner",
     )
-    manager_role = (
-        await db.execute(select(Role).where(Role.code == "manager"))
-    ).scalar_one()
+    manager_role = (await db.execute(select(Role).where(Role.code == "manager"))).scalar_one()
     assert invitation.role_id == manager_role.id
 
     user, accepted = await TenantService.accept_invitation(

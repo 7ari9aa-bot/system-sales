@@ -286,9 +286,7 @@ async def test_gate_racers_use_separate_connections(committed_engine):
         async def backend_pid() -> int:
             async with factory() as session:
                 async with session.begin():
-                    pid = (
-                        await session.execute(text("SELECT pg_backend_pid()"))
-                    ).scalar_one()
+                    pid = (await session.execute(text("SELECT pg_backend_pid()"))).scalar_one()
                     await barrier.wait()
                     return pid
 

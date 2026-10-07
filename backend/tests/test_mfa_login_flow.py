@@ -124,9 +124,7 @@ class TestMfaLoginFlow:
         secret, _codes = await self._enroll_and_confirm(db, tenant_ctx.user.id)
 
         with pytest.raises(mfa.MfaRequiredError) as excinfo:
-            await AuthService.login(
-                db, email=tenant_ctx.user.email, password="secret-password"
-            )
+            await AuthService.login(db, email=tenant_ctx.user.email, password="secret-password")
         challenge_id = excinfo.value.challenge_id
 
         pair, user, tenant_id = await AuthService.mfa_verify(
@@ -138,9 +136,7 @@ class TestMfaLoginFlow:
 
         # The challenge is consumed — a replay must not mint a second pair.
         with pytest.raises(PermissionDeniedError):
-            await AuthService.mfa_verify(
-                db, challenge_id=challenge_id, code=mfa._totp(secret)
-            )
+            await AuthService.mfa_verify(db, challenge_id=challenge_id, code=mfa._totp(secret))
 
     async def test_login_without_mfa_still_issues_tokens_directly(
         self, tenant_ctx, redis_client, monkeypatch
@@ -158,9 +154,8 @@ class TestMfaLoginFlow:
     ):
         import sqlalchemy as sa
 
-        from app.modules.platform.models import SecurityEvent
-
         from app.modules.identity.service import AuthService
+        from app.modules.platform.models import SecurityEvent
 
         monkeypatch.setattr("app.core.mfa.get_redis", lambda: redis_client)
         db = tenant_ctx.session
@@ -169,9 +164,7 @@ class TestMfaLoginFlow:
         wrong = mfa._totp(secret, timestamp=1)
 
         with pytest.raises(mfa.MfaRequiredError) as excinfo:
-            await AuthService.login(
-                db, email=tenant_ctx.user.email, password="secret-password"
-            )
+            await AuthService.login(db, email=tenant_ctx.user.email, password="secret-password")
         challenge_id = excinfo.value.challenge_id
 
         for _ in range(mfa.CHALLENGE_MAX_FAILURES):
@@ -179,20 +172,22 @@ class TestMfaLoginFlow:
                 await AuthService.mfa_verify(db, challenge_id=challenge_id, code=wrong)
         # Locked: even the CORRECT code is refused now.
         with pytest.raises(PermissionDeniedError):
-            await AuthService.mfa_verify(
-                db, challenge_id=challenge_id, code=mfa._totp(secret)
-            )
+            await AuthService.mfa_verify(db, challenge_id=challenge_id, code=mfa._totp(secret))
 
         # Every rejection left a §67 row, with the lock among them. Rows
         # written in one test transaction share created_at, so assert on the
         # outcome multiset, not on insertion order.
         events = (
-            await db.execute(
-                sa.select(SecurityEvent)
-                .where(SecurityEvent.event_type == "mfa_verify_failure")
-                .where(SecurityEvent.actor_user_id == tenant_ctx.user.id)
+            (
+                await db.execute(
+                    sa.select(SecurityEvent)
+                    .where(SecurityEvent.event_type == "mfa_verify_failure")
+                    .where(SecurityEvent.actor_user_id == tenant_ctx.user.id)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         outcomes = sorted(e.details["outcome"] for e in events)
         assert outcomes == sorted(
             ["invalid_code"] * (mfa.CHALLENGE_MAX_FAILURES - 1) + ["challenge_locked"]
@@ -224,9 +219,7 @@ class TestMfaLoginFlow:
         assert not await mfa.is_mfa_enabled(db, user_id=tenant_ctx.user.id)
 
         # -- confirm with the CORRECT code: MFA enabled, backup codes out once.
-        backup_codes = await mfa.confirm_mfa(
-            db, user_id=tenant_ctx.user.id, code=mfa._totp(secret)
-        )
+        backup_codes = await mfa.confirm_mfa(db, user_id=tenant_ctx.user.id, code=mfa._totp(secret))
         assert len(backup_codes) == mfa.BACKUP_CODE_COUNT
 
         # -- login now yields a challenge instead of tokens.
@@ -242,9 +235,7 @@ class TestMfaLoginFlow:
 
         # -- the sixth attempt is refused even with the CORRECT code.
         with pytest.raises(PermissionDeniedError):
-            await AuthService.mfa_verify(
-                db, challenge_id=challenge_id, code=mfa._totp(secret)
-            )
+            await AuthService.mfa_verify(db, challenge_id=challenge_id, code=mfa._totp(secret))
 
         # -- after the lock (the burned challenge is gone) a full login works.
         with pytest.raises(mfa.MfaRequiredError) as excinfo2:
@@ -267,9 +258,8 @@ class TestMfaLoginFlow:
 
         import sqlalchemy as sa
 
-        from app.modules.platform.models import SecurityEvent
-
         from app.modules.identity.service import AuthService
+        from app.modules.platform.models import SecurityEvent
 
         monkeypatch.setattr("app.core.mfa.get_redis", lambda: redis_client)
         db = tenant_ctx.session
@@ -283,9 +273,7 @@ class TestMfaLoginFlow:
         assert await mfa.claim_totp_counter(tenant_ctx.user.id, counter)
 
         with pytest.raises(mfa.MfaRequiredError) as excinfo:
-            await AuthService.login(
-                db, email=tenant_ctx.user.email, password="secret-password"
-            )
+            await AuthService.login(db, email=tenant_ctx.user.email, password="secret-password")
         challenge_id = excinfo.value.challenge_id
 
         with pytest.raises(PermissionDeniedError):
@@ -341,41 +329,36 @@ class TestMfaLoginFlow:
 
         import sqlalchemy as sa
 
-        from app.modules.platform.models import SecurityEvent
-
         from app.modules.identity.service import AuthService
+        from app.modules.platform.models import SecurityEvent
 
         monkeypatch.setattr("app.core.mfa.get_redis", lambda: redis_client)
         db = tenant_ctx.session
         enrolled = await mfa.enroll_mfa(db, user_id=tenant_ctx.user.id)
         secret = enrolled.secret
-        backup_codes = await mfa.confirm_mfa(
-            db, user_id=tenant_ctx.user.id, code=mfa._totp(secret)
-        )
+        backup_codes = await mfa.confirm_mfa(db, user_id=tenant_ctx.user.id, code=mfa._totp(secret))
 
         # Rejections with real code material in play: a wrong TOTP at the
         # challenge, a wrong backup code at disable.
         wrong = mfa._totp(secret, timestamp=1)
         with pytest.raises(mfa.MfaRequiredError) as excinfo:
-            await AuthService.login(
-                db, email=tenant_ctx.user.email, password="secret-password"
-            )
+            await AuthService.login(db, email=tenant_ctx.user.email, password="secret-password")
         with pytest.raises(PermissionDeniedError):
-            await AuthService.mfa_verify(
-                db, challenge_id=excinfo.value.challenge_id, code=wrong
-            )
+            await AuthService.mfa_verify(db, challenge_id=excinfo.value.challenge_id, code=wrong)
         with pytest.raises(PermissionDeniedError):
-            await mfa.disable_mfa(
-                db, user_id=tenant_ctx.user.id, backup_code="0000000000000000"
-            )
+            await mfa.disable_mfa(db, user_id=tenant_ctx.user.id, backup_code="0000000000000000")
 
         rows = (
-            await db.execute(
-                sa.select(SecurityEvent)
-                .where(SecurityEvent.event_type.like("mfa%"))
-                .where(SecurityEvent.actor_user_id == tenant_ctx.user.id)
+            (
+                await db.execute(
+                    sa.select(SecurityEvent)
+                    .where(SecurityEvent.event_type.like("mfa%"))
+                    .where(SecurityEvent.actor_user_id == tenant_ctx.user.id)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert rows, "the rejection scenarios must have produced events"
         blob = _json.dumps([r.details for r in rows])
         assert secret not in blob
@@ -395,9 +378,7 @@ class TestMfaLoginFlow:
         # The used backup code cannot disable again (one-time burn).
         await self._enroll_and_confirm(db, tenant_ctx.user.id)
         with pytest.raises(PermissionDeniedError):
-            await mfa.disable_mfa(
-                db, user_id=tenant_ctx.user.id, backup_code=codes[0]
-            )
+            await mfa.disable_mfa(db, user_id=tenant_ctx.user.id, backup_code=codes[0])
 
     async def test_enroll_over_enabled_conflicts(self, tenant_ctx):
         db = tenant_ctx.session

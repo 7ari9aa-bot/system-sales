@@ -120,8 +120,10 @@ async def list_segments(ctx: TenantCtxDep, is_active: bool | None = None):
     if is_active is not None:
         stmt = stmt.where(Segment.is_active == is_active)
     rows = (
-        await ctx.session.execute(stmt.order_by(Segment.created_at.desc()).limit(200))
-    ).scalars().all()
+        (await ctx.session.execute(stmt.order_by(Segment.created_at.desc()).limit(200)))
+        .scalars()
+        .all()
+    )
     return [_segment_dict(segment) for segment in rows]
 
 

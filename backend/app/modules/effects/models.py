@@ -53,9 +53,7 @@ class EffectLedger(TenantMixin, Base):
     status: Mapped[str] = mapped_column(String(32), server_default="PENDING", nullable=False)
     provider: Mapped[str | None] = mapped_column(String(64))
     provider_reference: Mapped[str | None] = mapped_column(String(255))
-    arguments: Mapped[dict[str, Any]] = mapped_column(
-        JSONB, server_default="{}", nullable=False
-    )
+    arguments: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default="{}", nullable=False)
     result: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     error_details: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     attempts: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)

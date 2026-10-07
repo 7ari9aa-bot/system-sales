@@ -173,14 +173,11 @@ def test_seed_definitions_source_no_longer_uses_do_nothing() -> None:
 
 def _row_map(rows: list[MetricDefinition]) -> dict[tuple[str, int], dict[str, Any]]:
     return {
-        (r.name, r.version): {field: getattr(r, field) for field in SYNCED_FIELDS}
-        for r in rows
+        (r.name, r.version): {field: getattr(r, field) for field in SYNCED_FIELDS} for r in rows
     }
 
 
-async def test_provisioning_seeds_every_canonical_definition(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_provisioning_seeds_every_canonical_definition(db: AsyncSession, tenant_ctx) -> None:
     """A tenant that has been provisioned must have one row per registry metric."""
     _, tenant = await AuthService.register(
         db,
@@ -191,10 +188,10 @@ async def test_provisioning_seeds_every_canonical_definition(
         full_name="Measured Owner",
     )
     rows = (
-        await db.execute(
-            select(MetricDefinition).where(MetricDefinition.tenant_id == tenant.id)
-        )
-    ).scalars().all()
+        (await db.execute(select(MetricDefinition).where(MetricDefinition.tenant_id == tenant.id)))
+        .scalars()
+        .all()
+    )
     assert {r.name for r in rows} == set(MetricRegistry.names())
 
 
@@ -210,10 +207,10 @@ async def test_every_seeded_row_equals_the_registry(db: AsyncSession, tenant_ctx
     )
     await bind_tenant(db, tenant.id)
     rows = (
-        await db.execute(
-            select(MetricDefinition).where(MetricDefinition.tenant_id == tenant.id)
-        )
-    ).scalars().all()
+        (await db.execute(select(MetricDefinition).where(MetricDefinition.tenant_id == tenant.id)))
+        .scalars()
+        .all()
+    )
     stored = _row_map(list(rows))
     for spec in METRIC_DEFINITIONS:
         assert stored[(spec.name, spec.version)] == {
@@ -253,9 +250,7 @@ async def test_reseeding_converges_a_drifted_row(db: AsyncSession, tenant_ctx) -
     assert row.definition == canonical.definition
 
 
-async def test_seed_is_idempotent_on_an_in_sync_tenant(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_seed_is_idempotent_on_an_in_sync_tenant(db: AsyncSession, tenant_ctx) -> None:
     _, tenant = await AuthService.register(
         db,
         tenant_name="Twice Measured Co",
@@ -266,10 +261,10 @@ async def test_seed_is_idempotent_on_an_in_sync_tenant(
     )
     await bind_tenant(db, tenant.id)
     before = (
-        await db.execute(
-            select(MetricDefinition).where(MetricDefinition.tenant_id == tenant.id)
-        )
-    ).scalars().all()
+        (await db.execute(select(MetricDefinition).where(MetricDefinition.tenant_id == tenant.id)))
+        .scalars()
+        .all()
+    )
     assert len(before) == len(METRIC_DEFINITIONS)
 
     # Re-running the provisioning seed writes nothing and adds no rows.
@@ -277,26 +272,24 @@ async def test_seed_is_idempotent_on_an_in_sync_tenant(
     await db.flush()
     assert again == 0, "an in-sync tenant must not be rewritten"
     after = (
-        await db.execute(
-            select(MetricDefinition).where(MetricDefinition.tenant_id == tenant.id)
-        )
-    ).scalars().all()
+        (await db.execute(select(MetricDefinition).where(MetricDefinition.tenant_id == tenant.id)))
+        .scalars()
+        .all()
+    )
     assert len(after) == len(before)
 
 
 async def test_seed_tenant_defaults_reports_metric_definitions(db: AsyncSession) -> None:
     """seed_tenant_defaults both seeds the definitions and reports it in its summary."""
-    tenant = (
-        await db.execute(select(Tenant).limit(1))
-    ).scalar_one_or_none()
+    tenant = (await db.execute(select(Tenant).limit(1))).scalar_one_or_none()
     if tenant is None:
         pytest.skip("no tenant available to seed against")
     await bind_tenant(db, tenant.id)
     created = await seed_tenant_defaults(db, tenant.id)
     assert "metric_definitions" in created
     rows = (
-        await db.execute(
-            select(MetricDefinition).where(MetricDefinition.tenant_id == tenant.id)
-        )
-    ).scalars().all()
+        (await db.execute(select(MetricDefinition).where(MetricDefinition.tenant_id == tenant.id)))
+        .scalars()
+        .all()
+    )
     assert {r.name for r in rows} == set(MetricRegistry.names())

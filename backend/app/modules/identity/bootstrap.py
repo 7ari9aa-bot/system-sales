@@ -236,7 +236,10 @@ async def seed_tenant_defaults(
         (
             "customer",
             "مساعد المبيعات",
-            "Handles customer inquiries, catalog search, orders, tasks, and vision-based product matching.",
+            (
+                "Handles customer inquiries, catalog search,"
+                " orders, tasks, and vision-based product matching."
+            ),
             "fast",
             "You are a helpful sales assistant.",
             [
@@ -256,7 +259,11 @@ async def seed_tenant_defaults(
         (
             "sales_intelligence",
             "Sales Intelligence Agent",
-            "Analyzes sales data, metrics, trends, fulfillment, and drivers to provide actionable business intelligence.",
+            (
+                "Analyzes sales data, metrics, trends, fulfillment,"
+                " and drivers to provide actionable"
+                " business intelligence."
+            ),
             "strong",
             "You are a senior sales & commercial intelligence analyst.",
             [
@@ -277,9 +284,17 @@ async def seed_tenant_defaults(
         agent_id = uuid.uuid4()
         ins = await session.execute(
             sa_text(
-                "INSERT INTO agents (id, tenant_id, kind, name, description, model, system_prompt, is_active, created_at, updated_at) "
-                "SELECT :id, :tenant_id, :kind, :name, :description, :model, :prompt, true, now(), now() "
-                "WHERE NOT EXISTS (SELECT 1 FROM agents WHERE tenant_id = :tenant_id AND kind = :kind)"
+                "INSERT INTO agents"
+                " (id, tenant_id, kind, name, description,"
+                "  model, system_prompt, is_active,"
+                "  created_at, updated_at) "
+                "SELECT :id, :tenant_id, :kind, :name,"
+                " :description, :model, :prompt,"
+                " true, now(), now() "
+                "WHERE NOT EXISTS ("
+                "SELECT 1 FROM agents"
+                " WHERE tenant_id = :tenant_id"
+                " AND kind = :kind)"
             ),
             {
                 "id": str(agent_id),
@@ -295,7 +310,10 @@ async def seed_tenant_defaults(
             for tool_name in tools:
                 await session.execute(
                     sa_text(
-                        "INSERT INTO agent_tools (id, tenant_id, agent_id, name, policy, is_active, created_at, updated_at) "
+                        "INSERT INTO agent_tools"
+                        " (id, tenant_id, agent_id, name,"
+                        "  policy, is_active,"
+                        "  created_at, updated_at) "
                         "VALUES (:id, :tenant_id, :agent_id, :name, '{}', true, now(), now()) "
                         "ON CONFLICT (tenant_id, agent_id, name) DO NOTHING"
                     ),

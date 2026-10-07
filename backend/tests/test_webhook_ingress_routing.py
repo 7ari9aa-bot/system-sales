@@ -69,9 +69,7 @@ def _signed(raw: bytes) -> dict[str, str]:
 
 async def test_unknown_channel_answers_a_unified_404_on_get_and_post() -> None:
     app = create_app()
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         gotten = await client.get("/api/v1/webhooks/definitely-not-a-channel")
         posted = await client.post(
             "/api/v1/webhooks/definitely-not-a-channel",
@@ -91,9 +89,7 @@ async def test_unknown_channel_answers_a_unified_404_on_get_and_post() -> None:
 async def test_signed_non_json_payload_answers_a_unified_422() -> None:
     raw = b"this is not json {{{"
     app = create_app()
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await _post_whatsapp(client, raw, headers=_signed(raw))
 
     assert response.status_code == 422, response.text
@@ -108,9 +104,7 @@ async def test_signed_non_object_json_payload_answers_a_unified_422() -> None:
     adapter's parser is never reached with it."""
     raw = json.dumps([1, 2, 3]).encode()
     app = create_app()
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await _post_whatsapp(client, raw, headers=_signed(raw))
 
     assert response.status_code == 422, response.text
@@ -121,9 +115,7 @@ async def test_an_oversized_body_is_refused_with_413_before_signature_work() -> 
     """The body cap (1 MiB) is enforced by middleware — an oversized delivery
     never reaches the adapter, so it is refused with or without a signature."""
     app = create_app()
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await _post_whatsapp(client, b"x" * (1_048_577))
 
     assert response.status_code == 413, response.text
@@ -134,9 +126,7 @@ async def test_an_oversized_body_is_refused_with_413_before_signature_work() -> 
 @pytest.mark.usefixtures("_whatsapp_secret")
 async def test_a_bad_signature_is_the_unified_403() -> None:
     app = create_app()
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await _post_whatsapp(
             client, json.dumps({"entry": []}).encode(), headers=_signed(b"tampered")
         )
@@ -168,9 +158,7 @@ async def test_an_unattributed_delivery_is_acked_without_ingest(
     }
     raw = json.dumps(payload).encode()
     app = create_app()
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await _post_whatsapp(client, raw, headers=_signed(raw))
 
     assert response.status_code == 200
@@ -225,9 +213,7 @@ async def test_an_attributed_delivery_persists_one_durable_ingress_event(
     }
     raw = json.dumps(payload).encode()
     app = create_app()
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         first = await _post_whatsapp(client, raw, headers=_signed(raw))
         replay = await _post_whatsapp(client, raw, headers=_signed(raw))
 

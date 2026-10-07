@@ -42,9 +42,7 @@ from app.modules.ai.models import AIUsage
 #: Namespace for bucket identities. Named by URL like every other stable id this
 #: codebase derives (`app/core/secrets.py`), so the derivation is reproducible
 #: from the source alone and cannot be confused with another uuid5 family.
-_BUCKET_NAMESPACE: Final = uuid.uuid5(
-    uuid.NAMESPACE_URL, "https://salesos.local/ai_usage/bucket"
-)
+_BUCKET_NAMESPACE: Final = uuid.uuid5(uuid.NAMESPACE_URL, "https://salesos.local/ai_usage/bucket")
 
 
 class PlatformBucket(enum.Enum):
@@ -68,9 +66,7 @@ PLATFORM_BUCKET: Final = PlatformBucket.TOKEN
 AgentBucket = uuid.UUID | PlatformBucket
 
 
-def bucket_row_id(
-    tenant_id: uuid.UUID, period_date: date, agent_id: uuid.UUID | None
-) -> uuid.UUID:
+def bucket_row_id(tenant_id: uuid.UUID, period_date: date, agent_id: uuid.UUID | None) -> uuid.UUID:
     """The rollup row a (tenant, day, bucket) owns — derived, never random.
 
     Injective over the bucket: the agent-less key uses the literal ``platform``

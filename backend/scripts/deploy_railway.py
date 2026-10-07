@@ -93,8 +93,10 @@ def _load_deployment_config(
         raise SystemExit("--env-file must provide a stable JWT_SECRET of at least 32 bytes")
 
     frontend_url = (
-        deployment_env.get("FRONTEND_PUBLIC_URL") or frontend_origin_override or ""
-    ).strip().rstrip("/")
+        (deployment_env.get("FRONTEND_PUBLIC_URL") or frontend_origin_override or "")
+        .strip()
+        .rstrip("/")
+    )
     parsed_frontend = urlsplit(frontend_url)
     if (
         parsed_frontend.scheme != "https"
@@ -159,9 +161,7 @@ def _load_deployment_config(
 
     email_enabled = deployment_env.get("EMAIL_DELIVERY_ENABLED", "").lower() == "true"
     if not email_enabled:
-        raise SystemExit(
-            "production requires EMAIL_DELIVERY_ENABLED=true before provisioning"
-        )
+        raise SystemExit("production requires EMAIL_DELIVERY_ENABLED=true before provisioning")
     if not deployment_env.get("RESEND_API_KEY"):
         raise SystemExit("production requires RESEND_API_KEY before provisioning")
     email_from = deployment_env.get("EMAIL_FROM", "")

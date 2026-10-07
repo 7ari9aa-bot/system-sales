@@ -90,9 +90,7 @@ def test_data_sensitivity_escalates():
 
 def test_tenant_floor_raises_but_never_lowers():
     raised = classify("add_task", RiskContext(tenant_policy_floor=RiskLevel.HIGH))
-    lowered = classify(
-        "capture_payment", RiskContext(tenant_policy_floor=RiskLevel.LOW)
-    )
+    lowered = classify("capture_payment", RiskContext(tenant_policy_floor=RiskLevel.LOW))
 
     assert raised.level is RiskLevel.HIGH
     assert "tenant policy floor" in raised.escalations

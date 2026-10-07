@@ -71,9 +71,7 @@ def _app_for(db: AsyncSession, tenant_id: uuid.UUID, *, permissions: set[str]):
 
 
 async def _post_movement(app, payload: dict):
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         return await client.post("/api/v1/inventory/movements", json=payload)
 
 
@@ -95,9 +93,7 @@ async def stocked(db: AsyncSession, tenant_ctx):
     product = await CatalogService.create_product(
         db, tenant_ctx.tenant_id, title="Gate Product", slug=f"g-{uuid.uuid4().hex[:10]}"
     )
-    variant = await CatalogService.add_variant(
-        db, tenant_ctx.tenant_id, product.id, price="10.00"
-    )
+    variant = await CatalogService.add_variant(db, tenant_ctx.tenant_id, product.id, price="10.00")
     await InventoryService.move(
         db,
         tenant_ctx.tenant_id,
@@ -137,9 +133,9 @@ def _movement_payload(variant, warehouse, **over) -> dict:
 
 
 def test_recording_a_movement_requires_inventory_write() -> None:
-    assert _permission_codes(
-        inventory_router.routes, "/inventory/movements", "POST"
-    ) == {"inventory:write"}
+    assert _permission_codes(inventory_router.routes, "/inventory/movements", "POST") == {
+        "inventory:write"
+    }
 
 
 def test_reading_the_ledger_stays_open_to_every_member() -> None:
@@ -179,9 +175,7 @@ async def test_the_movement_route_accepts_a_member_who_has_it(
     )
 
     assert response.status_code == 201, response.text
-    balance = await InventoryService.get_balance(
-        db, tenant_ctx.tenant_id, variant.id, warehouse.id
-    )
+    balance = await InventoryService.get_balance(db, tenant_ctx.tenant_id, variant.id, warehouse.id)
     assert balance.on_hand == 8
     reason = (
         await db.execute(

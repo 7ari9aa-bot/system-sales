@@ -34,7 +34,7 @@ _MATRIX = {
     "connection_string": "postgresql+asyncpg://app:hunter2@db.internal:5432/sales",
     "api_key": "sk-live-9f8e7d6c5b4a3f2e1d0c",
     "filesystem_path": r"C:\Users\svc-agent\.secrets\provider.pem",
-    "sql_fragment": 'SELECT * FROM order_payments WHERE token_hash = $1',
+    "sql_fragment": "SELECT * FROM order_payments WHERE token_hash = $1",
     "stack_trace": 'Traceback (most recent call last):\n  File "handlers.py", line 42',
     "provider_body": '{"error":{"code":"NOT_ENOUGH_BALANCE","internal_ref":"acct-77"}}',
 }
@@ -92,9 +92,7 @@ def _tool_name() -> str:
 
 
 async def _agent_for(db, tenant_id) -> Agent:
-    agent = Agent(
-        tenant_id=tenant_id, name="Sales Agent", model="fast", system_prompt="You sell."
-    )
+    agent = Agent(tenant_id=tenant_id, name="Sales Agent", model="fast", system_prompt="You sell.")
     db.add(agent)
     await db.flush()
     db.add(AgentTool(tenant_id=tenant_id, agent_id=agent.id, name=_TOOL_NAME, policy={}))
@@ -105,11 +103,7 @@ async def _agent_for(db, tenant_id) -> Agent:
 def _model_tool_messages(calls: dict) -> list[str]:
     """The contents of the tool-role messages the SECOND model call saw."""
     second = calls["list"][1]["messages"]
-    return [
-        m["content"]
-        for m in second
-        if m.get("role") == "tool"
-    ]
+    return [m["content"] for m in second if m.get("role") == "tool"]
 
 
 async def _run(db, tenant_id, agent, conversation_id=None):
@@ -148,9 +142,7 @@ async def test_unexpected_tool_error_leaks_nothing_to_the_model(
     assert secret in caplog.text
 
 
-async def test_designed_domain_error_passes_through_as_data(
-    db, tenant_ctx, monkeypatch
-):
+async def test_designed_domain_error_passes_through_as_data(db, tenant_ctx, monkeypatch):
     """A tool that MEANS to refuse (insufficient stock, unknown id...) says so:
     the message is part of the tool's contract, not a leak."""
     refusal = f"insufficient stock for SKU-{CONSUMED_SUFFIX}"
@@ -165,9 +157,7 @@ async def test_designed_domain_error_passes_through_as_data(
     assert result.content == "تمام"
 
 
-async def test_a_db_failure_inside_the_tool_does_not_poison_the_run(
-    db, tenant_ctx, monkeypatch
-):
+async def test_a_db_failure_inside_the_tool_does_not_poison_the_run(db, tenant_ctx, monkeypatch):
     """A statement-level DB error inside a handler aborts the transaction —
     without the savepoint the failed ToolCall insert would die on a poisoned
     session and the whole run would come down with it. The savepoint rolls the

@@ -58,9 +58,7 @@ def _try_init_otel() -> None:
         provider.add_span_processor(BatchSpanProcessor(exporter))
         trace.set_tracer_provider(provider)
         _tracer = trace.get_tracer(__name__)
-        logger.info(
-            "otel.initialized service=%s endpoint=%s", service_name, endpoint
-        )
+        logger.info("otel.initialized service=%s endpoint=%s", service_name, endpoint)
     except ImportError:
         logger.info("otel.sdk_not_installed — traces disabled (local/dev mode)")
     except Exception as exc:  # noqa: BLE001 — OTEL must not crash the app
@@ -125,9 +123,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         tracer = get_tracer()
         span_cm = None
         if tracer is not None:
-            span_cm = tracer.start_as_current_span(
-                f"{request.method} {request.url.path}"
-            )
+            span_cm = tracer.start_as_current_span(f"{request.method} {request.url.path}")
             span_cm.__enter__()
 
         try:
@@ -144,6 +140,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             if span_cm is not None:
                 _span = tracer  # type: ignore[assignment]
                 from opentelemetry import trace as otel_trace
+
                 span_obj = otel_trace.get_current_span()
                 if span_obj:
                     span_obj.set_status(otel_trace.Status(otel_trace.StatusCode.ERROR))
@@ -163,6 +160,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         )
         if span_cm is not None:
             from opentelemetry import trace as otel_trace
+
             span_obj = otel_trace.get_current_span()
             if span_obj:
                 span_obj.set_attribute("request_id", request_id)

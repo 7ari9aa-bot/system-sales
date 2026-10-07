@@ -113,9 +113,7 @@ def _totp(secret: str, timestamp: int | None = None, digits: int = 6) -> str:
     return _hotp(secret, counter, digits)
 
 
-def _totp_counter_for_code(
-    secret: str, code: str, *, timestamp: int | None = None
-) -> int | None:
+def _totp_counter_for_code(secret: str, code: str, *, timestamp: int | None = None) -> int | None:
     """Verify a TOTP code and return the MATCHED 30-second counter.
 
     The counter is what anti-replay claims against (RFC 6238 §5.2): the
@@ -148,12 +146,7 @@ def _build_otpauth_url(secret: str, *, email: str, issuer: str = "SalesOS") -> s
     """Build the otpauth:// URL for QR code rendering (RFC 6238)."""
     label = f"{issuer}:{email}"
     return (
-        f"otpauth://totp/{label}"
-        f"?secret={secret}"
-        f"&issuer={issuer}"
-        f"&algorithm=SHA1"
-        f"&digits=6"
-        f"&period=30"
+        f"otpauth://totp/{label}?secret={secret}&issuer={issuer}&algorithm=SHA1&digits=6&period=30"
     )
 
 
@@ -237,9 +230,7 @@ def _used_code_key(user_id: uuid.UUID, counter: int) -> str:
     return f"{_USED_CODE_PREFIX}{user_id}:{counter}"
 
 
-async def claim_totp_counter(
-    user_id: uuid.UUID, counter: int, *, redis=None
-) -> bool:
+async def claim_totp_counter(user_id: uuid.UUID, counter: int, *, redis=None) -> bool:
     """Claim a TOTP counter for single use — True on FIRST use only.
 
     RFC 6238 §5.2: the verifier must not accept the same OTP twice. The
@@ -284,9 +275,7 @@ async def _stepup_attempts(user_id: uuid.UUID, surface: str, *, redis=None) -> i
         return 0
 
 
-async def _record_stepup_failure(
-    user_id: uuid.UUID, surface: str, *, redis=None
-) -> int:
+async def _record_stepup_failure(user_id: uuid.UUID, surface: str, *, redis=None) -> int:
     """Count one wrong code; the counter expires with the lock window."""
     try:
         client = redis if redis is not None else get_redis()
@@ -315,9 +304,7 @@ async def _get_row(session: AsyncSession, user_id: uuid.UUID) -> UserMfaSecret |
     ).scalar_one_or_none()
 
 
-async def enroll_mfa(
-    session: AsyncSession, *, user_id: uuid.UUID, redis=None
-) -> MfaSecret:
+async def enroll_mfa(session: AsyncSession, *, user_id: uuid.UUID, redis=None) -> MfaSecret:
     """§146: start enrollment — store a PENDING secret, returned to the user once.
 
     The row is not enabled until `confirm_mfa` proves the authenticator holds
@@ -326,9 +313,7 @@ async def enroll_mfa(
     secret also clears the confirm failure counter — the old guess attempts
     say nothing about the new seed.
     """
-    user = (
-        await session.execute(select(User).where(User.id == user_id))
-    ).scalar_one_or_none()
+    user = (await session.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
     if user is None:
         raise ValidationError("user not found")
 
@@ -369,9 +354,7 @@ async def confirm_mfa(
     _stepup_attempts): the code check itself still enforces correctness.
     """
     if await _stepup_attempts(user_id, "confirm", redis=redis) >= STEPUP_MAX_FAILURES:
-        await _emit_security_event(
-            "mfa_confirm_locked", ip=ip, actor_user_id=user_id
-        )
+        await _emit_security_event("mfa_confirm_locked", ip=ip, actor_user_id=user_id)
         raise RateLimitExceededError(
             "too many failed confirmations — enroll again to get a fresh code window"
         )
@@ -383,15 +366,11 @@ async def confirm_mfa(
     if not verify_totp(_decrypt_secret(row.totp_secret_encrypted), code):
         attempts = await _record_stepup_failure(user_id, "confirm", redis=redis)
         if attempts >= STEPUP_MAX_FAILURES:
-            await _emit_security_event(
-                "mfa_confirm_locked", ip=ip, actor_user_id=user_id
-            )
+            await _emit_security_event("mfa_confirm_locked", ip=ip, actor_user_id=user_id)
             raise RateLimitExceededError(
                 "too many failed confirmations — enroll again to get a fresh code window"
             )
-        await _emit_security_event(
-            "mfa_confirm_failure", ip=ip, actor_user_id=user_id
-        )
+        await _emit_security_event("mfa_confirm_failure", ip=ip, actor_user_id=user_id)
         raise PermissionDeniedError("invalid MFA code")
     row.enabled_at = datetime.now(UTC)
     codes = _generate_backup_codes()
@@ -418,9 +397,7 @@ async def _verify_user_totp_counter(
     return _totp_counter_for_code(_decrypt_secret(row.totp_secret_encrypted), code)
 
 
-async def _consume_backup_code(
-    session: AsyncSession, user_id: uuid.UUID, code: str
-) -> bool:
+async def _consume_backup_code(session: AsyncSession, user_id: uuid.UUID, code: str) -> bool:
     """§146: validate a recovery code and burn it in the same transaction.
 
     Backup codes exist for exactly one scenario — the authenticator is gone —
@@ -463,36 +440,26 @@ async def disable_mfa(
     if code is None and backup_code is None:
         raise ValidationError("a TOTP code or backup code is required")
     if await _stepup_attempts(user_id, "disable", redis=redis) >= STEPUP_MAX_FAILURES:
-        await _emit_security_event(
-            "mfa_disable_locked", ip=ip, actor_user_id=user_id
-        )
+        await _emit_security_event("mfa_disable_locked", ip=ip, actor_user_id=user_id)
         raise RateLimitExceededError(
             "too many failed attempts — wait before trying to disable MFA again"
         )
     ok = False
     if code is not None:
-        counter = _totp_counter_for_code(
-            _decrypt_secret(row.totp_secret_encrypted), code
-        )
+        counter = _totp_counter_for_code(_decrypt_secret(row.totp_secret_encrypted), code)
         # The counter claim doubles as the anti-replay gate: a code accepted
         # anywhere else in its drift window cannot disable MFA too.
-        ok = counter is not None and await claim_totp_counter(
-            user_id, counter, redis=redis
-        )
+        ok = counter is not None and await claim_totp_counter(user_id, counter, redis=redis)
     elif backup_code is not None:
         ok = await _consume_backup_code(session, user_id, backup_code)
     if not ok:
         attempts = await _record_stepup_failure(user_id, "disable", redis=redis)
         if attempts >= STEPUP_MAX_FAILURES:
-            await _emit_security_event(
-                "mfa_disable_locked", ip=ip, actor_user_id=user_id
-            )
+            await _emit_security_event("mfa_disable_locked", ip=ip, actor_user_id=user_id)
             raise RateLimitExceededError(
                 "too many failed attempts — wait before trying to disable MFA again"
             )
-        await _emit_security_event(
-            "mfa_disable_failure", ip=ip, actor_user_id=user_id
-        )
+        await _emit_security_event("mfa_disable_failure", ip=ip, actor_user_id=user_id)
         raise PermissionDeniedError("invalid MFA code")
     await _reset_stepup(user_id, "disable", redis=redis)
     await session.delete(row)
@@ -628,9 +595,7 @@ async def raise_mfa_rejection(
         tenant_id=tenant_id,
         actor_user_id=user_id,
     )
-    raise MfaChallengeError(
-        message, outcome=outcome, user_id=user_id, tenant_id=tenant_id
-    )
+    raise MfaChallengeError(message, outcome=outcome, user_id=user_id, tenant_id=tenant_id)
 
 
 async def check_challenge_code(
@@ -674,15 +639,17 @@ async def check_challenge_code(
     tenant_raw = payload.get("tenant_id")
     tenant_id = uuid.UUID(str(tenant_raw)) if tenant_raw else None
     counter = await _verify_user_totp_counter(session, user_id=user_id, code=code)
-    if counter is not None and not await claim_totp_counter(
-        user_id, counter, redis=client
-    ):
+    if counter is not None and not await claim_totp_counter(user_id, counter, redis=client):
         # RFC 6238 §5.2: this code already verified — a second acceptance
         # would let one observed code mint two sessions. Counted as an
         # attempt so replay hammering locks the challenge like brute force.
         await _fail_challenge(
-            challenge_id, client, outcome="code_replayed", user_id=user_id,
-            tenant_id=tenant_id, ip=ip,
+            challenge_id,
+            client,
+            outcome="code_replayed",
+            user_id=user_id,
+            tenant_id=tenant_id,
+            ip=ip,
         )
     if counter is None:
         # §146: a lost authenticator must not mean a lost account — the
@@ -692,8 +659,12 @@ async def check_challenge_code(
         # touching the HMAC.
         if not await _consume_backup_code(session, user_id, code):
             await _fail_challenge(
-                challenge_id, client, outcome="invalid_code", user_id=user_id,
-                tenant_id=tenant_id, ip=ip,
+                challenge_id,
+                client,
+                outcome="invalid_code",
+                user_id=user_id,
+                tenant_id=tenant_id,
+                ip=ip,
             )
     consumed = await consume_challenge(challenge_id, redis=client)
     if consumed is None:
@@ -709,9 +680,8 @@ async def check_challenge_code(
     current_auth_version = (
         await session.execute(select(User.auth_version).where(User.id == user_id))
     ).scalar_one_or_none()
-    if (
-        current_auth_version is None
-        or int(payload.get("auth_version", 0)) != int(current_auth_version or 0)
+    if current_auth_version is None or int(payload.get("auth_version", 0)) != int(
+        current_auth_version or 0
     ):
         await raise_mfa_rejection(
             "login challenge was revoked by a credential change",
@@ -808,9 +778,7 @@ async def sso_login(
     user_id = uuid.UUID(raw) if raw else None
 
     if user_id is not None:
-        user = (
-            await session.execute(select(User).where(User.id == user_id))
-        ).scalar_one_or_none()
+        user = (await session.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
         if user is None or not user.is_active:
             raise PermissionDeniedError("account not available")
     else:
@@ -832,9 +800,7 @@ async def sso_login(
         await client.set(key, str(user.id))
 
     # Issue tokens — reuse the same flow as password login
-    pair = AuthService._issue_pair(
-        session, user, None, user_agent=user_agent, ip=ip
-    )
+    pair = AuthService._issue_pair(session, user, None, user_agent=user_agent, ip=ip)
     return pair, user, None
 
 

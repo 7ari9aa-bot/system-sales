@@ -204,9 +204,7 @@ async def test_provider_error_is_recorded_and_raised(db, tenant_ctx, monkeypatch
     assert row.tokens_in == 0 and row.tokens_out == 0
 
 
-async def test_api_key_never_reaches_logs_or_model_call_rows(
-    db, tenant_ctx, monkeypatch, caplog
-):
+async def test_api_key_never_reaches_logs_or_model_call_rows(db, tenant_ctx, monkeypatch, caplog):
     """Routing verdict pin, credential half: `resolve_model_config` is
     deterministic (tenant row, then deployment settings — the tests above
     prove the order), and the credential it resolves is WRITE-ONLY: it rides
@@ -248,9 +246,7 @@ async def test_api_key_never_reaches_logs_or_model_call_rows(
     assert captured["auth"] == f"Bearer {secret}"
     # ... and appears nowhere else: not in any log record ...
     leaked_logs = [
-        record.getMessage()
-        for record in caplog.records
-        if secret in record.getMessage()
+        record.getMessage() for record in caplog.records if secret in record.getMessage()
     ]
     assert leaked_logs == []
     # ... and not in any recorded column of the ModelCall row.

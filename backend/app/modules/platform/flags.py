@@ -164,15 +164,17 @@ class FeatureFlagService:
         return (await session.execute(stmt)).scalar_one()
 
     @staticmethod
-    async def list_flags(
-        session: AsyncSession, tenant_id: uuid.UUID
-    ) -> list[FeatureFlag]:
+    async def list_flags(session: AsyncSession, tenant_id: uuid.UUID) -> list[FeatureFlag]:
         """Every flag configured for the tenant, ordered by feature name."""
         rows = (
-            await session.execute(
-                select(FeatureFlag)
-                .where(FeatureFlag.tenant_id == tenant_id)
-                .order_by(FeatureFlag.feature)
+            (
+                await session.execute(
+                    select(FeatureFlag)
+                    .where(FeatureFlag.tenant_id == tenant_id)
+                    .order_by(FeatureFlag.feature)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return list(rows)

@@ -102,9 +102,7 @@ async def test_fetch_is_refused_while_the_storage_breaker_is_open(monkeypatch) -
 
     def handler(request: httpx.Request) -> httpx.Response:
         contacted["n"] += 1
-        return httpx.Response(
-            200, headers={"content-type": "image/jpeg"}, content=PAYLOAD
-        )
+        return httpx.Response(200, headers={"content-type": "image/jpeg"}, content=PAYLOAD)
 
     monkeypatch.setattr(storage_mod, "assert_public_url", lambda url: url)
     _patch_httpx(monkeypatch, handler)

@@ -65,8 +65,7 @@ async def test_every_schema_table_with_tenant_id_is_force_rls_with_canonical_pol
             continue
         if not (flags.relrowsecurity and flags.relforcerowsecurity):
             offenders.append(
-                f"{name}: RLS enabled={flags.relrowsecurity} "
-                f"forced={flags.relforcerowsecurity}"
+                f"{name}: RLS enabled={flags.relrowsecurity} forced={flags.relforcerowsecurity}"
             )
 
         policies = (

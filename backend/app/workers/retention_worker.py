@@ -63,8 +63,7 @@ logger = logging.getLogger(__name__)
 # allowlist, never from a policy row, so the DELETE the module builds cannot be
 # influenced by data.
 _RETENTABLE: dict[str, tuple[str, str]] = {
-    data_class: (spec.table, spec.ts_column)
-    for data_class, spec in ROW_LEVEL_DATA_CLASSES.items()
+    data_class: (spec.table, spec.ts_column) for data_class, spec in ROW_LEVEL_DATA_CLASSES.items()
 }
 
 #: The order the sweep visits stores in, taken from the allowlist's declaration
@@ -130,19 +129,21 @@ class RetentionWorker(StreamWorker):
         media_failed: list[str] = []
 
         policies = (
-            await session.execute(
-                select(RetentionPolicy).where(RetentionPolicy.tenant_id == tenant_id)
+            (
+                await session.execute(
+                    select(RetentionPolicy).where(RetentionPolicy.tenant_id == tenant_id)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         for policy in sorted(policies, key=lambda p: _SWEEP_ORDER.get(p.data_class, _UNRANKED)):
             if policy.data_class not in _RETENTABLE:
                 # Unknown data_class: skip and report — never guess a table. The
                 # decision is still the module's (purge_row_store refuses the
                 # same way); this only keeps the refusal free of any SQL.
-                skipped.append(
-                    {"data_class": policy.data_class, "reason": REASON_NOT_A_ROW_STORE}
-                )
+                skipped.append({"data_class": policy.data_class, "reason": REASON_NOT_A_ROW_STORE})
                 logger.warning(
                     "retention.skipped_unknown_class tenant=%s data_class=%s",
                     tenant_id,
@@ -219,9 +220,7 @@ class OffboardingWorker:
         now = now or datetime.now(UTC)
         tenant = (
             await session.execute(
-                select(Tenant)
-                .where(Tenant.id == tenant_id)
-                .with_for_update(skip_locked=True)
+                select(Tenant).where(Tenant.id == tenant_id).with_for_update(skip_locked=True)
             )
         ).scalar_one_or_none()
         if tenant is None:
@@ -355,20 +354,24 @@ class OffboardingWorker:
             )
         ).one()
         members = (
-            await session.execute(
-                select(
-                    TenantUser.user_id,
-                    User.email,
-                    User.full_name,
-                    Role.code.label("role_code"),
-                    TenantUser.is_default,
+            (
+                await session.execute(
+                    select(
+                        TenantUser.user_id,
+                        User.email,
+                        User.full_name,
+                        Role.code.label("role_code"),
+                        TenantUser.is_default,
+                    )
+                    .join(User, User.id == TenantUser.user_id)
+                    .outerjoin(Role, Role.id == TenantUser.role_id)
+                    .where(TenantUser.tenant_id == tenant_id)
+                    .order_by(User.email)
                 )
-                .join(User, User.id == TenantUser.user_id)
-                .outerjoin(Role, Role.id == TenantUser.role_id)
-                .where(TenantUser.tenant_id == tenant_id)
-                .order_by(User.email)
             )
-        ).mappings().all()
+            .mappings()
+            .all()
+        )
 
         tables = Base.metadata.sorted_tables
         export: dict[str, list[dict]] = {}
@@ -385,8 +388,7 @@ class OffboardingWorker:
             statement = select(*allowed_columns).where(table.c.tenant_id == tenant_id)
             rows = (await session.execute(statement)).mappings().all()
             export[table.name] = [
-                {column: json_value(value) for column, value in row.items()}
-                for row in rows
+                {column: json_value(value) for column, value in row.items()} for row in rows
             ]
             if removed_columns:
                 redacted[table.name] = removed_columns
@@ -417,8 +419,7 @@ class OffboardingWorker:
             "tenant_id": str(tenant_id),
             "exported_at": datetime.now(UTC).isoformat(),
             "counts": {
-                key: len(rows) if isinstance(rows, list) else 1
-                for key, rows in data.items()
+                key: len(rows) if isinstance(rows, list) else 1 for key, rows in data.items()
             },
             "redacted_fields": redacted,
             "omitted_tables": sorted(excluded_tables),
@@ -440,17 +441,21 @@ class OffboardingWorker:
         now = datetime.now(UTC)
         async with SessionLocal() as session:
             tenant_ids = (
-                await session.execute(
-                    select(Tenant.id)
-                    .where(
-                        Tenant.lifecycle_state == "offboarding",
-                        Tenant.deletion_scheduled_at.is_not(None),
-                        Tenant.deletion_scheduled_at <= now,
+                (
+                    await session.execute(
+                        select(Tenant.id)
+                        .where(
+                            Tenant.lifecycle_state == "offboarding",
+                            Tenant.deletion_scheduled_at.is_not(None),
+                            Tenant.deletion_scheduled_at <= now,
+                        )
+                        .order_by(Tenant.deletion_scheduled_at)
+                        .limit(max(1, min(batch_size, 500)))
                     )
-                    .order_by(Tenant.deletion_scheduled_at)
-                    .limit(max(1, min(batch_size, 500)))
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
 
         purged = 0
         for tenant_id in tenant_ids:
@@ -458,9 +463,7 @@ class OffboardingWorker:
                 async with SessionLocal() as session:
                     async with session.begin():
                         await bind_tenant(session, tenant_id)
-                        result = await OffboardingWorker.run_once(
-                            session, tenant_id, now=now
-                        )
+                        result = await OffboardingWorker.run_once(session, tenant_id, now=now)
                 if result["action"] == "purged":
                     purged += 1
                     await _record_security_event(

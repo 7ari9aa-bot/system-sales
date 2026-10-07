@@ -176,9 +176,7 @@ def _is_write(method: str) -> bool:
     return method.upper() in {"POST", "PATCH", "PUT", "DELETE"}
 
 
-async def _call_read(
-    session: FakeSession, path: str, *, perms: set[str] | None = None, **kw
-):
+async def _call_read(session: FakeSession, path: str, *, perms: set[str] | None = None, **kw):
     return await _call(session, "GET", path, perms=perms, **kw)
 
 
@@ -275,13 +273,9 @@ async def test_another_tenants_workflow_reads_as_not_found_everywhere() -> None:
         response = await _call_read(session, path, perms=set())
         assert response.status_code == 404, f"{path} -> {response.status_code}: {response.text}"
         children = [
-            s
-            for s in session.sql
-            if "workflow_versions" in s or "workflow_executions" in s
+            s for s in session.sql if "workflow_versions" in s or "workflow_executions" in s
         ]
-        assert not children, (
-            f"{path} read a child table before proving the parent is this tenant's"
-        )
+        assert not children, f"{path} read a child table before proving the parent is this tenant's"
 
 
 async def test_the_execution_list_is_scoped_twice() -> None:
@@ -291,9 +285,7 @@ async def test_the_execution_list_is_scoped_twice() -> None:
     session = FakeSession(workflows=[workflow], executions=[])
     response = await _call_read(session, f"/{workflow.id}/executions", perms=set())
     assert response.status_code == 200, response.text
-    index = next(
-        i for i, s in enumerate(session.sql) if "from workflow_executions" in s.lower()
-    )
+    index = next(i for i, s in enumerate(session.sql) if "from workflow_executions" in s.lower())
     low = " ".join(session.sql[index].split()).lower()
     # See the versions test below for WHY this reads the WHERE clause: the SELECT
     # list already names the column, so matching the whole statement proves nothing.
@@ -316,9 +308,7 @@ async def test_the_version_list_is_scoped_by_tenant_too() -> None:
     session = FakeSession(workflows=[workflow], versions=[])
     response = await _call_read(session, f"/{workflow.id}/versions", perms=set())
     assert response.status_code == 200, response.text
-    index = next(
-        i for i, s in enumerate(session.sql) if "from workflow_versions" in s.lower()
-    )
+    index = next(i for i, s in enumerate(session.sql) if "from workflow_versions" in s.lower())
     low = " ".join(session.sql[index].split()).lower()
     # Asserted on the PREDICATE, not the statement: TenantMixin puts
     # ``workflow_versions.tenant_id`` in the SELECT list, so a substring match on
@@ -404,9 +394,7 @@ async def test_changing_a_workflows_status_is_audited_with_before_and_after() ->
     off. Either way the trail has to say what changed from what to what."""
     workflow = _workflow(status="draft")
     session = FakeSession(workflows=[workflow])
-    response = await _call(
-        session, "PATCH", f"/{workflow.id}/status", json={"status": "active"}
-    )
+    response = await _call(session, "PATCH", f"/{workflow.id}/status", json={"status": "active"})
     assert response.status_code == 200, response.text
     assert len(session.audits) == 1
     audit = session.audits[0]
@@ -523,9 +511,7 @@ async def test_an_archived_workflow_cannot_be_reactivated_over_http() -> None:
     terminal), enforced at the service and therefore at the route."""
     workflow = _workflow(status="archived")
     session = FakeSession(workflows=[workflow])
-    response = await _call(
-        session, "PATCH", f"/{workflow.id}/status", json={"status": "active"}
-    )
+    response = await _call(session, "PATCH", f"/{workflow.id}/status", json={"status": "active"})
     assert response.status_code == 409, response.text
     assert response.json()["error"]["code"] == "conflict"
     assert workflow.status == "archived"
@@ -586,8 +572,7 @@ def test_writes_are_gated_on_the_write_scope_and_reads_are_not() -> None:
     for route in automation_router.router.routes:
         methods = {m for m in route.methods if m != "HEAD"}
         annotations = [
-            str(p.annotation)
-            for p in inspect.signature(route.endpoint).parameters.values()
+            str(p.annotation) for p in inspect.signature(route.endpoint).parameters.values()
         ]
         gated = any("WriteCtx" in a for a in annotations)
         reads_context = any("TenantCtxDep" in a for a in annotations)

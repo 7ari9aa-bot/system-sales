@@ -104,8 +104,7 @@ async def apply_patch(
 
     if expected_version is not None and state.state_version != expected_version:
         raise StaleStateError(
-            f"state_version moved: expected {expected_version}, "
-            f"found {state.state_version}"
+            f"state_version moved: expected {expected_version}, found {state.state_version}"
         )
 
     grew = False

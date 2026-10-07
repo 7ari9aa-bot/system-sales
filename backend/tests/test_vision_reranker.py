@@ -45,9 +45,7 @@ class _FakeReranker:
         top_n: int | None = None,
         _client=None,
     ) -> list[RerankResult]:
-        self.calls.append(
-            {"query": query, "documents": documents, "top_n": top_n}
-        )
+        self.calls.append({"query": query, "documents": documents, "top_n": top_n})
         return self.results
 
 

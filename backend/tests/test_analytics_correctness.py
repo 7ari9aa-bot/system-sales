@@ -131,7 +131,6 @@ def test_a_status_that_is_not_a_word_cannot_reach_the_sql() -> None:
         _status_sql([])
 
 
-
 # ------------------------------------------------ pure: merchant-day rule --
 
 
@@ -159,9 +158,7 @@ def test_merchant_day_boundary_is_exactly_at_local_midnight() -> None:
     assert merchant_day(datetime(2026, 3, 14, 19, 59, tzinfo=UTC), "Asia/Dubai") == date(
         2026, 3, 14
     )
-    assert merchant_day(datetime(2026, 3, 14, 20, 0, tzinfo=UTC), "Asia/Dubai") == date(
-        2026, 3, 15
-    )
+    assert merchant_day(datetime(2026, 3, 14, 20, 0, tzinfo=UTC), "Asia/Dubai") == date(2026, 3, 15)
 
 
 def test_merchant_day_window_returns_utc_instants_for_the_bucket() -> None:
@@ -210,9 +207,7 @@ def test_analytics_exposes_the_corrected_endpoints(path: str) -> None:
 def test_daily_series_exposes_its_timezone_parameter() -> None:
     """The bucketing zone must be on the wire, or the service can honour it
     while the router silently always reports UTC."""
-    params = create_app().openapi()["paths"]["/api/v1/analytics/daily-series"]["get"][
-        "parameters"
-    ]
+    params = create_app().openapi()["paths"]["/api/v1/analytics/daily-series"]["get"]["parameters"]
     assert "timezone" in {p["name"] for p in params}
 
 
@@ -306,9 +301,7 @@ async def test_full_refund_leaves_gross_untouched_and_net_zero(
     assert summary["refund_excess"] == Decimal("0.00")
 
 
-async def test_partial_refund_nets_the_unreturned_part(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_partial_refund_nets_the_unreturned_part(db: AsyncSession, tenant_ctx) -> None:
     from app.modules.analytics.service import revenue_summary
 
     tid = tenant_ctx.tenant_id
@@ -403,13 +396,9 @@ async def test_daily_series_buckets_a_late_utc_sale_in_the_merchant_day(
 
     tid = tenant_ctx.tenant_id
     # 23:30 UTC on 14 March = 03:30 on 15 March in UTC+4.
-    await _collected(
-        db, tid, amount="70.00", paid_at=datetime(2026, 3, 14, 23, 30, tzinfo=UTC)
-    )
+    await _collected(db, tid, amount="70.00", paid_at=datetime(2026, 3, 14, 23, 30, tzinfo=UTC))
 
-    utc_rows = await daily_revenue_series(
-        db, tid, since=W1_SINCE, until=W2_UNTIL, timezone="UTC"
-    )
+    utc_rows = await daily_revenue_series(db, tid, since=W1_SINCE, until=W2_UNTIL, timezone="UTC")
     assert [r["day"] for r in utc_rows] == ["2026-03-14"]
 
     local_rows = await daily_revenue_series(
@@ -437,9 +426,7 @@ async def test_daily_series_net_never_goes_negative_on_a_refund_only_day(
         processed_at=datetime(2026, 3, 20, 9, 0, tzinfo=UTC),
     )
 
-    rows = await daily_revenue_series(
-        db, tid, since=W1_SINCE, until=W2_UNTIL, timezone="UTC"
-    )
+    rows = await daily_revenue_series(db, tid, since=W1_SINCE, until=W2_UNTIL, timezone="UTC")
     by_day = {r["day"]: r for r in rows}
     assert by_day["2026-03-10"]["gross_revenue"] == Decimal("50.00")
     assert by_day["2026-03-10"]["net_revenue"] == Decimal("50.00")
@@ -478,9 +465,7 @@ async def _balance(db: AsyncSession, tenant_id: uuid.UUID, *, on_hand: int, rese
     return balance
 
 
-async def test_zero_available_is_out_of_stock_not_low_stock(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_zero_available_is_out_of_stock_not_low_stock(db: AsyncSession, tenant_ctx) -> None:
     """The register's complaint: `available <= 2` folds an empty shelf into
     "low stock", so the alert is noise. The two must be separate counts and the
     field names must say which is which."""
@@ -499,9 +484,7 @@ async def test_zero_available_is_out_of_stock_not_low_stock(
     assert health["low_stock_threshold"] == 2
 
 
-async def test_negative_available_is_counted_as_out_of_stock(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_negative_available_is_counted_as_out_of_stock(db: AsyncSession, tenant_ctx) -> None:
     from app.modules.analytics.service import stock_health
 
     tid = tenant_ctx.tenant_id

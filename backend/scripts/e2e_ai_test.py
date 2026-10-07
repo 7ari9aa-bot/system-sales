@@ -78,13 +78,17 @@ async def main() -> int:
             print(f"\nAUTO-REPLY on conversation {convo.id}:")
             await maybe_auto_reply(session, tenant.id, convo.id)
             ai_messages = (
-                await session.execute(
-                    sa.select(Message).where(
-                        Message.conversation_id == convo.id,
-                        Message.sender_type == "ai",
+                (
+                    await session.execute(
+                        sa.select(Message).where(
+                            Message.conversation_id == convo.id,
+                            Message.sender_type == "ai",
+                        )
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             for m in ai_messages:
                 print(f"  ai → {m.body}")
             if not ai_messages:

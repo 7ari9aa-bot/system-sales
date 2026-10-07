@@ -49,9 +49,7 @@ class Tenant(TimestampMixin, Base):
 
     __tablename__ = "tenants"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     slug: Mapped[str] = mapped_column(String(63), unique=True)
     name: Mapped[str] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(Boolean, server_default="true")
@@ -68,9 +66,7 @@ class Tenant(TimestampMixin, Base):
     # system is NUMERIC(14,2), so this is restricted to a two-decimal currency
     # (see TenantService.set_currency) — an amount stored here is always the
     # amount the customer paid, never a converted one.
-    currency: Mapped[str] = mapped_column(
-        String(3), default="EGP", server_default="EGP"
-    )
+    currency: Mapped[str] = mapped_column(String(3), default="EGP", server_default="EGP")
     # §47/M10 remainder: the ONE zone this tenant counts its DAYS in, the same
     # move `currency` made for money. Analytics buckets a calendar day (gap
     # M10), and until now the zone could only come from one deployment-wide
@@ -86,16 +82,11 @@ class Tenant(TimestampMixin, Base):
 class User(TimestampMixin, Base):
     __tablename__ = "users"
 
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
     # Case-folded uniqueness: identity writes lower(email) everywhere, and
     # the schema enforces it so two case-variant accounts can never exist.
-    __table_args__ = (
-        sa.Index("ix_users_email_lower", sa.func.lower(email), unique=True),
-    )
+    __table_args__ = (sa.Index("ix_users_email_lower", sa.func.lower(email), unique=True),)
 
     password_hash: Mapped[str] = mapped_column(String(255))
     full_name: Mapped[str] = mapped_column(String(255))
@@ -127,9 +118,7 @@ class PasswordResetToken(TimestampMixin, Base):
 
     __tablename__ = "password_reset_tokens"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
@@ -172,9 +161,7 @@ class EmailVerificationToken(TimestampMixin, Base):
 
     __tablename__ = "email_verification_tokens"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
@@ -216,9 +203,7 @@ class UserMfaSecret(TimestampMixin, Base):
 
     __tablename__ = "user_mfa_secrets"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True
     )
@@ -231,9 +216,7 @@ class UserMfaSecret(TimestampMixin, Base):
 class Role(Base):
     __tablename__ = "roles"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     code: Mapped[str] = mapped_column(String(63), unique=True)  # owner | manager | staff
     name: Mapped[str] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(String(1024))
@@ -242,9 +225,7 @@ class Role(Base):
 class Permission(Base):
     __tablename__ = "permissions"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     code: Mapped[str] = mapped_column(String(127), unique=True)  # e.g. orders:read
     resource: Mapped[str] = mapped_column(String(63))
     action: Mapped[str] = mapped_column(String(63))
@@ -292,9 +273,7 @@ class RefreshToken(TimestampMixin, Base):
 
     __tablename__ = "refresh_tokens"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
@@ -311,9 +290,7 @@ class RefreshToken(TimestampMixin, Base):
 class Invitation(TimestampMixin, Base):
     __tablename__ = "invitations"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
     )

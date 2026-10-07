@@ -409,9 +409,7 @@ class OutboxRelay:
                 try:
                     await self._write_event_log(session, row, payload, meta)
                 except Exception:  # noqa: BLE001 — relay survives, ops replays
-                    logger.exception(
-                        "outbox.relay.event_log_failed id=%s", row["id"]
-                    )
+                    logger.exception("outbox.relay.event_log_failed id=%s", row["id"])
                 # Claim + publish + mark commit together, per row: this single
                 # commit is why no relay can see this row as anything but
                 # 'pending' (locked) while it is being published, and why a
@@ -421,9 +419,7 @@ class OutboxRelay:
                 published += 1
         return published
 
-    def _envelope_for_log(
-        self, row: Any, payload: dict, meta: dict
-    ) -> EventEnvelope | None:
+    def _envelope_for_log(self, row: Any, payload: dict, meta: dict) -> EventEnvelope | None:
         """Rebuild the row's §19 envelope, completing a legacy row from columns.
 
         The writer stamps every routing key, so a normal row deserializes
@@ -469,9 +465,7 @@ class OutboxRelay:
         """
         envelope = self._envelope_for_log(row, payload, meta)
         if envelope is None:
-            logger.warning(
-                "outbox.relay.event_log_skipped_invalid_envelope id=%s", row["id"]
-            )
+            logger.warning("outbox.relay.event_log_skipped_invalid_envelope id=%s", row["id"])
             return
 
         await bind_tenant(session, str(envelope.tenant_id))

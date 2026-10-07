@@ -100,8 +100,7 @@ class ResendEmailSender:
             raise EmailDeliveryError("email delivery is not configured", retryable=True)
 
         verify_url = (
-            f"{settings.frontend_public_url.rstrip('/')}/verify-email"
-            f"#token={quote(token, safe='')}"
+            f"{settings.frontend_public_url.rstrip('/')}/verify-email#token={quote(token, safe='')}"
         )
         payload = {
             "from": settings.email_from,
@@ -129,9 +128,7 @@ class ResendEmailSender:
     async def _send(self, *, delivery_id: uuid.UUID, payload: dict) -> None:
         settings = get_settings()
         try:
-            async with self._client_factory(
-                timeout=httpx.Timeout(10.0, connect=3.0)
-            ) as client:
+            async with self._client_factory(timeout=httpx.Timeout(10.0, connect=3.0)) as client:
                 response = await client.post(
                     _RESEND_EMAILS_URL,
                     headers={
@@ -375,9 +372,7 @@ class EmailVerificationEmailDelivery:
                 delivery,
                 EmailDeliveryError("email delivery internal error", retryable=False),
             )
-            logger.exception(
-                "auth.email_verification_internal_error delivery_id=%s", delivery.id
-            )
+            logger.exception("auth.email_verification_internal_error delivery_id=%s", delivery.id)
             return 1
 
         finished_at = datetime.now(UTC)

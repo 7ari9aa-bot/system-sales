@@ -34,8 +34,8 @@ from typing import Any
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app.main import create_app
 from app.core.ids import uuid7
+from app.main import create_app
 from app.modules.identity.deps import AuthedUser, TenantContext, get_db, get_tenant_ctx
 from app.modules.platform.models import FeatureFlag, SavedView, WebhookEvent
 from app.modules.platform.router import router as platform_router
@@ -233,7 +233,8 @@ def test_the_platform_surface_is_the_measured_routes() -> None:
 
 def test_every_platform_route_declares_a_response_model() -> None:
     missing = sorted(
-        f"{sorted(route.methods)} {route.path}" for route in _platform_routes()
+        f"{sorted(route.methods)} {route.path}"
+        for route in _platform_routes()
         if route.response_model is None
     )
     assert not missing, (
@@ -320,9 +321,7 @@ async def test_a_response_model_that_lies_about_the_wire_shape_is_caught() -> No
 
 
 async def test_flags_list_uses_the_module_envelope() -> None:
-    row = FeatureFlag(
-        tenant_id=TENANT, feature="voice.enabled", enabled=True, rollout_percent=100
-    )
+    row = FeatureFlag(tenant_id=TENANT, feature="voice.enabled", enabled=True, rollout_percent=100)
     response, _ = await _call("GET", f"{API}/flags", [row], permissions=set())
 
     assert response.status_code == 200, response.text
@@ -467,14 +466,16 @@ async def test_a_paged_list_sends_the_offset_it_was_given(
 ) -> None:
     """An ignored ``offset`` is worse than a 500: page 2 silently IS page 1."""
     _response, session = await _call(
-        "GET", path, [], permissions=permissions, platform_admin=platform_admin,
+        "GET",
+        path,
+        [],
+        permissions=permissions,
+        platform_admin=platform_admin,
         params={"limit": 10, "offset": 25},
     )
 
     rows_sql = _sql_with(session, table)
-    assert "OFFSET" in rows_sql.upper(), (
-        f"{path} accepted offset=25 and never sent it: {rows_sql}"
-    )
+    assert "OFFSET" in rows_sql.upper(), f"{path} accepted offset=25 and never sent it: {rows_sql}"
 
 
 # ------------------------------------------------------- CI-only: real PostgreSQL
@@ -486,9 +487,7 @@ async def test_a_paged_list_sends_the_offset_it_was_given(
 
 async def _rows_for(db, tenant_id: uuid.UUID, path: str, params: dict) -> list[dict]:
     app = create_app()
-    user = AuthedUser(
-        id=USER, tenant_id=tenant_id, role_code="owner", is_platform_admin=True
-    )
+    user = AuthedUser(id=USER, tenant_id=tenant_id, role_code="owner", is_platform_admin=True)
 
     async def _ctx() -> TenantContext:
         return TenantContext(
@@ -598,9 +597,7 @@ async def test_flag_writes_require_settings_write() -> None:
 
 
 async def test_flag_upsert_persists_the_validated_row() -> None:
-    row = FeatureFlag(
-        tenant_id=TENANT, feature="voice.enabled", enabled=True, rollout_percent=100
-    )
+    row = FeatureFlag(tenant_id=TENANT, feature="voice.enabled", enabled=True, rollout_percent=100)
     response, session = await _call(
         "PUT",
         f"{API}/flags/voice.enabled",
@@ -654,9 +651,7 @@ async def test_an_oversized_feature_name_is_refused_without_touching_the_db() ->
 
 
 async def test_a_missing_saved_view_is_404() -> None:
-    response, _ = await _call(
-        "GET", f"{API}/saved-views/{uuid.uuid4()}", [], permissions=set()
-    )
+    response, _ = await _call("GET", f"{API}/saved-views/{uuid.uuid4()}", [], permissions=set())
 
     assert response.status_code == 404, response.text
 
@@ -677,9 +672,7 @@ async def test_another_users_private_view_is_404_not_403() -> None:
 async def test_saved_view_reads_are_scoped_to_the_caller_tenant() -> None:
     """The list is tenant-scoped AND filters other users' private views in SQL
     — never returned and left for the client to hide."""
-    response, session = await _call(
-        "GET", f"{API}/saved-views", [_saved_view()], permissions=set()
-    )
+    response, session = await _call("GET", f"{API}/saved-views", [_saved_view()], permissions=set())
 
     assert response.status_code == 200, response.text
     where = _sql_with(session, "saved_views").split("WHERE", 1)[1]
@@ -708,9 +701,7 @@ async def test_saved_view_reads_are_scoped_to_the_caller_tenant() -> None:
     ],
     ids=["create", "extract", "validate", "execute"],
 )
-async def test_tenant_restore_writes_require_settings_write(
-    path: str, needs_body: bool
-) -> None:
+async def test_tenant_restore_writes_require_settings_write(path: str, needs_body: bool) -> None:
     response, session = await _call(
         "POST", path, [], permissions=set(), body={"x": 1} if needs_body else None
     )

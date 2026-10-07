@@ -141,9 +141,7 @@ async def tenant_ctx(db: AsyncSession) -> AsyncIterator[TenantCtx]:
     await db.flush()
     # Bind the user GUC so the self-access policy on tenant_users allows
     # creating the owner's own membership row.
-    await db.execute(
-        sa.text("SELECT set_config('app.user_id', :uid, true)"), {"uid": str(user.id)}
-    )
+    await db.execute(sa.text("SELECT set_config('app.user_id', :uid, true)"), {"uid": str(user.id)})
     db.add(TenantUser(tenant_id=tenant.id, user_id=user.id, role_id=role.id))
     await db.flush()
 

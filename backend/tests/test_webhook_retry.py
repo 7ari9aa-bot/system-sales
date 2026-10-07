@@ -48,9 +48,7 @@ def _wa_payload(*message_ids: str) -> dict:
                     {
                         "value": {
                             "metadata": {"phone_number_id": "PNID123"},
-                            "contacts": [
-                                {"wa_id": "201234567890", "profile": {"name": "أحمد"}}
-                            ],
+                            "contacts": [{"wa_id": "201234567890", "profile": {"name": "أحمد"}}],
                             "messages": [
                                 {
                                     "id": message_id,
@@ -183,9 +181,7 @@ async def test_worker_retry_reingests_and_marks_the_row_processed(db, tenant_ctx
     key from the failed attempt rolled back, so nothing blocks it) and the row
     is processed with attempts incremented."""
     payload = _wa_payload("wamid.retry-ok")
-    row = await _ingress_row(
-        db, tenant_ctx.tenant_id, payload, status="failed", attempts=1
-    )
+    row = await _ingress_row(db, tenant_ctx.tenant_id, payload, status="failed", attempts=1)
 
     handled = await retry_failed_webhook_events(db, tenant_ctx.tenant_id)
 
@@ -211,9 +207,7 @@ async def test_worker_retry_marks_a_persistent_failure_and_increments_attempts(
     monkeypatch.setattr(IngestService, "ingest", _always_explodes)
 
     payload = _wa_payload("wamid.still-bad")
-    row = await _ingress_row(
-        db, tenant_ctx.tenant_id, payload, status="failed", attempts=1
-    )
+    row = await _ingress_row(db, tenant_ctx.tenant_id, payload, status="failed", attempts=1)
 
     handled = await retry_failed_webhook_events(db, tenant_ctx.tenant_id)
 
@@ -236,11 +230,17 @@ async def test_the_sweep_skips_rows_whose_budget_is_spent_but_an_explicit_retry_
     )
 
     fresh = await _ingress_row(
-        db, tenant_ctx.tenant_id, _wa_payload("wamid.budget-ok"), status="failed",
+        db,
+        tenant_ctx.tenant_id,
+        _wa_payload("wamid.budget-ok"),
+        status="failed",
         attempts=0,
     )
     spent = await _ingress_row(
-        db, tenant_ctx.tenant_id, _wa_payload("wamid.budget-spent"), status="failed",
+        db,
+        tenant_ctx.tenant_id,
+        _wa_payload("wamid.budget-spent"),
+        status="failed",
         attempts=3,
     )
 
@@ -253,10 +253,7 @@ async def test_the_sweep_skips_rows_whose_budget_is_spent_but_an_explicit_retry_
     assert spent_stored.attempts == 3
 
     # Explicit per-row retry: the spent-budget row is retried anyway.
-    assert (
-        await retry_failed_webhook_events(db, tenant_ctx.tenant_id, event_id=spent.id)
-        == 1
-    )
+    assert await retry_failed_webhook_events(db, tenant_ctx.tenant_id, event_id=spent.id) == 1
     spent_stored = await _reload(db, spent.id)
     assert spent_stored.processing_status == "processed"
     assert spent_stored.attempts == 4
@@ -287,9 +284,7 @@ async def test_admin_retry_schedules_the_worker_event(db, tenant_ctx):
     """The endpoint does not process inline — it stages a webhook.event.retry
     outbox event for the WebhookWorker, carrying the row's tenant and id."""
     payload = _wa_payload("wamid.admin")
-    row = await _ingress_row(
-        db, tenant_ctx.tenant_id, payload, status="failed", attempts=1
-    )
+    row = await _ingress_row(db, tenant_ctx.tenant_id, payload, status="failed", attempts=1)
 
     result = await admin_retry_webhook_event(_admin_ctx(tenant_ctx), row.id)
 
@@ -307,17 +302,18 @@ async def test_admin_retry_schedules_the_worker_event(db, tenant_ctx):
 
 
 async def test_admin_retry_requires_the_platform_admin_claim(db, tenant_ctx):
-    row = await _ingress_row(
-        db, tenant_ctx.tenant_id, _wa_payload("wamid.noauth"), status="failed"
-    )
+    row = await _ingress_row(db, tenant_ctx.tenant_id, _wa_payload("wamid.noauth"), status="failed")
     with pytest.raises(PermissionDeniedError):
         await admin_retry_webhook_event(_admin_ctx(tenant_ctx, platform_admin=False), row.id)
 
 
 async def test_admin_retry_rejects_a_row_that_is_not_failed(db, tenant_ctx):
     row = await _ingress_row(
-        db, tenant_ctx.tenant_id, _wa_payload("wamid.processed"),
-        status="processed", attempts=1,
+        db,
+        tenant_ctx.tenant_id,
+        _wa_payload("wamid.processed"),
+        status="processed",
+        attempts=1,
     )
     with pytest.raises(ValidationError):
         await admin_retry_webhook_event(_admin_ctx(tenant_ctx), row.id)

@@ -205,9 +205,7 @@ async def attribution_seed(db: AsyncSession, tenant_ctx):
     await MarketingService.record_touchpoint(
         db, tenant_id, customer_id=customer.id, source="facebook", campaign_id=campaign.id
     )
-    await MarketingService.record_conversion(
-        db, tenant_id, customer_id=customer.id, value=150
-    )
+    await MarketingService.record_conversion(db, tenant_id, customer_id=customer.id, value=150)
     await db.flush()
     return {"tenant_id": tenant_id, "campaign_id": campaign.id}
 
@@ -235,9 +233,7 @@ async def test_conversion_rate_is_zero_when_nothing_was_touched(
     ``ai_resolution_rate`` gives for an empty population (never a 500, never
     a division error)."""
     since, until = _open_window()
-    rate = await analytics_service.conversion_rate(
-        db, uuid.uuid4(), since=since, until=until
-    )
+    rate = await analytics_service.conversion_rate(db, uuid.uuid4(), since=since, until=until)
     assert rate == 0.0
 
 
@@ -278,9 +274,7 @@ async def test_the_roas_response_carries_its_basis(
 
     monkeypatch.setattr(analytics_service, "compute_metric", metric)
     async with _client() as client:
-        response = await client.get(
-            f"/api/v1/analytics/metrics/roas?since={SINCE}&until={UNTIL}"
-        )
+        response = await client.get(f"/api/v1/analytics/metrics/roas?since={SINCE}&until={UNTIL}")
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["basis"] == "planned_budget"

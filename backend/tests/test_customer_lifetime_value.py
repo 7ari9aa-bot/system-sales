@@ -172,9 +172,7 @@ async def test_the_restripe_sql_is_one_well_formed_statement() -> None:
             captured["sql"] = str(statement)
             captured["params"] = dict(parameters or {})
 
-    await OrderService._recompute_lifetime_value(
-        _Recorder(), uuid.uuid4(), uuid.uuid4()
-    )
+    await OrderService._recompute_lifetime_value(_Recorder(), uuid.uuid4(), uuid.uuid4())
 
     sql = str(captured["sql"])
     assert sql.lstrip().upper().startswith("UPDATE CUSTOMERS"), sql
@@ -354,9 +352,7 @@ async def test_a_capture_raises_lifetime_value_by_the_money_collected(
     customer = await _buyer(db, tenant_id)
     variant, warehouse = await _shop(db, tenant_id, price="25.50")
     # Two units: a 51.00 order, so both captures fit inside the balance guard.
-    order = await _order(
-        db, tenant_id, customer.id, variant.id, warehouse.id, quantity=2
-    )
+    order = await _order(db, tenant_id, customer.id, variant.id, warehouse.id, quantity=2)
 
     await OrderService.add_payment(db, tenant_id, order.id, method="cash", amount="20.00")
     await db.flush()
@@ -367,9 +363,7 @@ async def test_a_capture_raises_lifetime_value_by_the_money_collected(
     assert await _ltv(db, tenant_id, customer.id) == Decimal("51.00")
 
 
-async def test_a_reconciled_capture_raises_lifetime_value_too(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_a_reconciled_capture_raises_lifetime_value_too(db: AsyncSession, tenant_ctx) -> None:
     """§141: a provider result resolved late is money that arrived all the same."""
     tenant_id = tenant_ctx.tenant_id
     customer = await _buyer(db, tenant_id)
@@ -395,9 +389,7 @@ async def test_a_reconciled_capture_raises_lifetime_value_too(
     assert await _ltv(db, tenant_id, customer.id) == Decimal("25.50")
 
 
-async def test_an_authorized_amount_is_not_lifetime_value(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_an_authorized_amount_is_not_lifetime_value(db: AsyncSession, tenant_ctx) -> None:
     """The set difference from ``SETTLED_PAYMENT_STATUSES``, pinned on a real row."""
     tenant_id = tenant_ctx.tenant_id
     customer = await _buyer(db, tenant_id)
@@ -423,9 +415,7 @@ async def test_a_refund_lowers_lifetime_value(db: AsyncSession, tenant_ctx) -> N
     customer = await _buyer(db, tenant_id)
     variant, warehouse = await _shop(db, tenant_id, price="25.50")
     order = await _order(db, tenant_id, customer.id, variant.id, warehouse.id)
-    payment = await OrderService.add_payment(
-        db, tenant_id, order.id, method="card", amount="25.50"
-    )
+    payment = await OrderService.add_payment(db, tenant_id, order.id, method="card", amount="25.50")
 
     await OrderService.register_refund(
         db, tenant_id, order.id, payment.id, amount="10.00", reason="one line returned"
@@ -489,18 +479,14 @@ async def test_a_stored_number_that_disagrees_with_the_ledger_is_corrected(
     customer = await _buyer(db, tenant_id)
     variant, warehouse = await _shop(db, tenant_id, price="40.00")
     order = await _order(db, tenant_id, customer.id, variant.id, warehouse.id)
-    payment = await OrderService.add_payment(
-        db, tenant_id, order.id, method="cash", amount="40.00"
-    )
+    payment = await OrderService.add_payment(db, tenant_id, order.id, method="cash", amount="40.00")
     await db.execute(
         sa.text("UPDATE customers SET lifetime_value = 999.00 WHERE id = :cid"),
         {"cid": customer.id},
     )
     assert await _ltv(db, tenant_id, customer.id) == Decimal("999.00")
 
-    await OrderService.register_refund(
-        db, tenant_id, order.id, payment.id, amount="15.00"
-    )
+    await OrderService.register_refund(db, tenant_id, order.id, payment.id, amount="15.00")
     await db.flush()
     assert await _ltv(db, tenant_id, customer.id) == Decimal("25.00")
 
@@ -518,12 +504,8 @@ async def test_a_ledger_that_gave_back_more_than_it_holds_floors_at_zero(
     customer = await _buyer(db, tenant_id)
     variant, warehouse = await _shop(db, tenant_id, price="20.00")
     order = await _order(db, tenant_id, customer.id, variant.id, warehouse.id)
-    payment = await OrderService.add_payment(
-        db, tenant_id, order.id, method="cash", amount="20.00"
-    )
-    await OrderService.register_refund(
-        db, tenant_id, order.id, payment.id, amount="20.00"
-    )
+    payment = await OrderService.add_payment(db, tenant_id, order.id, method="cash", amount="20.00")
+    await OrderService.register_refund(db, tenant_id, order.id, payment.id, amount="20.00")
     db.add(
         Refund(
             tenant_id=tenant_id,
@@ -541,9 +523,7 @@ async def test_a_ledger_that_gave_back_more_than_it_holds_floors_at_zero(
     assert await _ltv(db, tenant_id, customer.id) == Decimal("0.00")
 
 
-async def test_a_lifetime_value_segment_sees_the_new_value(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_a_lifetime_value_segment_sees_the_new_value(db: AsyncSession, tenant_ctx) -> None:
     """The point of M6: a segment on LTV finally matches somebody real."""
     tenant_id = tenant_ctx.tenant_id
     rich = await _buyer(db, tenant_id)

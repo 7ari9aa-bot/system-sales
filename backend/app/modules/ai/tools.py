@@ -292,9 +292,7 @@ async def _check_stock(
     available = (
         await session.execute(
             select(
-                func.coalesce(
-                    func.sum(InventoryBalance.on_hand - InventoryBalance.reserved), 0
-                )
+                func.coalesce(func.sum(InventoryBalance.on_hand - InventoryBalance.reserved), 0)
             ).where(
                 InventoryBalance.tenant_id == tenant_id,
                 InventoryBalance.variant_id == variant_id,
@@ -425,6 +423,7 @@ async def _get_order(
 
 # -------------------------------------------------------------- knowledge ----
 
+
 class SearchKnowledgeArgs(BaseModel):
     query: str = Field(min_length=1, max_length=1000)
     limit: int = Field(default=3, ge=1, le=10)
@@ -474,6 +473,7 @@ async def _search_knowledge(
 
 # ------------------------------------------------------------------- vision --
 
+
 class FindProductByImageArgs(BaseModel):
     image_kind: ImageKind
     hints: str | None = Field(default=None, max_length=500)
@@ -508,9 +508,7 @@ async def _find_product_by_image(
     if not image_url:
         raise DomainError("no customer image in this turn")
 
-    result = await run_vision_match(
-        session, tenant_id, image_url=image_url, text_hint=hints
-    )
+    result = await run_vision_match(session, tenant_id, image_url=image_url, text_hint=hints)
     return {
         "confidence": result.confidence.value,
         "candidates": result.candidates,
@@ -556,6 +554,7 @@ async def _resolve_product_media(
 
 
 # ----------------------------------------------------------- write: tasks ----
+
 
 class AddTaskArgs(BaseModel):
     title: str = Field(min_length=1, max_length=255)
@@ -607,6 +606,7 @@ async def _add_task(
 
 # ------------------------------------------------------------ write: tags ----
 
+
 class AddTagArgs(BaseModel):
     tag: str = Field(min_length=1, max_length=63)
 
@@ -643,9 +643,11 @@ async def media_payload_for_ids(
         )
     ).all()
     return [
-        {"image_id": str(image_id), "image_url": get_storage().resolve_product_image_url(
-            url, tenant_id=tenant_id
-        ), "alt": alt}
+        {
+            "image_id": str(image_id),
+            "image_url": get_storage().resolve_product_image_url(url, tenant_id=tenant_id),
+            "alt": alt,
+        }
         for image_id, url, alt in rows
     ]
 

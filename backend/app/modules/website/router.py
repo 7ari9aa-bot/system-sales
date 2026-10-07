@@ -21,7 +21,10 @@ router = APIRouter(tags=["website"])
 
 def _wp_error(exc: wp.WebsitePlatformError) -> HTTPException:
     status = exc.status if exc.status < 500 else 502
-    return HTTPException(status_code=status, detail={"code": exc.code, "message": exc.message, "details": exc.details})
+    return HTTPException(
+        status_code=status,
+        detail={"code": exc.code, "message": exc.message, "details": exc.details},
+    )
 
 
 async def _tenant_name(session, tenant_id: uuid.UUID) -> str:
@@ -83,7 +86,11 @@ async def session(ctx: TenantCtxDep):
     email = await _user_email(ctx.session, ctx.user.id)
     try:
         result = await wp.sso_session(email=email)
-        return {"token": result["token"], "expiresAt": result.get("expiresAt"), "studioUrl": result.get("studioUrl")}
+        return {
+            "token": result["token"],
+            "expiresAt": result.get("expiresAt"),
+            "studioUrl": result.get("studioUrl"),
+        }
     except wp.WebsitePlatformError as exc:
         raise _wp_error(exc) from exc
 
@@ -110,7 +117,9 @@ async def products_count(ctx: TenantCtxDep):
 
     count = (
         await ctx.session.execute(
-            select(func.count()).select_from(Product).where(Product.tenant_id == ctx.tenant_id, Product.status == "active")
+            select(func.count())
+            .select_from(Product)
+            .where(Product.tenant_id == ctx.tenant_id, Product.status == "active")
         )
     ).scalar()
     return {"publishedProducts": int(count or 0)}

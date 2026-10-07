@@ -80,6 +80,7 @@ def _authz_app():  # noqa: ANN201
     app.middleware_stack = None  # force Starlette to rebuild the stack
     return app
 
+
 # --- role -> permission-code sets, read straight from the provisioning seed ---
 _provision_path = Path(__file__).resolve().parents[2] / "scripts" / "provision.py"
 _spec = importlib.util.spec_from_file_location("_provision_seed", _provision_path)
@@ -402,9 +403,7 @@ async def test_platform_admin_plane_reachable_for_real_platform_admin() -> None:
     app = _authz_app()
     ctx = _ctx_for("owner", platform_admin=True)
     status = await _status_for(app, ctx, "GET", "/api/v1/platform/admin/tenants", None)
-    assert status not in (401, 403), (
-        f"a real platform admin was refused the §160 plane ({status})"
-    )
+    assert status not in (401, 403), f"a real platform admin was refused the §160 plane ({status})"
 
 
 def test_the_seed_itself_matches_the_documented_role_model() -> None:
@@ -419,4 +418,3 @@ def test_the_seed_itself_matches_the_documented_role_model() -> None:
     assert "settings:write" in owner and "settings:write" not in manager
     assert "billing:write" in owner and "billing:write" not in manager
     assert "settings:write" not in staff
-

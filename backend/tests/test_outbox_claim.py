@@ -305,12 +305,9 @@ def test_a_row_freed_by_the_reclaim_is_logged_for_ops(monkeypatch, caplog):
 # ---------------------------------------------------------------- DB-gated ---
 
 
-
 @pytest.fixture
 async def engine(db_url: str):
-    eng = create_async_engine(
-        db_url, pool_pre_ping=True, connect_args={"statement_cache_size": 0}
-    )
+    eng = create_async_engine(db_url, pool_pre_ping=True, connect_args={"statement_cache_size": 0})
     try:
         yield eng
     finally:
@@ -502,9 +499,9 @@ async def test_relay_that_dies_mid_batch_does_not_strand_its_other_rows(
     mine = {first, second}
     assert [i for i in bus2.ids() if i in mine] == [second]
     assert [i for i in bus.ids() if i in mine] == [first]
-    assert sorted(i for i in bus.ids() + bus2.ids() if i in mine) == sorted(
-        [first, second]
-    ), "an event was published twice across the crash"
+    assert sorted(i for i in bus.ids() + bus2.ids() if i in mine) == sorted([first, second]), (
+        "an event was published twice across the crash"
+    )
 
 
 async def test_two_concurrent_relays_never_work_the_same_row(
@@ -614,8 +611,7 @@ async def test_a_row_published_and_marked_done_is_never_republished(
     # Push it far past any lease and drain again with a fresh relay.
     async with factory() as s, s.begin():
         await s.execute(
-            text("UPDATE outbox_events SET created_at = now() - interval '2 hours' "
-                 "WHERE id = :i"),
+            text("UPDATE outbox_events SET created_at = now() - interval '2 hours' WHERE id = :i"),
             {"i": row_id},
         )
 
@@ -669,9 +665,7 @@ async def test_no_committed_row_is_left_pending_at_the_attempt_cap(
     definition, so the assertion is the invariant itself, not a behavior.
     """
     factory = relay_env["factory"]
-    at_cap = await relay_env["stage"](
-        1, age_seconds=900, status="pending", attempts=MAX_ATTEMPTS
-    )
+    at_cap = await relay_env["stage"](1, age_seconds=900, status="pending", attempts=MAX_ATTEMPTS)
     publishing_at_cap = await relay_env["stage"](
         1, age_seconds=900, status="publishing", attempts=MAX_ATTEMPTS
     )
@@ -696,8 +690,11 @@ async def test_no_committed_row_is_left_pending_at_the_attempt_cap(
         ).mappings()
         state = {r.id: (r.status, r.attempts) for r in rows}
 
-    stranded_rows = [i for i, (status, attempts) in state.items()
-                     if status == "pending" and attempts >= MAX_ATTEMPTS]
+    stranded_rows = [
+        i
+        for i, (status, attempts) in state.items()
+        if status == "pending" and attempts >= MAX_ATTEMPTS
+    ]
     assert not stranded_rows, (
         f"rows left 'pending' at the cap, invisible to every statement: "
         f"{ {i: state[i] for i in stranded_rows} }"

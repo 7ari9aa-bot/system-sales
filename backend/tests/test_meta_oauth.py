@@ -28,8 +28,7 @@ IG_ID = "17841400000000001"
 LONG_LIVED_TOKEN = "long-lived-user-token"
 
 
-def _fake_settings(*, config_id: str = "", redirect_uri: str = REDIRECT_URI,
-                   api_base: str = ""):
+def _fake_settings(*, config_id: str = "", redirect_uri: str = REDIRECT_URI, api_base: str = ""):
     """The REAL Settings with the Meta OAuth fields overridden — a bare
     namespace breaks as soon as any code touches another attribute."""
     from app.core.config import get_settings
@@ -47,9 +46,7 @@ def _app(db, tenant_ctx, *, permission: bool = True):
     app = create_app()
     ctx = TenantContext(
         session=db,
-        user=AuthedUser(
-            id=tenant_ctx.user.id, tenant_id=tenant_ctx.tenant_id, role_code="owner"
-        ),
+        user=AuthedUser(id=tenant_ctx.user.id, tenant_id=tenant_ctx.tenant_id, role_code="owner"),
         tenant_id=tenant_ctx.tenant_id,
         role_code="owner",
         permission_codes={"settings:write"} if permission else set(),
@@ -85,9 +82,7 @@ def _graph_handler(
                     200, json={"access_token": LONG_LIVED_TOKEN, "token_type": "bearer"}
                 )
             if fail_exchange:
-                return httpx.Response(
-                    400, json={"error": {"message": "bad code", "code": 100}}
-                )
+                return httpx.Response(400, json={"error": {"message": "bad code", "code": 100}})
             body = {"access_token": user_token, "token_type": "bearer"}
             if long_lived:
                 # Short-lived user tokens carry expires_in — the signal the
@@ -121,9 +116,7 @@ def _graph_handler(
         if f"/{PAGE_ID}" in url:
             # the ownership verification GET (fields=id,name)
             return httpx.Response(200, json={"id": PAGE_ID, "name": "Fihrist Page"})
-        return httpx.Response(
-            404, json={"error": f"unexpected graph call: {url[:160]}"}
-        )
+        return httpx.Response(404, json={"error": f"unexpected graph call: {url[:160]}"})
 
     return handler
 
@@ -169,12 +162,8 @@ async def test_start_fails_loudly_when_unconfigured(db, tenant_ctx, monkeypatch)
     assert "META_APP_ID" in response.json()["error"]["message"]
 
 
-async def test_start_derives_the_redirect_uri_from_the_api_base_url(
-    db, tenant_ctx, monkeypatch
-):
-    _config_patch(
-        monkeypatch, redirect_uri="", api_base="https://api.example.com"
-    )
+async def test_start_derives_the_redirect_uri_from_the_api_base_url(db, tenant_ctx, monkeypatch):
+    _config_patch(monkeypatch, redirect_uri="", api_base="https://api.example.com")
     app = _app(db, tenant_ctx)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         response = await c.get("/api/v1/integrations/meta/oauth/start?provider=messenger")
@@ -203,9 +192,7 @@ async def test_start_returns_the_meta_dialog_url(db, tenant_ctx, monkeypatch):
     assert f"redirect_uri={quote(REDIRECT_URI, safe='')}" in url
     assert "scope=pages_show_list" in url and "pages_messaging" in url
     assert "response_type=code" in url
-    state = dict(
-        pair.split("=", 1) for pair in url.split("?", 1)[1].split("&")
-    )["state"]
+    state = dict(pair.split("=", 1) for pair in url.split("?", 1)[1].split("&"))["state"]
     claims = decode_token(state)
     assert claims["type"] == "oauth_state"
     assert claims["tenant_id"] == str(tenant_ctx.tenant_id)
@@ -218,8 +205,7 @@ async def test_start_requests_instagram_message_scopes(db, tenant_ctx, monkeypat
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         response = await c.get("/api/v1/integrations/meta/oauth/start?provider=instagram")
     query = dict(
-        pair.split("=", 1)
-        for pair in response.json()["authorize_url"].split("?", 1)[1].split("&")
+        pair.split("=", 1) for pair in response.json()["authorize_url"].split("?", 1)[1].split("&")
     )
     scope = query["scope"]
     # instagram_manage_messages is the REAL permission; instagram_messaging
@@ -270,9 +256,7 @@ async def test_callback_connects_the_page_and_subscribes_its_webhook(
     assert "messenger" in response.headers["location"]
 
     # The page token is stored as the channel credential (encrypted at rest).
-    row = (
-        await db.execute(sa_select_integration())
-    ).scalar_one()
+    row = (await db.execute(sa_select_integration())).scalar_one()
     assert row.provider == "messenger"
     assert row.status == "active"
     stored = decrypt_credentials_dict(row.credentials)
@@ -294,9 +278,7 @@ async def test_callback_exchanges_for_a_long_lived_token(
         {"tenant_id": str(tenant_ctx.tenant_id), "provider": "messenger"},
     )
     app = _app(db, tenant_ctx)
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as c:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         response = await c.get(
             "/api/v1/integrations/meta/oauth/callback",
             params={"code": "auth-code-1", "state": state},
@@ -325,9 +307,7 @@ async def test_callback_connects_instagram_via_the_ig_account(
         {"tenant_id": str(tenant_ctx.tenant_id), "provider": "instagram"},
     )
     app = _app(db, tenant_ctx)
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as c:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         response = await c.get(
             "/api/v1/integrations/meta/oauth/callback",
             params={"code": "auth-code-1", "state": state},
@@ -359,9 +339,7 @@ async def test_callback_reports_when_no_ig_account_is_linked(
         {"tenant_id": str(tenant_ctx.tenant_id), "provider": "instagram"},
     )
     app = _app(db, tenant_ctx)
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as c:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         response = await c.get(
             "/api/v1/integrations/meta/oauth/callback",
             params={"code": "auth-code-1", "state": state},
@@ -383,9 +361,7 @@ async def test_callback_surfaces_meta_page_listing_errors(
         {"tenant_id": str(tenant_ctx.tenant_id), "provider": "messenger"},
     )
     app = _app(db, tenant_ctx)
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as c:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         response = await c.get(
             "/api/v1/integrations/meta/oauth/callback",
             params={"code": "auth-code-1", "state": state},
@@ -410,9 +386,7 @@ async def test_callback_surfaces_a_rejected_code(
         {"tenant_id": str(tenant_ctx.tenant_id), "provider": "messenger"},
     )
     app = _app(db, tenant_ctx)
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as c:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         response = await c.get(
             "/api/v1/integrations/meta/oauth/callback",
             params={"code": "dead-code", "state": state},
@@ -431,9 +405,7 @@ async def test_callback_surfaces_meta_dialog_errors(
     calls: list[str] = []
     _patch_graph(monkeypatch, _graph_handler(calls))
     app = _app(db, tenant_ctx)
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as c:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         response = await c.get(
             "/api/v1/integrations/meta/oauth/callback",
             params={
@@ -483,9 +455,7 @@ async def test_callback_refuses_an_expired_state(
         {"tenant_id": str(tenant_ctx.tenant_id), "provider": "messenger"},
         ttl_seconds=-1,
     )
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as c:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         response = await c.get(
             "/api/v1/integrations/meta/oauth/callback",
             params={"code": "x", "state": expired},
@@ -507,9 +477,7 @@ async def test_callback_refuses_state_with_a_foreign_provider(
         str(tenant_ctx.user.id),
         {"tenant_id": str(tenant_ctx.tenant_id), "provider": "whatsapp"},
     )
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as c:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         response = await c.get(
             "/api/v1/integrations/meta/oauth/callback",
             params={"code": "x", "state": state},

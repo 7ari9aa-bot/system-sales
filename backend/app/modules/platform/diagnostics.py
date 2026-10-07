@@ -133,9 +133,7 @@ class SystemDiagnosticsService:
                 else None
             )
             remediation = (
-                "قم بفحص استهلاك المعالج والذاكرة لقاعدة البيانات."
-                if latency > 800
-                else None
+                "قم بفحص استهلاك المعالج والذاكرة لقاعدة البيانات." if latency > 800 else None
             )
             return {
                 "id": "db_connection",
@@ -173,9 +171,7 @@ class SystemDiagnosticsService:
         """Check if alembic_version exists and holds a valid migration head."""
         try:
             row = (
-                await session.execute(
-                    text("SELECT version_num FROM alembic_version LIMIT 1")
-                )
+                await session.execute(text("SELECT version_num FROM alembic_version LIMIT 1"))
             ).scalar_one_or_none()
             if row is None:
                 return {
@@ -486,9 +482,7 @@ class SystemDiagnosticsService:
         }
 
     @classmethod
-    async def check_ai_engine(
-        cls, session: AsyncSession, tenant_id: uuid.UUID
-    ) -> dict[str, Any]:
+    async def check_ai_engine(cls, session: AsyncSession, tenant_id: uuid.UUID) -> dict[str, Any]:
         """Check AI Gateway, API keys, and active store agent."""
         settings = get_settings()
         provider = getattr(settings, "ai_provider_primary", "google")
@@ -590,8 +584,9 @@ class SystemDiagnosticsService:
         try:
             rows = (
                 await session.execute(
-                    select(Integration.provider, Integration.status, Integration.webhook_health)
-                    .where(Integration.tenant_id == tenant_id)
+                    select(
+                        Integration.provider, Integration.status, Integration.webhook_health
+                    ).where(Integration.tenant_id == tenant_id)
                 )
             ).all()
 
@@ -736,7 +731,10 @@ class SystemDiagnosticsService:
                 "status": "degraded",
                 "error": f"{type(exc).__name__}: {exc}",
                 "root_cause": "تعذر فحص اختلالات البيانات (طلبات أو مخزون سالب).",
-                "remediation": "تحقق من صحة جداول orders و inventory_balances قبل الاطمئنان للسلامة.",
+                "remediation": (
+                    "تحقق من صحة جداول orders و inventory_balances"
+                    " قبل الاطمئنان للسلامة."
+                ),
                 "metrics": {},
                 "timestamp": datetime.now(UTC).isoformat(),
             }
@@ -783,9 +781,7 @@ class SystemDiagnosticsService:
         }
 
     @classmethod
-    async def auto_remediate(
-        cls, session: AsyncSession, tenant_id: uuid.UUID
-    ) -> dict[str, Any]:
+    async def auto_remediate(cls, session: AsyncSession, tenant_id: uuid.UUID) -> dict[str, Any]:
         """One-click instant auto-remediation for common silent-failure conditions.
 
         - Reclaims stranded 'publishing' outbox events older than 5 minutes back to 'pending'.

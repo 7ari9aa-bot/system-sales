@@ -161,9 +161,7 @@ def _wire(monkeypatch, *, media_rows=(), bucket=None) -> _ErasureSession:
     async def _get_for_erasure(_session, _tenant_id, _customer_id):
         return _FakeCustomer()
 
-    monkeypatch.setattr(
-        CustomerService, "get_for_erasure", staticmethod(_get_for_erasure)
-    )
+    monkeypatch.setattr(CustomerService, "get_for_erasure", staticmethod(_get_for_erasure))
 
     def _no_search():
         # The chain already swallows this and appends a "failed" step; the point

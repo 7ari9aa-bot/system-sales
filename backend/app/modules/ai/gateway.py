@@ -47,8 +47,8 @@ BUDGET_ALERT_THRESHOLDS: tuple[int, ...] = (50, 80, 90, 100)
 # Both DIRECTIONS are priced: charging only output under-counts real spend,
 # because the prompt (history + knowledge + tools) is usually the larger half
 # of the tokens on a conversational turn.
-_COST_PER_INPUT_TOKEN = Decimal("0.0000005")   # $0.50 / 1M tokens
-_COST_PER_OUTPUT_TOKEN = Decimal("0.000002")   # $2.00 / 1M tokens
+_COST_PER_INPUT_TOKEN = Decimal("0.0000005")  # $0.50 / 1M tokens
+_COST_PER_OUTPUT_TOKEN = Decimal("0.000002")  # $2.00 / 1M tokens
 
 # How long a reservation is held before a sweep may reclaim it. A run that
 # crashes between reserve and settle must not hold budget forever.
@@ -93,6 +93,7 @@ def _redact_pii(messages: list[dict]) -> list[dict]:
         else:
             redacted.append(msg)
     return redacted
+
 
 _CENT = Decimal("0.00000001")
 
@@ -253,9 +254,7 @@ def _default_cap() -> Decimal:
     Read from settings so the ceiling can be changed without a deploy; the
     setting's default preserves the previous constant exactly.
     """
-    configured = getattr(
-        get_settings(), "ai_monthly_budget_cap_default", MONTHLY_BUDGET_CAP
-    )
+    configured = getattr(get_settings(), "ai_monthly_budget_cap_default", MONTHLY_BUDGET_CAP)
     try:
         return Decimal(str(configured))
     except (ArithmeticError, ValueError):
@@ -309,15 +308,19 @@ async def _raise_budget_alerts(
     # joins over tenant-scoped tables and runs under the tenant GUC, so it is
     # exactly as safe as the ORM version, without the coupling.
     owner_ids = (
-        await session.execute(
-            text(
-                "SELECT tu.user_id FROM tenant_users tu "
-                "JOIN roles r ON r.id = tu.role_id "
-                "WHERE tu.tenant_id = :tenant_id AND r.code = 'owner'"
-            ),
-            {"tenant_id": str(tenant_id)},
+        (
+            await session.execute(
+                text(
+                    "SELECT tu.user_id FROM tenant_users tu "
+                    "JOIN roles r ON r.id = tu.role_id "
+                    "WHERE tu.tenant_id = :tenant_id AND r.code = 'owner'"
+                ),
+                {"tenant_id": str(tenant_id)},
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     if not owner_ids:
         return
 
@@ -329,10 +332,7 @@ async def _raise_budget_alerts(
             owner_id,
             kind="ai_budget_threshold",
             title="AI budget threshold reached",
-            body=(
-                f"AI spend has reached {ratio:.0f}% of the monthly cap "
-                f"({committed} of {cap})."
-            ),
+            body=(f"AI spend has reached {ratio:.0f}% of the monthly cap ({committed} of {cap})."),
             payload={
                 "threshold": threshold,
                 "ratio": str(ratio.quantize(Decimal("0.01"))),
@@ -395,16 +395,20 @@ async def reserve_budget(
     from app.modules.ai.models import AIBudgetReservation, BudgetPolicy
 
     policies = (
-        await session.execute(
-            sa_select(BudgetPolicy)
-            .where(
-                BudgetPolicy.tenant_id == tenant_id,
-                BudgetPolicy.period == "monthly",
+        (
+            await session.execute(
+                sa_select(BudgetPolicy)
+                .where(
+                    BudgetPolicy.tenant_id == tenant_id,
+                    BudgetPolicy.period == "monthly",
+                )
+                # agent-specific policies win over tenant-level ones
+                .order_by(BudgetPolicy.agent_id.is_(None))
             )
-            # agent-specific policies win over tenant-level ones
-            .order_by(BudgetPolicy.agent_id.is_(None))
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     cap, on_exceed = _resolve_cap(list(policies), agent_id)
 
     if cap <= 0:
@@ -434,7 +438,6 @@ async def reserve_budget(
                 "cap": str(cap),
             },
         )
-
 
     if daily_cap > 0 and day_spend + estimate >= daily_cap:
         _on_budget_exceeded(
@@ -472,15 +475,19 @@ async def enforce_budget(
     from app.modules.ai.models import BudgetPolicy
 
     policies = (
-        await session.execute(
-            sa_select(BudgetPolicy)
-            .where(
-                BudgetPolicy.tenant_id == tenant_id,
-                BudgetPolicy.period == "monthly",
+        (
+            await session.execute(
+                sa_select(BudgetPolicy)
+                .where(
+                    BudgetPolicy.tenant_id == tenant_id,
+                    BudgetPolicy.period == "monthly",
+                )
+                .order_by(BudgetPolicy.agent_id.is_(None))
             )
-            .order_by(BudgetPolicy.agent_id.is_(None))
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     cap, on_exceed = _resolve_cap(list(policies), agent_id)
 
     spend = await _month_spend(session, tenant_id)
@@ -571,9 +578,8 @@ class AIGateway:
         )
         if not fairness_ok:
             from app.core.errors import ValidationError as _VE
-            raise _VE(
-                "tenant AI token fairness budget exhausted — daily limit reached"
-            )
+
+            raise _VE("tenant AI token fairness budget exhausted — daily limit reached")
 
         # §43: data-egress policy — is this tenant allowed to send data to
         # this provider/model? This is NOT authorization (the entitlement
@@ -709,10 +715,7 @@ class AIGateway:
         if egress_decision.redact_required:
             # §43: redact PII in embedding texts too — embeddings carry
             # customer text to a provider, so the same gate applies.
-            texts = [
-                _redact_pii([{"role": "user", "content": t}])[0]["content"]
-                for t in texts
-            ]
+            texts = [_redact_pii([{"role": "user", "content": t}])[0]["content"] for t in texts]
             data_class = classify_data(texts)
             egress_decision = await AIProviderPolicyService.evaluate(
                 session,

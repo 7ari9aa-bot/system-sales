@@ -57,9 +57,7 @@ class Journey(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
 
     __tablename__ = "journeys"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid7
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid7)
     name: Mapped[str] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text)
     # Entry trigger: {event, filters} — e.g. {event: "customer.created"}
@@ -69,9 +67,7 @@ class Journey(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     # allowed: draft | active | paused | archived
     status: Mapped[str] = mapped_column(String(15), server_default="draft")
 
-    __table_args__ = (
-        Index("ix_journeys_tenant_status", "tenant_id", "status"),
-    )
+    __table_args__ = (Index("ix_journeys_tenant_status", "tenant_id", "status"),)
 
 
 class JourneyRun(TenantMixin, TimestampMixin, Base):
@@ -79,9 +75,7 @@ class JourneyRun(TenantMixin, TimestampMixin, Base):
 
     __tablename__ = "journey_runs"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid7
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid7)
     journey_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("journeys.id", ondelete="CASCADE")
     )
@@ -89,15 +83,9 @@ class JourneyRun(TenantMixin, TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("customers.id", ondelete="CASCADE")
     )
     current_step: Mapped[int] = mapped_column(Integer, server_default="0")
-    status: Mapped[str] = mapped_column(
-        String(20), server_default="pending"
-    )
-    started_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    status: Mapped[str] = mapped_column(String(20), server_default="pending")
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Execution context: variables, results from previous steps
     context: Mapped[dict] = mapped_column(JSONB, server_default="{}")
     last_error: Mapped[str | None] = mapped_column(Text)
@@ -177,9 +165,7 @@ class JourneyExecutionService:
             raise ValidationError(f"run is {run.status}, cannot process")
 
         journey = (
-            await session.execute(
-                select(Journey).where(Journey.id == run.journey_id)
-            )
+            await session.execute(select(Journey).where(Journey.id == run.journey_id))
         ).scalar_one()
 
         steps = journey.steps or []
@@ -192,22 +178,14 @@ class JourneyExecutionService:
 
         try:
             if step_type == JourneyStepType.DELAY.value:
-                await JourneyExecutionService._handle_delay(
-                    session, tenant_id, run, config
-                )
+                await JourneyExecutionService._handle_delay(session, tenant_id, run, config)
             elif step_type == JourneyStepType.MESSAGE.value:
-                await JourneyExecutionService._handle_message(
-                    session, tenant_id, run, config
-                )
+                await JourneyExecutionService._handle_message(session, tenant_id, run, config)
                 await JourneyExecutionService._advance(session, run)
             elif step_type == JourneyStepType.CONDITION.value:
-                await JourneyExecutionService._handle_condition(
-                    session, tenant_id, run, config
-                )
+                await JourneyExecutionService._handle_condition(session, tenant_id, run, config)
             elif step_type == JourneyStepType.AI_ACTION.value:
-                await JourneyExecutionService._handle_ai_action(
-                    session, tenant_id, run, config
-                )
+                await JourneyExecutionService._handle_ai_action(session, tenant_id, run, config)
                 await JourneyExecutionService._advance(session, run)
             elif step_type == JourneyStepType.END.value:
                 return await JourneyExecutionService._complete(session, run)

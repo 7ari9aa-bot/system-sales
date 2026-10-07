@@ -44,8 +44,7 @@ def build_findings(
         left = store.facts[comparison.left_fact_id]
         direction = "زاد" if comparison.delta > 0 else "انخفض"
         statement = (
-            f"{comparison.label}: القيمة {direction} "
-            f"بمقدار {abs(comparison.delta_pct):.1f}%"
+            f"{comparison.label}: القيمة {direction} بمقدار {abs(comparison.delta_pct):.1f}%"
         )
         level, reasons = compute_confidence(
             finding_type="DERIVED",
@@ -69,7 +68,8 @@ def build_findings(
 
     for ref, driver in store.drivers.items():
         dominant = (
-            "عدد الطلبات" if abs(driver.orders_contribution) >= abs(driver.aov_contribution)
+            "عدد الطلبات"
+            if abs(driver.orders_contribution) >= abs(driver.aov_contribution)
             else "متوسط قيمة الطلب"
         )
         statement = (
@@ -79,8 +79,7 @@ def build_findings(
         level, reasons = compute_confidence(
             finding_type="DRIVER",
             relationship=Relationship.OBSERVED,
-            maturity_status=maturity_status
-            or next(iter(store.facts.values())).maturity_status,
+            maturity_status=maturity_status or next(iter(store.facts.values())).maturity_status,
             sample_size=sample_size,
             data_stale=data_stale,
         )

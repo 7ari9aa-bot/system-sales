@@ -267,9 +267,7 @@ async def test_an_in_process_call_omitting_every_default_binds_values(
     assert thresholds == [analytics_service.LOW_STOCK_THRESHOLD]
     assert [type(value) for value in thresholds] == [int]
 
-    windows = {
-        (since, until) for _name, _tenant, since, until, _zone in _money_calls(calls)
-    }
+    windows = {(since, until) for _name, _tenant, since, until, _zone in _money_calls(calls)}
     assert len(windows) == 1, f"one call bound {len(windows)} windows: {windows}"
     since, until = windows.pop()
     assert until - since == timedelta(days=30)
@@ -342,10 +340,7 @@ async def test_overview_delegates_every_figure_to_a_canonical_reader(
     }
     # One window, one zone, used by both money readers — a series bucketed on a
     # different zone than the summary cannot be reconciled against it.
-    windows = {
-        (since, until, zone)
-        for _name, _t, since, until, zone in _money_calls(calls)
-    }
+    windows = {(since, until, zone) for _name, _t, since, until, zone in _money_calls(calls)}
     assert len(windows) == 1
     _since, _until, zone = windows.pop()
     assert zone == "Africa/Cairo"
@@ -574,8 +569,7 @@ async def test_overview_reports_seeded_money_in_its_named_families(
     assert payload["gross_aov"] == "100.00"
     assert payload["net_aov"] == "60.00"
     rows = [
-        (row["day"], row["gross_revenue"], row["net_revenue"])
-        for row in payload["daily_series"]
+        (row["day"], row["gross_revenue"], row["net_revenue"]) for row in payload["daily_series"]
     ]
     assert rows == [("2026-03-10", "100.00", "60.00")]
     assert payload["currency"]

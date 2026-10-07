@@ -39,9 +39,7 @@ def _wa_payload_with_messages(messages: list[dict]) -> dict:
                     {
                         "value": {
                             "metadata": {"phone_number_id": "PNID123"},
-                            "contacts": [
-                                {"wa_id": "201234567890", "profile": {"name": "أحمد"}}
-                            ],
+                            "contacts": [{"wa_id": "201234567890", "profile": {"name": "أحمد"}}],
                             "messages": messages,
                         }
                     }
@@ -268,8 +266,7 @@ def test_whatsapp_verify_handshake(monkeypatch):
     )
     assert challenge == "CH123"
     assert (
-        whatsapp_adapter.verify_request({"hub.mode": "subscribe", "hub.verify_token": "x"})
-        is None
+        whatsapp_adapter.verify_request({"hub.mode": "subscribe", "hub.verify_token": "x"}) is None
     )
 
 

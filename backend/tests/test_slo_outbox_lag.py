@@ -130,9 +130,7 @@ class _RecordingSession:
                 bare = {r for r in _column_refs(sql) if "." not in r}
                 ghost = sorted(bare - _outbox_columns_from_the_model())
                 if ghost:
-                    raise UndefinedColumn(
-                        f'column "{ghost[0]}" does not exist\nLINE 1: {sql}'
-                    )
+                    raise UndefinedColumn(f'column "{ghost[0]}" does not exist\nLINE 1: {sql}')
             return _StubResult(self._lag_seconds, (1, 1))
         return _StubResult(0, (10, 10))
 
@@ -256,9 +254,7 @@ async def test_outbox_lag_ages_the_oldest_unpublished_event_not_the_newest() -> 
         f"lag is measured from MAX(created_at) — the NEWEST event, which "
         f"reports a healthy relay over an unstuck backlog: {sql}"
     )
-    assert "min" in lagged, (
-        f"lag must age the OLDEST un-published event (MIN(created_at)): {sql}"
-    )
+    assert "min" in lagged, f"lag must age the OLDEST un-published event (MIN(created_at)): {sql}"
 
 
 async def test_the_backlog_is_selected_by_status_not_a_missing_relayed_at() -> None:
@@ -331,4 +327,3 @@ async def test_the_bulk_measurement_no_longer_swallows_the_outbox_failure() -> N
         f"(its except-Exception mask): {outbox}"
     )
     assert outbox.window_since, "an unmeasured SLO has no window; a measured one must"
-

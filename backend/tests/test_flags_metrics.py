@@ -105,17 +105,13 @@ async def test_role_scoped_row_only_matches_its_role() -> None:
     assert (
         await FeatureFlagService.is_enabled(session, TENANT, FEATURE, role_code="manager") is True
     )
-    assert (
-        await FeatureFlagService.is_enabled(session, TENANT, FEATURE, role_code="staff") is False
-    )
+    assert await FeatureFlagService.is_enabled(session, TENANT, FEATURE, role_code="staff") is False
     assert await FeatureFlagService.is_enabled(session, TENANT, FEATURE) is False
 
 
 async def test_precedence_order_is_absent_disabled_scope_then_rollout() -> None:
     # 1. absent -> default
-    absent = await FeatureFlagService.is_enabled(
-        _FakeSession(None), TENANT, FEATURE, default=True
-    )
+    absent = await FeatureFlagService.is_enabled(_FakeSession(None), TENANT, FEATURE, default=True)
     assert absent is True
     # 2. disabled beats a matching scope and a 100% rollout
     disabled = _FakeSession(_flag(enabled=False, role_code="manager", rollout_percent=100))
@@ -159,9 +155,7 @@ async def test_rollout_is_deterministic_for_a_stable_key() -> None:
 
 async def test_missing_stable_key_falls_back_to_tenant_level_bucketing() -> None:
     session = _FakeSession(_flag(rollout_percent=37))
-    answers = {
-        await FeatureFlagService.is_enabled(session, TENANT, FEATURE) for _ in range(20)
-    }
+    answers = {await FeatureFlagService.is_enabled(session, TENANT, FEATURE) for _ in range(20)}
     assert len(answers) == 1  # one stable, tenant-wide decision
     explicit = await FeatureFlagService.is_enabled(session, TENANT, FEATURE, stable_key="")
     assert answers == {explicit}
@@ -180,7 +174,9 @@ async def test_set_flag_rejects_out_of_range_percent_before_touching_db(percent:
 
 
 @pytest.mark.parametrize("percent", [None, -5, 150, "100"])
-async def test_a_stored_percent_the_write_paths_cannot_produce_fails_closed(percent: object) -> None:
+async def test_a_stored_percent_the_write_paths_cannot_produce_fails_closed(
+    percent: object,
+) -> None:
     """Reading an invalid ``rollout_percent`` must be OFF, never widened.
 
     Fail-first: against the pre-fix evaluation, a corrupt ``150`` reached the
@@ -336,9 +332,7 @@ async def test_tenant_definitions_route_reports_history_newest_version_first() -
     the superseded version away, which the payload order does prove.
     """
     session = _RowsSession([])
-    await list_tenant_metric_definitions(
-        SimpleNamespace(session=session, tenant_id=TENANT)
-    )
+    await list_tenant_metric_definitions(SimpleNamespace(session=session, tenant_id=TENANT))
     sql = str(session.statements[0].compile())
     order_by = sql.split("ORDER BY", 1)
     assert len(order_by) == 2, "the definitions read has no ORDER BY"
@@ -346,10 +340,12 @@ async def test_tenant_definitions_route_reports_history_newest_version_first() -
     assert "version DESC" in order_by[1], "versions are not newest-first"
 
     payload = await list_tenant_metric_definitions(
-        _ctx([
-            _definition(version=2, definition="current rule"),
-            _definition(version=1, definition="retired rule"),
-        ])
+        _ctx(
+            [
+                _definition(version=2, definition="current rule"),
+                _definition(version=1, definition="retired rule"),
+            ]
+        )
     )
 
     assert [item["version"] for item in payload["items"]] == [2, 1]

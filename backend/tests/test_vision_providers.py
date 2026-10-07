@@ -116,9 +116,7 @@ async def test_embed_dashscope_error_body_is_surfaced():
 async def test_embed_empty_contents_and_blank_item_are_rejected():
     provider = MultimodalEmbeddingProvider()
     with pytest.raises(ValueError, match="empty"):
-        await provider.embed(
-            base_url=DASH_URL, api_key="k", model="m", contents=[], _client=None
-        )
+        await provider.embed(base_url=DASH_URL, api_key="k", model="m", contents=[], _client=None)
     body = _dash_body([[0.1] * 768])
     async with _client(lambda request: httpx.Response(200, json=body)) as client:
         with pytest.raises(ValueError, match="text or an image"):

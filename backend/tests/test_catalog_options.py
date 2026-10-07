@@ -64,9 +64,7 @@ async def test_add_variant_populates_the_option_graph(db, tenant_ctx):
     )
     graph = await _variant_graph(db, tenant_ctx, variant.id)
     assert graph == {"size": "L", "color": "أسود"}
-    pairs = await CatalogService.list_product_options(
-        db, tenant_ctx.tenant_id, product.id
-    )
+    pairs = await CatalogService.list_product_options(db, tenant_ctx.tenant_id, product.id)
     by_name = {o.name: sorted(v.value for v in vs) for o, vs in pairs}
     assert by_name == {"color": ["أسود"], "size": ["L"]}
 
@@ -98,12 +96,8 @@ async def test_duplicate_option_name_on_product_conflicts(db, tenant_ctx):
 
 async def test_duplicate_option_value_conflicts(db, tenant_ctx):
     product = await _product(db, tenant_ctx)
-    option = await CatalogService.add_option(
-        db, tenant_ctx.tenant_id, product.id, "size"
-    )
-    await CatalogService.add_option_value(
-        db, tenant_ctx.tenant_id, option.id, "L"
-    )
+    option = await CatalogService.add_option(db, tenant_ctx.tenant_id, product.id, "size")
+    await CatalogService.add_option_value(db, tenant_ctx.tenant_id, option.id, "L")
     with pytest.raises(ConflictError):
         await CatalogService.add_option_value(db, tenant_ctx.tenant_id, option.id, " L ")
 
@@ -114,9 +108,7 @@ async def test_empty_option_parts_are_refused(db, tenant_ctx):
         db, tenant_ctx.tenant_id, product.id, title="x", price="10.00"
     )
     with pytest.raises(ValidationError):
-        await CatalogService.set_variant_options(
-            db, tenant_ctx.tenant_id, variant.id, {"  ": "M"}
-        )
+        await CatalogService.set_variant_options(db, tenant_ctx.tenant_id, variant.id, {"  ": "M"})
 
 
 async def test_image_binds_to_variant_of_same_product_only(db, tenant_ctx):
@@ -141,8 +133,6 @@ async def test_image_binds_to_variant_of_same_product_only(db, tenant_ctx):
         variant_id=variant.id,
     )
     bound = (
-        await db.execute(
-            select(ProductVariant.id).where(ProductVariant.id == image.variant_id)
-        )
+        await db.execute(select(ProductVariant.id).where(ProductVariant.id == image.variant_id))
     ).scalar_one()
     assert bound == variant.id

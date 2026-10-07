@@ -324,8 +324,12 @@ async def test_idempotency_replay_record_round_trips(monkeypatch: pytest.MonkeyP
     original = b'{"id":"abc","grand_total":"76.50"}'
 
     await idem.IdempotencyService.complete(
-        session, scope="http:tenant:route", key="k-1", status_code=201,
-        body=original, content_type="application/json",
+        session,
+        scope="http:tenant:route",
+        key="k-1",
+        status_code=201,
+        body=original,
+        content_type="application/json",
     )
     stored = record.response
     assert stored is not None
@@ -542,9 +546,7 @@ TABLES_NEVER_READ: dict[str, str] = {
     # Commerce Core v1.0 (§189): _issue_receipt writes the row at session close
     # and returns its id/number in the response — the row itself has no reader
     # until the receipt detail/print surface lands with the rest of POS.
-    "PosReceipt": (
-        "POS — written at session close; the receipt reader lands with POS."
-    ),
+    "PosReceipt": ("POS — written at session close; the receipt reader lands with POS."),
 }
 
 
@@ -797,7 +799,9 @@ async def test_metric_definitions_table_is_served_by_a_route() -> None:
     """
     marker = "ROW-ONLY-DEFINITION-F1EEDBACK"
     response, _ = await _drive(
-        "GET", "/api/v1/platform/metrics/definitions", [_metric_definition(marker)],
+        "GET",
+        "/api/v1/platform/metrics/definitions",
+        [_metric_definition(marker)],
         permissions=set(),
     )
 
@@ -813,9 +817,7 @@ async def test_feature_flags_table_is_served_by_a_route() -> None:
     from app.modules.platform.models import FeatureFlag
 
     marker = "row-only.feature.marker"
-    row = FeatureFlag(
-        tenant_id=SERVED_TENANT, feature=marker, enabled=True, rollout_percent=100
-    )
+    row = FeatureFlag(tenant_id=SERVED_TENANT, feature=marker, enabled=True, rollout_percent=100)
     response, _ = await _drive("GET", "/api/v1/platform/flags", [row], permissions=set())
 
     assert response.status_code == 200, response.text

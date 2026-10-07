@@ -92,9 +92,7 @@ async def replay_unprocessed_published(
     async with get_sessionmaker()() as session:
         eligible = int(
             (
-                await session.execute(
-                    _COUNT_SQL, {"stream": stream, "consumer": consumer}
-                )
+                await session.execute(_COUNT_SQL, {"stream": stream, "consumer": consumer})
             ).scalar_one()
         )
         if not execute or eligible == 0:
@@ -116,9 +114,10 @@ async def replay_unprocessed_published(
                 params["cursor_id"] = cursor_id
 
             rows = (
-                await session.execute(
-                    sa.text(
-                        f"""
+                (
+                    await session.execute(
+                        sa.text(
+                            f"""
                         SELECT e.id, e.created_at, e.stream, e.payload, e.meta
                           FROM outbox_events e
                          WHERE {_ELIGIBLE}
@@ -126,10 +125,13 @@ async def replay_unprocessed_published(
                          ORDER BY e.created_at, e.id
                          LIMIT :limit
                         """
-                    ),
-                    params,
+                        ),
+                        params,
+                    )
                 )
-            ).mappings().all()
+                .mappings()
+                .all()
+            )
             if not rows:
                 break
 

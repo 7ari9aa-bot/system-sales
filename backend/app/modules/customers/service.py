@@ -108,9 +108,7 @@ class CustomerService:
     # ------------------------------------------------------------- lookup ----
 
     @staticmethod
-    async def _fetch(
-        session: AsyncSession, tenant_id: UUID, customer_id: UUID
-    ) -> Customer | None:
+    async def _fetch(session: AsyncSession, tenant_id: UUID, customer_id: UUID) -> Customer | None:
         """The raw row, dead or alive. Internal: callers use ``get``."""
         return (
             await session.execute(
@@ -138,8 +136,7 @@ class CustomerService:
             raise NotFoundError(f"customer {customer_id} not found (archived)")
         if customer.merged_into_customer_id is not None:
             raise ConflictError(
-                f"customer {customer_id} has been merged — resolve the canonical "
-                "customer first",
+                f"customer {customer_id} has been merged — resolve the canonical customer first",
                 details={"merged_into_customer_id": str(customer.merged_into_customer_id)},
             )
         return customer
@@ -221,9 +218,7 @@ class CustomerService:
             patterns |= {like_pattern(v) for v in email_candidates(term)}
             clauses = []
             for column in (Customer.name, Customer.phone, Customer.email):
-                clauses.extend(
-                    column.ilike(pattern, escape=LIKE_ESCAPE) for pattern in patterns
-                )
+                clauses.extend(column.ilike(pattern, escape=LIKE_ESCAPE) for pattern in patterns)
             stmt = stmt.where(or_(*clauses))
         if tag:
             stmt = stmt.where(
@@ -238,8 +233,7 @@ class CustomerService:
             )
         if before_created_at is not None and before_id is not None:
             stmt = stmt.where(
-                tuple_(Customer.created_at, Customer.id)
-                < tuple_(before_created_at, before_id)
+                tuple_(Customer.created_at, Customer.id) < tuple_(before_created_at, before_id)
             )
         stmt = stmt.order_by(Customer.created_at.desc(), Customer.id.desc())
         stmt = stmt.limit(limit).offset(offset)
@@ -270,9 +264,7 @@ class CustomerService:
         mark = func.jsonb_extract_path(Customer.extra, "data_quality", _BACKFILL_KEY)
         rows = (
             await session.execute(
-                select(
-                    Customer.id, Customer.name, Customer.phone, Customer.email, Customer.extra
-                )
+                select(Customer.id, Customer.name, Customer.phone, Customer.email, Customer.extra)
                 .where(
                     Customer.tenant_id == tenant_id,
                     mark.isnot(None),
@@ -350,8 +342,7 @@ class CustomerService:
         customer = await CustomerService.get(session, tenant_id, customer_id)
         if issue not in _ISSUE_MARK_KEYS:
             raise ValidationError(
-                f"unknown contact issue '{issue}'; openable issues are "
-                f"{sorted(_ISSUE_MARK_KEYS)}"
+                f"unknown contact issue '{issue}'; openable issues are {sorted(_ISSUE_MARK_KEYS)}"
             )
         open_issues = _open_contact_issues(_contact_flag(customer.extra))
         if issue not in open_issues:
@@ -381,9 +372,7 @@ class CustomerService:
         phone_before = customer.phone
         if resolution == "correct":
             if not phone:
-                raise ValidationError(
-                    f"resolution 'correct' for '{issue}' requires the real phone"
-                )
+                raise ValidationError(f"resolution 'correct' for '{issue}' requires the real phone")
             canonical = normalize_phone(phone)  # strict, like every human write
             clash = (
                 await session.execute(
@@ -480,8 +469,7 @@ class CustomerService:
             )
             if clash is not None:
                 raise ConflictError(
-                    f"customer with phone '{canonical_phone}' already exists "
-                    f"(id {clash.id})"
+                    f"customer with phone '{canonical_phone}' already exists (id {clash.id})"
                 )
         if email:
             clash = await CustomerService._resolve_live_by_contact(
@@ -489,8 +477,7 @@ class CustomerService:
             )
             if clash is not None:
                 raise ConflictError(
-                    f"customer with email '{canonical_email}' already exists "
-                    f"(id {clash.id})"
+                    f"customer with email '{canonical_email}' already exists (id {clash.id})"
                 )
 
         # ``source`` is provenance, not a column: it rides ``extra`` so the row
@@ -509,9 +496,7 @@ class CustomerService:
                 await session.flush()
         except IntegrityError:
             # Lost a phone race with a concurrent write (uq_customers_tenant_phone).
-            raise ConflictError(
-                f"customer with phone '{canonical_phone}' already exists"
-            ) from None
+            raise ConflictError(f"customer with phone '{canonical_phone}' already exists") from None
 
         if tags:
             for tag in (t.strip() for t in tags.split(",")):
@@ -632,9 +617,7 @@ class CustomerService:
             # The ORIGINAL spellings go in, not the canonical ones: the resolver
             # tries canonical first and then the typed form, which is what a row
             # written before this layer still holds.
-            phone_customer = await CustomerService._resolve_by_phone(
-                session, tenant_id, phone
-            )
+            phone_customer = await CustomerService._resolve_by_phone(session, tenant_id, phone)
             contact_customer = phone_customer or await CustomerService._resolve_by_email(
                 session, tenant_id, email
             )
@@ -679,8 +662,7 @@ class CustomerService:
             return customer
 
         raise ConflictError(
-            f"could not resolve identity {channel}:{external_id} after "
-            f"{_RESOLVE_ATTEMPTS} attempts"
+            f"could not resolve identity {channel}:{external_id} after {_RESOLVE_ATTEMPTS} attempts"
         )
 
     @staticmethod
@@ -757,22 +739,24 @@ class CustomerService:
     # -------------------------------------------------------- tags/notes ----
 
     @staticmethod
-    async def list_tags(
-        session: AsyncSession, tenant_id: UUID, customer_id: UUID
-    ) -> list[Tag]:
+    async def list_tags(session: AsyncSession, tenant_id: UUID, customer_id: UUID) -> list[Tag]:
         """Tags currently linked to a customer (empty when none)."""
         await CustomerService.get(session, tenant_id, customer_id)
         rows = (
-            await session.execute(
-                select(Tag)
-                .join(customer_tags, customer_tags.c.tag_id == Tag.id)
-                .where(
-                    customer_tags.c.customer_id == customer_id,
-                    Tag.tenant_id == tenant_id,
+            (
+                await session.execute(
+                    select(Tag)
+                    .join(customer_tags, customer_tags.c.tag_id == Tag.id)
+                    .where(
+                        customer_tags.c.customer_id == customer_id,
+                        Tag.tenant_id == tenant_id,
+                    )
+                    .order_by(Tag.name.asc())
                 )
-                .order_by(Tag.name.asc())
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return list(rows)
 
     @staticmethod
@@ -827,9 +811,7 @@ class CustomerService:
             delete(customer_tags).where(
                 customer_tags.c.customer_id == customer_id,
                 customer_tags.c.tag_id.in_(
-                    select(Tag.id).where(
-                        Tag.tenant_id == tenant_id, Tag.name == tag_name
-                    )
+                    select(Tag.id).where(Tag.tenant_id == tenant_id, Tag.name == tag_name)
                 ),
             )
         )
@@ -854,21 +836,23 @@ class CustomerService:
         return note
 
     @staticmethod
-    async def list_notes(
-        session: AsyncSession, tenant_id: UUID, customer_id: UUID
-    ) -> list[Note]:
+    async def list_notes(session: AsyncSession, tenant_id: UUID, customer_id: UUID) -> list[Note]:
         """Notes for a customer, newest first."""
         await CustomerService.get(session, tenant_id, customer_id)
         rows = (
-            await session.execute(
-                select(Note)
-                .where(
-                    Note.tenant_id == tenant_id,
-                    Note.customer_id == customer_id,
+            (
+                await session.execute(
+                    select(Note)
+                    .where(
+                        Note.tenant_id == tenant_id,
+                        Note.customer_id == customer_id,
+                    )
+                    .order_by(Note.created_at.desc())
                 )
-                .order_by(Note.created_at.desc())
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return list(rows)
 
     @staticmethod
@@ -878,15 +862,19 @@ class CustomerService:
         """Channel handles mapped to a customer."""
         await CustomerService.get(session, tenant_id, customer_id)
         rows = (
-            await session.execute(
-                select(CustomerIdentity)
-                .where(
-                    CustomerIdentity.tenant_id == tenant_id,
-                    CustomerIdentity.customer_id == customer_id,
+            (
+                await session.execute(
+                    select(CustomerIdentity)
+                    .where(
+                        CustomerIdentity.tenant_id == tenant_id,
+                        CustomerIdentity.customer_id == customer_id,
+                    )
+                    .order_by(CustomerIdentity.created_at.asc())
                 )
-                .order_by(CustomerIdentity.created_at.asc())
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return list(rows)
 
     @staticmethod
@@ -896,15 +884,19 @@ class CustomerService:
         """Delivery addresses on file for a customer."""
         await CustomerService.get(session, tenant_id, customer_id)
         rows = (
-            await session.execute(
-                select(Address)
-                .where(
-                    Address.tenant_id == tenant_id,
-                    Address.customer_id == customer_id,
+            (
+                await session.execute(
+                    select(Address)
+                    .where(
+                        Address.tenant_id == tenant_id,
+                        Address.customer_id == customer_id,
+                    )
+                    .order_by(Address.created_at.asc())
                 )
-                .order_by(Address.created_at.asc())
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return list(rows)
 
     @staticmethod
@@ -930,12 +922,16 @@ class CustomerService:
         if event_types:
             stmt = stmt.where(CustomerEvent.event_type.in_(event_types))
         rows = (
-            await session.execute(
-                stmt.order_by(
-                    CustomerEvent.created_at.desc(), CustomerEvent.id.desc()
-                ).limit(limit)
+            (
+                await session.execute(
+                    stmt.order_by(CustomerEvent.created_at.desc(), CustomerEvent.id.desc()).limit(
+                        limit
+                    )
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return list(rows)
 
     @staticmethod
@@ -1001,15 +997,19 @@ class IdentityMergeService:
         from sqlalchemy import text
 
         merged_open = (
-            await session.execute(
-                text(
-                    "SELECT id, channel FROM conversations "
-                    "WHERE tenant_id = :t AND customer_id = :mid AND status <> 'closed' "
-                    "FOR UPDATE"
-                ),
-                {"t": tenant_id, "mid": merged_away_customer_id},
+            (
+                await session.execute(
+                    text(
+                        "SELECT id, channel FROM conversations "
+                        "WHERE tenant_id = :t AND customer_id = :mid AND status <> 'closed' "
+                        "FOR UPDATE"
+                    ),
+                    {"t": tenant_id, "mid": merged_away_customer_id},
+                )
             )
-        ).mappings().all()
+            .mappings()
+            .all()
+        )
 
         for row in merged_open:
             canonical_open = (
@@ -1126,10 +1126,7 @@ class IdentityMergeService:
         # Remap every child table to the canonical customer.
         for table, fk in IdentityMergeService._REMAP_TABLES:
             await session.execute(
-                text(
-                    f"UPDATE {table} SET {fk} = :canonical "
-                    f"WHERE tenant_id = :t AND {fk} = :mid"
-                ),
+                text(f"UPDATE {table} SET {fk} = :canonical WHERE tenant_id = :t AND {fk} = :mid"),
                 {
                     "canonical": canonical_customer_id,
                     "t": tenant_id,
@@ -1188,10 +1185,7 @@ class IdentityMergeService:
         # the post-merge value from the row instead of hardcoding a literal.
         canonical_version = (
             await session.execute(
-                text(
-                    "SELECT version FROM customers "
-                    "WHERE tenant_id = :t AND id = :cid"
-                ),
+                text("SELECT version FROM customers WHERE tenant_id = :t AND id = :cid"),
                 {"t": tenant_id, "cid": canonical_customer_id},
             )
         ).scalar_one()
@@ -1289,6 +1283,7 @@ class IdentityMergeService:
 
 # ------------------------------------------- §137 read models ----
 
+
 class Customer360Query:
     """§137: read-optimized Customer 360 view.
 
@@ -1298,9 +1293,7 @@ class Customer360Query:
     """
 
     @staticmethod
-    async def get_360(
-        session: AsyncSession, tenant_id: UUID, customer_id: UUID
-    ) -> dict:
+    async def get_360(session: AsyncSession, tenant_id: UUID, customer_id: UUID) -> dict:
         """Return a dict with customer info, recent orders, conversations,
         lifetime_value, and memories — all read-optimized."""
         from sqlalchemy import text

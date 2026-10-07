@@ -42,9 +42,7 @@ async def test_result_carries_business_fields_only(monkeypatch):
     monkeypatch.setattr(pipeline, "rerank_candidates", fake_rerank)
     monkeypatch.setattr(pipeline, "verify_products", fake_verify)
 
-    result = await pipeline.run_vision_match(
-        None, uuid.uuid4(), image_url="https://c.test/q.png"
-    )
+    result = await pipeline.run_vision_match(None, uuid.uuid4(), image_url="https://c.test/q.png")
 
     dumped = repr(result.candidates)
     assert "http" not in dumped, "no URLs in the model-visible result (§12.3)"
@@ -71,9 +69,7 @@ async def test_reranker_failure_never_yields_high(monkeypatch):
     monkeypatch.setattr(pipeline, "rerank_candidates", boom)
     monkeypatch.setattr(pipeline, "verify_products", fake_verify)
 
-    result = await pipeline.run_vision_match(
-        None, uuid.uuid4(), image_url="https://c.test/q.png"
-    )
+    result = await pipeline.run_vision_match(None, uuid.uuid4(), image_url="https://c.test/q.png")
 
     # §12.2: capped at MEDIUM with the pipeline still delivering candidates
     # and their (negative) verification, rather than failing the turn.

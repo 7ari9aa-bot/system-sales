@@ -95,9 +95,7 @@ def test_customer_search_escapes_the_term_it_binds() -> None:
     from app.modules.customers.service import CustomerService
 
     session = _Capture()
-    asyncio.run(
-        CustomerService.list_customers(session, uuid.uuid4(), search=TERM, limit=10)
-    )
+    asyncio.run(CustomerService.list_customers(session, uuid.uuid4(), search=TERM, limit=10))
     sql, values = session.rendered()
     has_escape, patterns = _ilike_claims(sql, values)
 
@@ -266,8 +264,7 @@ def test_the_guards_fire_on_the_shapes_they_claim_to_catch() -> None:
 
     # Precision: a budget notice quotes a real percentage and must stay silent.
     prose = ast.parse(
-        "def notice(ratio, cap):\n"
-        "    return f'used {ratio:.0f}% of the monthly cap ({cap})'\n"
+        "def notice(ratio, cap):\n    return f'used {ratio:.0f}% of the monthly cap ({cap})'\n"
     )
     assert _offending_pattern_strings(prose) == []
 

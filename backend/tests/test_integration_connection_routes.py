@@ -401,13 +401,10 @@ async def test_disconnect_is_listed_in_the_gate_inventory() -> None:
     permission code (settings:write) and the route-count pin bumped with it."""
     from tests.test_customers_http_surface import GATED_WRITES
 
-    assert (
-        GATED_WRITES["POST /integrations/{integration_id}/disconnect"]
-        == "settings:write"
-    )
+    assert GATED_WRITES["POST /integrations/{integration_id}/disconnect"] == "settings:write"
 
 
-def _settings_ctx(db, tenant_ctx) -> TenantContext:
+def _settings_ctx(db, tenant_ctx):  # -> TenantContext
     from app.modules.identity.deps import AuthedUser, TenantContext
 
     return TenantContext(
@@ -427,8 +424,8 @@ def _settings_ctx(db, tenant_ctx) -> TenantContext:
 async def test_disconnect_moves_active_to_disconnected_and_audits(db, tenant_ctx) -> None:
     from sqlalchemy import func, select
 
-    from app.modules.customers.schemas import IntegrationDisconnectBody
     from app.modules.customers.router import disconnect_integration
+    from app.modules.customers.schemas import IntegrationDisconnectBody
     from app.modules.platform.models import AuditLog
 
     row = _channel_row(tenant_id=tenant_ctx.tenant_id)
@@ -436,9 +433,7 @@ async def test_disconnect_moves_active_to_disconnected_and_audits(db, tenant_ctx
     await db.flush()
     ctx = _settings_ctx(db, tenant_ctx)
 
-    result = await disconnect_integration(
-        row.id, IntegrationDisconnectBody(confirm=True), ctx
-    )
+    result = await disconnect_integration(row.id, IntegrationDisconnectBody(confirm=True), ctx)
 
     assert result["status"] == "disconnected"
     audit = (
@@ -453,9 +448,7 @@ async def test_disconnect_moves_active_to_disconnected_and_audits(db, tenant_ctx
 
     # Idempotent: a repeated confirmed disconnect is a no-op, not a second
     # audit row and not an illegal self-transition.
-    result = await disconnect_integration(
-        row.id, IntegrationDisconnectBody(confirm=True), ctx
-    )
+    result = await disconnect_integration(row.id, IntegrationDisconnectBody(confirm=True), ctx)
     assert result["status"] == "disconnected"
     audit = (
         await db.execute(
@@ -468,13 +461,11 @@ async def test_disconnect_moves_active_to_disconnected_and_audits(db, tenant_ctx
     assert audit == 1
 
 
-async def test_connect_writes_an_audit_entry_without_secrets(
-    db, tenant_ctx, monkeypatch
-) -> None:  # noqa: ANN001
+async def test_connect_writes_an_audit_entry_without_secrets(db, tenant_ctx, monkeypatch) -> None:  # noqa: ANN001
     from sqlalchemy import select
 
-    from app.modules.customers.schemas import IntegrationConnectBody
     from app.modules.customers.router import connect_integration
+    from app.modules.customers.schemas import IntegrationConnectBody
     from app.modules.platform.models import AuditLog
 
     async def allow_channel(_session, _tenant_id, _provider) -> None:
@@ -487,9 +478,7 @@ async def test_connect_writes_an_audit_entry_without_secrets(
         "app.modules.customers.router.EntitlementService.ensure_channel_allowed",
         staticmethod(allow_channel),
     )
-    monkeypatch.setattr(
-        "app.modules.customers.router.verify_channel_credentials", verify
-    )
+    monkeypatch.setattr("app.modules.customers.router.verify_channel_credentials", verify)
     ctx = _settings_ctx(db, tenant_ctx)
 
     result = await connect_integration(
@@ -538,9 +527,7 @@ async def test_verification_failure_demotes_the_channel_and_audits(
         raise ValidationError("The provider rejected these credentials.")
 
     monkeypatch.setattr(IntegrationCredentialsService, "decrypt", staticmethod(decrypt))
-    monkeypatch.setattr(
-        "app.modules.customers.router.verify_channel_credentials", reject
-    )
+    monkeypatch.setattr("app.modules.customers.router.verify_channel_credentials", reject)
     ctx = _settings_ctx(db, tenant_ctx)
 
     result = await verify_integration(row.id, ctx)

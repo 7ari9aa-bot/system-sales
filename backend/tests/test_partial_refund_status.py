@@ -145,11 +145,7 @@ def test_a_refunded_order_still_counts_as_an_order() -> None:
 
 
 def _operators(fn: ast.AST) -> str:
-    return "".join(
-        type(node.op).__name__
-        for node in ast.walk(fn)
-        if isinstance(node, ast.BinOp)
-    )
+    return "".join(type(node.op).__name__ for node in ast.walk(fn) if isinstance(node, ast.BinOp))
 
 
 # --------------------------------------------------------------- fixtures ----
@@ -182,18 +178,14 @@ async def _paid_order(
         customer.id,
         [{"variant_id": variant.id, "quantity": 1}],
     )
-    await OrderService.add_payment(
-        db, tenant_id, order.id, method="cash", amount=Decimal(amount)
-    )
+    await OrderService.add_payment(db, tenant_id, order.id, method="cash", amount=Decimal(amount))
     if completed:
         for status in ("processing", "shipped", "delivered", "completed"):
             await OrderService.change_status(db, tenant_id, order.id, status)
     return order
 
 
-async def _refund_part(
-    db: AsyncSession, tenant_id: uuid.UUID, order: Order, amount: str
-) -> None:
+async def _refund_part(db: AsyncSession, tenant_id: uuid.UUID, order: Order, amount: str) -> None:
     payment = (await OrderService.list_payments(db, tenant_id, order.id))[0]
     await OrderService.register_refund(
         db, tenant_id, order.id, payment.id, amount=Decimal(amount), reason="one line"
@@ -220,8 +212,7 @@ async def test_a_partially_refunded_order_reports_a_position_the_status_cannot(
     assert position["net_collected"] == Decimal("60.00")
     # Never a float, and never a currency the row did not name (§47).
     assert all(
-        isinstance(position[key], Decimal)
-        for key in ("gross_settled", "refunded", "net_collected")
+        isinstance(position[key], Decimal) for key in ("gross_settled", "refunded", "net_collected")
     )
     assert position["currency"] == order.currency
 
@@ -249,9 +240,9 @@ async def test_a_fully_refunded_and_a_partially_refunded_order_differ(
     # completed order closes it (that transition already exists and still fires).
     assert whole_position["order_status"] == "refunded"
     assert partial_position["order_status"] == "completed"
-    assert (
-        partial_position["refund_state"] != whole_position["refund_state"]
-    ), "the two orders report identically"
+    assert partial_position["refund_state"] != whole_position["refund_state"], (
+        "the two orders report identically"
+    )
 
 
 async def test_an_unreduced_completed_order_numbers_are_untouched(
@@ -270,9 +261,7 @@ async def test_an_unreduced_completed_order_numbers_are_untouched(
     assert position["net_collected"] == order.grand_total
 
 
-async def test_a_rejected_refund_gives_nothing_back(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_a_rejected_refund_gives_nothing_back(db: AsyncSession, tenant_ctx) -> None:
     """The stored-status design could not express this without a second write.
 
     A refund row that was rejected asserts no money left, so the position must
@@ -283,18 +272,14 @@ async def test_a_rejected_refund_gives_nothing_back(
     payment = (await OrderService.list_payments(db, tenant_id, order.id))[0]
     await _refund_part(db, tenant_id, order, "40.00")
     await db.flush()
-    assert (
-        await OrderService.refund_position(db, tenant_id, order.id)
-    )["refund_state"] == "partial"
+    assert (await OrderService.refund_position(db, tenant_id, order.id))[
+        "refund_state"
+    ] == "partial"
 
     from app.modules.orders.models import Refund
 
-    row = (
-        await db.execute(
-            Refund.__table__.update()
-            .where(Refund.payment_id == payment.id)
-            .values(status="rejected")
-        )
+    row = await db.execute(
+        Refund.__table__.update().where(Refund.payment_id == payment.id).values(status="rejected")
     )
     assert row.rowcount == 1
     await db.flush()
@@ -314,9 +299,7 @@ async def test_the_order_detail_route_carries_the_derived_position(
     await db.flush()
     app = _build_app(store=SessionStore(db), tenant_id=tenant_id, session=db)
 
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get(f"/api/v1/orders/{order.id}")
 
     assert response.status_code == 200, response.text

@@ -136,17 +136,21 @@ async def inspect_tenant_rls_invariants(
             violations.append(f"{name}: RLS is NOT forced (relforcerowsecurity=false)")
 
         policies_list = (
-            await session.execute(
-                text(
-                    """
+            (
+                await session.execute(
+                    text(
+                        """
                     SELECT policyname
                     FROM pg_policies
                     WHERE schemaname = 'public' AND tablename = :t
                     """
-                ),
-                {"t": name},
+                    ),
+                    {"t": name},
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         policy_names = set(policies_list)
         if "tenant_isolation" not in policy_names:
@@ -168,9 +172,7 @@ async def run_boot_reconciler(
     In secure environments (production/staging), raises BootReconcilerError on violation.
     """
     settings = get_settings()
-    should_fail_closed = (
-        fail_closed if fail_closed is not None else settings.is_secure_environment
-    )
+    should_fail_closed = fail_closed if fail_closed is not None else settings.is_secure_environment
 
     owns_engine = engine is None
     if engine is None:
@@ -197,9 +199,7 @@ async def run_boot_reconciler(
                 role_violation = await inspect_app_role_bypass_rls(session)
     except Exception as exc:
         if should_fail_closed:
-            raise BootReconcilerError(
-                f"Boot Reconciler database probe failed: {exc}"
-            ) from exc
+            raise BootReconcilerError(f"Boot Reconciler database probe failed: {exc}") from exc
         logger.warning("boot_reconciler.probe_skipped: %s", exc)
         return []
     finally:
@@ -211,8 +211,7 @@ async def run_boot_reconciler(
             violations.insert(0, role_violation)
         else:
             logger.warning(
-                "boot_reconciler.app_role_bypassrls (non-fatal outside secure "
-                "environments): %s",
+                "boot_reconciler.app_role_bypassrls (non-fatal outside secure environments): %s",
                 role_violation,
             )
 

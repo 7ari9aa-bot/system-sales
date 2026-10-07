@@ -130,9 +130,7 @@ async def test_a_permanent_event_goes_to_the_dlq() -> None:
 
 
 async def _set_state(db: AsyncSession, tenant_id, state: str) -> None:
-    tenant = (
-        await db.execute(select(Tenant).where(Tenant.id == tenant_id))
-    ).scalar_one()
+    tenant = (await db.execute(select(Tenant).where(Tenant.id == tenant_id))).scalar_one()
     tenant.lifecycle_state = state
     await db.flush()
 
@@ -143,9 +141,7 @@ async def test_an_active_tenant_is_not_deferred(db: AsyncSession, tenant_ctx):
 
 
 @pytest.mark.parametrize("state", ["suspended", "offboarding", "deleted"])
-async def test_a_non_operational_tenant_is_deferred(
-    db: AsyncSession, tenant_ctx, state: str
-):
+async def test_a_non_operational_tenant_is_deferred(db: AsyncSession, tenant_ctx, state: str):
     await _set_state(db, tenant_ctx.tenant_id, state)
 
     with pytest.raises(DeferredError) as exc:
@@ -161,9 +157,7 @@ async def test_an_unknown_state_is_deferred(db: AsyncSession, tenant_ctx):
         await defer_unless_tenant_allows(db, tenant_ctx.tenant_id, "allows_channels")
 
 
-async def test_the_capability_actually_selects_the_policy_field(
-    db: AsyncSession, tenant_ctx
-):
+async def test_the_capability_actually_selects_the_policy_field(db: AsyncSession, tenant_ctx):
     """Offboarding keeps data access but not channels — the gate must respect it."""
     await _set_state(db, tenant_ctx.tenant_id, "offboarding")
 

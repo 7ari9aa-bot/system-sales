@@ -118,19 +118,13 @@ class _FakeSession:
         if "is_active" in sql:
             # The gate selects a ROW now: (is_active, auth_version). The fake
             # mints the token without an auth_version claim, so 0 matches 0.
-            return _FakeResult(
-                SimpleNamespace(is_active=self.is_active, auth_version=0)
-            )
+            return _FakeResult(SimpleNamespace(is_active=self.is_active, auth_version=0))
         return _FakeResult(None)
 
 
-def _install_fake_sessions(
-    monkeypatch, *, is_active: bool, member, lifecycle_state
-) -> None:
+def _install_fake_sessions(monkeypatch, *, is_active: bool, member, lifecycle_state) -> None:
     def _factory() -> _FakeSession:
-        return _FakeSession(
-            is_active=is_active, member=member, lifecycle_state=lifecycle_state
-        )
+        return _FakeSession(is_active=is_active, member=member, lifecycle_state=lifecycle_state)
 
     # `SessionLocal` resolves through `app.core.db.__getattr__` -> get_sessionmaker,
     # so patching the factory is enough (same trick as the realtime SSE tests).
@@ -172,9 +166,7 @@ async def test_stream_refuses_a_deactivated_user(monkeypatch) -> None:
 
 async def test_stream_refuses_a_removed_member(monkeypatch) -> None:
     """An active user who is not a member of the token's tenant is refused."""
-    _install_fake_sessions(
-        monkeypatch, is_active=True, member=None, lifecycle_state="active"
-    )
+    _install_fake_sessions(monkeypatch, is_active=True, member=None, lifecycle_state="active")
 
     with pytest.raises(PermissionDeniedError) as exc:
         await stream_conversations(_request(), _token())
@@ -254,9 +246,7 @@ async def test_send_message_is_refused_without_conversations_write(monkeypatch) 
     _stub_message_services(monkeypatch)
     app = _send_app(permission_codes={"conversations:read"})
 
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post(
             f"/api/v1/conversations/{uuid.uuid4()}/messages", json={"body": "hi"}
         )
@@ -269,9 +259,7 @@ async def test_send_message_is_allowed_with_conversations_write(monkeypatch) -> 
     _stub_message_services(monkeypatch)
     app = _send_app(permission_codes={"conversations:write"})
 
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post(
             f"/api/v1/conversations/{uuid.uuid4()}/messages", json={"body": "hi"}
         )

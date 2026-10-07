@@ -46,9 +46,7 @@ class DRPolicy(Base, TimestampMixin):
 
     __tablename__ = "dr_policy"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        default=uuid7, primary_key=True
-    )
+    id: Mapped[uuid.UUID] = mapped_column(default=uuid7, primary_key=True)
     # Recovery Point Objective (minutes of acceptable data loss)
     rpo_minutes: Mapped[int] = mapped_column(server_default="5")
     # Recovery Time Objective (minutes to restore)
@@ -59,16 +57,15 @@ class DRPolicy(Base, TimestampMixin):
     pitr_window_days: Mapped[int] = mapped_column(server_default="7")
     # Restore test schedule (cron expression)
     restore_test_cron: Mapped[str] = mapped_column(
-        String(63), server_default="0 2 * * 0"  # weekly Sunday 2am
+        String(63),
+        server_default="0 2 * * 0",  # weekly Sunday 2am
     )
     # Last restore test result — TIMESTAMPTZ in the migration (f9b0c1d2e3f4),
     # so the model must declare timezone=True.
     last_restore_test_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    last_restore_test_status: Mapped[str | None] = mapped_column(
-        String(15), nullable=True
-    )
+    last_restore_test_status: Mapped[str | None] = mapped_column(String(15), nullable=True)
     # Notes / runbook reference
     runbook_ref: Mapped[str | None] = mapped_column(String(255))
 
@@ -78,18 +75,10 @@ class RestoreTestRun(Base, TimestampMixin):
 
     __tablename__ = "restore_test_runs"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        default=uuid7, primary_key=True
-    )
-    status: Mapped[str] = mapped_column(
-        String(15), server_default="scheduled"
-    )
-    started_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    id: Mapped[uuid.UUID] = mapped_column(default=uuid7, primary_key=True)
+    status: Mapped[str] = mapped_column(String(15), server_default="scheduled")
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Time to restore (seconds) — compared against RTO
     restore_duration_seconds: Mapped[int | None] = mapped_column(nullable=True)
     # Data loss (seconds) — compared against RPO
@@ -98,9 +87,7 @@ class RestoreTestRun(Base, TimestampMixin):
     checks: Mapped[dict] = mapped_column(JSONB, server_default="{}")
     errors: Mapped[str | None] = mapped_column(Text)
 
-    __table_args__ = (
-        Index("ix_restore_tests_status", "status"),
-    )
+    __table_args__ = (Index("ix_restore_tests_status", "status"),)
 
 
 class DRService:
@@ -109,9 +96,7 @@ class DRService:
     @staticmethod
     async def get_policy(session: AsyncSession) -> DRPolicy:
         """Get the DR policy (singleton)."""
-        policy = (
-            await session.execute(select(DRPolicy).limit(1))
-        ).scalar_one_or_none()
+        policy = (await session.execute(select(DRPolicy).limit(1))).scalar_one_or_none()
         if policy is None:
             policy = DRPolicy()
             session.add(policy)
@@ -164,9 +149,7 @@ class DRService:
         ``completed_at`` — the evidence, not the wall clock of the writer.
         """
         run = (
-            await session.execute(
-                select(RestoreTestRun).where(RestoreTestRun.id == run_id)
-            )
+            await session.execute(select(RestoreTestRun).where(RestoreTestRun.id == run_id))
         ).scalar_one_or_none()
         if run is None:
             raise NotFoundError("restore test run not found")
@@ -176,9 +159,7 @@ class DRService:
                 details={"run_id": str(run_id), "status": run.status},
             )
 
-        run.status = (
-            RestoreTestStatus.PASSED.value if passed else RestoreTestStatus.FAILED.value
-        )
+        run.status = RestoreTestStatus.PASSED.value if passed else RestoreTestStatus.FAILED.value
         run.completed_at = datetime.now(UTC)
         run.restore_duration_seconds = restore_duration_seconds
         run.data_loss_seconds = data_loss_seconds

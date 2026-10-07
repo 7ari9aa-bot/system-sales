@@ -342,8 +342,12 @@ class EvidenceService:
         ]
         effective = dedupe_triples(
             [
-                (row.source or "", row.content_hash, str(row.fact_id),
-                 "" if row.resource_version is None else str(row.resource_version))
+                (
+                    row.source or "",
+                    row.content_hash,
+                    str(row.fact_id),
+                    "" if row.resource_version is None else str(row.resource_version),
+                )
                 for row in rows
             ]
         )

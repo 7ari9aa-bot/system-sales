@@ -87,9 +87,7 @@ def test_only_an_open_order_can_have_its_shipping_changed():
 # ---------------------------------------------------------------- fixtures ----
 
 
-async def _order(
-    db: AsyncSession, tenant_id: uuid.UUID, *, address: dict | None = None
-) -> Order:
+async def _order(db: AsyncSession, tenant_id: uuid.UUID, *, address: dict | None = None) -> Order:
     """A placed order with a Cairo address, the row the PATCH corrects."""
     customer = await CustomerService.get_or_create_by_identity(
         db, tenant_id, "whatsapp", f"wa-{uuid.uuid4().hex[:10]}", name="Buyer"
@@ -99,9 +97,7 @@ async def _order(
     )
     # §M4: checkout refuses a draft product, and `draft` is the column default.
     await CatalogService.update_product(db, tenant_id, product.id, status="active")
-    variant = await CatalogService.add_variant(
-        db, tenant_id, product.id, price="40.00"
-    )
+    variant = await CatalogService.add_variant(db, tenant_id, product.id, price="40.00")
     await InventoryService.move(
         db,
         tenant_id,
@@ -122,9 +118,7 @@ async def _order(
 
 async def _stored_version(db: AsyncSession, order_id: uuid.UUID) -> int:
     """The version on the ROW, not on the instance the service handed back."""
-    return (
-        await db.execute(select(Order.version).where(Order.id == order_id))
-    ).scalar_one()
+    return (await db.execute(select(Order.version).where(Order.id == order_id))).scalar_one()
 
 
 async def _events(
@@ -172,20 +166,14 @@ async def _audit_rows(db: AsyncSession, order_id: uuid.UUID) -> list[AuditLog]:
 
 
 async def _patch(app: Any, order_id: uuid.UUID, payload: dict) -> Any:
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
-        return await client.patch(
-            f"/api/v1/orders/{order_id}/shipping", json=payload
-        )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        return await client.patch(f"/api/v1/orders/{order_id}/shipping", json=payload)
 
 
 # --------------------------------------------------------- DB: the PATCH ----
 
 
-async def test_the_shipping_patch_stages_exactly_one_event(
-    db: AsyncSession, tenant_ctx
-):
+async def test_the_shipping_patch_stages_exactly_one_event(db: AsyncSession, tenant_ctx):
     """One PATCH, one envelope naming the new address and the real version."""
     tenant_id = tenant_ctx.tenant_id
     order = await _order(db, tenant_id, address={"city": "Cairo", "street": "Tahrir 9"})
@@ -234,9 +222,7 @@ async def test_the_shipping_patch_stages_exactly_one_event(
     assert len(await _audit_rows(db, order.id)) == 1
 
 
-async def test_the_event_rebuilds_through_the_consumer_read_half(
-    db: AsyncSession, tenant_ctx
-):
+async def test_the_event_rebuilds_through_the_consumer_read_half(db: AsyncSession, tenant_ctx):
     """The stored row IS what the relay/SSE consumer reads back.
 
     The gateway and the relay both go through ``deserialize``; an event the
@@ -266,9 +252,7 @@ async def test_the_event_rebuilds_through_the_consumer_read_half(
     assert envelope.payload["shipping_address"] == _NEW_ADDRESS
 
 
-async def test_a_second_identical_patch_stages_no_duplicate_event(
-    db: AsyncSession, tenant_ctx
-):
+async def test_a_second_identical_patch_stages_no_duplicate_event(db: AsyncSession, tenant_ctx):
     """The same address twice is one change, not two.
 
     A PATCH has no ``Idempotency-Key`` (``/api/v1/orders/{id}/shipping`` is not
@@ -302,9 +286,7 @@ async def test_a_second_identical_patch_stages_no_duplicate_event(
     assert len(await _audit_rows(db, order.id)) == 1
 
 
-async def test_a_real_change_after_a_no_op_still_publishes(
-    db: AsyncSession, tenant_ctx
-):
+async def test_a_real_change_after_a_no_op_still_publishes(db: AsyncSession, tenant_ctx):
     """The no-op guard must not swallow the change that follows it."""
     tenant_id = tenant_ctx.tenant_id
     order = await _order(db, tenant_id, address={"city": "Cairo"})
@@ -333,9 +315,7 @@ async def test_a_real_change_after_a_no_op_still_publishes(
     assert events[1].meta["aggregate_version"] == await _stored_version(db, order.id)
 
 
-async def test_an_event_is_staged_for_a_method_only_change(
-    db: AsyncSession, tenant_ctx
-):
+async def test_an_event_is_staged_for_a_method_only_change(db: AsyncSession, tenant_ctx):
     """``shipping_method`` lives in ``extra``; a method-only change is still a
     change the fulfilment side cares about (courier vs. own rider)."""
     tenant_id = tenant_ctx.tenant_id
@@ -372,9 +352,7 @@ def _update_shipping_fn() -> ast.AsyncFunctionDef:
 def _shipping_outbox_call() -> dict[str, Any] | None:
     """The add_outbox_event call inside update_shipping, if there is one."""
     fn = _update_shipping_fn()
-    awaited = {
-        id(node.value) for node in ast.walk(fn) if isinstance(node, ast.Await)
-    }
+    awaited = {id(node.value) for node in ast.walk(fn) if isinstance(node, ast.Await)}
     for node in ast.walk(fn):
         if (
             isinstance(node, ast.Call)

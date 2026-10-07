@@ -195,12 +195,16 @@ class SlaService:
         from app.modules.operations.models import SLAPolicy
 
         rows = (
-            await session.execute(
-                select(SLAPolicy).where(
-                    SLAPolicy.tenant_id == tenant_id, SLAPolicy.status == "active"
+            (
+                await session.execute(
+                    select(SLAPolicy).where(
+                        SLAPolicy.tenant_id == tenant_id, SLAPolicy.status == "active"
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         if not rows:
             return None
         if channel:
@@ -217,10 +221,14 @@ class SlaService:
         from app.modules.operations.models import BusinessCalendar
 
         rows = (
-            await session.execute(
-                select(BusinessCalendar).where(BusinessCalendar.tenant_id == tenant_id)
+            (
+                await session.execute(
+                    select(BusinessCalendar).where(BusinessCalendar.tenant_id == tenant_id)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         if not rows:
             return BusinessClock(None)
         for row in rows:

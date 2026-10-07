@@ -75,16 +75,12 @@ async def run(tenant_id: uuid.UUID, corpus: Path, limit: int, *, no_rerank: bool
         for index, (path, label) in enumerate(rows, start=1):
             try:
                 data_url = _data_url(path)
-                candidates = await retrieve_candidates(
-                    session, tenant_id, image_url=data_url
-                )
+                candidates = await retrieve_candidates(session, tenant_id, image_url=data_url)
                 scores: list[float] = []
                 ranked = [str(c.product_id) for c in candidates]
                 if candidates and not no_rerank:
                     try:
-                        scored = await rerank_candidates(
-                            candidates, query_image=data_url
-                        )
+                        scored = await rerank_candidates(candidates, query_image=data_url)
                         ranked = [str(c.product_id) for c, _ in scored]
                         scores = [s for _, s in scored]
                     except ExternalProviderError as exc:
@@ -109,8 +105,10 @@ async def run(tenant_id: uuid.UUID, corpus: Path, limit: int, *, no_rerank: bool
     print(f"out-of-catalog honesty: {out_of_catalog_honesty(cases):.3f}")
     print(f"confident-wrong rate:   {confident_wrong_rate(cases):.3f}")
     if not no_rerank:
-        print(f"top-1 (embedding only): {hit_at_k(in_catalog, 1):.3f}  "
-              f"[rerank removed by construction — embedding order]")
+        print(
+            f"top-1 (embedding only): {hit_at_k(in_catalog, 1):.3f}  "
+            f"[rerank removed by construction — embedding order]"
+        )
     print(f"PROPOSED thresholds:    {propose_thresholds(cases)}")
     for failure in failures[:10]:
         print(f"  {failure}")
@@ -118,14 +116,11 @@ async def run(tenant_id: uuid.UUID, corpus: Path, limit: int, *, no_rerank: bool
 
 
 async def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Measure the vision stack on a labelled corpus."
-    )
+    parser = argparse.ArgumentParser(description="Measure the vision stack on a labelled corpus.")
     parser.add_argument("tenant_id", type=uuid.UUID)
     parser.add_argument("corpus", type=Path)
     parser.add_argument("--limit", type=int, default=10_000)
-    parser.add_argument("--no-rerank", action="store_true",
-                        help="measure the embedding-only path")
+    parser.add_argument("--no-rerank", action="store_true", help="measure the embedding-only path")
     args = parser.parse_args()
     return await run(args.tenant_id, args.corpus, args.limit, no_rerank=args.no_rerank)
 

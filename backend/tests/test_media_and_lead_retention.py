@@ -213,7 +213,7 @@ def test_the_map_is_an_executable_contract() -> None:
 
 
 def test_a_refusal_names_the_rule_behind_it() -> None:
-    """"Not now" and "never, because §57" are different answers; only the second
+    """ "Not now" and "never, because §57" are different answers; only the second
     one earns a place outside the allowlist."""
     for store, reason in retention.REFUSED_DATA_CLASSES.items():
         assert "§" in reason, f"{store}: a refusal with no rule behind it"
@@ -479,9 +479,7 @@ class _SweepSession:
         if "INSERT INTO audit_logs" in sql:
             return _Result()
         if "retention_policies" in sql and "data_class" in parsed:
-            match = next(
-                (p for p in self.policies if p.data_class == parsed["data_class"]), None
-            )
+            match = next((p for p in self.policies if p.data_class == parsed["data_class"]), None)
             return _Result(((match.retention_days, match.status),) if match else ())
         if "retention_policies" in sql:
             return _Result(tuple(self.policies))

@@ -215,9 +215,7 @@ async def _seed_foreign_tenant(db: AsyncSession, *, tag: str) -> uuid.UUID:
     tenant_b = Tenant(slug=f"b-{tag}-{uuid.uuid4().hex[:8]}", name="Tenant B")
     db.add_all([tenant_b, owner])
     await db.flush()
-    await db.execute(
-        text("SELECT set_config('app.user_id', :uid, true)"), {"uid": str(owner.id)}
-    )
+    await db.execute(text("SELECT set_config('app.user_id', :uid, true)"), {"uid": str(owner.id)})
     owner_role_id = (await db.execute(select(Role.id).where(Role.code == "owner"))).scalar_one()
     db.add(TenantUser(tenant_id=tenant_b.id, user_id=owner.id, role_id=owner_role_id))
     await db.flush()
@@ -253,7 +251,9 @@ async def _order_in(db: AsyncSession, tenant_id, customer_id) -> Order:  # noqa:
 
 @pytest.mark.parametrize("resource", ["customer", "order", "conversation"])
 async def test_foreign_row_is_not_readable_by_path_id(
-    db, tenant_ctx, resource  # noqa: ANN001
+    db,
+    tenant_ctx,
+    resource,  # noqa: ANN001
 ) -> None:
     """Tenant A reading B's row by its primary-key id: not-found, never a leak."""
     tenant_b = await _seed_foreign_tenant(db, tag=f"id-{resource}")
@@ -288,9 +288,7 @@ async def test_foreign_row_is_not_mutable_by_path_id(db, tenant_ctx) -> None:  #
     victim = await _customer_in(db, tenant_b, "Victim")
     await bind_tenant(db, tenant_ctx.tenant_id)
     with pytest.raises(NotFoundError):
-        await CustomerService.set_blocked(
-            db, tenant_ctx.tenant_id, victim.id, blocked=True
-        )
+        await CustomerService.set_blocked(db, tenant_ctx.tenant_id, victim.id, blocked=True)
     with pytest.raises(NotFoundError):
         await CustomerService.archive(
             db, tenant_ctx.tenant_id, victim.id, deleted_by=tenant_ctx.user.id
@@ -312,9 +310,7 @@ async def test_list_and_search_never_leak_foreign_rows(db, tenant_ctx) -> None: 
     assert all(c.name != secret for c in listing), "foreign customer surfaced in list"
     assert any(c.name == "Alpha Ownco" for c in listing)
 
-    hits = await CustomerService.list_customers(
-        db, tenant_ctx.tenant_id, search=secret, limit=200
-    )
+    hits = await CustomerService.list_customers(db, tenant_ctx.tenant_id, search=secret, limit=200)
     assert hits == [], f"cross-tenant search leaked {len(hits)} rows"
 
     # the SAME search does find it when bound to B (proves the row is real)
@@ -354,9 +350,7 @@ async def test_csv_import_lands_only_in_the_callers_tenant(db, tenant_ctx) -> No
         db, tenant_ctx.tenant_id, raw_csv=csv, customer_service=CustomerService
     )
     assert report.imported >= 1
-    a_hits = await CustomerService.list_customers(
-        db, tenant_ctx.tenant_id, search=marker, limit=10
-    )
+    a_hits = await CustomerService.list_customers(db, tenant_ctx.tenant_id, search=marker, limit=10)
     assert len(a_hits) == 1
 
     tenant_b = await _seed_foreign_tenant(db, tag="import")
@@ -418,6 +412,7 @@ def test_break_glass_plane_rejects_a_tenant_admin() -> None:
     The plane is the one door that intentionally spans tenants; this proves it
     opens only on the global claim, never on tenant membership.
     """
+
     class _Ctx:
         def __init__(self, platform_admin: bool) -> None:
             self.user = AuthedUser(

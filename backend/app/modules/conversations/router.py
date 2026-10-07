@@ -383,9 +383,7 @@ async def webchat_inbound(public_key: str, body: WebchatInbound, session: DbSess
     # RLS: ingest writes tenant-scoped rows — bind the GUC before any insert.
     await bind_tenant(session, tenant_id)
     accepted = 0
-    for message in adapter.parse_inbound(
-        {**body.model_dump(), "session_key": session_key}
-    ):
+    for message in adapter.parse_inbound({**body.model_dump(), "session_key": session_key}):
         conversation_id = await IngestService.ingest(
             session,
             tenant_id=tenant_id,
@@ -399,9 +397,7 @@ async def webchat_inbound(public_key: str, body: WebchatInbound, session: DbSess
     return {
         "ok": True,
         "accepted": accepted,
-        "session_token": create_visitor_token(
-            session_key, str(tenant_id), widget=public_key
-        ),
+        "session_token": create_visitor_token(session_key, str(tenant_id), widget=public_key),
     }
 
 
@@ -722,9 +718,7 @@ async def stream_conversations(request: Request, token: str | None = None):
                     }
                     for r in rows
                 ]
-                digest = hashlib.sha1(
-                    json.dumps(snapshot, sort_keys=True).encode()
-                ).hexdigest()
+                digest = hashlib.sha1(json.dumps(snapshot, sort_keys=True).encode()).hexdigest()
                 if digest != last_digest:
                     last_digest = digest
                     payload_json = json.dumps({"conversations": snapshot}, default=str)

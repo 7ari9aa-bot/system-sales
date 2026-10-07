@@ -169,9 +169,7 @@ def _client() -> AsyncClient:
     return AsyncClient(transport=ASGITransport(app=_app()), base_url="http://test")
 
 
-def _stub_readers(
-    monkeypatch: pytest.MonkeyPatch, seen: list[tuple], zones: list[Any]
-) -> None:
+def _stub_readers(monkeypatch: pytest.MonkeyPatch, seen: list[tuple], zones: list[Any]) -> None:
     """Replace the canonical readers with recorders of the window they were given."""
 
     async def summary(session, tenant_id, *, since, until, timezone=None):  # noqa: ANN001
@@ -395,9 +393,7 @@ async def test_the_default_until_is_an_instant_as_well(
         ("compute_metric", {"metric_name": "revenue"}),
     ],
 )
-async def test_a_reader_refuses_to_bind_a_naive_window(
-    reader: str, kwargs: dict[str, Any]
-) -> None:
+async def test_a_reader_refuses_to_bind_a_naive_window(reader: str, kwargs: dict[str, Any]) -> None:
     """The route is the promise; this is the guarantee behind it.
 
     Every read model in this module compares against a ``timestamptz`` column, so
@@ -467,9 +463,7 @@ async def test_binding_the_window_does_not_re_cut_the_day_label(
     zones: list[Any] = []
     _stub_readers(monkeypatch, seen := [], zones)
     async with _client() as client:
-        response = await client.get(
-            f"{SERIES_PATH}?{CAIRO_WINDOW}&timezone=Europe/Paris"
-        )
+        response = await client.get(f"{SERIES_PATH}?{CAIRO_WINDOW}&timezone=Europe/Paris")
 
     assert response.status_code == 200, response.text
     payload = response.json()
@@ -577,9 +571,7 @@ def test_the_refusal_answers_a_non_datetime_instead_of_raising_inside_the_422() 
 # spelling, as `_MARK_FAILED_SQL`'s backoff casts (see
 # tests/test_outbox_backoff_param_types.py). The DB-free pin below fails before
 # CI's asyncpg does.
-_TWO_ZONE_PROBE_SQL = (
-    "SELECT ((CAST(:stamp AS timestamp))::timestamptz AT TIME ZONE 'UTC')::text"
-)
+_TWO_ZONE_PROBE_SQL = "SELECT ((CAST(:stamp AS timestamp))::timestamptz AT TIME ZONE 'UTC')::text"
 
 
 def test_the_two_zone_probe_binds_the_parameter_it_is_handed() -> None:
@@ -622,9 +614,7 @@ async def test_a_stamp_without_an_offset_really_names_two_instants(
         # spans this test: the zone has to be set by its own statement so the
         # cast below provably runs after it (a target list has no order).
         await db.execute(sa.text("SELECT set_config('TimeZone', :tz, true)"), {"tz": zone})
-        row = (
-            await db.execute(sa.text(_TWO_ZONE_PROBE_SQL), {"stamp": naive})
-        ).first()
+        row = (await db.execute(sa.text(_TWO_ZONE_PROBE_SQL), {"stamp": naive})).first()
         return row[0]
 
     dubai = await utc_instant(NAIVE_SINCE, "Asia/Dubai")
@@ -669,9 +659,7 @@ async def test_an_offset_carrying_window_selects_the_same_money_in_any_zone(
         assert spelled == gross, f"the same instants in another offset read differently: {zone}"
 
 
-async def test_a_naive_window_is_refused_end_to_end(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_a_naive_window_is_refused_end_to_end(db: AsyncSession, tenant_ctx) -> None:
     """DB-GATED (CI). The refusal over the real stack, not just the annotation.
 
     The route is reached, its dependency is satisfied, and the request still
@@ -694,9 +682,7 @@ async def test_a_naive_window_is_refused_end_to_end(
         assert refused.status_code == 422, refused.text
         assert "UTC offset" in _error_text(refused)
 
-        answered = await client.get(
-            f"{SERIES_PATH}?{CAIRO_WINDOW}&timezone=UTC"
-        )
+        answered = await client.get(f"{SERIES_PATH}?{CAIRO_WINDOW}&timezone=UTC")
     assert answered.status_code == 200, answered.text
     body = answered.json()
     assert body["since"] == "2026-08-31T21:00:00+00:00"

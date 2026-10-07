@@ -110,9 +110,7 @@ async def list_webhook_endpoints(ctx: TenantContext = Depends(require_permission
     ]
 
 
-@webhooks_router.post(
-    "/{endpoint_id}/rotate", response_model=WebhookEndpointRotated
-)
+@webhooks_router.post("/{endpoint_id}/rotate", response_model=WebhookEndpointRotated)
 async def rotate_webhook_secret(
     endpoint_id: uuid.UUID,
     ctx: TenantContext = Depends(require_permission("settings:write")),
@@ -162,9 +160,7 @@ async def get_subscription(ctx: TenantCtxDep):
         "id": str(subscription.id),
         "status": subscription.status,
         "current_period_end": (
-            subscription.current_period_end.isoformat()
-            if subscription.current_period_end
-            else None
+            subscription.current_period_end.isoformat() if subscription.current_period_end else None
         ),
     }
 
@@ -230,4 +226,3 @@ async def get_billing_snapshot(
         period_end=period_end,
     )
     return BillingSnapshotService.snapshot_view(invoice)
-

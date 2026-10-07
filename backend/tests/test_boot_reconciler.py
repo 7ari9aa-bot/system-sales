@@ -33,10 +33,10 @@ async def test_inspect_tenant_rls_invariants_clean() -> None:
 
     session.execute.side_effect = [
         tables_result,
-        flags_result,      # orders flags
-        policies_result,   # orders policies
-        flags_result,      # customers flags
-        policies_result,   # customers policies
+        flags_result,  # orders flags
+        policies_result,  # orders policies
+        flags_result,  # customers flags
+        policies_result,  # customers policies
     ]
 
     violations = await inspect_tenant_rls_invariants(session)
@@ -77,14 +77,17 @@ async def test_run_boot_reconciler_fails_closed_in_secure_environment() -> None:
     conn_mock = AsyncMock()
     engine.connect.return_value.__aenter__.return_value = conn_mock
 
-    with patch(
-        "app.core.boot.inspect_tenant_rls_invariants",
-        return_value=["leaky_table: RLS disabled"],
-    ), patch(
-        # The role-side check probes the connected role through the session;
-        # stubbed here so this test pins ONLY the table-side violations.
-        "app.core.boot.inspect_app_role_bypass_rls",
-        return_value=None,
+    with (
+        patch(
+            "app.core.boot.inspect_tenant_rls_invariants",
+            return_value=["leaky_table: RLS disabled"],
+        ),
+        patch(
+            # The role-side check probes the connected role through the session;
+            # stubbed here so this test pins ONLY the table-side violations.
+            "app.core.boot.inspect_app_role_bypass_rls",
+            return_value=None,
+        ),
     ):
         with pytest.raises(BootReconcilerError, match="leaky_table: RLS disabled"):
             await run_boot_reconciler(engine, fail_closed=True)
@@ -96,10 +99,13 @@ async def test_run_boot_reconciler_warns_when_not_fail_closed() -> None:
     conn_mock = AsyncMock()
     engine.connect.return_value.__aenter__.return_value = conn_mock
 
-    with patch(
-        "app.core.boot.inspect_tenant_rls_invariants",
-        return_value=["leaky_table: RLS disabled"],
-    ), patch("app.core.boot.inspect_app_role_bypass_rls", return_value=None):
+    with (
+        patch(
+            "app.core.boot.inspect_tenant_rls_invariants",
+            return_value=["leaky_table: RLS disabled"],
+        ),
+        patch("app.core.boot.inspect_app_role_bypass_rls", return_value=None),
+    ):
         violations = await run_boot_reconciler(engine, fail_closed=False)
         assert violations == ["leaky_table: RLS disabled"]
 
@@ -113,14 +119,16 @@ async def test_run_boot_reconciler_refuses_when_the_connected_role_bypasses_rls(
     conn_mock = AsyncMock()
     engine.connect.return_value.__aenter__.return_value = conn_mock
 
-    with patch(
-        "app.core.boot.inspect_tenant_rls_invariants",
-        return_value=[],
-    ), patch(
-        "app.core.boot.inspect_app_role_bypass_rls",
-        return_value=(
-            "connected role 'sales_admin' has BYPASSRLS — row-level security "
-            "cannot bind it"
+    with (
+        patch(
+            "app.core.boot.inspect_tenant_rls_invariants",
+            return_value=[],
+        ),
+        patch(
+            "app.core.boot.inspect_app_role_bypass_rls",
+            return_value=(
+                "connected role 'sales_admin' has BYPASSRLS — row-level security cannot bind it"
+            ),
         ),
     ):
         with pytest.raises(BootReconcilerError, match="BYPASSRLS"):
@@ -137,12 +145,18 @@ async def test_run_boot_reconciler_warns_on_role_bypass_outside_secure_environme
     conn_mock = AsyncMock()
     engine.connect.return_value.__aenter__.return_value = conn_mock
 
-    with patch(
-        "app.core.boot.inspect_tenant_rls_invariants",
-        return_value=[],
-    ), patch(
-        "app.core.boot.inspect_app_role_bypass_rls",
-        return_value="connected role 'postgres' has BYPASSRLS — row-level security cannot bind it",
+    with (
+        patch(
+            "app.core.boot.inspect_tenant_rls_invariants",
+            return_value=[],
+        ),
+        patch(
+            "app.core.boot.inspect_app_role_bypass_rls",
+            return_value=(
+                "connected role 'postgres' has BYPASSRLS"
+                " — row-level security cannot bind it"
+            ),
+        ),
     ):
         violations = await run_boot_reconciler(engine, fail_closed=False)
 

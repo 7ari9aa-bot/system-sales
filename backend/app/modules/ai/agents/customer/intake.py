@@ -54,17 +54,14 @@ def build_turn(
     """
     text = body.strip() if body and body.strip() else None
     image_keys = [
-        key
-        for mime, key in attachments
-        if key and (mime or "").lower().startswith("image/")
+        key for mime, key in attachments if key and (mime or "").lower().startswith("image/")
     ]
     kind = (content_type or "").strip().lower()
     has_voice = kind == "voice" or any(
         (mime or "").lower().startswith("audio/") for mime, _ in attachments
     )
     other_media = kind in {"file", "video", "location", "contact"} or any(
-        mime
-        and not (mime or "").lower().startswith(("image/", "audio/"))
+        mime and not (mime or "").lower().startswith(("image/", "audio/"))
         for mime, _ in attachments
     )
     return InboundTurn(

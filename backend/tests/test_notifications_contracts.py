@@ -93,9 +93,7 @@ class RecordingSession:
 
     def compiled_params(self) -> dict:
         """The bind values Postgres would receive for the first statement."""
-        return dict(
-            self.statements[0].compile(dialect=postgresql.dialect()).params
-        )
+        return dict(self.statements[0].compile(dialect=postgresql.dialect()).params)
 
 
 def _ctx(session: Any) -> Any:
@@ -213,9 +211,7 @@ def test_every_notification_route_has_a_typed_response() -> None:
         for (method, path), endpoint in mounted.items()
         if _success_component(document, method, path) is None
     )
-    assert not untyped, (
-        "these routes return a body OpenAPI cannot name:\n  " + "\n  ".join(untyped)
-    )
+    assert not untyped, "these routes return a body OpenAPI cannot name:\n  " + "\n  ".join(untyped)
 
 
 def test_the_unread_and_marked_counters_are_named_fields_not_anonymous_dicts() -> None:
@@ -225,12 +221,12 @@ def test_the_unread_and_marked_counters_are_named_fields_not_anonymous_dicts() -
     the key ("marked" vs "count") was invisible until a badge stopped moving.
     """
     document = _document()
-    unread = document["components"]["schemas"][_success_component(
-        document, "GET", "/api/v1/notifications/unread-count"
-    )]
-    marked = document["components"]["schemas"][_success_component(
-        document, "POST", "/api/v1/notifications/mark-read"
-    )]
+    unread = document["components"]["schemas"][
+        _success_component(document, "GET", "/api/v1/notifications/unread-count")
+    ]
+    marked = document["components"]["schemas"][
+        _success_component(document, "POST", "/api/v1/notifications/mark-read")
+    ]
     assert list(unread["properties"]) == ["count"], unread
     assert list(marked["properties"]) == ["marked"], marked
     assert unread["properties"]["count"]["type"] == "integer"
@@ -404,9 +400,7 @@ def test_the_billing_module_no_longer_ships_a_second_notifications_router() -> N
         for name, value in vars(billing_router).items()
         if isinstance(value, APIRouter) and "/notifications" in (value.prefix or "")
     ]
-    assert not stray_routers, "a second /notifications router is back: " + ", ".join(
-        stray_routers
-    )
+    assert not stray_routers, "a second /notifications router is back: " + ", ".join(stray_routers)
     # The module's own docstring records the deletion; what must not come back is
     # a ROUTER. Asserting on prose would fail on the sentence that explains the
     # fix, which is a worse signal than not checking at all.

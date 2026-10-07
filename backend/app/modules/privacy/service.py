@@ -57,9 +57,7 @@ class DeletionService:
             text("DELETE FROM memories WHERE tenant_id = :t AND customer_id = :c"),
             {"t": tenant_id, "c": customer_id},
         )
-        report["steps"].append(
-            {"step": "memories_deleted", "rows": result.rowcount or 0}
-        )
+        report["steps"].append({"step": "memories_deleted", "rows": result.rowcount or 0})
 
         # §131: delete knowledge chunks that carry this customer's conversation
         # content from the vector store. These are the embeddings used for
@@ -68,9 +66,7 @@ class DeletionService:
         # would ABORT the whole transaction — the except block cannot un-poison
         # it — so probe with to_regclass first, which never raises.
         chunks_exist = (
-            await session.execute(
-                text("SELECT to_regclass('public.knowledge_chunks') IS NOT NULL")
-            )
+            await session.execute(text("SELECT to_regclass('public.knowledge_chunks') IS NOT NULL"))
         ).scalar()
         if chunks_exist:
             result = await session.execute(
@@ -82,9 +78,7 @@ class DeletionService:
                 ),
                 {"t": tenant_id, "c": customer_id},
             )
-            report["steps"].append(
-                {"step": "vector_chunks_deleted", "rows": result.rowcount or 0}
-            )
+            report["steps"].append({"step": "vector_chunks_deleted", "rows": result.rowcount or 0})
         else:
             report["steps"].append(
                 {"step": "vector_chunks_deleted", "rows": 0, "note": "table not found"}
@@ -100,9 +94,7 @@ class DeletionService:
             removed = await search.delete_from_index(
                 session, tenant_id, entity_type="customer", entity_id=customer_id
             )
-            report["steps"].append(
-                {"step": "search_index_purged", "rows": removed}
-            )
+            report["steps"].append({"step": "search_index_purged", "rows": removed})
         except Exception:
             report["steps"].append(
                 {
@@ -123,9 +115,7 @@ class DeletionService:
             ),
             {"t": tenant_id, "c": customer_id},
         )
-        report["steps"].append(
-            {"step": "transcripts_anonymized", "rows": result.rowcount or 0}
-        )
+        report["steps"].append({"step": "transcripts_anonymized", "rows": result.rowcount or 0})
 
         # §131/§172, and the half `PII_DATA_MAP.md` demands of every store:
         # "storage delete + row delete". The step above only strips the
@@ -162,9 +152,7 @@ class DeletionService:
                 ),
                 {"ids": [str(row[0]) for row in media_rows], "t": tenant_id},
             )
-            report["steps"].append(
-                {"step": "media_rows_deleted", "rows": result.rowcount or 0}
-            )
+            report["steps"].append({"step": "media_rows_deleted", "rows": result.rowcount or 0})
 
             keys = [row[1] for row in media_rows if row[1]]
             if keys:

@@ -157,19 +157,27 @@ async def test_an_unbound_select_cannot_see_any_job(db: AsyncSession, tenant_ctx
 
     # Bound: the row is visible.
     visible = (
-        await db.execute(
-            select(ScheduledJob).where(ScheduledJob.tenant_id == tenant_ctx.tenant_id)
+        (
+            await db.execute(
+                select(ScheduledJob).where(ScheduledJob.tenant_id == tenant_ctx.tenant_id)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(visible) == 1
 
     # Unbound: same query, same tenant filter, zero rows and no error.
     await db.execute(sa.text("SELECT set_config('app.tenant_id', '', true)"))
     blind = (
-        await db.execute(
-            select(ScheduledJob).where(ScheduledJob.tenant_id == tenant_ctx.tenant_id)
+        (
+            await db.execute(
+                select(ScheduledJob).where(ScheduledJob.tenant_id == tenant_ctx.tenant_id)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert blind == [], (
         "an unbound SELECT saw rows — the poller's failure mode is not reproducible, "
         "which means this test is not pinning it"
@@ -232,9 +240,7 @@ async def test_one_tenants_jobs_are_invisible_to_another(db: AsyncSession, tenan
     assert RUN == []
 
 
-async def test_a_recurring_job_re_arms_instead_of_completing(
-    db: AsyncSession, tenant_ctx
-):
+async def test_a_recurring_job_re_arms_instead_of_completing(db: AsyncSession, tenant_ctx):
     """A sweep must survive to run again; a one-shot must not."""
     recurring_type = next(iter(RECURRING_JOBS))
 
@@ -257,9 +263,7 @@ async def test_a_recurring_job_re_arms_instead_of_completing(
     assert refreshed.run_at > datetime.now(UTC) - timedelta(minutes=1)
 
 
-async def test_an_unknown_job_type_fails_rather_than_looping(
-    db: AsyncSession, tenant_ctx
-):
+async def test_an_unknown_job_type_fails_rather_than_looping(db: AsyncSession, tenant_ctx):
     job = await _job(db, tenant_ctx.tenant_id, job_type="test.no_handler_registered")
 
     await _worker()._drain_tenant(db, tenant_ctx.tenant_id)

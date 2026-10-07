@@ -19,8 +19,8 @@ import pytest
 
 from app.core import security
 from app.core.security import (
-    JWT_ALGORITHM,
     _BCRYPT_SHA256_PREFIX,
+    JWT_ALGORITHM,
     _kid,
     create_access_token,
     create_oauth_state_token,
@@ -116,9 +116,7 @@ def _signed(payload_extra: dict, *, kid: bool = True) -> str:
     now = int(datetime.now(UTC).timestamp())
     payload = {"sub": "user-1", "type": "access", "exp": now + 900, **payload_extra}
     headers = {"kid": _kid(_SETTINGS.jwt_secret)} if kid else None
-    return pyjwt.encode(
-        payload, _SETTINGS.jwt_secret, algorithm=JWT_ALGORITHM, headers=headers
-    )
+    return pyjwt.encode(payload, _SETTINGS.jwt_secret, algorithm=JWT_ALGORITHM, headers=headers)
 
 
 def test_a_foreign_issuer_is_refused() -> None:

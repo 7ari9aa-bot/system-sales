@@ -17,7 +17,6 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -75,9 +74,7 @@ def test_the_default_calendar_uses_string_weekday_keys() -> None:
 # ------------------------------------------------------ register seeds -----
 
 
-async def test_register_seeds_calendar_policy_and_subscription(
-    db: AsyncSession, tenant_ctx
-):
+async def test_register_seeds_calendar_policy_and_subscription(db: AsyncSession, tenant_ctx):
     email = f"owner-{uuid.uuid4().hex[:10]}@test.local"
     user, tenant = await AuthService.register(
         db,
@@ -89,26 +86,28 @@ async def test_register_seeds_calendar_policy_and_subscription(
     )
 
     calendar = (
-        await db.execute(
-            select(BusinessCalendar).where(BusinessCalendar.tenant_id == tenant.id)
-        )
-    ).scalars().all()
+        (await db.execute(select(BusinessCalendar).where(BusinessCalendar.tenant_id == tenant.id)))
+        .scalars()
+        .all()
+    )
     assert len(calendar) == 1, "a new tenant must have exactly one default calendar"
     assert calendar[0].is_default is True
     assert calendar[0].hours == DEFAULT_HOURS
 
     policy = (
-        await db.execute(select(SLAPolicy).where(SLAPolicy.tenant_id == tenant.id))
-    ).scalars().all()
+        (await db.execute(select(SLAPolicy).where(SLAPolicy.tenant_id == tenant.id)))
+        .scalars()
+        .all()
+    )
     assert len(policy) == 1, "a new tenant must have a default SLA policy"
     assert policy[0].is_default is True
     assert policy[0].status == "active"
 
     subscription = (
-        await db.execute(
-            select(Subscription).where(Subscription.tenant_id == tenant.id)
-        )
-    ).scalars().all()
+        (await db.execute(select(Subscription).where(Subscription.tenant_id == tenant.id)))
+        .scalars()
+        .all()
+    )
     assert len(subscription) == 1, "a new tenant must have a subscription"
     assert user.id is not None
 
@@ -116,16 +115,16 @@ async def test_register_seeds_calendar_policy_and_subscription(
     # default, so the tenant is never uncapped — but the cap would then be
     # invisible and uneditable per tenant.
     budget = (
-        await db.execute(select(BudgetPolicy).where(BudgetPolicy.tenant_id == tenant.id))
-    ).scalars().all()
+        (await db.execute(select(BudgetPolicy).where(BudgetPolicy.tenant_id == tenant.id)))
+        .scalars()
+        .all()
+    )
     assert len(budget) == 1, "a new tenant must have an AI budget policy"
     assert budget[0].scope == "tenant"
     assert budget[0].hard_cap > 0, "the seeded cap must not be zero (zero means uncapped)"
 
 
-async def test_the_seeded_subscription_materialises_entitlements(
-    db: AsyncSession, tenant_ctx
-):
+async def test_the_seeded_subscription_materialises_entitlements(db: AsyncSession, tenant_ctx):
     """Without entitlements the plan limits cannot do anything (N-01)."""
     _, tenant = await AuthService.register(
         db,
@@ -137,10 +136,10 @@ async def test_the_seeded_subscription_materialises_entitlements(
     )
 
     rows = (
-        await db.execute(
-            select(Entitlement).where(Entitlement.tenant_id == tenant.id)
-        )
-    ).scalars().all()
+        (await db.execute(select(Entitlement).where(Entitlement.tenant_id == tenant.id)))
+        .scalars()
+        .all()
+    )
 
     # The starter plan defines ai_agents + max_users; `channels` is an
     # allowlist and is intentionally not an Entitlement row.
@@ -149,9 +148,7 @@ async def test_the_seeded_subscription_materialises_entitlements(
     assert "ai_agents" in features
 
 
-async def test_registering_a_tenant_that_already_has_defaults_is_safe(
-    db: AsyncSession, tenant_ctx
-):
+async def test_registering_a_tenant_that_already_has_defaults_is_safe(db: AsyncSession, tenant_ctx):
     """Idempotent: a second call must not create a duplicate default."""
     _, tenant = await AuthService.register(
         db,
@@ -172,10 +169,10 @@ async def test_registering_a_tenant_that_already_has_defaults_is_safe(
     }
 
     calendars = (
-        await db.execute(
-            select(BusinessCalendar).where(BusinessCalendar.tenant_id == tenant.id)
-        )
-    ).scalars().all()
+        (await db.execute(select(BusinessCalendar).where(BusinessCalendar.tenant_id == tenant.id)))
+        .scalars()
+        .all()
+    )
     assert len(calendars) == 1
 
 
@@ -190,9 +187,7 @@ async def test_register_does_not_fail_when_the_plan_is_absent(
     # old "rename the seeded row" simulation now dies on privilege. Point
     # the seeding constant at a code that cannot exist instead — same
     # environment state, zero writes to the frozen reference plane.
-    monkeypatch.setattr(
-        bootstrap_module, "DEFAULT_PLAN_CODE", f"absent-{uuid.uuid4().hex[:8]}"
-    )
+    monkeypatch.setattr(bootstrap_module, "DEFAULT_PLAN_CODE", f"absent-{uuid.uuid4().hex[:8]}")
     _, tenant = await AuthService.register(
         db,
         tenant_name="No Plan Co",
@@ -203,29 +198,27 @@ async def test_register_does_not_fail_when_the_plan_is_absent(
     )
     # Registration succeeded; the calendar and policy are still seeded.
     calendars = (
-        await db.execute(
-            select(BusinessCalendar).where(BusinessCalendar.tenant_id == tenant.id)
-        )
-    ).scalars().all()
+        (await db.execute(select(BusinessCalendar).where(BusinessCalendar.tenant_id == tenant.id)))
+        .scalars()
+        .all()
+    )
     assert len(calendars) == 1
     assert (
-        await db.execute(
-            select(Subscription).where(Subscription.tenant_id == tenant.id)
-        )
+        await db.execute(select(Subscription).where(Subscription.tenant_id == tenant.id))
     ).scalars().all() == []
 
 
-async def test_the_seeded_calendar_belongs_to_the_new_tenant_only(
-    db: AsyncSession, tenant_ctx
-):
+async def test_the_seeded_calendar_belongs_to_the_new_tenant_only(db: AsyncSession, tenant_ctx):
     """The seed must not touch the caller's own tenant."""
     before = (
-        await db.execute(
-            select(BusinessCalendar).where(
-                BusinessCalendar.tenant_id == tenant_ctx.tenant_id
+        (
+            await db.execute(
+                select(BusinessCalendar).where(BusinessCalendar.tenant_id == tenant_ctx.tenant_id)
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     _, tenant = await AuthService.register(
         db,
@@ -238,12 +231,14 @@ async def test_the_seeded_calendar_belongs_to_the_new_tenant_only(
     assert tenant.id != tenant_ctx.tenant_id
 
     after = (
-        await db.execute(
-            select(BusinessCalendar).where(
-                BusinessCalendar.tenant_id == tenant_ctx.tenant_id
+        (
+            await db.execute(
+                select(BusinessCalendar).where(BusinessCalendar.tenant_id == tenant_ctx.tenant_id)
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(after) == len(before)
 
 
@@ -258,8 +253,6 @@ async def test_the_new_tenant_starts_active(db: AsyncSession, tenant_ctx):
         full_name="Active Owner",
     )
 
-    row = (
-        await db.execute(select(Tenant).where(Tenant.id == tenant.id))
-    ).scalar_one()
+    row = (await db.execute(select(Tenant).where(Tenant.id == tenant.id))).scalar_one()
     assert row.lifecycle_state in ("active", "trial")
     assert row.is_active is True

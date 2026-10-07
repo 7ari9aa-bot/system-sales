@@ -42,10 +42,7 @@ PARENT = "public.ai_usage"
 
 def _func(tree: ast.AST, name: str) -> ast.AST | None:
     for node in ast.walk(tree):
-        if (
-            isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
-            and node.name == name
-        ):
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.name == name:
             return node
     return None
 
@@ -189,9 +186,7 @@ def test_module_boundary_measure_is_not_raised_by_this_feature() -> None:
     assert "from app.core.audit import" in src or "from app.core import" in src
     handler = _func(_WORKER_TREE, "_handle_retention_purge")
     assert handler is not None
-    imported = {
-        node.module or "" for node in ast.walk(handler) if isinstance(node, ast.ImportFrom)
-    }
+    imported = {node.module or "" for node in ast.walk(handler) if isinstance(node, ast.ImportFrom)}
     assert any(m.endswith("analytics.retention") for m in imported), (
         "handlers import inside the function body, like every other handler here"
     )
@@ -265,11 +260,7 @@ async def _partition_names(db: AsyncSession) -> set[str]:
 
 async def _role_exists(db: AsyncSession, role: str) -> bool:
     return bool(
-        (
-            await db.execute(
-                text("SELECT 1 FROM pg_roles WHERE rolname = :r"), {"r": role}
-            )
-        ).scalar()
+        (await db.execute(text("SELECT 1 FROM pg_roles WHERE rolname = :r"), {"r": role})).scalar()
     )
 
 
@@ -286,9 +277,7 @@ async def test_a_due_ensure_job_creates_a_partition_eight_months_out(
         "or this test's horizon needs widening"
     )
 
-    job = await _due_job(
-        db, tenant_ctx.tenant_id, "partition.ensure_months", {"months_ahead": 8}
-    )
+    job = await _due_job(db, tenant_ctx.tenant_id, "partition.ensure_months", {"months_ahead": 8})
     worker = sw.SchedulerWorker(bus=_NoBus())  # type: ignore[arg-type]
     assert await worker._drain_tenant(db, tenant_ctx.tenant_id) == 1
     job = await _job_after_drain(db, job)
@@ -315,9 +304,7 @@ async def test_a_due_ensure_job_creates_a_partition_eight_months_out(
     if await _role_exists(db, "sales_app"):
         granted = (
             await db.execute(
-                text(
-                    "SELECT has_table_privilege('sales_app', to_regclass(:n), 'INSERT')"
-                ),
+                text("SELECT has_table_privilege('sales_app', to_regclass(:n), 'INSERT')"),
                 {"n": f"public.{name}"},
             )
         ).scalar_one()
@@ -488,9 +475,7 @@ async def test_one_tenant_withdrawing_consent_blocks_the_shared_month(
     if a single tenant pauses its policy again, the sweep must stop dropping.
     """
     old = await _seed_month(db, 20, tenant_ctx.tenant_id)
-    tenants = await _choose_for_every_active_tenant(
-        db, days=500, rebind_to=tenant_ctx.tenant_id
-    )
+    tenants = await _choose_for_every_active_tenant(db, days=500, rebind_to=tenant_ctx.tenant_id)
     gate = await retention.read_drop_gate(db)
     assert gate.tenant_count == tenants and gate.missing_policies == 0
     assert gate.may_drop is True

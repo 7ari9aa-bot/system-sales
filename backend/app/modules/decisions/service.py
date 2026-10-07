@@ -70,9 +70,7 @@ ALLOWED_TRANSITIONS: dict[str, frozenset[str]] = {
     "VERIFIED": frozenset(
         {"PENDING_APPROVAL", "APPROVED", "DENIED", "STALE", "EXPIRED", "REVOKED"}
     ),
-    "PENDING_APPROVAL": frozenset(
-        {"APPROVED", "DENIED", "STALE", "EXPIRED", "REVOKED"}
-    ),
+    "PENDING_APPROVAL": frozenset({"APPROVED", "DENIED", "STALE", "EXPIRED", "REVOKED"}),
     "APPROVED": frozenset({"EXECUTED", "STALE", "EXPIRED", "REVOKED"}),
     "STALE": frozenset({"EXPIRED"}),
     "DENIED": frozenset(),
@@ -83,9 +81,7 @@ ALLOWED_TRANSITIONS: dict[str, frozenset[str]] = {
 
 #: §66 actor vocabulary — decisions name WHO acted with the same words the
 #: audit log uses, so lineage joins stay possible.
-ACTOR_TYPES: frozenset[str] = frozenset(
-    {"human", "ai", "automation", "system", "integration"}
-)
+ACTOR_TYPES: frozenset[str] = frozenset({"human", "ai", "automation", "system", "integration"})
 
 
 def canonical_json(value: Any) -> str:
@@ -104,9 +100,7 @@ def decision_content_hash(action: str, normalized_arguments: dict | None) -> str
     only in dict ordering are the SAME decision, and must hash the same.
     """
     return sha256_hex(
-        canonical_json(
-            {"action": action, "normalized_arguments": normalized_arguments or {}}
-        )
+        canonical_json({"action": action, "normalized_arguments": normalized_arguments or {}})
     )
 
 
@@ -213,9 +207,7 @@ class DecisionService:
     # ---------------------------------------------------------------- read
 
     @staticmethod
-    async def get(
-        session: AsyncSession, tenant_id: uuid.UUID, decision_id: uuid.UUID
-    ) -> Decision:
+    async def get(session: AsyncSession, tenant_id: uuid.UUID, decision_id: uuid.UUID) -> Decision:
         decision = (
             await session.execute(
                 select(Decision).where(
@@ -233,10 +225,7 @@ class DecisionService:
     @staticmethod
     def _is_expired(decision: Decision) -> bool:
         """V12 §17: now() past expires_at means the instant of authority is gone."""
-        return (
-            decision.expires_at is not None
-            and datetime.now(UTC) > decision.expires_at
-        )
+        return decision.expires_at is not None and datetime.now(UTC) > decision.expires_at
 
     async def _apply_transition(
         session: AsyncSession,
@@ -325,9 +314,7 @@ class DecisionService:
         )
 
     @staticmethod
-    async def deny(
-        session: AsyncSession, tenant_id: uuid.UUID, decision_id: uuid.UUID
-    ) -> Decision:
+    async def deny(session: AsyncSession, tenant_id: uuid.UUID, decision_id: uuid.UUID) -> Decision:
         """-> DENIED (terminal): decided once; a denied decision is never revived."""
         decision = await DecisionService.get(session, tenant_id, decision_id)
         return await DecisionService._apply_transition(
@@ -401,9 +388,7 @@ class DecisionService:
         if not content_hash.strip():
             raise ValidationError("content_hash must be a non-empty string")
         if value_digest is None and value is None:
-            raise ValidationError(
-                "record_dependency needs a value (to digest) or a value_digest"
-            )
+            raise ValidationError("record_dependency needs a value (to digest) or a value_digest")
         decision = await DecisionService.get(session, tenant_id, decision_id)
         now = datetime.now(UTC)
         dependency = DecisionDependency(

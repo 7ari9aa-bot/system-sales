@@ -52,9 +52,7 @@ CLASSIFICATIONS: frozenset[str] = frozenset(
 
 #: V12 §9 — trust ladder. UNVERIFIED is the default for externally sourced
 #: claims; SYSTEM_ASSERTED is reserved for facts this system observed itself.
-TRUST_LEVELS: frozenset[str] = frozenset(
-    {"UNVERIFIED", "OBSERVED", "VALIDATED", "SYSTEM_ASSERTED"}
-)
+TRUST_LEVELS: frozenset[str] = frozenset({"UNVERIFIED", "OBSERVED", "VALIDATED", "SYSTEM_ASSERTED"})
 
 
 class EvidenceFact(TenantMixin, Base):
@@ -91,9 +89,7 @@ class EvidenceFact(TenantMixin, Base):
     # sha256 hex of the claim content — computed by the service, never client-supplied.
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     # allowed: TRUST_LEVELS (V12 §9)
-    trust: Mapped[str] = mapped_column(
-        String(31), nullable=False, server_default="UNVERIFIED"
-    )
+    trust: Mapped[str] = mapped_column(String(31), nullable=False, server_default="UNVERIFIED")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -130,6 +126,4 @@ class EvidenceSet(TenantMixin, Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    __table_args__ = (
-        Index("ix_evidence_sets_tenant_created", "tenant_id", "created_at"),
-    )
+    __table_args__ = (Index("ix_evidence_sets_tenant_created", "tenant_id", "created_at"),)

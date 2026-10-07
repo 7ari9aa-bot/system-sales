@@ -35,9 +35,7 @@ from app.core.model_kit import (
 class Customer(TenantMixin, TimestampMixin, WorkspaceScopeMixin, VersionMixin, Base):
     __tablename__ = "customers"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255))
     phone: Mapped[str | None] = mapped_column(String(31))
     email: Mapped[str | None] = mapped_column(String(320))
@@ -93,9 +91,7 @@ class CustomerIdentity(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
 
     __tablename__ = "customer_identities"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     customer_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("customers.id", ondelete="CASCADE")
     )
@@ -108,18 +104,14 @@ class CustomerIdentity(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
         UniqueConstraint(
             "tenant_id", "channel", "external_id", name="uq_customer_identities_lookup"
         ),
-        Index(
-            "ix_customer_identities_tenant_customer", "tenant_id", "customer_id"
-        ),
+        Index("ix_customer_identities_tenant_customer", "tenant_id", "customer_id"),
     )
 
 
 class Address(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "addresses"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     customer_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("customers.id", ondelete="CASCADE")
     )
@@ -132,17 +124,13 @@ class Address(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     country: Mapped[str | None] = mapped_column(String(2))
     is_default: Mapped[bool] = mapped_column(Boolean, server_default="false")
 
-    __table_args__ = (
-        Index("ix_addresses_tenant_customer", "tenant_id", "customer_id"),
-    )
+    __table_args__ = (Index("ix_addresses_tenant_customer", "tenant_id", "customer_id"),)
 
 
 class Tag(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "tags"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(63))
     color: Mapped[str | None] = mapped_column(String(15))
 
@@ -170,9 +158,7 @@ customer_tags = Table(
 class Note(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "notes"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     customer_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("customers.id", ondelete="CASCADE")
     )
@@ -187,9 +173,7 @@ class Note(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
 class CustomerEvent(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "customer_events"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     customer_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("customers.id", ondelete="CASCADE")
     )
@@ -214,9 +198,7 @@ class IdentityMergeCandidate(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceSco
 
     __tablename__ = "identity_merge_candidates"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     customer_a_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("customers.id", ondelete="CASCADE")
     )
@@ -250,9 +232,7 @@ class IdentityMergeEvent(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMi
 
     __tablename__ = "identity_merge_events"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     canonical_customer_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("customers.id", ondelete="CASCADE")
     )

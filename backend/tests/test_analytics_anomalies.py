@@ -17,9 +17,7 @@ START = date(2026, 8, 1)
 
 
 def _series(days: int, daily: str) -> dict[date, Decimal]:
-    return {
-        START + timedelta(days=i): Decimal(daily) for i in range(days)
-    }
+    return {START + timedelta(days=i): Decimal(daily) for i in range(days)}
 
 
 def test_planted_spike_found_exactly_once():

@@ -77,16 +77,18 @@ class PosService:
         return register
 
     @staticmethod
-    async def list_registers(
-        session: AsyncSession, tenant_id: UUID
-    ) -> list[PosRegister]:
+    async def list_registers(session: AsyncSession, tenant_id: UUID) -> list[PosRegister]:
         rows = (
-            await session.execute(
-                select(PosRegister)
-                .where(PosRegister.tenant_id == tenant_id)
-                .order_by(PosRegister.created_at.asc(), PosRegister.id.asc())
+            (
+                await session.execute(
+                    select(PosRegister)
+                    .where(PosRegister.tenant_id == tenant_id)
+                    .order_by(PosRegister.created_at.asc(), PosRegister.id.asc())
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return list(rows)
 
     @staticmethod
@@ -131,9 +133,7 @@ class PosService:
             )
         ).scalar_one_or_none()
         if open_now is not None:
-            raise ConflictError(
-                f"register {register.code} already has an open session"
-            )
+            raise ConflictError(f"register {register.code} already has an open session")
         pos_session = PosSession(
             tenant_id=tenant_id,
             register_id=register_id,
@@ -145,9 +145,7 @@ class PosService:
         return pos_session
 
     @staticmethod
-    async def _get_session(
-        session: AsyncSession, tenant_id: UUID, session_id: UUID
-    ) -> PosSession:
+    async def _get_session(session: AsyncSession, tenant_id: UUID, session_id: UUID) -> PosSession:
         pos_session = (
             await session.execute(
                 select(PosSession).where(
@@ -161,14 +159,10 @@ class PosService:
         return pos_session
 
     @staticmethod
-    async def get_session(
-        session: AsyncSession, tenant_id: UUID, session_id: UUID
-    ) -> dict:
+    async def get_session(session: AsyncSession, tenant_id: UUID, session_id: UUID) -> dict:
         """The session plus its live cash position — what the closing screen shows."""
         pos_session = await PosService._get_session(session, tenant_id, session_id)
-        inflow, outflow = await PosService._cash_totals(
-            session, tenant_id, pos_session.id
-        )
+        inflow, outflow = await PosService._cash_totals(session, tenant_id, pos_session.id)
         expected_now = Decimal(pos_session.opening_float) + inflow - outflow
         return {
             "session": pos_session,
@@ -222,12 +216,8 @@ class PosService:
             raise ValidationError(f"direction must be one of {sorted(_CASH_DIRECTIONS)}")
         if reason not in _MANUAL_CASH_REASONS:
             if reason in _SALE_ONLY_CASH_REASONS:
-                raise ValidationError(
-                    f"reason '{reason}' is written by the sell flow only"
-                )
-            raise ValidationError(
-                f"reason must be one of {sorted(_MANUAL_CASH_REASONS)}"
-            )
+                raise ValidationError(f"reason '{reason}' is written by the sell flow only")
+            raise ValidationError(f"reason must be one of {sorted(_MANUAL_CASH_REASONS)}")
         pos_session = await PosService._get_session(session, tenant_id, session_id)
         if pos_session.status != "OPEN":
             raise ConflictError("cash rows are booked on the open session only")
@@ -299,12 +289,8 @@ class PosService:
         if not items:
             raise ValidationError("a sale must contain at least one item")
         if method not in _SALE_METHODS:
-            raise ValidationError(
-                f"method must be one of {sorted(_SALE_METHODS)}, got {method!r}"
-            )
-        register = await PosService._get_register(
-            session, tenant_id, pos_session.register_id
-        )
+            raise ValidationError(f"method must be one of {sorted(_SALE_METHODS)}, got {method!r}")
+        register = await PosService._get_register(session, tenant_id, pos_session.register_id)
 
         order = await OrderService.create_order(
             session,
@@ -387,9 +373,7 @@ class PosService:
         counted = to_money(counted_cash, "counted_cash")
         if counted < 0:
             raise ValidationError("counted_cash must not be negative")
-        inflow, outflow = await PosService._cash_totals(
-            session, tenant_id, pos_session.id
-        )
+        inflow, outflow = await PosService._cash_totals(session, tenant_id, pos_session.id)
         expected = Decimal(pos_session.opening_float) + inflow - outflow
         variance = counted - expected
 

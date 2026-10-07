@@ -72,12 +72,10 @@ ROUTE_PATHS = {
         (ROUTE_PATHS["audit"], "GET"),
     ],
 )
-def test_the_read_routes_are_registered_on_the_platform_router(
-    path: str, method: str
-) -> None:
-    assert any(
-        r.path == path and method in r.methods for r in platform_router.routes
-    ), f"{method} {path} is missing — a trail nobody can query is not a trail"
+def test_the_read_routes_are_registered_on_the_platform_router(path: str, method: str) -> None:
+    assert any(r.path == path and method in r.methods for r in platform_router.routes), (
+        f"{method} {path} is missing — a trail nobody can query is not a trail"
+    )
 
 
 @pytest.mark.parametrize(
@@ -173,9 +171,7 @@ async def test_outbox_list_returns_only_this_tenants_events(db, tenant_ctx) -> N
         payload={"n": 2},
     )
 
-    async with _client(
-        db, tenant_ctx.tenant_id, tenant_ctx.user.id, {"settings:read"}
-    ) as client:
+    async with _client(db, tenant_ctx.tenant_id, tenant_ctx.user.id, {"settings:read"}) as client:
         resp = await client.get(LIST_PATHS["outbox"])
 
     assert resp.status_code == 200, resp.text
@@ -191,9 +187,7 @@ async def test_outbox_list_returns_only_this_tenants_events(db, tenant_ctx) -> N
     assert all("payload" not in item for item in body["items"])
 
 
-async def test_outbox_status_filter_narrows_and_unknown_status_is_refused(
-    db, tenant_ctx
-) -> None:
+async def test_outbox_status_filter_narrows_and_unknown_status_is_refused(db, tenant_ctx) -> None:
     from app.core.events.writer import add_outbox_event
 
     await add_outbox_event(
@@ -204,12 +198,8 @@ async def test_outbox_status_filter_narrows_and_unknown_status_is_refused(
         tenant_id=tenant_ctx.tenant_id,
     )
 
-    async with _client(
-        db, tenant_ctx.tenant_id, tenant_ctx.user.id, {"settings:read"}
-    ) as client:
-        ok = await client.get(
-            LIST_PATHS["outbox"], params={"status": "pending"}
-        )
+    async with _client(db, tenant_ctx.tenant_id, tenant_ctx.user.id, {"settings:read"}) as client:
+        ok = await client.get(LIST_PATHS["outbox"], params={"status": "pending"})
         assert ok.status_code == 200
         assert all(i["status"] == "pending" for i in ok.json()["items"])
 
@@ -220,9 +210,7 @@ async def test_outbox_status_filter_narrows_and_unknown_status_is_refused(
     assert "unknown outbox event status" in bad.json()["error"]["message"]
 
 
-async def test_outbox_detail_carries_payload_and_hides_other_tenants(
-    db, tenant_ctx
-) -> None:
+async def test_outbox_detail_carries_payload_and_hides_other_tenants(db, tenant_ctx) -> None:
     from app.core.events.writer import add_outbox_event
 
     mine = await add_outbox_event(
@@ -243,9 +231,7 @@ async def test_outbox_detail_carries_payload_and_hides_other_tenants(
         payload={"secret": "not-yours"},
     )
 
-    async with _client(
-        db, tenant_ctx.tenant_id, tenant_ctx.user.id, {"settings:read"}
-    ) as client:
+    async with _client(db, tenant_ctx.tenant_id, tenant_ctx.user.id, {"settings:read"}) as client:
         detail = await client.get(f"{LIST_PATHS['outbox']}/{mine.id}")
         leaked = await client.get(f"{LIST_PATHS['outbox']}/{theirs.id}")
 
@@ -254,16 +240,13 @@ async def test_outbox_detail_carries_payload_and_hides_other_tenants(
     assert body["payload"]["order_id"] == "ord-1"
     assert body["meta"]["tenant_id"] == str(tenant_ctx.tenant_id)
     assert leaked.status_code == 404, (
-        "another tenant's event id must answer 404 — its existence is not the "
-        "caller's business"
+        "another tenant's event id must answer 404 — its existence is not the caller's business"
     )
     assert "not-yours" not in leaked.text
 
 
 async def test_outbox_detail_is_gated_when_the_row_is_missing(db, tenant_ctx) -> None:
-    async with _client(
-        db, tenant_ctx.tenant_id, tenant_ctx.user.id, {"customers:read"}
-    ) as client:
+    async with _client(db, tenant_ctx.tenant_id, tenant_ctx.user.id, {"customers:read"}) as client:
         refused = await client.get(f"{LIST_PATHS['outbox']}/{uuid.uuid4()}")
 
     assert refused.status_code == 403
@@ -271,9 +254,7 @@ async def test_outbox_detail_is_gated_when_the_row_is_missing(db, tenant_ctx) ->
 
 @pytest.mark.parametrize("limit", [0, 201])
 async def test_outbox_limit_is_bounded(db, tenant_ctx, limit: int) -> None:
-    async with _client(
-        db, tenant_ctx.tenant_id, tenant_ctx.user.id, {"settings:read"}
-    ) as client:
+    async with _client(db, tenant_ctx.tenant_id, tenant_ctx.user.id, {"settings:read"}) as client:
         resp = await client.get(LIST_PATHS["outbox"], params={"limit": limit})
     assert resp.status_code == 422, f"limit={limit} must be refused by validation"
 
@@ -283,13 +264,16 @@ async def test_outbox_limit_is_bounded(db, tenant_ctx, limit: int) -> None:
 
 async def test_audit_list_returns_only_this_tenants_rows(db, tenant_ctx) -> None:
     from app.core.db import bind_tenant
-
     from app.modules.platform.models import AuditLog
     from app.modules.platform.service import AuditService
 
     mine = await AuditService.write(
-        db, tenant_ctx.tenant_id, tenant_ctx.user.id,
-        "order.status_changed", "order", str(uuid.uuid4()),
+        db,
+        tenant_ctx.tenant_id,
+        tenant_ctx.user.id,
+        "order.status_changed",
+        "order",
+        str(uuid.uuid4()),
     )
     other_tenant = await _second_tenant(db)
     # audit_logs is FORCE RLS: seed the other tenant's row under ITS GUC,
@@ -297,7 +281,12 @@ async def test_audit_list_returns_only_this_tenants_rows(db, tenant_ctx) -> None
     # policy admits only the bound tenant's rows or platform NULL rows).
     await bind_tenant(db, other_tenant.id)
     theirs = await AuditService.write(
-        db, other_tenant.id, None, "order.status_changed", "order", str(uuid.uuid4()),
+        db,
+        other_tenant.id,
+        None,
+        "order.status_changed",
+        "order",
+        str(uuid.uuid4()),
     )
     # The NULL-tenant platform row must be a PURE INSERT: the ORM adds
     # `RETURNING created_at` for server-defaulted columns, and RETURNING runs
@@ -317,9 +306,7 @@ async def test_audit_list_returns_only_this_tenants_rows(db, tenant_ctx) -> None
     await db.flush()
     await bind_tenant(db, tenant_ctx.tenant_id)
 
-    async with _client(
-        db, tenant_ctx.tenant_id, tenant_ctx.user.id, {"settings:read"}
-    ) as client:
+    async with _client(db, tenant_ctx.tenant_id, tenant_ctx.user.id, {"settings:read"}) as client:
         resp = await client.get(LIST_PATHS["audit"])
 
     assert resp.status_code == 200, resp.text
@@ -341,8 +328,12 @@ async def test_audit_rows_carry_source_lineage_and_real_nulls(db, tenant_ctx) ->
     kind_token: Token = actor_kind_contextvar.set("automation")
     try:
         scoped = await AuditService.write(
-            db, tenant_ctx.tenant_id, tenant_ctx.user.id,
-            "test.lineage_read", "customer", str(uuid.uuid4()),
+            db,
+            tenant_ctx.tenant_id,
+            tenant_ctx.user.id,
+            "test.lineage_read",
+            "customer",
+            str(uuid.uuid4()),
         )
     finally:
         request_id_contextvar.reset(req_token)
@@ -353,16 +344,16 @@ async def test_audit_rows_carry_source_lineage_and_real_nulls(db, tenant_ctx) ->
     # NULL, which is what distinguishes a NULL from the string "null" on the
     # wire when both rows come back under the same filter.
     unscoped = await AuditService.write(
-        db, tenant_ctx.tenant_id, tenant_ctx.user.id,
-        "test.lineage_read", "customer", str(uuid.uuid4()),
+        db,
+        tenant_ctx.tenant_id,
+        tenant_ctx.user.id,
+        "test.lineage_read",
+        "customer",
+        str(uuid.uuid4()),
     )
 
-    async with _client(
-        db, tenant_ctx.tenant_id, tenant_ctx.user.id, {"settings:read"}
-    ) as client:
-        resp = await client.get(
-            LIST_PATHS["audit"], params={"action": "test.lineage_read"}
-        )
+    async with _client(db, tenant_ctx.tenant_id, tenant_ctx.user.id, {"settings:read"}) as client:
+        resp = await client.get(LIST_PATHS["audit"], params={"action": "test.lineage_read"})
 
     assert resp.status_code == 200, resp.text
     items = {item["id"]: item for item in resp.json()["items"]}
@@ -382,33 +373,33 @@ async def test_audit_filters_narrow_the_read_and_stay_bounded(db, tenant_ctx) ->
     from app.modules.platform.service import AuditService
 
     kept = await AuditService.write(
-        db, tenant_ctx.tenant_id, tenant_ctx.user.id,
-        "webhook_event.ignored", "webhook_event", str(uuid.uuid4()),
+        db,
+        tenant_ctx.tenant_id,
+        tenant_ctx.user.id,
+        "webhook_event.ignored",
+        "webhook_event",
+        str(uuid.uuid4()),
     )
     await AuditService.write(
-        db, tenant_ctx.tenant_id, tenant_ctx.user.id,
-        "order.status_changed", "order", str(uuid.uuid4()),
+        db,
+        tenant_ctx.tenant_id,
+        tenant_ctx.user.id,
+        "order.status_changed",
+        "order",
+        str(uuid.uuid4()),
     )
 
-    async with _client(
-        db, tenant_ctx.tenant_id, tenant_ctx.user.id, {"settings:read"}
-    ) as client:
+    async with _client(db, tenant_ctx.tenant_id, tenant_ctx.user.id, {"settings:read"}) as client:
         by_action = await client.get(
             LIST_PATHS["audit"], params={"action": "webhook_event.ignored"}
         )
         assert by_action.status_code == 200
-        assert [i["action"] for i in by_action.json()["items"]] == [
-            "webhook_event.ignored"
-        ]
+        assert [i["action"] for i in by_action.json()["items"]] == ["webhook_event.ignored"]
         assert {i["id"] for i in by_action.json()["items"]} == {str(kept.id)}
 
-        by_type = await client.get(
-            LIST_PATHS["audit"], params={"resource_type": "webhook_event"}
-        )
+        by_type = await client.get(LIST_PATHS["audit"], params={"resource_type": "webhook_event"})
         assert by_type.status_code == 200
-        assert all(
-            i["resource_type"] == "webhook_event" for i in by_type.json()["items"]
-        )
+        assert all(i["resource_type"] == "webhook_event" for i in by_type.json()["items"])
 
         bad_source = await client.get(LIST_PATHS["audit"], params={"source": "wizard"})
         assert bad_source.status_code == 400
@@ -421,16 +412,15 @@ async def test_audit_filters_narrow_the_read_and_stay_bounded(db, tenant_ctx) ->
             },
         )
         assert reversed_period.status_code == 400, (
-            "a reversed period must be refused, not answered with a silent "
-            "empty page"
+            "a reversed period must be refused, not answered with a silent empty page"
         )
 
 
 async def test_audit_period_filter_excludes_rows_before_since(db, tenant_ctx) -> None:
     """The period filter reads real timestamps: a row stamped before ``since``
     is excluded, a row after it is kept — the filter is a period, not a no-op."""
-    from app.modules.platform.models import AuditLog
     from app.core.context import actor_kind_contextvar
+    from app.modules.platform.models import AuditLog
 
     # Shape created_at at INSERT time: audit_logs is append-only at the
     # database layer (fd2026100409 — no UPDATE policy), so a timestamp can
@@ -455,9 +445,7 @@ async def test_audit_period_filter_excludes_rows_before_since(db, tenant_ctx) ->
     db.add_all([old, fresh])
     await db.flush()
 
-    async with _client(
-        db, tenant_ctx.tenant_id, tenant_ctx.user.id, {"settings:read"}
-    ) as client:
+    async with _client(db, tenant_ctx.tenant_id, tenant_ctx.user.id, {"settings:read"}) as client:
         resp = await client.get(
             LIST_PATHS["audit"],
             params={"since": (datetime.now(UTC) - timedelta(days=1)).isoformat()},
@@ -473,8 +461,6 @@ async def test_audit_period_filter_excludes_rows_before_since(db, tenant_ctx) ->
 
 @pytest.mark.parametrize("limit", [0, 201])
 async def test_audit_limit_is_bounded(db, tenant_ctx, limit: int) -> None:
-    async with _client(
-        db, tenant_ctx.tenant_id, tenant_ctx.user.id, {"settings:read"}
-    ) as client:
+    async with _client(db, tenant_ctx.tenant_id, tenant_ctx.user.id, {"settings:read"}) as client:
         resp = await client.get(LIST_PATHS["audit"], params={"limit": limit})
     assert resp.status_code == 422, f"limit={limit} must be refused by validation"

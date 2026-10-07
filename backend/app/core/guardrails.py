@@ -38,9 +38,17 @@ _ZERO_WIDTH = dict.fromkeys(map(ord, "\u200b\u200c\u200d\u2060\ufeff"), None)
 # its spelling to no one but a pattern matcher.
 _BIDI_AND_FILLER = dict.fromkeys(
     [
-        0x200E, 0x200F,
-        0x202A, 0x202B, 0x202C, 0x202D, 0x202E,
-        0x2066, 0x2067, 0x2068, 0x2069,
+        0x200E,
+        0x200F,
+        0x202A,
+        0x202B,
+        0x202C,
+        0x202D,
+        0x202E,
+        0x2066,
+        0x2067,
+        0x2068,
+        0x2069,
         0x0640,
     ],
     None,
@@ -117,9 +125,7 @@ _INJ_VERB_WEAK = r"(?:override|forget|discard|skip)"
 # The determiner slot is not just "the/all": the classic phrasing names whose
 # instructions they are — "forget YOUR instructions" — and a list without the
 # possessives let the most idiomatic attempt of all walk straight through.
-_INJ_QUALIFIER = (
-    r"(?:(?:all|any|every|the|these|those|your|my|our|their|its)\s+)*"
-)
+_INJ_QUALIFIER = r"(?:(?:all|any|every|the|these|those|your|my|our|their|its)\s+)*"
 _INJ_SCOPE = r"(?:(?:previous|prior|above|earlier|preceding|original|initial|system)\s+)*"
 _INJ_NOUN = r"(?:instructions?|rules?|prompts?|guidelines?|directives?)"
 _INJ_NOUN_OWN = r"(?:instructions?|prompts?|guidelines?|directives?)"
@@ -323,7 +329,6 @@ def screen_inbound(text: str) -> GuardrailVerdict:
     if not text or not text.strip():
         return GuardrailVerdict(decision="allow", checks=[])
     return _INBOUND_CHAIN.evaluate(text, {})
-
 
 
 # The sender types whose content is AI-authored and must pass the chain. A human

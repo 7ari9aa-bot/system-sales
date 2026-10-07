@@ -498,4 +498,3 @@ class HandoverOut(BaseModel):
 class HandoverList(BaseModel):
     items: list[HandoverOut]
     total: int
-

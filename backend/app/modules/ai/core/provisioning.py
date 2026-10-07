@@ -17,6 +17,7 @@ Architecture invariants
 * This module NEVER deletes tools or agents — it only ADDS missing ones.
 * All tool insertions are validated against ``AgentRegistry.is_tool_authorized``.
 """
+
 from __future__ import annotations
 
 import logging
@@ -79,7 +80,8 @@ async def provision_canonical_agents(
             if not AgentRegistry.is_tool_authorized(defn.kind, tool_name):
                 logger.error(
                     "provisioning.tool_not_authorized kind=%s tool=%s — skipping",
-                    defn.kind, tool_name,
+                    defn.kind,
+                    tool_name,
                 )
                 continue
             session.add(
@@ -95,7 +97,9 @@ async def provision_canonical_agents(
         created.append(agent)
         logger.info(
             "provisioning.created_agent tenant=%s kind=%s tools=%d",
-            tenant_id, defn.kind, len(defn.default_tools),
+            tenant_id,
+            defn.kind,
+            len(defn.default_tools),
         )
 
     return created
@@ -122,7 +126,9 @@ async def _sync_agent_tools(
                     AgentTool.agent_id == agent_id,
                 )
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
 
     added = 0
@@ -132,7 +138,8 @@ async def _sync_agent_tools(
         if not AgentRegistry.is_tool_authorized(kind, tool_name):
             logger.error(
                 "provisioning.sync_tool_not_authorized kind=%s tool=%s",
-                kind, tool_name,
+                kind,
+                tool_name,
             )
             continue
         session.add(
@@ -149,7 +156,10 @@ async def _sync_agent_tools(
         await session.flush()
         logger.info(
             "provisioning.synced_tools tenant=%s agent=%s kind=%s added=%d",
-            tenant_id, agent_id, kind, added,
+            tenant_id,
+            agent_id,
+            kind,
+            added,
         )
 
     return added
@@ -165,16 +175,16 @@ async def sync_existing_tenant_tools(
     """
     result: dict[str, int] = {}
     agents = (
-        await session.execute(
-            select(Agent).where(Agent.tenant_id == tenant_id)
-        )
-    ).scalars().all()
+        (await session.execute(select(Agent).where(Agent.tenant_id == tenant_id))).scalars().all()
+    )
 
     for agent in agents:
         if not AgentRegistry.has(agent.kind):
             logger.warning(
                 "provisioning.unknown_kind tenant=%s agent=%s kind=%s — skipping",
-                tenant_id, agent.id, agent.kind,
+                tenant_id,
+                agent.id,
+                agent.kind,
             )
             continue
         added = await _sync_agent_tools(session, tenant_id, agent.id, agent.kind)

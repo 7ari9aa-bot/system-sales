@@ -58,6 +58,7 @@ SI_SYSTEM_PROMPT = (
     "لو البيانات مش كفاية قول كده بصراحة. التوصيات اقتراحات مراجعة مش أفعال."
 )
 
+
 @dataclass(slots=True)
 class AnalysisResult:
     """§12.2 — the agent boundary result (no HTTP/UI knowledge)."""
@@ -140,9 +141,7 @@ class DeepAnalysisQueuedOut(BaseModel):
     status: str
 
 
-async def ensure_si_tools(
-    session: AsyncSession, tenant_id: uuid.UUID, agent_id: uuid.UUID
-) -> None:
+async def ensure_si_tools(session: AsyncSession, tenant_id: uuid.UUID, agent_id: uuid.UUID) -> None:
     """Idempotently attach the six SI tools to the agent (§4.4). Read-only
     tools on the owner's own agent — no policy surface is bypassed."""
     from app.modules.ai.agents.sales_intelligence.tools import SI_TOOLS
@@ -163,9 +162,7 @@ async def ensure_si_tools(
     for name in SI_TOOLS:
         if name in existing:
             continue
-        session.add(
-            AgentTool(tenant_id=tenant_id, agent_id=agent_id, name=name, policy={})
-        )
+        session.add(AgentTool(tenant_id=tenant_id, agent_id=agent_id, name=name, policy={}))
     await session.flush()
 
 
@@ -180,7 +177,9 @@ def _rebuild_facts(tool_calls_made: list[dict]) -> list[dict]:
     return payloads
 
 
-def _facts_to_contracts(payloads: list[dict], timezone: str = "Africa/Cairo") -> dict[str, MetricFact]:
+def _facts_to_contracts(
+    payloads: list[dict], timezone: str = "Africa/Cairo"
+) -> dict[str, MetricFact]:
     """Rebuild the run-scoped evidence needed for findings/coverage. v1 keeps
     the reconstruction minimal: facts only — comparisons/drivers stay in the
     tool summaries the model already quoted."""
@@ -221,13 +220,18 @@ async def run_sales_analysis(
 ) -> AnalysisResult:
     """One sales question → an evidence-backed answer (or a safe one)."""
     from sqlalchemy import text as sa_text
+
     from app.modules.ai.gateway import AIGateway
     from app.modules.ai.runtime import AgentRunner
 
     # Load tenant settings (merchant timezone & currency)
     tenant_row = (
         await session.execute(
-            sa_text("SELECT COALESCE(timezone, 'Africa/Cairo'), COALESCE(currency, 'EGP') FROM tenants WHERE id = :tid"),
+            sa_text(
+                "SELECT COALESCE(timezone, 'Africa/Cairo'),"
+                " COALESCE(currency, 'EGP')"
+                " FROM tenants WHERE id = :tid"
+            ),
             {"tid": str(tenant_id)},
         )
     ).first()
@@ -236,12 +240,20 @@ async def run_sales_analysis(
 
     setting_val = (
         await session.execute(
-            sa_text("SELECT value FROM platform_settings WHERE tenant_id = :tid AND key = 'primary_sales_metric'"),
+            sa_text(
+                "SELECT value FROM platform_settings"
+                " WHERE tenant_id = :tid"
+                " AND key = 'primary_sales_metric'"
+            ),
             {"tid": str(tenant_id)},
         )
     ).scalar_one_or_none()
     try:
-        profile = StoreMetricProfile(primary_sales_metric=setting_val) if setting_val else StoreMetricProfile()
+        profile = (
+            StoreMetricProfile(primary_sales_metric=setting_val)
+            if setting_val
+            else StoreMetricProfile()
+        )
     except Exception:
         profile = StoreMetricProfile()
 
@@ -250,7 +262,8 @@ async def run_sales_analysis(
     from app.modules.analytics.events import emit_analysis_event
 
     await emit_analysis_event(
-        session, tenant_id,
+        session,
+        tenant_id,
         event_type="ai.analysis.started",
         analysis_id=analysis_id,
         run_id=None,
@@ -272,9 +285,13 @@ async def run_sales_analysis(
     from app.modules.analytics.evidence import build_pack
     from app.modules.analytics.findings import build_findings
 
-    findings = build_findings(
-        _store_from(facts_contracts),
-    ) if facts_contracts else []
+    findings = (
+        build_findings(
+            _store_from(facts_contracts),
+        )
+        if facts_contracts
+        else []
+    )
     evidence_hash = None
     saved_evidence_id = None
     if facts_contracts:
@@ -300,16 +317,14 @@ async def run_sales_analysis(
     if result.content:
         problems = validate_answer(result.content, allowed, findings)
         if problems:
-            logger.warning(
-                "si.answer_rejected tenant=%s problems=%s", tenant_id, problems
-            )
+            logger.warning("si.answer_rejected tenant=%s problems=%s", tenant_id, problems)
             await emit_analysis_event(
-                session, tenant_id,
+                session,
+                tenant_id,
                 event_type="ai.analysis.completed",
                 analysis_id=analysis_id,
                 run_id=run_id,
-                payload={"outcome": "ANSWERED", "findings": len(findings),
-                         "safe_response": True},
+                payload={"outcome": "ANSWERED", "findings": len(findings), "safe_response": True},
             )
             return AnalysisResult(
                 outcome=Outcome.ANSWERED,
@@ -323,7 +338,8 @@ async def run_sales_analysis(
                 guardrail_reason="si_response_invalid",
             )
         await emit_analysis_event(
-            session, tenant_id,
+            session,
+            tenant_id,
             event_type="ai.analysis.completed",
             analysis_id=analysis_id,
             run_id=run_id,
@@ -342,9 +358,7 @@ async def run_sales_analysis(
 
     # No proven answer: findings still answer deterministically (§10.4).
     return AnalysisResult(
-        outcome=Outcome.NO_CLEAR_EXPLANATION
-        if findings
-        else Outcome.INSUFFICIENT_DATA,
+        outcome=Outcome.NO_CLEAR_EXPLANATION if findings else Outcome.INSUFFICIENT_DATA,
         answer=safe_response(findings, {}),
         findings=findings,
         facts=payloads,
@@ -362,4 +376,3 @@ def _store_from(facts: dict[str, object]) -> EvidenceStore:
     for fact_id, fact in facts.items():
         store.facts[fact_id] = fact  # type: ignore[assignment]
     return store
-

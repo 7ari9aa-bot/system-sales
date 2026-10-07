@@ -90,9 +90,7 @@ async def test_body_limit_413_uses_the_contract() -> None:
     any route (or the DB) is touched, which is exactly why this stays DB-free.
     """
     app = create_app()
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post(
             ORDERS,
             content=b"x" * (mw.MAX_BODY_BYTES + 1),
@@ -113,9 +111,7 @@ async def test_body_limit_413_keeps_cors_headers_for_the_browser() -> None:
     CORS failure.
     """
     app = create_app()
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post(
             ORDERS,
             content=b"x" * (mw.MAX_BODY_BYTES + 1),
@@ -155,9 +151,7 @@ def _ip_headers(ip: str) -> dict[str, str]:
 
 
 def _token(user_id: uuid.UUID, tenant_id: uuid.UUID) -> str:
-    return create_access_token(
-        str(user_id), {"tenant_id": str(tenant_id), "role": "owner"}
-    )
+    return create_access_token(str(user_id), {"tenant_id": str(tenant_id), "role": "owner"})
 
 
 async def _get(app: FastAPI, *, token: str | None = None, ip: str = "8.8.8.8"):
@@ -165,9 +159,7 @@ async def _get(app: FastAPI, *, token: str | None = None, ip: str = "8.8.8.8"):
     headers["x-request-id"] = "req-rl"
     if token:
         headers["authorization"] = f"Bearer {token}"
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         return await client.get(ORDERS, headers=headers)
 
 
@@ -199,9 +191,7 @@ async def test_auth_bucket_redis_outage_uses_the_contract() -> None:
             raise RuntimeError("redis down")
 
     app = _rate_app(ExplodingRedis())
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post(
             "/api/v1/auth/login",
             headers={"x-request-id": "req-auth", **_ip_headers("1.1.1.1")},
@@ -221,9 +211,7 @@ async def test_rate_limiter_internal_failure_uses_the_contract(monkeypatch) -> N
 
     monkeypatch.setattr(mw.LayeredRateLimiter, "check", _boom)
     app = _rate_app(FakeRedis(decode_responses=True))
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post(
             "/api/v1/auth/login",
             headers={"x-request-id": "req-bug", **_ip_headers("2.2.2.2")},
@@ -248,9 +236,7 @@ async def test_permission_error_403_uses_the_contract() -> None:
     async def boom() -> None:
         raise PermissionError("nope")
 
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get("/boom", headers={"x-request-id": "req-403"})
 
     assert response.status_code == 403
@@ -266,9 +252,7 @@ async def test_permission_error_403_uses_the_contract() -> None:
 
 async def test_domain_error_404_uses_the_contract() -> None:
     app = create_app()
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get(
             "/api/v1/webhooks/definitely-not-a-channel",
             headers={"x-request-id": "req-404"},
@@ -393,9 +377,7 @@ async def test_http_exception_422_from_a_route_uses_the_contract() -> None:
             ],
         )
 
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get("/legacy-422", headers={"x-request-id": "req-httpexc"})
 
     assert response.status_code == 422, response.text
@@ -493,7 +475,6 @@ async def test_untrusted_request_id_is_replaced_in_both_copies() -> None:
     body_id = response.json()["error"]["request_id"]
     assert body_id and body_id != untrusted
     assert response.headers["x-request-id"] == body_id
-
 
 
 # ---------------------------------------------------------------------------

@@ -209,9 +209,7 @@ async def test_one_provider_failing_does_not_stop_another(monkeypatch):
 
     # Now point the SAME gateway at a different provider host entirely.
     _stub_lookups_for(f"https://{_HOST_B}/v1")(monkeypatch)
-    async with httpx.AsyncClient(
-        transport=httpx.MockTransport(_ok_provider(healthy))
-    ) as client:
+    async with httpx.AsyncClient(transport=httpx.MockTransport(_ok_provider(healthy))) as client:
         result = await _chat(AIGateway(), session, client)
     assert result.content == "pong"
     # A stayed backed off; B was never refused by A's breaker.

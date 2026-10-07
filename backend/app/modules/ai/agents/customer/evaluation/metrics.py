@@ -39,9 +39,7 @@ def hit_at_k(cases: list[CaseResult], k: int) -> float:
     relevant = [c for c in cases if c.label_product_id is not None]
     if not relevant:
         return 0.0
-    hits = sum(
-        1 for c in relevant if c.label_product_id in c.ranked_product_ids[:k]
-    )
+    hits = sum(1 for c in relevant if c.label_product_id in c.ranked_product_ids[:k])
     return hits / len(relevant)
 
 
@@ -106,15 +104,9 @@ def propose_thresholds(cases: list[CaseResult]) -> dict[str, float]:
         and c.ranked_product_ids[0] == c.label_product_id
     ]
     correct_tops = sorted(c.scores[0] for c in correct if c.scores)
-    correct_gaps = sorted(
-        c.scores[0] - c.scores[1] for c in correct if len(c.scores) > 1
-    )
+    correct_gaps = sorted(c.scores[0] - c.scores[1] for c in correct if len(c.scores) > 1)
     foreign_tops = sorted(
-        (
-            c.scores[0]
-            for c in cases
-            if c.label_product_id is None and c.scores
-        ),
+        (c.scores[0] for c in cases if c.label_product_id is None and c.scores),
         reverse=True,
     )
 

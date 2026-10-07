@@ -98,21 +98,15 @@ async def test_create_fact_computes_content_hash_and_never_accepts_one() -> None
 
 async def test_create_fact_enforces_the_v12_vocabularies() -> None:
     with pytest.raises(ValidationError):
-        await EvidenceService.create_fact(
-            FakeSession(), TENANT, claim="x", trust="HEARSAY"
-        )
+        await EvidenceService.create_fact(FakeSession(), TENANT, claim="x", trust="HEARSAY")
     with pytest.raises(ValidationError):
-        await EvidenceService.create_fact(
-            FakeSession(), TENANT, claim="x", source_type="GOSSIP"
-        )
+        await EvidenceService.create_fact(FakeSession(), TENANT, claim="x", source_type="GOSSIP")
     with pytest.raises(ValidationError):
         await EvidenceService.create_fact(
             FakeSession(), TENANT, claim="x", classification="TOP_SECRET"
         )
     with pytest.raises(ValidationError):
-        await EvidenceService.create_fact(
-            FakeSession(), TENANT, claim="x", confidence=1.5
-        )
+        await EvidenceService.create_fact(FakeSession(), TENANT, claim="x", confidence=1.5)
     with pytest.raises(ValidationError):
         await EvidenceService.create_fact(FakeSession(), TENANT, claim="   ")
     # the legal extremes pass
@@ -135,9 +129,7 @@ def test_set_hash_is_order_independent() -> None:
 def test_set_hash_changes_when_a_resource_version_changes() -> None:
     triples = [(str(uuid.UUID(int=i)), _sha(f"c{i}"), str(i)) for i in range(1, 4)]
     bumped = [triples[0], (triples[1][0], triples[1][1], "99"), triples[2]]
-    assert evidence_set_hash_from_triples(triples) != evidence_set_hash_from_triples(
-        bumped
-    )
+    assert evidence_set_hash_from_triples(triples) != evidence_set_hash_from_triples(bumped)
 
 
 def test_same_source_repeats_collapse_but_other_sources_do_not() -> None:
@@ -167,14 +159,9 @@ def test_set_hash_of_collapsed_set_uses_the_representative_triple() -> None:
     dropped = str(uuid.UUID(int=2))
     # hashing [kept, dropped] equals hashing [kept] alone: the repeat added
     # zero confirmation to the set.
-    assert (
-        evidence_set_hash_from_triples(
-            dedupe_triples(
-                [("s", claim_hash, kept, "7"), ("s", claim_hash, dropped, "7")]
-            )
-        )
-        == evidence_set_hash_from_triples([(kept, claim_hash, "7")])
-    )
+    assert evidence_set_hash_from_triples(
+        dedupe_triples([("s", claim_hash, kept, "7"), ("s", claim_hash, dropped, "7")])
+    ) == evidence_set_hash_from_triples([(kept, claim_hash, "7")])
 
 
 def test_canonical_json_matches_the_house_form() -> None:
@@ -189,9 +176,7 @@ def test_stale_fact_is_flagged_not_rejected() -> None:
     assert fact_staleness(fresh, NOW + timedelta(seconds=30)) == []
 
     sla_breached = _fact(freshness_sla_seconds=60)
-    assert fact_staleness(sla_breached, NOW + timedelta(seconds=61)) == [
-        "freshness_sla_breached"
-    ]
+    assert fact_staleness(sla_breached, NOW + timedelta(seconds=61)) == ["freshness_sla_breached"]
 
     expired = _fact(valid_until=NOW - timedelta(seconds=1))
     assert "valid_until_elapsed" in fact_staleness(expired, NOW)
@@ -282,9 +267,7 @@ async def test_assembly_hashes_the_effective_facts_and_scopes_the_read() -> None
 async def test_assembly_is_order_independent_and_stores_sorted_ids() -> None:
     a, b, c = _fact(claim="1"), _fact(claim="2"), _fact(claim="3")
     ids = [a.fact_id, b.fact_id, c.fact_id]
-    one = await EvidenceService.assemble_evidence_set(
-        FakeSession([a, b, c]), TENANT, ids, now=NOW
-    )
+    one = await EvidenceService.assemble_evidence_set(FakeSession([a, b, c]), TENANT, ids, now=NOW)
     two = await EvidenceService.assemble_evidence_set(
         FakeSession([a, b, c]), TENANT, list(reversed(ids)), now=NOW
     )

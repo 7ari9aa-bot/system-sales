@@ -103,12 +103,16 @@ async def _buyer(db: AsyncSession, tenant_id: uuid.UUID) -> object:
 
 async def _lines(db: AsyncSession, order_id: uuid.UUID) -> list[tuple]:
     rows = (
-        await db.execute(
-            select(OrderItem)
-            .where(OrderItem.order_id == order_id)
-            .order_by(OrderItem.created_at, OrderItem.id)
+        (
+            await db.execute(
+                select(OrderItem)
+                .where(OrderItem.order_id == order_id)
+                .order_by(OrderItem.created_at, OrderItem.id)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return [(str(r.variant_id), r.quantity, r.unit_price, r.total) for r in rows]
 
 
@@ -174,9 +178,7 @@ def test_every_component_is_quantized_to_the_storage_scale_before_summing() -> N
 @pytest.mark.parametrize(
     "currency,exponent", [("EGP", 2), ("USD", 2), ("IQD", 3), ("JOD", 3), ("JPY", 0)]
 )
-def test_minor_units_round_trip_for_every_supported_exponent(
-    currency: str, exponent: int
-) -> None:
+def test_minor_units_round_trip_for_every_supported_exponent(currency: str, exponent: int) -> None:
     quantum = Decimal(1).scaleb(-exponent)
     amount = Decimal("19.995").quantize(quantum)
     minor = order_money.amount_minor(amount, currency)
@@ -230,9 +232,7 @@ async def test_the_request_context_carries_the_tenant_currency(
     tenant.currency = "SAR"
     await db.flush()
 
-    authed = AuthedUser(
-        id=tenant_ctx.user.id, tenant_id=tenant_ctx.tenant_id, role_code="owner"
-    )
+    authed = AuthedUser(id=tenant_ctx.user.id, tenant_id=tenant_ctx.tenant_id, role_code="owner")
     ctx = await get_tenant_ctx(_request("/api/v1/orders"), db, authed)
     assert ctx.currency == "SAR"
 
@@ -278,9 +278,7 @@ async def test_checkout_refuses_a_currency_the_tenant_does_not_trade_in(
         )
 
 
-async def test_a_payment_in_another_currency_is_refused(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_a_payment_in_another_currency_is_refused(db: AsyncSession, tenant_ctx) -> None:
     customer = await _buyer(db, tenant_ctx.tenant_id)
     variant, warehouse = await _stocked_variant(db, tenant_ctx.tenant_id)
     order = await OrderService.create_order(
@@ -306,14 +304,10 @@ async def test_a_payment_in_another_currency_is_refused(
 # ================================================== the price ladder =======
 
 
-async def test_checkout_prices_from_the_quantity_tier(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_checkout_prices_from_the_quantity_tier(db: AsyncSession, tenant_ctx) -> None:
     """``ProductPrice`` was a table nothing read: tiers were written, ignored."""
     customer = await _buyer(db, tenant_ctx.tenant_id)
-    variant, warehouse = await _stocked_variant(
-        db, tenant_ctx.tenant_id, price="100.00"
-    )
+    variant, warehouse = await _stocked_variant(db, tenant_ctx.tenant_id, price="100.00")
     await CatalogService.set_variant_price(
         db, tenant_ctx.tenant_id, variant.id, "85.00", min_quantity=5
     )
@@ -331,13 +325,9 @@ async def test_checkout_prices_from_the_quantity_tier(
     assert order.subtotal == Decimal("510.00")
 
 
-async def test_a_quantity_below_the_tier_pays_the_base_price(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_a_quantity_below_the_tier_pays_the_base_price(db: AsyncSession, tenant_ctx) -> None:
     customer = await _buyer(db, tenant_ctx.tenant_id)
-    variant, warehouse = await _stocked_variant(
-        db, tenant_ctx.tenant_id, price="100.00"
-    )
+    variant, warehouse = await _stocked_variant(db, tenant_ctx.tenant_id, price="100.00")
     await CatalogService.set_variant_price(
         db, tenant_ctx.tenant_id, variant.id, "85.00", min_quantity=5
     )
@@ -356,9 +346,7 @@ async def test_a_quantity_below_the_tier_pays_the_base_price(
 
 async def test_the_highest_applicable_tier_wins(db: AsyncSession, tenant_ctx) -> None:
     customer = await _buyer(db, tenant_ctx.tenant_id)
-    variant, warehouse = await _stocked_variant(
-        db, tenant_ctx.tenant_id, price="100.00"
-    )
+    variant, warehouse = await _stocked_variant(db, tenant_ctx.tenant_id, price="100.00")
     await CatalogService.set_variant_price(
         db, tenant_ctx.tenant_id, variant.id, "90.00", min_quantity=3
     )
@@ -390,9 +378,7 @@ async def test_a_tier_in_another_currency_never_prices_this_tenants_order(
     from app.modules.catalog.models import ProductPrice
 
     customer = await _buyer(db, tenant_ctx.tenant_id)
-    variant, warehouse = await _stocked_variant(
-        db, tenant_ctx.tenant_id, price="100.00"
-    )
+    variant, warehouse = await _stocked_variant(db, tenant_ctx.tenant_id, price="100.00")
     db.add(
         ProductPrice(
             tenant_id=tenant_ctx.tenant_id,
@@ -433,9 +419,7 @@ async def test_a_price_tier_in_another_currency_is_refused_on_write(
 # ============================== the components reach the order row =========
 
 
-async def test_checkout_stores_the_components_it_was_given(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_checkout_stores_the_components_it_was_given(db: AsyncSession, tenant_ctx) -> None:
     customer = await _buyer(db, tenant_ctx.tenant_id)
     variant, warehouse = await _stocked_variant(db, tenant_ctx.tenant_id, price="50.00")
 
@@ -565,8 +549,7 @@ async def test_the_currency_change_leaves_an_audit_row(db: AsyncSession, tenant_
 
     row = (
         await db.execute(
-            sa.select(AuditLog)
-            .where(
+            sa.select(AuditLog).where(
                 AuditLog.tenant_id == tenant_ctx.tenant_id,
                 AuditLog.action == "tenant.currency_changed",
             )
@@ -633,9 +616,7 @@ def _settings_client(db: AsyncSession, tenant_ctx, perms: set[str]):
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 
 
-async def test_the_settings_route_sets_the_tenants_currency(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_the_settings_route_sets_the_tenants_currency(db: AsyncSession, tenant_ctx) -> None:
     async with _settings_client(db, tenant_ctx, {"settings:read", "settings:write"}) as client:
         response = await client.put(
             f"/api/v1/tenants/{tenant_ctx.tenant_id}/currency", json={"currency": "SAR"}

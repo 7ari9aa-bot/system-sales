@@ -148,9 +148,7 @@ async def _cleanup(engine: AsyncEngine, tenant_id: uuid.UUID) -> None:
                     text(f"DELETE FROM {table} WHERE tenant_id = :t"), {"t": tenant_id}
                 )
         async with _tx(engine) as session:
-            await session.execute(
-                text("DELETE FROM tenants WHERE id = :t"), {"t": tenant_id}
-            )
+            await session.execute(text("DELETE FROM tenants WHERE id = :t"), {"t": tenant_id})
     except Exception:  # noqa: BLE001
         pass
 
@@ -194,9 +192,7 @@ async def _restore_events(engine: AsyncEngine, job_id: uuid.UUID) -> list[str]:
         return list(rows.all())
 
 
-async def _audit_writes(
-    engine: AsyncEngine, tenant_id: uuid.UUID, job_id: uuid.UUID
-) -> int:
+async def _audit_writes(engine: AsyncEngine, tenant_id: uuid.UUID, job_id: uuid.UUID) -> int:
     async with _tx(engine, tenant_id) as session:
         return int(
             (
@@ -231,13 +227,9 @@ async def _extract(engine: AsyncEngine, tenant_id: uuid.UUID, job_id: uuid.UUID)
         )
 
 
-async def _validate(
-    engine: AsyncEngine, tenant_id: uuid.UUID, job_id: uuid.UUID
-):
+async def _validate(engine: AsyncEngine, tenant_id: uuid.UUID, job_id: uuid.UUID):
     async with _tx(engine, tenant_id) as session:
-        return await TenantRestoreService.validate_against_current(
-            session, tenant_id, job_id
-        )
+        return await TenantRestoreService.validate_against_current(session, tenant_id, job_id)
 
 
 async def _execute(engine: AsyncEngine, tenant_id: uuid.UUID, job_id: uuid.UUID):
@@ -325,8 +317,7 @@ async def test_gate_a_lie_in_the_manifest_is_refused_before_anything_moves(
                 (
                     await session.execute(
                         text(
-                            "SELECT extraction_results::text FROM tenant_restore_jobs "
-                            "WHERE id = :j"
+                            "SELECT extraction_results::text FROM tenant_restore_jobs WHERE id = :j"
                         ),
                         {"j": job_id},
                     )
@@ -362,9 +353,7 @@ async def test_gate_a_lie_in_the_manifest_is_refused_before_anything_moves(
         )
         a_row = await _customer(restore_engine, tenant_a, rows_a[0])
         assert a_row is not None and a_row.deleted_at is not None
-        assert "tenant.restore.completed" not in await _restore_events(
-            restore_engine, job_id
-        )
+        assert "tenant.restore.completed" not in await _restore_events(restore_engine, job_id)
     finally:
         await _cleanup(restore_engine, tenant_a)
         await _cleanup(restore_engine, tenant_b)
@@ -462,23 +451,17 @@ async def test_gate_concurrent_execute_publishes_one_completion(
             async with _tx(restore_engine, tenant_a) as session:
                 # Hold both transactions open until BOTH are inside, so the
                 # status check really does race the status write.
-                backend = (
-                    await session.execute(text("SELECT pg_backend_pid()"))
-                ).scalar_one()
+                backend = (await session.execute(text("SELECT pg_backend_pid()"))).scalar_one()
                 backends.append(int(backend))
                 await barrier.wait()
                 try:
-                    await TenantRestoreService.execute_restore(
-                        session, tenant_a, job_id
-                    )
+                    await TenantRestoreService.execute_restore(session, tenant_a, job_id)
                 except ValidationError as exc:
                     outcomes.append(f"refused: {exc.message}")
                 else:
                     outcomes.append("completed")
 
-        await asyncio.wait_for(
-            asyncio.gather(*(caller() for _ in range(callers))), timeout=90
-        )
+        await asyncio.wait_for(asyncio.gather(*(caller() for _ in range(callers))), timeout=90)
 
         assert len(set(backends)) == callers, f"callers shared a backend: {backends}"
 

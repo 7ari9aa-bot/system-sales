@@ -102,9 +102,7 @@ async def test_a_second_order_may_still_convert_and_a_null_order_is_not_capped(
     second = await MarketingService.record_conversion(
         db, tenant_id, order_id=order_b.id, type="purchase", value=20
     )
-    anonymous = await MarketingService.record_conversion(
-        db, tenant_id, type="signup", value=None
-    )
+    anonymous = await MarketingService.record_conversion(db, tenant_id, type="signup", value=None)
     other_type = await MarketingService.record_conversion(
         db, tenant_id, order_id=order_a.id, type="lead", value=None
     )
@@ -134,7 +132,11 @@ async def test_recording_a_conversion_is_idempotent_when_asked(
         db, tenant_id, order_id=order.id, customer_id=order.customer_id, value=250
     )
     replay = await MarketingService.record_conversion(
-        db, tenant_id, order_id=order.id, customer_id=order.customer_id, value=250,
+        db,
+        tenant_id,
+        order_id=order.id,
+        customer_id=order.customer_id,
+        value=250,
         idempotent=True,
     )
     await db.flush()
@@ -230,12 +232,8 @@ async def test_a_campaign_lists_its_conversions_and_another_tenant_sees_none(
     await db.flush()
 
     async with _client(db, tenant_ctx, set()) as client:
-        listed = await client.get(
-            f"/api/v1/marketing/campaigns/{campaign.id}/conversions"
-        )
-        foreign = await client.get(
-            f"/api/v1/marketing/campaigns/{uuid.uuid4()}/conversions"
-        )
+        listed = await client.get(f"/api/v1/marketing/campaigns/{campaign.id}/conversions")
+        foreign = await client.get(f"/api/v1/marketing/campaigns/{uuid.uuid4()}/conversions")
 
     assert listed.status_code == 200, listed.text
     items = listed.json()["items"]

@@ -129,9 +129,7 @@ def recorded_events(monkeypatch):
     return calls
 
 
-def _revoked_row(
-    user_id: uuid.UUID, tenant_id: uuid.UUID, *, age_seconds: float | None = None
-):
+def _revoked_row(user_id: uuid.UUID, tenant_id: uuid.UUID, *, age_seconds: float | None = None):
     """A consumed (rotated) refresh-token row.
 
     ``age_seconds`` backdates ``revoked_at`` — the grace window measures the
@@ -182,9 +180,7 @@ async def test_reuse_detection_revokes_the_family_on_an_independent_transaction(
     monkeypatch.setattr("app.core.db.get_sessionmaker", lambda: _factory)
 
     with pytest.raises(PermissionDeniedError):
-        await service.AuthService.refresh(
-            request_session, refresh_token="replayed-token"
-        )
+        await service.AuthService.refresh(request_session, refresh_token="replayed-token")
 
     # The revocation ran on its OWN session...
     assert len(created) == 1, "family revocation must run on an independent session"
@@ -263,9 +259,7 @@ async def test_refresh_race_inside_the_grace_window_is_tolerated(
 
     monkeypatch.setattr("app.core.db.get_sessionmaker", lambda: _factory)
 
-    pair, _user, _tenant = await AuthService.refresh(
-        request_session, refresh_token="raced-token"
-    )
+    pair, _user, _tenant = await AuthService.refresh(request_session, refresh_token="raced-token")
 
     assert pair.refresh_token, "the tolerated duplicate still mints its own pair"
     assert row.revoked_at == original_revoked_at, (
@@ -306,6 +300,7 @@ async def test_reuse_detection_compiled_statement_targets_the_whole_family() -> 
 
 # --------------------------------------------- get_current_user verdict split --
 
+
 def _bare_request():
     """A minimal Starlette Request for direct dependency calls."""
     from starlette.requests import Request
@@ -342,8 +337,8 @@ async def test_get_current_user_db_failure_is_not_an_auth_verdict() -> None:
     generic handler renders it 5xx). Both sides are pinned here: an
     undecodable token still gets the auth verdict, a dead session does not.
     """
-    from app.core.security import create_access_token
     from app.core.errors import PermissionDeniedError
+    from app.core.security import create_access_token
     from app.modules.identity.deps import get_current_user
 
     token = create_access_token(str(uuid.uuid4()), {"tenant_id": str(uuid.uuid4())})
@@ -429,9 +424,7 @@ async def test_reuse_revocation_survives_the_request_rollback(db_url, monkeypatc
             # the transaction rolls back exactly as it does in production.
             async with factory() as session:
                 async with session.begin():
-                    await service.AuthService.refresh(
-                        session, refresh_token=pair.refresh_token
-                    )
+                    await service.AuthService.refresh(session, refresh_token=pair.refresh_token)
 
         with pytest.raises(PermissionDeniedError):
             await _replay_the_rotated_token()
@@ -439,10 +432,14 @@ async def test_reuse_revocation_survives_the_request_rollback(db_url, monkeypatc
         async with factory() as check:
             async with check.begin():
                 rows = (
-                    await check.execute(
-                        select(RefreshToken).where(RefreshToken.user_id == user_id)
+                    (
+                        await check.execute(
+                            select(RefreshToken).where(RefreshToken.user_id == user_id)
+                        )
                     )
-                ).scalars().all()
+                    .scalars()
+                    .all()
+                )
 
         assert len(rows) == 2
         assert all(r.revoked_at is not None for r in rows), (
@@ -463,9 +460,7 @@ async def test_reuse_revocation_survives_the_request_rollback(db_url, monkeypatc
                     text("DELETE FROM refresh_tokens WHERE user_id = :u"),
                     {"u": str(user_id)},
                 )
-                await cleanup.execute(
-                    text("DELETE FROM users WHERE id = :u"), {"u": str(user_id)}
-                )
+                await cleanup.execute(text("DELETE FROM users WHERE id = :u"), {"u": str(user_id)})
                 await cleanup.execute(
                     text("DELETE FROM tenants WHERE id = :t"), {"t": str(tenant_id)}
                 )
@@ -533,10 +528,14 @@ async def test_replay_right_after_rotation_is_a_tolerated_race_not_reuse(
         async with factory() as check:
             async with check.begin():
                 rows = (
-                    await check.execute(
-                        select(RefreshToken).where(RefreshToken.user_id == user_id)
+                    (
+                        await check.execute(
+                            select(RefreshToken).where(RefreshToken.user_id == user_id)
+                        )
                     )
-                ).scalars().all()
+                    .scalars()
+                    .all()
+                )
 
         # The raced replay minted its own live pair; the family was NOT nuked.
         live = [r for r in rows if r.revoked_at is None]
@@ -549,9 +548,7 @@ async def test_replay_right_after_rotation_is_a_tolerated_race_not_reuse(
                     text("DELETE FROM refresh_tokens WHERE user_id = :u"),
                     {"u": str(user_id)},
                 )
-                await cleanup.execute(
-                    text("DELETE FROM users WHERE id = :u"), {"u": str(user_id)}
-                )
+                await cleanup.execute(text("DELETE FROM users WHERE id = :u"), {"u": str(user_id)})
                 await cleanup.execute(
                     text("DELETE FROM tenants WHERE id = :t"), {"t": str(tenant_id)}
                 )

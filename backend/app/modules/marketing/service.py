@@ -77,14 +77,10 @@ class MarketingService:
         return campaign
 
     @staticmethod
-    async def get_campaign(
-        session: AsyncSession, tenant_id: UUID, campaign_id: UUID
-    ) -> Campaign:
+    async def get_campaign(session: AsyncSession, tenant_id: UUID, campaign_id: UUID) -> Campaign:
         campaign = (
             await session.execute(
-                select(Campaign).where(
-                    Campaign.id == campaign_id, Campaign.tenant_id == tenant_id
-                )
+                select(Campaign).where(Campaign.id == campaign_id, Campaign.tenant_id == tenant_id)
             )
         ).scalar_one_or_none()
         if campaign is None:
@@ -108,8 +104,7 @@ class MarketingService:
             stmt = stmt.where(Campaign.status == status)
         if before_created_at is not None and before_id is not None:
             stmt = stmt.where(
-                tuple_(Campaign.created_at, Campaign.id)
-                < tuple_(before_created_at, before_id)
+                tuple_(Campaign.created_at, Campaign.id) < tuple_(before_created_at, before_id)
             )
         stmt = (
             stmt.order_by(Campaign.created_at.desc(), Campaign.id.desc())
@@ -279,8 +274,7 @@ class MarketingService:
         )
         if before_created_at is not None and before_id is not None:
             stmt = stmt.where(
-                tuple_(Conversion.created_at, Conversion.id)
-                < tuple_(before_created_at, before_id)
+                tuple_(Conversion.created_at, Conversion.id) < tuple_(before_created_at, before_id)
             )
         conversions = list(
             (
@@ -311,9 +305,7 @@ class MarketingService:
         for conversion_id, model in credit_rows:
             models_by_conversion.setdefault(conversion_id, []).append(model)
 
-        return [
-            (c, sorted(models_by_conversion.get(c.id, []))) for c in conversions
-        ]
+        return [(c, sorted(models_by_conversion.get(c.id, []))) for c in conversions]
 
     @staticmethod
     async def _attribute(
@@ -374,7 +366,6 @@ class MarketingService:
         session.add_all(rows)
         await session.flush()
         return rows
-
 
     # ------------------------------------------------------------ leads ----
 

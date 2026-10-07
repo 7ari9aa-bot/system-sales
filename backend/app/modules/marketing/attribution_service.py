@@ -43,9 +43,15 @@ from app.modules.marketing.models import (
 )
 
 # Attribution models supported
-_ATTRIBUTION_MODELS = frozenset({
-    "first_touch", "last_touch", "linear", "time_decay", "position_based",
-})
+_ATTRIBUTION_MODELS = frozenset(
+    {
+        "first_touch",
+        "last_touch",
+        "linear",
+        "time_decay",
+        "position_based",
+    }
+)
 
 #: The one model a money figure is quoted from (analytics revenue uses it too).
 CANONICAL_MODEL = "last_touch"
@@ -78,9 +84,7 @@ class AttributionService:
         model: str = CANONICAL_MODEL,
     ) -> list[Attribution]:
         if model not in _ATTRIBUTION_MODELS:
-            raise ValueError(
-                f"attribution model must be one of {sorted(_ATTRIBUTION_MODELS)}"
-            )
+            raise ValueError(f"attribution model must be one of {sorted(_ATTRIBUTION_MODELS)}")
 
         conversion = (
             await session.execute(
@@ -104,7 +108,9 @@ class AttributionService:
                     )
                     .order_by(Touchpoint.created_at.asc())
                 )
-            ).scalars().all()
+            )
+            .scalars()
+            .all()
         )
 
         if not touchpoints:
@@ -112,10 +118,7 @@ class AttributionService:
 
         # Filter to touchpoints before the conversion occurred_at
         if conversion.occurred_at:
-            touchpoints = [
-                tp for tp in touchpoints
-                if tp.created_at <= conversion.occurred_at
-            ]
+            touchpoints = [tp for tp in touchpoints if tp.created_at <= conversion.occurred_at]
 
         if not touchpoints:
             return []
@@ -129,7 +132,9 @@ class AttributionService:
                         Attribution.model == model,
                     )
                 )
-            ).scalars().all()
+            )
+            .scalars()
+            .all()
         )
 
         weights = AttributionService.compute_weights(len(touchpoints), model)
@@ -225,8 +230,8 @@ class AttributionService:
         """
         ordered = sorted(model_rows, key=lambda row: row[0])
         by_model = {model: (conversions, credited) for model, conversions, credited in ordered}
-        canonical = CANONICAL_MODEL if CANONICAL_MODEL in by_model else (
-            ordered[0][0] if ordered else None
+        canonical = (
+            CANONICAL_MODEL if CANONICAL_MODEL in by_model else (ordered[0][0] if ordered else None)
         )
         conversions, credited = by_model.get(canonical, (0, Decimal("0.00")))
 

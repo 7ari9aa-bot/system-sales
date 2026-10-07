@@ -258,9 +258,7 @@ async def test_chat_blocks_restricted_payload_above_clearance_on_the_send_path(
             )
 
 
-async def test_embed_honours_residency_before_calling_the_provider(
-    db, tenant_ctx, monkeypatch
-):
+async def test_embed_honours_residency_before_calling_the_provider(db, tenant_ctx, monkeypatch):
     """Embeddings ship customer text to the provider too — residency must stop
     that path, and an unknown region must fail closed."""
     tenant_id = tenant_ctx.tenant_id
@@ -347,9 +345,7 @@ async def test_tenant_base_url_to_internal_target_is_refused_before_http(
             )
 
 
-async def test_blocked_base_url_is_recorded_as_a_failed_model_call(
-    db, tenant_ctx, monkeypatch
-):
+async def test_blocked_base_url_is_recorded_as_a_failed_model_call(db, tenant_ctx, monkeypatch):
     """The refusal is a governed outcome, not a silent drop: a ModelCall row
     with status=error exists, and none of it carries the tenant's key."""
     tenant_id = tenant_ctx.tenant_id

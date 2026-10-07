@@ -49,15 +49,11 @@ async def _tenant_ids(session: AsyncSession) -> list[tuple[str, str]]:
     """(id, slug) for every tenant. `tenants` carries no RLS, so no GUC needed."""
     from app.modules.identity.models import Tenant
 
-    rows = (
-        await session.execute(select(Tenant.id, Tenant.slug).order_by(Tenant.created_at))
-    ).all()
+    rows = (await session.execute(select(Tenant.id, Tenant.slug).order_by(Tenant.created_at))).all()
     return [(str(tid), slug) for tid, slug in rows]
 
 
-async def _backfill(
-    session: AsyncSession, tenant_id: str, *, include_subscription: bool
-) -> dict:
+async def _backfill(session: AsyncSession, tenant_id: str, *, include_subscription: bool) -> dict:
     """Seed one tenant inside its own transaction, with the GUC bound."""
     import uuid as _uuid
 
@@ -100,8 +96,7 @@ async def main() -> int:
     print(f"environment: {settings.environment}")
     print(f"mode: {mode}")
     print(
-        "subscription: "
-        + ("yes (plan binding)" if args.with_subscription else "no (safe subset)")
+        "subscription: " + ("yes (plan binding)" if args.with_subscription else "no (safe subset)")
     )
     print()
 

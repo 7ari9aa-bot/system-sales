@@ -90,13 +90,7 @@ class ObjectStorage:
 
     @property
     def _s3_configured(self) -> bool:
-        return bool(
-            self._endpoint
-            and self._region
-            and self._bucket
-            and self._key
-            and self._secret
-        )
+        return bool(self._endpoint and self._region and self._bucket and self._key and self._secret)
 
     @property
     def _supabase_configured(self) -> bool:
@@ -147,11 +141,7 @@ class ObjectStorage:
         if not self.configured:
             raise RuntimeError("object storage is not configured")
         settings = get_settings()
-        ttl = (
-            settings.s3_signed_url_ttl_seconds
-            if expires_in is None
-            else expires_in
-        )
+        ttl = settings.s3_signed_url_ttl_seconds if expires_in is None else expires_in
         if ttl < 1 or ttl > 7 * 24 * 60 * 60:
             raise ValueError("signed URL lifetime must be between 1 second and 7 days")
         if self._s3_configured:
@@ -199,18 +189,16 @@ class ObjectStorage:
         # stored as object keys, so the DB never holds an expiring signed URL.
         if not value.startswith("s3://"):
             return value
-        key = value[len("s3://"):]
+        key = value[len("s3://") :]
         tenant_prefix = f"product-images/{tenant_id}/"
-        filename = key[len(tenant_prefix):] if key.startswith(tenant_prefix) else ""
+        filename = key[len(tenant_prefix) :] if key.startswith(tenant_prefix) else ""
         if not filename or "/" in filename:
             raise ValueError("product image key is outside the tenant image prefix")
         return self.signed_url(key, expires_in=7 * 24 * 60 * 60)
 
     MAX_REDIRECTS = 3
 
-    async def fetch(
-        self, url: str, *, max_bytes: int | None = MAX_MEDIA_BYTES
-    ) -> FetchedMedia:
+    async def fetch(self, url: str, *, max_bytes: int | None = MAX_MEDIA_BYTES) -> FetchedMedia:
         """Download a provider media URL as a bounded, SSRF-checked stream.
 
         Routed through the process-wide `storage.objects` breaker so a dead or
@@ -353,8 +341,7 @@ class ObjectStorage:
     #: S3 accepts at most 1000 keys per `delete_objects` request.
     async def _supabase_upload(self, key: str, data: bytes, content_type: str) -> None:
         path = (
-            f"{self._storage_api_base}/object/"
-            f"{quote(self._bucket, safe='')}/{quote(key, safe='/')}"
+            f"{self._storage_api_base}/object/{quote(self._bucket, safe='')}/{quote(key, safe='/')}"
         )
         headers = {
             **self._storage_headers(),
@@ -411,14 +398,10 @@ class ObjectStorage:
                         },
                     )
                 else:
-                    await get_breaker(STORAGE_OBJECTS).call(
-                        self._supabase_delete, chunk
-                    )
+                    await get_breaker(STORAGE_OBJECTS).call(self._supabase_delete, chunk)
                     outcome = {}
             except Exception as exc:  # a dead bucket is reported, never fatal
-                logger.warning(
-                    "storage.delete_objects_failed count=%d error=%s", len(chunk), exc
-                )
+                logger.warning("storage.delete_objects_failed count=%d error=%s", len(chunk), exc)
                 failed.extend(chunk)
                 continue
             errors = (outcome or {}).get("Errors") or []

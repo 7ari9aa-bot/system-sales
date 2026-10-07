@@ -38,16 +38,12 @@ def _patch_gateway(monkeypatch, results: list[ChatCompletionResult]) -> dict:
 def _patch_signed_urls(monkeypatch) -> None:
     monkeypatch.setattr(
         "app.core.storage.get_storage",
-        lambda: SimpleNamespace(
-            signed_url=lambda key, **kw: f"https://signed.test/{key}"
-        ),
+        lambda: SimpleNamespace(signed_url=lambda key, **kw: f"https://signed.test/{key}"),
     )
 
 
 async def _agent_with(db, tenant_id, name: str) -> Agent:
-    agent = Agent(
-        tenant_id=tenant_id, name="Sales Agent", model="fast", system_prompt="You sell."
-    )
+    agent = Agent(tenant_id=tenant_id, name="Sales Agent", model="fast", system_prompt="You sell.")
     db.add(agent)
     await db.flush()
     db.add(AgentTool(tenant_id=tenant_id, agent_id=agent.id, name=name, policy={}))
@@ -126,14 +122,10 @@ def _text(message: dict) -> str:
     content = message.get("content")
     if isinstance(content, str):
         return content
-    return " ".join(
-        part.get("text", "") for part in content if part.get("type") == "text"
-    )
+    return " ".join(part.get("text", "") for part in content if part.get("type") == "text")
 
 
-async def test_current_turn_rides_the_photo_as_content_parts(
-    db, tenant_ctx, monkeypatch
-):
+async def test_current_turn_rides_the_photo_as_content_parts(db, tenant_ctx, monkeypatch):
     tenant_id = tenant_ctx.tenant_id
     agent = await _agent_with(db, tenant_id, "search_products")
     conversation, _message = await _conversation_with_inbound_image(
@@ -220,9 +212,7 @@ async def test_older_photos_stay_text_markers(db, tenant_ctx, monkeypatch):
     assert len(image_parts) == 1  # history cannot flood the prompt with photos
     assert image_parts[0]["image_url"]["url"].endswith("photos/new.png")
     marker_turns = [
-        m
-        for m in calls["list"][0]["messages"]
-        if m["role"] == "user" and "sent image" in _text(m)
+        m for m in calls["list"][0]["messages"] if m["role"] == "user" and "sent image" in _text(m)
     ]
     assert marker_turns, "the older photo stays a text marker (§7.1.3)"
 
@@ -257,9 +247,7 @@ async def test_grounded_reply_needs_no_regeneration(db, tenant_ctx, monkeypatch)
     assert calls["count"] == 2  # tool turn + answer; no corrective regeneration
 
 
-async def test_ungrounded_reply_regenerates_once_with_tools_disabled(
-    db, tenant_ctx, monkeypatch
-):
+async def test_ungrounded_reply_regenerates_once_with_tools_disabled(db, tenant_ctx, monkeypatch):
     tenant_id = tenant_ctx.tenant_id
     agent = await _agent_with(db, tenant_id, "search_products")
     await _seed_variant(db, tenant_id)
@@ -353,14 +341,10 @@ async def test_no_tool_results_skips_grounding(db, tenant_ctx, monkeypatch):
     assert calls["count"] == 1
 
 
-async def test_media_collected_server_side_with_cap_and_shown_ids(
-    db, tenant_ctx, monkeypatch
-):
+async def test_media_collected_server_side_with_cap_and_shown_ids(db, tenant_ctx, monkeypatch):
     tenant_id = tenant_ctx.tenant_id
     agent = await _agent_with(db, tenant_id, "resolve_product_media")
-    product = Product(
-        tenant_id=tenant_id, title="Abaya", slug=f"abaya-{uuid.uuid4().hex[:8]}"
-    )
+    product = Product(tenant_id=tenant_id, title="Abaya", slug=f"abaya-{uuid.uuid4().hex[:8]}")
     db.add(product)
     await db.flush()
     images = []
@@ -403,8 +387,6 @@ async def test_media_collected_server_side_with_cap_and_shown_ids(
     )
 
     # Cap: six requested, four delivered — in gallery position order.
-    assert [m["image_url"] for m in result.media] == [
-        f"https://cdn.test/{p}.png" for p in range(4)
-    ]
+    assert [m["image_url"] for m in result.media] == [f"https://cdn.test/{p}.png" for p in range(4)]
     assert all(set(m) == {"image_id", "image_url", "alt"} for m in result.media)
     assert result.shown_product_ids == [str(product.id)]

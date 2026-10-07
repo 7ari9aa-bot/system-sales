@@ -125,9 +125,7 @@ def test_a_report_of_two_full_credit_views_never_adds_up_above_the_order() -> No
 
 
 def test_a_report_without_attributions_reports_zero_not_absent() -> None:
-    report = AttributionService.attribution_report(
-        campaign_id=uuid.uuid4(), days=30, model_rows=[]
-    )
+    report = AttributionService.attribution_report(campaign_id=uuid.uuid4(), days=30, model_rows=[])
     # Zero of money is still an amount: "0.00", the shape every other credit in
     # this payload carries. It was `== 0`, which asserted the float wire.
     assert report["revenue"] == "0.00"
@@ -232,9 +230,7 @@ async def test_within_one_model_a_conversions_credits_sum_to_its_value(
         assert float(credited) == pytest.approx(200.0), model
 
 
-async def test_recomputing_a_model_stacks_no_second_credit(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_recomputing_a_model_stacks_no_second_credit(db: AsyncSession, tenant_ctx) -> None:
     seeded = await _seed_two_touch_conversion(
         db, tenant_ctx.tenant_id, campaign_name="Recompute Check"
     )
@@ -264,22 +260,24 @@ async def test_recomputing_a_model_stacks_no_second_credit(
     assert total == len(first)
 
 
-async def test_the_database_refuses_a_duplicate_credit_row(
-    db: AsyncSession, tenant_ctx
-) -> None:
+async def test_the_database_refuses_a_duplicate_credit_row(db: AsyncSession, tenant_ctx) -> None:
     """A SELECT-then-INSERT guard races; the constraint is the guarantee."""
     seeded = await _seed_two_touch_conversion(
         db, tenant_ctx.tenant_id, campaign_name="Constraint Check"
     )
     existing = (
-        await db.execute(
-            select(Attribution).where(
-                Attribution.tenant_id == tenant_ctx.tenant_id,
-                Attribution.conversion_id == seeded["conversion"].id,
-                Attribution.model == "last_touch",
+        (
+            await db.execute(
+                select(Attribution).where(
+                    Attribution.tenant_id == tenant_ctx.tenant_id,
+                    Attribution.conversion_id == seeded["conversion"].id,
+                    Attribution.model == "last_touch",
+                )
             )
         )
-    ).scalars().one()
+        .scalars()
+        .one()
+    )
 
     async with db.begin_nested():
         db.add(

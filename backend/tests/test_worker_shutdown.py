@@ -82,9 +82,7 @@ async def test_crashed_pool_exception_propagates_and_closes_redis(monkeypatch):
 
 async def test_install_signal_handlers_survives_windows(monkeypatch):
     """Windows dev loops raise NotImplementedError — the install must not."""
-    monkeypatch.setattr(
-        asyncio, "get_running_loop", lambda: _NoSignalLoop()
-    )
+    monkeypatch.setattr(asyncio, "get_running_loop", lambda: _NoSignalLoop())
     stop = asyncio.Event()
     worker_run.install_signal_handlers(stop)  # must not raise
     assert not stop.is_set()

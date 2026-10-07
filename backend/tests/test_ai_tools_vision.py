@@ -39,25 +39,19 @@ async def test_payment_proof_refused_with_handover_reason(db, tenant_ctx):
 
 async def test_complaint_refused_with_handover_reason(db, tenant_ctx):
     with pytest.raises(DomainError, match="complaint_requires_human"):
-        await _find_product_by_image(
-            db, tenant_ctx.tenant_id, image_kind="complaint", context={}
-        )
+        await _find_product_by_image(db, tenant_ctx.tenant_id, image_kind="complaint", context={})
 
 
 async def test_non_product_kind_refused(db, tenant_ctx):
     with pytest.raises(DomainError, match="not_a_product_image"):
-        await _find_product_by_image(
-            db, tenant_ctx.tenant_id, image_kind="size_chart", context={}
-        )
+        await _find_product_by_image(db, tenant_ctx.tenant_id, image_kind="size_chart", context={})
 
 
 async def test_product_kind_without_bound_image_refused(db, tenant_ctx):
     # The photo is SERVER-BOUND: no runner-injected context, no pipeline —
     # the model can never supply (or invent) the image itself.
     with pytest.raises(DomainError, match="no customer image"):
-        await _find_product_by_image(
-            db, tenant_ctx.tenant_id, image_kind="product", context=None
-        )
+        await _find_product_by_image(db, tenant_ctx.tenant_id, image_kind="product", context=None)
 
 
 async def test_product_match_result_is_business_only(monkeypatch, db, tenant_ctx):
@@ -97,9 +91,7 @@ async def test_product_match_result_is_business_only(monkeypatch, db, tenant_ctx
 
 async def test_resolve_product_media_primary_returns_one_id(db, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
-    product = Product(
-        tenant_id=tenant_id, title="Abaya", slug=f"abaya-{uuid.uuid4().hex[:8]}"
-    )
+    product = Product(tenant_id=tenant_id, title="Abaya", slug=f"abaya-{uuid.uuid4().hex[:8]}")
     db.add(product)
     await db.flush()
     for position in (2, 0, 1):
@@ -113,9 +105,7 @@ async def test_resolve_product_media_primary_returns_one_id(db, tenant_ctx):
         )
     await db.flush()
 
-    result = await _resolve_product_media(
-        db, tenant_id, product_id=product.id, selection="primary"
-    )
+    result = await _resolve_product_media(db, tenant_id, product_id=product.id, selection="primary")
     assert len(result["media"]) == 1
     only = result["media"][0]
     assert set(only) == {"image_id", "alt", "position"}
@@ -126,9 +116,7 @@ async def test_resolve_product_media_primary_returns_one_id(db, tenant_ctx):
 
 async def test_resolve_product_media_all_orders_by_position(db, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
-    product = Product(
-        tenant_id=tenant_id, title="Abaya", slug=f"abaya-{uuid.uuid4().hex[:8]}"
-    )
+    product = Product(tenant_id=tenant_id, title="Abaya", slug=f"abaya-{uuid.uuid4().hex[:8]}")
     db.add(product)
     await db.flush()
     for position in (2, 0, 1):
@@ -142,9 +130,7 @@ async def test_resolve_product_media_all_orders_by_position(db, tenant_ctx):
         )
     await db.flush()
 
-    result = await _resolve_product_media(
-        db, tenant_id, product_id=product.id, selection="all"
-    )
+    result = await _resolve_product_media(db, tenant_id, product_id=product.id, selection="all")
     assert [m["position"] for m in result["media"]] == [0, 1, 2]
     assert all(set(m) == {"image_id", "alt", "position"} for m in result["media"])
 

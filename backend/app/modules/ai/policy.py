@@ -256,14 +256,10 @@ class AIProviderPolicyService:
                 )
             )
         ).scalar_one_or_none()
-        return decide(
-            policy, provider=provider, model=model, data_class=data_class, region=region
-        )
+        return decide(policy, provider=provider, model=model, data_class=data_class, region=region)
 
     @staticmethod
-    async def list_policies(
-        session: AsyncSession, tenant_id: uuid.UUID
-    ) -> list[AIProviderPolicy]:
+    async def list_policies(session: AsyncSession, tenant_id: uuid.UUID) -> list[AIProviderPolicy]:
         """Every provider policy for the tenant, provider-name ordered."""
         rows = (
             await session.execute(

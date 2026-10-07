@@ -28,14 +28,22 @@ class SearchHit:
 
 class SearchPort(Protocol):
     async def search(
-        self, session: AsyncSession, tenant_id: uuid.UUID, query: str, *,
-        entity_types: list[str] | None = None, limit: int = 20,
-    ) -> list[SearchHit]:
-        ...
+        self,
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        query: str,
+        *,
+        entity_types: list[str] | None = None,
+        limit: int = 20,
+    ) -> list[SearchHit]: ...
 
     async def delete_from_index(
-        self, session: AsyncSession, tenant_id: uuid.UUID, *,
-        entity_type: str, entity_id: uuid.UUID,
+        self,
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        *,
+        entity_type: str,
+        entity_id: uuid.UUID,
     ) -> int:
         """§131: remove a customer's data from the search index on deletion.
 
@@ -60,8 +68,13 @@ class PostgresSearch:
     """
 
     async def search(
-        self, session: AsyncSession, tenant_id: uuid.UUID, query: str, *,
-        entity_types: list[str] | None = None, limit: int = 20,
+        self,
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        query: str,
+        *,
+        entity_types: list[str] | None = None,
+        limit: int = 20,
     ) -> list[SearchHit]:
         term = query.strip()
         if not term:
@@ -73,7 +86,7 @@ class PostgresSearch:
         bind = getattr(session, "bind", None)
         dialect = getattr(bind, "dialect", None)
         dialect_name = getattr(dialect, "name", None)
-        is_postgres = (dialect_name == "postgresql")
+        is_postgres = dialect_name == "postgresql"
 
         if "customer" in wanted:
             if is_postgres:
@@ -104,8 +117,10 @@ class PostgresSearch:
             for r in rows:
                 hits.append(
                     SearchHit(
-                        entity_type="customer", entity_id=r.id,
-                        title=r.name, snippet=r.email or r.phone,
+                        entity_type="customer",
+                        entity_id=r.id,
+                        title=r.name,
+                        snippet=r.email or r.phone,
                     )
                 )
 
@@ -132,15 +147,17 @@ class PostgresSearch:
                 )
             ).all()
             for r in rows:
-                hits.append(
-                    SearchHit(entity_type="product", entity_id=r.id, title=r.title)
-                )
+                hits.append(SearchHit(entity_type="product", entity_id=r.id, title=r.title))
 
         return hits[:limit]
 
     async def delete_from_index(
-        self, session: AsyncSession, tenant_id: uuid.UUID, *,
-        entity_type: str, entity_id: uuid.UUID,
+        self,
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        *,
+        entity_type: str,
+        entity_id: uuid.UUID,
     ) -> int:
         """§131: for PostgresSearch the index IS the table. Soft-deleted rows
         are already filtered by `deleted_at IS NULL` in search(). This method

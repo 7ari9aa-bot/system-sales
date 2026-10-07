@@ -48,9 +48,7 @@ _GRAPH = f"https://graph.facebook.com/{_META_VERSION}"
 #: linked IG business account (developers.facebook.com/docs/permissions —
 #: there is NO `instagram_messaging` permission; requesting one that does
 #: not exist makes Meta reject the whole dialog).
-_MESSENGER_SCOPES = (
-    "pages_show_list,pages_read_engagement,pages_manage_metadata,pages_messaging"
-)
+_MESSENGER_SCOPES = "pages_show_list,pages_read_engagement,pages_manage_metadata,pages_messaging"
 _INSTAGRAM_SCOPES = (
     "pages_show_list,pages_read_engagement,pages_manage_metadata,pages_messaging,"
     "instagram_basic,instagram_manage_messages"
@@ -61,9 +59,7 @@ _META_STATE_TTL_SECONDS = 600
 #: The page fields the flow consumes: tasks gates the MESSAGING capability,
 #: instagram_business_account carries the IG id the Instagram gateway sends
 #: against (/{ig-account-id}/messages) and the webhook routes by.
-_PAGE_FIELDS = (
-    "id,name,access_token,tasks,instagram_business_account{id,username}"
-)
+_PAGE_FIELDS = "id,name,access_token,tasks,instagram_business_account{id,username}"
 
 
 def _meta_config() -> tuple[str, str, str, str]:
@@ -113,15 +109,11 @@ def _build_authorize_url(
         # business configuration (system-user / long-lived tokens).
         params["override_default_response_type"] = "true"
     else:
-        params["scope"] = (
-            _MESSENGER_SCOPES if provider == "messenger" else _INSTAGRAM_SCOPES
-        )
+        params["scope"] = _MESSENGER_SCOPES if provider == "messenger" else _INSTAGRAM_SCOPES
     return f"https://www.facebook.com/{_META_VERSION}/dialog/oauth?{urlencode(params)}"
 
 
-@meta_oauth_router.get(
-    "/integrations/meta/oauth/start", response_model=MetaOAuthStartOut
-)
+@meta_oauth_router.get("/integrations/meta/oauth/start", response_model=MetaOAuthStartOut)
 async def meta_oauth_start(
     provider: str,
     ctx: TenantContext = Depends(require_permission("settings:write")),
@@ -252,9 +244,7 @@ async def _meta_exchange_and_connect(
             raise ValidationError(failure[:200])
 
         pages = [
-            page
-            for page in accounts.get("data", [])
-            if "MESSAGING" in (page.get("tasks") or [])
+            page for page in accounts.get("data", []) if "MESSAGING" in (page.get("tasks") or [])
         ]
         if not pages:
             raise ValidationError("No messaging-capable page was authorized.")
@@ -279,9 +269,7 @@ async def _meta_exchange_and_connect(
             config["account_id"] = ig_id
             credentials["account_id"] = ig_id
 
-        verified = await verify_channel_credentials(
-            provider, credentials, config, client=http
-        )
+        verified = await verify_channel_credentials(provider, credentials, config, client=http)
 
         existing = (
             await session.execute(
@@ -332,8 +320,7 @@ async def _meta_exchange_and_connect(
             f"{_GRAPH}/{page['id']}/subscribed_apps",
             params={
                 "subscribed_fields": (
-                    "messages,messaging_postbacks,messaging_referrals,"
-                    "message_deliveries"
+                    "messages,messaging_postbacks,messaging_referrals,message_deliveries"
                 ),
                 "access_token": page_token,
             },
@@ -403,9 +390,7 @@ async def meta_oauth_callback(
 
     try:
         await bind_tenant(session, uuid.UUID(str(payload["tenant_id"])))
-        connected_provider, page_name = await _meta_exchange_and_connect(
-            session, code, payload
-        )
+        connected_provider, page_name = await _meta_exchange_and_connect(session, code, payload)
     except DomainError as exc:
         await session.rollback()
         return _back("error", f"{provider}:{str(exc)[:120]}")

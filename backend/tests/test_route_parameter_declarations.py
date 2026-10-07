@@ -201,7 +201,6 @@ def test_detector_reports_declaration_shapes_only() -> None:
     assert {"bad_query", "bad_body", "bad_header", "good_annotated", "good_depends"} <= visited
 
     offenders = {
-        (qualname.rpartition(".")[2], param)
-        for _mod, qualname, param in _app_offenders(app)
+        (qualname.rpartition(".")[2], param) for _mod, qualname, param in _app_offenders(app)
     }
     assert offenders == {("bad_query", "limit"), ("bad_body", "name"), ("bad_header", "x_trace")}

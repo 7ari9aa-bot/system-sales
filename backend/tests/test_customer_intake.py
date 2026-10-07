@@ -12,9 +12,7 @@ from app.modules.ai.agents.customer.intake import build_turn
 
 
 def test_text_only_turn():
-    turn = build_turn(
-        body="الكام؟", content_type="text", attachments=[], transcript=None
-    )
+    turn = build_turn(body="الكام؟", content_type="text", attachments=[], transcript=None)
     assert turn.text == "الكام؟"
     assert not turn.is_image_turn and not turn.has_voice and not turn.other_media
 
@@ -48,9 +46,7 @@ def test_photo_with_caption_keeps_both():
 
 
 def test_voice_without_transcript_is_a_visible_state():
-    turn = build_turn(
-        body=None, content_type="voice", attachments=[], transcript=None
-    )
+    turn = build_turn(body=None, content_type="voice", attachments=[], transcript=None)
     assert turn.has_voice and turn.voice_transcript is None
 
 

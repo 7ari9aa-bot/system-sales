@@ -45,9 +45,7 @@ async def _seed_capability(
             "expires_at": "2099-01-01T00:00:00+00:00",
         }
     )
-    await redis_client.set(
-        bg._capability_key(token), payload, ex=bg.CAPABILITY_TTL_MINUTES * 60
-    )
+    await redis_client.set(bg._capability_key(token), payload, ex=bg.CAPABILITY_TTL_MINUTES * 60)
     return token
 
 
@@ -58,47 +56,69 @@ class TestCapabilityStore:
         tid, uid = uuid.uuid4(), uuid.uuid4()
         token = await _seed_capability(redis_client, tenant_id=tid, user_id=uid)
         assert await bg.validate_capability(
-            token, tenant_id=tid, user_id=uid, action="tenant_status_change",
-            redis=redis_client, record_events=False,
+            token,
+            tenant_id=tid,
+            user_id=uid,
+            action="tenant_status_change",
+            redis=redis_client,
+            record_events=False,
         )
         # GETDEL: the second presentation finds nothing — one-shot enforced
         # atomically, race-safe across API instances.
         assert not await bg.validate_capability(
-            token, tenant_id=tid, user_id=uid, action="tenant_status_change",
-            redis=redis_client, record_events=False,
+            token,
+            tenant_id=tid,
+            user_id=uid,
+            action="tenant_status_change",
+            redis=redis_client,
+            record_events=False,
         )
 
     async def test_mismatched_action_burns_the_token(self, redis_client):
         tid, uid = uuid.uuid4(), uuid.uuid4()
         token = await _seed_capability(redis_client, tenant_id=tid, user_id=uid)
         assert not await bg.validate_capability(
-            token, tenant_id=tid, user_id=uid, action="different_action",
-            redis=redis_client, record_events=False,
+            token,
+            tenant_id=tid,
+            user_id=uid,
+            action="different_action",
+            redis=redis_client,
+            record_events=False,
         )
         # Burned on presentation: it cannot be retried with the right action.
         assert not await bg.validate_capability(
-            token, tenant_id=tid, user_id=uid, action="tenant_status_change",
-            redis=redis_client, record_events=False,
+            token,
+            tenant_id=tid,
+            user_id=uid,
+            action="tenant_status_change",
+            redis=redis_client,
+            record_events=False,
         )
 
     async def test_wrong_tenant_or_user_fails(self, redis_client):
         tid, uid = uuid.uuid4(), uuid.uuid4()
         token = await _seed_capability(redis_client, tenant_id=tid, user_id=uid)
         assert not await bg.validate_capability(
-            token, tenant_id=uuid.uuid4(), user_id=uid, action="tenant_status_change",
-            redis=redis_client, record_events=False,
+            token,
+            tenant_id=uuid.uuid4(),
+            user_id=uid,
+            action="tenant_status_change",
+            redis=redis_client,
+            record_events=False,
         )
 
     async def test_unknown_token_fails(self, redis_client):
         assert not await bg.validate_capability(
-            "never-issued", tenant_id=uuid.uuid4(), user_id=uuid.uuid4(),
-            action="tenant_status_change", redis=redis_client, record_events=False,
+            "never-issued",
+            tenant_id=uuid.uuid4(),
+            user_id=uuid.uuid4(),
+            action="tenant_status_change",
+            redis=redis_client,
+            record_events=False,
         )
 
     async def test_capability_carries_a_ttl(self, redis_client):
-        token = await _seed_capability(
-            redis_client, tenant_id=uuid.uuid4(), user_id=uuid.uuid4()
-        )
+        token = await _seed_capability(redis_client, tenant_id=uuid.uuid4(), user_id=uuid.uuid4())
         ttl = await redis_client.ttl(bg._capability_key(token))
         assert 0 < ttl <= bg.CAPABILITY_TTL_MINUTES * 60
 
@@ -106,13 +126,21 @@ class TestCapabilityStore:
         tid, uid = uuid.uuid4(), uuid.uuid4()
         token = await _seed_capability(redis_client, tenant_id=tid, user_id=uid)
         assert not await bg.peek_capability(
-            token, tenant_id=uuid.uuid4(), user_id=uid, action="tenant_status_change",
-            redis=redis_client, record_events=False,
+            token,
+            tenant_id=uuid.uuid4(),
+            user_id=uid,
+            action="tenant_status_change",
+            redis=redis_client,
+            record_events=False,
         )
         # The pre-flight is read-only: the token still validates afterwards.
         assert await bg.peek_capability(
-            token, tenant_id=tid, user_id=uid, action="tenant_status_change",
-            redis=redis_client, record_events=False,
+            token,
+            tenant_id=tid,
+            user_id=uid,
+            action="tenant_status_change",
+            redis=redis_client,
+            record_events=False,
         )
 
 
@@ -226,14 +254,20 @@ class TestBreakGlassIssuePath:
         )
 
         rows = (
-            await db.execute(
-                select(SecurityEvent)
-                .where(SecurityEvent.event_type.in_(
-                    ["break_glass", "break_glass_use", "break_glass_reject"]
-                ))
-                .where(SecurityEvent.tenant_id == tenant_ctx.tenant.id)
+            (
+                await db.execute(
+                    select(SecurityEvent)
+                    .where(
+                        SecurityEvent.event_type.in_(
+                            ["break_glass", "break_glass_use", "break_glass_reject"]
+                        )
+                    )
+                    .where(SecurityEvent.tenant_id == tenant_ctx.tenant.id)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         # Same-transaction rows share created_at, so assert on the multiset.
         assert sorted(r.event_type for r in rows) == [
             "break_glass",

@@ -180,9 +180,7 @@ async def test_patch_without_if_match_stays_unconditional(monkeypatch) -> None:
     monkeypatch.setattr(CustomerService, "update_customer", _update)
 
     async with await _client(_app(session, uuid.uuid4())) as client:
-        response = await client.patch(
-            f"/api/v1/customers/{customer.id}", json={"name": "X"}
-        )
+        response = await client.patch(f"/api/v1/customers/{customer.id}", json={"name": "X"})
 
     assert response.status_code == 200
     assert seen["fields"] == {"name": "X"}
@@ -213,9 +211,7 @@ def _db_app(db: AsyncSession, tenant_ctx) -> object:
     app = create_app()
     ctx = TenantContext(
         session=db,
-        user=AuthedUser(
-            id=tenant_ctx.user.id, tenant_id=tenant_ctx.tenant_id, role_code="owner"
-        ),
+        user=AuthedUser(id=tenant_ctx.user.id, tenant_id=tenant_ctx.tenant_id, role_code="owner"),
         tenant_id=tenant_ctx.tenant_id,
         role_code="owner",
         permission_codes={"customers:read", "customers:write"},
@@ -238,9 +234,7 @@ async def test_stale_if_match_conflicts_and_current_etag_advances(
     assert start_version == 1
     app = _db_app(db, tenant_ctx)
 
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         fetched = await client.get(f"/api/v1/customers/{customer.id}")
         assert fetched.status_code == 200
         assert fetched.headers["etag"] == f'"{start_version}"'

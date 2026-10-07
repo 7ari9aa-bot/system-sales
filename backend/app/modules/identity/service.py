@@ -256,9 +256,7 @@ class AuthService:
         full_name = full_name or display_name
 
         existing_email = (
-            await session.execute(
-                select(User).where(User.email == email.strip().lower())
-            )
+            await session.execute(select(User).where(User.email == email.strip().lower()))
         ).scalar_one_or_none()
         if existing_email is not None:
             # Account pre-hijack + enumeration guard (external audit): this
@@ -293,9 +291,7 @@ class AuthService:
             if existing_slug is not None:
                 raise ConflictError("tenant slug already taken")
 
-        owner_role = (
-            await session.execute(select(Role).where(Role.code == "owner"))
-        ).scalar_one()
+        owner_role = (await session.execute(select(Role).where(Role.code == "owner"))).scalar_one()
         tenant = Tenant(slug=tenant_slug, name=tenant_name)
         user = User(
             email=email.strip().lower(),
@@ -313,9 +309,7 @@ class AuthService:
         # audit row and membership insert pass RLS.
         await bind_tenant(session, tenant.id)
         session.add(
-            TenantUser(
-                tenant_id=tenant.id, user_id=user.id, role_id=owner_role.id, is_default=True
-            )
+            TenantUser(tenant_id=tenant.id, user_id=user.id, role_id=owner_role.id, is_default=True)
         )
         await session.flush()
         # A tenant is not operational just because it exists: without a
@@ -355,9 +349,7 @@ class AuthService:
         if tenant_id is None:
             return
         state = (
-            await session.execute(
-                sa.select(Tenant.lifecycle_state).where(Tenant.id == tenant_id)
-            )
+            await session.execute(sa.select(Tenant.lifecycle_state).where(Tenant.id == tenant_id))
         ).scalar_one_or_none()
         policy = STATE_POLICIES.get(state) if state else None
         if policy is None or not policy.allows_login:
@@ -388,13 +380,9 @@ class AuthService:
         # cache going away must not take sign-in down with it.
         lock_status = await _lockout_op(auth_lockout.check, ip=ip, email=email)
         if lock_status is not None and lock_status.locked:
-            raise RateLimitExceededError(
-                "too many failed sign-in attempts — try again later"
-            )
+            raise RateLimitExceededError("too many failed sign-in attempts — try again later")
         user = (
-            await session.execute(
-                select(User).where(User.email == email.strip().lower())
-            )
+            await session.execute(select(User).where(User.email == email.strip().lower()))
         ).scalar_one_or_none()
         # S12: hash even when the account is missing, so the response time does
         # not reveal whether the email is registered (timing oracle).
@@ -457,13 +445,17 @@ class AuthService:
                 )
             except PermissionDeniedError:
                 candidates = (
-                    await session.execute(
-                        select(TenantUser.tenant_id).where(
-                            TenantUser.user_id == user.id,
-                            TenantUser.tenant_id != tenant_id,
+                    (
+                        await session.execute(
+                            select(TenantUser.tenant_id).where(
+                                TenantUser.user_id == user.id,
+                                TenantUser.tenant_id != tenant_id,
+                            )
                         )
                     )
-                ).scalars().all()
+                    .scalars()
+                    .all()
+                )
                 tenant_id = None
                 for candidate in candidates:
                     try:
@@ -477,9 +469,7 @@ class AuthService:
                 if tenant_id is None:
                     raise
         else:
-            await AuthService._assert_tenant_allows_login(
-                session, None, user_id=user.id, ip=ip
-            )
+            await AuthService._assert_tenant_allows_login(session, None, user_id=user.id, ip=ip)
         # §146: password OK is factor one — an MFA-enabled account does NOT
         # get tokens yet; it gets a short-lived single-use challenge (Redis)
         # and must complete POST /auth/mfa/verify with a TOTP code.
@@ -516,14 +506,10 @@ class AuthService:
         user_id, tenant_id = await check_challenge_code(
             session, challenge_id=challenge_id, code=code, ip=ip
         )
-        user = (
-            await session.execute(select(User).where(User.id == user_id))
-        ).scalar_one_or_none()
+        user = (await session.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
         if user is None or not user.is_active:
             raise PermissionDeniedError("account not available")
-        await AuthService._assert_tenant_allows_login(
-            session, tenant_id, user_id=user.id, ip=ip
-        )
+        await AuthService._assert_tenant_allows_login(session, tenant_id, user_id=user.id, ip=ip)
         pair = AuthService._issue_pair(session, user, tenant_id, user_agent=user_agent, ip=ip)
         return pair, user, tenant_id
 
@@ -539,9 +525,7 @@ class AuthService:
         # single-use semantics.
         row = (
             await session.execute(
-                select(RefreshToken)
-                .where(RefreshToken.token_hash == token_hash)
-                .with_for_update()
+                select(RefreshToken).where(RefreshToken.token_hash == token_hash).with_for_update()
             )
         ).scalar_one_or_none()
         if row is None:
@@ -606,9 +590,7 @@ class AuthService:
         # single-use semantics.
         row = (
             await session.execute(
-                select(RefreshToken)
-                .where(RefreshToken.token_hash == token_hash)
-                .with_for_update()
+                select(RefreshToken).where(RefreshToken.token_hash == token_hash).with_for_update()
             )
         ).scalar_one_or_none()
         if row is not None and row.revoked_at is None:
@@ -625,9 +607,7 @@ class AuthService:
         now = _now()
         user = (
             await session.execute(
-                select(User)
-                .where(User.email == email.strip().lower())
-                .with_for_update()
+                select(User).where(User.email == email.strip().lower()).with_for_update()
             )
         ).scalar_one_or_none()
         if user is None or not user.is_active:
@@ -683,17 +663,11 @@ class AuthService:
                 .with_for_update()
             )
         ).scalar_one_or_none()
-        if (
-            row is None
-            or row.consumed_at is not None
-            or row.expires_at <= now
-        ):
+        if row is None or row.consumed_at is not None or row.expires_at <= now:
             raise ValidationError("password reset link is invalid or expired")
 
         user = (
-            await session.execute(
-                select(User).where(User.id == row.user_id).with_for_update()
-            )
+            await session.execute(select(User).where(User.id == row.user_id).with_for_update())
         ).scalar_one_or_none()
         if user is None or not user.is_active:
             raise ValidationError("password reset link is invalid or expired")
@@ -804,9 +778,7 @@ class AuthService:
         account existence or verification state.
         """
         user = (
-            await session.execute(
-                select(User).where(User.email == email.strip().lower())
-            )
+            await session.execute(select(User).where(User.email == email.strip().lower()))
         ).scalar_one_or_none()
         if user is None or not user.is_active:
             return
@@ -833,9 +805,7 @@ class AuthService:
             raise ValidationError("email verification link is invalid or expired")
 
         user = (
-            await session.execute(
-                select(User).where(User.id == row.user_id).with_for_update()
-            )
+            await session.execute(select(User).where(User.id == row.user_id).with_for_update())
         ).scalar_one_or_none()
         if user is None or not user.is_active:
             raise ValidationError("email verification link is invalid or expired")
@@ -955,9 +925,7 @@ class AuthService:
 
     @staticmethod
     async def _audit(session, actor_user_id, action, resource_type, resource_id, tenant_id=None):
-        await _record_audit(
-            session, tenant_id, actor_user_id, action, resource_type, resource_id
-        )
+        await _record_audit(session, tenant_id, actor_user_id, action, resource_type, resource_id)
 
 
 class TenantService:
@@ -966,7 +934,6 @@ class TenantService:
     # anything else (a future role, a typo) has no rank and therefore may
     # invite nothing (see invite's escalation guard).
     _ROLE_RANK: dict[str, int] = {"owner": 3, "manager": 2, "staff": 1}
-
 
     @staticmethod
     async def list_for_user(session, user_id: uuid.UUID) -> list[tuple[Tenant, str | None]]:
@@ -1011,9 +978,7 @@ class TenantService:
         # this table only encodes their ORDER. Ranks unknown here fail CLOSED:
         # an inviter whose role cannot be placed outranks nothing.
         if role_code == "owner" and not inviter_is_platform_admin:
-            raise PermissionDeniedError(
-                "owner invitations require a platform admin"
-            )
+            raise PermissionDeniedError("owner invitations require a platform admin")
         if not inviter_is_platform_admin:
             inviter_rank = TenantService._ROLE_RANK.get(inviter_role_code or "")
             invited_rank = TenantService._ROLE_RANK.get(role_code)
@@ -1251,8 +1216,7 @@ class TenantSettingsService:
         traded = (
             await session.execute(
                 sa.text(
-                    "SELECT 1 FROM orders WHERE tenant_id = :tid "
-                    "AND currency <> :code LIMIT 1"
+                    "SELECT 1 FROM orders WHERE tenant_id = :tid AND currency <> :code LIMIT 1"
                 ),
                 {"tid": tenant_id, "code": code},
             )
@@ -1524,9 +1488,7 @@ class TenantLifecycleService:
     """Owns the §48 tenant lifecycle: transitions, timestamps and audit."""
 
     @staticmethod
-    async def get(
-        session, tenant_id: uuid.UUID, *, for_update: bool = False
-    ) -> Tenant:
+    async def get(session, tenant_id: uuid.UUID, *, for_update: bool = False) -> Tenant:
         statement = select(Tenant).where(Tenant.id == tenant_id)
         if for_update:
             statement = statement.with_for_update()
@@ -1581,9 +1543,7 @@ class TenantLifecycleService:
         if not isinstance(target, str) or target not in STATE_POLICIES:
             raise ValidationError(f"unknown tenant lifecycle state: {target!r}")
         if reason is not None and not isinstance(reason, str):
-            raise ValidationError(
-                f"a reason must be a string, got {type(reason).__name__}"
-            )
+            raise ValidationError(f"a reason must be a string, got {type(reason).__name__}")
         if target in _REASON_REQUIRED and not (reason or "").strip():
             raise ValidationError(f"a reason is required to move a tenant to {target}")
 
@@ -1597,9 +1557,7 @@ class TenantLifecycleService:
                 hint = f" (allowed: {', '.join(sorted(allowed))})"
             else:
                 hint = " — deleted is terminal"
-            raise ConflictError(
-                f"cannot move a {current} tenant to {target}{hint}"
-            )
+            raise ConflictError(f"cannot move a {current} tenant to {target}{hint}")
 
         was_active = tenant.is_active
         now = _now()
@@ -1613,9 +1571,7 @@ class TenantLifecycleService:
             now + timedelta(days=GRACE_PERIOD_DAYS) if target == "grace" else None
         )
         tenant.deletion_scheduled_at = (
-            now + timedelta(days=OFFBOARDING_RETENTION_DAYS)
-            if target == "offboarding"
-            else None
+            now + timedelta(days=OFFBOARDING_RETENTION_DAYS) if target == "offboarding" else None
         )
 
         # Every transition leaves an audit row naming actor, from, to and why —
@@ -1688,9 +1644,7 @@ class HierarchyService:
         return ws
 
     @staticmethod
-    async def create_workspace(
-        session, tenant_id: uuid.UUID, *, name: str, slug: str
-    ) -> Workspace:
+    async def create_workspace(session, tenant_id: uuid.UUID, *, name: str, slug: str) -> Workspace:
         dup = (
             await session.execute(
                 sa.select(Workspace.id).where(
@@ -1779,9 +1733,7 @@ class HierarchyService:
             ).scalar_one_or_none()
             if dup is not None:
                 raise ConflictError("a location with this code already exists in the workspace")
-        loc = Location(
-            tenant_id=tenant_id, workspace_id=workspace_id, name=name, code=code
-        )
+        loc = Location(tenant_id=tenant_id, workspace_id=workspace_id, name=name, code=code)
         session.add(loc)
         await session.flush()
         return loc

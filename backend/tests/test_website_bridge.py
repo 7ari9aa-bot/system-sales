@@ -94,9 +94,7 @@ async def test_provision_sends_the_tenant_identity_not_credentials(monkeypatch) 
     monkeypatch.setattr(website_router, "_tenant_name", _tenant_name)
     monkeypatch.setattr(website_router, "_user_email", _user_email)
 
-    result = await website_router.provision(
-        {"template_id": "t1"}, _ctx(tenant_id)
-    )
+    result = await website_router.provision({"template_id": "t1"}, _ctx(tenant_id))
     assert result["provisioned"] is True
     assert captured["external_tenant_id"] == str(tenant_id)
     assert captured["tenant_name"] == "ACME Co"
@@ -106,9 +104,15 @@ async def test_provision_sends_the_tenant_identity_not_credentials(monkeypatch) 
 
 async def test_the_sso_session_returns_exactly_the_studio_contract(monkeypatch) -> None:
     async def _sso(email: str) -> dict:
-        return {"token": "wp-token", "expiresAt": "soon", "studioUrl": "https://studio", "internal": "x"}
+        return {
+            "token": "wp-token",
+            "expiresAt": "soon",
+            "studioUrl": "https://studio",
+            "internal": "x",
+        }
 
     monkeypatch.setattr(wp, "sso_session", _sso)
+
     async def _user_email(session, user_id) -> str:
         return "owner@acme.test"
 
@@ -154,9 +158,7 @@ async def test_a_missing_partner_key_fails_closed_before_any_network(
 ) -> None:
     from app.core.config import get_settings
 
-    monkeypatch.setattr(
-        get_settings(), "website_platform_api_key", "", raising=False
-    )
+    monkeypatch.setattr(get_settings(), "website_platform_api_key", "", raising=False)
     with pytest.raises(wp.WebsitePlatformError) as excinfo:
         await wp._request("GET", "/api/v1/partner/websites?externalUserId=x")
     assert excinfo.value.code == "WP_NOT_CONFIGURED"
@@ -168,9 +170,7 @@ async def test_a_missing_partner_key_fails_closed_before_any_network(
 async def test_an_unknown_bridge_key_is_unauthorized(monkeypatch) -> None:
     from app.core.config import get_settings
 
-    monkeypatch.setattr(
-        get_settings(), "website_platform_tenant_keys", {}, raising=False
-    )
+    monkeypatch.setattr(get_settings(), "website_platform_tenant_keys", {}, raising=False)
     with pytest.raises(HTTPException) as excinfo:
         bridge._resolve_tenant_key(x_wp_key="nope")
     assert excinfo.value.status_code == 401
@@ -217,15 +217,11 @@ async def test_the_bridge_serves_only_active_products_of_the_key_tenant(
     published = await CatalogService.create_product(
         db, tenant_ctx.tenant_id, title="Live Item", slug=f"live-{uuid.uuid4().hex[:8]}"
     )
-    await CatalogService.update_product(
-        db, tenant_ctx.tenant_id, published.id, status="active"
-    )
+    await CatalogService.update_product(db, tenant_ctx.tenant_id, published.id, status="active")
     draft = await CatalogService.create_product(
         db, tenant_ctx.tenant_id, title="Draft Item", slug=f"draft-{uuid.uuid4().hex[:8]}"
     )
-    await CatalogService.add_variant(
-        db, tenant_ctx.tenant_id, published.id, price="10.00"
-    )
+    await CatalogService.add_variant(db, tenant_ctx.tenant_id, published.id, price="10.00")
 
     result = await bridge.website_platform_products(
         key_tenant=tenant_ctx.tenant_id, db=db, limit=100

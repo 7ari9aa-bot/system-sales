@@ -98,8 +98,6 @@ async def test_single_candidate_gap_is_the_full_score_width():
     assert confidence is Confidence.HIGH
     assert reason == "clear_match"
 
-    confidence, reason = decide(
-        [_scored(_T.high_floor, _T.agreement_top_n + 1)], reranker_ok=True
-    )
+    confidence, reason = decide([_scored(_T.high_floor, _T.agreement_top_n + 1)], reranker_ok=True)
     assert confidence is Confidence.MEDIUM
     assert reason == "reranker_embedding_disagreement"

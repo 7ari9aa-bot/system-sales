@@ -221,11 +221,7 @@ def reachable_modules() -> set[str]:
     stack = [name for name in ROOT_MODULES if name in deps]
     # scripts/** and migrations/** files are themselves entry points run by an
     # operator or alembic — treat every module there as a root.
-    stack += [
-        name
-        for name in deps
-        if name.startswith("scripts") or name.startswith("migrations")
-    ]
+    stack += [name for name in deps if name.startswith("scripts") or name.startswith("migrations")]
     while stack:
         name = stack.pop()
         if name in reachable:

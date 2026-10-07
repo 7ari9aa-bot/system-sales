@@ -116,9 +116,7 @@ class AuthorityService:
 
         grants = (
             await session.scalars(
-                query.order_by(CapabilityGrant.created_at.desc())
-                .limit(limit)
-                .offset(offset)
+                query.order_by(CapabilityGrant.created_at.desc()).limit(limit).offset(offset)
             )
         ).all()
         return list(grants), total
@@ -286,9 +284,7 @@ class AuthorityService:
 
         leases = (
             await session.scalars(
-                query.order_by(AuthorityLease.created_at.desc())
-                .limit(limit)
-                .offset(offset)
+                query.order_by(AuthorityLease.created_at.desc()).limit(limit).offset(offset)
             )
         ).all()
         return list(leases), total
@@ -330,10 +326,12 @@ class AuthorityService:
 
         if parent_budget_id:
             parent = await session.scalar(
-                select(AutonomyBudget).where(
+                select(AutonomyBudget)
+                .where(
                     AutonomyBudget.tenant_id == tenant_id,
                     AutonomyBudget.budget_id == parent_budget_id,
-                ).with_for_update()
+                )
+                .with_for_update()
             )
             if not parent:
                 raise NotFoundError(f"Parent budget {parent_budget_id} not found")
@@ -376,7 +374,7 @@ class AuthorityService:
         )
         if for_update:
             stmt = stmt.with_for_update()
-            
+
         budget = await session.scalar(stmt)
         if not budget:
             raise NotFoundError(f"AutonomyBudget {budget_id} not found")
@@ -396,9 +394,7 @@ class AuthorityService:
 
         budgets = (
             await session.scalars(
-                query.order_by(AutonomyBudget.created_at.desc())
-                .limit(limit)
-                .offset(offset)
+                query.order_by(AutonomyBudget.created_at.desc()).limit(limit).offset(offset)
             )
         ).all()
         return list(budgets), total

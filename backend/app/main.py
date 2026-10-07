@@ -56,7 +56,6 @@ from app.modules.billing.router import (
 )
 from app.modules.catalog.router import router as catalog_router
 from app.modules.catalog.website_platform import router as website_platform_catalog_router
-from app.modules.website.router import router as website_router
 from app.modules.conversations.router import (
     public_router as conversations_public_router,
 )
@@ -102,6 +101,7 @@ from app.modules.pos.router import router as pos_router
 from app.modules.privacy.router import router as privacy_router
 from app.modules.realtime.router import router as realtime_router
 from app.modules.segments.router import router as segments_router
+from app.modules.website.router import router as website_router
 
 
 @asynccontextmanager
@@ -114,9 +114,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     from app.core.boot import run_boot_reconciler
     from app.core.secrets import EnvSecretStore, get_secret_store
 
-    if get_settings().is_secure_environment and isinstance(
-        get_secret_store(), EnvSecretStore
-    ):
+    if get_settings().is_secure_environment and isinstance(get_secret_store(), EnvSecretStore):
         raise RuntimeError(
             "secure environment resolved EnvSecretStore — secret values would be "
             "process-local and lost on restart; refusing to boot"
@@ -128,6 +126,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
     # Agent Registry: discover and register all agent kinds at startup
     from app.modules.ai.core.registry import discover_agents
+
     discover_agents()
 
     yield
@@ -169,9 +168,7 @@ class _RequestIDMiddleware:
         # §65: correlation_id links HTTP requests to domain events. Honored
         # from x-correlation-id (for cross-service tracing) or generated fresh.
         # Passed to add_outbox_event so every event traces back to its cause.
-        correlation_id = (
-            _trusted_trace_id(headers.get("x-correlation-id")) or uuid.uuid4().hex[:16]
-        )
+        correlation_id = _trusted_trace_id(headers.get("x-correlation-id")) or uuid.uuid4().hex[:16]
         # Readable from the 500 handler, which runs after the reset below.
         scope.setdefault("state", {})["request_id"] = request_id
         req_token = request_id_contextvar.set(request_id)
@@ -190,9 +187,7 @@ class _RequestIDMiddleware:
         async def send_with_request_id(message) -> None:
             if message.get("type") == "http.response.start":
                 response_headers = list(message.get("headers", []))
-                if not any(
-                    key.lower() == b"x-request-id" for key, _ in response_headers
-                ):
+                if not any(key.lower() == b"x-request-id" for key, _ in response_headers):
                     response_headers.append((b"x-request-id", echo))
                 message = {**message, "headers": response_headers}
             await send(message)
@@ -311,9 +306,7 @@ def _exception_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(RequestValidationError)
-    async def validation_error_handler(
-        _: Request, exc: RequestValidationError
-    ) -> JSONResponse:
+    async def validation_error_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
         """FastAPI's default 422 body is ``{"detail": [...]}`` — no code, no
         ``retryable``, no correlation id. Same information, in the contract."""
         fields = jsonable_encoder(exc.errors())
@@ -326,14 +319,10 @@ def _exception_handlers(app: FastAPI) -> None:
         # falls back to ``body.detail``, and the structured per-field list is
         # only representable outside the four contract keys as this extra.
         body["detail"] = fields
-        return JSONResponse(
-            status_code=422, content=body, headers=getattr(exc, "headers", None)
-        )
+        return JSONResponse(status_code=422, content=body, headers=getattr(exc, "headers", None))
 
     @app.exception_handler(StarletteHTTPException)
-    async def http_exception_handler(
-        _: Request, exc: StarletteHTTPException
-    ) -> JSONResponse:
+    async def http_exception_handler(_: Request, exc: StarletteHTTPException) -> JSONResponse:
         """Every ``HTTPException`` — including Starlette's own 404 for an
         unmatched path and 405 for a wrong method — in the contract shape.
 

@@ -23,9 +23,7 @@ class Consent(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
 
     __tablename__ = "consents"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     customer_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("customers.id", ondelete="CASCADE")
     )
@@ -51,9 +49,7 @@ class DataSubjectRequest(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base)
 
     __tablename__ = "data_subject_requests"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     customer_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("customers.id", ondelete="CASCADE")
     )
@@ -69,9 +65,7 @@ class DataSubjectRequest(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     error: Mapped[str | None] = mapped_column(Text)
 
-    __table_args__ = (
-        Index("ix_dsr_tenant_status", "tenant_id", "status"),
-    )
+    __table_args__ = (Index("ix_dsr_tenant_status", "tenant_id", "status"),)
 
 
 class RetentionPolicy(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
@@ -79,15 +73,11 @@ class RetentionPolicy(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
 
     __tablename__ = "retention_policies"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     data_class: Mapped[str] = mapped_column(String(63))  # messages|audit|ai_usage|...
     retention_days: Mapped[int] = mapped_column(default=365)
     # allowed: active | paused
     status: Mapped[str] = mapped_column(String(15), server_default="active")
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    __table_args__ = (
-        Index("ix_retention_policies_tenant_class", "tenant_id", "data_class"),
-    )
+    __table_args__ = (Index("ix_retention_policies_tenant_class", "tenant_id", "data_class"),)

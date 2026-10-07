@@ -64,9 +64,7 @@ class TestConfirmThrottle:
 
         for _ in range(mfa.STEPUP_MAX_FAILURES - 1):
             with pytest.raises(PermissionDeniedError):
-                await mfa.confirm_mfa(
-                    db, user_id=tenant_ctx.user.id, code=wrong
-                )
+                await mfa.confirm_mfa(db, user_id=tenant_ctx.user.id, code=wrong)
         # The ceiling attempt itself locks...
         with pytest.raises(RateLimitExceededError):
             await mfa.confirm_mfa(db, user_id=tenant_ctx.user.id, code=wrong)
@@ -74,9 +72,7 @@ class TestConfirmThrottle:
         # ...and afterwards even the CORRECT code is refused until the
         # lock window passes (a fresh enrollment restarts, see below).
         with pytest.raises(RateLimitExceededError):
-            await mfa.confirm_mfa(
-                db, user_id=tenant_ctx.user.id, code=mfa._totp(secret)
-            )
+            await mfa.confirm_mfa(db, user_id=tenant_ctx.user.id, code=mfa._totp(secret))
 
         # Each wrong code was audited, coarse only.
         assert [c["event_type"] for c in spy_events].count(
@@ -93,9 +89,7 @@ class TestConfirmThrottle:
 
         with pytest.raises(PermissionDeniedError):
             await mfa.confirm_mfa(db, user_id=tenant_ctx.user.id, code=wrong)
-        codes = await mfa.confirm_mfa(
-            db, user_id=tenant_ctx.user.id, code=mfa._totp(secret)
-        )
+        codes = await mfa.confirm_mfa(db, user_id=tenant_ctx.user.id, code=mfa._totp(secret))
         assert len(codes) == mfa.BACKUP_CODE_COUNT
         assert await mfa._stepup_attempts(tenant_ctx.user.id, "confirm", redis=redis_client) == 0
 
@@ -112,17 +106,13 @@ class TestConfirmThrottle:
         with pytest.raises(RateLimitExceededError):
             await mfa.confirm_mfa(db, user_id=tenant_ctx.user.id, code=wrong)
         with pytest.raises(RateLimitExceededError):
-            await mfa.confirm_mfa(
-                db, user_id=tenant_ctx.user.id, code=mfa._totp(secret)
-            )
+            await mfa.confirm_mfa(db, user_id=tenant_ctx.user.id, code=mfa._totp(secret))
 
         # Re-enroll (password-gated at the route) mints a NEW secret and
         # clears the counter — a locked user is not locked out forever.
         new_secret = await _enroll(db, tenant_ctx.user.id)
         assert new_secret != secret
-        codes = await mfa.confirm_mfa(
-            db, user_id=tenant_ctx.user.id, code=mfa._totp(new_secret)
-        )
+        codes = await mfa.confirm_mfa(db, user_id=tenant_ctx.user.id, code=mfa._totp(new_secret))
         assert len(codes) == mfa.BACKUP_CODE_COUNT
 
 
@@ -133,24 +123,16 @@ class TestDisableThrottle:
         monkeypatch.setattr("app.core.mfa.get_redis", lambda: redis_client)
         db = tenant_ctx.session
         secret = await _enroll(db, tenant_ctx.user.id)
-        await mfa.confirm_mfa(
-            db, user_id=tenant_ctx.user.id, code=mfa._totp(secret)
-        )
+        await mfa.confirm_mfa(db, user_id=tenant_ctx.user.id, code=mfa._totp(secret))
         wrong = mfa._totp(secret, timestamp=1)
 
         for _ in range(mfa.STEPUP_MAX_FAILURES - 1):
             with pytest.raises(PermissionDeniedError):
-                await mfa.disable_mfa(
-                    db, user_id=tenant_ctx.user.id, code=wrong
-                )
+                await mfa.disable_mfa(db, user_id=tenant_ctx.user.id, code=wrong)
         with pytest.raises(RateLimitExceededError):
-            await mfa.disable_mfa(
-                db, user_id=tenant_ctx.user.id, code=wrong
-            )
+            await mfa.disable_mfa(db, user_id=tenant_ctx.user.id, code=wrong)
         with pytest.raises(RateLimitExceededError):
-            await mfa.disable_mfa(
-                db, user_id=tenant_ctx.user.id, code=mfa._totp(secret)
-            )
+            await mfa.disable_mfa(db, user_id=tenant_ctx.user.id, code=mfa._totp(secret))
         # MFA is still ON — locking the throttle must not disable it.
         assert await mfa.is_mfa_enabled(db, user_id=tenant_ctx.user.id)
         assert [c["event_type"] for c in spy_events].count(
@@ -167,24 +149,18 @@ class TestDisableThrottle:
         monkeypatch.setattr("app.core.mfa.get_redis", lambda: redis_client)
         db = tenant_ctx.session
         secret = await _enroll(db, tenant_ctx.user.id)
-        codes = await mfa.confirm_mfa(
-            db, user_id=tenant_ctx.user.id, code=mfa._totp(secret)
-        )
+        codes = await mfa.confirm_mfa(db, user_id=tenant_ctx.user.id, code=mfa._totp(secret))
 
         # Burn the current window like a prior login would.
         counter = int(time.time()) // 30
         assert await mfa.claim_totp_counter(tenant_ctx.user.id, counter)
 
-        await mfa.disable_mfa(
-            db, user_id=tenant_ctx.user.id, backup_code=codes[0]
-        )
+        await mfa.disable_mfa(db, user_id=tenant_ctx.user.id, backup_code=codes[0])
         assert not await mfa.is_mfa_enabled(db, user_id=tenant_ctx.user.id)
 
 
 class TestDocumentedFailOpen:
-    async def test_throttle_fails_open_without_redis(
-        self, tenant_ctx, monkeypatch, spy_events
-    ):
+    async def test_throttle_fails_open_without_redis(self, tenant_ctx, monkeypatch, spy_events):
         """Redis down: no counting, no lock — but the code check still
         enforces correctness (correct code confirms, wrong code rejects)."""
 
@@ -199,14 +175,10 @@ class TestDocumentedFailOpen:
             await mfa.confirm_mfa(
                 db, user_id=tenant_ctx.user.id, code=mfa._totp(secret, timestamp=1)
             )
-        codes = await mfa.confirm_mfa(
-            db, user_id=tenant_ctx.user.id, code=mfa._totp(secret)
-        )
+        codes = await mfa.confirm_mfa(db, user_id=tenant_ctx.user.id, code=mfa._totp(secret))
         assert len(codes) == mfa.BACKUP_CODE_COUNT
 
-    async def test_replay_claim_fails_open_without_redis(
-        self, tenant_ctx, monkeypatch, spy_events
-    ):
+    async def test_replay_claim_fails_open_without_redis(self, tenant_ctx, monkeypatch, spy_events):
         """Documented fail-open: with Redis unreachable the claim reports
         first-use so verification proceeds (the challenge itself already
         fails closed — it lives in Redis)."""

@@ -38,8 +38,10 @@ PURPOSE = "test exec"
 async def _setup_full_chain(db, tenant_id):
     """Create Decision -> approve -> Grant -> Lease with matching command_hash."""
     decision = await DecisionService.propose(
-        db, tenant_id,
-        action="test_action", risk_level="LOW",
+        db,
+        tenant_id,
+        action="test_action",
+        risk_level="LOW",
         normalized_arguments={"qty": 1},
     )
     await DecisionService.verify(db, tenant_id, decision.decision_id)
@@ -47,7 +49,8 @@ async def _setup_full_chain(db, tenant_id):
     await db.refresh(decision)
 
     grant = await AuthorityService.issue_grant(
-        db, tenant_id,
+        db,
+        tenant_id,
         tool_name="test_tool",
         max_budget=Decimal("5000.00"),
     )
@@ -61,7 +64,8 @@ async def _setup_full_chain(db, tenant_id):
     )
 
     lease, token = await AuthorityService.mint_lease(
-        db, tenant_id,
+        db,
+        tenant_id,
         grant_id=grant.grant_id,
         decision_id=decision.decision_id,
         command_hash=cmd_hash,
@@ -80,7 +84,8 @@ class TestAtomicExecution:
         mutation_fn = AsyncMock(return_value={"result": "ok", "applied": True})
 
         result = await AtomicExecutionService.execute_command(
-            db, tid,
+            db,
+            tid,
             lease_token=token,
             action=ACTION,
             resource={"type": "order"},
@@ -109,7 +114,8 @@ class TestAtomicExecution:
         db, tid = tenant_ctx.session, tenant_ctx.tenant_id
         with pytest.raises(NotFoundError, match="not found"):
             await AtomicExecutionService.execute_command(
-                db, tid,
+                db,
+                tid,
                 lease_token="bogus_token",
                 action=ACTION,
                 resource={},
@@ -123,7 +129,8 @@ class TestAtomicExecution:
 
         # First execution succeeds
         await AtomicExecutionService.execute_command(
-            db, tid,
+            db,
+            tid,
             lease_token=token,
             action=ACTION,
             resource={"type": "order"},
@@ -134,7 +141,8 @@ class TestAtomicExecution:
         # Second attempt with same token: lease is now EXECUTED, not MINTED
         with pytest.raises(ConflictError, match="already redeemed"):
             await AtomicExecutionService.execute_command(
-                db, tid,
+                db,
+                tid,
                 lease_token=token,
                 action=ACTION,
                 resource={"type": "order"},
@@ -149,7 +157,8 @@ class TestAtomicExecution:
         # Execute with DIFFERENT arguments -> different hash -> mismatch
         with pytest.raises(ConflictError, match="command_hash mismatch"):
             await AtomicExecutionService.execute_command(
-                db, tid,
+                db,
+                tid,
                 lease_token=token,
                 action=ACTION,
                 resource={"type": "order"},
@@ -167,7 +176,8 @@ class TestAtomicExecution:
 
         with pytest.raises(ConflictError, match="expired"):
             await AtomicExecutionService.execute_command(
-                db, tid,
+                db,
+                tid,
                 lease_token=token,
                 action=ACTION,
                 resource={"type": "order"},
@@ -186,7 +196,8 @@ class TestAtomicExecution:
 
         with pytest.raises(ConflictError, match="not ACTIVE"):
             await AtomicExecutionService.execute_command(
-                db, tid,
+                db,
+                tid,
                 lease_token=token,
                 action=ACTION,
                 resource={"type": "order"},
@@ -204,7 +215,8 @@ class TestAtomicExecution:
 
         with pytest.raises(ConflictError, match="expired"):
             await AtomicExecutionService.execute_command(
-                db, tid,
+                db,
+                tid,
                 lease_token=token,
                 action=ACTION,
                 resource={"type": "order"},
@@ -221,7 +233,8 @@ class TestAtomicExecution:
 
         with pytest.raises(ConflictError, match="not in APPROVED"):
             await AtomicExecutionService.execute_command(
-                db, tid,
+                db,
+                tid,
                 lease_token=token,
                 action=ACTION,
                 resource={"type": "order"},
@@ -234,7 +247,10 @@ class TestAtomicExecution:
 
         # Create chain with expected_versions
         decision = await DecisionService.propose(
-            db, tid, action="test", risk_level="LOW",
+            db,
+            tid,
+            action="test",
+            risk_level="LOW",
         )
         await DecisionService.verify(db, tid, decision.decision_id)
         await DecisionService.approve(db, tid, decision.decision_id)
@@ -242,11 +258,15 @@ class TestAtomicExecution:
 
         grant = await AuthorityService.issue_grant(db, tid, tool_name="t")
         cmd_hash = compute_command_hash(
-            str(tid), action=ACTION, resource={"type": "order"},
-            arguments={"discount": "10"}, purpose=PURPOSE,
+            str(tid),
+            action=ACTION,
+            resource={"type": "order"},
+            arguments={"discount": "10"},
+            purpose=PURPOSE,
         )
         lease, token = await AuthorityService.mint_lease(
-            db, tid,
+            db,
+            tid,
             grant_id=grant.grant_id,
             decision_id=decision.decision_id,
             command_hash=cmd_hash,
@@ -256,7 +276,8 @@ class TestAtomicExecution:
         # Execute with WRONG current_versions -> conflict
         with pytest.raises(ConflictError, match="version conflict"):
             await AtomicExecutionService.execute_command(
-                db, tid,
+                db,
+                tid,
                 lease_token=token,
                 action=ACTION,
                 resource={"type": "order"},
@@ -269,7 +290,10 @@ class TestAtomicExecution:
         db, tid = tenant_ctx.session, tenant_ctx.tenant_id
 
         decision = await DecisionService.propose(
-            db, tid, action="test", risk_level="LOW",
+            db,
+            tid,
+            action="test",
+            risk_level="LOW",
         )
         await DecisionService.verify(db, tid, decision.decision_id)
         await DecisionService.approve(db, tid, decision.decision_id)
@@ -277,11 +301,15 @@ class TestAtomicExecution:
 
         grant = await AuthorityService.issue_grant(db, tid, tool_name="t")
         cmd_hash = compute_command_hash(
-            str(tid), action=ACTION, resource={"type": "order"},
-            arguments={"discount": "10"}, purpose=PURPOSE,
+            str(tid),
+            action=ACTION,
+            resource={"type": "order"},
+            arguments={"discount": "10"},
+            purpose=PURPOSE,
         )
         lease, token = await AuthorityService.mint_lease(
-            db, tid,
+            db,
+            tid,
             grant_id=grant.grant_id,
             decision_id=decision.decision_id,
             command_hash=cmd_hash,
@@ -290,7 +318,8 @@ class TestAtomicExecution:
 
         # Matching version -> success
         result = await AtomicExecutionService.execute_command(
-            db, tid,
+            db,
+            tid,
             lease_token=token,
             action=ACTION,
             resource={"type": "order"},
@@ -304,24 +333,37 @@ class TestAtomicExecution:
         db, tid = tenant_ctx.session, tenant_ctx.tenant_id
 
         decision = await DecisionService.propose(
-            db, tid, action="test", risk_level="LOW",
+            db,
+            tid,
+            action="test",
+            risk_level="LOW",
         )
         await DecisionService.verify(db, tid, decision.decision_id)
         await DecisionService.approve(db, tid, decision.decision_id)
         await db.refresh(decision)
 
         budget = await AuthorityService.create_budget(
-            db, tid, name="exec-budget", total_limit=Decimal("1000.00"),
+            db,
+            tid,
+            name="exec-budget",
+            total_limit=Decimal("1000.00"),
         )
         grant = await AuthorityService.issue_grant(
-            db, tid, tool_name="t", max_budget=Decimal("500.00"),
+            db,
+            tid,
+            tool_name="t",
+            max_budget=Decimal("500.00"),
         )
         cmd_hash = compute_command_hash(
-            str(tid), action=ACTION, resource={"type": "order"},
-            arguments={"discount": "10"}, purpose=PURPOSE,
+            str(tid),
+            action=ACTION,
+            resource={"type": "order"},
+            arguments={"discount": "10"},
+            purpose=PURPOSE,
         )
         lease, token = await AuthorityService.mint_lease(
-            db, tid,
+            db,
+            tid,
             grant_id=grant.grant_id,
             decision_id=decision.decision_id,
             command_hash=cmd_hash,
@@ -330,7 +372,8 @@ class TestAtomicExecution:
         )
 
         result = await AtomicExecutionService.execute_command(
-            db, tid,
+            db,
+            tid,
             lease_token=token,
             action=ACTION,
             resource={"type": "order"},
@@ -350,7 +393,8 @@ class TestAtomicExecution:
 
         agg_id = uuid.uuid4()
         result = await AtomicExecutionService.execute_command(
-            db, tid,
+            db,
+            tid,
             lease_token=token,
             action=ACTION,
             resource={"type": "order"},
@@ -370,7 +414,8 @@ class TestAtomicExecution:
         decision, grant, lease, token, cmd_hash = await _setup_full_chain(db, tid)
 
         result = await AtomicExecutionService.execute_command(
-            db, tid,
+            db,
+            tid,
             lease_token=token,
             action=ACTION,
             resource={"type": "order"},
@@ -391,7 +436,8 @@ class TestAtomicExecution:
 
         with pytest.raises(RuntimeError, match="mutation failed"):
             await AtomicExecutionService.execute_command(
-                db, tid,
+                db,
+                tid,
                 lease_token=token,
                 action=ACTION,
                 resource={"type": "order"},
