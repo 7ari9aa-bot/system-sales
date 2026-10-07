@@ -123,7 +123,9 @@ export default function AI() {
         },
       });
       invalidateCache(AGENTS_PATH);
+      invalidateCache(AGENT_KINDS_PATH);
       await loadAgents();
+      await loadKinds();
       setShowCatalog(false);
     } catch (error) {
       setAgentError(error?.message || (isAr ? "تعذر تهيئة الوكيل" : "Could not provision agent"));

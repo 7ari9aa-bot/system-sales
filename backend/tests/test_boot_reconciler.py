@@ -153,8 +153,7 @@ async def test_run_boot_reconciler_warns_on_role_bypass_outside_secure_environme
         patch(
             "app.core.boot.inspect_app_role_bypass_rls",
             return_value=(
-                "connected role 'postgres' has BYPASSRLS"
-                " — row-level security cannot bind it"
+                "connected role 'postgres' has BYPASSRLS — row-level security cannot bind it"
             ),
         ),
     ):

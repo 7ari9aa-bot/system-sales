@@ -732,8 +732,7 @@ class SystemDiagnosticsService:
                 "error": f"{type(exc).__name__}: {exc}",
                 "root_cause": "تعذر فحص اختلالات البيانات (طلبات أو مخزون سالب).",
                 "remediation": (
-                    "تحقق من صحة جداول orders و inventory_balances"
-                    " قبل الاطمئنان للسلامة."
+                    "تحقق من صحة جداول orders و inventory_balances قبل الاطمئنان للسلامة."
                 ),
                 "metrics": {},
                 "timestamp": datetime.now(UTC).isoformat(),

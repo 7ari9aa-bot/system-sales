@@ -200,9 +200,7 @@ def freshness_policies() -> dict[str, FreshnessPolicy]:
     return {name: d.freshness_policy for name, d in _registry.items()}
 
 
-async def load_store_metric_profile(
-    session: object, tenant_id: object
-) -> StoreMetricProfile:
+async def load_store_metric_profile(session: object, tenant_id: object) -> StoreMetricProfile:
     """Load store metric profile from persistent settings if configured,
     otherwise falling back to default StoreMetricProfile."""
     from sqlalchemy import text
