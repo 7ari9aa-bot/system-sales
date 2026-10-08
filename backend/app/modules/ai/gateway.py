@@ -12,6 +12,7 @@ deployment settings and are intentionally NOT added to app/core/config.py.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import time
@@ -674,10 +675,18 @@ class AIGateway:
                     status=status,
                 )
             )
-            # §42 settle: release the hold whether the call succeeded or not —
-            # a failed call must not hold budget until its TTL expires.
-            await settle_reservation(session, reservation_id)
-            await session.flush()
+            # §42 settle (P1-2): release the hold whether the call succeeded or not —
+            # a failed or cancelled call must not hold budget until its TTL expires.
+            # Shielded against asyncio.wait_for cancellation so the hold is always released.
+            try:
+                await asyncio.shield(settle_reservation(session, reservation_id))
+                await asyncio.shield(session.flush())
+            except Exception:
+                logger.warning(
+                    "ai.settle_reservation_failed reservation=%s",
+                    reservation_id,
+                    exc_info=True,
+                )
 
     async def embed(
         self,

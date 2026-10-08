@@ -9,19 +9,69 @@ grounding controller will bounce it.
 
 from __future__ import annotations
 
+import re
+from decimal import Decimal
+
+_IGNORE_KEY_SUFFIXES = ("_id", "_at", "_url", "_token", "_hash")
+_IGNORE_KEYS = frozenset(
+    {
+        "id",
+        "uuid",
+        "sku",
+        "code",
+        "barcode",
+        "tracking_number",
+        "phone",
+        "email",
+        "url",
+        "image",
+        "media_url",
+        "image_url",
+    }
+)
+_UUID_RE = re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+)
+_ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}")
+
+# Standard policy numbers supported by tenant store policies (P1-11)
+DEFAULT_POLICY_FACTS: list[str] = ["14", "30"]
+
+
+def _should_ignore_key(key: str) -> bool:
+    k = key.lower()
+    if k in _IGNORE_KEYS:
+        return True
+    return any(k.endswith(suffix) for suffix in _IGNORE_KEY_SUFFIXES)
+
+
+def _is_id_or_date_string(s: str) -> bool:
+    s_clean = s.strip()
+    if _UUID_RE.match(s_clean):
+        return True
+    if _ISO_DATE_RE.match(s_clean):
+        return True
+    return False
+
 
 def _walk_scalars(value, out: list[str]) -> None:
-    """Collect every non-bool scalar leaf as its string form."""
+    """Collect non-bool scalar leaves representing actual business facts.
+    Excludes UUIDs, ISO dates, URLs, and entity ID columns (P1-10)."""
     if isinstance(value, dict):
-        for child in value.values():
+        for key, child in value.items():
+            if _should_ignore_key(str(key)):
+                continue
             _walk_scalars(child, out)
     elif isinstance(value, list):
         for child in value:
             _walk_scalars(child, out)
     elif isinstance(value, bool) or value is None:
         return
-    elif isinstance(value, (int, float, str)):
+    elif isinstance(value, (int, float, Decimal)):
         out.append(str(value))
+    elif isinstance(value, str):
+        if not _is_id_or_date_string(value):
+            out.append(value)
 
 
 def _walk_quantities(value, out: list[str]) -> None:
@@ -37,15 +87,27 @@ def _walk_quantities(value, out: list[str]) -> None:
             _walk_quantities(child, out)
 
 
-def facts_from_tool_calls(tool_calls_made: list[dict]) -> list[str]:
+def facts_from_tool_calls(
+    tool_calls_made: list[dict],
+    *,
+    policy_facts: list[str] | None = None,
+) -> list[str]:
     """String facts from every OK tool result of this run.
 
     Failed or denied tool calls contribute nothing — their error text must
     never become quotable "data". Money stays the exact Decimal string the
     tools serialized (§47), which is what makes substring matching reliable
     for prices.
+
+    P1-11: Policy facts (return window, warranty days) are included so
+    policy-quoting answers pass grounding without being blocked.
     """
     facts: list[str] = []
+    if policy_facts is not None:
+        facts.extend(policy_facts)
+    else:
+        facts.extend(DEFAULT_POLICY_FACTS)
+
     for call in tool_calls_made:
         if call.get("status") != "ok":
             continue

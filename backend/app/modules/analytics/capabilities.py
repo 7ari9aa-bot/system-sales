@@ -41,7 +41,13 @@ from app.modules.analytics.engines import (
     seasonality_explains,
     weekday_profile,
 )
-from app.modules.analytics.semantic import StoreMetricProfile, metric
+from app.modules.analytics.semantic import (
+    StoreMetricProfile,
+    metric,
+)
+from app.modules.analytics.semantic import (
+    load_store_metric_profile as load_store_metric_profile,
+)
 
 
 @dataclass(slots=True)

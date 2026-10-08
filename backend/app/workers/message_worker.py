@@ -36,8 +36,9 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy import update as sa_update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -46,7 +47,7 @@ from app.core.db import SessionLocal, bind_tenant
 from app.core.errors import RateLimitExceededError, ValidationError
 from app.core.events.bus import Event
 from app.core.events.schemas import EventEnvelope, deserialize_event
-from app.core.lease import ConversationBusy, conversation_lease
+from app.core.lease import ConversationBusy
 from app.modules.ai.gateway import (
     AIBudgetFallbackRequested,
     reserve_budget,
@@ -114,9 +115,10 @@ async def transcribe_inbound_voice(
     cost = stt_cost_estimate(attachment)
     try:
         reservation_id = await reserve_budget(session, tenant_id, estimated_cost=cost)
+        await session.commit()
     except (RateLimitExceededError, AIBudgetFallbackRequested) as exc:
         attachment.transcription_status = "failed"
-        await session.flush()
+        await session.commit()
         logger.warning(
             "voice.stt_budget_blocked tenant=%s attachment=%s reason=%s",
             tenant_id,
@@ -135,18 +137,11 @@ async def transcribe_inbound_voice(
         )
     finally:
         await settle_reservation(session, reservation_id)
+        await session.commit()
 
     if result.text:
-        # §42: booked whether or not the provider answered, so the cap sees the
-        # money a failed call may still have consumed.
-        # §47: the estimate is a Decimal and `ai_usage.cost` is Numeric(18,8);
-        # `float(cost)` rounded the sub-cent places the column exists to hold.
-        # PLATFORM_BUCKET, not an omitted agent_id: this spend happens BEFORE
-        # `maybe_auto_reply` picks an agent (and even when the tenant has none, or
-        # no AI entitlement), so attributing it to an agent would be a fiction —
-        # while leaving it NULL gives the rollup a bucket its unique key cannot
-        # arbitrate, which fragments it into one row per voice note.
         await record_usage(session, tenant_id, agent_id=PLATFORM_BUCKET, cost=cost)
+        await session.commit()
         return result.text
     return None
 
@@ -198,66 +193,116 @@ class MessageWorker(StreamWorker):
         if not conversation_id:
             return
         tenant_id = envelope.tenant_id
+        dedupe_uuid = uuid.UUID(self._dedupe_id(envelope))
+        claimed = False
         try:
             from app.modules.ai.hooks import maybe_auto_reply
 
-            # Phase 1: Deduplication preflight check (§127)
+            # Phase 1: Atomic durable processing claim (§127)
+            # Checks for finished or active processing; reclaims stale in_progress claims (>5m);
+            # inserts fresh claim. Committed BEFORE external work so crash leaves observable state.
             async with SessionLocal() as session:
                 async with session.begin():
                     await bind_tenant(session, tenant_id)
-                    prior = (
+                    existing = (
                         await session.execute(
-                            select(ProcessedEvent.id).where(
+                            select(ProcessedEvent)
+                            .where(
                                 ProcessedEvent.consumer_name == self.name,
-                                ProcessedEvent.event_id == uuid.UUID(self._dedupe_id(envelope)),
+                                ProcessedEvent.event_id == dedupe_uuid,
                             )
+                            .with_for_update()
                         )
                     ).scalar_one_or_none()
-                    if prior is not None:
-                        logger.info("received.event_already_processed id=%s", envelope.id)
-                        return
 
-            # Phase 2: Transcribe inbound voice note before answering (§35, §126)
-            async with SessionLocal() as session:
-                async with session.begin():
-                    await bind_tenant(session, tenant_id)
-                    async with conversation_lease(session, uuid.UUID(conversation_id)):
-                        await transcribe_inbound_voice(
-                            session, tenant_id, message_id=envelope.aggregate_id
-                        )
-
-            # Phase 3: AI Auto-reply (runs under conversation_lease internally)
-            async with SessionLocal() as session:
-                async with session.begin():
-                    await bind_tenant(session, tenant_id)
-                    await maybe_auto_reply(session, tenant_id, uuid.UUID(conversation_id))
-
-            # Phase 4: Commit consumer-inbox ProcessedEvent (§127)
-            async with SessionLocal() as session:
-                async with session.begin():
-                    await bind_tenant(session, tenant_id)
-                    try:
-                        async with session.begin_nested():
+                    if existing is not None:
+                        if existing.status == "done":
+                            logger.info("received.event_already_processed id=%s", envelope.id)
+                            return
+                        # Reclaim stale in_progress claim if older than 5 minutes
+                        stale_cutoff = datetime.now(UTC) - timedelta(minutes=5)
+                        if existing.processed_at and existing.processed_at < stale_cutoff:
+                            logger.warning("received.reclaiming_stale_claim id=%s", envelope.id)
+                            existing.processed_at = func.now()
+                            claimed = True
+                        else:
+                            logger.info("received.event_already_in_progress id=%s", envelope.id)
+                            return
+                    else:
+                        try:
                             session.add(
                                 ProcessedEvent(
                                     consumer_name=self.name,
-                                    event_id=uuid.UUID(self._dedupe_id(envelope)),
-                                    status="done",
+                                    event_id=dedupe_uuid,
+                                    status="in_progress",
                                 )
                             )
                             await session.flush()
-                    except IntegrityError:
-                        logger.info("received.event_already_processed id=%s", envelope.id)
-                        return
+                            claimed = True
+                        except IntegrityError:
+                            logger.info("received.event_already_claimed id=%s", envelope.id)
+                            return
+
+            # Phase 2: Transcribe inbound voice note before answering (§35, §126)
+            async with SessionLocal() as session:
+                await bind_tenant(session, tenant_id)
+                await transcribe_inbound_voice(session, tenant_id, message_id=envelope.aggregate_id)
+
+            # Phase 3: AI Auto-reply (runs under conversation_lease internally)
+            async with SessionLocal() as session:
+                await bind_tenant(session, tenant_id)
+                await maybe_auto_reply(session, tenant_id, uuid.UUID(conversation_id))
+                await session.commit()
+
+            # Phase 4: Finalize consumer-inbox ProcessedEvent (§127)
+            async with SessionLocal() as session:
+                async with session.begin():
+                    await bind_tenant(session, tenant_id)
+                    await session.execute(
+                        update(ProcessedEvent)
+                        .where(
+                            ProcessedEvent.consumer_name == self.name,
+                            ProcessedEvent.event_id == dedupe_uuid,
+                        )
+                        .values(status="done", processed_at=func.now())
+                    )
         except ImportError:
             logger.debug("ai.hooks not installed — skipping auto-reply")
-        # NOTE: no broad swallow here. An AI/provider failure must roll the
-        # ProcessedEvent marker back and propagate so the worker runtime
-        # retries with backoff (and finally dead-letters). Swallowing acked
-        # the event while losing the reply forever.
         except ConversationBusy:
-            # Retryable by contract (lease.py): re-raise so the event is
-            # requeued instead of being marked processed with no reply.
+            # Retryable by contract (lease.py): clean up in_progress claim and re-raise
+            # so the event is requeued instead of being left locked or marked done.
+            if claimed:
+                try:
+                    async with SessionLocal() as session:
+                        async with session.begin():
+                            await bind_tenant(session, tenant_id)
+                            await session.execute(
+                                delete(ProcessedEvent).where(
+                                    ProcessedEvent.consumer_name == self.name,
+                                    ProcessedEvent.event_id == dedupe_uuid,
+                                    ProcessedEvent.status == "in_progress",
+                                )
+                            )
+                except Exception:
+                    pass
+            raise
+        except Exception:
+            # On any unhandled error that causes worker to retry:
+            # clean up in_progress claim so retry can re-claim.
+            if claimed:
+                try:
+                    async with SessionLocal() as session:
+                        async with session.begin():
+                            await bind_tenant(session, tenant_id)
+                            await session.execute(
+                                delete(ProcessedEvent).where(
+                                    ProcessedEvent.consumer_name == self.name,
+                                    ProcessedEvent.event_id == dedupe_uuid,
+                                    ProcessedEvent.status == "in_progress",
+                                )
+                            )
+                except Exception:
+                    pass
             raise
 
     # ------------------------------------------------------- outbound ----

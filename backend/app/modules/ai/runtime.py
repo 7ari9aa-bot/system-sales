@@ -60,7 +60,17 @@ logger = logging.getLogger(__name__)
 
 MAX_ITERATIONS = 5
 HISTORY_MESSAGES = 10
-DEFAULT_SYSTEM_PROMPT = "You are a helpful sales assistant."
+DEFAULT_SYSTEM_PROMPT = (
+    "أنت مساعد خدمة العملاء والمبيعات الذكي للمتجر. تتحدث بلهجة مصرية مهذبة وودودة ومباشرة.\n"
+    "مهمتك مساعدة العملاء في الاستفسار عن المنتجات، الأسعار، المخزون، وحالة الطلبات، وإتمام "
+    "عمليات الشراء.\n"
+    "القواعد الإلزامية:\n"
+    "1. لا تذكر أو تؤكد أي سعر أو كمية متوفرة إلا بعد الاستعلام عنها عبر الأدوات المخصصة.\n"
+    "2. قبل تسجيل أي طلب، تأكد من وضوح كافة بيانات العميل والمنتج والكمية.\n"
+    "3. التزم بسياسات المتجر المعلنة بدقة (الشحن، الدفع، الاسترجاع والاستبدال).\n"
+    "4. إذا طلب العميل التحدث مع موظف خدمة عملاء أو واجهت طلباً لا تستطيع حله، حوّل "
+    "المحادثة لموظف بشري بلطف."
+)
 # Outbound rows whose send did not land: "failed" is terminal and "unknown" is
 # a result that went missing mid-flight (conversations/models.py:172). Neither
 # is a turn the customer read.
@@ -121,6 +131,9 @@ class AgentRunResult:
     # Products this run showed or referenced — referent context for the
     # customer agent's state layer ("التاني" needs to know what was shown).
     shown_product_ids: list[str] = field(default_factory=list)
+    agent_version: int = 1
+    model: str | None = None
+    provider: str | None = None
 
 
 def _now() -> datetime:
@@ -175,6 +188,10 @@ class AgentRunner:
             input={
                 "message": user_message,
                 "customer_id": str(customer_id) if customer_id else None,
+                "agent_version": getattr(agent, "version", 1),
+                "model": self._alias_for(agent),
+                "model_name": agent.model,
+                "system_prompt_version": getattr(agent, "version", 1),
             },
             started_at=_now(),
         )
@@ -226,6 +243,9 @@ class AgentRunner:
             "content": result.content,
             "media": result.media,
             "shown_product_ids": result.shown_product_ids,
+            "agent_version": getattr(agent, "version", 1),
+            "model": self._alias_for(agent),
+            "provider": getattr(agent, "provider", None) or "platform",
         }
         run.tokens_in = result.tokens_in
         run.tokens_out = result.tokens_out
@@ -233,26 +253,10 @@ class AgentRunner:
         run.finished_at = _now()
         await session.flush()
 
-        # §38: persist a memory from the AI run so future runs can retrieve it.
-        # §158: the memory is labelled agent_inferred — NOT customer_stated —
-        # because this is an AI-generated summary, not something the customer
-        # explicitly said. confidence is moderate (not verified by a system event).
-        if customer_id is not None and result.content and result.guardrail_decision == "allow":
-            try:
-                from app.modules.ai.knowledge import add_memory
-
-                await add_memory(
-                    session,
-                    tenant_id,
-                    customer_id=customer_id,
-                    conversation_id=conversation_id,
-                    kind="summary",
-                    content=f"AI run: {result.content[:500]}",
-                    source="agent_inferred",
-                    confidence=0.6,
-                )
-            except Exception:  # noqa: BLE001 — memory is best-effort
-                logger.warning("ai.memory_persist_failed run=%s", run.id, exc_info=True)
+        # §38/§158/P1-17: raw AI run output is NOT automatically persisted as
+        # agent_inferred memory by default — doing so injects past chat outputs
+        # into future knowledge contexts without fact verification. Verified facts
+        # are stored through explicit domain events and memory extraction only.
 
         await record_usage(
             session,
@@ -591,8 +595,9 @@ class AgentRunner:
             content = chat_result.content or content
 
         if awaiting_approval:
-            # run.status was set to WAITING_APPROVAL by _execute_tool; leave
-            # content empty — hooks sends nothing while approval is pending.
+            # run.status was set to WAITING_APPROVAL by _execute_tool;
+            # §135/P1-9: provide a polite waiting message so customer does not get complete silence
+            content = "تم تحويل طلبك لفريق العمل للمراجعة والموافقة وسنوافيك بالرد فور اعتماده."
             await session.flush()
             logger.warning("ai.run_awaiting_approval run=%s", run.id)
         elif hit_limit:
@@ -602,9 +607,9 @@ class AgentRunner:
             # in AI limbo — the customer would get silence. Record a durable
             # handover so a human picks it up.
             if conversation_id is not None:
-                from sqlalchemy import text
-
+                from app.core.events.writer import add_outbox_event
                 from app.modules.ai.models import AIHandover
+                from app.modules.conversations.service import ConversationService
 
                 session.add(
                     AIHandover(
@@ -616,12 +621,22 @@ class AgentRunner:
                         note=f"run_limit:{hit_limit}",
                     )
                 )
-                await session.execute(
-                    text(
-                        "UPDATE conversations SET status = 'waiting_human' "
-                        "WHERE id = :cid AND tenant_id = :tid"
-                    ),
-                    {"cid": str(conversation_id), "tid": str(tenant_id)},
+                await ConversationService.set_status(
+                    session, tenant_id, conversation_id, "waiting_human"
+                )
+                await add_outbox_event(
+                    session,
+                    aggregate_type="ai",
+                    aggregate_id=conversation_id,
+                    event_type="ai.handover.created",
+                    tenant_id=tenant_id,
+                    payload={
+                        "event_type": "ai.handover.created",
+                        "conversation_id": str(conversation_id),
+                        "run_id": str(run.id),
+                        "reason": "failure",
+                        "note": f"run_limit:{hit_limit}",
+                    },
                 )
             await session.flush()
             logger.warning("ai.run_limit_hit run=%s limit=%s", run.id, hit_limit)
@@ -635,9 +650,9 @@ class AgentRunner:
             # §134: same as above — the step budget ran out, so a human takes
             # over rather than the customer staring at silence.
             if conversation_id is not None:
-                from sqlalchemy import text
-
+                from app.core.events.writer import add_outbox_event
                 from app.modules.ai.models import AIHandover
+                from app.modules.conversations.service import ConversationService
 
                 session.add(
                     AIHandover(
@@ -649,12 +664,22 @@ class AgentRunner:
                         note="run_limit:max_steps",
                     )
                 )
-                await session.execute(
-                    text(
-                        "UPDATE conversations SET status = 'waiting_human' "
-                        "WHERE id = :cid AND tenant_id = :tid"
-                    ),
-                    {"cid": str(conversation_id), "tid": str(tenant_id)},
+                await ConversationService.set_status(
+                    session, tenant_id, conversation_id, "waiting_human"
+                )
+                await add_outbox_event(
+                    session,
+                    aggregate_type="ai",
+                    aggregate_id=conversation_id,
+                    event_type="ai.handover.created",
+                    tenant_id=tenant_id,
+                    payload={
+                        "event_type": "ai.handover.created",
+                        "conversation_id": str(conversation_id),
+                        "run_id": str(run.id),
+                        "reason": "failure",
+                        "note": "run_limit:max_steps",
+                    },
                 )
             await session.flush()
             logger.warning("ai.run_limit_hit run=%s limit=max_steps", run.id)
@@ -754,6 +779,9 @@ class AgentRunner:
             guardrail_reason=reason,
             media=media,
             shown_product_ids=shown_product_ids,
+            agent_version=getattr(agent, "version", 1),
+            model=self._alias_for(agent),
+            provider=getattr(agent, "provider", None) or "platform",
         )
 
     @staticmethod
@@ -824,10 +852,14 @@ class AgentRunner:
         """
         turns: list[dict] = []
         for message in history:
+            # P1-14/T16: Canonical safe-history: skip messages that were blocked,
+            # failed, or undelivered so blocked content is never re-fed to the model.
+            msg_status = (message.status or "").strip().lower()
+            if msg_status in ("blocked", "failed", "undelivered", "rejected"):
+                continue
             outbound = message.direction == "outbound"
             if outbound and (
-                message.sender_type == "system"
-                or (message.status or "") in _UNDELIVERED_OUTBOUND_STATUSES
+                message.sender_type == "system" or msg_status in _UNDELIVERED_OUTBOUND_STATUSES
             ):
                 continue
             content = message.body or voice.get(message.id) or AgentRunner._media_marker(message)
@@ -1072,7 +1104,9 @@ class AgentRunner:
                             granted is not None
                             and conversation_id is not None
                             and await ApprovalService.is_stale_for_conversation(
-                                session, conversation_id, since=granted.created_at
+                                session,
+                                conversation_id,
+                                since=(granted.decided_at or granted.created_at),
                             )
                         ):
                             granted = None

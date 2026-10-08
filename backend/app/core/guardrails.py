@@ -133,11 +133,8 @@ _INJ_NOUN_OWN = r"(?:instructions?|prompts?|guidelines?|directives?)"
 # is what `_screened` hands them: after the fold, الغى and الغي are one string,
 # and إرشادات and ارشادات are one string, so a pattern must not carry both.
 _INJ_AR_VERB = r"(?:تجاهل|تجاوز|تخطي|انسي|نساي|الغي|الغ)"
-# `نظام` ("system", but also a plan: نظام الفاتورة, the billing plan) and
-# `قواعد` ("rules", but also a school subject: قواعد اللغة, grammar) are ordinary
-# nouns in this dialect. An override verb two words from either is not evidence
-# of an attempt, so they only count inside the phrase that points at the
-# system's own rules.
+_INJ_AR_QUALIFIER = r"(?:(?:كل|جميع|اي|هذه|هذي|تلك)\s+)*"
+_INJ_AR_SCOPE = r"(?:(?:السابقه|السابق|الاصليه|الاولى|الاول|الحاليه)\s+)*"
 _INJ_AR_NOUN = r"(?:تعليمات|ارشادات)"
 _INJ_AR_RULES_PHRASE = (
     r"(?:(?:تعليمات|ارشادات|قواعد)\s*(?:النظام|السابق|الاصلي|الاول)"
@@ -157,9 +154,11 @@ _INJECTION_PATTERNS = [
         r"[^.\n]{0,20}?\b(?:system\s+prompt|your\s+(?:instructions?|rules?|prompts?))\b"
     ),
     re.compile(r"\bsystem\s+prompt\s*:"),
-    # Arabic: an override verb near the word for instructions, or the phrase
-    # "the system's rules" / "all the rules" wherever it appears.
-    re.compile(rf"{_INJ_AR_VERB}[^.\n]{{0,25}}?{_INJ_AR_NOUN}"),
+    # Arabic: an override verb directly targeting instructions/guidelines,
+    # or the phrase "the system's rules" / "all the rules" wherever it appears.
+    # P1-13: Requires direct collocation with qualifiers/scope so legitimate customer
+    # requests like "الغي الطلب وابعتلي تعليمات الاسترجاع" do not trigger false positives.
+    re.compile(rf"{_INJ_AR_VERB}\s+{_INJ_AR_QUALIFIER}{_INJ_AR_SCOPE}(?:ال)?{_INJ_AR_NOUN}"),
     re.compile(_INJ_AR_RULES_PHRASE),
 ]
 
@@ -292,11 +291,26 @@ def default_guardrail(
         return claim_checks(content, ctx)
 
     def _tool_evidence(content: str, ctx: dict) -> GuardrailVerdict | None:
-        # Factual constraint: price/stock claims must come from tool results.
+        # P1-12: Factual constraint — price/stock claims must come from tool
+        # results AND the claimed numerals must actually appear in those results.
+        # Previously any tool call (even an unrelated one like get_customer)
+        # greenlighted a hallucinated price claim.
         if not require_tool_evidence:
             return None
         claimed = ctx.get("claims_facts", claims_facts(content))
-        if claimed and not ctx.get("tool_results"):
+        if not claimed:
+            return None
+        tool_results = ctx.get("tool_results")
+        if not tool_results:
+            return GuardrailVerdict(decision="handover", reason="unsourced_claim")
+        # Extract numerals from the content and verify they exist in tool output.
+        content_nums = set(re.findall(r"\d+(?:\.\d+)?", _screened(content)))
+        if not content_nums:
+            return None
+        tool_text = str(tool_results) if not isinstance(tool_results, str) else tool_results
+        tool_nums = set(re.findall(r"\d+(?:\.\d+)?", tool_text))
+        # At least one claimed numeral must be sourced from a tool result.
+        if not content_nums & tool_nums:
             return GuardrailVerdict(decision="handover", reason="unsourced_claim")
         return None
 

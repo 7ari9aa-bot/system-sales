@@ -169,7 +169,17 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # lazy read of the tenant's own product rows), and catalog -> identity.deps
 # (get_db on the platform bridge). Same endorsed directions as the platform
 # module's existing reads of identity/catalog.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 139
+# 139 -> 144 on 2026-10-08: the P1 audit-report hardening pass. Five new
+# function-scope edges, all in endorsed directions (ai -> analytics, ai ->
+# conversations):
+#   1. ai/si/tools.py -> analytics.contracts (AnalysisPeriod typed return)
+#   2. ai/si/tools.py -> analytics.service (resolve_report_timezone, P1-19)
+#   3. ai/hooks.py    -> conversations.models (Attachment media lookup)
+#   4-5. ai/runtime.py -> conversations.service (ConversationService ×2, the
+#        handover hooks now go through the service instead of raw SQL).
+# No new cycles (verified: SCCs unchanged). All five are bug fixes from the
+# agent-layer review report, not new features.
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 144
 # 101 -> 99 on 2026-09-29: the diagnostics engine (platform/diagnostics.py) had
 # module-scope imports of `ai.models.Agent`, `inventory.models` and
 # `orders.models` — three edges that re-merged the eleven-module SCC blob the

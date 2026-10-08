@@ -65,9 +65,15 @@ def _correlation_from_input(run: AgentRun, key: str) -> str | None:
 
 def _run_summary(run: AgentRun) -> dict:
     """Run-level fields only — the list shape for correlation traces."""
+    input_payload = run.input if isinstance(run.input, dict) else {}
+    output_payload = run.output if isinstance(run.output, dict) else {}
+    agent_version = input_payload.get("agent_version") or output_payload.get("agent_version")
+    model = input_payload.get("model") or output_payload.get("model")
     return {
         "run_id": str(run.id),
         "agent_id": str(run.agent_id),
+        "agent_version": agent_version,
+        "model": model,
         "conversation_id": str(run.conversation_id) if run.conversation_id else None,
         "status": run.status,
         "tokens_in": int(run.tokens_in or 0),
@@ -284,19 +290,17 @@ async def create_evaluation(
     notes: str | None = None,
 ) -> AIEvaluation:
     """§169: create an evaluation record for an agent/prompt version."""
-    evaluation = AIEvaluation(
-        tenant_id=tenant_id,
+    from app.modules.ai.evaluation import AIEvaluationService
+
+    return await AIEvaluationService.submit_evaluation(
+        session,
+        tenant_id,
         agent_id=agent_id,
         prompt_version=prompt_version,
-        dataset_ref=dataset_ref,
+        dataset_id=dataset_ref,
         status="pending",
-        quality_metrics={},
-        rollout_status="none",
         notes=notes,
     )
-    session.add(evaluation)
-    await session.flush()
-    return evaluation
 
 
 async def list_evaluations(
@@ -307,16 +311,11 @@ async def list_evaluations(
     limit: int = 50,
 ) -> list[AIEvaluation]:
     """List evaluations for a tenant, optionally filtered by agent."""
-    stmt = (
-        select(AIEvaluation)
-        .where(AIEvaluation.tenant_id == tenant_id)
-        .order_by(AIEvaluation.created_at.desc())
-        .limit(min(limit, 200))
+    from app.modules.ai.evaluation import AIEvaluationService
+
+    return await AIEvaluationService.list_evaluations(
+        session, tenant_id, agent_id=agent_id, limit=limit
     )
-    if agent_id is not None:
-        stmt = stmt.where(AIEvaluation.agent_id == agent_id)
-    rows = (await session.execute(stmt)).scalars().all()
-    return list(rows)
 
 
 async def update_evaluation_status(
@@ -330,22 +329,14 @@ async def update_evaluation_status(
     notes: str | None = None,
 ) -> AIEvaluation:
     """Update an evaluation's status after the evaluation run completes."""
-    evaluation = (
-        await session.execute(
-            select(AIEvaluation).where(
-                AIEvaluation.tenant_id == tenant_id,
-                AIEvaluation.id == evaluation_id,
-            )
-        )
-    ).scalar_one_or_none()
-    if evaluation is None:
-        raise NotFoundError(f"evaluation {evaluation_id} not found")
-    evaluation.status = status
-    if quality_metrics is not None:
-        evaluation.quality_metrics = quality_metrics
-    if rollout_status is not None:
-        evaluation.rollout_status = rollout_status
-    if notes is not None:
-        evaluation.notes = notes
-    await session.flush()
-    return evaluation
+    from app.modules.ai.evaluation import AIEvaluationService
+
+    return await AIEvaluationService.update_evaluation_status(
+        session,
+        tenant_id,
+        evaluation_id,
+        status=status,
+        quality_metrics=quality_metrics,
+        rollout_status=rollout_status,
+        notes=notes,
+    )

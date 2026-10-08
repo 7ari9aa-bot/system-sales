@@ -22,6 +22,18 @@ CUSTOMER_TOOLS = [
     "resolve_product_media",
 ]
 
+CUSTOMER_SYSTEM_PROMPT = (
+    "أنت مساعد خدمة العملاء والمبيعات الذكي للمتجر. تتحدث بلهجة مصرية مهذبة وودودة ومباشرة.\n"
+    "مهمتك مساعدة العملاء في الاستفسار عن المنتجات، الأسعار، المخزون، وحالة الطلبات، وإتمام "
+    "عمليات الشراء.\n"
+    "القواعد الإلزامية:\n"
+    "1. لا تذكر أو تؤكد أي سعر أو كمية متوفرة إلا بعد الاستعلام عنها عبر الأدوات المخصصة.\n"
+    "2. قبل تسجيل أي طلب، تأكد من وضوح كافة بيانات العميل والمنتج والكمية.\n"
+    "3. التزم بسياسات المتجر المعلنة بدقة (الشحن، الدفع، الاسترجاع والاستبدال).\n"
+    "4. إذا طلب العميل التحدث مع موظف خدمة عملاء أو واجهت طلباً لا تستطيع حله، حوّل "
+    "المحادثة لموظف بشري بلطف."
+)
+
 _DEFINITION = AgentDefinition(
     kind="customer",
     name="Customer Service Agent",
@@ -62,7 +74,7 @@ _DEFINITION = AgentDefinition(
             name="find_product_by_image", description="Match product from image", required=False
         ),
     ],
-    system_prompt_template="You are a helpful sales assistant.",
+    system_prompt_template=CUSTOMER_SYSTEM_PROMPT,
     default_model="fast",
     enforce_grounding=True,
     default_tools=CUSTOMER_TOOLS,

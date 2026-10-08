@@ -375,17 +375,16 @@ class GetCustomerArgs(BaseModel):
 async def _get_customer(
     session: AsyncSession, tenant_id: uuid.UUID, *, context: dict | None = None
 ) -> dict:
-    """The bound conversation's customer. The model cannot name a customer."""
+    """The bound conversation's customer. The model cannot name a customer.
+    P1-15: Returns minimum necessary fields (customer_id, name, locale) to avoid
+    exposing internal metrics (lifetime_value, is_blocked) or PII to the model.
+    """
     customer_id = _bound_customer_id(context)
     customer = await _customer_service().get(session, tenant_id, customer_id)
     return {
         "customer_id": str(customer.id),
         "name": customer.name,
-        "phone": customer.phone,
-        "email": customer.email,
         "locale": customer.locale,
-        "is_blocked": customer.is_blocked,
-        "lifetime_value": _money(customer.lifetime_value),
     }
 
 

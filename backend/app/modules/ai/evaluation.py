@@ -33,21 +33,84 @@ class AIEvaluationService:
     async def submit_evaluation(
         session: AsyncSession,
         tenant_id: uuid.UUID,
-        agent_version_id: uuid.UUID,
-        dataset_id: str | None,
-        results: dict,
+        agent_id: uuid.UUID | None = None,
+        agent_version_id: uuid.UUID | None = None,
+        dataset_id: str | None = None,
+        results: dict | None = None,
+        *,
+        prompt_version: int = 1,
+        status: str | None = None,
+        notes: str | None = None,
     ) -> AIEvaluation:
         """Record an evaluation run for an agent/prompt version."""
+        effective_agent_id = agent_id or agent_version_id
+        if effective_agent_id is None:
+            raise ValidationError("agent_id is required for evaluation")
+        metrics = results or {}
+        eval_status = status or ("passed" if metrics.get("passed") else "failed")
         evaluation = AIEvaluation(
             tenant_id=tenant_id,
-            agent_id=agent_version_id,
-            prompt_version=1,
+            agent_id=effective_agent_id,
+            prompt_version=prompt_version,
             dataset_ref=dataset_id,
-            status="passed" if results.get("passed") else "failed",
-            quality_metrics=results,
+            status=eval_status,
+            quality_metrics=metrics,
             rollout_status="none",
+            notes=notes,
         )
         session.add(evaluation)
+        await session.flush()
+        return evaluation
+
+    @staticmethod
+    async def list_evaluations(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        *,
+        agent_id: uuid.UUID | None = None,
+        limit: int = 50,
+    ) -> list[AIEvaluation]:
+        """List evaluations for a tenant, optionally filtered by agent."""
+        stmt = (
+            select(AIEvaluation)
+            .where(AIEvaluation.tenant_id == tenant_id)
+            .order_by(AIEvaluation.created_at.desc())
+            .limit(min(limit, 200))
+        )
+        if agent_id is not None:
+            stmt = stmt.where(AIEvaluation.agent_id == agent_id)
+        rows = (await session.execute(stmt)).scalars().all()
+        return list(rows)
+
+    @staticmethod
+    async def update_evaluation_status(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        evaluation_id: uuid.UUID,
+        *,
+        status: str,
+        quality_metrics: dict | None = None,
+        rollout_status: str | None = None,
+        notes: str | None = None,
+    ) -> AIEvaluation:
+        """Update an evaluation's status after the evaluation run completes."""
+        evaluation = (
+            await session.execute(
+                select(AIEvaluation).where(
+                    AIEvaluation.tenant_id == tenant_id,
+                    AIEvaluation.id == evaluation_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if evaluation is None:
+            raise NotFoundError(f"evaluation {evaluation_id} not found")
+        evaluation.status = status
+        if quality_metrics is not None:
+            evaluation.quality_metrics = quality_metrics
+        if rollout_status is not None:
+            evaluation.rollout_status = rollout_status
+        if notes is not None:
+            evaluation.notes = notes
         await session.flush()
         return evaluation
 

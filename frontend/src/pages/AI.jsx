@@ -397,6 +397,11 @@ export default function AI() {
                   <div key={item.id} className="rounded-lg border border-warning/20 bg-background/70 p-2.5">
                     <div className="text-[12px] font-medium truncate">{item.action}</div>
                     <div className="text-[10.5px] text-muted-foreground mt-0.5">{item.risk_level} · {item.entity_type}</div>
+                    {item.payload && Object.keys(item.payload).length > 0 && (
+                      <div className="mt-1.5 p-1.5 rounded bg-surface/80 border border-border/50 text-[10.5px] font-mono text-muted-foreground break-all max-h-20 overflow-y-auto">
+                        {JSON.stringify(item.payload, null, 1).replace(/[{}\"]/g, '').trim()}
+                      </div>
+                    )}
                     <div className="mt-2 flex gap-2">
                       <button type="button" disabled={busyApproval === item.id} onClick={() => decideApproval(item, "APPROVED")} className="inline-flex items-center gap-1 rounded-md bg-success/10 px-2 py-1 text-[11px] text-success disabled:opacity-50"><Check className="h-3 w-3" />{isAr ? "موافقة" : "Approve"}</button>
                       <button type="button" disabled={busyApproval === item.id} onClick={() => decideApproval(item, "REJECTED")} className="inline-flex items-center gap-1 rounded-md bg-destructive/10 px-2 py-1 text-[11px] text-destructive disabled:opacity-50"><X className="h-3 w-3" />{isAr ? "رفض" : "Reject"}</button>

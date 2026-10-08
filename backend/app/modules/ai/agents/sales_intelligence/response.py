@@ -68,18 +68,24 @@ def safe_response(findings: list[Finding], store_facts: dict[str, str]) -> str:
     return "\n".join(lines)
 
 
-def allowed_numbers_from_facts(facts_payload: list[dict]) -> set[str]:
-    """Every digit run the tools produced — the answer's ONLY legal numbers.
+def allowed_numbers_from_facts(
+    facts_payload: list[dict] | dict,
+    findings: list[Finding] | None = None,
+) -> set[str]:
+    """Every digit run the tools and findings produced — the answer's ONLY legal numbers.
 
-    Recursively scans all values in the fact payloads (deltas, delta percentages,
-    breakdown items, driver contributions, sample sizes, fulfillment rates, money values).
+    Recursively scans all values in the fact, comparison, dimension, and driver payloads
+    (deltas, delta percentages, breakdown items, driver contributions, sample sizes,
+    fulfillment rates, money values, and findings statements).
     """
+    from decimal import Decimal
+
     allowed: set[str] = set()
 
     def _extract_all_numbers(obj: object) -> None:
         if obj is None:
             return
-        if isinstance(obj, (int, float)):
+        if isinstance(obj, (int, float, Decimal)):
             allowed.update(_digit_runs(str(obj)))
             if isinstance(obj, float):
                 allowed.update(_digit_runs(f"{obj:.1f}"))
@@ -94,8 +100,11 @@ def allowed_numbers_from_facts(facts_payload: list[dict]) -> set[str]:
             for item in obj:
                 _extract_all_numbers(item)
 
-    for payload in facts_payload:
-        _extract_all_numbers(payload)
+    _extract_all_numbers(facts_payload)
+
+    if findings:
+        for f in findings:
+            allowed.update(_digit_runs(f.statement))
 
     return allowed
 

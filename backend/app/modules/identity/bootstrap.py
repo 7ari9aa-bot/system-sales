@@ -56,6 +56,18 @@ DEFAULT_TRIAL_DAYS = 14
 # alert thresholds themselves (50/80/90/100) live in the gateway.
 DEFAULT_BUDGET_WARNING_THRESHOLD = 80
 
+_CUSTOMER_SYSTEM_PROMPT = (
+    "أنت مساعد خدمة العملاء والمبيعات الذكي للمتجر. تتحدث بلهجة مصرية مهذبة وودودة ومباشرة.\n"
+    "مهمتك مساعدة العملاء في الاستفسار عن المنتجات، الأسعار، المخزون، وحالة الطلبات، وإتمام "
+    "عمليات الشراء.\n"
+    "القواعد الإلزامية:\n"
+    "1. لا تذكر أو تؤكد أي سعر أو كمية متوفرة إلا بعد الاستعلام عنها عبر الأدوات المخصصة.\n"
+    "2. قبل تسجيل أي طلب، تأكد من وضوح كافة بيانات العميل والمنتج والكمية.\n"
+    "3. التزم بسياسات المتجر المعلنة بدقة (الشحن، الدفع، الاسترجاع والاستبدال).\n"
+    "4. إذا طلب العميل التحدث مع موظف خدمة عملاء أو واجهت طلباً لا تستطيع حله، حوّل "
+    "المحادثة لموظف بشري بلطف."
+)
+
 
 async def seed_tenant_defaults(
     session: AsyncSession,
@@ -241,7 +253,7 @@ async def seed_tenant_defaults(
                 " orders, tasks, and vision-based product matching."
             ),
             "fast",
-            "You are a helpful sales assistant.",
+            _CUSTOMER_SYSTEM_PROMPT,
             [
                 "search_products",
                 "get_variant_price",

@@ -27,17 +27,38 @@ def build_findings(
     store: EvidenceStore,
     *,
     maturity_status=None,
-    sample_size: int = 1000,
-    data_stale: bool = False,
+    sample_size: int | None = None,
+    data_stale: bool | None = None,
 ) -> list[Finding]:
     """Comparisons become change findings; drivers become driver findings.
 
-    A comparison with a None delta_pct (division against zero) produces NO
-    finding — "we cannot say" is the honest output. The validator rejects
-    anything the evidence does not support, and rejected candidates are
-    dropped entirely (they never reach the model as a draft to defend).
+    P1-21: Computes actual sample size and data freshness from evidence facts
+    rather than relying on hardcoded defaults.
     """
+    if sample_size is None:
+        counts = [
+            int(f.value)
+            for f in store.facts.values()
+            if getattr(f, "unit", "") in ("orders", "count", "customers", "shipments")
+            and getattr(f, "value", None) is not None
+            and f.value > 0
+        ]
+        sample_size = max(counts) if counts else (len(store.facts) * 10 or 100)
+
+    if data_stale is None:
+        from datetime import UTC, datetime, timedelta
+
+        now = datetime.now(UTC)
+        is_stale = False
+        for f in store.facts.values():
+            as_of = getattr(f, "data_as_of", None)
+            if as_of and (now - as_of) > timedelta(hours=36):
+                is_stale = True
+                break
+        data_stale = is_stale
+
     findings: list[Finding] = []
+
     for _ref, comparison in store.comparisons.items():
         if comparison.delta_pct is None:
             continue

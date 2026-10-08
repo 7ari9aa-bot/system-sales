@@ -75,13 +75,15 @@ from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permi
 router = APIRouter(prefix="/ai", tags=["ai"])
 
 SettingsCtx = Annotated[TenantContext, Depends(require_permission("settings:write"))]
+SettingsReadCtx = Annotated[TenantContext, Depends(require_permission("settings:read"))]
+AnalyticsCtx = Annotated[TenantContext, Depends(require_permission("analytics:read"))]
 
 
 def require_ai_approve():
     async def _gate(ctx: TenantCtxDep) -> TenantContext:
         if "ai:approve" in ctx.permission_codes:
             return ctx
-        if ctx.role_code == "owner" or "settings:write" in ctx.permission_codes:
+        if ctx.role_code == "owner":
             return ctx
         raise PermissionDeniedError("missing permission: ai:approve")
 
@@ -173,7 +175,7 @@ async def list_agents(ctx: TenantCtxDep) -> list[AgentOut]:
 
 
 @router.post("/sales/analyses")
-async def create_sales_analysis(ctx: TenantCtxDep, body: SalesAnalysisRequest) -> SalesAnalysisOut:
+async def create_sales_analysis(ctx: AnalyticsCtx, body: SalesAnalysisRequest) -> SalesAnalysisOut:
     """§12.1 — one sales question → one evidence-backed analysis.
 
     The store's first active agent runs the investigation with the SI tools
@@ -217,7 +219,7 @@ async def create_sales_analysis(ctx: TenantCtxDep, body: SalesAnalysisRequest) -
     response_model=SalesDeepAnalysisQueuedOut,
 )
 async def create_deep_analysis(
-    ctx: TenantCtxDep, body: SalesAnalysisRequest
+    ctx: AnalyticsCtx, body: SalesAnalysisRequest
 ) -> SalesDeepAnalysisQueuedOut:
     """§13 — queue a DEEP analysis: durable background job, streamed progress.
 
@@ -245,7 +247,7 @@ async def create_deep_analysis(
 
 
 @router.get("/sales/analyses/{analysis_id}", response_model=SalesAnalysisStoredOut)
-async def get_sales_analysis(ctx: TenantCtxDep, analysis_id: uuid.UUID) -> SalesAnalysisStoredOut:
+async def get_sales_analysis(ctx: AnalyticsCtx, analysis_id: uuid.UUID) -> SalesAnalysisStoredOut:
     """§12.4 — a stored analysis: the immutable pack plus its graded findings."""
     from app.core.errors import NotFoundError
     from app.modules.analytics.persistence import load_analysis
@@ -304,7 +306,18 @@ async def create_agent(ctx: SettingsCtx, body: AgentCreateRequest) -> AgentOut:
             raise ConflictError(f"Agent of kind '{body.kind}' already exists for this tenant")
 
     model = body.model or defn.default_model
-    system_prompt = body.system_prompt or defn.system_prompt_template
+    base = defn.system_prompt_template
+    if (defn.provisioning_policy or {}).get("is_canonical"):
+        if body.system_prompt and body.system_prompt.strip():
+            custom = body.system_prompt.strip()
+            if base and base not in custom:
+                system_prompt = f"{base}\n\n[Tenant Instructions]\n{custom}"
+            else:
+                system_prompt = custom
+        else:
+            system_prompt = base
+    else:
+        system_prompt = body.system_prompt or base
 
     agent = Agent(
         tenant_id=ctx.tenant_id,
@@ -339,7 +352,7 @@ async def create_agent(ctx: SettingsCtx, body: AgentCreateRequest) -> AgentOut:
 @router.get("/agents/{agent_id}/prompt", response_model=AgentDetailOut)
 async def get_agent_detail(
     agent_id: uuid.UUID,
-    ctx: TenantCtxDep,
+    ctx: SettingsReadCtx,
     response: Response,
 ) -> AgentDetailOut:
     """Fetch one agent including prompt — tenant-isolated by the WHERE clause and RLS."""
@@ -373,6 +386,17 @@ async def update_agent(
 
     fields = body.model_dump(exclude_unset=True)
     if fields:
+        if "system_prompt" in fields and fields["system_prompt"] is not None:
+            from app.modules.ai.core.registry import AgentRegistry
+
+            defn = AgentRegistry.get_or_none(agent.kind)
+            if defn and (defn.provisioning_policy or {}).get("is_canonical"):
+                base = defn.system_prompt_template
+                custom = fields["system_prompt"].strip()
+                if base and base not in custom:
+                    fields["system_prompt"] = f"{base}\n\n[Tenant Instructions]\n{custom}"
+                else:
+                    fields["system_prompt"] = custom
         await apply_versioned_update(ctx.session, agent, if_match, fields)
 
     apply_etag(response, agent.version)
@@ -849,7 +873,9 @@ async def update_eval(
 
 
 class EvaluationSubmitRequest(BaseModel):
-    agent_version_id: uuid.UUID
+    agent_id: uuid.UUID | None = None
+    agent_version_id: uuid.UUID | None = None
+    prompt_version: int = 1
     dataset_id: str | None = Field(default=None, max_length=255)
     results: dict = Field(default_factory=dict)
 
@@ -861,7 +887,9 @@ async def submit_evaluation(body: EvaluationSubmitRequest, ctx: SettingsCtx):
     ev = await AIEvaluationService.submit_evaluation(
         ctx.session,
         ctx.tenant_id,
+        agent_id=body.agent_id,
         agent_version_id=body.agent_version_id,
+        prompt_version=body.prompt_version,
         dataset_id=body.dataset_id,
         results=body.results,
     )

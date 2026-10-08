@@ -392,11 +392,12 @@ async def test_ai_approval_rbac_gate() -> None:
     ctx_owner.role_code = "owner"
     assert await gate(ctx_owner) is ctx_owner
 
-    # Case 4: user with settings:write -> passes via hierarchy
+    # Case 4: user with settings:write alone without ai:approve -> rejected (tightened gate)
     ctx_settings = MagicMock()
     ctx_settings.permission_codes = {"settings:write"}
     ctx_settings.role_code = "admin"
-    assert await gate(ctx_settings) is ctx_settings
+    with pytest.raises(PermissionDeniedError):
+        await gate(ctx_settings)
 
 
 @pytest.mark.asyncio
@@ -562,6 +563,7 @@ async def test_tenant_creation_lifecycle_hook_dispatches() -> None:
 
     hook_called = False
     mock_session = AsyncMock()
+    mock_session.add = MagicMock()
     mock_res = MagicMock()
     mock_res.scalars.return_value.all.return_value = []
     mock_res.scalar_one_or_none.return_value = None
@@ -576,3 +578,294 @@ async def test_tenant_creation_lifecycle_hook_dispatches() -> None:
     register_tenant_created_hook(dummy_hook)
     await dispatch_tenant_created_hooks(mock_session, tenant_id)
     assert hook_called is True
+
+
+def test_allowed_numbers_and_full_evidence_validation() -> None:
+    """SI Answer Validation: Recursively extracts allowed numbers from facts, comparisons,
+    dimensions, drivers, and findings, rejecting hallucinated numbers."""
+    from app.modules.ai.agents.sales_intelligence.response import (
+        allowed_numbers_from_facts,
+        validate_answer,
+    )
+    from app.modules.analytics.contracts import Finding, Relationship
+
+    evidence = {
+        "facts": [
+            {"id": "F1", "metric": "revenue", "value": 12500.50},
+            {"id": "F2", "metric": "orders", "value": 150},
+        ],
+        "comparisons": [
+            {
+                "left_fact_id": "F1",
+                "right_fact_id": "F2",
+                "delta": 2500,
+                "delta_pct": 25.0,
+            }
+        ],
+        "dimensions": [{"dimension": "channel", "value": "web", "metric_value": 7500}],
+        "drivers": [
+            {
+                "kind": "orders_vs_aov",
+                "orders_contribution": 1000,
+                "aov_contribution": 1500,
+                "total_delta": 2500,
+            }
+        ],
+    }
+    findings = [
+        Finding(
+            type="DERIVED",
+            relationship=Relationship.CORRELATION,
+            confidence="MEDIUM",
+            confidence_reasons=["tested"],
+            materiality=0.85,
+            statement="النمو كان 25% مع مساهمة الويب بـ 7500",
+            evidence_refs=["F1", "C1"],
+        )
+    ]
+
+    allowed = allowed_numbers_from_facts(evidence, findings)
+    assert "12500.50" in allowed or "12500.5" in allowed
+    assert "150" in allowed
+    assert "25" in allowed
+    assert "7500" in allowed
+    assert "1000" in allowed
+    assert "1500" in allowed
+    assert "2500" in allowed
+
+    # Valid answer referencing only allowed numbers
+    valid_answer = "المبيعات 12500.50 والطلبات 150 بنمو 25% ومساهمة 1000 من الطلبات"
+    problems = validate_answer(valid_answer, allowed, findings)
+    assert problems == []
+
+    # Hallucinated number 99999
+    invalid_answer = "المبيعات 12500.50 والهدف كان 99999"
+    problems_invalid = validate_answer(invalid_answer, allowed, findings)
+    assert any("free number in answer: 99999" in p for p in problems_invalid)
+
+
+def test_evidence_reconstruction_and_store_from() -> None:
+    """SI Evidence Rebuild: _rebuild_evidence captures all 4 dimensions, and
+    _store_from enforces referential integrity for comparisons and driver deltas."""
+    from datetime import UTC, datetime
+    from decimal import Decimal
+
+    from app.modules.ai.agents.sales_intelligence.agent import (
+        _rebuild_evidence,
+        _store_from,
+    )
+    from app.modules.analytics.contracts import (
+        AnalysisPeriod,
+        MaturityPolicy,
+        MaturityStatus,
+        MetricFact,
+    )
+
+    tool_calls = [
+        {
+            "name": "si_get_metric",
+            "status": "ok",
+            "result": {
+                "facts": [
+                    {
+                        "id": "F1",
+                        "metric": "orders_placed",
+                        "value": 100,
+                        "unit": "orders",
+                        "period_start": "2026-09-01T00:00:00+00:00",
+                        "period_end": "2026-09-30T00:00:00+00:00",
+                        "maturity": "final",
+                    },
+                    {
+                        "id": "F2",
+                        "metric": "orders_placed",
+                        "value": 150,
+                        "unit": "orders",
+                        "period_start": "2026-10-01T00:00:00+00:00",
+                        "period_end": "2026-10-31T00:00:00+00:00",
+                        "maturity": "final",
+                    },
+                ]
+            },
+        },
+        {
+            "name": "si_compare_periods",
+            "status": "ok",
+            "result": {
+                "comparisons": [
+                    {
+                        "label": "MoM",
+                        "left_fact_id": "F1",
+                        "right_fact_id": "F2",
+                        "delta": 50,
+                        "delta_pct": 50.0,
+                    },
+                    {
+                        "label": "InvalidOrphan",
+                        "left_fact_id": "F1",
+                        "right_fact_id": "NON_EXISTENT",
+                        "delta": 10,
+                    },
+                ]
+            },
+        },
+        {
+            "name": "si_analyze_drivers",
+            "status": "ok",
+            "result": {
+                "drivers": [
+                    {
+                        "kind": "orders_vs_aov",
+                        "orders_contribution": 30,
+                        "aov_contribution": 20,
+                        "total_delta": 50,
+                    },
+                    {
+                        "kind": "orders_vs_aov",
+                        "orders_contribution": 10,
+                        "aov_contribution": 10,
+                        "total_delta": 999,  # Mismatch: 10 + 10 != 999
+                    },
+                ]
+            },
+        },
+    ]
+
+    evidence = _rebuild_evidence(tool_calls)
+    assert len(evidence["facts"]) == 2
+    assert len(evidence["comparisons"]) == 2
+    assert len(evidence["drivers"]) == 2
+
+    # Create MetricFact dict
+    period = AnalysisPeriod(
+        start=datetime.now(UTC),
+        end=datetime.now(UTC),
+        timezone="Africa/Cairo",
+        attribution_basis="placed_at",
+        maturity_policy=MaturityPolicy(kind="immediate"),
+        maturity_status=MaturityStatus.MATURE,
+        data_as_of=datetime.now(UTC),
+    )
+    facts_dict = {
+        "F1": MetricFact(
+            id="F1",
+            metric="orders_placed",
+            value=Decimal("100"),
+            unit="count",
+            period=period,
+            source="orders",
+            computed_at=datetime.now(UTC),
+            data_as_of=datetime.now(UTC),
+            maturity_status=MaturityStatus.MATURE,
+        ),
+        "F2": MetricFact(
+            id="F2",
+            metric="orders_placed",
+            value=Decimal("150"),
+            unit="count",
+            period=period,
+            source="orders",
+            computed_at=datetime.now(UTC),
+            data_as_of=datetime.now(UTC),
+            maturity_status=MaturityStatus.MATURE,
+        ),
+    }
+
+    store = _store_from(
+        facts_dict,
+        comparisons=evidence["comparisons"],
+        drivers=evidence["drivers"],
+    )
+
+    # Valid comparison C1 included, orphan discarded
+    assert "C1" in store.comparisons
+    assert store.comparisons["C1"].delta == Decimal("50")
+    assert len(store.comparisons) == 1
+
+    # Valid driver D1 included, mismatched delta discarded
+    assert "D1" in store.drivers
+    assert store.drivers["D1"].total_delta == Decimal("50")
+    assert len(store.drivers) == 1
+
+
+def test_agent_version_and_model_pinning_contracts() -> None:
+    """Agent version and model pinning across AgentRunResult and trace._run_summary."""
+    from app.modules.ai.models import AgentRun
+    from app.modules.ai.runtime import AgentRunResult
+    from app.modules.ai.trace import _run_summary
+
+    # Check AgentRunResult carries pinned metadata
+    result = AgentRunResult(
+        content="test content",
+        run_id=uuid.uuid4(),
+        agent_version=3,
+        model="gemini-2.5-pro",
+        provider="google",
+    )
+    assert result.agent_version == 3
+    assert result.model == "gemini-2.5-pro"
+    assert result.provider == "google"
+
+    # Check _run_summary extracts version from AgentRun input/output JSONB
+    run = AgentRun(
+        id=uuid.uuid4(),
+        tenant_id=uuid.uuid4(),
+        agent_id=uuid.uuid4(),
+        status="completed",
+        input={"agent_version": 3, "model": "gemini-2.5-pro"},
+        output={"model": "gemini-2.5-pro", "provider": "google"},
+    )
+    summary = _run_summary(run)
+    assert summary["agent_version"] == 3
+    assert summary["model"] == "gemini-2.5-pro"
+
+
+@pytest.mark.asyncio
+async def test_ai_evaluation_service_unified_lifecycle() -> None:
+    """AIEvaluationService: End-to-end submit, list, and update_status lifecycle."""
+    from app.modules.ai.evaluation import AIEvaluationService
+
+    mock_session = AsyncMock()
+    mock_session.add = MagicMock()
+    tenant_id = uuid.uuid4()
+    agent_id = uuid.uuid4()
+
+    # 1. submit_evaluation
+    eval_item = await AIEvaluationService.submit_evaluation(
+        mock_session,
+        tenant_id,
+        agent_id=agent_id,
+        prompt_version=2,
+        dataset_id="ds_123",
+        results={"passed": True, "score": 0.95},
+    )
+    assert eval_item.tenant_id == tenant_id
+    assert eval_item.agent_id == agent_id
+    assert eval_item.prompt_version == 2
+    assert eval_item.status == "passed"
+    mock_session.add.assert_called_once_with(eval_item)
+
+    # 2. list_evaluations
+    mock_res = MagicMock()
+    mock_res.scalars.return_value.all.return_value = [eval_item]
+    mock_session.execute.return_value = mock_res
+
+    evals = await AIEvaluationService.list_evaluations(mock_session, tenant_id, agent_id=agent_id)
+    assert len(evals) == 1
+    assert evals[0].id == eval_item.id
+
+    # 3. update_evaluation_status
+    mock_res_single = MagicMock()
+    mock_res_single.scalar_one_or_none.return_value = eval_item
+    mock_session.execute.return_value = mock_res_single
+
+    updated = await AIEvaluationService.update_evaluation_status(
+        mock_session,
+        tenant_id,
+        eval_item.id,
+        status="passed",
+        quality_metrics={"score": 0.98},
+        rollout_status="approved",
+    )
+    assert updated.rollout_status == "approved"
+    assert updated.quality_metrics["score"] == 0.98

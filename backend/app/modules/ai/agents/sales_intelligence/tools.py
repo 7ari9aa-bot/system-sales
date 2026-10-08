@@ -19,25 +19,52 @@ from sqlalchemy import text as _sql
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.ai.tools import ToolSpec, register_tool
+from app.modules.analytics.contracts import AnalysisPeriod
 
 
-def _resolve_window(days: int, *, reference: datetime | None = None) -> object:
-    """§6.5 — the system resolves the period; the model only chooses length.
-    The window ends at TODAY'S START (UTC v1): today is immature for
-    delivered-based metrics by definition."""
+async def _resolve_window(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    days: int,
+    *,
+    reference: datetime | None = None,
+) -> AnalysisPeriod:
+    """§6.5 — the system resolves the period in the store's configured timezone (P1-19)."""
+    from zoneinfo import ZoneInfo
+
     from app.modules.analytics.capabilities import _period_window
+    from app.modules.analytics.service import resolve_report_timezone
 
-    return _period_window(reference or datetime.now(UTC), days=days)
+    tz_str = await resolve_report_timezone(session, tenant_id)
+    zone = ZoneInfo(str(tz_str))
+    ref = reference or datetime.now(zone)
+    if ref.tzinfo is None:
+        ref = ref.replace(tzinfo=zone)
+    else:
+        ref = ref.astimezone(zone)
+    period = _period_window(ref, days=days)
+    return AnalysisPeriod(
+        start=period.start.astimezone(UTC),
+        end=period.end.astimezone(UTC),
+        timezone=str(tz_str),
+        attribution_basis=period.attribution_basis,
+        maturity_policy=period.maturity_policy,
+        maturity_status=period.maturity_status,
+        data_as_of=ref.astimezone(UTC),
+    )
 
 
-def _context(tenant_id: uuid.UUID):
+async def _context(session: AsyncSession, tenant_id: uuid.UUID):
+    """P1-18: Loads the tenant's real StoreMetricProfile instead of a blank default."""
     from app.modules.analytics.capabilities import CapabilityContext
-    from app.modules.analytics.semantic import StoreMetricProfile
+    from app.modules.analytics.semantic import load_store_metric_profile
 
-    return CapabilityContext(tenant_id=tenant_id, profile=StoreMetricProfile())
+    profile = await load_store_metric_profile(session, tenant_id)
+    return CapabilityContext(tenant_id=tenant_id, profile=profile)
 
 
 def _fact_payload(fact) -> dict:
+    """P1-20: transfers complete provenance metadata through fact payload."""
     return {
         "id": fact.id,
         "metric": fact.metric,
@@ -46,6 +73,14 @@ def _fact_payload(fact) -> dict:
         "period_start": fact.period.start.date().isoformat(),
         "period_end": fact.period.end.date().isoformat(),
         "maturity": fact.maturity_status.value,
+        "timezone": getattr(fact.period, "timezone", "UTC"),
+        "source": getattr(fact, "source", "orders"),
+        "attribution_basis": getattr(fact.period, "attribution_basis", "placed_at"),
+        "maturity_policy": getattr(
+            getattr(fact.period, "maturity_policy", None), "kind", "immediate"
+        ),
+        "data_as_of": fact.data_as_of.isoformat() if getattr(fact, "data_as_of", None) else None,
+        "computed_at": fact.computed_at.isoformat() if getattr(fact, "computed_at", None) else None,
     }
 
 
@@ -69,14 +104,17 @@ async def _si_get_metric(
 
     metric(metric_name)  # unknown metric fails loudly — never a guess
     store = EvidenceStore()
+    ctx = await _context(session, tenant_id)
+    period = await _resolve_window(session, tenant_id, days)
     result = await get_metric(
         session,
-        _context(tenant_id),
+        ctx,
         store,
         metric_name=metric_name,
-        period=_resolve_window(days),
+        period=period,
         channel=channel,
     )
+
     return {
         "capability": result.capability,
         "status": result.status,
@@ -104,15 +142,24 @@ async def _si_compare_periods(
 
     metric(metric_name)
     store = EvidenceStore()
-    result = await compare_periods(
-        session, _context(tenant_id), store, metric_name=metric_name, days=days
-    )
+    ctx = await _context(session, tenant_id)
+    result = await compare_periods(session, ctx, store, metric_name=metric_name, days=days)
     return {
         "capability": result.capability,
         "status": result.status,
         "summary": result.summary,
         "facts": [
             _fact_payload(store.facts[eid]) for eid in result.evidence_ids if eid in store.facts
+        ],
+        "comparisons": [
+            {
+                "label": c.label,
+                "left_fact_id": c.left_fact_id,
+                "right_fact_id": c.right_fact_id,
+                "delta": str(c.delta),
+                "delta_pct": str(c.delta_pct) if c.delta_pct is not None else None,
+            }
+            for c in store.comparisons
         ],
     }
 
@@ -135,9 +182,10 @@ async def _si_breakdown(
     from app.modules.analytics.capabilities import EvidenceStore, breakdown_metric
 
     store = EvidenceStore()
+    ctx = await _context(session, tenant_id)
     result = await breakdown_metric(
         session,
-        _context(tenant_id),
+        ctx,
         store,
         metric_name=metric_name,
         dimension=dimension,
@@ -148,6 +196,24 @@ async def _si_breakdown(
         "status": result.status,
         "summary": result.summary,
         "limitations": result.limitations,
+        "dimensions": [
+            {
+                "dimension": d.dimension,
+                "entries": [
+                    {
+                        "key": e.key,
+                        "label": e.label,
+                        "delta": str(e.delta),
+                        "bucket": e.bucket,
+                    }
+                    for e in d.entries
+                ],
+            }
+            for d in store.dimensions
+        ],
+        "facts": [
+            _fact_payload(store.facts[eid]) for eid in result.evidence_ids if eid in store.facts
+        ],
     }
 
 
@@ -165,7 +231,8 @@ async def _si_analyze_drivers(
     from app.modules.analytics.capabilities import EvidenceStore, analyze_drivers
 
     store = EvidenceStore()
-    result = await analyze_drivers(session, _context(tenant_id), store, days=days)
+    ctx = await _context(session, tenant_id)
+    result = await analyze_drivers(session, ctx, store, days=days)
     return {
         "capability": result.capability,
         "status": result.status,
@@ -173,6 +240,15 @@ async def _si_analyze_drivers(
         "assumptions": [a.statement for a in result.assumptions],
         "facts": [
             _fact_payload(store.facts[eid]) for eid in result.evidence_ids if eid in store.facts
+        ],
+        "drivers": [
+            {
+                "kind": d.kind,
+                "orders_contribution": str(d.orders_contribution),
+                "aov_contribution": str(d.aov_contribution),
+                "total_delta": str(d.total_delta),
+            }
+            for d in store.drivers
         ],
     }
 
@@ -325,7 +401,7 @@ async def _si_analyze_seasonality(
 
     from app.modules.analytics.capabilities import analyze_seasonality
 
-    current = _resolve_window(days)
+    current = await _resolve_window(session, tenant_id, days)
     previous_start = current.start - timedelta(days=days)
 
     rows = (
@@ -370,7 +446,7 @@ async def _si_analyze_customers(
 
     from app.modules.analytics.capabilities import analyze_customers
 
-    current = _resolve_window(days)
+    current = await _resolve_window(session, tenant_id, days)
     rows = (
         await session.execute(
             _sql(
@@ -380,7 +456,8 @@ async def _si_analyze_customers(
                 "AND o.deleted_at IS NULL "
                 "AND COALESCE(placed_at, created_at) >= :start "
                 "AND COALESCE(placed_at, created_at) < :end + interval '60 days' "
-                "ORDER BY COALESCE(placed_at, created_at)"
+                "ORDER BY COALESCE(placed_at, created_at) "
+                "LIMIT 5000"
             ),
             {"tenant_id": str(tenant_id), "start": current.start, "end": current.end},
         )
@@ -412,13 +489,14 @@ async def _si_analyze_fulfillment(
 
     from app.modules.analytics.capabilities import analyze_fulfillment
 
-    current = _resolve_window(days)
+    current = await _resolve_window(session, tenant_id, days)
     rows = (
         await session.execute(
             _sql(
                 "SELECT s.carrier, s.status, s.shipped_at, s.delivered_at "
                 "FROM shipments s WHERE s.tenant_id = :tenant_id "
-                "AND s.delivered_at >= :start AND s.delivered_at < :end"
+                "AND COALESCE(s.shipped_at, s.created_at) >= :start "
+                "AND COALESCE(s.shipped_at, s.created_at) < :end"
             ),
             {"tenant_id": str(tenant_id), "start": current.start, "end": current.end},
         )

@@ -13,6 +13,7 @@ the unsourced-claim guardrail gate owns the no-tool-results case.
 from __future__ import annotations
 
 import re
+from decimal import Decimal, InvalidOperation
 
 _ARABIC_INDIC = str.maketrans(
     {
@@ -44,14 +45,33 @@ def extract_numerals(text: str) -> list[str]:
     return _NUMERAL_RE.findall(text.translate(_ARABIC_INDIC))
 
 
+def _numeral_matches_fact(numeral: str, fact: str) -> bool:
+    """True if numeral numerically equals fact or matches as a discrete number."""
+    fact_str = fact.strip()
+    # 1. Exact numeric equality (handles precision: 25.5 == 25.50, 100 == 100.00)
+    try:
+        if Decimal(numeral) == Decimal(fact_str):
+            return True
+    except (InvalidOperation, ValueError):
+        pass
+
+    # 2. Discrete number match in fact text (P1-10: (?<![\w.])N(?![\w.]))
+    # Prevents "3" from matching inside UUIDs, hex strings, or longer numerals like "135".
+    pattern = re.compile(rf"(?<![\w.]){re.escape(numeral)}(?![\w.])")
+    if pattern.search(fact_str):
+        return True
+
+    return False
+
+
 def check_grounding(reply: str, facts: list[str]) -> str | None:
     """A failure reason when some numeral matches no fact, else None.
 
-    Substring matching both directions of precision: the fact "25.50"
-    grounds a reply saying 25.5 or 25.50, and the fact "3" grounds "3
-    قطع".
+    P1-10: Strict whole-number and Decimal equivalence: the fact "25.50"
+    grounds "25.5" or "25.50", and fact "3" grounds "3 قطع", but numeral "3"
+    will never match inside a UUID or inside "135".
     """
     for numeral in extract_numerals(reply):
-        if not any(numeral in fact for fact in facts):
+        if not any(_numeral_matches_fact(numeral, fact) for fact in facts):
             return f"ungrounded numeral: {numeral}"
     return None

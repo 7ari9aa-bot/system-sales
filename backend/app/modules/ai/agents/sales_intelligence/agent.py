@@ -36,12 +36,14 @@ from app.modules.ai.agents.sales_intelligence.response import (
 from app.modules.analytics.capabilities import (
     CapabilityContext,
     EvidenceStore,
-    StoreMetricProfile,
+    load_store_metric_profile,
 )
 from app.modules.analytics.contracts import (
     AnalysisPeriod,
+    Comparison,
     DataQuality,
     DataQualityStatus,
+    DriverResult,
     EvidencePack,
     Finding,
     MaturityPolicy,
@@ -75,6 +77,11 @@ class AnalysisResult:
         default_factory=lambda: DataQuality(status=DataQualityStatus.COMPLETE)
     )
     guardrail_reason: str | None = None
+    provider: str | None = None
+    model: str | None = None
+    model_version: str | None = None
+    agent_version: int = 1
+    prompt_version: str | None = "1"
 
 
 class AnalysisRequest(BaseModel):
@@ -166,35 +173,61 @@ async def ensure_si_tools(session: AsyncSession, tenant_id: uuid.UUID, agent_id:
     await session.flush()
 
 
-def _rebuild_facts(tool_calls_made: list[dict]) -> list[dict]:
-    """MetricFact payloads from every OK si_* tool result. Facts are safe to
-    show the model — they are true, tenant-scoped, provenance-stamped data."""
-    payloads: list[dict] = []
+def _rebuild_evidence(tool_calls_made: list[dict]) -> dict[str, list[dict]]:
+    """Evidence payloads from every OK si_* tool result.
+    Collects facts, comparisons, dimensions, and drivers."""
+    facts: list[dict] = []
+    comparisons: list[dict] = []
+    dimensions: list[dict] = []
+    drivers: list[dict] = []
     for call in tool_calls_made:
         if not str(call.get("name", "")).startswith("si_") or call.get("status") != "ok":
             continue
-        payloads.extend((call.get("result") or {}).get("facts") or [])
-    return payloads
+        res = call.get("result") or {}
+        facts.extend(res.get("facts") or [])
+        comparisons.extend(res.get("comparisons") or [])
+        dimensions.extend(res.get("dimensions") or [])
+        drivers.extend(res.get("drivers") or [])
+    return {
+        "facts": facts,
+        "comparisons": comparisons,
+        "dimensions": dimensions,
+        "drivers": drivers,
+    }
+
+
+def _rebuild_facts(tool_calls_made: list[dict]) -> list[dict]:
+    """MetricFact payloads from every OK si_* tool result."""
+    return _rebuild_evidence(tool_calls_made)["facts"]
 
 
 def _facts_to_contracts(
     payloads: list[dict], timezone: str = "Africa/Cairo"
 ) -> dict[str, MetricFact]:
-    """Rebuild the run-scoped evidence needed for findings/coverage. v1 keeps
-    the reconstruction minimal: facts only — comparisons/drivers stay in the
-    tool summaries the model already quoted."""
+    """Rebuild the run-scoped evidence needed for findings/coverage (P1-20).
+    Rebuilds facts transferring provenance fields from tool payload."""
     facts: dict[str, MetricFact] = {}
     now = datetime.now(UTC)
     for payload in payloads:
         fact_tz = payload.get("timezone") or timezone
+        data_as_of = (
+            datetime.fromisoformat(payload["data_as_of"]).replace(tzinfo=UTC)
+            if payload.get("data_as_of")
+            else now
+        )
+        computed_at = (
+            datetime.fromisoformat(payload["computed_at"]).replace(tzinfo=UTC)
+            if payload.get("computed_at")
+            else now
+        )
         period = AnalysisPeriod(
             start=datetime.fromisoformat(payload["period_start"]).replace(tzinfo=UTC),
             end=datetime.fromisoformat(payload["period_end"]).replace(tzinfo=UTC),
             timezone=fact_tz,
             attribution_basis=payload.get("attribution_basis", "placed_at"),
-            maturity_policy=MaturityPolicy(kind="immediate"),
+            maturity_policy=MaturityPolicy(kind=payload.get("maturity_policy", "immediate")),
             maturity_status=MaturityStatus(payload["maturity"]),
-            data_as_of=now,
+            data_as_of=data_as_of,
         )
         facts[payload["id"]] = MetricFact(
             id=payload["id"],
@@ -202,9 +235,9 @@ def _facts_to_contracts(
             value=Decimal(str(payload["value"])),
             unit=payload.get("unit", "orders"),
             period=period,
-            source="orders",
-            computed_at=now,
-            data_as_of=now,
+            source=payload.get("source", "orders"),
+            computed_at=computed_at,
+            data_as_of=data_as_of,
             maturity_status=MaturityStatus(payload["maturity"]),
         )
     return facts
@@ -238,24 +271,7 @@ async def run_sales_analysis(
     merchant_tz = tenant_row[0] if tenant_row else "Africa/Cairo"
     merchant_currency = tenant_row[1] if tenant_row else "EGP"
 
-    setting_val = (
-        await session.execute(
-            sa_text(
-                "SELECT value FROM platform_settings"
-                " WHERE tenant_id = :tid"
-                " AND key = 'primary_sales_metric'"
-            ),
-            {"tid": str(tenant_id)},
-        )
-    ).scalar_one_or_none()
-    try:
-        profile = (
-            StoreMetricProfile(primary_sales_metric=setting_val)
-            if setting_val
-            else StoreMetricProfile()
-        )
-    except Exception:
-        profile = StoreMetricProfile()
+    profile = await load_store_metric_profile(session, tenant_id)
 
     runner = runner or AgentRunner(gateway=AIGateway())
     analysis_id = uuid.uuid4()
@@ -278,101 +294,138 @@ async def run_sales_analysis(
     )
 
     run_id = result.run_id
-    payloads = _rebuild_facts(result.tool_calls_made)
-    allowed = allowed_numbers_from_facts(payloads)
+    evidence = _rebuild_evidence(result.tool_calls_made)
+    payloads = evidence["facts"]
+    allowed = allowed_numbers_from_facts(evidence)
     facts_contracts = _facts_to_contracts(payloads, timezone=merchant_tz)
 
     from app.modules.analytics.evidence import build_pack
     from app.modules.analytics.findings import build_findings
 
-    findings = (
-        build_findings(
-            _store_from(facts_contracts),
+    store = (
+        _store_from(
+            facts_contracts,
+            comparisons=evidence["comparisons"],
+            dimensions=evidence["dimensions"],
+            drivers=evidence["drivers"],
         )
         if facts_contracts
-        else []
+        else EvidenceStore()
     )
+    findings = build_findings(store) if facts_contracts else []
     evidence_hash = None
-    saved_evidence_id = None
+    pack = None
     if facts_contracts:
         pack = build_pack(
-            _store_from(facts_contracts),
+            store,
             CapabilityContext(tenant_id=tenant_id, profile=profile),
             question=question,
         )
         evidence_hash = pack.content_hash
+
+    # P1-22: Determine outcome and answer before durable save_analysis
+    guardrail_reason: str | None = None
+    safe_resp: bool = False
+    if result.content:
+        problems = validate_answer(result.content, allowed, findings)
+        if problems:
+            logger.warning("si.answer_rejected tenant=%s problems=%s", tenant_id, problems)
+            outcome = Outcome.NO_CLEAR_EXPLANATION if findings else Outcome.INSUFFICIENT_DATA
+            answer = safe_response(findings, {})
+            guardrail_reason = "si_response_invalid"
+            safe_resp = True
+        else:
+            outcome = Outcome.ANSWERED
+            answer = result.content
+    else:
+        outcome = Outcome.NO_CLEAR_EXPLANATION if findings else Outcome.INSUFFICIENT_DATA
+        answer = safe_response(findings, {})
+        guardrail_reason = result.guardrail_reason
+
+    saved_evidence_id = None
+    model_name = getattr(result, "model", None) or "fast"
+    provider_name = getattr(result, "provider", None) or "platform"
+    agent_ver = getattr(result, "agent_version", 1)
+    if pack is not None:
         from app.modules.analytics.persistence import save_analysis
 
         saved_evidence_id = await save_analysis(
             session,
             tenant_id,
             question=question,
-            outcome=Outcome.ANSWERED.value,
+            outcome=outcome.value,
             pack=pack,
             findings=findings,
             run_id=result.run_id,
-            model=result.raw_model if hasattr(result, "raw_model") else None,
+            model=model_name,
+            prompt_version=str(agent_ver),
         )
 
-    if result.content:
-        problems = validate_answer(result.content, allowed, findings)
-        if problems:
-            logger.warning("si.answer_rejected tenant=%s problems=%s", tenant_id, problems)
-            await emit_analysis_event(
-                session,
-                tenant_id,
-                event_type="ai.analysis.completed",
-                analysis_id=analysis_id,
-                run_id=run_id,
-                payload={"outcome": "ANSWERED", "findings": len(findings), "safe_response": True},
-            )
-            return AnalysisResult(
-                outcome=Outcome.ANSWERED,
-                answer=safe_response(findings, {}),
-                findings=findings,
-                facts=payloads,
-                evidence_hash=evidence_hash,
-                analysis_id=analysis_id,
-                saved_evidence_id=saved_evidence_id,
-                tool_calls_made=result.tool_calls_made,
-                guardrail_reason="si_response_invalid",
-            )
-        await emit_analysis_event(
-            session,
-            tenant_id,
-            event_type="ai.analysis.completed",
-            analysis_id=analysis_id,
-            run_id=run_id,
-            payload={"outcome": "ANSWERED", "findings": len(findings)},
-        )
-        return AnalysisResult(
-            outcome=Outcome.ANSWERED,
-            answer=result.content,
-            findings=findings,
-            facts=payloads,
-            evidence_hash=evidence_hash,
-            analysis_id=analysis_id,
-            saved_evidence_id=saved_evidence_id,
-            tool_calls_made=result.tool_calls_made,
-        )
-
-    # No proven answer: findings still answer deterministically (§10.4).
+    await emit_analysis_event(
+        session,
+        tenant_id,
+        event_type="ai.analysis.completed",
+        analysis_id=analysis_id,
+        run_id=run_id,
+        payload={
+            "outcome": outcome.value,
+            "findings": len(findings),
+            "safe_response": safe_resp,
+        },
+    )
     return AnalysisResult(
-        outcome=Outcome.NO_CLEAR_EXPLANATION if findings else Outcome.INSUFFICIENT_DATA,
-        answer=safe_response(findings, {}),
+        outcome=outcome,
+        answer=answer,
         findings=findings,
         facts=payloads,
         evidence_hash=evidence_hash,
         analysis_id=analysis_id,
         saved_evidence_id=saved_evidence_id,
         tool_calls_made=result.tool_calls_made,
-        guardrail_reason=result.guardrail_reason,
+        guardrail_reason=guardrail_reason,
+        provider=provider_name,
+        model=model_name,
+        agent_version=agent_ver,
+        prompt_version=str(agent_ver),
     )
 
 
-def _store_from(facts: dict[str, object]) -> EvidenceStore:
-    """Wrap rebuilt facts in the store shape the findings builder reads."""
+def _store_from(
+    facts: dict[str, MetricFact],
+    *,
+    comparisons: list[dict] | None = None,
+    dimensions: list[dict] | None = None,
+    drivers: list[dict] | None = None,
+) -> EvidenceStore:
+    """Wrap rebuilt evidence in the store shape the findings builder reads."""
     store = EvidenceStore()
     for fact_id, fact in facts.items():
-        store.facts[fact_id] = fact  # type: ignore[assignment]
+        store.facts[fact_id] = fact
+
+    for idx, c in enumerate(comparisons or []):
+        left_id = c.get("left_fact_id", "")
+        right_id = c.get("right_fact_id", "")
+        if left_id in store.facts and right_id in store.facts:
+            ref = f"C{idx + 1}"
+            store.comparisons[ref] = Comparison(
+                label=c.get("label", ""),
+                left_fact_id=left_id,
+                right_fact_id=right_id,
+                delta=Decimal(str(c.get("delta", 0))),
+                delta_pct=Decimal(str(c["delta_pct"])) if c.get("delta_pct") is not None else None,
+            )
+
+    for drv_idx, drv in enumerate(drivers or []):
+        ord_contrib = Decimal(str(drv.get("orders_contribution", 0)))
+        aov_contrib = Decimal(str(drv.get("aov_contribution", 0)))
+        tot_delta = Decimal(str(drv.get("total_delta", 0)))
+        if ord_contrib + aov_contrib == tot_delta:
+            ref = f"D{drv_idx + 1}"
+            store.drivers[ref] = DriverResult(
+                kind=drv.get("kind", "orders_vs_aov"),
+                orders_contribution=ord_contrib,
+                aov_contribution=aov_contrib,
+                total_delta=tot_delta,
+            )
+
     return store

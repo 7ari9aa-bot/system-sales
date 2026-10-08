@@ -15,7 +15,6 @@ from __future__ import annotations
 import logging
 import uuid
 
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.ai.runtime import AgentRunner
@@ -97,7 +96,24 @@ async def _do_auto_reply(
     elif last_inbound.content_type == "voice" or (
         last_inbound.media_type and "audio" in last_inbound.media_type
     ):
-        user_body = "[Customer sent a voice note]"
+        from sqlalchemy import select
+
+        from app.modules.conversations.models import Attachment
+
+        stmt = select(Attachment).where(
+            Attachment.tenant_id == tenant_id,
+            Attachment.message_id == last_inbound.id,
+        )
+        att = (await session.execute(stmt)).scalars().first()
+        if att and att.transcription_status == "completed" and att.transcript_text:
+            user_body = att.transcript_text.strip()
+        elif att and att.transcription_status == "failed":
+            user_body = (
+                "[Customer sent a voice note that could not be transcribed. "
+                "Ask the customer politely to type their message or offer a human agent.]"
+            )
+        else:
+            user_body = "[Customer sent a voice note]"
     elif last_inbound.media_url:
         user_body = f"[Customer sent an attachment: {last_inbound.content_type}]"
     else:
@@ -178,18 +194,26 @@ async def _do_auto_reply(
             AIHandover(
                 tenant_id=tenant_id,
                 conversation_id=conversation_id,
-                run_id=None,
+                run_id=result.run_id,
                 reason="guardrail",
                 status="pending",
                 note=f"guardrail:{result.guardrail_reason}",
             )
         )
-        await session.execute(
-            text(
-                "UPDATE conversations SET status = 'waiting_human' "
-                "WHERE id = :cid AND tenant_id = :tid"
-            ),
-            {"cid": str(conversation_id), "tid": str(tenant_id)},
+        await ConversationService.set_status(session, tenant_id, conversation_id, "waiting_human")
+        await add_outbox_event(
+            session,
+            aggregate_type="ai",
+            aggregate_id=conversation_id,
+            event_type="ai.handover.created",
+            tenant_id=tenant_id,
+            payload={
+                "event_type": "ai.handover.created",
+                "conversation_id": str(conversation_id),
+                "run_id": str(result.run_id) if result.run_id else None,
+                "reason": "guardrail",
+                "note": f"guardrail:{result.guardrail_reason}",
+            },
         )
         logger.warning(
             "ai.guardrail_blocked conversation=%s reason=%s",
@@ -221,18 +245,26 @@ async def _do_auto_reply(
             AIHandover(
                 tenant_id=tenant_id,
                 conversation_id=conversation_id,
-                run_id=None,
+                run_id=result.run_id,
                 reason="messaging_window_closed",
                 status="pending",
                 note=f"policy:{exc.message}",
             )
         )
-        await session.execute(
-            text(
-                "UPDATE conversations SET status = 'waiting_human' "
-                "WHERE id = :cid AND tenant_id = :tid"
-            ),
-            {"cid": str(conversation_id), "tid": str(tenant_id)},
+        await ConversationService.set_status(session, tenant_id, conversation_id, "waiting_human")
+        await add_outbox_event(
+            session,
+            aggregate_type="ai",
+            aggregate_id=conversation_id,
+            event_type="ai.handover.created",
+            tenant_id=tenant_id,
+            payload={
+                "event_type": "ai.handover.created",
+                "conversation_id": str(conversation_id),
+                "run_id": str(result.run_id) if result.run_id else None,
+                "reason": "messaging_window_closed",
+                "note": f"policy:{exc.message}",
+            },
         )
         logger.warning(
             "ai.reply_blocked_by_policy conversation=%s reason=%s",
