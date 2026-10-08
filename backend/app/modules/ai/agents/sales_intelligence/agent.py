@@ -299,7 +299,13 @@ async def run_sales_analysis(
         tenant_id,
         agent_id=agent_id,
         user_message=question,
-        system_prompt=SI_SYSTEM_PROMPT,
+        # No `system_prompt` here on purpose. `_resolve_system_prompt` ranks an
+        # override ABOVE the agent row, so passing SI_SYSTEM_PROMPT made this
+        # call ignore whatever the tenant's Agent actually holds: merchant edits
+        # and any prompt rollout were inert for the whole Sales Intelligence
+        # agent. The row is provisioned from the definition, and
+        # `_resolve_system_prompt` falls back to that definition when the row is
+        # empty, so the configured prompt still always reaches the model.
     )
 
     run_id = result.run_id

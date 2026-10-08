@@ -150,6 +150,40 @@ async def test_grounded_answer_passes_through(db, tenant_ctx, monkeypatch):
     assert "1" in " ".join(str(p["value"]) for p in result.facts)
 
 
+async def test_the_si_agent_runs_the_prompt_stored_on_its_row(db, tenant_ctx, monkeypatch):
+    """The agent's own row governs the system prompt — nothing hardcoded here.
+
+    `run_sales_analysis` used to pass `SI_SYSTEM_PROMPT` as an override, and
+    `_resolve_system_prompt` ranks an override ABOVE the agent row. So the whole
+    Sales Intelligence agent ran on a constant: the stored configuration, a
+    merchant editing the prompt in the UI, and any future prompt rollout could
+    not change one byte of what the model was told.
+    """
+    tenant_id = tenant_ctx.tenant_id
+    agent = await _seed(db, tenant_id)
+    assert agent.system_prompt == "analyze"
+
+    seen: list[list[dict]] = []
+
+    async def fake_chat(self, session, tid, *, alias, messages, tools=None, **kwargs):  # noqa: ANN001
+        seen.append(messages)
+        return ChatCompletionResult(
+            content="تمام", tool_calls=[], tokens_in=1, tokens_out=1, raw_model="m"
+        )
+
+    monkeypatch.setattr(AIGateway, "chat", fake_chat)
+
+    await run_sales_analysis(db, tenant_id, agent_id=agent.id, question="كام طلب؟")
+
+    assert seen, "the model was never called"
+    system_message = seen[0][0]
+    assert system_message["role"] == "system"
+    assert system_message["content"] == "analyze", (
+        "the row must govern: an override here makes the stored prompt, every "
+        "merchant edit, and any prompt rollout inert for this agent"
+    )
+
+
 async def test_no_tool_results_still_answers_safely(db, tenant_ctx, monkeypatch):
     tenant_id = tenant_ctx.tenant_id
     agent = await _seed(db, tenant_id)

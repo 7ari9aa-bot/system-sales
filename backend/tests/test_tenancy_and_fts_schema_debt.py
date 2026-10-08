@@ -169,7 +169,7 @@ def test_the_three_new_revisions_exist_and_chain_from_the_head() -> None:
     # that extends the chain (Commerce Core carried it e8f9a0b1c2d3 ->
     # fd2026100406; the auth-plane hardening + email-verification batches
     # carried it fd2026100409 -> fd2026100412; the AI agent-layer batch carried
-    # it fd2026100412 -> fe2026100805): the head is a fact of the current
+    # it fd2026100412 -> fe2026100806): the head is a fact of the current
     # chain, and this guard pins it so a fork is caught the day it lands.
     #
     # The pin names the COMMITTED head, because CI is what runs the build. A
@@ -177,8 +177,8 @@ def test_the_three_new_revisions_exist_and_chain_from_the_head() -> None:
     # purpose: it is a fork nobody has decided about yet.
     pointed_to = {parent for _, parent in ids.values() if parent}
     tail = set(ids) - pointed_to
-    assert tail == {"fe2026100805"}, (
-        f"expected one linear head fe2026100805, found {sorted(tail)} — "
+    assert tail == {"fe2026100806"}, (
+        f"expected one linear head fe2026100806, found {sorted(tail)} — "
         "two heads break `alembic upgrade head` for every environment"
     )
 
@@ -791,7 +791,7 @@ def test_alembic_still_reports_a_single_head() -> None:
     lines = [line for line in out.stdout.splitlines() if line.strip()]
     assert out.returncode == 0, out.stderr
     assert len(lines) == 1, f"multiple heads would break the build: {lines}"
-    assert lines[0].startswith("fe2026100805"), lines
+    assert lines[0].startswith("fe2026100806"), lines
 
 
 # ------------------------------------------- DB-backed: CI-only, not watched
