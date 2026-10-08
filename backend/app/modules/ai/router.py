@@ -909,7 +909,7 @@ async def evaluation_status(agent_version_id: uuid.UUID, ctx: TenantCtxDep):
 
 
 @router.post("/evaluations/{agent_version_id}/approve", response_model=EvaluationOut)
-async def approve_evaluation(agent_version_id: uuid.UUID, ctx: SettingsCtx):
+async def approve_evaluation(agent_version_id: uuid.UUID, ctx: ApproveCtx):
     from app.modules.ai.evaluation import AIEvaluationService
 
     ev = await AIEvaluationService.approve_rollout(ctx.session, ctx.tenant_id, agent_version_id)
@@ -1015,8 +1015,6 @@ async def resolve_handover(
     handover_id: uuid.UUID,
     ctx: TenantCtxDep,
 ):
-    from sqlalchemy import text
-
     handover = (
         await ctx.session.execute(
             select(AIHandover).where(
@@ -1030,6 +1028,8 @@ async def resolve_handover(
     handover.status = "resolved"
 
     # Synchronize conversation: conversation leaves waiting_human (§30)
+    from sqlalchemy import text
+
     await ctx.session.execute(
         text(
             "UPDATE conversations SET status = 'open' "

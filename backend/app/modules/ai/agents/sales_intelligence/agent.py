@@ -175,24 +175,33 @@ async def ensure_si_tools(session: AsyncSession, tenant_id: uuid.UUID, agent_id:
 
 def _rebuild_evidence(tool_calls_made: list[dict]) -> dict[str, list[dict]]:
     """Evidence payloads from every OK si_* tool result.
-    Collects facts, comparisons, dimensions, and drivers."""
+    Collects facts, comparisons, dimensions, drivers, summaries,
+    and full tool results (Report 4285 #6, #8)."""
     facts: list[dict] = []
     comparisons: list[dict] = []
     dimensions: list[dict] = []
     drivers: list[dict] = []
+    summaries: list[dict] = []
+    tool_results: list[dict] = []
     for call in tool_calls_made:
         if not str(call.get("name", "")).startswith("si_") or call.get("status") != "ok":
             continue
         res = call.get("result") or {}
+        tool_results.append(res)
         facts.extend(res.get("facts") or [])
         comparisons.extend(res.get("comparisons") or [])
         dimensions.extend(res.get("dimensions") or [])
         drivers.extend(res.get("drivers") or [])
+        if res.get("summary"):
+            s = res.get("summary")
+            summaries.append(s if isinstance(s, dict) else {"summary": s})
     return {
         "facts": facts,
         "comparisons": comparisons,
         "dimensions": dimensions,
         "drivers": drivers,
+        "summaries": summaries,
+        "tool_results": tool_results,
     }
 
 
@@ -296,7 +305,6 @@ async def run_sales_analysis(
     run_id = result.run_id
     evidence = _rebuild_evidence(result.tool_calls_made)
     payloads = evidence["facts"]
-    allowed = allowed_numbers_from_facts(evidence)
     facts_contracts = _facts_to_contracts(payloads, timezone=merchant_tz)
 
     from app.modules.analytics.evidence import build_pack
@@ -313,6 +321,7 @@ async def run_sales_analysis(
         else EvidenceStore()
     )
     findings = build_findings(store) if facts_contracts else []
+    allowed = allowed_numbers_from_facts(evidence, findings)
     evidence_hash = None
     pack = None
     if facts_contracts:
