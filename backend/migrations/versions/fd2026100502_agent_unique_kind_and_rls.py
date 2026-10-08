@@ -24,7 +24,7 @@ def upgrade() -> None:
         """
     )
 
-    # 2. Sync legacy agent_profiles and install sync trigger
+    # 2. Sync legacy agent_profiles and install sync trigger (each statement isolated for asyncpg)
     op.execute(
         """
         DO $$
@@ -38,7 +38,11 @@ def upgrade() -> None:
                 UPDATE agent_profiles SET agent_kind = 'sales_intelligence' WHERE agent_kind = 'analytics';
             END IF;
         END $$;
+        """
+    )
 
+    op.execute(
+        """
         CREATE OR REPLACE FUNCTION sync_agent_profile_kind()
         RETURNS TRIGGER
         LANGUAGE plpgsql
@@ -46,31 +50,51 @@ def upgrade() -> None:
         SET search_path = public
         AS $func$
         BEGIN
-            IF TG_OP = 'INSERT' THEN
-                INSERT INTO agent_profiles (id, tenant_id, agent_id, agent_kind, is_enabled, created_at, updated_at)
-                VALUES (gen_random_uuid(), NEW.tenant_id, NEW.id, NEW.kind, NEW.is_active, now(), now())
-                ON CONFLICT (agent_id) DO UPDATE
-                SET agent_kind = EXCLUDED.agent_kind,
-                    is_enabled = EXCLUDED.is_enabled,
-                    updated_at = now();
-            ELSIF TG_OP = 'UPDATE' THEN
-                UPDATE agent_profiles
-                SET agent_kind = NEW.kind,
-                    is_enabled = NEW.is_active,
-                    updated_at = now()
-                WHERE agent_id = NEW.id;
+            IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'agent_profiles') THEN
+                IF TG_OP = 'INSERT' THEN
+                    EXECUTE 'INSERT INTO agent_profiles (id, tenant_id, agent_id, agent_kind, is_enabled, created_at, updated_at) '
+                         || 'VALUES ($1, $2, $3, $4, $5, now(), now()) '
+                         || 'ON CONFLICT (agent_id) DO UPDATE '
+                         || 'SET agent_kind = EXCLUDED.agent_kind, is_enabled = EXCLUDED.is_enabled, updated_at = now()'
+                    USING gen_random_uuid(), NEW.tenant_id, NEW.id, NEW.kind, NEW.is_active;
+                ELSIF TG_OP = 'UPDATE' THEN
+                    EXECUTE 'UPDATE agent_profiles SET agent_kind = $1, is_enabled = $2, updated_at = now() WHERE agent_id = $3'
+                    USING NEW.kind, NEW.is_active, NEW.id;
+                END IF;
             END IF;
             RETURN NEW;
         END;
         $func$;
+        """
+    )
 
-        REVOKE EXECUTE ON FUNCTION public.sync_agent_profile_kind() FROM public, anon, authenticated;
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            REVOKE EXECUTE ON FUNCTION public.sync_agent_profile_kind() FROM public;
+            IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+                REVOKE EXECUTE ON FUNCTION public.sync_agent_profile_kind() FROM anon;
+            END IF;
+            IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+                REVOKE EXECUTE ON FUNCTION public.sync_agent_profile_kind() FROM authenticated;
+            END IF;
+        END $$;
+        """
+    )
 
-        DROP TRIGGER IF EXISTS trg_sync_agent_profile_kind ON agents;
-        CREATE TRIGGER trg_sync_agent_profile_kind
-        AFTER INSERT OR UPDATE OF kind, is_active ON agents
-        FOR EACH ROW
-        EXECUTE FUNCTION sync_agent_profile_kind();
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'agent_profiles') THEN
+                DROP TRIGGER IF EXISTS trg_sync_agent_profile_kind ON agents;
+                CREATE TRIGGER trg_sync_agent_profile_kind
+                AFTER INSERT OR UPDATE OF kind, is_active ON agents
+                FOR EACH ROW
+                EXECUTE FUNCTION sync_agent_profile_kind();
+            END IF;
+        END $$;
         """
     )
 

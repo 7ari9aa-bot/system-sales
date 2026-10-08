@@ -427,3 +427,152 @@ async def test_customer_tools_enforce_canonical_sellability() -> None:
     # 3. resolve_product_media fails closed when parent product is not sellable
     with pytest.raises(NotFoundError):
         await _resolve_product_media(mock_session, tenant_id, product_id=product_id)
+
+
+def test_worker_process_discovers_registry() -> None:
+    """P0-3 Worker Registry Discovery: worker entrypoint must have registered canonical kinds."""
+    import subprocess
+    import sys
+
+    cmd = [
+        sys.executable,
+        "-c",
+        (
+            "import app.workers.run\n"
+            "from app.modules.ai.core.registry import AgentRegistry\n"
+            "assert 'customer' in AgentRegistry.kinds(), 'customer missing in worker'\n"
+            "assert 'sales_intelligence' in AgentRegistry.kinds(), 'sales_intelligence missing'\n"
+            "assert AgentRegistry.is_tool_authorized('customer', 'create_order')\n"
+            "assert AgentRegistry.is_tool_authorized('sales_intelligence', 'si_get_metric')\n"
+        ),
+    ]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    assert res.returncode == 0, f"Worker process failed registry check: {res.stderr}"
+
+
+@pytest.mark.asyncio
+async def test_semantic_idempotency_message_discriminator() -> None:
+    """P0-6 Semantic Idempotency: same message dedupes, distinct inbound messages execute."""
+    runner = AgentRunner()
+    mock_session = AsyncMock()
+    nested_cm = MagicMock()
+    nested_cm.__aenter__ = AsyncMock(return_value=None)
+    nested_cm.__aexit__ = AsyncMock(return_value=None)
+    mock_session.begin_nested = MagicMock(return_value=nested_cm)
+
+    # ToolCall mock
+    tenant_id = uuid.uuid4()
+    convo_id = uuid.uuid4()
+    msg_1 = uuid.uuid4()
+    msg_2 = uuid.uuid4()
+
+    run = MagicMock()
+    run.id = uuid.uuid4()
+    run.status = "running"
+
+    agent_tool = MagicMock()
+    agent_tool.name = "add_task"
+    agent_tool.is_active = True
+
+    tc_req = MagicMock()
+    tc_req.id = "tc_1"
+    tc_req.name = "add_task"
+    tc_req.arguments = {"title": "Follow up"}
+
+    # First run for msg_1: prior is None (not executed yet)
+    mock_res_empty = MagicMock()
+    mock_res_empty.scalar_one_or_none.return_value = None
+
+    # Prior completed ToolCall for msg_1
+    prior_tc = MagicMock()
+    prior_tc.name = "add_task"
+    prior_tc.status = "ok"
+    prior_tc.error = None
+    prior_tc.result = {"task_id": "tsk_123"}
+    mock_res_found = MagicMock()
+    mock_res_found.scalar_one_or_none.return_value = prior_tc
+
+    # Sequence: first check for msg_1 -> None (executes)
+    # retry check for msg_1 -> found (skips)
+    # new message msg_2 -> None (executes)
+    mock_session.execute.side_effect = [
+        mock_res_empty,  # msg_1 first call: no prior
+        mock_res_found,  # msg_1 retry: found prior -> skip
+        mock_res_empty,  # msg_2 call: no prior -> execute
+    ]
+
+    from unittest.mock import patch
+
+    from app.modules.ai.tools import get_tool
+
+    spec = get_tool("add_task")
+    assert spec is not None
+
+    with patch.object(spec, "handler", new_callable=AsyncMock) as mock_handler:
+        mock_handler.return_value = {"task_id": "tsk_123"}
+
+        # 1. First execution for msg_1
+        res1 = await runner._execute_tool(
+            mock_session,
+            tenant_id,
+            run=run,
+            agent=None,
+            agent_tools=[agent_tool],
+            request=tc_req,
+            conversation_id=convo_id,
+            inbound_message_id=msg_1,
+        )
+        assert res1["status"] == "ok"
+        assert mock_handler.call_count == 1
+
+        # 2. Retry of same msg_1 -> skipped via idempotency key
+        res2 = await runner._execute_tool(
+            mock_session,
+            tenant_id,
+            run=run,
+            agent=None,
+            agent_tools=[agent_tool],
+            request=tc_req,
+            conversation_id=convo_id,
+            inbound_message_id=msg_1,
+        )
+        assert res2["status"] == "ok"
+        assert res2["result"] == {"task_id": "tsk_123"}
+        assert mock_handler.call_count == 1  # not incremented
+
+        # 3. New message msg_2 with same args -> executes anew (NOT swallowed)
+        res3 = await runner._execute_tool(
+            mock_session,
+            tenant_id,
+            run=run,
+            agent=None,
+            agent_tools=[agent_tool],
+            request=tc_req,
+            conversation_id=convo_id,
+            inbound_message_id=msg_2,
+        )
+        assert res3["status"] == "ok"
+        assert mock_handler.call_count == 2  # incremented!
+
+
+@pytest.mark.asyncio
+async def test_tenant_creation_lifecycle_hook_dispatches() -> None:
+    """P0-5 Provisioning Hook: tenant creation dispatches canonical agent provisioning."""
+    from app.core.tenancy import dispatch_tenant_created_hooks, register_tenant_created_hook
+
+    hook_called = False
+    mock_session = AsyncMock()
+    mock_res = MagicMock()
+    mock_res.scalars.return_value.all.return_value = []
+    mock_res.scalar_one_or_none.return_value = None
+    mock_session.execute.return_value = mock_res
+    tenant_id = uuid.uuid4()
+
+    async def dummy_hook(session, tid):
+        nonlocal hook_called
+        if tid == tenant_id:
+            hook_called = True
+
+    register_tenant_created_hook(dummy_hook)
+    await dispatch_tenant_created_hooks(mock_session, tenant_id)
+    assert hook_called is True

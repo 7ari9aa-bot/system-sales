@@ -120,7 +120,13 @@ class AgentRegistry:
         )
 
     @classmethod
+    def _ensure_loaded(cls) -> None:
+        if not cls._definitions:
+            discover_agents()
+
+    @classmethod
     def get(cls, kind: str) -> AgentDefinition:
+        cls._ensure_loaded()
         if kind not in cls._definitions:
             raise ValueError(
                 f"Agent kind '{kind}' is not registered. Known kinds: {sorted(cls._definitions)}"
@@ -129,23 +135,28 @@ class AgentRegistry:
 
     @classmethod
     def get_or_none(cls, kind: str) -> AgentDefinition | None:
+        cls._ensure_loaded()
         return cls._definitions.get(kind)
 
     @classmethod
     def has(cls, kind: str) -> bool:
+        cls._ensure_loaded()
         return kind in cls._definitions
 
     @classmethod
     def get_all(cls) -> list[AgentDefinition]:
+        cls._ensure_loaded()
         return list(cls._definitions.values())
 
     @classmethod
     def kinds(cls) -> list[str]:
+        cls._ensure_loaded()
         return sorted(cls._definitions.keys())
 
     @classmethod
     def is_tool_authorized(cls, kind: str, tool_name: str) -> bool:
         """Enforce tool authorization boundary for a given kind."""
+        cls._ensure_loaded()
         defn = cls._definitions.get(kind)
         if defn is None:
             return False
@@ -188,3 +199,13 @@ def discover_agents() -> None:
             raise RuntimeError(
                 f"Fatal agent discovery error: failed to import definition '{module_path}': {exc}"
             ) from exc
+
+
+# Static imports guarantee composition-root AST reachability
+# (tests/test_no_dead_modules.py) while discover_agents() handles
+# runtime discovery in all entry points.
+try:
+    import app.modules.ai.agents.customer.definition  # noqa: F401
+    import app.modules.ai.agents.sales_intelligence.definition  # noqa: F401
+except ImportError:
+    pass

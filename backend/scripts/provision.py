@@ -305,15 +305,19 @@ RESOURCES = [
     "billing",
 ]
 ACTIONS = ["read", "write"]
+EXTRA_PERMISSIONS = [
+    ("ai", "approve", "ai:approve"),
+]
 
 ROLE_MATRIX: dict[str, list[str]] = {
-    "owner": [f"{r}:{a}" for r in RESOURCES for a in ACTIONS],
+    "owner": [f"{r}:{a}" for r in RESOURCES for a in ACTIONS] + ["ai:approve"],
     "manager": [
         f"{r}:{a}"
         for r in RESOURCES
         for a in ACTIONS
         if not (r in ("settings", "billing") and a == "write")
-    ],
+    ]
+    + ["ai:approve"],
     "staff": [
         "customers:read",
         "customers:write",
@@ -369,6 +373,16 @@ async def setup_app_role(conn: asyncpg.Connection, password: str) -> None:
     await conn.execute(f"ALTER ROLE sales_app LOGIN PASSWORD '{safe_password}'")
     grants = [
         "GRANT USAGE ON SCHEMA public TO sales_app",
+        (
+            "DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'extensions') "
+            "THEN GRANT USAGE ON SCHEMA extensions TO sales_app; END IF; END $$;"
+        ),
+        (
+            "DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'sales_app') AND "
+            "EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'extensions') THEN "
+            'ALTER ROLE sales_app SET search_path = "$user", public, extensions; '
+            "END IF; END $$;"
+        ),
         "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO sales_app",
         "GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO sales_app",
         "ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public "
@@ -431,6 +445,18 @@ async def seed(conn: asyncpg.Connection) -> None:
                 resource,
                 action,
             )
+
+    for resource, action, code in EXTRA_PERMISSIONS:
+        await conn.execute(
+            """
+            INSERT INTO permissions (id, code, resource, action)
+            VALUES (gen_random_uuid(), $1, $2, $3)
+            ON CONFLICT (code) DO NOTHING
+            """,
+            code,
+            resource,
+            action,
+        )
 
     for role_code, allowed in ROLE_MATRIX.items():
         await conn.execute(
@@ -508,8 +534,70 @@ async def main() -> None:
             "GRANT EXECUTE ON FUNCTION public.resolve_channel_tenant(text, text) TO sales_app"
         )
         await seed(conn)
+        # System infrastructure tables RLS policies
+        infra_rls_sql = """
+        DO $$
+        DECLARE
+            tbl TEXT;
+            tbls TEXT[] := ARRAY[
+                'idempotency_keys',
+                'outbox_events',
+                'processed_events',
+                'dr_policy',
+                'restore_test_runs',
+                'alembic_version'
+            ];
+        BEGIN
+            FOREACH tbl IN ARRAY tbls LOOP
+                IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = tbl) THEN
+                    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', tbl);
+                    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+                        IF NOT EXISTS (
+                            SELECT 1 FROM pg_policies
+                            WHERE schemaname = 'public'
+                              AND tablename = tbl
+                              AND policyname = 'service_role_all'
+                        ) THEN
+                            EXECUTE format(
+                                'CREATE POLICY service_role_all ON public.%I ' ||
+                                'FOR ALL TO service_role USING (true) WITH CHECK (true)',
+                                tbl
+                            );
+                        END IF;
+                    END IF;
+                    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'sales_app') THEN
+                        IF NOT EXISTS (
+                            SELECT 1 FROM pg_policies
+                            WHERE schemaname = 'public'
+                              AND tablename = tbl
+                              AND policyname = 'app_all'
+                        ) THEN
+                            EXECUTE format(
+                                'CREATE POLICY app_all ON public.%I ' ||
+                                'FOR ALL TO sales_app USING (true) WITH CHECK (true)',
+                                tbl
+                            );
+                        END IF;
+                    END IF;
+                END IF;
+            END LOOP;
+        END;
+        $$;
+        """
+        await conn.execute(infra_rls_sql)
     finally:
         await conn.close()
+
+    try:
+        from app.core.db import get_sessionmaker
+        from app.modules.ai.core.provisioning import backfill_all_tenants
+
+        async with get_sessionmaker()() as sa_session:
+            async with sa_session.begin():
+                await backfill_all_tenants(sa_session)
+    except Exception as exc:
+        print(f"canonical agent provisioning deferred: {exc}")
+
     _write_app_password(app_password, settings.database_url_admin or settings.database_url)
 
 

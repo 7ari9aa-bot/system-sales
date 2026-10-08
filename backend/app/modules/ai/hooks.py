@@ -156,6 +156,7 @@ async def _do_auto_reply(
         tenant_id,
         agent_id=agent.id,
         conversation_id=conversation_id,
+        inbound_message_id=last_inbound.id,
         user_message=user_body,
         customer_id=customer_id,
         system_prompt=system_prompt or None,

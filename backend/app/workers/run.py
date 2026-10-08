@@ -94,6 +94,9 @@ def install_signal_handlers(stop: asyncio.Event) -> None:
 
 async def main(pools: list[str], *, stop: asyncio.Event | None = None) -> None:
     stop = stop or asyncio.Event()
+    from app.modules.ai.core.registry import discover_agents
+
+    discover_agents()
     bus = RedisStreamsBus(get_redis())
     relay = OutboxRelay(bus)
     tasks = [asyncio.create_task(relay.run(), name="outbox-relay")]

@@ -155,6 +155,7 @@ class AgentRunner:
         *,
         agent_id: uuid.UUID,
         conversation_id: uuid.UUID | None = None,
+        inbound_message_id: uuid.UUID | str | None = None,
         user_message: str,
         customer_id: uuid.UUID | None = None,
         system_prompt: str | None = None,
@@ -201,6 +202,7 @@ class AgentRunner:
                 agent_tools=agent_tools,
                 run=run,
                 conversation_id=conversation_id,
+                inbound_message_id=inbound_message_id,
                 user_message=user_message,
                 customer_id=customer_id,
                 system_prompt=system_prompt,
@@ -357,6 +359,7 @@ class AgentRunner:
         agent_tools: list[AgentTool],
         run: AgentRun,
         conversation_id: uuid.UUID | None,
+        inbound_message_id: uuid.UUID | str | None = None,
         user_message: str,
         customer_id: uuid.UUID | None,
         system_prompt: str | None,
@@ -550,6 +553,7 @@ class AgentRunner:
                     request=tc,
                     customer_id=customer_id,
                     conversation_id=conversation_id,
+                    inbound_message_id=inbound_message_id,
                     customer_image_url=customer_image_url,
                 )
                 tool_calls_made.append(outcome)
@@ -714,19 +718,26 @@ class AgentRunner:
                     decision, reason = "block", "grounding_failed"
 
         if content:
-            guardrail_profile = (
-                getattr(defn, "guardrail_profile", "customer") if defn else "customer"
-            )
-            if guardrail_profile == "analytics":
-                verdict = analytics_guardrail().evaluate(content, {"tool_results": tool_calls_made})
-            else:
-                verdict = default_guardrail(require_tool_evidence=True).evaluate(
-                    content, {"tool_results": tool_calls_made}
+            if defn is None:
+                logger.error(
+                    "ai.guardrail_fail_closed run=%s unknown_agent_kind=%s", run.id, agent.kind
                 )
-            decision, reason = verdict.decision, verdict.reason
-            if decision != "allow":
-                logger.warning("ai.guardrail_%s run=%s reason=%s", decision, run.id, reason)
                 content = None
+                decision, reason = "block", "unknown_agent_kind"
+            else:
+                guardrail_profile = getattr(defn, "guardrail_profile", "customer")
+                if guardrail_profile == "analytics":
+                    verdict = analytics_guardrail().evaluate(
+                        content, {"tool_results": tool_calls_made}
+                    )
+                else:
+                    verdict = default_guardrail(require_tool_evidence=True).evaluate(
+                        content, {"tool_results": tool_calls_made}
+                    )
+                decision, reason = verdict.decision, verdict.reason
+                if decision != "allow":
+                    logger.warning("ai.guardrail_%s run=%s reason=%s", decision, run.id, reason)
+                    content = None
 
         # §13: resolve the media the model requested into deliverable
         # attachments SERVER-SIDE — only image ids crossed the model
@@ -929,6 +940,7 @@ class AgentRunner:
         request: ToolCallRequest,
         customer_id: uuid.UUID | None = None,
         conversation_id: uuid.UUID | None = None,
+        inbound_message_id: uuid.UUID | str | None = None,
         customer_image_url: str | None = None,
     ) -> dict[str, Any]:
         """Run one requested tool call under the agent's policy; record the row.
@@ -950,9 +962,9 @@ class AgentRunner:
         # the check-then-insert atomic under concurrent retries.
         #
         # Side-effect tools (risk_level HIGH/MEDIUM) use a SEMANTIC key bound
-        # to conversation + tool name + sorted args hash.  This way, retrying
-        # a message (which creates a new run_id) cannot re-execute mutations
-        # like create_order, add_task or add_tag with the same arguments.
+        # to conversation + inbound message + tool name + sorted args hash.
+        # Retrying the same inbound message reuses the prior result, while a new
+        # inbound message with the same items/quantities is processed independently.
         spec_for_key = get_tool(request.name)
         if (
             spec_for_key is not None
@@ -961,7 +973,8 @@ class AgentRunner:
         ):
             args_canonical = json.dumps(request.arguments or {}, sort_keys=True)
             args_hash = hashlib.sha256(args_canonical.encode()).hexdigest()[:16]
-            idempotency_key = f"se:{conversation_id}:{request.name}:{args_hash}"
+            msg_key = str(inbound_message_id) if inbound_message_id else str(run.id)
+            idempotency_key = f"se:{conversation_id}:{msg_key}:{request.name}:{args_hash}"
         else:
             idempotency_key = f"{run.id}:{request.id}"
         prior = (

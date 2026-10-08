@@ -319,6 +319,9 @@ class AuthService:
         from app.modules.identity.bootstrap import seed_tenant_defaults
 
         await seed_tenant_defaults(session, tenant.id)
+        from app.core.tenancy import dispatch_tenant_created_hooks
+
+        await dispatch_tenant_created_hooks(session, tenant.id)
         # The account is born UNVERIFIED (email_verified=False): queue the
         # verification message now, because verification is what the
         # invitation flow later requires of an existing account — a signup

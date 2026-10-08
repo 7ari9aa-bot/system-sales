@@ -224,14 +224,24 @@ async def backfill_all_tenants(session: AsyncSession) -> dict[str, int]:
     """
     from sqlalchemy import text as sa_text
 
+    from app.core.db import bind_tenant
+
     rows = await session.execute(sa_text("SELECT id FROM tenants"))
     tenants = [row[0] for row in rows.all()]
 
     result: dict[str, int] = {}
     for tid in tenants:
+        await bind_tenant(session, tid)
         created = await provision_canonical_agents(session, tid)
         if created:
             result[str(tid)] = len(created)
+        await session.flush()
 
     logger.info("provisioning.backfill_complete tenants=%d created=%s", len(tenants), result)
     return result
+
+
+# Wire auto-provisioning to tenant creation lifecycle without cyclic dependencies
+from app.core.tenancy import register_tenant_created_hook  # noqa: E402
+
+register_tenant_created_hook(provision_canonical_agents)

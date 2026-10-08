@@ -213,3 +213,17 @@ async def tenant_scope(session, tenant_id: UUID | str) -> AsyncIterator[UUID]:
         yield tid
     finally:
         _current_tenant.reset(token)
+
+
+# Tenant creation lifecycle hooks: decoupled registration without cross-module cycles.
+_tenant_created_hooks: list = []
+
+
+def register_tenant_created_hook(hook) -> None:
+    if hook not in _tenant_created_hooks:
+        _tenant_created_hooks.append(hook)
+
+
+async def dispatch_tenant_created_hooks(session: AsyncSession, tenant_id: UUID) -> None:
+    for hook in list(_tenant_created_hooks):
+        await hook(session, tenant_id)
