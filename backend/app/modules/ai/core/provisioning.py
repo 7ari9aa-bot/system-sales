@@ -111,17 +111,21 @@ async def _sync_agent_tools(
     agent_id: uuid.UUID,
     kind: str,
 ) -> int:
-    """Ensure an existing agent has all default tools for its kind.
+    """Ensure an existing agent's tools match definition policy (§5).
 
-    Adds missing tools without removing existing ones. Returns count of newly added tools.
+    Reconciliation rules:
+    - Missing required/default tools -> created with is_active=True.
+    - Previously disabled default tools -> reactivated.
+    - Unauthorized tools in DB -> quarantined/disabled (is_active=False)
+      without deleting historical records so run audit remains intact.
     """
     defn = AgentRegistry.get(kind)
 
-    # Get existing tool names
-    existing_tools = set(
+    # Fetch all existing tools
+    existing_tools = (
         (
             await session.execute(
-                select(AgentTool.name).where(
+                select(AgentTool).where(
                     AgentTool.tenant_id == tenant_id,
                     AgentTool.agent_id == agent_id,
                 )
@@ -130,11 +134,11 @@ async def _sync_agent_tools(
         .scalars()
         .all()
     )
+    existing_by_name = {t.name: t for t in existing_tools}
 
     added = 0
+    # 1. Ensure all default tools exist and are active
     for tool_name in defn.default_tools:
-        if tool_name in existing_tools:
-            continue
         if not AgentRegistry.is_tool_authorized(kind, tool_name):
             logger.error(
                 "provisioning.sync_tool_not_authorized kind=%s tool=%s",
@@ -142,15 +146,33 @@ async def _sync_agent_tools(
                 tool_name,
             )
             continue
-        session.add(
-            AgentTool(
-                tenant_id=tenant_id,
-                agent_id=agent_id,
-                name=tool_name,
-                policy={},
+        tool = existing_by_name.get(tool_name)
+        if tool is None:
+            session.add(
+                AgentTool(
+                    tenant_id=tenant_id,
+                    agent_id=agent_id,
+                    name=tool_name,
+                    policy={},
+                    is_active=True,
+                )
             )
-        )
-        added += 1
+            added += 1
+        elif not tool.is_active:
+            tool.is_active = True
+            added += 1
+
+    # 2. Quarantine/disable any unauthorized tools in DB
+    for tool in existing_tools:
+        if not AgentRegistry.is_tool_authorized(kind, tool.name) and tool.is_active:
+            logger.warning(
+                "provisioning.quarantining_unauthorized_tool tenant=%s agent=%s kind=%s tool=%s",
+                tenant_id,
+                agent_id,
+                kind,
+                tool.name,
+            )
+            tool.is_active = False
 
     if added:
         await session.flush()

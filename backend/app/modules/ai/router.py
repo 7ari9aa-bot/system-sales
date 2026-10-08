@@ -13,9 +13,9 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
-from app.core.errors import NotFoundError
+from app.core.errors import ConflictError, NotFoundError, PermissionDeniedError
 from app.core.idempotency import IfMatch, apply_etag, apply_versioned_update
 from app.core.pagination import paginate
 from app.modules.ai import knowledge
@@ -75,6 +75,20 @@ from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permi
 router = APIRouter(prefix="/ai", tags=["ai"])
 
 SettingsCtx = Annotated[TenantContext, Depends(require_permission("settings:write"))]
+
+
+def require_ai_approve():
+    async def _gate(ctx: TenantCtxDep) -> TenantContext:
+        if "ai:approve" in ctx.permission_codes:
+            return ctx
+        if ctx.role_code == "owner" or "settings:write" in ctx.permission_codes:
+            return ctx
+        raise PermissionDeniedError("missing permission: ai:approve")
+
+    return _gate
+
+
+ApproveCtx = Annotated[TenantContext, Depends(require_ai_approve())]
 
 # Query params are declared `Annotated[type, Query(...)] = <value>` (a required
 # one keeps no default), never `name: type = Query(...)` — see the
@@ -634,7 +648,7 @@ async def list_approvals(
 async def decide_approval(
     approval_id: uuid.UUID,
     body: ApprovalDecisionRequest,
-    ctx: SettingsCtx,
+    ctx: ApproveCtx,
 ):
     """Approve, reject or cancel a parked HIGH-risk action.
 
@@ -914,7 +928,7 @@ async def claim_handover(
 ):
     from sqlalchemy import text
 
-    handover = (
+    existing = (
         await ctx.session.execute(
             select(AIHandover).where(
                 AIHandover.id == handover_id,
@@ -922,10 +936,29 @@ async def claim_handover(
             )
         )
     ).scalar_one_or_none()
-    if not handover:
+    if not existing:
         raise NotFoundError("handover not found")
-    handover.status = "claimed"
-    handover.claimed_by_user_id = ctx.user_id
+    if existing.status != "pending":
+        raise ConflictError(f"handover is already {existing.status}")
+
+    # Atomic claim: only pending -> claimed (§29)
+    stmt = (
+        update(AIHandover)
+        .where(
+            AIHandover.id == handover_id,
+            AIHandover.tenant_id == ctx.tenant_id,
+            AIHandover.status == "pending",
+        )
+        .values(
+            status="claimed",
+            claimed_by_user_id=ctx.user_id,
+        )
+        .returning(AIHandover)
+    )
+    handover = (await ctx.session.execute(stmt)).scalar_one_or_none()
+    if not handover:
+        raise ConflictError("handover was already claimed by another user")
+
     await ctx.session.execute(
         text(
             "UPDATE conversations SET assignee_user_id = :uid WHERE id = :cid AND tenant_id = :tid"
@@ -954,6 +987,8 @@ async def resolve_handover(
     handover_id: uuid.UUID,
     ctx: TenantCtxDep,
 ):
+    from sqlalchemy import text
+
     handover = (
         await ctx.session.execute(
             select(AIHandover).where(
@@ -965,6 +1000,18 @@ async def resolve_handover(
     if not handover:
         raise NotFoundError("handover not found")
     handover.status = "resolved"
+
+    # Synchronize conversation: conversation leaves waiting_human (§30)
+    await ctx.session.execute(
+        text(
+            "UPDATE conversations SET status = 'open' "
+            "WHERE id = :cid AND tenant_id = :tid AND status = 'waiting_human'"
+        ),
+        {
+            "cid": str(handover.conversation_id),
+            "tid": str(ctx.tenant_id),
+        },
+    )
     await ctx.session.flush()
     return HandoverOut(
         id=handover.id,

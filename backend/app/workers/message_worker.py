@@ -201,6 +201,38 @@ class MessageWorker(StreamWorker):
         try:
             from app.modules.ai.hooks import maybe_auto_reply
 
+            # Phase 1: Deduplication preflight check (§127)
+            async with SessionLocal() as session:
+                async with session.begin():
+                    await bind_tenant(session, tenant_id)
+                    prior = (
+                        await session.execute(
+                            select(ProcessedEvent.id).where(
+                                ProcessedEvent.consumer_name == self.name,
+                                ProcessedEvent.event_id == uuid.UUID(self._dedupe_id(envelope)),
+                            )
+                        )
+                    ).scalar_one_or_none()
+                    if prior is not None:
+                        logger.info("received.event_already_processed id=%s", envelope.id)
+                        return
+
+            # Phase 2: Transcribe inbound voice note before answering (§35, §126)
+            async with SessionLocal() as session:
+                async with session.begin():
+                    await bind_tenant(session, tenant_id)
+                    async with conversation_lease(session, uuid.UUID(conversation_id)):
+                        await transcribe_inbound_voice(
+                            session, tenant_id, message_id=envelope.aggregate_id
+                        )
+
+            # Phase 3: AI Auto-reply (runs under conversation_lease internally)
+            async with SessionLocal() as session:
+                async with session.begin():
+                    await bind_tenant(session, tenant_id)
+                    await maybe_auto_reply(session, tenant_id, uuid.UUID(conversation_id))
+
+            # Phase 4: Commit consumer-inbox ProcessedEvent (§127)
             async with SessionLocal() as session:
                 async with session.begin():
                     await bind_tenant(session, tenant_id)
@@ -217,16 +249,6 @@ class MessageWorker(StreamWorker):
                     except IntegrityError:
                         logger.info("received.event_already_processed id=%s", envelope.id)
                         return
-                    # §126: one state-mutating processor per conversation.
-                    async with conversation_lease(session, uuid.UUID(conversation_id)):
-                        # §35: transcribe the voice note BEFORE answering it. The
-                        # reply is built from conversation history, so a
-                        # transcript that lands after the answer is one nobody
-                        # read — and the customer spoke into silence.
-                        await transcribe_inbound_voice(
-                            session, tenant_id, message_id=envelope.aggregate_id
-                        )
-                        await maybe_auto_reply(session, tenant_id, uuid.UUID(conversation_id))
         except ImportError:
             logger.debug("ai.hooks not installed — skipping auto-reply")
         # NOTE: no broad swallow here. An AI/provider failure must roll the

@@ -248,6 +248,7 @@ class GetVariantPriceArgs(BaseModel):
 async def _get_variant_price(
     session: AsyncSession, tenant_id: uuid.UUID, *, variant_id: uuid.UUID
 ) -> dict:
+    _, sellable_statuses = _order_deps()
     row = (
         await session.execute(
             select(ProductVariant, Product.title)
@@ -255,6 +256,8 @@ async def _get_variant_price(
             .where(
                 ProductVariant.tenant_id == tenant_id,
                 ProductVariant.id == variant_id,
+                ProductVariant.is_active.is_(True),
+                Product.status.in_(sellable_statuses),
             )
         )
     ).first()
@@ -278,11 +281,16 @@ class CheckStockArgs(BaseModel):
 async def _check_stock(
     session: AsyncSession, tenant_id: uuid.UUID, *, variant_id: uuid.UUID
 ) -> dict:
+    _, sellable_statuses = _order_deps()
     variant = (
         await session.execute(
-            select(ProductVariant).where(
+            select(ProductVariant)
+            .join(Product, Product.id == ProductVariant.product_id)
+            .where(
                 ProductVariant.tenant_id == tenant_id,
                 ProductVariant.id == variant_id,
+                ProductVariant.is_active.is_(True),
+                Product.status.in_(sellable_statuses),
             )
         )
     ).scalar_one_or_none()
@@ -534,6 +542,19 @@ async def _resolve_product_media(
     into the outbound result; handing the model raw URLs would let a prompt
     injection relay tenant storage links into the customer's chat.
     """
+    _, sellable_statuses = _order_deps()
+    product_exists = (
+        await session.execute(
+            select(Product.id).where(
+                Product.tenant_id == tenant_id,
+                Product.id == product_id,
+                Product.status.in_(sellable_statuses),
+            )
+        )
+    ).scalar_one_or_none()
+    if product_exists is None:
+        raise NotFoundError(f"product {product_id} not found")
+
     stmt = (
         select(ProductImage.id, ProductImage.alt, ProductImage.position)
         .where(

@@ -562,55 +562,47 @@ class AIGateway:
         reservation_id = await reserve_budget(
             session, tenant_id, agent_id=agent_id, estimated_cost=estimated
         )
-        config = await resolve_model_config(session, tenant_id, alias)
 
-        # §144: tenant fairness budget — a single tenant's AI consumption
-        # must not starve the rest of the platform. This is a token-level
-        # gate (estimated tokens), separate from the cost-level gate (§42)
-        # which is about money.
-        from app.core.fairness import ResourceType
-        from app.core.fairness import consume as consume_fairness
+        # ── Everything below MUST settle the reservation, even if a pre-send
+        #    gate (fairness, egress policy) rejects the call.  A single outer
+        #    try…finally guarantees settle_reservation runs.
+        started = time.perf_counter()
+        status = "ok"
+        result: ChatCompletionResult | None = None
+        config: dict | None = None
+        try:
+            config = await resolve_model_config(session, tenant_id, alias)
 
-        fairness_ok = await consume_fairness(
-            tenant_id,
-            ResourceType.AI_TOKENS,
-            units=(len(str(messages)) // 4) + (max_tokens or 1024),
-        )
-        if not fairness_ok:
-            from app.core.errors import ValidationError as _VE
+            # §144: tenant fairness budget — a single tenant's AI consumption
+            # must not starve the rest of the platform. This is a token-level
+            # gate (estimated tokens), separate from the cost-level gate (§42)
+            # which is about money.
+            from app.core.fairness import ResourceType
+            from app.core.fairness import consume as consume_fairness
 
-            raise _VE("tenant AI token fairness budget exhausted — daily limit reached")
+            fairness_ok = await consume_fairness(
+                tenant_id,
+                ResourceType.AI_TOKENS,
+                units=(len(str(messages)) // 4) + (max_tokens or 1024),
+            )
+            if not fairness_ok:
+                from app.core.errors import ValidationError as _VE
 
-        # §43: data-egress policy — is this tenant allowed to send data to
-        # this provider/model? This is NOT authorization (the entitlement
-        # check already happened); it is a DATA-CLASSIFICATION gate. A
-        # provider with no policy row is allowed (fail-open; see policy.py).
-        #
-        # The spec's pre-send order is honored literally:
-        # Classify → Redact where required → Apply policy → Send. Redaction
-        # can downgrade the class (masked PII is no longer restricted), so
-        # the gate is evaluated with the class the payload actually has when
-        # it would leave this process.
-        from app.modules.ai.policy import AIProviderPolicyService, classify_data
+                raise _VE("tenant AI token fairness budget exhausted — daily limit reached")
 
-        region = str((config.get("extra") or {}).get("region") or "")
-        data_class = classify_data(messages)
-        egress_decision = await AIProviderPolicyService.evaluate(
-            session,
-            tenant_id,
-            provider=config["provider"],
-            model=config["model"],
-            data_class=data_class,
-            region=region or None,
-        )
-        if egress_decision.redact_required:
-            # §43: actually redact PII before sending to the provider.
-            # The policy flag existed but was never enforced — a tenant with
-            # pii_redaction_required=True got a warning log while raw PII
-            # flowed to the provider. The redactor masks email addresses,
-            # phone numbers, and Saudi ID numbers in the message content
-            # before the HTTP call leaves this process.
-            messages = _redact_pii(messages)
+            # §43: data-egress policy — is this tenant allowed to send data to
+            # this provider/model? This is NOT authorization (the entitlement
+            # check already happened); it is a DATA-CLASSIFICATION gate. A
+            # provider with no policy row is allowed (fail-open; see policy.py).
+            #
+            # The spec's pre-send order is honored literally:
+            # Classify → Redact where required → Apply policy → Send. Redaction
+            # can downgrade the class (masked PII is no longer restricted), so
+            # the gate is evaluated with the class the payload actually has when
+            # it would leave this process.
+            from app.modules.ai.policy import AIProviderPolicyService, classify_data
+
+            region = str((config.get("extra") or {}).get("region") or "")
             data_class = classify_data(messages)
             egress_decision = await AIProviderPolicyService.evaluate(
                 session,
@@ -620,26 +612,32 @@ class AIGateway:
                 data_class=data_class,
                 region=region or None,
             )
-            logger.info(
-                "ai.provider_redaction_applied tenant=%s provider=%s",
-                tenant_id,
-                config["provider"],
-            )
-        if not egress_decision.allowed:
-            raise ValidationError(
-                f"AI provider blocked by data-egress policy: {egress_decision.reason}"
-            )
+            if egress_decision.redact_required:
+                # §43: actually redact PII before sending to the provider.
+                messages = _redact_pii(messages)
+                data_class = classify_data(messages)
+                egress_decision = await AIProviderPolicyService.evaluate(
+                    session,
+                    tenant_id,
+                    provider=config["provider"],
+                    model=config["model"],
+                    data_class=data_class,
+                    region=region or None,
+                )
+                logger.info(
+                    "ai.provider_redaction_applied tenant=%s provider=%s",
+                    tenant_id,
+                    config["provider"],
+                )
+            if not egress_decision.allowed:
+                raise ValidationError(
+                    f"AI provider blocked by data-egress policy: {egress_decision.reason}"
+                )
 
-        started = time.perf_counter()
-        status = "ok"
-        result: ChatCompletionResult | None = None
-        try:
             # §47: the ONE provider HTTP request goes through the breaker for
             # THIS provider endpoint (see _provider_breaker), so a dead or slow
             # provider is backed off instead of hammered — and its failure does
-            # not stop a different provider. Only the request is wrapped — the
-            # budget reservation above and the ModelCall bookkeeping below are
-            # not.
+            # not stop a different provider.
             #
             # CircuitOpenError is a DomainError and is re-raised unchanged by the
             # handler below, so an open breaker stays visible as an open breaker.
@@ -667,13 +665,10 @@ class AIGateway:
                     tenant_id=tenant_id,
                     run_id=run_id,
                     alias=alias,
-                    provider=config["provider"],
-                    model=config["model"],
+                    provider=(config["provider"] if config else "unknown"),
+                    model=(config["model"] if config else "unknown"),
                     tokens_in=tokens_in,
                     tokens_out=tokens_out,
-                    # BOTH directions are priced: charging only output
-                    # under-counted spend, because the prompt is usually the
-                    # larger half of a conversational turn.
                     cost=estimate_cost(tokens_in, tokens_out) if result else Decimal(0),
                     latency_ms=latency_ms,
                     status=status,

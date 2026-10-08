@@ -10,6 +10,8 @@ app.modules.ai.tools, gated by the agent's tool policy.
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
 import json
 import logging
 import uuid
@@ -28,7 +30,7 @@ from app.modules.ai.gateway import (
     AIGateway,
     estimate_cost,
 )
-from app.modules.ai.guardrails import default_guardrail, screen_inbound
+from app.modules.ai.guardrails import analytics_guardrail, default_guardrail, screen_inbound
 from app.modules.ai.models import Agent, AgentRun, AgentTool, ToolCall
 from app.modules.ai.providers import ToolCallRequest
 from app.modules.ai.tools import tool_to_openai_schema  # noqa: E402
@@ -475,21 +477,29 @@ class AgentRunner:
         # the step budget ran out mid-tool-loop (the max_steps timeout, §134).
         exhausted = True
         for _iteration in range(limits["max_steps"]):
-            if datetime.now(UTC) - started_at > max_wall_time:
+            elapsed = datetime.now(UTC) - started_at
+            if elapsed > max_wall_time:
                 hit_limit = "max_wall_time"
                 break
+            remaining = (max_wall_time - elapsed).total_seconds()
             try:
-                chat_result = await self.gateway.chat(
-                    session,
-                    tenant_id,
-                    alias=self._alias_for(agent),
-                    messages=messages,
-                    tools=tools_schema,
-                    temperature=float(agent.temperature),
-                    max_tokens=agent.max_output_tokens,
-                    agent_id=agent.id,
-                    run_id=run.id,
+                chat_result = await asyncio.wait_for(
+                    self.gateway.chat(
+                        session,
+                        tenant_id,
+                        alias=self._alias_for(agent),
+                        messages=messages,
+                        tools=tools_schema,
+                        temperature=float(agent.temperature),
+                        max_tokens=agent.max_output_tokens,
+                        agent_id=agent.id,
+                        run_id=run.id,
+                    ),
+                    timeout=remaining,
                 )
+            except TimeoutError:
+                hit_limit = "max_wall_time"
+                break
             except AIBudgetFallbackRequested:
                 # §42: cap exhausted, policy says downgrade — retry this step
                 # on the "fallback" alias (the cheap model). If the fallback
@@ -708,15 +718,15 @@ class AgentRunner:
                 getattr(defn, "guardrail_profile", "customer") if defn else "customer"
             )
             if guardrail_profile == "analytics":
-                decision, reason = "allow", None
+                verdict = analytics_guardrail().evaluate(content, {"tool_results": tool_calls_made})
             else:
                 verdict = default_guardrail(require_tool_evidence=True).evaluate(
                     content, {"tool_results": tool_calls_made}
                 )
-                decision, reason = verdict.decision, verdict.reason
-                if decision != "allow":
-                    logger.warning("ai.guardrail_%s run=%s reason=%s", decision, run.id, reason)
-                    content = None
+            decision, reason = verdict.decision, verdict.reason
+            if decision != "allow":
+                logger.warning("ai.guardrail_%s run=%s reason=%s", decision, run.id, reason)
+                content = None
 
         # §13: resolve the media the model requested into deliverable
         # attachments SERVER-SIDE — only image ids crossed the model
@@ -892,11 +902,10 @@ class AgentRunner:
             if call.get("status") != "ok":
                 continue
             result = call.get("result") or {}
-            if call.get("name") == "find_product_by_image":
-                for candidate in result.get("candidates") or []:
-                    product_id = candidate.get("product_id")
-                    if product_id and product_id not in shown:
-                        shown.append(product_id)
+            # find_product_by_image candidates are NOT shown to the customer
+            # until the agent explicitly calls resolve_product_media for one.
+            # Recording them here would inflate shown_product_ids and bias
+            # the deduplication logic in subsequent runs.
             if call.get("name") != "resolve_product_media":
                 continue
             product_id = (call.get("args") or {}).get("product_id")
@@ -939,7 +948,22 @@ class AgentRunner:
         # same provider tool_call_id) was already executed, return the prior
         # result. The unique constraint on (tenant_id, idempotency_key) makes
         # the check-then-insert atomic under concurrent retries.
-        idempotency_key = f"{run.id}:{request.id}"
+        #
+        # Side-effect tools (risk_level HIGH/MEDIUM) use a SEMANTIC key bound
+        # to conversation + tool name + sorted args hash.  This way, retrying
+        # a message (which creates a new run_id) cannot re-execute mutations
+        # like create_order, add_task or add_tag with the same arguments.
+        spec_for_key = get_tool(request.name)
+        if (
+            spec_for_key is not None
+            and spec_for_key.risk_level in ("HIGH", "MEDIUM")
+            and conversation_id is not None
+        ):
+            args_canonical = json.dumps(request.arguments or {}, sort_keys=True)
+            args_hash = hashlib.sha256(args_canonical.encode()).hexdigest()[:16]
+            idempotency_key = f"se:{conversation_id}:{request.name}:{args_hash}"
+        else:
+            idempotency_key = f"{run.id}:{request.id}"
         prior = (
             await session.execute(
                 select(ToolCall).where(

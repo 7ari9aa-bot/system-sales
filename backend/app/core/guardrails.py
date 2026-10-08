@@ -309,6 +309,31 @@ def default_guardrail(
     return chain
 
 
+def _analytics_pii(content: str, ctx: dict) -> GuardrailVerdict | None:
+    screened = _screened(content)
+    for pattern, label in _PII_PATTERNS:
+        if label == "internal_margin":
+            continue
+        if pattern.search(screened):
+            return GuardrailVerdict(decision="block", reason=f"pii_leak:{label}")
+    return None
+
+
+def analytics_guardrail() -> OutputGuardrail:
+    """Specialized guardrail for analytics / business intelligence agents.
+
+    Permits internal metrics/margins (essential for merchant reporting), but
+    enforces schema validity, sensitive PII (cards, SSN, API keys), prompt
+    injection echo, and cross-tenant leakage.
+    """
+    chain = OutputGuardrail()
+    chain.add_check("validity", _validity)
+    chain.add_check("pii", _analytics_pii)
+    chain.add_check("injection_echo", _injection_risk)
+    chain.add_check("cross_tenant", _cross_tenant_request)
+    return chain
+
+
 # What a provider must never be shown, before it is shown. The output chain
 # cannot cover this: it only ever sees what came back.
 _INBOUND_CHAIN = (

@@ -284,3 +284,146 @@ async def test_agent_3_extensibility_e2e_lifecycle() -> None:
     )
     assert outcome_denied["status"] == "denied"
     assert "not authorized for agent kind 'inventory_ops'" in outcome_denied["error"]
+
+
+@pytest.mark.asyncio
+async def test_two_way_tool_reconciliation_quarantines_unauthorized_tools() -> None:
+    """§5 Tool Reconciliation: missing tools are created, unauthorized tools in DB are disabled."""
+    from app.modules.ai.core.provisioning import _sync_agent_tools
+
+    tenant_id = uuid.uuid4()
+    agent_id = uuid.uuid4()
+
+    # Pre-existing tools: one authorized and one unauthorized
+    authorized_tool = AgentTool(
+        tenant_id=tenant_id, agent_id=agent_id, name="search_products", is_active=True
+    )
+    unauthorized_tool = AgentTool(
+        tenant_id=tenant_id, agent_id=agent_id, name="si_analyze_drivers", is_active=True
+    )
+
+    mock_session = AsyncMock()
+    mock_res = MagicMock()
+    mock_res.scalars.return_value.all.return_value = [authorized_tool, unauthorized_tool]
+    mock_session.execute.return_value = mock_res
+
+    added = await _sync_agent_tools(mock_session, tenant_id, agent_id, kind="customer")
+
+    # Unauthorized tool must be quarantined (is_active=False)
+    assert unauthorized_tool.is_active is False
+    # Missing required default tools must have been added
+    assert added > 0
+    assert mock_session.add.called
+
+
+@pytest.mark.asyncio
+async def test_handover_atomic_claim_and_resolve_lifecycle() -> None:
+    """§29-30 Handover claim atomicity and resolve conversation status sync."""
+    from app.core.errors import ConflictError
+    from app.modules.ai.models import AIHandover
+    from app.modules.ai.router import claim_handover, resolve_handover
+
+    tenant_id = uuid.uuid4()
+    user_id = uuid.uuid4()
+    conv_id = uuid.uuid4()
+    handover_id = uuid.uuid4()
+
+    # Test 1: Conflict when claiming an already claimed handover
+    claimed_handover = AIHandover(
+        id=handover_id,
+        tenant_id=tenant_id,
+        conversation_id=conv_id,
+        reason="customer_request",
+        status="claimed",
+        claimed_by_user_id=uuid.uuid4(),
+    )
+    mock_ctx = MagicMock()
+    mock_ctx.tenant_id = tenant_id
+    mock_ctx.user_id = user_id
+    mock_session = AsyncMock()
+    mock_res = MagicMock()
+    mock_res.scalar_one_or_none.return_value = claimed_handover
+    mock_session.execute.return_value = mock_res
+    mock_ctx.session = mock_session
+
+    with pytest.raises(ConflictError) as exc_info:
+        await claim_handover(handover_id, mock_ctx)
+    assert "already claimed" in str(exc_info.value)
+
+    # Test 2: Resolve handover synchronizes conversation out of waiting_human
+    pending_handover = AIHandover(
+        id=handover_id,
+        tenant_id=tenant_id,
+        conversation_id=conv_id,
+        reason="customer_request",
+        status="claimed",
+    )
+    mock_res.scalar_one_or_none.return_value = pending_handover
+    out = await resolve_handover(handover_id, mock_ctx)
+    assert out.status == "resolved"
+    # Ensure SQL update was executed on conversations
+    assert mock_session.execute.called
+
+
+@pytest.mark.asyncio
+async def test_ai_approval_rbac_gate() -> None:
+    """§33 Approval RBAC: require_ai_approve gates decision endpoint."""
+    from app.core.errors import PermissionDeniedError
+    from app.modules.ai.router import require_ai_approve
+
+    gate = require_ai_approve()
+
+    # Case 1: user with no permissions and non-owner role -> PermissionDeniedError
+    ctx_denied = MagicMock()
+    ctx_denied.permission_codes = {"some:other"}
+    ctx_denied.role_code = "staff"
+    with pytest.raises(PermissionDeniedError):
+        await gate(ctx_denied)
+
+    # Case 2: user with explicit ai:approve -> passes
+    ctx_explicit = MagicMock()
+    ctx_explicit.permission_codes = {"ai:approve"}
+    ctx_explicit.role_code = "staff"
+    assert await gate(ctx_explicit) is ctx_explicit
+
+    # Case 3: user with owner role -> passes
+    ctx_owner = MagicMock()
+    ctx_owner.permission_codes = set()
+    ctx_owner.role_code = "owner"
+    assert await gate(ctx_owner) is ctx_owner
+
+    # Case 4: user with settings:write -> passes via hierarchy
+    ctx_settings = MagicMock()
+    ctx_settings.permission_codes = {"settings:write"}
+    ctx_settings.role_code = "admin"
+    assert await gate(ctx_settings) is ctx_settings
+
+
+@pytest.mark.asyncio
+async def test_customer_tools_enforce_canonical_sellability() -> None:
+    """§22 Customer Product Sellability: draft products rejected across all customer tools."""
+    from app.core.errors import NotFoundError
+    from app.modules.ai.tools import _check_stock, _get_variant_price, _resolve_product_media
+
+    tenant_id = uuid.uuid4()
+    variant_id = uuid.uuid4()
+    product_id = uuid.uuid4()
+
+    mock_session = AsyncMock()
+    mock_res = MagicMock()
+    # Mocking empty return for non-sellable product
+    mock_res.first.return_value = None
+    mock_res.scalar_one_or_none.return_value = None
+    mock_session.execute.return_value = mock_res
+
+    # 1. get_variant_price fails closed when not sellable
+    with pytest.raises(NotFoundError):
+        await _get_variant_price(mock_session, tenant_id, variant_id=variant_id)
+
+    # 2. check_stock fails closed when not sellable
+    with pytest.raises(NotFoundError):
+        await _check_stock(mock_session, tenant_id, variant_id=variant_id)
+
+    # 3. resolve_product_media fails closed when parent product is not sellable
+    with pytest.raises(NotFoundError):
+        await _resolve_product_media(mock_session, tenant_id, product_id=product_id)
