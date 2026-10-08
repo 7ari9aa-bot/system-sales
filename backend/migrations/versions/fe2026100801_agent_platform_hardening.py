@@ -101,16 +101,16 @@ def upgrade() -> None:
             r_id UUID;
         BEGIN
             IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'permissions') THEN
-                IF NOT EXISTS (SELECT 1 FROM public.permissions WHERE name = 'ai:approve') THEN
-                    INSERT INTO public.permissions (id, module, action, name, description, created_at)
-                    VALUES (gen_random_uuid(), 'ai', 'approve', 'ai:approve', 'Approve AI-driven agent actions and tool executions', now())
+                IF NOT EXISTS (SELECT 1 FROM public.permissions WHERE code = 'ai:approve') THEN
+                    INSERT INTO public.permissions (id, code, resource, action)
+                    VALUES (gen_random_uuid(), 'ai:approve', 'ai', 'approve')
                     RETURNING id INTO perm_id;
                 ELSE
-                    SELECT id INTO perm_id FROM public.permissions WHERE name = 'ai:approve' LIMIT 1;
+                    SELECT id INTO perm_id FROM public.permissions WHERE code = 'ai:approve' LIMIT 1;
                 END IF;
 
                 IF perm_id IS NOT NULL AND EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'role_permissions') THEN
-                    FOR r_id IN (SELECT id FROM public.roles WHERE name IN ('owner', 'manager')) LOOP
+                    FOR r_id IN (SELECT id FROM public.roles WHERE code IN ('owner', 'manager')) LOOP
                         IF NOT EXISTS (SELECT 1 FROM public.role_permissions WHERE role_id = r_id AND permission_id = perm_id) THEN
                             INSERT INTO public.role_permissions (role_id, permission_id) VALUES (r_id, perm_id);
                         END IF;
