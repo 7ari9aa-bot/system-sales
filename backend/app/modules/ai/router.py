@@ -79,15 +79,25 @@ SettingsReadCtx = Annotated[TenantContext, Depends(require_permission("settings:
 AnalyticsCtx = Annotated[TenantContext, Depends(require_permission("analytics:read"))]
 
 
-def require_ai_approve():
-    async def _gate(ctx: TenantCtxDep) -> TenantContext:
-        if "ai:approve" in ctx.permission_codes:
-            return ctx
-        if ctx.role_code == "owner":
-            return ctx
-        raise PermissionDeniedError("missing permission: ai:approve")
+class require_ai_approve:
+    """RBAC gate for a decision only a human may make: ``ai:approve``.
 
-    return _gate
+    Not plain ``require_permission("ai:approve")`` because the tenant owner
+    passes without the code being on their role — the owner is the one who would
+    have to seed it onto themselves before they could approve anything.
+
+    A class with a ``code`` attribute, mirroring ``require_permission``, so the
+    gate a route declares stays introspectable from the outside; as a bare
+    closure it was invisible, and the test that pins this route's gate read it
+    as "gated by nothing".
+    """
+
+    code = "ai:approve"
+
+    async def __call__(self, ctx: TenantCtxDep) -> TenantContext:
+        if self.code not in ctx.permission_codes and ctx.role_code != "owner":
+            raise PermissionDeniedError(f"missing permission: {self.code}")
+        return ctx
 
 
 ApproveCtx = Annotated[TenantContext, Depends(require_ai_approve())]

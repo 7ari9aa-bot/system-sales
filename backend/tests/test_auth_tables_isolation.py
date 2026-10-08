@@ -312,8 +312,18 @@ class TestReferencePlaneIsSelectOnly:
         )
 
     async def test_reads_still_work(self, db):
-        codes = (await db.execute(sa.text("SELECT count(*) FROM roles"))).scalar_one()
-        assert codes >= 1, "the seeded roles must stay readable"
+        """SELECT-only means READS WORK — that half is the whole point.
+
+        `fd2026100502` enabled RLS on these four tables without adding a policy,
+        and RLS with no policy denies every row to a non-owner. The owner still
+        saw them, so `provision.py` kept reporting `roles=3` while the runtime
+        role read an empty RBAC plane — which took the entire database-backed
+        suite down with it. Every reference table is counted here so the next
+        one to be enabled without a policy fails the day it lands.
+        """
+        for table in ("roles", "permissions", "role_permissions", "plans"):
+            count = (await db.execute(sa.text(f"SELECT count(*) FROM {table}"))).scalar_one()
+            assert count >= 1, f"the seeded {table} must stay readable"
 
     async def test_alembic_version_is_not_writable(self, db):
         await _expect_permission_denied(db, sa.text("UPDATE alembic_version SET version_num = 'x'"))

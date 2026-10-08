@@ -311,11 +311,18 @@ async def test_the_voice_worker_books_the_decimal_estimate_not_a_float(
 
 
 class _VoiceNoteSession:
-    """Only the pending-attachment lookup ``transcribe_inbound_voice`` makes."""
+    """The session surface ``transcribe_inbound_voice`` actually touches.
+
+    That is the pending-attachment lookup plus the commits its budget guard
+    makes around reserve/settle/record — phase 2 of the worker opens no
+    transaction of its own, so those commits are what makes the reservation and
+    the transcript durable.
+    """
 
     def __init__(self, attachment) -> None:  # noqa: ANN001
         self._attachment = attachment
         self.added: list = []
+        self.commits = 0
 
     async def execute(self, statement, params=None) -> _Result:  # noqa: ANN001
         assert "FROM attachments" in str(statement), str(statement)
@@ -326,3 +333,6 @@ class _VoiceNoteSession:
 
     async def flush(self) -> None:
         return None
+
+    async def commit(self) -> None:
+        self.commits += 1

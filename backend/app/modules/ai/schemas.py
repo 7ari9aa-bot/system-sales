@@ -408,6 +408,16 @@ class TraceRunSummaryOut(BaseModel):
     causation_id: str | None = Field(
         description="Resolved from the run's input JSONB — agent_runs has no such column."
     )
+    agent_version: int | None = Field(
+        description=(
+            "Resolved from the run's input/output JSONB — agent_runs has no such column. "
+            "It is the field that says WHICH version of the agent answered, so a trace "
+            "that drops it cannot be attributed to a rollout."
+        )
+    )
+    model: str | None = Field(
+        description="Resolved from the run's input/output JSONB — agent_runs has no such column."
+    )
 
 
 class TraceRunOut(TraceRunSummaryOut):
@@ -418,7 +428,6 @@ class TraceRunOut(TraceRunSummaryOut):
     rather than inventing a column, and they stay present so the shape is stable.
     """
 
-    model: str | None
     provider: str | None
     alias: str | None
     latency_ms: int | None

@@ -582,6 +582,7 @@ async def test_trace_money_is_a_decimal_string_and_never_a_float() -> None:
         finished_at=None,
         created_at=datetime(2026, 9, 1, 8, tzinfo=UTC),
         input={},
+        output={},
     )
     model_call = SimpleNamespace(
         id=uuid.uuid4(),
@@ -757,6 +758,7 @@ def test_the_trace_service_dict_and_the_typed_model_agree() -> None:
         finished_at=None,
         created_at=datetime(2026, 9, 1, 8, tzinfo=UTC),
         input={"correlation_id": "corr-1"},
+        output={},
     )
     session = _Session(run=run, calls=[])
     produced = set(asyncio.run(AITraceService.for_run(session, TENANT, RUN)))

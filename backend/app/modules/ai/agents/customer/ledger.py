@@ -17,7 +17,10 @@ _IGNORE_KEYS = frozenset(
     {
         "id",
         "uuid",
-        "sku",
+        # NOT "sku": `search_products` publishes the SKU to the model on
+        # purpose (tools.py), so the model quoting "BW-1" must be grounded.
+        # Excluding it made every SKU containing a digit read as an ungrounded
+        # numeral and blocked an otherwise correct reply.
         "code",
         "barcode",
         "tracking_number",
@@ -33,9 +36,6 @@ _UUID_RE = re.compile(
     r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
 )
 _ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}")
-
-# Standard policy numbers supported by tenant store policies (P1-11)
-DEFAULT_POLICY_FACTS: list[str] = ["14", "30"]
 
 
 def _should_ignore_key(key: str) -> bool:
@@ -99,14 +99,16 @@ def facts_from_tool_calls(
     tools serialized (§47), which is what makes substring matching reliable
     for prices.
 
-    P1-11: Policy facts (return window, warranty days) are included so
-    policy-quoting answers pass grounding without being blocked.
+    P1-11: Policy numbers are NOT pre-approved. A hardcoded default let every
+    tenant's agent promise a 14-day return window the merchant never published,
+    and grounding passed because the number was pre-approved rather than
+    retrieved. A policy number is a fact only when a tool actually returned it
+    (knowledge search over the tenant's own policy) or a caller passes that
+    tenant's verified policy numbers in explicitly.
     """
     facts: list[str] = []
-    if policy_facts is not None:
+    if policy_facts:
         facts.extend(policy_facts)
-    else:
-        facts.extend(DEFAULT_POLICY_FACTS)
 
     for call in tool_calls_made:
         if call.get("status") != "ok":

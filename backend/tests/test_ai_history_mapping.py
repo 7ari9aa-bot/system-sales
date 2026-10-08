@@ -242,3 +242,66 @@ async def test_the_fetched_history_deduplicates_the_current_message(db, tenant_c
     )
 
     assert history == []
+
+
+async def _conversation_with_image(db, tenant_ctx, *, scan_status: str):
+    """One inbound message carrying one image attachment at `scan_status`."""
+    from app.modules.conversations.models import Attachment
+
+    customer = await CustomerService.get_or_create_by_identity(
+        db, tenant_ctx.tenant_id, "webchat", f"wc-{uuid.uuid4().hex[:10]}", name="A3-img"
+    )
+    conversation = await ConversationService.get_or_create(
+        db, tenant_ctx.tenant_id, customer_id=customer.id, channel="webchat"
+    )
+    message = await ConversationService.add_message(
+        db,
+        tenant_ctx.tenant_id,
+        conversation_id=conversation.id,
+        direction="inbound",
+        sender_type="customer",
+        body="is this the one you meant?",
+    )
+    db.add(
+        Attachment(
+            tenant_id=tenant_ctx.tenant_id,
+            message_id=message.id,
+            conversation_id=conversation.id,
+            mime_type="image/jpeg",
+            storage_key=f"media/{scan_status}-{uuid.uuid4().hex[:8]}.jpg",
+            scan_status=scan_status,
+            processing_status="pending" if scan_status == "stored" else "failed",
+        )
+    )
+    await db.flush()
+    return conversation
+
+
+async def test_a_failed_scan_attachment_never_rides_the_turn(db, tenant_ctx) -> None:
+    """DB-backed (CI only): the storage key outlives a failed scan.
+
+    ``MediaService`` writes ``storage_key`` before it knows whether the object
+    is durable, and a non-durable store then marks the row
+    ``scan_status="failed"`` (``media.py:285,312``). ``MediaService`` itself
+    refuses such a row (``scan_status != "failed"``, ``media.py:236``) — the
+    runtime has to agree, or it mints a signed URL for an object that was never
+    safely stored and hands it to an external provider.
+    """
+    conversation = await _conversation_with_image(db, tenant_ctx, scan_status="failed")
+
+    _turns, image_key = await AgentRunner._conversation_context(
+        db, tenant_ctx.tenant_id, conversation.id
+    )
+
+    assert image_key is None
+
+
+async def test_a_stored_attachment_still_rides_the_turn(db, tenant_ctx) -> None:
+    """The gate above must not become "no image ever reaches the model"."""
+    conversation = await _conversation_with_image(db, tenant_ctx, scan_status="stored")
+
+    _turns, image_key = await AgentRunner._conversation_context(
+        db, tenant_ctx.tenant_id, conversation.id
+    )
+
+    assert image_key is not None

@@ -56,18 +56,6 @@ DEFAULT_TRIAL_DAYS = 14
 # alert thresholds themselves (50/80/90/100) live in the gateway.
 DEFAULT_BUDGET_WARNING_THRESHOLD = 80
 
-_CUSTOMER_SYSTEM_PROMPT = (
-    "أنت مساعد خدمة العملاء والمبيعات الذكي للمتجر. تتحدث بلهجة مصرية مهذبة وودودة ومباشرة.\n"
-    "مهمتك مساعدة العملاء في الاستفسار عن المنتجات، الأسعار، المخزون، وحالة الطلبات، وإتمام "
-    "عمليات الشراء.\n"
-    "القواعد الإلزامية:\n"
-    "1. لا تذكر أو تؤكد أي سعر أو كمية متوفرة إلا بعد الاستعلام عنها عبر الأدوات المخصصة.\n"
-    "2. قبل تسجيل أي طلب، تأكد من وضوح كافة بيانات العميل والمنتج والكمية.\n"
-    "3. التزم بسياسات المتجر المعلنة بدقة (الشحن، الدفع، الاسترجاع والاستبدال).\n"
-    "4. إذا طلب العميل التحدث مع موظف خدمة عملاء أو واجهت طلباً لا تستطيع حله، حوّل "
-    "المحادثة لموظف بشري بلطف."
-)
-
 
 async def seed_tenant_defaults(
     session: AsyncSession,
@@ -238,105 +226,11 @@ async def seed_tenant_defaults(
 
     created["metric_definitions"] = (await seed_definitions(session, tenant_id)) > 0
 
-    # --- canonical agent provisioning --------------------------------------
-    #
-    # Every new tenant must be born with the platform's canonical agents
-    # (Customer Service Agent and Sales Intelligence Agent) plus their default tools.
-    # Parameter-bound SQL avoids closing an identity <-> ai module import cycle
-    # (review G-16 / spec §137).
-    canonical_agents = [
-        (
-            "customer",
-            "مساعد المبيعات",
-            (
-                "Handles customer inquiries, catalog search,"
-                " orders, tasks, and vision-based product matching."
-            ),
-            "fast",
-            _CUSTOMER_SYSTEM_PROMPT,
-            [
-                "search_products",
-                "get_variant_price",
-                "check_stock",
-                "create_order",
-                "get_customer",
-                "get_order",
-                "search_knowledge",
-                "add_task",
-                "add_tag",
-                "find_product_by_image",
-                "resolve_product_media",
-            ],
-        ),
-        (
-            "sales_intelligence",
-            "Sales Intelligence Agent",
-            (
-                "Analyzes sales data, metrics, trends, fulfillment,"
-                " and drivers to provide actionable"
-                " business intelligence."
-            ),
-            "strong",
-            "You are a senior sales & commercial intelligence analyst.",
-            [
-                "si_get_metric",
-                "si_compare_periods",
-                "si_breakdown",
-                "si_analyze_drivers",
-                "si_explain_metric",
-                "si_data_status",
-                "si_analyze_seasonality",
-                "si_analyze_customers",
-                "si_analyze_fulfillment",
-            ],
-        ),
-    ]
-
-    for kind, name, description, model, prompt, tools in canonical_agents:
-        agent_id = uuid.uuid4()
-        ins = await session.execute(
-            sa_text(
-                "INSERT INTO agents"
-                " (id, tenant_id, kind, name, description,"
-                "  model, system_prompt, is_active,"
-                "  created_at, updated_at) "
-                "SELECT :id, :tenant_id, :kind, :name,"
-                " :description, :model, :prompt,"
-                " true, now(), now() "
-                "WHERE NOT EXISTS ("
-                "SELECT 1 FROM agents"
-                " WHERE tenant_id = :tenant_id"
-                " AND kind = :kind)"
-            ),
-            {
-                "id": str(agent_id),
-                "tenant_id": str(tenant_id),
-                "kind": kind,
-                "name": name,
-                "description": description,
-                "model": model,
-                "prompt": prompt,
-            },
-        )
-        if ins.rowcount:
-            for tool_name in tools:
-                await session.execute(
-                    sa_text(
-                        "INSERT INTO agent_tools"
-                        " (id, tenant_id, agent_id, name,"
-                        "  policy, is_active,"
-                        "  created_at, updated_at) "
-                        "VALUES (:id, :tenant_id, :agent_id, :name, '{}', true, now(), now()) "
-                        "ON CONFLICT (tenant_id, agent_id, name) DO NOTHING"
-                    ),
-                    {
-                        "id": str(uuid.uuid4()),
-                        "tenant_id": str(tenant_id),
-                        "agent_id": str(agent_id),
-                        "name": tool_name,
-                    },
-                )
-    created["canonical_agents"] = True
+    # Canonical agents are deliberately NOT seeded here. They are described by
+    # their AgentDefinition and created by the tenant-created hook that
+    # `identity.service.register` dispatches right after this returns. A second
+    # copy written here would run first and win every field it set, freezing the
+    # definition — which is what happened to the SI agent's system prompt.
 
     logger.info("tenant.seeded tenant=%s created=%s", tenant_id, created)
     return created

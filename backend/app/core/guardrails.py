@@ -26,6 +26,7 @@ import re
 import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
 
 # Invisible joiners and compatibility forms are the cheapest way past a literal
 # marker, so every pattern below is matched against `_screened()` output — one
@@ -253,6 +254,24 @@ def claims_facts(text: str) -> bool:
     return bool(_FACT_CLAIM.search(_screened(text)))
 
 
+def _numerals(text: str) -> set[Decimal]:
+    """Every number in `text`, as a Decimal so they compare NUMERICALLY.
+
+    The tools return money in the two-decimal form the schema stores ("120.00")
+    while the model says "120", and the customer agent answers in Arabic so the
+    figure may be Arabic-Indic ("١٢٠"). As strings none of those intersect, and
+    a price that WAS sourced got handed to a human — the customer's answer
+    silently withheld by the check that exists to protect it.
+    """
+    found: set[Decimal] = set()
+    for raw in re.findall(r"\d+(?:\.\d+)?", text):
+        try:
+            found.add(Decimal(raw))
+        except InvalidOperation:
+            continue
+    return found
+
+
 def claim_checks(content: str, ctx: dict) -> GuardrailVerdict | None:
     """V12 §26: Generated commercial claims verified against authoritative evidence.
     No evidence -> BLOCK.
@@ -303,14 +322,15 @@ def default_guardrail(
         tool_results = ctx.get("tool_results")
         if not tool_results:
             return GuardrailVerdict(decision="handover", reason="unsourced_claim")
-        # Extract numerals from the content and verify they exist in tool output.
-        content_nums = set(re.findall(r"\d+(?:\.\d+)?", _screened(content)))
+        # `_FACT_CLAIM` also fires on a bare "%"/"percent", so a claim can carry
+        # no numeral at all. This check's job is to source the NUMBERS in the
+        # answer; with none there is nothing to compare and nothing to withhold.
+        content_nums = _numerals(_screened(content))
         if not content_nums:
             return None
         tool_text = str(tool_results) if not isinstance(tool_results, str) else tool_results
-        tool_nums = set(re.findall(r"\d+(?:\.\d+)?", tool_text))
         # At least one claimed numeral must be sourced from a tool result.
-        if not content_nums & tool_nums:
+        if not content_nums & _numerals(tool_text):
             return GuardrailVerdict(decision="handover", reason="unsourced_claim")
         return None
 

@@ -121,6 +121,12 @@ class Settings(BaseSettings):
     # AI providers (OpenAI-compatible endpoints; per-tenant overrides via
     # model_configs table take precedence over these defaults)
     ai_provider_primary: str = ""
+    # The model NAME is its own setting: `provider` identifies the API dialect
+    # ("openai"), not a model. Reading this through getattr(..., "") let a
+    # missing field degrade the request to `model="openai"`, and extra="ignore"
+    # swallowed AI_MODEL_PRIMARY from the environment — a tenant with no
+    # model_configs row then failed at the provider with an unattributable 400.
+    ai_model_primary: str = ""
     ai_api_key_primary: str = ""
     ai_base_url_primary: str = ""
 

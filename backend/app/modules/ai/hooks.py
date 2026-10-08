@@ -17,6 +17,7 @@ import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.ai.gateway import AIBudgetExhaustedError
 from app.modules.ai.runtime import AgentRunner
 from app.modules.conversations.policy import OutboundBlockedError
 
@@ -52,7 +53,18 @@ async def _do_auto_reply(
     # Lazy imports: conversations owns messages; AI is an optional layer.
     from app.core.events.writer import add_outbox_event
     from app.modules.ai.core.resolver import resolve_agent_by_kind_optional
+    from app.modules.ai.handover import request_human_takeover
     from app.modules.conversations.service import ConversationService
+
+    async def handover(reason: str, note: str, run_id: uuid.UUID | None) -> None:
+        await request_human_takeover(
+            session,
+            tenant_id,
+            conversation_id=conversation_id,
+            reason=reason,
+            note=note,
+            run_id=run_id,
+        )
 
     agent = await resolve_agent_by_kind_optional(session, tenant_id, "customer")
     if agent is None:
@@ -167,17 +179,30 @@ async def _do_auto_reply(
             exc_info=True,
         )
 
-    result = await AgentRunner().run(
-        session,
-        tenant_id,
-        agent_id=agent.id,
-        conversation_id=conversation_id,
-        inbound_message_id=last_inbound.id,
-        user_message=user_body,
-        customer_id=customer_id,
-        system_prompt=system_prompt or None,
-        knowledge_context=knowledge_context,  # §132: separate from system prompt
-    )
+    try:
+        result = await AgentRunner().run(
+            session,
+            tenant_id,
+            agent_id=agent.id,
+            conversation_id=conversation_id,
+            inbound_message_id=last_inbound.id,
+            user_message=user_body,
+            customer_id=customer_id,
+            system_prompt=system_prompt or None,
+            knowledge_context=knowledge_context,  # §132: separate from system prompt
+        )
+    except AIBudgetExhaustedError as exc:
+        # A spent ceiling is not a retryable failure, and letting it reach the
+        # worker made it one: the message dead-lettered and the customer got
+        # silence with nobody told. Hand it to a human instead — the note says
+        # WHICH ceiling (monthly / daily / fairness) so the merchant can act.
+        await handover("budget", f"budget:{exc.message}", None)
+        logger.warning(
+            "ai.budget_exhausted_handover conversation=%s reason=%s",
+            conversation_id,
+            exc.message,
+        )
+        return
 
     # §158: the memory for this run is persisted ONCE, inside AgentRunner
     # (same provenance rules, plus an explicit guardrail==allow check). The
@@ -188,33 +213,7 @@ async def _do_auto_reply(
     # covered — this only reacts to the verdict. The runner already withheld
     # the content, so there is nothing sendable here either way.
     if result.guardrail_decision != "allow":
-        from app.modules.ai.models import AIHandover
-
-        session.add(
-            AIHandover(
-                tenant_id=tenant_id,
-                conversation_id=conversation_id,
-                run_id=result.run_id,
-                reason="guardrail",
-                status="pending",
-                note=f"guardrail:{result.guardrail_reason}",
-            )
-        )
-        await ConversationService.set_status(session, tenant_id, conversation_id, "waiting_human")
-        await add_outbox_event(
-            session,
-            aggregate_type="ai",
-            aggregate_id=conversation_id,
-            event_type="ai.handover.created",
-            tenant_id=tenant_id,
-            payload={
-                "event_type": "ai.handover.created",
-                "conversation_id": str(conversation_id),
-                "run_id": str(result.run_id) if result.run_id else None,
-                "reason": "guardrail",
-                "note": f"guardrail:{result.guardrail_reason}",
-            },
-        )
+        await handover("guardrail", f"guardrail:{result.guardrail_reason}", result.run_id)
         logger.warning(
             "ai.guardrail_blocked conversation=%s reason=%s",
             conversation_id,
@@ -239,33 +238,7 @@ async def _do_auto_reply(
         # allowed on this channel. Hand over to a human (who can send an
         # approved template) instead of letting the event fail — the customer
         # still needs an answer, and a failed event would be retried forever.
-        from app.modules.ai.models import AIHandover
-
-        session.add(
-            AIHandover(
-                tenant_id=tenant_id,
-                conversation_id=conversation_id,
-                run_id=result.run_id,
-                reason="messaging_window_closed",
-                status="pending",
-                note=f"policy:{exc.message}",
-            )
-        )
-        await ConversationService.set_status(session, tenant_id, conversation_id, "waiting_human")
-        await add_outbox_event(
-            session,
-            aggregate_type="ai",
-            aggregate_id=conversation_id,
-            event_type="ai.handover.created",
-            tenant_id=tenant_id,
-            payload={
-                "event_type": "ai.handover.created",
-                "conversation_id": str(conversation_id),
-                "run_id": str(result.run_id) if result.run_id else None,
-                "reason": "messaging_window_closed",
-                "note": f"policy:{exc.message}",
-            },
-        )
+        await handover("messaging_window_closed", f"policy:{exc.message}", result.run_id)
         logger.warning(
             "ai.reply_blocked_by_policy conversation=%s reason=%s",
             conversation_id,

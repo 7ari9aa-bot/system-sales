@@ -1,9 +1,11 @@
 """AI approval workflow (spec §135) — durable human-in-the-loop.
 
 HIGH-risk tool calls create an ApprovalRequest and suspend the run in
-WAITING_APPROVAL. Approve → resume; reject/expire → stop. A new customer
-message makes pending approvals stale (re-evaluate context, never
-auto-continue).
+WAITING_APPROVAL. Approving enqueues a NEW run that finds the grant and executes
+it once; rejecting, cancelling or letting the TTL lapse ends the parked run and
+hands the conversation to a human — the customer was told a reply was coming, so
+"no" has to be delivered by someone. A new customer message makes pending
+approvals stale (re-evaluate context, never auto-continue).
 """
 
 from __future__ import annotations
@@ -18,7 +20,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import NotFoundError, ValidationError
-from app.modules.ai.models import ApprovalRequest
+from app.modules.ai.models import AgentRun, ApprovalRequest
 
 APPROVAL_TTL_MINUTES = 60
 
@@ -26,6 +28,11 @@ APPROVAL_TTL_MINUTES = 60
 #: histories (APPROVED / REJECTED) grow forever; reported as `truncated` so a
 #: bounded page never reads as a complete one.
 APPROVALS_PAGE_SIZE = 100
+
+#: How many approvals one TTL sweep expires. Each expiry also closes a parked
+#: run and opens a human handover, so an unbounded sweep after an outage would
+#: be one enormous transaction; the next tick takes the rest.
+EXPIRE_BATCH_SIZE = 100
 
 
 def payload_fingerprint(payload: dict | None) -> str:
@@ -66,6 +73,69 @@ def _pending_duplicate_stmt(
             ApprovalRequest.payload_hash == fingerprint,
         )
         .limit(1)
+    )
+
+
+async def _close_parked_run(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    request: ApprovalRequest,
+    *,
+    outcome: str,
+    note: str | None = None,
+) -> None:
+    """End the run that parked on this approval, now that the answer is known.
+
+    Nothing ever resumes that row in place: `AgentRunner.run` always creates a
+    NEW run, and the resume locates the grant by conversation + action +
+    argument fingerprint, not by run id. So a decided approval leaves its
+    WAITING_APPROVAL run unreachable — permanently "in flight" to anything that
+    counts runs, and (for a refusal) a customer who was promised a reply and
+    never gets one.
+
+    Both writes ride in the caller's transaction: a decision that cannot close
+    its run is not a decision.
+    """
+    detail = f"approval:{outcome.lower()}" + (f" {note}" if note else "")
+
+    if request.run_id is not None:
+        run = (
+            await session.execute(
+                select(AgentRun)
+                .where(
+                    AgentRun.tenant_id == tenant_id,
+                    AgentRun.id == request.run_id,
+                    # Only a still-parked run is this approval's to close. A run
+                    # that already failed or timed out keeps its own verdict.
+                    AgentRun.status == "WAITING_APPROVAL",
+                )
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if run is not None:
+            # An approved action is executed by the resume run, so this one ends
+            # the way it should: it asked, and it got an answer.
+            run.status = "succeeded" if outcome == "APPROVED" else "cancelled"
+            if run.status == "cancelled":
+                run.error = detail
+            # `finished_at` is deliberately left alone: the runner stamped it
+            # when the waiting message went out, so restamping it here would
+            # fold the human's think time into the agent's own duration.
+
+    if outcome == "APPROVED":
+        return  # the resumed run answers the customer
+    if request.conversation_id is None:
+        return  # no conversation to hand over (an automation, or it was erased)
+
+    from app.modules.ai.handover import request_human_takeover
+
+    await request_human_takeover(
+        session,
+        tenant_id,
+        conversation_id=request.conversation_id,
+        reason="approval",
+        note=detail,
+        run_id=request.run_id,
     )
 
 
@@ -177,6 +247,10 @@ class ApprovalService:
         if request.status != "PENDING":
             raise ValidationError(f"approval already {request.status}")
         if request.expires_at is not None and request.expires_at < datetime.now(UTC):
+            # The request transaction aborts with this raise, so NOTHING written
+            # here reaches the database — the row is still PENDING when the
+            # reviewer sees the 400. `expire_stale` is what actually expires it
+            # and closes the run it parked; this branch only refuses the decision.
             request.status = "EXPIRED"
             raise ValidationError("approval request expired")
 
@@ -185,6 +259,9 @@ class ApprovalService:
         request.decided_at = datetime.now(UTC)
         request.rejection_reason = rejection_reason
         await session.flush()
+        await _close_parked_run(
+            session, tenant_id, request, outcome=decision, note=rejection_reason
+        )
         return request
 
     @staticmethod
@@ -280,20 +357,45 @@ class ApprovalService:
         return list(rows[:limit]), len(rows) > limit
 
     @staticmethod
-    async def expire_stale(session: AsyncSession, tenant_id: uuid.UUID) -> int:
-        """Maintenance worker: expire PENDING approvals past their TTL."""
-        from sqlalchemy import update
+    async def expire_stale(
+        session: AsyncSession, tenant_id: uuid.UUID, *, limit: int = EXPIRE_BATCH_SIZE
+    ) -> int:
+        """Maintenance worker: expire PENDING approvals past their TTL.
 
-        result = await session.execute(
-            update(ApprovalRequest)
-            .where(
-                ApprovalRequest.tenant_id == tenant_id,
-                ApprovalRequest.status == "PENDING",
-                ApprovalRequest.expires_at < datetime.now(UTC),
+        This is the COMMON expiry path — most approvals are never looked at —
+        so it is also where a parked run and its waiting customer get closed
+        out. Rows are read, then written, rather than bulk-updated: a handover
+        is per-conversation and a bulk UPDATE cannot open one.
+        """
+        now = datetime.now(UTC)
+        rows = (
+            (
+                await session.execute(
+                    select(ApprovalRequest)
+                    .where(
+                        ApprovalRequest.tenant_id == tenant_id,
+                        ApprovalRequest.status == "PENDING",
+                        ApprovalRequest.expires_at < now,
+                    )
+                    # Oldest first: a backlog drains in the order it accrued, so
+                    # the customer who has waited longest is closed out first.
+                    .order_by(ApprovalRequest.expires_at)
+                    .limit(limit)
+                    # A redelivered job blocks here instead of expiring the same
+                    # approval twice and opening two handovers for it. When the
+                    # winner commits, the loser re-reads the row, sees it is no
+                    # longer PENDING, and drops it.
+                    .with_for_update()
+                )
             )
-            .values(status="EXPIRED")
+            .scalars()
+            .all()
         )
-        return result.rowcount or 0
+        for request in rows:
+            request.status = "EXPIRED"
+            await _close_parked_run(session, tenant_id, request, outcome="EXPIRED")
+        await session.flush()
+        return len(rows)
 
     @staticmethod
     async def is_stale_for_conversation(

@@ -12,10 +12,10 @@ are load-bearing for the screen:
   complete one.
 * The gates the screen's comments assert are the gates the routes actually
   declare: reading the queue is tenant-authenticated only, deciding is
-  ``settings:write``. The dialog does NOT pre-check permission client-side (it
-  has no permission model to consult) precisely because the server owns this,
-  so if either gate moved the frontend's stated reasoning would be false. That
-  is what the DB-free cases below hold in place.
+  ``ai:approve``. The screen does NOT pre-check permission client-side (it has
+  no permission model to consult) precisely because the server owns this, so if
+  either gate moved the frontend's stated reasoning would be false. That is
+  what the DB-free cases below hold in place.
 
 The truncation cases need ``DATABASE_URL_APP_ADMIN`` and skip locally; CI is
 where their verdict is published.
@@ -66,17 +66,21 @@ def test_reading_the_queue_needs_only_a_tenant_context() -> None:
     )
 
 
-def test_deciding_an_approval_is_gated_by_settings_write() -> None:
-    """The gate `decision-dialog.tsx` reasons about, pinned where it is declared.
+def test_deciding_an_approval_is_gated_by_ai_approve() -> None:
+    """The gate `pages/AI.jsx` reasons about, pinned where it is declared.
 
-    The dialog deliberately does not pre-check permission client-side — it has no
-    permission model to consult and shows the server's 403 sentence instead. That
-    reasoning is only honest while this is the gate the route carries.
+    The screen deliberately does not pre-check permission client-side — it has
+    no permission model to consult and renders the server's 403 sentence into
+    `approvalError` instead. That reasoning is only honest while this is the
+    gate the route carries, so the gate is read off the route and not off a
+    comment: `settings:write` used to be the answer, and the route moved to
+    `ai:approve` without anyone noticing because a bespoke closure declares no
+    `code` for this walk to find.
     """
     codes = _permission_codes(ai_router.routes, "/ai/approvals/{approval_id}/decide", "POST")
-    assert codes == {"settings:write"}, (
-        f"decide is gated by {codes or 'nothing'} — the screen tells the reviewer "
-        "they need `settings:write`, so a moved gate is a false statement on screen"
+    assert codes == {"ai:approve"}, (
+        f"decide is gated by {codes or 'nothing'} — the screen shows the server's "
+        "refusal verbatim, so a gate this walk cannot see is a gate nobody can pin"
     )
 
 

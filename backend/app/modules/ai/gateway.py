@@ -5,9 +5,13 @@ to the deployment-wide primary provider settings. Every call writes a
 ``model_calls`` row (tokens, latency, cost estimate). The gateway NEVER
 commits — it flushes inside the caller's transaction.
 
-NOTE: settings fields ``ai_provider_primary`` / ``ai_api_key_primary`` /
-``ai_base_url_primary`` are read defensively via ``getattr``; they are optional
-deployment settings and are intentionally NOT added to app/core/config.py.
+The deployment-wide primary provider is configured by ``AI_PROVIDER_PRIMARY``
+/ ``AI_MODEL_PRIMARY`` / ``AI_BASE_URL_PRIMARY`` / ``AI_API_KEY_PRIMARY``, all
+declared in ``app/core/config.py``. The model name is read as a declared field,
+not through ``getattr``: a missing field used to degrade the request to
+``model="openai"`` (the provider name), and ``extra="ignore"`` swallowed the
+env var, so the misconfiguration was invisible until the provider returned a
+400 that no tenant could attribute to configuration.
 """
 
 from __future__ import annotations
@@ -147,9 +151,18 @@ async def resolve_model_config(
     provider = getattr(settings, "ai_provider_primary", "") or ""
     if not provider:
         raise ValidationError(f"no model configured for alias {alias}")
+    model = getattr(settings, "ai_model_primary", "") or ""
+    if not model:
+        # Never fall back to the provider name: an OpenAI-compatible endpoint
+        # rejects `model="openai"`, and the operator needs to hear WHICH knob
+        # is missing rather than debug a tenant's chat failures.
+        raise ValidationError(
+            f"no model name configured for alias {alias}: set AI_MODEL_PRIMARY "
+            "or add a model_configs row for this tenant"
+        )
     return {
         "provider": provider,
-        "model": getattr(settings, "ai_model_primary", "") or provider,
+        "model": model,
         "base_url": getattr(settings, "ai_base_url_primary", "") or "",
         "api_key": getattr(settings, "ai_api_key_primary", "") or "",
     }
@@ -359,6 +372,27 @@ class AIBudgetFallbackRequested(Exception):
         self.details = details or {}
 
 
+class AIBudgetExhaustedError(RateLimitExceededError):
+    """§42: a spend ceiling was reached — monthly cap, daily cap or fairness.
+
+    Distinct from a generic rate limit so the auto-reply hook can turn it into
+    a human handover. Before this existed the two ceilings failed differently
+    and both ended in silence: the fairness gate raised ``ValidationError``,
+    which the worker classifies as PERMANENT and dead-letters on the spot, and
+    the cost cap raised a bare ``RateLimitExceededError``, which burned five
+    retries against a ceiling that cannot rise, then dead-lettered too. Neither
+    path told a human the customer was waiting.
+
+    Subclasses ``RateLimitExceededError`` so every existing handler — the 429
+    mapping, ``transcribe_inbound_voice``'s budget guard — keeps working.
+    """
+
+    code = "ai_budget_exhausted"
+    # Retrying inside the same period cannot succeed; the ceiling resets on its
+    # own schedule (daily fairness / monthly cap), not on a backoff.
+    retryable = False
+
+
 def _on_budget_exceeded(on_exceed: str, message: str, *, details: dict) -> None:
     """§42 mode dispatch when committed spend crosses the cap."""
     if on_exceed == "fallback":
@@ -368,7 +402,7 @@ def _on_budget_exceeded(on_exceed: str, message: str, *, details: dict) -> None:
         # The reservation is still taken and settled, so spend stays accounted.
         logger.warning("ai.budget_exceeded_warn %s %s", message, details)
         return
-    raise RateLimitExceededError(message, details=details)
+    raise AIBudgetExhaustedError(message, details=details)
 
 
 async def reserve_budget(
@@ -494,7 +528,7 @@ async def enforce_budget(
     spend = await _month_spend(session, tenant_id)
     ratio = float(spend / cap * 100) if cap > 0 else 0.0
     if spend >= cap and on_exceed == "block":
-        raise RateLimitExceededError(
+        raise AIBudgetExhaustedError(
             "monthly AI budget exceeded",
             details={"spend": str(spend), "cap": str(cap)},
         )
@@ -587,9 +621,13 @@ class AIGateway:
                 units=(len(str(messages)) // 4) + (max_tokens or 1024),
             )
             if not fairness_ok:
-                from app.core.errors import ValidationError as _VE
-
-                raise _VE("tenant AI token fairness budget exhausted — daily limit reached")
+                # Deliberately NOT a ValidationError: the worker treats that as
+                # a permanent failure and dead-letters the customer's message
+                # immediately. A spent fairness budget is a spend ceiling, and
+                # the auto-reply hook turns it into a human handover.
+                raise AIBudgetExhaustedError(
+                    "tenant AI token fairness budget exhausted — daily limit reached"
+                )
 
             # §43: data-egress policy — is this tenant allowed to send data to
             # this provider/model? This is NOT authorization (the entitlement

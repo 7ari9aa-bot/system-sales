@@ -256,3 +256,38 @@ async def test_api_key_never_reaches_logs_or_model_call_rows(db, tenant_ctx, mon
         .one()
     )
     assert secret not in str(row.__dict__)
+
+
+# ------------------------------------------------- deployment model name ----
+
+
+class _ProviderWithoutModel:
+    """A deployment that named its provider but never named its model."""
+
+    ai_provider_primary = "openai"
+    ai_api_key_primary = "test-key"
+    ai_base_url_primary = "https://api.test/v1"
+    ai_model_primary = ""
+
+
+def test_settings_declares_the_primary_model_name() -> None:
+    """``AI_MODEL_PRIMARY`` must be a real setting, not a getattr wish.
+
+    ``resolve_model_config`` read it through ``getattr(settings, ..., "")``, so
+    the field's absence degraded the model name to the PROVIDER name — a tenant
+    with no ``model_configs`` row asked an OpenAI-compatible endpoint for
+    ``model="openai"`` and got a 400 nobody could attribute to configuration.
+    ``extra="ignore"`` then swallowed ``AI_MODEL_PRIMARY`` from the environment,
+    so adding it to ``.env`` changed nothing. Every test double in this file
+    declared the attribute, which is exactly why no test caught it.
+    """
+    from app.core.config import Settings
+
+    assert "ai_model_primary" in Settings.model_fields
+
+
+async def test_primary_without_model_name_fails_loudly(db, tenant_ctx, monkeypatch):
+    """No model name must never resolve to the provider string."""
+    monkeypatch.setattr(ai_gateway, "get_settings", lambda: _ProviderWithoutModel())
+    with pytest.raises(ValidationError, match="AI_MODEL_PRIMARY"):
+        await resolve_model_config(db, tenant_ctx.tenant_id, "fast")

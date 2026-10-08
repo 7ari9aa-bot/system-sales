@@ -18,7 +18,13 @@ from app.modules.ai.agents.customer.ledger import facts_from_tool_calls
 def test_arabic_indic_digits_fold_before_matching():
     assert extract_numerals("السعر ٢٥ جنيه") == ["25"]
     assert extract_numerals("٥٫٥ كيلو") == ["5.5"]
-    assert check_grounding("السعر ٢٥ جنيه", ["25.50"]) is None
+    # Folding is what makes an Arabic-Indic price traceable at all: ٥٫٥ is the
+    # same number as the "5.50" a tool returned.
+    assert check_grounding("٥٫٥ كيلو", ["5.50"]) is None
+    # P1-10 tightened the match from substring to numeric equality, so rounding
+    # DOWN to 25 is no longer grounded by a 25.50 fact. That is the point of
+    # the tightening: "25" inside "25.50" used to pass as evidence.
+    assert check_grounding("السعر ٢٥ جنيه", ["25.50"]) is not None
     assert check_grounding("السعر ٢٦ جنيه", ["25.50"]) is not None
 
 
@@ -53,12 +59,21 @@ def test_order_quantities_read_from_args_not_result():
             "name": "create_order",
             "status": "ok",
             "args": {"items": [{"variant_id": "v1", "quantity": 3}]},
-            "result": {"order_id": "o-9", "grand_total": "75.00"},
+            "result": {
+                "order_id": "o-9",
+                "number": "ORD-1043",
+                "status": "pending",
+                "grand_total": "75.00",
+            },
         }
     ]
     facts = facts_from_tool_calls(calls)
     assert "3" in facts  # the customer's own quantity
-    assert "75.00" in facts and "o-9" in facts
+    assert "75.00" in facts
+    # The order NUMBER is what a human reads back to the customer, so it must
+    # be quotable; the UUID behind it is an entity id and stays out (P1-10).
+    assert "ORD-1043" in facts
+    assert "o-9" not in facts
 
 
 def test_non_order_tool_args_do_not_leak_in():
@@ -87,3 +102,29 @@ def test_bools_and_nones_are_not_facts():
     facts = facts_from_tool_calls(calls)
     assert "False" not in facts and "None" not in facts
     assert "سالم" in facts
+
+
+def test_no_policy_number_is_pre_approved():
+    """A return window is a tenant fact, not a platform constant.
+
+    The ledger used to seed every run with ["14", "30"], so an agent could
+    promise a 14-day return to a merchant who published no such policy and
+    grounding would wave it through — the number was pre-approved rather than
+    retrieved. It is grounded only once the tenant's own knowledge says it.
+    """
+    empty = [
+        {"name": "search_products", "status": "ok", "args": {}, "result": {"results": []}},
+    ]
+    facts = facts_from_tool_calls(empty)
+    assert "14" not in facts and "30" not in facts
+    assert check_grounding("الاسترجاع خلال 14 يوم", facts) is not None
+
+    retrieved = [
+        {
+            "name": "search_knowledge",
+            "status": "ok",
+            "args": {},
+            "result": {"results": [{"content": "سياسة الاسترجاع خلال 14 يوم"}]},
+        }
+    ]
+    assert check_grounding("الاسترجاع خلال 14 يوم", facts_from_tool_calls(retrieved)) is None

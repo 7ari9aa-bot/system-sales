@@ -607,36 +607,15 @@ class AgentRunner:
             # in AI limbo — the customer would get silence. Record a durable
             # handover so a human picks it up.
             if conversation_id is not None:
-                from app.core.events.writer import add_outbox_event
-                from app.modules.ai.models import AIHandover
-                from app.modules.conversations.service import ConversationService
+                from app.modules.ai.handover import request_human_takeover
 
-                session.add(
-                    AIHandover(
-                        tenant_id=tenant_id,
-                        conversation_id=conversation_id,
-                        run_id=run.id,
-                        reason="failure",
-                        status="pending",
-                        note=f"run_limit:{hit_limit}",
-                    )
-                )
-                await ConversationService.set_status(
-                    session, tenant_id, conversation_id, "waiting_human"
-                )
-                await add_outbox_event(
+                await request_human_takeover(
                     session,
-                    aggregate_type="ai",
-                    aggregate_id=conversation_id,
-                    event_type="ai.handover.created",
-                    tenant_id=tenant_id,
-                    payload={
-                        "event_type": "ai.handover.created",
-                        "conversation_id": str(conversation_id),
-                        "run_id": str(run.id),
-                        "reason": "failure",
-                        "note": f"run_limit:{hit_limit}",
-                    },
+                    tenant_id,
+                    conversation_id=conversation_id,
+                    reason="failure",
+                    note=f"run_limit:{hit_limit}",
+                    run_id=run.id,
                 )
             await session.flush()
             logger.warning("ai.run_limit_hit run=%s limit=%s", run.id, hit_limit)
@@ -650,36 +629,15 @@ class AgentRunner:
             # §134: same as above — the step budget ran out, so a human takes
             # over rather than the customer staring at silence.
             if conversation_id is not None:
-                from app.core.events.writer import add_outbox_event
-                from app.modules.ai.models import AIHandover
-                from app.modules.conversations.service import ConversationService
+                from app.modules.ai.handover import request_human_takeover
 
-                session.add(
-                    AIHandover(
-                        tenant_id=tenant_id,
-                        conversation_id=conversation_id,
-                        run_id=run.id,
-                        reason="failure",
-                        status="pending",
-                        note="run_limit:max_steps",
-                    )
-                )
-                await ConversationService.set_status(
-                    session, tenant_id, conversation_id, "waiting_human"
-                )
-                await add_outbox_event(
+                await request_human_takeover(
                     session,
-                    aggregate_type="ai",
-                    aggregate_id=conversation_id,
-                    event_type="ai.handover.created",
-                    tenant_id=tenant_id,
-                    payload={
-                        "event_type": "ai.handover.created",
-                        "conversation_id": str(conversation_id),
-                        "run_id": str(run.id),
-                        "reason": "failure",
-                        "note": "run_limit:max_steps",
-                    },
+                    tenant_id,
+                    conversation_id=conversation_id,
+                    reason="failure",
+                    note="run_limit:max_steps",
+                    run_id=run.id,
                 )
             await session.flush()
             logger.warning("ai.run_limit_hit run=%s limit=max_steps", run.id)
@@ -913,6 +871,12 @@ class AgentRunner:
                         _conversations_models.Attachment.message_id == message.id,
                         _conversations_models.Attachment.mime_type.like("image/%"),
                         _conversations_models.Attachment.storage_key.is_not(None),
+                        # A failed scan leaves the storage key behind (media.py
+                        # writes it before it knows the object is durable), and
+                        # MediaService itself refuses such a row. Sending it
+                        # anyway would sign a URL for an object that was never
+                        # safely stored and hand it to an external provider.
+                        _conversations_models.Attachment.scan_status != "failed",
                     )
                     .order_by(_conversations_models.Attachment.created_at.desc())
                     .limit(1)

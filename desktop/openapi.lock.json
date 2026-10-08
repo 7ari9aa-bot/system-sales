@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 331,
-    "sha256": "ee928776462f39269418cbf14cd1cd38bc7187af95a754b60ada08bb1d68c1f4",
-    "typed_operations": 209
+    "operations": 335,
+    "sha256": "26efd9e298a6ed69e10e622c9d62ff7490e7a2cb526813e72c60b3e01e025680",
+    "typed_operations": 213
   },
   "spec": {
     "components": {
@@ -375,6 +375,35 @@
           "title": "AddressOut",
           "type": "object"
         },
+        "AgentCapabilityOut": {
+          "properties": {
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "required": {
+              "title": "Required",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "name",
+            "required"
+          ],
+          "title": "AgentCapabilityOut",
+          "type": "object"
+        },
         "AgentCreateRequest": {
           "properties": {
             "description": {
@@ -387,6 +416,12 @@
                 }
               ],
               "title": "Description"
+            },
+            "kind": {
+              "default": "customer",
+              "maxLength": 63,
+              "title": "Kind",
+              "type": "string"
             },
             "model": {
               "anyOf": [
@@ -447,6 +482,10 @@
               "title": "Is Active",
               "type": "boolean"
             },
+            "kind": {
+              "title": "Kind",
+              "type": "string"
+            },
             "model": {
               "anyOf": [
                 {
@@ -480,11 +519,89 @@
           },
           "required": [
             "id",
+            "kind",
             "name",
             "is_active",
             "version"
           ],
           "title": "AgentDetailOut",
+          "type": "object"
+        },
+        "AgentKindOut": {
+          "properties": {
+            "allowed_tools": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Allowed Tools",
+              "type": "array"
+            },
+            "capabilities": {
+              "items": {
+                "$ref": "#/components/schemas/AgentCapabilityOut"
+              },
+              "title": "Capabilities",
+              "type": "array"
+            },
+            "default_model": {
+              "title": "Default Model",
+              "type": "string"
+            },
+            "default_tools": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Default Tools",
+              "type": "array"
+            },
+            "definition_version": {
+              "default": 1,
+              "title": "Definition Version",
+              "type": "integer"
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            },
+            "guardrail_profile": {
+              "default": "default",
+              "title": "Guardrail Profile",
+              "type": "string"
+            },
+            "kind": {
+              "title": "Kind",
+              "type": "string"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "provisioning_policy": {
+              "additionalProperties": true,
+              "title": "Provisioning Policy",
+              "type": "object"
+            },
+            "task_types": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Task Types",
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "name",
+            "default_model"
+          ],
+          "title": "AgentKindOut",
           "type": "object"
         },
         "AgentOut": {
@@ -509,6 +626,10 @@
             "is_active": {
               "title": "Is Active",
               "type": "boolean"
+            },
+            "kind": {
+              "title": "Kind",
+              "type": "string"
             },
             "max_output_tokens": {
               "anyOf": [
@@ -553,6 +674,7 @@
           },
           "required": [
             "id",
+            "kind",
             "name",
             "description",
             "model",
@@ -6598,10 +6720,29 @@
         },
         "EvaluationSubmitRequest": {
           "properties": {
+            "agent_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent Id"
+            },
             "agent_version_id": {
-              "format": "uuid",
-              "title": "Agent Version Id",
-              "type": "string"
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent Version Id"
             },
             "dataset_id": {
               "anyOf": [
@@ -6615,15 +6756,17 @@
               ],
               "title": "Dataset Id"
             },
+            "prompt_version": {
+              "default": 1,
+              "title": "Prompt Version",
+              "type": "integer"
+            },
             "results": {
               "additionalProperties": true,
               "title": "Results",
               "type": "object"
             }
           },
-          "required": [
-            "agent_version_id"
-          ],
           "title": "EvaluationSubmitRequest",
           "type": "object"
         },
@@ -7621,6 +7764,103 @@
             }
           },
           "title": "HTTPValidationError",
+          "type": "object"
+        },
+        "HandoverList": {
+          "properties": {
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/HandoverOut"
+              },
+              "title": "Items",
+              "type": "array"
+            },
+            "total": {
+              "title": "Total",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "items",
+            "total"
+          ],
+          "title": "HandoverList",
+          "type": "object"
+        },
+        "HandoverOut": {
+          "properties": {
+            "claimed_by_user_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Claimed By User Id"
+            },
+            "conversation_id": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            },
+            "created_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created At"
+            },
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "reason": {
+              "title": "Reason",
+              "type": "string"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "conversation_id",
+            "reason",
+            "status"
+          ],
+          "title": "HandoverOut",
           "type": "object"
         },
         "HealthSubsystemOut": {
@@ -14171,6 +14411,18 @@
               "title": "Agent Id",
               "type": "string"
             },
+            "agent_version": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Resolved from the run's input/output JSONB — agent_runs has no such column. It is the field that says WHICH version of the agent answered, so a trace that drops it cannot be attributed to a rollout.",
+              "title": "Agent Version"
+            },
             "alias": {
               "anyOf": [
                 {
@@ -14286,6 +14538,7 @@
                   "type": "null"
                 }
               ],
+              "description": "Resolved from the run's input/output JSONB — agent_runs has no such column.",
               "title": "Model"
             },
             "model_calls": {
@@ -14408,6 +14661,7 @@
             "created_at",
             "correlation_id",
             "causation_id",
+            "agent_version",
             "model",
             "provider",
             "alias",
@@ -14433,6 +14687,18 @@
               "format": "uuid",
               "title": "Agent Id",
               "type": "string"
+            },
+            "agent_version": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Resolved from the run's input/output JSONB — agent_runs has no such column. It is the field that says WHICH version of the agent answered, so a trace that drops it cannot be attributed to a rollout.",
+              "title": "Agent Version"
             },
             "causation_id": {
               "anyOf": [
@@ -14507,6 +14773,18 @@
               ],
               "title": "Finished At"
             },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Resolved from the run's input/output JSONB — agent_runs has no such column.",
+              "title": "Model"
+            },
             "run_id": {
               "format": "uuid",
               "title": "Run Id",
@@ -14549,7 +14827,9 @@
             "finished_at",
             "created_at",
             "correlation_id",
-            "causation_id"
+            "causation_id",
+            "agent_version",
+            "model"
           ],
           "title": "TraceRunSummaryOut",
           "type": "object"
@@ -15999,6 +16279,108 @@
     },
     "openapi": "3.1.0",
     "paths": {
+      "/api/v1/ai/agent-kinds": {
+        "get": {
+          "description": "List all registered agent kinds and their definitions.\n\nThis is the platform's extensibility surface: a new agent kind added\nto the registry appears here automatically.",
+          "operationId": "list_agent_kinds_api_v1_ai_agent_kinds_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/AgentKindOut"
+                    },
+                    "title": "Response List Agent Kinds Api V1 Ai Agent Kinds Get",
+                    "type": "array"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Agent Kinds",
+          "tags": [
+            "ai"
+          ]
+        }
+      },
       "/api/v1/ai/agents": {
         "get": {
           "operationId": "list_agents_api_v1_ai_agents_get",
@@ -17332,6 +17714,335 @@
             }
           },
           "summary": "Update Eval",
+          "tags": [
+            "ai"
+          ]
+        }
+      },
+      "/api/v1/ai/handovers": {
+        "get": {
+          "operationId": "list_handovers_api_v1_ai_handovers_get",
+          "parameters": [
+            {
+              "description": "Filter by pending | claimed | resolved",
+              "in": "query",
+              "name": "status",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Filter by pending | claimed | resolved",
+                "title": "Status"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HandoverList"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Handovers",
+          "tags": [
+            "ai"
+          ]
+        }
+      },
+      "/api/v1/ai/handovers/{handover_id}/claim": {
+        "post": {
+          "operationId": "claim_handover_api_v1_ai_handovers__handover_id__claim_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "handover_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Handover Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HandoverOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Claim Handover",
+          "tags": [
+            "ai"
+          ]
+        }
+      },
+      "/api/v1/ai/handovers/{handover_id}/resolve": {
+        "post": {
+          "operationId": "resolve_handover_api_v1_ai_handovers__handover_id__resolve_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "handover_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Handover Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HandoverOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Resolve Handover",
           "tags": [
             "ai"
           ]

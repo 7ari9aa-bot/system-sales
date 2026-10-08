@@ -129,6 +129,11 @@ DOMAIN_EVENT_TYPES: tuple[str, ...] = (
     "ai.analysis.started",
     "ai.canary_rolled_back",
     "ai.canary_started",
+    # §37/§150: every path that withholds an AI reply hands the conversation to
+    # a human and stages this (ai/handover.py is the only writer). Unregistered
+    # it could still be published, but no consumer could deserialize it — the
+    # dashboard and the SLA clocks never heard a handover happen.
+    "ai.handover.created",
     # §175: campaign + journey execution lifecycle (marketing/). The
     # campaign.run.batch continuation is staged by the CampaignWorker with a
     # pacing not_before (§144 bulk tier).

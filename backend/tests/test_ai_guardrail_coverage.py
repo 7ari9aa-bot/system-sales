@@ -59,9 +59,15 @@ class _FakeGateway:
 def _agent() -> Agent:
     # Column defaults are applied at flush time, so an un-flushed row has to
     # carry every value the loop reads.
+    #
+    # `kind` is one of them, and it is not a detail: the runner resolves the
+    # guardrail profile from the registered definition and FAILS CLOSED on a
+    # kind it does not know. Without it every test below measured the
+    # unknown-kind refusal instead of the chain it is about.
     return Agent(
         id=uuid.uuid4(),
         tenant_id=TENANT_ID,
+        kind="customer",
         name="Sales Agent",
         model="fast",
         system_prompt="You sell things.",
@@ -250,11 +256,49 @@ def test_an_unsourced_claim_needs_no_evidence_once_the_run_has_it() -> None:
     content = "The price is 120 EGP including delivery."
     assert claims_facts(content) is True
     verdict = default_guardrail(require_tool_evidence=True).evaluate(
-        content, {"claims_facts": True, "tool_results": [{"name": "check_stock"}]}
+        content,
+        {
+            "claims_facts": True,
+            "tool_results": [{"name": "get_variant_price", "price": "120.00"}],
+        },
     )
-    assert verdict.decision == "allow"
+    assert verdict.decision == "allow", verdict.reason
     # And a plain answer makes no factual claim, so it never needed evidence.
     assert claims_facts(CLEAN_REPLY) is False
+
+
+@pytest.mark.parametrize(
+    ("said", "returned"),
+    [
+        # Money is stored and returned with two decimals; the model says "120".
+        ("The price is 120 EGP", "120.00"),
+        # The customer agent answers in Arabic, so the figure is Arabic-Indic.
+        ("السعر ١٢٠ جنيه", "120.00"),
+        ("The price is 120 EGP", "120"),
+    ],
+)
+def test_a_sourced_price_is_not_handed_over_because_of_how_it_is_written(
+    said: str, returned: str
+) -> None:
+    """P1-12 compares the claim against the tool result — as NUMBERS.
+
+    String intersection found "120" absent from "120.00" and handed a perfectly
+    sourced price to a human, which is a silent answer the customer never gets.
+    """
+    verdict = default_guardrail(require_tool_evidence=True).evaluate(
+        said, {"tool_results": [{"name": "get_variant_price", "price": returned}]}
+    )
+    assert verdict.decision == "allow", f"{said!r} vs {returned!r}: {verdict.reason}"
+
+
+def test_a_price_no_tool_returned_is_still_handed_over() -> None:
+    """The numeric comparison must not become "any number will do"."""
+    verdict = default_guardrail(require_tool_evidence=True).evaluate(
+        "The price is 120 EGP",
+        {"tool_results": [{"name": "get_variant_price", "price": "95.00"}]},
+    )
+    assert verdict.decision == "handover"
+    assert verdict.reason == "unsourced_claim"
 
 
 @pytest.mark.parametrize(

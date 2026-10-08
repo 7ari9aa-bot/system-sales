@@ -337,7 +337,10 @@ async def test_the_voice_worker_books_transcription_into_the_platform_bucket(
 
 
 class _VoiceNoteSession:
-    """Only the pending-attachment lookup ``transcribe_inbound_voice`` makes."""
+    """The session surface ``transcribe_inbound_voice`` actually touches: the
+    pending-attachment lookup, plus the commits its budget guard makes around
+    reserve/settle/record (phase 2 of the worker opens no transaction itself).
+    """
 
     def __init__(self, attachment) -> None:  # noqa: ANN001
         self._attachment = attachment
@@ -345,6 +348,9 @@ class _VoiceNoteSession:
     async def execute(self, statement, params=None) -> SimpleNamespace:  # noqa: ANN001
         assert "FROM attachments" in str(statement), str(statement)
         return SimpleNamespace(scalar_one_or_none=lambda: self._attachment)
+
+    async def commit(self) -> None:
+        return None
 
 
 # ---------------------------------------------------------------------------

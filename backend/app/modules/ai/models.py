@@ -186,8 +186,11 @@ class AgentRun(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base)
     conversation_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True
     )
-    # status: running | succeeded | failed | timeout | WAITING_APPROVAL
-    # (31 chars — "WAITING_APPROVAL" is 16 and must fit §135's durable state)
+    # status: running | succeeded | failed | timeout | cancelled | WAITING_APPROVAL
+    # (31 chars — "WAITING_APPROVAL" is 16 and must fit §135's durable state).
+    # `cancelled` is a human refusing or a TTL lapsing on the approval the run
+    # parked on: the agent worked, the action was not authorized to happen. It
+    # is deliberately NOT in trace.FAILED_STATUSES, which count agent failures.
     status: Mapped[str] = mapped_column(String(31), server_default="running")
     input: Mapped[dict] = mapped_column(JSONB, server_default="{}")
     output: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
@@ -412,7 +415,10 @@ class AIHandover(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Bas
     run_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("agent_runs.id", ondelete="SET NULL")
     )
-    # allowed: budget | policy | low_confidence | customer_request | failure | guardrail
+    # allowed: budget | policy | low_confidence | customer_request | failure
+    #        | guardrail | messaging_window_closed | approval
+    # Every one of these is written by ai.handover.request_human_takeover, which
+    # is the only place an AIHandover row is created.
     reason: Mapped[str] = mapped_column(String(31))
     # allowed: pending | claimed | resolved
     status: Mapped[str] = mapped_column(String(15), server_default="pending")

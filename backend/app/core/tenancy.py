@@ -224,6 +224,16 @@ def register_tenant_created_hook(hook) -> None:
         _tenant_created_hooks.append(hook)
 
 
+def tenant_created_hooks() -> list:
+    """The registered hooks, in registration order — a read-only view.
+
+    Registration happens at import time of whichever module owns the hook, so
+    "is my hook actually wired?" is otherwise only answerable by reaching into
+    the private list.
+    """
+    return list(_tenant_created_hooks)
+
+
 async def dispatch_tenant_created_hooks(session: AsyncSession, tenant_id: UUID) -> None:
     for hook in list(_tenant_created_hooks):
         await hook(session, tenant_id)
