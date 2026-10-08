@@ -20,7 +20,7 @@ from sqlalchemy import select
 
 from app.modules.ai.approvals import ApprovalService
 from app.modules.ai.gateway import AIGateway
-from app.modules.ai.models import Agent, AgentRun, AgentTool, ApprovalRequest
+from app.modules.ai.models import Agent, AgentRun, AgentTool, ApprovalRequest, ToolCall
 from app.modules.ai.providers import ChatCompletionResult, ToolCallRequest
 from app.modules.ai.runtime import AgentRunner
 from app.modules.ai.tools import ToolSpec, register_tool
@@ -195,6 +195,91 @@ async def test_an_approved_action_executes_once_and_is_consumed(db, tenant_ctx, 
         .one()
     )
     assert refreshed.consumed_at is not None, "the approval was not consumed"
+
+
+async def test_a_resumed_action_audits_the_execution_not_the_park(db, tenant_ctx, monkeypatch):
+    """The approval flow re-uses the parked run's idempotency key — on purpose.
+
+    A HIGH-risk call is keyed by conversation + inbound message + tool + arguments
+    WITHOUT the run id, and the resume answers the same last inbound message the
+    park did. When a parked row claimed that key, the resume's audit insert lost
+    the unique-constraint race to its own park row and the code returned THAT row's
+    outcome: the approved order was created, the customer was told it was still
+    waiting for approval forever, and `tool_calls` said nothing had run.
+
+    The gate's other resume tests miss this because they omit
+    `inbound_message_id` — which makes the key run-specific, while
+    `hooks._do_auto_reply` always passes it.
+    """
+    EXECUTED.clear()
+    register_tool(
+        ToolSpec(
+            name=DANGEROUS_TOOL,
+            description="HIGH-risk: destroys customer data",
+            args_schema=_Args,
+            handler=_dangerous_handler,
+            risk_level="HIGH",
+        )
+    )
+    agent = await _agent(db, tenant_ctx.tenant_id)
+    conversation_id = (await _conversation(db, tenant_ctx.tenant_id)).id
+    inbound = uuid.uuid4()
+
+    _patch_gateway(monkeypatch, [_request_call(), _result(content="waiting")])
+    await AgentRunner(gateway=AIGateway()).run(
+        db,
+        tenant_ctx.tenant_id,
+        agent_id=agent.id,
+        user_message="purge it",
+        conversation_id=conversation_id,
+        inbound_message_id=inbound,
+    )
+    assert EXECUTED == []
+    approval = (
+        (
+            await db.execute(
+                select(ApprovalRequest).where(ApprovalRequest.tenant_id == tenant_ctx.tenant_id)
+            )
+        )
+        .scalars()
+        .one()
+    )
+    await ApprovalService.decide(
+        db,
+        tenant_ctx.tenant_id,
+        approval.id,
+        decision="APPROVED",
+        decided_by_user_id=tenant_ctx.user.id,
+    )
+    await db.flush()
+
+    _patch_gateway(monkeypatch, [_request_call(), _result(content="done")])
+    resumed = await AgentRunner(gateway=AIGateway()).run(
+        db,
+        tenant_ctx.tenant_id,
+        agent_id=agent.id,
+        user_message="purge it",
+        conversation_id=conversation_id,
+        inbound_message_id=inbound,
+    )
+
+    assert EXECUTED == ["now"], "the approved action did not run"
+    rows = (
+        (
+            await db.execute(
+                select(ToolCall).where(
+                    ToolCall.tenant_id == tenant_ctx.tenant_id,
+                    ToolCall.run_id == resumed.run_id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert [row.status for row in rows] == ["ok"], (
+        f"the resumed run recorded {rows[0].status if rows else 'nothing'} for an "
+        "action that executed — the park's row is still winning the key"
+    )
 
 
 async def test_a_consumed_approval_does_not_authorize_a_second_run(db, tenant_ctx, monkeypatch):

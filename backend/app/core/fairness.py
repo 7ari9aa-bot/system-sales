@@ -124,6 +124,12 @@ DOMAIN_PRIORITIES: dict[str, EventPriority] = {
     # watching the stream — interactive-tier, not bulk.
     "ai.analysis.started": EventPriority.AI_RESPONSE,
     "ai.analysis.completed": EventPriority.AI_RESPONSE,
+    # §37/§150: a handover is the AI conversation path handing a waiting customer
+    # to a human. The queue row is written in the same transaction, so this event
+    # is the notification that tells the merchant — and the SLA clocks — someone
+    # is owed an answer now. Starving it behind campaign bulk is how a handover
+    # sits unseen; it is interactive work, not automation.
+    "ai.handover.created": EventPriority.AI_RESPONSE,
     # Customer Webhooks: provider deliveries (§22 ingress, §24 replay,
     # outbound deliveries) outrank automation but not interactive paths.
     "webhook.ingest": EventPriority.CUSTOMER_WEBHOOK,

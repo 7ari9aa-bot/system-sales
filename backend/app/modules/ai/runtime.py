@@ -155,6 +155,53 @@ def _memory_line(memory) -> str:
     return f"- ({memory.source}, confidence={confidence:.2f}, {stamp}) {memory.content}"
 
 
+#: A side effect already performed, in the sense `tool_calls.idempotency_key`
+#: means one: the handler ran, whatever it wrote is in the database.
+_EXECUTED_TOOL_STATUSES = frozenset({"ok", "error"})
+
+
+def compute_tool_idempotency_key(
+    *,
+    risk_level: str,
+    conversation_id: uuid.UUID | None,
+    inbound_message_id: uuid.UUID | str | None,
+    run_id: uuid.UUID,
+    tool_call_id: str,
+    tool_name: str,
+    arguments: dict | None,
+    status: str,
+) -> str | None:
+    """The key that makes `uq_tool_calls_tenant_idempotency` dedupe a call (§15-16).
+
+    Read-only tools (LOW) key on the run and the provider's tool_call id, because
+    repeating a read costs nothing and two `check_stock` calls in one turn are
+    usually about different variants — keying them by tool name alone would hand
+    the model the first answer for the second question.
+
+    Side-effecting tools (HIGH/MEDIUM) key SEMANTICALLY on conversation + inbound
+    message + tool + arguments, without the run id, so a retried message cannot
+    double-order.
+
+    An `awaiting_approval` row claims NO key. It records an intent to ask, not a
+    side effect that happened — and the approval flow is *designed* to run this
+    exact semantic call again after a human grants it. Keying the park meant the
+    resume's own park row occupied the key, the real execution's audit insert lost
+    the unique-constraint race to it, and the code returned that row's
+    `awaiting_approval` outcome: the approved order was created, the customer was
+    told it was still pending forever, and the governance record said nothing
+    happened.
+    """
+    if status not in _EXECUTED_TOOL_STATUSES:
+        return None
+    if risk_level in ("HIGH", "MEDIUM") and conversation_id is not None:
+        args_hash = hashlib.sha256(
+            json.dumps(arguments or {}, sort_keys=True).encode()
+        ).hexdigest()[:16]
+        msg_key = str(inbound_message_id) if inbound_message_id else str(run_id)
+        return f"se:{conversation_id}:{msg_key}:{tool_name}:{args_hash}"
+    return f"{run_id}:{tool_call_id}"
+
+
 class AgentRunner:
     def __init__(self, gateway: AIGateway | None = None) -> None:
         self.gateway = gateway or AIGateway()
@@ -945,39 +992,38 @@ class AgentRunner:
         execution — the run suspends as WAITING_APPROVAL. The tool's context
         pins the conversation's customer server-side (§132 scope binding).
 
-        §15-16: idempotency — the (run_id, tool_call_id) pair is the dedupe
-        key. A retried run or replayed event that re-issues the same tool
-        call finds the prior ToolCall row and returns its result without
-        re-executing the handler, preventing duplicate side-effects.
+        §15-16: idempotency — a call that EXECUTED claims a key (semantic for
+        side-effecting tools, per-run for reads), so a retried run or replayed
+        event that re-issues it finds the prior ToolCall row and returns its
+        result without executing the handler twice. See
+        compute_tool_idempotency_key for what does NOT claim one.
         """
         from app.modules.ai.tools import get_tool
 
-        # §15-16: idempotency pre-check. If this exact tool call (same run,
-        # same provider tool_call_id) was already executed, return the prior
-        # result. The unique constraint on (tenant_id, idempotency_key) makes
-        # the check-then-insert atomic under concurrent retries.
+        # §15-16: idempotency pre-check. If this exact call already EXECUTED,
+        # return the prior result and do not run the handler again. The unique
+        # constraint on (tenant_id, idempotency_key) makes the check-then-insert
+        # atomic under concurrent retries.
         #
-        # Side-effect tools (risk_level HIGH/MEDIUM) use a SEMANTIC key bound
-        # to conversation + inbound message + tool name + sorted args hash.
-        # Retrying the same inbound message reuses the prior result, while a new
-        # inbound message with the same items/quantities is processed independently.
+        # The key is probed as if this call will execute, and RE-computed with the
+        # real status before the insert — see compute_tool_idempotency_key for why
+        # a parked (awaiting_approval) row must not claim one.
         spec_for_key = get_tool(request.name)
-        if (
-            spec_for_key is not None
-            and spec_for_key.risk_level in ("HIGH", "MEDIUM")
-            and conversation_id is not None
-        ):
-            args_canonical = json.dumps(request.arguments or {}, sort_keys=True)
-            args_hash = hashlib.sha256(args_canonical.encode()).hexdigest()[:16]
-            msg_key = str(inbound_message_id) if inbound_message_id else str(run.id)
-            idempotency_key = f"se:{conversation_id}:{msg_key}:{request.name}:{args_hash}"
-        else:
-            idempotency_key = f"{run.id}:{request.id}"
+        idempotency_probe = compute_tool_idempotency_key(
+            risk_level=spec_for_key.risk_level if spec_for_key else "LOW",
+            conversation_id=conversation_id,
+            inbound_message_id=inbound_message_id,
+            run_id=run.id,
+            tool_call_id=request.id,
+            tool_name=request.name,
+            arguments=request.arguments,
+            status="ok",
+        )
         prior = (
             await session.execute(
                 select(ToolCall).where(
                     ToolCall.tenant_id == tenant_id,
-                    ToolCall.idempotency_key == idempotency_key,
+                    ToolCall.idempotency_key == idempotency_probe,
                 )
             )
         ).scalar_one_or_none()
@@ -986,7 +1032,7 @@ class AgentRunner:
                 "ai.tool_call_idempotent_skip run=%s tool=%s key=%s",
                 run.id,
                 request.name,
-                idempotency_key,
+                idempotency_probe,
             )
             return {
                 "name": prior.name,
@@ -1131,6 +1177,19 @@ class AgentRunner:
                     )
                 else:
                     duration_ms = int((datetime.now(UTC) - started).total_seconds() * 1000)
+        # The key the audit row claims. A call that never executed (parked on an
+        # approval, or denied) claims none — that is what lets the approved
+        # resume write its own row under the same semantic key.
+        idempotency_key = compute_tool_idempotency_key(
+            risk_level=spec_for_key.risk_level if spec_for_key else "LOW",
+            conversation_id=conversation_id,
+            inbound_message_id=inbound_message_id,
+            run_id=run.id,
+            tool_call_id=request.id,
+            tool_name=request.name,
+            arguments=request.arguments,
+            status=status,
+        )
         try:
             # The savepoint mirrors the ProcessedEvent consumer-inbox pattern:
             # a loser of the (tenant_id, idempotency_key) insert race rolls its
@@ -1152,12 +1211,12 @@ class AgentRunner:
                 )
                 await session.flush()
         except IntegrityError:
-            # Lost the insert race. The unique index blocked THIS insert until
-            # the winner's transaction resolved, so by now the winning row is
-            # committed and readable — return ITS outcome, the same contract
-            # the pre-check above serves. The conversation lease makes this
-            # unreachable for conversation runs; a conversation-less caller
-            # (no lease) is where the race actually lives.
+            # Lost the insert race — only EXECUTED rows claim a key, so the
+            # winner is a call that actually performed the side effect, and its
+            # outcome is the honest answer. The conversation lease makes this
+            # unreachable for two CONCURRENT conversation runs; a duplicate
+            # delivery, or a conversation-less caller with no lease, is where
+            # the race lives.
             prior = (
                 await session.execute(
                     select(ToolCall).where(

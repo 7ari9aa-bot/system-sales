@@ -224,10 +224,13 @@ class ToolCall(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base)
     name: Mapped[str] = mapped_column(String(63))
     args: Mapped[dict] = mapped_column(JSONB, server_default="{}")
     result: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    # §15-16: idempotency key = f"{run_id}:{tool_call_id}" — a retried run or
-    # replayed event that re-issues the same tool call finds the prior row
-    # and skips execution, preventing duplicate side-effects (double orders,
-    # double tags). The unique constraint makes the check atomic.
+    # §15-16: one row per EXECUTED call, keyed by runtime.compute_tool_idempotency_key
+    # — semantic (conversation + inbound message + tool + args) for side-effecting
+    # tools, per-run for reads. A retried run finds the prior row and skips the
+    # handler, so a replayed event cannot double-order or double-tag. A call that
+    # never executed (parked on an approval, or denied) stores NULL: Postgres
+    # treats NULLs as distinct in a unique index, which is what lets the approved
+    # resume claim the key and record the side effect that actually happened.
     idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
     # status: ok | error | denied | awaiting_approval
     # (31 chars — "awaiting_approval" is 17 and the §135 gate writes it here;
@@ -404,7 +407,15 @@ class AIProviderPolicy(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
 
 
 class AIHandover(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
-    """Spec §37/§150: AI → human handover with reason and outcome."""
+    """Spec §37/§150: AI → human handover with reason and outcome.
+
+    §150's OUTCOME half is not modelled: this row records who CLAIMED it
+    (`claimed_by_user_id`) and its status, but nothing stores how the human
+    resolved it or whether the customer was answered. So "handover outcome"
+    metrics cannot be computed from this table yet — see the resolver in
+    ai/router.py, which flips status to `resolved` and leaves no trace of who
+    did it or why.
+    """
 
     __tablename__ = "ai_handovers"
 
@@ -417,8 +428,11 @@ class AIHandover(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Bas
     )
     # allowed: budget | policy | low_confidence | customer_request | failure
     #        | guardrail | messaging_window_closed | approval
-    # Every one of these is written by ai.handover.request_human_takeover, which
-    # is the only place an AIHandover row is created.
+    # `ai.handover.request_human_takeover` is the ONLY writer of these rows in
+    # app/, and today it emits budget | guardrail | messaging_window_closed |
+    # failure | approval. `policy`, `low_confidence` and `customer_request` are
+    # the §37 vocabulary with no producer yet — a customer asking for a human is
+    # still answered by the model, not recorded here.
     reason: Mapped[str] = mapped_column(String(31))
     # allowed: pending | claimed | resolved
     status: Mapped[str] = mapped_column(String(15), server_default="pending")
