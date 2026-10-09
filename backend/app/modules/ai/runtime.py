@@ -227,9 +227,32 @@ class AgentRunner:
             session, tenant_id, agent_id, agent_kind=agent.kind
         )
 
+        # §169: canary deployment decision — deterministic per conversation so
+        # the same conversation does not flip between stable and candidate
+        # across retries. Without AgentVersion rows the version itself cannot
+        # switch yet, but the decision is recorded and the gate is live.
+        canary_percent = 0
+        canary_chosen = False
+        try:
+            from app.modules.ai.evaluation import AIEvaluationService
+
+            canary_percent = await AIEvaluationService.get_canary_traffic_percent(
+                session, tenant_id, agent_id
+            )
+        except Exception:
+            logger.warning("ai.canary_check_failed agent=%s", agent_id, exc_info=True)
+        if canary_percent > 0 and conversation_id is not None:
+            bucket = int(hashlib.md5(conversation_id.bytes).hexdigest(), 16) % 100
+            canary_chosen = bucket < canary_percent
+
+        agent_version_id = await self._resolve_agent_version(
+            session, tenant_id, agent, canary_chosen=canary_chosen
+        )
+
         run = AgentRun(
             tenant_id=tenant_id,
             agent_id=agent.id,
+            agent_version_id=agent_version_id,
             conversation_id=conversation_id,
             status="running",
             input={
@@ -239,6 +262,8 @@ class AgentRunner:
                 "model": self._alias_for(agent),
                 "model_name": agent.model,
                 "system_prompt_version": getattr(agent, "version", 1),
+                "canary_percent": canary_percent,
+                "canary_chosen": canary_chosen,
             },
             started_at=_now(),
         )
@@ -367,6 +392,67 @@ class AgentRunner:
                     )
             return authorized
         return tools
+
+    @staticmethod
+    async def _resolve_agent_version(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        agent: Agent,
+        *,
+        canary_chosen: bool,
+    ) -> uuid.UUID | None:
+        """Return the agent_version_id to use, and patch agent fields in-place.
+
+        If a Deployment row exists, picks stable_version_id or candidate_version_id
+        based on canary_chosen.  The agent's mutable row is left untouched in the
+        database; only the in-memory instance is overridden for this run.
+        """
+        from app.modules.ai.models import AgentVersion, Deployment
+
+        deployment = (
+            await session.execute(
+                select(Deployment).where(
+                    Deployment.tenant_id == tenant_id,
+                    Deployment.agent_id == agent.id,
+                    Deployment.status == "active",
+                )
+            )
+        ).scalar_one_or_none()
+        if deployment is None:
+            return None
+
+        version_id = (
+            deployment.candidate_version_id
+            if canary_chosen and deployment.candidate_version_id
+            else deployment.stable_version_id
+        )
+        if version_id is None:
+            return None
+
+        version = (
+            await session.execute(
+                select(AgentVersion).where(
+                    AgentVersion.tenant_id == tenant_id,
+                    AgentVersion.id == version_id,
+                    AgentVersion.status == "published",
+                )
+            )
+        ).scalar_one_or_none()
+        if version is None:
+            return None
+
+        # Override in-memory agent config for this run only (never flushed).
+        if version.system_prompt is not None:
+            agent.system_prompt = version.system_prompt
+        if version.model is not None:
+            agent.model = version.model
+        if version.temperature is not None:
+            agent.temperature = version.temperature
+        if version.max_output_tokens is not None:
+            agent.max_output_tokens = version.max_output_tokens
+        if version.run_limits:
+            agent.run_limits = version.run_limits
+        return version.id
 
     @staticmethod
     def _alias_for(agent: Agent) -> str:
@@ -947,7 +1033,10 @@ class AgentRunner:
                         # MediaService itself refuses such a row. Sending it
                         # anyway would sign a URL for an object that was never
                         # safely stored and hand it to an external provider.
-                        _conversations_models.Attachment.scan_status != "failed",
+                        _conversations_models.Attachment.scan_status.in_(
+                            ["stored", "scanned"]
+                        ),
+                        _conversations_models.Attachment.processing_status != "failed",
                     )
                     .order_by(_conversations_models.Attachment.created_at.desc())
                     .limit(1)

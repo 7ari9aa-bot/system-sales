@@ -22,6 +22,7 @@ import logging
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -328,20 +329,31 @@ def _run(args: list[str], *, env: dict[str, str] | None = None) -> subprocess.Co
     """Run in a fresh interpreter with ENVIRONMENT and JWT_SECRET removed.
 
     Removed rather than set: the behaviour under test is what happens when an
-    operator has NOT stated the environment.
+    operator has NOT stated the environment. The subprocess runs from a cwd
+    WITHOUT a `.env` file (PYTHONPATH still resolves `backend/`), because the
+    reference contract is "no config file, no env" — CI has no `.env`, so a
+    developer's local file would otherwise make the operator-facing message
+    depend on this machine, not on the committed behaviour.
     """
     child = {k: v for k, v in os.environ.items() if k not in {"ENVIRONMENT", "JWT_SECRET"}}
     child["PYTHONPATH"] = str(BACKEND_ROOT)
     if env:
         child.update(env)
-    return subprocess.run(
-        [sys.executable, *args],
-        capture_output=True,
-        text=True,
-        env=child,
-        cwd=BACKEND_ROOT,
-        timeout=180,
-    )
+    with tempfile.TemporaryDirectory() as cwd_without_env:
+        absolute_args = [
+            # Only file-path args resolve against BACKEND_ROOT; interpreter
+            # flags such as `-c`/`-m` and their inline code must pass through
+            # untouched.
+            (str(Path(BACKEND_ROOT, a)) if a.endswith(".py") else a) for a in args
+        ]
+        return subprocess.run(
+            [sys.executable, *absolute_args],
+            capture_output=True,
+            text=True,
+            env=child,
+            cwd=cwd_without_env,
+            timeout=180,
+        )
 
 
 def test_importing_the_database_module_does_not_require_production_secrets() -> None:

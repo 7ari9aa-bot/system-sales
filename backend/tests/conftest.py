@@ -32,6 +32,20 @@ os.environ.setdefault("ENVIRONMENT", "local")
 # Keep token primitives realistic in tests without reusing a deployment key.
 os.environ.setdefault("JWT_SECRET", "pytest-only-hmac-key-longer-than-thirty-two-bytes")
 
+# The suite is HERMETIC: a developer's `backend/.env` must never leak into a
+# test run, because tests that read settings (CORS origins, secrets envelope,
+# integration verify routes) then depend on THIS machine's file, not on the
+# committed contract. CI has no .env, so a green CI / red laptop split stays
+# invisible until someone local runs the suite — which is exactly how the
+# 413-CORS, SecretKeyError, and config-hardening failures reproduced here.
+# Pointing `env_file` at a path that does not exist is the supported way to
+# disable the file source without forking a second Settings class.
+if not os.environ.get("PYTEST_ALLOW_DOTENV"):
+    os.environ["PYTEST_DOTENV_DISABLED"] = "1"
+    import app.core.config as _config
+
+    _config.Settings.model_config["env_file"] = None
+
 import pytest
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import (

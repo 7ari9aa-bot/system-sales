@@ -210,6 +210,29 @@ def _rebuild_facts(tool_calls_made: list[dict]) -> list[dict]:
     return _rebuild_evidence(tool_calls_made)["facts"]
 
 
+def _parse_period_boundary(value: str, fact_tz: str, *, is_end: bool) -> datetime:
+    """Parse a period boundary in the FACT's own timezone, never naive-UTC.
+
+    `_fact_payload` now emits full ISO datetimes (the store timezone is part
+    of the payload), but legacy rows/events carry bare `YYYY-MM-DD` dates: a
+    date is interpreted as the fact's LOCAL day — start at 00:00 local, end
+    at the last instant of that local day — not as midnight UTC, which prior
+    `replace(tzinfo=UTC)` quietly claimed (§15.2: that call relabels the
+    timezone without converting a local time).
+    """
+    from zoneinfo import ZoneInfo
+
+    tz = ZoneInfo(fact_tz)
+    if len(value) == 10:
+        d = datetime.strptime(value, "%Y-%m-%d").date()
+        t = datetime.max.time() if is_end else datetime.min.time()
+        return datetime.combine(d, t, tzinfo=tz)
+    dt = datetime.fromisoformat(value)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=tz)
+    return dt
+
+
 def _facts_to_contracts(
     payloads: list[dict], timezone: str = "Africa/Cairo"
 ) -> dict[str, MetricFact]:
@@ -220,18 +243,19 @@ def _facts_to_contracts(
     for payload in payloads:
         fact_tz = payload.get("timezone") or timezone
         data_as_of = (
-            datetime.fromisoformat(payload["data_as_of"]).replace(tzinfo=UTC)
+            datetime.fromisoformat(payload["data_as_of"])
             if payload.get("data_as_of")
             else now
         )
         computed_at = (
-            datetime.fromisoformat(payload["computed_at"]).replace(tzinfo=UTC)
+            datetime.fromisoformat(payload["computed_at"])
             if payload.get("computed_at")
             else now
         )
+
         period = AnalysisPeriod(
-            start=datetime.fromisoformat(payload["period_start"]).replace(tzinfo=UTC),
-            end=datetime.fromisoformat(payload["period_end"]).replace(tzinfo=UTC),
+            start=_parse_period_boundary(payload["period_start"], fact_tz, is_end=False),
+            end=_parse_period_boundary(payload["period_end"], fact_tz, is_end=True),
             timezone=fact_tz,
             attribution_basis=payload.get("attribution_basis", "placed_at"),
             maturity_policy=MaturityPolicy(kind=payload.get("maturity_policy", "immediate")),

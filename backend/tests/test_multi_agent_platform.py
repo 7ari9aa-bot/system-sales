@@ -401,6 +401,104 @@ async def test_ai_approval_rbac_gate() -> None:
 
 
 @pytest.mark.asyncio
+async def test_canary_rollout_updates_the_real_deployment_state(db, tenant_ctx) -> None:
+    """A canary must move the deployment row, not just a status string."""
+    from sqlalchemy import select
+
+    from app.modules.ai.evaluation import AIEvaluationService
+    from app.modules.ai.models import Agent, AgentVersion, AIEvaluation, Deployment
+
+    tenant_id = tenant_ctx.tenant_id
+    agent = Agent(
+        tenant_id=tenant_id,
+        kind="customer",
+        name="Canary Agent",
+        model="fast",
+        system_prompt="stable",
+    )
+    stable_version = AgentVersion(
+        tenant_id=tenant_id,
+        agent_id=agent.id,
+        version=1,
+        status="published",
+        system_prompt="stable",
+        model="fast",
+    )
+    candidate_version = AgentVersion(
+        tenant_id=tenant_id,
+        agent_id=agent.id,
+        version=2,
+        status="published",
+        system_prompt="candidate",
+        model="fast",
+    )
+    db.add_all([agent, stable_version, candidate_version])
+    await db.flush()
+
+    evaluation = AIEvaluation(
+        tenant_id=tenant_id,
+        agent_id=agent.id,
+        agent_version_id=candidate_version.id,
+        status="passed",
+        rollout_status="none",
+        quality_metrics={"canary_success_rate": 1.0},
+    )
+    db.add(evaluation)
+    await db.flush()
+
+    await AIEvaluationService.approve_rollout(db, tenant_id, candidate_version.id)
+    deployment = (
+        await db.execute(
+            select(Deployment).where(
+                Deployment.tenant_id == tenant_id,
+                Deployment.agent_id == agent.id,
+            )
+        )
+    ).scalar_one()
+    assert deployment.stable_version_id == stable_version.id
+    assert deployment.candidate_version_id == candidate_version.id
+    assert deployment.canary_percent == 5
+    assert await AIEvaluationService.get_canary_traffic_percent(db, tenant_id, agent.id) == 5
+
+    evaluation.rollout_status = "canary_100"
+    evaluation.quality_metrics = {"canary_success_rate": 1.0}
+    await db.flush()
+
+    await AIEvaluationService.ramp_canary(db, tenant_id, evaluation.id)
+    deployment = (
+        await db.execute(
+            select(Deployment).where(
+                Deployment.tenant_id == tenant_id,
+                Deployment.agent_id == agent.id,
+            )
+        )
+    ).scalar_one()
+    assert evaluation.rollout_status == "rolled_out"
+    assert deployment.stable_version_id == candidate_version.id
+    assert deployment.candidate_version_id is None
+    assert deployment.canary_percent == 0
+    assert deployment.status == "fully_rollout"
+
+    evaluation.rollout_status = "canary_5"
+    evaluation.quality_metrics = {"canary_success_rate": 0.5}
+    await db.flush()
+
+    await AIEvaluationService.rollback_canary(db, tenant_id, evaluation.id, reason="metric_degradation")
+    deployment = (
+        await db.execute(
+            select(Deployment).where(
+                Deployment.tenant_id == tenant_id,
+                Deployment.agent_id == agent.id,
+            )
+        )
+    ).scalar_one()
+    assert evaluation.rollout_status == "rolled_back"
+    assert deployment.candidate_version_id is None
+    assert deployment.canary_percent == 0
+    assert deployment.status == "rolled_back"
+
+
+@pytest.mark.asyncio
 async def test_customer_tools_enforce_canonical_sellability() -> None:
     """§22 Customer Product Sellability: draft products rejected across all customer tools."""
     from app.core.errors import NotFoundError

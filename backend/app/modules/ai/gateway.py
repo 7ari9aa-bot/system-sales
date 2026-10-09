@@ -61,6 +61,11 @@ RESERVATION_TTL_MINUTES = 30
 
 ALIASES = frozenset({"fast", "strong", "cheap", "embedding", "fallback"})
 
+
+def _tenant_budget_lock_id(tenant_id: UUID) -> int:
+    """Deterministic 63-bit advisory-lock key for a tenant's budget."""
+    return int.from_bytes(tenant_id.bytes[:8], byteorder="big", signed=False) & 0x7FFFFFFFFFFFFFFF
+
 # §43: PII redaction patterns. Applied to message content before sending to
 # an external AI provider when the tenant's AIProviderPolicy has
 # pii_redaction_required=True. The redactor is deliberately conservative — it
@@ -139,11 +144,19 @@ async def resolve_model_config(
     ).scalar_one_or_none()
     if row is not None:
         config = dict(row.config or {})
+        api_key = str(config.get("api_key") or "")
+        # §68: secret_ref overrides the inlined api_key when present.
+        if row.secret_ref:
+            from app.core.secrets import get_secret_store
+
+            secret_value = await get_secret_store().get_or_none(row.secret_ref)
+            if secret_value:
+                api_key = secret_value
         return {
             "provider": row.provider,
             "model": row.model,
             "base_url": str(config.get("base_url") or ""),
-            "api_key": str(config.get("api_key") or ""),
+            "api_key": api_key,
             "extra": config,
         }
 
@@ -418,6 +431,9 @@ async def reserve_budget(
     same check and all spend, so the cap is overshot by the concurrency factor.
     Committing a reservation up front is what makes the cap hold under load.
 
+    An advisory lock serializes reservations per tenant so the read-check-write
+    sequence is atomic under READ COMMITTED.
+
     Returns the reservation id to settle afterwards, or None when the tenant has
     no cap (the cap is zero/unset). The cap is enforced for EVERY on_exceed
     mode — "warn" allows the call but alerts, "fallback" raises
@@ -428,6 +444,11 @@ async def reserve_budget(
     from sqlalchemy import select as sa_select
 
     from app.modules.ai.models import AIBudgetReservation, BudgetPolicy
+
+    # Serialize per-tenant budget reservations to eliminate the race where
+    # N concurrent transactions read the same spend and all insert reservations.
+    lock_id = _tenant_budget_lock_id(tenant_id)
+    await session.execute(text("SELECT pg_advisory_xact_lock(:lock_id)"), {"lock_id": lock_id})
 
     policies = (
         (
@@ -736,7 +757,13 @@ class AIGateway:
         _client: Any | None = None,
     ) -> list[list[float]]:
         """Embed texts through the tenant's 'embedding' alias (recorded too)."""
-        await enforce_budget(session, tenant_id)
+        # §42: embeddings spend budget like chat — reserve up front so the cap
+        # holds under concurrency, then settle after the call.
+        estimated_tokens = sum(len(t) for t in texts) // 4
+        estimated = estimate_cost(tokens_in=estimated_tokens, tokens_out=0)
+        reservation_id = await reserve_budget(
+            session, tenant_id, agent_id=None, estimated_cost=estimated
+        )
         config = await resolve_model_config(session, tenant_id, "embedding")
 
         # §43: data-egress policy on the embedding path too — embeddings
@@ -802,16 +829,20 @@ class AIGateway:
                     alias="embedding",
                     provider=config["provider"],
                     model=config["model"],
-                    tokens_in=0,
+                    tokens_in=estimated_tokens,
                     tokens_out=0,
-                    # A Decimal, not `0.0`: `model_calls.cost` is
-                    # `AI_COST = Numeric(18,8)`, so this is a money column, and
-                    # the chat path beside it (`_record_run`) already writes
-                    # `Decimal(0)`. Two spellings of "zero cost" in one module is
-                    # how a float sneaks back into the ledger.
-                    cost=Decimal(0),
+                    cost=estimated,
                     latency_ms=latency_ms,
                     status=status,
                 )
             )
-            await session.flush()
+            # §42 settle: release the hold whether the call succeeded or not.
+            try:
+                await asyncio.shield(settle_reservation(session, reservation_id))
+                await asyncio.shield(session.flush())
+            except Exception:
+                logger.warning(
+                    "ai.settle_reservation_failed reservation=%s",
+                    reservation_id,
+                    exc_info=True,
+                )

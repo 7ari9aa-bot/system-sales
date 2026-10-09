@@ -104,9 +104,76 @@ class ModelConfig(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     provider: Mapped[str] = mapped_column(String(31))
     model: Mapped[str] = mapped_column(String(127))
     config: Mapped[dict] = mapped_column(JSONB, server_default="{}")
+    # §68: reference to a secret stored outside the DB, never the key itself.
+    # When present, it overrides config["api_key"] at resolution time.
+    secret_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(default=True, server_default="true")
 
     __table_args__ = (UniqueConstraint("tenant_id", "alias", name="uq_model_configs_tenant_alias"),)
+
+
+class AgentVersion(TenantMixin, TimestampMixin, Base):
+    """Immutable snapshot of an agent's configuration at publish time.
+
+    Once published, a version row MUST NOT be mutated; any change requires a
+    new version. This is the source of truth for reproducible runs and
+    canary deployments.
+    """
+
+    __tablename__ = "agent_versions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    agent_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agents.id", ondelete="CASCADE")
+    )
+    version: Mapped[int] = mapped_column(default=1, server_default="1")
+    system_prompt: Mapped[str | None] = mapped_column(Text)
+    model: Mapped[str | None] = mapped_column(String(127))
+    temperature: Mapped[float] = mapped_column(Numeric(3, 2), default=0.7, server_default="0.7")
+    max_output_tokens: Mapped[int | None] = mapped_column()
+    run_limits: Mapped[dict] = mapped_column(JSONB, server_default="{}")
+    tool_policy: Mapped[dict] = mapped_column(JSONB, server_default="{}")
+    # allowed: draft | published | archived
+    status: Mapped[str] = mapped_column(String(15), server_default="draft")
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    published_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "agent_id",
+            "version",
+            name="uq_agent_versions_tenant_agent_version",
+        ),
+    )
+
+
+class Deployment(TenantMixin, TimestampMixin, Base):
+    """Runtime deployment state: which agent version is stable and which is
+    candidate, with canary traffic percentage and rollback policy.
+    """
+
+    __tablename__ = "agent_deployments"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    agent_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agents.id", ondelete="CASCADE")
+    )
+    stable_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_versions.id", ondelete="SET NULL"), nullable=True
+    )
+    candidate_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_versions.id", ondelete="SET NULL"), nullable=True
+    )
+    canary_percent: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # allowed: active | rolled_back | fully_rollout
+    status: Mapped[str] = mapped_column(String(15), server_default="active")
+    rolled_back_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rolled_back_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "agent_id", name="uq_agent_deployments_tenant_agent"),
+    )
 
 
 class Memory(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
@@ -182,6 +249,9 @@ class AgentRun(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base)
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     agent_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("agents.id", ondelete="CASCADE")
+    )
+    agent_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_versions.id", ondelete="SET NULL"), nullable=True
     )
     conversation_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True
@@ -452,6 +522,9 @@ class AIEvaluation(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     agent_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("agents.id", ondelete="CASCADE")
+    )
+    agent_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_versions.id", ondelete="SET NULL"), nullable=True
     )
     prompt_version: Mapped[int] = mapped_column(default=1)
     dataset_ref: Mapped[str | None] = mapped_column(String(255))
