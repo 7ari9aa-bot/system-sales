@@ -28,9 +28,17 @@ HISTORY_MESSAGES = 10
 
 
 async def maybe_auto_reply(
-    session: AsyncSession, tenant_id: uuid.UUID, conversation_id: uuid.UUID
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    *,
+    inbound_message_id: uuid.UUID | None = None,
 ) -> None:
-    """AI reply to the last inbound message of a conversation.
+    """AI reply to a conversation's inbound message.
+
+    `inbound_message_id` is the message the delivered event actually carried, and
+    it is what gets answered. Without it the reply targets the newest inbound
+    message — see `_do_auto_reply` for why that is only a fallback.
 
     Runs under the caller's conversation lease (the message worker already
     holds it — advisory xact locks are reentrant within one transaction).
@@ -43,11 +51,17 @@ async def maybe_auto_reply(
     from app.core.lease import conversation_lease
 
     async with conversation_lease(session, conversation_id):
-        await _do_auto_reply(session, tenant_id, conversation_id)
+        await _do_auto_reply(
+            session, tenant_id, conversation_id, inbound_message_id=inbound_message_id
+        )
 
 
 async def _do_auto_reply(
-    session: AsyncSession, tenant_id: uuid.UUID, conversation_id: uuid.UUID
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    *,
+    inbound_message_id: uuid.UUID | None = None,
 ) -> None:
     """Inner auto-reply logic (called under the conversation lease)."""
     # Lazy imports: conversations owns messages; AI is an optional layer.
@@ -83,18 +97,45 @@ async def _do_auto_reply(
         )
         return
 
-    history = await ConversationService.list_messages(
-        session, tenant_id, conversation_id, limit=HISTORY_MESSAGES
-    )
-    last_inbound = next(
-        (
-            m
-            for m in reversed(history)
-            if m.direction == "inbound"
-            and (m.body or m.media_url or m.content_type in ("image", "voice", "file"))
-        ),
-        None,
-    )
+    # Answer the message the event carried — not "whatever is newest by the time
+    # the worker gets here". With A and B queued and A's delivery delayed, the old
+    # behaviour answered B twice (once per event) and never answered A: the
+    # customer who wrote first got silence, and the other got a duplicate.
+    last_inbound = None
+    if inbound_message_id is not None:
+        named = await ConversationService.find_message(
+            session, tenant_id, inbound_message_id
+        )
+        # Scoped here, not in the service: an id from another conversation or an
+        # outbound row is not this turn. That includes the resume event's legacy
+        # shape, whose aggregate_id was an APPROVAL id — it resolves to nothing
+        # and falls through, instead of answering a message that does not exist.
+        if named is not None and named.conversation_id == conversation_id:
+            if named.direction == "inbound":
+                last_inbound = named
+            else:
+                logger.info(
+                    "auto-reply skipped conversation=%s message=%s is outbound",
+                    conversation_id,
+                    inbound_message_id,
+                )
+                return
+
+    if last_inbound is None:
+        # No usable id: an approval resume (re-evaluate the current context), or
+        # an event staged before the id was carried.
+        history = await ConversationService.list_messages(
+            session, tenant_id, conversation_id, limit=HISTORY_MESSAGES
+        )
+        last_inbound = next(
+            (
+                m
+                for m in reversed(history)
+                if m.direction == "inbound"
+                and (m.body or m.media_url or m.content_type in ("image", "voice", "file"))
+            ),
+            None,
+        )
     if last_inbound is None:
         return
 

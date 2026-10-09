@@ -78,11 +78,42 @@ _UNKNOWN_REASON = "unknown delivery state — requires reconciliation"
 _STUCK_SENDING_REASON = "stuck in sending — requires reconciliation"
 
 
+def _event_message_id(envelope: EventEnvelope) -> uuid.UUID | None:
+    """Which inbound message a `message.received` event asks us to answer.
+
+    Three shapes, and the distinction is the whole point:
+
+    * ``message_id`` stamped with a value — a normal ingest. THIS message is
+      answered, even if a newer one has since arrived. Answering "whatever is
+      newest" instead is how a delayed delivery replies to message B twice (once
+      for B's own event, once for A's) and to A never — the customer who wrote
+      first gets silence.
+    * ``message_id`` present and null — the approval-resume event. It names no
+      message (its aggregate_id is an APPROVAL id), and a resume is supposed to
+      re-evaluate the conversation's current context.
+    * ``message_id`` absent — an event staged before the key existed, whose
+      aggregate_id really was the message id.
+
+    An unparseable id is None rather than an exception: one malformed payload
+    must not dead-letter a customer's message.
+    """
+    if "message_id" in envelope.payload:
+        raw = envelope.payload.get("message_id")
+    else:
+        raw = envelope.aggregate_id
+    if not raw:
+        return None
+    try:
+        return uuid.UUID(str(raw))
+    except (ValueError, TypeError):
+        return None
+
+
 async def transcribe_inbound_voice(
     session: AsyncSession,
     tenant_id: uuid.UUID,
     *,
-    message_id: uuid.UUID,
+    message_id: uuid.UUID | None,
     stt_provider: STTProvider | None = None,
     language: str | None = None,
 ) -> str | None:
@@ -93,6 +124,10 @@ async def transcribe_inbound_voice(
     `conversations -> ai` closes a module import cycle (§36 rule set below is
     otherwise unchanged).
 
+    - `message_id` is None when the event does not name one (an approval resume).
+      There is no message whose audio could be pending, so nothing is transcribed
+      and no provider is called — transcription belongs to the ingest that
+      carried the note.
     - Nothing pending (text message, image, already transcribed) returns without
       touching the provider — the idempotency is the status column.
     - Budget is RESERVED before the call, never checked-and-hoped: transcription
@@ -100,6 +135,9 @@ async def transcribe_inbound_voice(
     - A block is not an error. The customer's note is already stored and stays
       delivered; raising here would retry and dead-letter a healthy ingest.
     """
+    if message_id is None:
+        return None
+
     attachment = (
         await session.execute(
             select(Attachment).where(
@@ -194,6 +232,8 @@ class MessageWorker(StreamWorker):
             return
         tenant_id = envelope.tenant_id
         dedupe_uuid = uuid.UUID(self._dedupe_id(envelope))
+        # WHICH message this event carries — see _event_message_id.
+        turn_message_id = _event_message_id(envelope)
         claimed = False
         try:
             from app.modules.ai.hooks import maybe_auto_reply
@@ -246,12 +286,17 @@ class MessageWorker(StreamWorker):
             # Phase 2: Transcribe inbound voice note before answering (§35, §126)
             async with SessionLocal() as session:
                 await bind_tenant(session, tenant_id)
-                await transcribe_inbound_voice(session, tenant_id, message_id=envelope.aggregate_id)
+                await transcribe_inbound_voice(session, tenant_id, message_id=turn_message_id)
 
             # Phase 3: AI Auto-reply (runs under conversation_lease internally)
             async with SessionLocal() as session:
                 await bind_tenant(session, tenant_id)
-                await maybe_auto_reply(session, tenant_id, uuid.UUID(conversation_id))
+                await maybe_auto_reply(
+                    session,
+                    tenant_id,
+                    uuid.UUID(conversation_id),
+                    inbound_message_id=turn_message_id,
+                )
                 await session.commit()
 
             # Phase 4: Finalize consumer-inbox ProcessedEvent (§127)

@@ -713,6 +713,12 @@ async def decide_approval(
             payload={
                 "conversation_id": str(approval.conversation_id),
                 "resumed_approval_id": str(approval.id),
+                # Explicitly no message. This event re-runs the CONVERSATION, and
+                # the approval's own id is the aggregate — naming it a message
+                # would have the worker transcribe a message that does not exist
+                # and answer whichever inbound happens to share the row's shape.
+                # The hook therefore re-evaluates against the newest inbound.
+                "message_id": None,
             },
         )
         resumed = True

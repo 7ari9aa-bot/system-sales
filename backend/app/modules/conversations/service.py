@@ -59,6 +59,26 @@ class ConversationService:
         return conversation
 
     @staticmethod
+    async def find_message(
+        session: AsyncSession, tenant_id: uuid.UUID, message_id: uuid.UUID
+    ) -> Message | None:
+        """One message by id, or None. The read-only lookup callers need when an
+        event names the message it carried.
+
+        Deliberately does NOT scope by conversation: the caller owns that policy,
+        because "is this message part of the conversation I am answering?" is the
+        caller's question to answer, not this method's to assume.
+        """
+        return (
+            await session.execute(
+                select(Message).where(
+                    Message.tenant_id == tenant_id,
+                    Message.id == message_id,
+                )
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
     async def get(
         session: AsyncSession, tenant_id: uuid.UUID, conversation_id: uuid.UUID
     ) -> Conversation:

@@ -190,6 +190,10 @@ class IngestService:
             tenant_id=tenant_id,
             payload={
                 "conversation_id": str(conversation.id),
+                # The consumer must know WHICH message this event carries. Without
+                # it the AI hook answers "the newest inbound message", so a delayed
+                # delivery answers a later message twice and the earlier one never.
+                "message_id": str(created.id),
                 "customer_id": str(customer.id),
                 "channel": message.channel,
                 "body": message.body,
