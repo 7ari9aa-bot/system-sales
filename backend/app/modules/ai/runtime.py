@@ -715,24 +715,42 @@ class AgentRunner:
             failure = grounding.check_grounding(content, facts) if facts else None
             if failure is not None:
                 logger.warning("ai.grounding_failed run=%s detail=%s", run.id, failure)
+                # §134's wall clock covers THIS call too. Only the first model
+                # call was bounded by `remaining`, so a run that spent nearly all
+                # of its budget getting an unsourced answer could then take an
+                # UNLIMITED second one — the request that outlives the worker's
+                # 5-minute stale-claim window, and the one that holds the
+                # conversation lease and its transaction open past any bound the
+                # limits claim to enforce.
+                remaining = (max_wall_time - (datetime.now(UTC) - started_at)).total_seconds()
+                regen_timed_out = False
                 try:
-                    regen = await self.gateway.chat(
-                        session,
-                        tenant_id,
-                        alias=self._alias_for(agent),
-                        messages=[
-                            *messages,
-                            {"role": "assistant", "content": content},
-                            {
-                                "role": "user",
-                                "content": grounding.CORRECTION_INSTRUCTION,
-                            },
-                        ],
-                        tools=None,  # the correction must reuse gathered facts only
-                        temperature=float(agent.temperature),
-                        max_tokens=agent.max_output_tokens,
-                        agent_id=agent.id,
-                        run_id=run.id,
+                    regen = await asyncio.wait_for(
+                        self.gateway.chat(
+                            session,
+                            tenant_id,
+                            alias=self._alias_for(agent),
+                            messages=[
+                                *messages,
+                                {"role": "assistant", "content": content},
+                                {
+                                    "role": "user",
+                                    "content": grounding.CORRECTION_INSTRUCTION,
+                                },
+                            ],
+                            tools=None,  # the correction must reuse gathered facts only
+                            temperature=float(agent.temperature),
+                            max_tokens=agent.max_output_tokens,
+                            agent_id=agent.id,
+                            run_id=run.id,
+                        ),
+                        timeout=remaining,
+                    )
+                except TimeoutError:
+                    regen_timed_out = True
+                    regen = None
+                    logger.warning(
+                        "ai.grounding_regen_deadline run=%s remaining=%.1fs", run.id, remaining
                     )
                 except Exception:  # noqa: BLE001 — a provider blip hands over
                     logger.warning("ai.grounding_regen_error run=%s", run.id, exc_info=True)
@@ -741,7 +759,13 @@ class AgentRunner:
                     tokens_in += regen.tokens_in
                     tokens_out += regen.tokens_out
                 corrected = regen.content if regen is not None else None
-                if corrected and grounding.check_grounding(corrected, facts) is None:
+                if regen_timed_out:
+                    # Named for what actually happened. "grounding_failed" would
+                    # tell the merchant the model kept inventing numbers, when in
+                    # fact the run ran out of wall clock mid-correction.
+                    content = None
+                    decision, reason = "block", "wall_time_exhausted"
+                elif corrected and grounding.check_grounding(corrected, facts) is None:
                     content = corrected
                 else:
                     content = None

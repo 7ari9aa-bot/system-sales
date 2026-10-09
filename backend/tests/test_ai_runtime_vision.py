@@ -8,6 +8,7 @@ server-side media collection with the four-image cap.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -318,6 +319,57 @@ async def test_ungrounded_twice_hands_over(db, tenant_ctx, monkeypatch):
     assert result.guardrail_decision == "block"
     assert result.guardrail_reason == "grounding_failed"
     assert calls["count"] == 3  # exactly ONE regeneration, then hand over
+
+
+async def test_grounding_regeneration_is_bounded_by_the_run_wall_clock(
+    db, tenant_ctx, monkeypatch
+):
+    """§134's clock has to cover the correction call, not only the first one.
+
+    The loop bounded its first model call by the remaining budget and left
+    regeneration with NO deadline at all: a run that spent nearly all of its
+    budget getting an unsourced answer could then take an unbounded second call —
+    long enough to outlive the worker's 5-minute stale-claim window while still
+    holding the conversation lease and its open transaction.
+    """
+    tenant_id = tenant_ctx.tenant_id
+    agent = await _agent_with(db, tenant_id, "search_products")
+    agent.run_limits = {"max_wall_time_seconds": 2}
+    await db.flush()
+    await _seed_variant(db, tenant_id)
+
+    calls = {"count": 0}
+
+    async def slow_correction(self, session, tid, *, alias, messages, tools=None, **kwargs):  # noqa: ANN001
+        calls["count"] += 1
+        if calls["count"] >= 3:
+            await asyncio.sleep(30)  # far beyond the 2s budget, by design
+        if calls["count"] == 1:
+            return ChatCompletionResult(
+                content=None,
+                tool_calls=[
+                    ToolCallRequest(id="c1", name="search_products", arguments={"query": "widget"})
+                ],
+                tokens_in=1,
+                tokens_out=1,
+                raw_model="m",
+            )
+        return ChatCompletionResult(
+            content="السعر 99 جنيه", tool_calls=[], tokens_in=1, tokens_out=1, raw_model="m"
+        )
+
+    monkeypatch.setattr(AIGateway, "chat", slow_correction)
+
+    result = await AgentRunner(gateway=AIGateway()).run(
+        db, tenant_id, agent_id=agent.id, user_message="كام؟"
+    )
+
+    assert calls["count"] == 3, "the correction was never attempted"
+    assert result.content is None
+    assert result.guardrail_reason == "wall_time_exhausted", (
+        f"got {result.guardrail_reason!r} — a run that ran out of wall clock must "
+        "not be reported to the merchant as the model inventing numbers"
+    )
 
 
 async def test_no_tool_results_skips_grounding(db, tenant_ctx, monkeypatch):
