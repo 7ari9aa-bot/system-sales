@@ -285,6 +285,59 @@ FUNCTION_EXECUTE_GRANTS: tuple[str, ...] = (
     "GRANT EXECUTE ON FUNCTION public.auth_user_is_tenant_member(uuid, uuid) TO sales_app",
 )
 
+#: fd2026100805's `sales_app_read` policies on the RBAC reference plane — the
+#: same deploy-order pair as FUNCTION_EXECUTE_GRANTS. The migration creates
+#: each policy under `IF EXISTS (pg_roles 'sales_app')`, which is false when
+#: CI runs alembic — and fd2026100502 had already ENABLEd RLS on these tables,
+#: so without this half the runtime role reads zero rows from `roles`,
+#: `_role_permissions()` returns nothing, and every `require_permission` call
+#: denies. In CI that surfaced as `NoResultFound` on `Role.code == "owner"` at
+#: conftest before any test could run. Each block is self-guarding (table
+#: exists, policy not yet present), so both deploy orders converge.
+#: `tests/test_app_role_reference_plane_policies.py` pins the convergence.
+REFERENCE_PLANE_READ_POLICIES: tuple[str, ...] = (
+    (
+        "DO $$ BEGIN "
+        "IF EXISTS (SELECT 1 FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name = 'permissions') "
+        "AND NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' "
+        "AND tablename = 'permissions' AND policyname = 'sales_app_read') "
+        "THEN CREATE POLICY sales_app_read ON public.permissions "
+        "FOR SELECT TO sales_app USING (true); "
+        "END IF; END $$;"
+    ),
+    (
+        "DO $$ BEGIN "
+        "IF EXISTS (SELECT 1 FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name = 'roles') "
+        "AND NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' "
+        "AND tablename = 'roles' AND policyname = 'sales_app_read') "
+        "THEN CREATE POLICY sales_app_read ON public.roles "
+        "FOR SELECT TO sales_app USING (true); "
+        "END IF; END $$;"
+    ),
+    (
+        "DO $$ BEGIN "
+        "IF EXISTS (SELECT 1 FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name = 'role_permissions') "
+        "AND NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' "
+        "AND tablename = 'role_permissions' AND policyname = 'sales_app_read') "
+        "THEN CREATE POLICY sales_app_read ON public.role_permissions "
+        "FOR SELECT TO sales_app USING (true); "
+        "END IF; END $$;"
+    ),
+    (
+        "DO $$ BEGIN "
+        "IF EXISTS (SELECT 1 FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name = 'plans') "
+        "AND NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' "
+        "AND tablename = 'plans' AND policyname = 'sales_app_read') "
+        "THEN CREATE POLICY sales_app_read ON public.plans "
+        "FOR SELECT TO sales_app USING (true); "
+        "END IF; END $$;"
+    ),
+)
+
 
 ROLES = [
     ("owner", "Owner", "Full access to the tenant"),
@@ -412,6 +465,12 @@ async def setup_app_role(conn: asyncpg.Connection, password: str) -> None:
             # Provisioned ahead of the migrations on a fresh database. Nothing
             # is lost: f7a2c9d4e8b1 grants these once the role exists.
             print(f"function grant skipped (not migrated yet): {stmt}")
+    # fd2026100805's policies, for the same reason as the grants above: the
+    # migration creates them under a role-exists guard that is false at
+    # alembic time in CI. The blocks self-guard on table/policy existence, so
+    # no skip handling is needed for the other deploy order.
+    for stmt in REFERENCE_PLANE_READ_POLICIES:
+        await conn.execute(stmt)
     print(
         "app role: sales_app ready (no bypassrls, full table grants EXCEPT the "
         "§53–54 TRUNCATE freeze on invoices, plus EXECUTE on the §55–57 "
