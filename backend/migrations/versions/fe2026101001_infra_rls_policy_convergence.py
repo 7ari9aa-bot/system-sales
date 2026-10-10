@@ -24,9 +24,6 @@ this migration actually created — the same drift problem the other way, so
 downgrade restores deny-on-drift, which is what production had anyway.
 """
 
-from collections.abc import Sequence
-
-import sqlalchemy as sa
 from alembic import op
 
 revision: str = "fe2026101001"
@@ -34,47 +31,52 @@ down_revision: str | None = "fe2026100815"
 branch_labels: str | None = None
 depends_on: str | None = None
 
-_INFRA_TABLES = (
-    "idempotency_keys",
-    "outbox_events",
-    "processed_events",
-    "dr_policy",
-    "restore_test_runs",
-    "alembic_version",
-)
-
 
 def upgrade() -> None:
-    conn = op.get_bind()
-    if not conn.execute(
-        sa.text("SELECT 1 FROM pg_roles WHERE rolname = 'sales_app'")
-    ).scalar():
-        return
-    for tbl in _INFRA_TABLES:
-        if not conn.execute(
-            sa.text(
-                "SELECT 1 FROM information_schema.tables "
-                "WHERE table_schema = 'public' AND table_name = :tbl"
-            ),
-            {"tbl": tbl},
-        ).scalar():
-            continue
-        if conn.execute(
-            sa.text(
-                "SELECT 1 FROM pg_policies "
-                "WHERE schemaname = 'public' AND tablename = :tbl "
-                "AND policyname = 'app_all'"
-            ),
-            {"tbl": tbl},
-        ).scalar():
-            continue
-        op.execute(
-            f"CREATE POLICY app_all ON public.{tbl} "
-            "FOR ALL TO sales_app USING (true) WITH CHECK (true)"
-        )
+    # The checks live in SQL, not in Python: the migration gates execute every
+    # upgrade() against a recording stand-in for `op` (tests/test_migrations.py),
+    # where op.get_bind() is None — a conn.execute probe crashes the guard tests
+    # instead of the deploy. Idempotence is expressed exactly the way
+    # fe2026100801 expressed it: one DO block, per-table catalog checks.
+    op.execute(
+        """
+        DO $$
+        DECLARE
+            tbl TEXT;
+            tbls TEXT[] := ARRAY[
+                'idempotency_keys',
+                'outbox_events',
+                'processed_events',
+                'dr_policy',
+                'restore_test_runs',
+                'alembic_version'
+            ];
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'sales_app') THEN
+                RETURN;
+            END IF;
+            FOREACH tbl IN ARRAY tbls LOOP
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.tables
+                    WHERE table_schema = 'public' AND table_name = tbl
+                ) THEN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_policies
+                        WHERE schemaname = 'public' AND tablename = tbl AND policyname = 'app_all'
+                    ) THEN
+                        EXECUTE format(
+                            'CREATE POLICY app_all ON public.%I FOR ALL TO sales_app
+                             USING (true) WITH CHECK (true)',
+                            tbl
+                        );
+                    END IF;
+                END IF;
+            END LOOP;
+        END $$;
+        """
+    )
 
 
 def downgrade() -> None:
-    conn = op.get_bind()
     for tbl in ("dr_policy", "restore_test_runs", "alembic_version"):
         op.execute(f"DROP POLICY IF EXISTS app_all ON public.{tbl}")
