@@ -122,6 +122,10 @@ class AnalysisStoredOut(BaseModel):
     outcome: str
     content_hash: str
     model: str | None = None
+    # P1-12: the alias is not the model. Both halves of the provenance ship
+    # with the stored answer so a reader can tell what produced it.
+    provider: str | None = None
+    model_version: str | None = None
     prompt_version: str | None = None
     created_at: str
     pack: EvidencePack
@@ -268,6 +272,10 @@ def _facts_to_contracts(
             value=Decimal(str(payload["value"])),
             unit=payload.get("unit", "orders"),
             period=period,
+            # P1-12: the bucket a fact belongs to travels with it. The id is a
+            # digest of metric+window+filters, so a rebuild that dropped the
+            # filters would hold facts that no longer explain their own ids.
+            filters=payload.get("filters") or {},
             source=payload.get("source", "orders"),
             computed_at=computed_at,
             data_as_of=data_as_of,
@@ -355,10 +363,17 @@ async def run_sales_analysis(
     evidence_hash = None
     pack = None
     if facts_contracts:
+        # P1-12: the pack is validated against the timezone and currency the
+        # facts were actually measured in. `build_pack` defaults to UTC/EGP, and
+        # every fact rebuilt here carries the MERCHANT's zone — so a tenant that
+        # set a zone failed validation at publish time, after the model call was
+        # already paid for.
         pack = build_pack(
             store,
             CapabilityContext(tenant_id=tenant_id, profile=profile),
             question=question,
+            timezone=merchant_tz,
+            currency=merchant_currency,
         )
         evidence_hash = pack.content_hash
 
@@ -397,6 +412,9 @@ async def run_sales_analysis(
             findings=findings,
             run_id=result.run_id,
             model=model_name,
+            # P1-12: provenance the stored answer can be audited against.
+            provider=provider_name,
+            model_version=getattr(result, "model_name", None),
             prompt_version=str(agent_ver),
         )
 
@@ -424,6 +442,9 @@ async def run_sales_analysis(
         guardrail_reason=guardrail_reason,
         provider=provider_name,
         model=model_name,
+        # The concrete model behind the alias; AgentRunResult.model_name is the
+        # run's own record of what answered, not what was asked for.
+        model_version=getattr(result, "model_name", None),
         agent_version=agent_ver,
         prompt_version=str(agent_ver),
     )

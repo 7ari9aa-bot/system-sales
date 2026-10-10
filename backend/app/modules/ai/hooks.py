@@ -15,10 +15,12 @@ from __future__ import annotations
 import logging
 import uuid
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.storage import get_storage
+from app.modules.ai.agents.customer.turn import TurnInput, run_customer_turn
 from app.modules.ai.gateway import AIBudgetExhaustedError
-from app.modules.ai.runtime import AgentRunner
 from app.modules.conversations.policy import OutboundBlockedError
 
 logger = logging.getLogger(__name__)
@@ -139,37 +141,63 @@ async def _do_auto_reply(
     if last_inbound is None:
         return
 
-    # Support multimodal / attachment-only intake: if body is absent, use placeholder
-    if last_inbound.body and last_inbound.body.strip():
-        user_body = last_inbound.body.strip()
-    elif last_inbound.content_type == "image" or (
-        last_inbound.media_type and "image" in last_inbound.media_type
-    ):
-        user_body = "[Customer sent an image]"
-    elif last_inbound.content_type == "voice" or (
-        last_inbound.media_type and "audio" in last_inbound.media_type
-    ):
-        from sqlalchemy import select
+    # §8: intake belongs to the turn coordinator, not to six inline ways of
+    # asking "did the customer send a photo?". Fetch the attachments once and
+    # hand the coordinator the raw shape (§155 kinds + (mime, key) pairs).
+    from app.modules.conversations.models import Attachment
 
-        from app.modules.conversations.models import Attachment
-
-        stmt = select(Attachment).where(
-            Attachment.tenant_id == tenant_id,
-            Attachment.message_id == last_inbound.id,
-        )
-        att = (await session.execute(stmt)).scalars().first()
-        if att and att.transcription_status == "completed" and att.transcript_text:
-            user_body = att.transcript_text.strip()
-        elif att and att.transcription_status == "failed":
-            user_body = (
-                "[Customer sent a voice note that could not be transcribed. "
-                "Ask the customer politely to type their message or offer a human agent.]"
+    att_rows = (
+        (
+            await session.execute(
+                select(Attachment).where(
+                    Attachment.tenant_id == tenant_id,
+                    Attachment.message_id == last_inbound.id,
+                )
             )
-        else:
-            user_body = "[Customer sent a voice note]"
-    elif last_inbound.media_url:
-        user_body = f"[Customer sent an attachment: {last_inbound.content_type}]"
-    else:
+        )
+        .scalars()
+        .all()
+    )
+    attachments: list[tuple[str, str | None]] = []
+    # §9: the agent accepts no tenant credentials — the URL mapping is minted
+    # HERE, outside the turn, from the durable storage keys.
+    image_urls: dict[str, str] = {}
+    transcript: str | None = None
+    has_image = (last_inbound.content_type == "image") or bool(
+        last_inbound.media_type and "image" in last_inbound.media_type
+    )
+    has_voice = (last_inbound.content_type == "voice") or bool(
+        last_inbound.media_type and "audio" in last_inbound.media_type
+    )
+    for att in att_rows:
+        mime = att.mime_type or ""
+        if att.storage_key:
+            attachments.append((mime, att.storage_key))
+            if mime.startswith("image/"):
+                has_image = True
+                image_urls[att.storage_key] = get_storage().public_url(att.storage_key)
+            elif mime.startswith("audio/"):
+                has_voice = True
+        if att.transcription_status == "completed" and att.transcript_text:
+            transcript = att.transcript_text.strip() or None
+
+    body = last_inbound.body.strip() if last_inbound.body and last_inbound.body.strip() else None
+    # A placeholder survives only where the coordinator has no vocabulary: an
+    # image whose bytes were never captured durably has no key to mint a URL
+    # from, so build_turn would see nothing at all — say so in words instead.
+    # Voice stays unplaceholdered: the coordinator surfaces an untranscribed
+    # note as state ("we could not hear them yet"), never hides it.
+    if body is None and has_image and not image_urls:
+        body = "[Customer sent an image]"
+    elif (
+        body is None
+        and not has_image
+        and not has_voice
+        and not attachments
+        and last_inbound.media_url
+    ):
+        body = f"[Customer sent an attachment: {last_inbound.content_type}]"
+    if body is None and not has_image and not has_voice and not attachments:
         return
 
     conversation = await ConversationService.get(session, tenant_id, conversation_id)
@@ -191,46 +219,57 @@ async def _do_auto_reply(
     # contributes nothing to every reply from then on — answer quality drops and
     # nothing says so. WARNING (not INFO) so it is visible in normal log review,
     # and the message states what was actually lost rather than just "failed".
-    system_prompt = agent.system_prompt or ""
-
-    # §132: knowledge snippets are injected as a SEPARATE context block, not
-    # appended to the system prompt. This separates trusted instructions from
-    # untrusted retrieved content, reducing the prompt-injection surface.
     #
-    # Knowledge context is a bonus, never a hard dependency: if retrieval fails
-    # the reply still goes out. But it must not fail QUIETLY — a misconfigured
-    # embedding model means RAG contributes nothing to every reply from then on.
+    # §132: knowledge snippets are injected as a SEPARATE context block, not
+    # appended to the system prompt — trusted instructions stay away from
+    # untrusted retrieved content. The system prompt itself is no longer passed
+    # from here: the runtime resolves it from the agent row.
     knowledge_context: str | None = None
-    try:
-        from app.modules.ai.knowledge import retrieve_relevant
+    retrieval_query = body or transcript or ""
+    if retrieval_query:
+        try:
+            from app.modules.ai.knowledge import retrieve_relevant
 
-        snippets = await retrieve_relevant(
-            session,
-            tenant_id,
-            query=user_body,
-            customer_id=customer_id,
-            limit=KNOWLEDGE_SNIPPETS,
-        )
-        if snippets:
-            knowledge_context = "\n".join(f"- {s}" for s in snippets)
-    except Exception:  # noqa: BLE001 — context is optional, the reply is not
-        logger.warning(
-            "auto-reply continuing WITHOUT knowledge context — knowledge search "
-            "failed (check the embedding model config)",
-            exc_info=True,
-        )
+            snippets = await retrieve_relevant(
+                session,
+                tenant_id,
+                query=retrieval_query,
+                customer_id=customer_id,
+                limit=KNOWLEDGE_SNIPPETS,
+            )
+            if snippets:
+                knowledge_context = "\n".join(f"- {s}" for s in snippets)
+        except Exception:  # noqa: BLE001 — context is optional, the reply is not
+            logger.warning(
+                "auto-reply continuing WITHOUT knowledge context — knowledge search "
+                "failed (check the embedding model config)",
+                exc_info=True,
+            )
+
+    # The no-resend ledger must be read BEFORE the turn: the coordinator
+    # records the run's proposed media into sent_media, so reading the row
+    # AFTER would filter out exactly what this turn proposed to deliver.
+    from app.modules.ai.agents.customer.state import load_state
+
+    pre_turn_state = await load_state(session, tenant_id, conversation_id)
+    pre_turn_sent: set[str] = set(pre_turn_state.sent_media or []) if pre_turn_state else set()
 
     try:
-        result = await AgentRunner().run(
+        outcome = await run_customer_turn(
             session,
-            tenant_id,
-            agent_id=agent.id,
-            conversation_id=conversation_id,
-            inbound_message_id=last_inbound.id,
-            user_message=user_body,
-            customer_id=customer_id,
-            system_prompt=system_prompt or None,
-            knowledge_context=knowledge_context,  # §132: separate from system prompt
+            TurnInput(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                agent_id=agent.id,
+                inbound_message_id=last_inbound.id,
+                customer_id=customer_id,
+                body=body,
+                content_type=last_inbound.content_type,
+                attachments=attachments,
+                transcript=transcript,
+                image_urls=image_urls,
+                knowledge_context=knowledge_context,  # §132: separate from system prompt
+            ),
         )
     except AIBudgetExhaustedError as exc:
         # A spent ceiling is not a retryable failure, and letting it reach the
@@ -250,19 +289,27 @@ async def _do_auto_reply(
     # duplicate write that used to live here produced two rows and two
     # embeddings per run.
 
-    # §41: the guardrail is evaluated INSIDE AgentRunner, so every caller is
-    # covered — this only reacts to the verdict. The runner already withheld
-    # the content, so there is nothing sendable here either way.
-    if result.guardrail_decision != "allow":
-        await handover("guardrail", f"guardrail:{result.guardrail_reason}", result.run_id)
+    # §41/§12: the guardrail is evaluated inside the runner, and grounding
+    # inside the coordinator — both withhold the reply. Nothing sendable
+    # remains either way, so the hook only reacts: a guardrail verdict is a
+    # guardrail handover, anything else (a grounding failure) hands the run to
+    # a human rather than regenerating — v1 never spends a second model call
+    # on a reply the deterministic check may bounce again.
+    if outcome.blocked_reason == "empty_turn":
+        return
+    if outcome.blocked_reason is not None:
+        if outcome.blocked_reason.startswith("guardrail:"):
+            await handover("guardrail", outcome.blocked_reason, outcome.run_id)
+        else:
+            await handover("failure", outcome.blocked_reason, outcome.run_id)
         logger.warning(
-            "ai.guardrail_blocked conversation=%s reason=%s",
+            "ai.turn_blocked conversation=%s reason=%s",
             conversation_id,
-            result.guardrail_reason,
+            outcome.blocked_reason,
         )
         return
 
-    if not result.content:
+    if not outcome.reply:
         return
 
     try:
@@ -272,14 +319,14 @@ async def _do_auto_reply(
             conversation_id=conversation_id,
             direction="outbound",
             sender_type="ai",
-            body=result.content,
+            body=outcome.reply,
         )
     except OutboundBlockedError as exc:
         # §30: outside the customer-service window a free-form AI reply is not
         # allowed on this channel. Hand over to a human (who can send an
         # approved template) instead of letting the event fail — the customer
         # still needs an answer, and a failed event would be retried forever.
-        await handover("messaging_window_closed", f"policy:{exc.message}", result.run_id)
+        await handover("messaging_window_closed", f"policy:{exc.message}", outcome.run_id)
         logger.warning(
             "ai.reply_blocked_by_policy conversation=%s reason=%s",
             conversation_id,
@@ -301,23 +348,34 @@ async def _do_auto_reply(
         aggregate_version=1,
     )
 
-    if not result.media:
+    if outcome.handover_reason is not None:
+        # §37/P1-11: the customer asked for a person and the ack went out —
+        # now the conversation actually moves. This is the writer that gives
+        # the `customer_request` reason a producer: before it, a customer
+        # saying "اتكلم مع حد" was answered by the model and nothing else
+        # ever learned they had asked.
+        await handover(outcome.handover_reason, "customer asked for a human", outcome.run_id)
+        logger.info(
+            "ai.customer_request_handover conversation=%s run=%s",
+            conversation_id,
+            outcome.run_id,
+        )
+        return
+
+    if not outcome.media:
         return
 
     async def send_media() -> None:
         """§13: deliver the collected product photos after the text reply.
 
-        One outbound message per image, ONE outbox event per message, and the
-        state engine's sent_media ledger updated so no image is ever re-sent
-        in this conversation. Only runs once the text went out — a photo
-        without its sentence reads as spam.
+        One outbound message per image, ONE outbox event per message. The
+        no-resend rule filters against the PRE-TURN sent_media snapshot: the
+        coordinator already recorded the run's proposed media on the state
+        row, so a fresh read here would hide exactly this turn's photos. The
+        state row itself needs no second patch — the coordinator owns it.
         """
-        from app.modules.ai.agents.customer.state import apply_patch, load_state
-
-        state = await load_state(session, tenant_id, conversation_id)
-        sent: list[str] = list(state.sent_media or []) if state else []
-        newly_sent: list[str] = []
-        for item in result.media:
+        sent = set(pre_turn_sent)
+        for item in outcome.media:
             if item["image_id"] in sent:
                 continue  # §13: the no-resend rule
             try:
@@ -352,16 +410,6 @@ async def _do_auto_reply(
                 },
                 aggregate_version=1,
             )
-            sent.append(item["image_id"])
-            newly_sent.append(item["image_id"])
-
-        # The state engine owns the row: closed vocabulary, append-dedupe,
-        # and a version bump ONLY when something actually grew.
-        await apply_patch(
-            session,
-            tenant_id,
-            conversation_id,
-            {"shown_items": result.shown_product_ids, "sent_media": newly_sent},
-        )
+            sent.add(item["image_id"])
 
     await send_media()

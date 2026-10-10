@@ -139,6 +139,39 @@ class AgentDetailOut(BaseModel):
     version: int
 
 
+class AgentPublishRequest(BaseModel):
+    """Optional body for POST /agents/{id}/publish. An omitted body publishes
+    the current configuration with an empty tool policy."""
+
+    tool_policy: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Optional veto policy: {allow: [tool names], deny: [tool names]}. "
+            "deny wins; the policy can only narrow what the registry authorizes."
+        ),
+    )
+
+
+class AgentVersionOut(BaseModel):
+    """One immutable published snapshot. Echoes what the runtime will serve
+    for this version — the run's reproducibility contract."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    agent_id: UUID
+    version: int
+    status: str
+    system_prompt: str | None = None
+    model: str | None = None
+    temperature: float | None = None
+    max_output_tokens: int | None = None
+    run_limits: dict[str, Any]
+    tool_policy: dict[str, Any]
+    published_at: str | None = None
+    published_by: UUID | None = None
+
+
 # --------------------------------------------------------------- knowledge (§157)
 
 
@@ -490,6 +523,19 @@ class UsageSummaryOut(BaseModel):
 
 # ------------------------------------------------------------------ handovers §37/150
 
+#: §150: the closed vocabulary a human records when closing a handover. A
+#: fixed set is what makes "did the customer get answered?" computable; the
+#: free-text half is `outcome_note`.
+HANDOVER_OUTCOMES = ("answered", "no_action_needed", "customer_unreachable", "other")
+
+
+class HandoverResolveRequest(BaseModel):
+    outcome: str | None = Field(
+        default=None,
+        description=" | ".join(HANDOVER_OUTCOMES),
+    )
+    note: str | None = Field(default=None, max_length=2000)
+
 
 class HandoverOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -502,6 +548,13 @@ class HandoverOut(BaseModel):
     claimed_by_user_id: UUID | None = None
     note: str | None = None
     created_at: str | None = None
+    # §150 outcome half: who closed it, when, and with what result. NULL on
+    # rows resolved before the outcome columns existed — that is the honest
+    # "we do not know", never a backfilled guess.
+    resolved_by_user_id: UUID | None = None
+    resolved_at: str | None = None
+    outcome: str | None = None
+    outcome_note: str | None = None
 
 
 class HandoverList(BaseModel):

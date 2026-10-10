@@ -134,6 +134,9 @@ DOMAIN_EVENT_TYPES: tuple[str, ...] = (
     # it could still be published, but no consumer could deserialize it — the
     # dashboard and the SLA clocks never heard a handover happen.
     "ai.handover.created",
+    # §150 outcome half: the human closed it, and the queue's SLA math needs
+    # the end of the clock, not just its start (ai/router.py resolve route).
+    "ai.handover.resolved",
     # §175: campaign + journey execution lifecycle (marketing/). The
     # campaign.run.batch continuation is staged by the CampaignWorker with a
     # pacing not_before (§144 bulk tier).

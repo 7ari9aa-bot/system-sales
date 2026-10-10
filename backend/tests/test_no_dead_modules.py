@@ -89,24 +89,9 @@ KNOWN_DEAD_MODULES: dict[str, str] = {
     # The SI agent module itself — its composition root is the Phase 10
     # API route (POST /ai/sales/analyses) that lands next wave; the tools
     # register into the platform registry at import time.
-    # Customer Agent M2 foundations (§8 build order). The state engine IS
-    # wired (hooks' photo delivery); the referent resolver and turn intake
-    # are the next wave's caller surface — the turn coordinator wires them
-    # into AgentRunner alongside the existing context builder. Unit-tested
-    # and awaiting that caller, honestly recorded rather than half-wired.
-    "app.modules.ai.agents.customer.referents": (
-        "§8 referent resolver (التاني/اللي فات over shown_items) — unit-"
-        "tested; the M2 turn coordinator is its caller, next wave."
-    ),
-    "app.modules.ai.agents.customer.intake": (
-        "§8 turn intake/normalization (text/photo/voice into InboundTurn) — "
-        "unit-tested; the M2 turn coordinator is its caller, next wave."
-    ),
-    "app.modules.ai.agents.customer.turn": (
-        "§8 M2 turn coordinator (intake→state→referents→vision→runner→"
-        "grounding→patch) — unit-tested with an injected fake runner; the "
-        "message-worker hook adopts it as the customer-agent path next wave."
-    ),
+    # The §8 M2 turn coordinator (turn.py) and its intake/referents pair were
+    # recorded here until P1-7: hooks.py now runs every customer turn through
+    # run_customer_turn, so they are reachable and belong off this list.
     # §166 / ADR-042 storm-suppression write path. Wiring it correctly is a
     # feature, not a one-line call: NotificationService.create() returns the
     # Notification row every caller already depends on, and the aggregator's

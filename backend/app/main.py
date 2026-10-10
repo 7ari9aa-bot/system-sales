@@ -124,6 +124,14 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     # dedicated engine inside: no shared-pool residue across loops
     await run_boot_reconciler()
 
+    # P0-4: refuse to serve on a stale schema. The api owns migrations, but a
+    # rollback or a skipped pre-deploy would otherwise serve code whose SQL
+    # names tables the database does not have — the same skew that crashed the
+    # worker pools on `agent_deployments`.
+    from app.core.schema_guard import assert_schema_current
+
+    await assert_schema_current(engine)
+
     # Agent Registry: discover and register all agent kinds at startup
     from app.modules.ai.core.registry import discover_agents
 

@@ -13,6 +13,7 @@ never surface a draft or archived product.
 from __future__ import annotations
 
 import uuid
+from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -22,8 +23,11 @@ from app.core.config import get_settings
 from app.core.storage import get_storage
 from app.modules.ai.agents.customer.vision.retrieval import MODEL_VERSION
 from app.modules.ai.models import ProductEmbedding
-from app.modules.ai.providers import MultimodalContent, MultimodalEmbeddingProvider
+from app.modules.ai.providers import MultimodalContent
 from app.modules.ai.tools import sellable_product_statuses
+
+if TYPE_CHECKING:
+    from app.modules.ai.providers import MultimodalEmbeddingProvider
 
 _IMAGES_SQL = sa.text(
     """
@@ -60,7 +64,6 @@ async def index_product_images(
     one vector space.
     """
     settings = get_settings()
-    provider = _provider or MultimodalEmbeddingProvider()
     statuses = sorted(sellable_product_statuses())
 
     rows = (
@@ -77,14 +80,22 @@ async def index_product_images(
                 contents.append(MultimodalContent(image=image_url, text=row.alt))
             else:
                 contents.append(MultimodalContent(image=image_url))
-        vectors = await provider.embed(
-            base_url=settings.ai_embedding_vision_base_url,
-            api_key=settings.ai_embedding_vision_api_key,
-            model=settings.ai_embedding_vision_model,
-            contents=contents,
-            expected_dimensions=settings.ai_embedding_vision_dimensions,
-            _client=_client,
-        )
+        if _provider is not None:
+            vectors = await _provider.embed(
+                base_url=settings.ai_embedding_vision_base_url,
+                api_key=settings.ai_embedding_vision_api_key,
+                model=settings.ai_embedding_vision_model,
+                contents=contents,
+                expected_dimensions=settings.ai_embedding_vision_dimensions,
+                _client=_client,
+            )
+        else:
+            # Governed default (see retrieval): budget, egress, breaker, record.
+            from app.modules.ai.gateway import AIGateway
+
+            vectors = await AIGateway().embed_vision(
+                session, tenant_id, contents=contents, _client=_client
+            )
         for row, vector in zip(chunk, vectors, strict=True):
             content_kind = "image+text" if row.alt else "image"
             stmt = (

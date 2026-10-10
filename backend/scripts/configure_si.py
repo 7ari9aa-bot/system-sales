@@ -23,6 +23,7 @@ from sqlalchemy import select
 from app.core.model_registry import Base  # noqa: F401 — full metadata for FKs
 from app.modules.ai.agents.sales_intelligence.tools import SI_TOOLS
 from app.modules.ai.models import Agent, AgentTool, ModelConfig
+from app.modules.ai.secret_backfill import set_model_config_secret
 
 NOVITA_BASE = "https://api.novita.ai/v3/openai"
 STRONG_MODEL = "zai-org/glm-5.3"
@@ -49,7 +50,9 @@ async def configure_agent(session, tenant_id: uuid.UUID, *, api_key: str) -> uui
             session.add(row)
         row.provider = "novita"
         row.model = model
-        row.config = {"base_url": NOVITA_BASE, "api_key": api_key}
+        # §68: key into secret_values; the row keeps only the pointer.
+        row.secret_ref = await set_model_config_secret(session, tenant_id, alias, api_key)
+        row.config = {"base_url": NOVITA_BASE}
         row.is_active = True
     await session.flush()
 

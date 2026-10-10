@@ -67,6 +67,8 @@ class TurnInput:
     conversation_id: uuid.UUID
     agent_id: uuid.UUID
     customer_id: uuid.UUID | None = None
+    # The message this turn answers — keys the runner's tool-call idempotency.
+    inbound_message_id: uuid.UUID | None = None
     # --- raw message fields, passed straight to build_turn ---
     body: str | None = None
     content_type: str | None = None
@@ -74,6 +76,9 @@ class TurnInput:
     transcript: str | None = None
     # storage_key → provider-fetchable URL, minted OUTSIDE the agent (§9).
     image_urls: dict[str, str] = field(default_factory=dict)
+    # Retrieved knowledge snippets, owned by the caller (the hook); merged
+    # with the system-owned context lines into the runner's untrusted block.
+    knowledge_context: str | None = None
 
 
 @dataclass(slots=True)
@@ -90,6 +95,11 @@ class TurnOutcome:
     deadline_exceeded: bool = False
     tokens_in: int = 0
     tokens_out: int = 0
+    run_id: uuid.UUID | None = None
+    # §37: a handover this turn REQUIRES, as the reason vocabulary of
+    # ai_handovers. Set when the customer asked for a person — the caller
+    # (the hook) owns the handover write, because it owns the conversation.
+    handover_reason: str | None = None
 
 
 #: Normalized markers that SIGNAL a pointing attempt — matched to decide
@@ -97,6 +107,62 @@ class TurnOutcome:
 #: resolved referent (out of range, or nothing shown yet) is exactly the case
 #: the reply must ask about, never guess across.
 _POINTING_MARKERS = ("الاول", "التاني", "التالت", "اللي فات", "الاخير", "ده", "دي")
+
+#: §37: "اتكلم مع حد" is a handover, not a question. Two parts must both be
+#: present in the customer's own words — something they want, and a person to
+#: want it from — so a product named "موظف" in passing or a bare "عايز" does
+#: not fire. The list is deliberately forgiving on phrasing and strict on
+#: grammar: a false positive costs one queue row a human can dismiss, while a
+#: false negative leaves the customer talking to the thing they just asked to
+#: stop talking to. Matched against `normalize_arabic` output, so alef/yeh/
+#: teh-marbuta spelling variants and harakat are already folded.
+_HUMAN_REQUEST_WANTING = (
+    "اتكلم",
+    "اكلم",
+    "تكلم",
+    "كلام",
+    "عايز",
+    "عاوز",
+    "عيز",
+    "اريد",
+    "ابغي",
+    "نفسي",
+    "وصلني",
+    "كلمني",
+    "speak",
+    "talk",
+    "need",
+)
+_HUMAN_REQUEST_PERSON = (
+    "موظف",
+    "مسؤول",
+    "مسئول",
+    "انسان",
+    "ادمي",
+    "بشر",
+    "خدمه العملاء",
+    "فريق",
+    "human",
+    "person",
+    "representative",
+    "agent",
+    "staff",
+)
+
+#: What the customer hears when they ask for a person. Fixed words: it states
+#: no price, no product and no promise beyond the handover itself, and it
+#: replaces the model call rather than being checked after one.
+_HUMAN_REQUEST_ACK = "حاضر، هوصّلك على شخص من الفريق — هو يكمل معاك من هنا."
+
+
+def wants_human_request(text: str | None) -> bool:
+    """True when the customer asked, in their own words, for a human."""
+    if not text:
+        return False
+    normalized = normalize_arabic(text)
+    return any(want in normalized for want in _HUMAN_REQUEST_WANTING) and any(
+        person in normalized for person in _HUMAN_REQUEST_PERSON
+    )
 
 
 def _context_lines(
@@ -178,6 +244,19 @@ async def run_customer_turn(
 
     state = await load_state(session, params.tenant_id, params.conversation_id)
     state_version = state.state_version if state else 0
+
+    # §37: a customer who asks for a person gets one. This exits BEFORE the
+    # vision pass and the model call — no state patch, no budget spent, no
+    # answer improvised. `handover_reason` is the hook's instruction to move
+    # the conversation; the ack only tells the customer it happened.
+    asked_words = turn.text or turn.voice_transcript
+    if wants_human_request(asked_words):
+        return TurnOutcome(
+            reply=_HUMAN_REQUEST_ACK,
+            state_version=state_version,
+            handover_reason="customer_request",
+        )
+
     shown = list(state.shown_items) if state else []
     referent = resolve_referent(turn.text or "", shown)
 
@@ -210,14 +289,61 @@ async def run_customer_turn(
             blocked_reason="empty_turn",
         )
 
+    # P1-10: the customer's own message may carry a quote's confirmation
+    # code. Matched HERE, server-side, against the inbound text — a model
+    # sentence claiming "the customer confirmed" changes nothing. The id of
+    # a confirmed quote flows to the tools through the runtime's server-bound
+    # context, so create_order can only execute lines the customer typed a
+    # code for.
+    confirmed_quote_id: uuid.UUID | None = None
+    quote_line: str | None = None
+    if params.customer_id is not None:
+        from app.modules.ai.agents.customer.confirmation import live_quote, match_confirmation
+
+        matched = await match_confirmation(
+            session,
+            params.tenant_id,
+            conversation_id=params.conversation_id,
+            customer_id=params.customer_id,
+            text=turn.text,
+        )
+        if matched is not None:
+            confirmed_quote_id = matched.id
+            quote_line = (
+                f"العميل أكّد الطلب (كود: {matched.code}) — "
+                "نادي create_order لتنفيذ البنود المؤكدة."
+            )
+        else:
+            live = await live_quote(
+                session,
+                params.tenant_id,
+                conversation_id=params.conversation_id,
+                customer_id=params.customer_id,
+            )
+            if live is not None and live.status == "pending":
+                quote_line = (
+                    f"فيه عرض سعر مستني تأكيد العميل (كود التأكيد: {live.code}). "
+                    "الطلب لم ينفذ — لازم العميل يبعت الكود بنفسه الأول."
+                )
+
+    # The hook's retrieved snippets ride FIRST; the system-owned context
+    # lines (state, referents, vision) follow — both stay OUTSIDE the system
+    # prompt (§132 untrusted zone).
+    merged_context = (
+        "\n".join(part for part in (params.knowledge_context, context, quote_line) if part)
+        or None
+    )
+
     result: AgentRunResult = await _runner.run(
         session,
         params.tenant_id,
         agent_id=params.agent_id,
         conversation_id=params.conversation_id,
+        inbound_message_id=params.inbound_message_id,
         user_message=user_message,
         customer_id=params.customer_id,
-        knowledge_context=context,
+        knowledge_context=merged_context,
+        confirmed_quote_id=confirmed_quote_id,
     )
 
     deadline_exceeded = (time.monotonic() - started) > deadline_seconds
@@ -290,4 +416,5 @@ async def run_customer_turn(
         deadline_exceeded=deadline_exceeded,
         tokens_in=result.tokens_in,
         tokens_out=result.tokens_out,
+        run_id=result.run_id,
     )

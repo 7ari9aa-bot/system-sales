@@ -26,6 +26,7 @@ from app.core.db import bind_tenant
 from app.core.model_registry import Base  # noqa: F401 — full metadata for FKs
 from app.modules.ai.knowledge import ingest_knowledge
 from app.modules.ai.models import Agent, AgentTool, ModelConfig
+from app.modules.ai.secret_backfill import set_model_config_secret
 from app.modules.identity.models import Tenant
 
 GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/openai"
@@ -91,8 +92,12 @@ async def main() -> int:
                     "config": {
                         **spec["config"],
                         "base_url": GEMINI_BASE,
-                        "api_key": api_key,
                     },
+                    # §68: the key lives in secret_values; the row keeps only
+                    # the pointer. Never inline it into the config JSONB.
+                    "secret_ref": await set_model_config_secret(
+                        session, tenant.id, alias, api_key
+                    ),
                     "is_active": True,
                 }
                 if row is None:

@@ -8,6 +8,7 @@ findings builder grades with the SYSTEM's engine and respects the top-3 cap.
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -37,6 +38,9 @@ from app.modules.orders.models import Order, OrderPayment, Refund, Shipment
 
 DAYS = 30
 REFERENCE = datetime.now(UTC)
+# The fact-id charset `{{fact_id:format}}` placeholders can carry
+# (app/modules/analytics/numbers.py).
+_PLACEHOLDER_ID_RE = re.compile(r"[A-Za-z0-9_]+")
 
 
 def _profile() -> StoreMetricProfile:
@@ -108,16 +112,37 @@ async def test_get_metric_registers_fact_with_id(db, tenant_ctx):
     store = EvidenceStore()
     from app.modules.analytics.capabilities import _period_window
 
+    period = _period_window(REFERENCE, days=DAYS)
     result = await get_metric(
         db,
         context,
         store,
         metric_name="delivered_revenue",
-        period=_period_window(REFERENCE, days=DAYS),
+        period=period,
     )
     assert result.status == "ok"
-    assert result.evidence_ids == ["F1"]
-    assert store.facts["F1"].value == Decimal("1200")
+    (fact_id,) = result.evidence_ids
+    assert store.facts[fact_id].value == Decimal("1200")
+    # P1-12: the id is CONTENT, not a position. Every SI tool call builds its
+    # own store and the run merges them, so positional ids ("F1", "F2")
+    # restarted per call — a second call's "F1" replaced the first call's
+    # different measurement in the merged pack.
+    assert fact_id.startswith("delivered_revenue_")
+    # The {{fact_id:format}} placeholder charset is [A-Za-z0-9_]: an id with a
+    # separator the renderer cannot parse is a fact nothing can quote.
+    assert _PLACEHOLDER_ID_RE.fullmatch(fact_id), fact_id
+
+    # Re-measuring the same window is the SAME fact, not a colliding second one.
+    again = EvidenceStore()
+    second = await get_metric(
+        db, context, again, metric_name="delivered_revenue", period=period
+    )
+    assert second.evidence_ids == [fact_id]
+
+    # A different metric over the same window is a different fact.
+    other = EvidenceStore()
+    third = await get_metric(db, context, other, metric_name="orders_placed", period=period)
+    assert third.evidence_ids != [fact_id]
 
 
 async def test_compare_periods_delta_and_pct(db, tenant_ctx):
@@ -144,6 +169,19 @@ async def test_breakdown_by_channel_splits_the_windows(db, tenant_ctx):
     assert result.summary["dimension"] == "channel"
     # All seeded orders are web — one bucket, no invented ones.
     assert set(result.summary["entries"]) == {"web"}
+    # P1-12: the split is EVIDENCE, not just text. Each bucket contributes its
+    # measured value and its sample size, so a number the answer quotes from a
+    # breakdown traces to a fact with the window and filters it was measured
+    # under. (The tool that served this used to read a store field that did not
+    # exist — every breakdown call raised AttributeError.)
+    assert result.evidence_ids, "a breakdown with no typed evidence is a claim"
+    assert len(result.evidence_ids) == 2  # value + sample, for the one bucket
+    value_facts = [f for f in store.facts.values() if not f.metric.endswith("_sample_by_channel")]
+    assert len(value_facts) == 1
+    assert value_facts[0].filters == {"channel": "web"}
+    assert value_facts[0].unit == "count"
+    assert value_facts[0].value > 0
+    assert all(_PLACEHOLDER_ID_RE.fullmatch(eid) for eid in result.evidence_ids)
 
 
 async def test_drivers_decompose_exactly(db, tenant_ctx):

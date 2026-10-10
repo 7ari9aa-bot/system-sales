@@ -72,6 +72,9 @@ async def run(tenant_id: uuid.UUID, corpus: Path, limit: int, *, no_rerank: bool
     failures: list[str] = []
     factory = session_factory()
     async with factory() as session:
+        from app.core.db import bind_tenant
+
+        await bind_tenant(session, tenant_id)
         for index, (path, label) in enumerate(rows, start=1):
             try:
                 data_url = _data_url(path)
@@ -80,7 +83,12 @@ async def run(tenant_id: uuid.UUID, corpus: Path, limit: int, *, no_rerank: bool
                 ranked = [str(c.product_id) for c in candidates]
                 if candidates and not no_rerank:
                     try:
-                        scored = await rerank_candidates(candidates, query_image=data_url)
+                        scored = await rerank_candidates(
+                            candidates,
+                            query_image=data_url,
+                            session=session,
+                            tenant_id=tenant_id,
+                        )
                         ranked = [str(c.product_id) for c, _ in scored]
                         scores = [s for _, s in scored]
                     except ExternalProviderError as exc:

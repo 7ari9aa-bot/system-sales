@@ -44,7 +44,12 @@ async def run_vision_match(
         return MatchResult(confidence=Confidence.LOW, reason="no_candidates")
 
     try:
-        scored = await rerank_candidates(candidates, query_image=image_url)
+        scored = await rerank_candidates(
+            candidates,
+            query_image=image_url,
+            session=session,
+            tenant_id=tenant_id,
+        )
         reranker_ok = True
     except ExternalProviderError:
         # §12.2: a dead reranker NEVER yields HIGH. Keep the embedding order

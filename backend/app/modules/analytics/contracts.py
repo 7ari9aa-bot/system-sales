@@ -99,7 +99,10 @@ class MetricFact(BaseModel):
     """§8.1 — one measured number. Every value in an answer must trace to
     one of these; the fact carries its own birth certificate."""
 
-    id: str  # stable within a run: "F1", "F2", ...
+    id: str  # unique within a run. A caller may name its fact (F1, F2, ...);
+    # an unnamed measurement gets a CONTENT key from the store — metric, unit,
+    # window and filters — because positional ids collide when a run merges the
+    # stores of several tool calls (P1-12).
     metric: str
     value: Decimal
     unit: Literal["count", "money", "pct", "ratio", "days"]

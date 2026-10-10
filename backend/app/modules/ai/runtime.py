@@ -133,6 +133,9 @@ class AgentRunResult:
     shown_product_ids: list[str] = field(default_factory=list)
     agent_version: int = 1
     model: str | None = None
+    # The concrete model behind the alias — provenance, not a label: "fast"
+    # means nothing to a reader three months from now, the resolved name does.
+    model_name: str | None = None
     provider: str | None = None
 
 
@@ -221,6 +224,9 @@ class AgentRunner:
         system_prompt: str | None = None,
         # §132: untrusted context, separate from system prompt
         knowledge_context: str | None = None,
+        # P1-10: the conversation's confirmed quote (if the customer typed the
+        # code), bound server-side — create_order executes from it.
+        confirmed_quote_id: uuid.UUID | str | None = None,
     ) -> AgentRunResult:
         agent = await self._load_agent(session, tenant_id, agent_id)
         agent_tools = await self._load_agent_tools(
@@ -245,9 +251,25 @@ class AgentRunner:
             bucket = int(hashlib.md5(conversation_id.bytes).hexdigest(), 16) % 100
             canary_chosen = bucket < canary_percent
 
-        agent_version_id = await self._resolve_agent_version(
-            session, tenant_id, agent, canary_chosen=canary_chosen
+        agent_version_id, version_source, version_tool_policy = (
+            await self._resolve_agent_version(
+                session, tenant_id, agent, canary_chosen=canary_chosen
+            )
         )
+        # The published version's policy narrows the registry-authorized set
+        # for this run; it can never widen it (filter is veto-only).
+        if version_tool_policy:
+            before = len(agent_tools)
+            from app.modules.ai.versions import filter_agent_tools_by_policy
+
+            agent_tools = filter_agent_tools_by_policy(agent_tools, version_tool_policy)
+            if len(agent_tools) != before:
+                logger.info(
+                    "ai.tool_policy_narrowed run_agent=%s from=%d to=%d",
+                    agent.id,
+                    before,
+                    len(agent_tools),
+                )
 
         run = AgentRun(
             tenant_id=tenant_id,
@@ -264,6 +286,7 @@ class AgentRunner:
                 "system_prompt_version": getattr(agent, "version", 1),
                 "canary_percent": canary_percent,
                 "canary_chosen": canary_chosen,
+                "version_source": version_source,
             },
             started_at=_now(),
         )
@@ -296,6 +319,7 @@ class AgentRunner:
                 customer_id=customer_id,
                 system_prompt=system_prompt,
                 knowledge_context=knowledge_context,  # §132
+                confirmed_quote_id=confirmed_quote_id,
             )
         except Exception as exc:
             run.status = "failed"
@@ -400,12 +424,21 @@ class AgentRunner:
         agent: Agent,
         *,
         canary_chosen: bool,
-    ) -> uuid.UUID | None:
-        """Return the agent_version_id to use, and patch agent fields in-place.
+    ) -> tuple[uuid.UUID | None, str, dict | None]:
+        """Return (agent_version_id, version_source, tool_policy), and patch
+        agent fields in-place.
 
         If a Deployment row exists, picks stable_version_id or candidate_version_id
         based on canary_chosen.  The agent's mutable row is left untouched in the
         database; only the in-memory instance is overridden for this run.
+
+        The fallback policy is EXPLICIT, never silent: when no version wins,
+        the mutable agent row runs and ``version_source`` records why
+        (``fallback:<reason>`` into run.input, plus a log line) so an auditor
+        can tell a canary-served answer from a row-served one. The third
+        element is the winning version's tool policy — the Agent row has no
+        policy of its own, so without a version the effective policy is None
+        (registry authorization alone).
         """
         from app.modules.ai.models import AgentVersion, Deployment
 
@@ -419,7 +452,7 @@ class AgentRunner:
             )
         ).scalar_one_or_none()
         if deployment is None:
-            return None
+            return None, "fallback:no_deployment", None
 
         version_id = (
             deployment.candidate_version_id
@@ -427,7 +460,7 @@ class AgentRunner:
             else deployment.stable_version_id
         )
         if version_id is None:
-            return None
+            return None, "fallback:no_version_selected", None
 
         version = (
             await session.execute(
@@ -439,7 +472,12 @@ class AgentRunner:
             )
         ).scalar_one_or_none()
         if version is None:
-            return None
+            logger.warning(
+                "ai.version_fallback agent=%s version=%s reason=version_not_published",
+                agent.id,
+                version_id,
+            )
+            return None, "fallback:version_not_published", None
 
         # Override in-memory agent config for this run only (never flushed).
         if version.system_prompt is not None:
@@ -452,7 +490,7 @@ class AgentRunner:
             agent.max_output_tokens = version.max_output_tokens
         if version.run_limits:
             agent.run_limits = version.run_limits
-        return version.id
+        return version.id, "deployment", (version.tool_policy or None)
 
     @staticmethod
     def _alias_for(agent: Agent) -> str:
@@ -501,6 +539,7 @@ class AgentRunner:
         customer_id: uuid.UUID | None,
         system_prompt: str | None,
         knowledge_context: str | None = None,  # §132
+        confirmed_quote_id: uuid.UUID | str | None = None,  # P1-10
     ) -> AgentRunResult:
         # §41 input side: what the model is ABOUT to be shown is judged before
         # it is shown. The output chain cannot cover this — it only ever sees
@@ -692,6 +731,7 @@ class AgentRunner:
                     conversation_id=conversation_id,
                     inbound_message_id=inbound_message_id,
                     customer_image_url=customer_image_url,
+                    confirmed_quote_id=confirmed_quote_id,
                 )
                 tool_calls_made.append(outcome)
                 answered_ids.add(tc.id)
@@ -896,6 +936,7 @@ class AgentRunner:
             shown_product_ids=shown_product_ids,
             agent_version=getattr(agent, "version", 1),
             model=self._alias_for(agent),
+            model_name=agent.model,
             provider=getattr(agent, "provider", None) or "platform",
         )
 
@@ -1098,6 +1139,7 @@ class AgentRunner:
         conversation_id: uuid.UUID | None = None,
         inbound_message_id: uuid.UUID | str | None = None,
         customer_image_url: str | None = None,
+        confirmed_quote_id: uuid.UUID | str | None = None,  # P1-10
     ) -> dict[str, Any]:
         """Run one requested tool call under the agent's policy; record the row.
 
@@ -1186,8 +1228,9 @@ class AgentRunner:
                     # receive the server-side customer/conversation binding.
                     import inspect
 
+                    tool_context: dict[str, str | None] | None = None
                     if "context" in inspect.signature(spec.handler).parameters:
-                        tool_context: dict[str, str | None] = {
+                        tool_context = {
                             "customer_id": str(customer_id) if customer_id else None,
                             "conversation_id": (str(conversation_id) if conversation_id else None),
                         }
@@ -1195,20 +1238,40 @@ class AgentRunner:
                             # §12/§132: the customer's photo is server-bound —
                             # the tool reads it from here, never from args.
                             tool_context["customer_image"] = customer_image_url
+                        if confirmed_quote_id:
+                            # P1-10: the conversation's confirmed quote — bound
+                            # by the turn coordinator from the customer's own
+                            # code message, never from model arguments.
+                            tool_context["confirmed_quote_id"] = str(confirmed_quote_id)
                         kwargs["context"] = tool_context
                     # §135: HIGH-risk tools suspend the run until a human
                     # approves. The approval row is durable — the run resumes
-                    # (or dies) on the decision.
+                    # (or dies) on the decision. Phase-aware (P1-10): the
+                    # create_order PROPOSAL runs inline; only the confirmed-
+                    # quote execution parks.
                     from app.modules.ai.approvals import ApprovalService
                     from app.modules.ai.tools import requires_approval
 
-                    if await requires_approval(spec):
+                    if await requires_approval(spec, tool_context):
                         # §135 + G-02: the approval is bound to THESE arguments.
                         # The payload recorded on the request is what a human
                         # approved, and the resume must present the identical
                         # payload — otherwise it is not the action that was
                         # approved, whatever the action name says.
-                        approval_payload = {"arguments": kwargs}
+                        #
+                        # The signed image URL is the one volatile piece: it is
+                        # re-minted with a fresh expiry on every run, so
+                        # keeping it in the payload would make the resume's
+                        # hash differ from the grant's and strand the flow.
+                        # It is transport, not the decision — excluded.
+                        approval_args = {k: v for k, v in kwargs.items() if k != "context"}
+                        if tool_context is not None:
+                            approval_args["context"] = {
+                                k: v
+                                for k, v in tool_context.items()
+                                if k != "customer_image"
+                            }
+                        approval_payload = {"arguments": approval_args}
                         granted = await ApprovalService.find_granted(
                             session,
                             tenant_id,

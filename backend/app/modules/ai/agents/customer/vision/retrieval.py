@@ -12,6 +12,7 @@ GUC the session runs under.
 from __future__ import annotations
 
 import uuid
+from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,7 +20,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.storage import get_storage
 from app.modules.ai.agents.customer.vision.schemas import Candidate
-from app.modules.ai.providers import MultimodalContent, MultimodalEmbeddingProvider
+from app.modules.ai.providers import MultimodalContent
+
+if TYPE_CHECKING:
+    from app.modules.ai.providers import MultimodalEmbeddingProvider
 
 # §12.1: cosine top-30, best image per product, capped at ~10 candidates.
 EMBEDDING_TOP_K = 30
@@ -83,16 +87,25 @@ async def retrieve_candidates(
     input — the decision reads the rank, never the distance.
     """
     settings = get_settings()
-    embedding = _embedding or MultimodalEmbeddingProvider()
     contents = [MultimodalContent(image=image_url, text=text_hint)]
-    (vector,) = await embedding.embed(
-        base_url=settings.ai_embedding_vision_base_url,
-        api_key=settings.ai_embedding_vision_api_key,
-        model=settings.ai_embedding_vision_model,
-        contents=contents,
-        expected_dimensions=settings.ai_embedding_vision_dimensions,
-        _client=_client,
-    )
+    if _embedding is not None:
+        (vector,) = await _embedding.embed(
+            base_url=settings.ai_embedding_vision_base_url,
+            api_key=settings.ai_embedding_vision_api_key,
+            model=settings.ai_embedding_vision_model,
+            contents=contents,
+            expected_dimensions=settings.ai_embedding_vision_dimensions,
+            _client=_client,
+        )
+    else:
+        # Governed default: budget reservation, egress policy, endpoint
+        # breaker and a ModelCall row — the same skeleton every other
+        # provider call rides. The _embedding seam exists for unit tests.
+        from app.modules.ai.gateway import AIGateway
+
+        (vector,) = await AIGateway().embed_vision(
+            session, tenant_id, contents=contents, _client=_client
+        )
     qvec = _vector_literal(vector)
 
     rows = (

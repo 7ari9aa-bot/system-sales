@@ -35,6 +35,11 @@ async def main() -> int:
     )
     factory = session_factory()
     async with factory() as session:
+        # The governed embedding path writes model_calls and budget
+        # reservations — RLS-guarded rows that need the tenant GUC bound.
+        from app.core.db import bind_tenant
+
+        await bind_tenant(session, args.tenant_id)
         stats = await index_product_images(session, args.tenant_id, batch_size=args.batch_size)
         await session.commit()
     print(f"indexed: {stats['indexed']} image(s) in {stats['batches']} batch(es)")

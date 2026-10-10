@@ -130,6 +130,10 @@ DOMAIN_PRIORITIES: dict[str, EventPriority] = {
     # is owed an answer now. Starving it behind campaign bulk is how a handover
     # sits unseen; it is interactive work, not automation.
     "ai.handover.created": EventPriority.AI_RESPONSE,
+    # The outcome half (§150): closing a handover tells the SLA clocks the
+    # clock STOPPED. Nobody is waiting on it the way they wait on a created
+    # handover, so it is lifecycle work, not interactive work.
+    "ai.handover.resolved": EventPriority.NORMAL_AUTOMATION,
     # Customer Webhooks: provider deliveries (§22 ingress, §24 replay,
     # outbound deliveries) outrank automation but not interactive paths.
     "webhook.ingest": EventPriority.CUSTOMER_WEBHOOK,

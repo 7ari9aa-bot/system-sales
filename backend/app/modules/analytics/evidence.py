@@ -29,7 +29,11 @@ def validate_pack_inputs(
     means the pack may be built. Incomplete data never becomes a fact."""
     problems: list[str] = []
     for fact_id, fact in store.facts.items():
-        if fact.value < 0 and fact.metric not in ("refund_amount",):
+        # P1-12: the exemption follows the MEASURE, not one literal name. A
+        # refund split by carrier or channel ("refund_amount_by_channel") is
+        # legitimately negative just as the base refund metric is, and the
+        # derived buckets carry that name inside them.
+        if fact.value < 0 and "refund" not in fact.metric:
             problems.append(f"{fact_id}: negative value on non-refund metric")
         if fact.period.timezone != timezone:
             problems.append(

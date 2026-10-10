@@ -483,7 +483,9 @@ async def test_canary_rollout_updates_the_real_deployment_state(db, tenant_ctx) 
     evaluation.quality_metrics = {"canary_success_rate": 0.5}
     await db.flush()
 
-    await AIEvaluationService.rollback_canary(db, tenant_id, evaluation.id, reason="metric_degradation")
+    await AIEvaluationService.rollback_canary(
+        db, tenant_id, evaluation.id, reason="metric_degradation"
+    )
     deployment = (
         await db.execute(
             select(Deployment).where(

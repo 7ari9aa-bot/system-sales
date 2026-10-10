@@ -33,7 +33,14 @@ from app.core.circuit_breaker import PROVIDER_AI, get_breaker
 from app.core.config import get_settings
 from app.core.errors import RateLimitExceededError, ValidationError
 from app.modules.ai.models import AIUsage, ModelCall, ModelConfig
-from app.modules.ai.providers import AIProvider, ChatCompletionResult, EmbeddingProvider
+from app.modules.ai.providers import (
+    AIProvider,
+    ChatCompletionResult,
+    EmbeddingProvider,
+    MultimodalContent,
+    MultimodalEmbeddingProvider,
+    RerankerProvider,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -55,9 +62,24 @@ BUDGET_ALERT_THRESHOLDS: tuple[int, ...] = (50, 80, 90, 100)
 _COST_PER_INPUT_TOKEN = Decimal("0.0000005")  # $0.50 / 1M tokens
 _COST_PER_OUTPUT_TOKEN = Decimal("0.000002")  # $2.00 / 1M tokens
 
+# Token floor charged per image in the vision paths (embed_vision/rerank_vision).
+# The providers bill per image with an opaque internal count; the budget cap
+# only needs a positive, roughly-honest estimate to bite.
+_IMAGE_TOKEN_FLOOR = 258
+
 # How long a reservation is held before a sweep may reclaim it. A run that
 # crashes between reserve and settle must not hold budget forever.
 RESERVATION_TTL_MINUTES = 30
+
+# The per-tenant reservation lock is taken as a TRY-lock with a bounded wait —
+# the same contract as the conversation lease. The lock is transaction-scoped,
+# so it lives until the CALLER's transaction ends — i.e. across the provider
+# HTTP call. A blocking pg_advisory_xact_lock here would hang a second worker
+# for as long as the first run's LLM call takes (unbounded, no lock_timeout);
+# the bounded expiry converts that hang into a retryable 429 and the event
+# goes back to the queue instead of stalling the worker pool.
+BUDGET_LOCK_WAIT_SECONDS = 5.0
+_BUDGET_LOCK_POLL_SECONDS = 0.05
 
 ALIASES = frozenset({"fast", "strong", "cheap", "embedding", "fallback"})
 
@@ -432,7 +454,16 @@ async def reserve_budget(
     Committing a reservation up front is what makes the cap hold under load.
 
     An advisory lock serializes reservations per tenant so the read-check-write
-    sequence is atomic under READ COMMITTED.
+    sequence is atomic under READ COMMITTED. The lock is taken with a BOUNDED
+    wait (try-lock + poll): it is held until the caller's transaction ends —
+    across the provider call — so an unbounded blocking acquire would stall
+    every other AI call for the tenant behind one slow LLM call. On expiry the
+    caller gets a retryable RateLimitExceededError and the event requeues.
+
+    Before the spend is read, stale reservations are swept: a run that crashed
+    between reserve and settle leaves an active row that no settle will ever
+    reach, and without the sweep it would over-count the tenant's held budget
+    until its TTL passed while the table accumulated rows that lie.
 
     Returns the reservation id to settle afterwards, or None when the tenant has
     no cap (the cap is zero/unset). The cap is enforced for EVERY on_exceed
@@ -448,7 +479,28 @@ async def reserve_budget(
     # Serialize per-tenant budget reservations to eliminate the race where
     # N concurrent transactions read the same spend and all insert reservations.
     lock_id = _tenant_budget_lock_id(tenant_id)
-    await session.execute(text("SELECT pg_advisory_xact_lock(:lock_id)"), {"lock_id": lock_id})
+    deadline = time.monotonic() + BUDGET_LOCK_WAIT_SECONDS
+    while True:
+        acquired = (
+            await session.execute(
+                text("SELECT pg_try_advisory_xact_lock(:lock_id) AS acquired"),
+                {"lock_id": lock_id},
+            )
+        ).scalar()
+        if acquired:
+            break
+        if time.monotonic() >= deadline:
+            raise RateLimitExceededError(
+                "AI budget reservation timed out waiting for another run of "
+                "this tenant to release the budget lock"
+            )
+        await asyncio.sleep(_BUDGET_LOCK_POLL_SECONDS)
+
+    # Recovered holds: mark reservations whose TTL passed without a settle.
+    # A committed-but-never-settled row comes from a run that crashed inside
+    # the call after a shielded settle failed — rare, but without this sweep
+    # the row sits as `active` forever and the table lies about live holds.
+    await expire_stale_reservations(session, tenant_id)
 
     policies = (
         (
@@ -572,6 +624,8 @@ class AIGateway:
     def __init__(self, provider: AIProvider | None = None) -> None:
         self._provider = provider or AIProvider()
         self._embeddings = EmbeddingProvider()
+        self._vision_embeddings = MultimodalEmbeddingProvider()
+        self._reranker = RerankerProvider()
 
     def _provider_breaker(self, config: dict[str, Any]):
         """The breaker for THIS provider endpoint — not for all providers at once.
@@ -837,6 +891,234 @@ class AIGateway:
                 )
             )
             # §42 settle: release the hold whether the call succeeded or not.
+            try:
+                await asyncio.shield(settle_reservation(session, reservation_id))
+                await asyncio.shield(session.flush())
+            except Exception:
+                logger.warning(
+                    "ai.settle_reservation_failed reservation=%s",
+                    reservation_id,
+                    exc_info=True,
+                )
+
+    async def embed_vision(
+        self,
+        session: AsyncSession,
+        tenant_id: UUID,
+        *,
+        contents: list[MultimodalContent],
+        run_id: UUID | None = None,
+        _client: Any | None = None,
+    ) -> list[list[float]]:
+        """Embed image/text contents through the vision embedding provider.
+
+        Same governance skeleton as embed() — budget reservation, data-egress
+        policy, endpoint breaker, ModelCall row. The vision modules used to
+        call MultimodalEmbeddingProvider directly: real provider spend with no
+        reservation and no record, so a tenant over its cap could still burn
+        money by sending photos.
+
+        Captions can be redacted; an image URL cannot (redacting one destroys
+        the request), so redaction applies to text parts only. The image
+        token floor is a billing abstraction — the provider bills per image,
+        the exact number is opaque, and the budget cap needs a positive
+        estimate to enforce anything at all.
+        """
+        settings = get_settings()
+        if not contents:
+            raise ValueError("contents must not be empty")
+        provider = settings.ai_embedding_vision_provider
+        model = settings.ai_embedding_vision_model
+        base_url = settings.ai_embedding_vision_base_url
+        api_key = settings.ai_embedding_vision_api_key
+        if not base_url or not api_key:
+            raise ValidationError("vision embedding provider is not configured")
+
+        estimated_tokens = sum(
+            (len(c.text) // 4 if c.text else 0) + (_IMAGE_TOKEN_FLOOR if c.image else 0)
+            for c in contents
+        )
+        estimated = estimate_cost(tokens_in=estimated_tokens, tokens_out=0)
+        reservation_id = await reserve_budget(
+            session, tenant_id, agent_id=None, estimated_cost=estimated
+        )
+
+        from app.modules.ai.policy import AIProviderPolicyService, classify_data
+
+        started = time.perf_counter()
+        status = "ok"
+        vectors: list[list[float]] = []
+        try:
+
+            def _classify() -> str:
+                return classify_data(
+                    [
+                        {
+                            "role": "user",
+                            "content": c.text if c.text is not None else c.image,
+                        }
+                        for c in contents
+                    ]
+                )
+
+            decision = await AIProviderPolicyService.evaluate(
+                session,
+                tenant_id,
+                provider=provider,
+                model=model,
+                data_class=_classify(),
+                region=None,
+            )
+            if decision.redact_required:
+                contents = [
+                    MultimodalContent(
+                        text=(
+                            _redact_pii([{"role": "user", "content": c.text}])[0][
+                                "content"
+                            ]
+                            if c.text is not None
+                            else None
+                        ),
+                        image=c.image,
+                    )
+                    for c in contents
+                ]
+                decision = await AIProviderPolicyService.evaluate(
+                    session,
+                    tenant_id,
+                    provider=provider,
+                    model=model,
+                    data_class=_classify(),
+                    region=None,
+                )
+            if not decision.allowed:
+                raise ValidationError(
+                    f"AI vision provider blocked by data-egress policy: {decision.reason}"
+                )
+
+            vectors = await self._provider_breaker({"base_url": base_url}).call(
+                self._vision_embeddings.embed,
+                base_url=base_url,
+                api_key=api_key,
+                model=model,
+                contents=contents,
+                expected_dimensions=settings.ai_embedding_vision_dimensions,
+                _client=_client,
+            )
+            return vectors
+        except Exception:
+            status = "error"
+            raise
+        finally:
+            latency_ms = int((time.perf_counter() - started) * 1000)
+            session.add(
+                ModelCall(
+                    tenant_id=tenant_id,
+                    run_id=run_id,
+                    alias="vision_embedding",
+                    provider=provider,
+                    model=model,
+                    tokens_in=estimated_tokens,
+                    tokens_out=0,
+                    cost=estimated,
+                    latency_ms=latency_ms,
+                    status=status,
+                )
+            )
+            try:
+                await asyncio.shield(settle_reservation(session, reservation_id))
+                await asyncio.shield(session.flush())
+            except Exception:
+                logger.warning(
+                    "ai.settle_reservation_failed reservation=%s",
+                    reservation_id,
+                    exc_info=True,
+                )
+
+    async def rerank_vision(
+        self,
+        session: AsyncSession,
+        tenant_id: UUID,
+        *,
+        query: str,
+        documents: list[dict[str, str]],
+        top_n: int | None = None,
+        run_id: UUID | None = None,
+        _client: Any | None = None,
+    ) -> list:
+        """Rerank through the reranker provider under the same governance.
+
+        The payload is image URLs plus the query URL — nothing redactable, so
+        a policy that demands redaction blocks the call instead of sending
+        unredacted data.
+        """
+        settings = get_settings()
+        provider = settings.ai_reranker_provider
+        model = settings.ai_reranker_model
+        base_url = settings.ai_reranker_base_url
+        api_key = settings.ai_reranker_api_key
+        if not base_url or not api_key:
+            raise ValidationError("reranker provider is not configured")
+
+        estimated_tokens = (len(query) // 4) + _IMAGE_TOKEN_FLOOR * len(documents)
+        estimated = estimate_cost(tokens_in=estimated_tokens, tokens_out=0)
+        reservation_id = await reserve_budget(
+            session, tenant_id, agent_id=None, estimated_cost=estimated
+        )
+
+        from app.modules.ai.policy import AIProviderPolicyService, classify_data
+
+        started = time.perf_counter()
+        status = "ok"
+        results: list = []
+        try:
+            data_class = classify_data(
+                [{"role": "user", "content": query}]
+                + [{"role": "user", "content": d.get("image", "")} for d in documents]
+            )
+            decision = await AIProviderPolicyService.evaluate(
+                session,
+                tenant_id,
+                provider=provider,
+                model=model,
+                data_class=data_class,
+                region=None,
+            )
+            if not decision.allowed or decision.redact_required:
+                raise ValidationError(
+                    f"AI reranker blocked by data-egress policy: {decision.reason}"
+                )
+
+            results = await self._provider_breaker({"base_url": base_url}).call(
+                self._reranker.rerank,
+                base_url=base_url,
+                api_key=api_key,
+                model=model,
+                query=query,
+                documents=documents,
+                top_n=top_n,
+                _client=_client,
+            )
+            return results
+        except Exception:
+            status = "error"
+            raise
+        finally:
+            latency_ms = int((time.perf_counter() - started) * 1000)
+            session.add(
+                ModelCall(
+                    tenant_id=tenant_id,
+                    run_id=run_id,
+                    alias="vision_rerank",
+                    provider=provider,
+                    model=model,
+                    tokens_in=estimated_tokens,
+                    tokens_out=0,
+                    cost=estimated,
+                    latency_ms=latency_ms,
+                    status=status,
+                )
+            )
             try:
                 await asyncio.shield(settle_reservation(session, reservation_id))
                 await asyncio.shield(session.flush())

@@ -138,9 +138,12 @@ class Settings(BaseSettings):
     ai_embedding_vision_api_key: str = ""
     ai_embedding_vision_model: str = "tongyi-embedding-vision-flash"
     ai_embedding_vision_dimensions: int = 768
+    # Provider label used for data-egress policy rows and ModelCall records.
+    ai_embedding_vision_provider: str = "dashscope"
     ai_reranker_base_url: str = "https://api.jina.ai/v1"
     ai_reranker_api_key: str = ""
     ai_reranker_model: str = "jina-reranker-m0"
+    ai_reranker_provider: str = "jina"
 
     # §42: the monthly AI spend cap (USD) applied when a tenant has no
     # BudgetPolicy row. Configurable so an operator can change the ceiling

@@ -179,6 +179,10 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 #        handover hooks now go through the service instead of raw SQL).
 # No new cycles (verified: SCCs unchanged). All five are bug fixes from the
 # agent-layer review report, not new features.
+# P1-12 (SI typed evidence) deliberately did NOT raise this count: the numbers a
+# tool computes are registered through `EvidenceStore.register_numbers`, the
+# analytics module's own door, so the SI adapter gained no new import site and
+# the skip rules live beside the pack contract that enforces them.
 BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 144
 # 101 -> 99 on 2026-09-29: the diagnostics engine (platform/diagnostics.py) had
 # module-scope imports of `ai.models.Agent`, `inventory.models` and

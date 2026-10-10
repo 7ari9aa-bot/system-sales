@@ -39,6 +39,13 @@ class AnalysisEvidence(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixi
     pack: Mapped[dict] = mapped_column(JSONB)
     content_hash: Mapped[str] = mapped_column(String(64))
     model: Mapped[str | None] = mapped_column(String(127))
+    # P1-12 provenance: `model` is the ALIAS the agent asked for. An alias is
+    # not a model — it can be re-pointed at a different provider next week —
+    # so the provider and the concrete model behind it are recorded too. A
+    # stored answer that cannot say which model produced it cannot be audited
+    # when that model changes.
+    provider: Mapped[str | None] = mapped_column(String(63))
+    model_version: Mapped[str | None] = mapped_column(String(127))
     prompt_version: Mapped[str | None] = mapped_column(String(31))
 
     __table_args__ = (Index("ix_analysis_evidence_tenant_created", "tenant_id", "created_at"),)

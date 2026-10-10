@@ -63,7 +63,16 @@ def test_risk_levels_are_honest(name: str, risk: str) -> None:
 
 
 async def test_only_high_risk_tools_require_approval() -> None:
-    assert await requires_approval(get_tool("create_order")) is True
+    # P1-10: create_order is gated per PHASE. Without a bound confirmed quote
+    # it only PROPOSES a quote — no order can exist — so it runs inline; with
+    # the binding it executes a confirmed order and parks for the merchant.
+    assert await requires_approval(get_tool("create_order"), {}) is False
+    assert (
+        await requires_approval(
+            get_tool("create_order"), {"confirmed_quote_id": str(uuid.uuid4())}
+        )
+        is True
+    )
     for name in NEW_TOOLS:
         assert await requires_approval(get_tool(name)) is False
 

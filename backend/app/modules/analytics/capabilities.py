@@ -13,6 +13,7 @@ facts there and pass ids back, so the model sees summaries + ids only.
 
 from __future__ import annotations
 
+import hashlib
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -50,6 +51,29 @@ from app.modules.analytics.semantic import (
 )
 
 
+def _fact_identity(fact: MetricFact) -> str:
+    """A content id: metric + unit + window + filters, digest-trimmed.
+
+    P1-12 — every SI tool call builds its OWN store, and the run merges those
+    stores into one pack. Positional ids ("F1", "F2") restarted inside each
+    call, so the second call's "F1" silently replaced the first call's
+    different measurement in the merged dict, and the model was shown two
+    different facts under one name. A content key is unique per measurement.
+
+    The VALUE is deliberately not part of the key: re-measuring the same
+    window is the same fact (one entry, latest value), while a different
+    window, channel filter or unit is a different fact. The charset is
+    `[A-Za-z0-9_]` because `{{fact_id:format}}` placeholders are parsed with
+    exactly that pattern (§10.1).
+    """
+    window = f"{fact.period.start:%Y%m%d%H}-{fact.period.end:%Y%m%d%H}"
+    filters = "|".join(f"{k}={v}" for k, v in sorted((fact.filters or {}).items()))
+    digest = hashlib.sha256(
+        f"{fact.metric}|{fact.unit}|{window}|{filters}".encode()
+    ).hexdigest()
+    return f"{fact.metric}_{digest[:8]}"
+
+
 @dataclass(slots=True)
 class EvidenceStore:
     """The run's evidence registry: facts in, ids out (§3.5)."""
@@ -60,11 +84,12 @@ class EvidenceStore:
     _seq: int = 0
 
     def add_fact(self, fact: MetricFact) -> str:
+        """Register one measurement; explicit ids win, derived ones are keyed
+        by content (see `_fact_identity`)."""
         if fact.id and fact.id not in ("F0", ""):
             fid = fact.id
         else:
-            self._seq += 1
-            fid = f"F{self._seq}"
+            fid = _fact_identity(fact)
         registered = fact.model_copy(update={"id": fid})
         self.facts[fid] = registered
         return fid
@@ -83,6 +108,75 @@ class EvidenceStore:
 
     def facts_by_id(self) -> dict[str, MetricFact]:
         return dict(self.facts)
+
+    def register_numbers(
+        self,
+        period: AnalysisPeriod,
+        *,
+        source: str,
+        numbers: list[tuple[str, object, str, dict]],
+    ) -> list[str]:
+        """P1-12: register the numbers a tool COMPUTED, as facts.
+
+        Each entry is (metric, value, unit, filters). Two kinds are refused
+        rather than registered: an absent measurement (None — the engine said
+        "no baseline") and an impossible one (negative). Refusing here, in the
+        module that owns the pack contract, is what keeps a summary number out
+        of an answer that the pack cannot trace.
+        """
+        ids: list[str] = []
+        for metric_name, value, unit, filters in numbers:
+            if value is None:
+                continue
+            if Decimal(str(value)) < 0:
+                continue
+            ids.append(
+                register_derived_fact(
+                    self,
+                    period,
+                    metric_name=metric_name,
+                    value=Decimal(str(value)),
+                    unit=unit,
+                    source=source,
+                    filters=filters,
+                )
+            )
+        return ids
+
+
+def register_derived_fact(
+    store: EvidenceStore,
+    period: AnalysisPeriod,
+    *,
+    metric_name: str,
+    value: Decimal | float | int | str,
+    unit: str,
+    source: str = "derived",
+    filters: dict | None = None,
+) -> str:
+    """§8.1 — a number the answer may quote becomes a FACT, not a summary line.
+
+    The engines (breakdown, seasonality, the customer split, carrier
+    performance) compute real numbers that used to travel to the model as
+    summary values only: the pack could not trace them, a placeholder had no
+    fact to render, and a recompute-and-diff had nothing to compare. Registering
+    them here gives each one the same birth certificate a compiler fact carries
+    — the window it was measured over, its maturity, and where it came from.
+    """
+    now = datetime.now(UTC)
+    fact = MetricFact(
+        id="",
+        metric=metric_name,
+        value=Decimal(str(value)),
+        unit=unit,
+        period=period,
+        filters=filters or {},
+        source=source,
+        computed_at=now,
+        data_as_of=period.data_as_of or now,
+        maturity_status=period.maturity_status,
+    )
+    return store.add_fact(fact)
 
 
 def _q(value: Decimal, places: str = "0.01") -> Decimal:
@@ -238,10 +332,39 @@ async def breakdown_metric(
     is_money = metric(metric_name).semantic_type == "money"
     summary = {key: str(value if is_money else count) for key, value, count in rows}
     status = "ok" if rows else "no_data"
+    # P1-12: every bucket is a MEASUREMENT, so every bucket is a fact. Before
+    # this the split existed only as summary text — the pack could not trace
+    # "web = 900.00", a placeholder had nothing to render, and a recompute had
+    # nothing to compare. The sample size rides beside the value for the same
+    # reason (small-n splits are the §5.7 lie this layer exists to catch).
+    evidence_ids: list[str] = []
+    for key, value, count in rows:
+        evidence_ids.append(
+            register_derived_fact(
+                store,
+                period,
+                metric_name=f"{metric_name}_by_{dimension}",
+                value=value,
+                unit="money" if is_money else "count",
+                source=f"breakdown:{dimension}",
+                filters={dimension: key},
+            )
+        )
+        evidence_ids.append(
+            register_derived_fact(
+                store,
+                period,
+                metric_name=f"{metric_name}_sample_by_{dimension}",
+                value=count,
+                unit="count",
+                source=f"breakdown:{dimension}",
+                filters={dimension: key},
+            )
+        )
     return CapabilityResult(
         capability=f"breakdown_metric:{metric_name}:{dimension}",
         status=status,
-        evidence_ids=[],
+        evidence_ids=evidence_ids,
         summary={"dimension": dimension, "entries": summary},
         data_quality=DataQuality(status=DataQualityStatus.COMPLETE),
         limitations=["independent decomposition — never summed with other dimensions"],

@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 335,
-    "sha256": "26efd9e298a6ed69e10e622c9d62ff7490e7a2cb526813e72c60b3e01e025680",
-    "typed_operations": 213
+    "operations": 336,
+    "sha256": "7f31a4109872d40e973de1a06c34349238b7fe66f28e0444208d838192731a0b",
+    "typed_operations": 214
   },
   "spec": {
     "components": {
@@ -687,6 +687,26 @@
           "title": "AgentOut",
           "type": "object"
         },
+        "AgentPublishRequest": {
+          "description": "Optional body for POST /agents/{id}/publish. An omitted body publishes\nthe current configuration with an empty tool policy.",
+          "properties": {
+            "tool_policy": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional veto policy: {allow: [tool names], deny: [tool names]}. deny wins; the policy can only narrow what the registry authorizes.",
+              "title": "Tool Policy"
+            }
+          },
+          "title": "AgentPublishRequest",
+          "type": "object"
+        },
         "AgentUpdateRequest": {
           "description": "PATCH /ai/agents/{id} — the tenant edits ITS OWN agent (ADR-060).\n\nThe prompt is the tenant's business secret and their lever on the agent's\nbehavior: editing is settings:write gated, tenant-scoped by the same WHERE\nthe read uses, versioned, and audited.",
           "properties": {
@@ -751,6 +771,116 @@
             }
           },
           "title": "AgentUpdateRequest",
+          "type": "object"
+        },
+        "AgentVersionOut": {
+          "description": "One immutable published snapshot. Echoes what the runtime will serve\nfor this version — the run's reproducibility contract.",
+          "properties": {
+            "agent_id": {
+              "format": "uuid",
+              "title": "Agent Id",
+              "type": "string"
+            },
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "max_output_tokens": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Output Tokens"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model"
+            },
+            "published_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Published At"
+            },
+            "published_by": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Published By"
+            },
+            "run_limits": {
+              "additionalProperties": true,
+              "title": "Run Limits",
+              "type": "object"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            },
+            "system_prompt": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "System Prompt"
+            },
+            "temperature": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Temperature"
+            },
+            "tool_policy": {
+              "additionalProperties": true,
+              "title": "Tool Policy",
+              "type": "object"
+            },
+            "version": {
+              "title": "Version",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "agent_id",
+            "version",
+            "status",
+            "run_limits",
+            "tool_policy"
+          ],
+          "title": "AgentVersionOut",
           "type": "object"
         },
         "AlertDestination": {
@@ -955,6 +1085,17 @@
               ],
               "title": "Model"
             },
+            "model_version": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model Version"
+            },
             "outcome": {
               "title": "Outcome",
               "type": "string"
@@ -972,6 +1113,17 @@
                 }
               ],
               "title": "Prompt Version"
+            },
+            "provider": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider"
             },
             "question": {
               "title": "Question",
@@ -7833,9 +7985,54 @@
               ],
               "title": "Note"
             },
+            "outcome": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Outcome"
+            },
+            "outcome_note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Outcome Note"
+            },
             "reason": {
               "title": "Reason",
               "type": "string"
+            },
+            "resolved_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Resolved At"
+            },
+            "resolved_by_user_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Resolved By User Id"
             },
             "run_id": {
               "anyOf": [
@@ -7861,6 +8058,36 @@
             "status"
           ],
           "title": "HandoverOut",
+          "type": "object"
+        },
+        "HandoverResolveRequest": {
+          "properties": {
+            "note": {
+              "anyOf": [
+                {
+                  "maxLength": 2000,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "outcome": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "answered | no_action_needed | customer_unreachable | other",
+              "title": "Outcome"
+            }
+          },
+          "title": "HandoverResolveRequest",
           "type": "object"
         },
         "HealthSubsystemOut": {
@@ -16829,6 +17056,131 @@
           ]
         }
       },
+      "/api/v1/ai/agents/{agent_id}/publish": {
+        "post": {
+          "description": "Snapshot the agent row into an immutable published version.\n\nIdempotent for identical configuration: republishing unchanged settings\nreturns the existing snapshot rather than minting a no-op version.",
+          "operationId": "publish_agent_version_api_v1_ai_agents__agent_id__publish_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "agent_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Agent Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/AgentPublishRequest"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Body"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AgentVersionOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Publish Agent Version",
+          "tags": [
+            "ai"
+          ]
+        }
+      },
       "/api/v1/ai/approvals": {
         "get": {
           "operationId": "list_approvals_api_v1_ai_approvals_get",
@@ -17943,6 +18295,7 @@
       },
       "/api/v1/ai/handovers/{handover_id}/resolve": {
         "post": {
+          "description": "Close a handover, recording WHO closed it, WHEN, and WITH WHAT RESULT.\n\n§150's outcome half: this route used to flip `status` and leave no trace\nbehind, so the queue could count handovers created but never handovers\nanswered. `outcome` is a closed vocabulary (a free-text-only field is a\nfield nobody aggregates); `note` carries the detail a human would want\nlater. Resolving a resolved row is a conflict, not a silent re-write: the\nsecond resolver would overwrite the first one's record of what happened.",
           "operationId": "resolve_handover_api_v1_ai_handovers__handover_id__resolve_post",
           "parameters": [
             {
@@ -18020,6 +18373,23 @@
               }
             }
           ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HandoverResolveRequest"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Body"
+                }
+              }
+            }
+          },
           "responses": {
             "200": {
               "content": {

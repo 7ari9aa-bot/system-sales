@@ -70,6 +70,10 @@ def _fact_payload(fact) -> dict:
         "metric": fact.metric,
         "value": str(fact.value),
         "unit": fact.unit,
+        # P1-12: the split a fact belongs to is part of its meaning. Without
+        # the filters, "shipments_total = 2" does not say whose two shipments
+        # it is, and the model can attribute a bucket to the wrong carrier.
+        "filters": fact.filters or {},
         "period_start": fact.period.start.isoformat(),
         "period_end": fact.period.end.isoformat(),
         "maturity": fact.maturity_status.value,
@@ -84,12 +88,23 @@ def _fact_payload(fact) -> dict:
     }
 
 
+def _typed_facts(store, period, source: str, numbers) -> list[dict]:
+    """P1-12: register the numbers a tool computed as typed evidence.
+
+    `numbers` is (metric_name, value, unit, filters) per measurement. Which
+    numbers may become facts — not absent, not impossible — is the analytics
+    store's rule, not this adapter's; the store owns the pack contract, so a
+    tool cannot mint a line the pack would refuse. This only maps what the
+    store accepted into the payload shape the model reads.
+    """
+    ids = store.register_numbers(period, source=source, numbers=numbers)
+    return [_fact_payload(store.facts[fid]) for fid in ids]
+
+
 class SIGetMetricArgs(BaseModel):
     metric_name: str
     days: int = Field(default=30, ge=1, le=90)
     channel: str | None = None
-
-
 async def _si_get_metric(
     session: AsyncSession,
     tenant_id: uuid.UUID,
@@ -196,20 +211,20 @@ async def _si_breakdown(
         "status": result.status,
         "summary": result.summary,
         "limitations": result.limitations,
+        # P1-12: the split is a PRESENTATION of the typed facts below, not a
+        # second copy of the truth. It used to read `store.dimensions`, a field
+        # the evidence store never had — the tool raised AttributeError on every
+        # call and the agent silently lost its only breakdown. Each bucket is
+        # now a fact (value + sample size, filtered by this dimension), so the
+        # model can quote a bucket only through evidence.
         "dimensions": [
             {
-                "dimension": d.dimension,
+                "dimension": dimension,
                 "entries": [
-                    {
-                        "key": e.key,
-                        "label": e.label,
-                        "delta": str(e.delta),
-                        "bucket": e.bucket,
-                    }
-                    for e in d.entries
+                    {"key": key, "label": key, "value": value}
+                    for key, value in (result.summary.get("entries") or {}).items()
                 ],
             }
-            for d in store.dimensions
         ],
         "facts": [
             _fact_payload(store.facts[eid]) for eid in result.evidence_ids if eid in store.facts
@@ -399,7 +414,7 @@ async def _si_analyze_seasonality(
     the weekday mix explains the change."""
     from decimal import Decimal
 
-    from app.modules.analytics.capabilities import analyze_seasonality
+    from app.modules.analytics.capabilities import EvidenceStore, analyze_seasonality
 
     current = await _resolve_window(session, tenant_id, days)
     previous_start = current.start - timedelta(days=days)
@@ -423,11 +438,34 @@ async def _si_analyze_seasonality(
     daily_current = {d: v for d, v in daily.items() if d >= split_point}
     daily_previous = {d: v for d, v in daily.items() if d < split_point}
     season = analyze_seasonality(daily_current, daily_previous)
+    # P1-12: the gap share and each weekday lift are MEASUREMENTS of this
+    # store's orders, so they are registered as facts. A summary alone lets the
+    # model quote a number the pack cannot trace — the answer looks grounded
+    # and is not.
+    store = EvidenceStore()
+    facts = _typed_facts(
+        store,
+        current,
+        "seasonality",
+        [
+            (
+                "seasonality_unexplained_share",
+                season.summary.get("unexplained_share"),
+                "ratio",
+                {},
+            ),
+            *(
+                ("weekday_revenue_lift", lift, "ratio", {"weekday": name})
+                for name, lift in (season.summary.get("weekday_profile") or {}).items()
+            ),
+        ],
+    )
     return {
         "capability": season.capability,
         "status": season.status,
         "summary": season.summary,
         "limitations": season.limitations,
+        "facts": facts,
     }
 
 
@@ -444,7 +482,7 @@ async def _si_analyze_customers(
 ) -> dict:
     """§5.4 v1 — new vs returning from the store's real orders."""
 
-    from app.modules.analytics.capabilities import analyze_customers
+    from app.modules.analytics.capabilities import EvidenceStore, analyze_customers
 
     current = await _resolve_window(session, tenant_id, days)
     rows = (
@@ -464,11 +502,23 @@ async def _si_analyze_customers(
     ).all()
     orders = [{"customer_id": r.customer_id, "placed_at": r.placed_at} for r in rows]
     result = analyze_customers(orders, window_start=current.start)
+    # P1-12: the two counts are measurements of this window, so they are facts.
+    store = EvidenceStore()
+    facts = _typed_facts(
+        store,
+        current,
+        "customers",
+        [
+            ("customers_new", result.summary.get("new"), "count", {}),
+            ("customers_returning", result.summary.get("returning"), "count", {}),
+        ],
+    )
     return {
         "capability": result.capability,
         "status": result.status,
         "summary": result.summary,
         "limitations": result.limitations,
+        "facts": facts,
     }
 
 
@@ -487,7 +537,7 @@ async def _si_analyze_fulfillment(
 ) -> dict:
     """§5.7 v1 — carrier performance from the store's real shipments."""
 
-    from app.modules.analytics.capabilities import analyze_fulfillment
+    from app.modules.analytics.capabilities import EvidenceStore, analyze_fulfillment
 
     current = await _resolve_window(session, tenant_id, days)
     rows = (
@@ -511,11 +561,30 @@ async def _si_analyze_fulfillment(
         for r in rows
     ]
     result = analyze_fulfillment(shipments, minimum_volume=minimum_volume)
+    # P1-12: per-carrier performance is measured from this store's shipments,
+    # so each number becomes a fact filtered by its carrier. A small-n carrier
+    # is absent from `carriers` by the minimum-volume rule, and the pack says
+    # so by not holding a fact for it — the model cannot quote what was
+    # deliberately not measured.
+    store = EvidenceStore()
+    numbers: list = []
+    for row in result.summary.get("carriers") or []:
+        carrier = {"carrier": row.get("carrier")}
+        numbers.extend(
+            [
+                ("shipments_total", row.get("total"), "count", carrier),
+                ("shipments_delivered", row.get("delivered"), "count", carrier),
+                ("shipments_rejected", row.get("rejected"), "count", carrier),
+                ("shipments_in_flight", row.get("in_flight"), "count", carrier),
+                ("avg_days_to_deliver", row.get("avg_days_to_deliver"), "days", carrier),
+            ]
+        )
     return {
         "capability": result.capability,
         "status": result.status,
         "summary": result.summary,
         "limitations": result.limitations,
+        "facts": _typed_facts(store, current, "fulfillment", numbers),
     }
 
 

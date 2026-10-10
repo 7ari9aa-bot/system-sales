@@ -479,12 +479,13 @@ class AIProviderPolicy(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
 class AIHandover(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     """Spec §37/§150: AI → human handover with reason and outcome.
 
-    §150's OUTCOME half is not modelled: this row records who CLAIMED it
-    (`claimed_by_user_id`) and its status, but nothing stores how the human
-    resolved it or whether the customer was answered. So "handover outcome"
-    metrics cannot be computed from this table yet — see the resolver in
-    ai/router.py, which flips status to `resolved` and leaves no trace of who
-    did it or why.
+    §150 has two halves and both are modelled now. The intake half is the row
+    itself (who/why the AI stepped aside). The OUTCOME half is
+    ``resolved_by_user_id`` / ``resolved_at`` / ``outcome``: without them a
+    queue can only count handovers created, never handovers answered, and the
+    resolver leaves no trace. ``claimed_by_user_id`` is who took it; it is not
+    who finished it — a row can be claimed by one person and resolved by
+    another, and both facts matter to the audit.
     """
 
     __tablename__ = "ai_handovers"
@@ -499,10 +500,9 @@ class AIHandover(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Bas
     # allowed: budget | policy | low_confidence | customer_request | failure
     #        | guardrail | messaging_window_closed | approval
     # `ai.handover.request_human_takeover` is the ONLY writer of these rows in
-    # app/, and today it emits budget | guardrail | messaging_window_closed |
-    # failure | approval. `policy`, `low_confidence` and `customer_request` are
-    # the §37 vocabulary with no producer yet — a customer asking for a human is
-    # still answered by the model, not recorded here.
+    # app/. Producers today: budget | guardrail | messaging_window_closed |
+    # failure | approval | customer_request (the customer asked for a person —
+    # §37's `policy` and `low_confidence` still have no producer).
     reason: Mapped[str] = mapped_column(String(31))
     # allowed: pending | claimed | resolved
     status: Mapped[str] = mapped_column(String(15), server_default="pending")
@@ -510,6 +510,15 @@ class AIHandover(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Bas
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
     note: Mapped[str | None] = mapped_column(Text)
+    # §150 outcome: who closed it, when, and with what result.
+    resolved_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # allowed: answered | no_action_needed | customer_unreachable | other
+    # NULL until the row is resolved.
+    outcome: Mapped[str | None] = mapped_column(String(31))
+    outcome_note: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (Index("ix_handovers_tenant_status", "tenant_id", "status", "created_at"),)
 
@@ -661,3 +670,45 @@ class ConversationAgentState(TenantMixin, TimestampMixin, WorkspaceScopeMixin, B
     shown_items: Mapped[list] = mapped_column(JSONB, server_default="[]")
     sent_media: Mapped[list] = mapped_column(JSONB, server_default="[]")
     state_version: Mapped[int] = mapped_column(Integer, server_default="1")
+
+
+class AIOrderQuote(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
+    """A server-persisted order quote awaiting the CUSTOMER's confirmation.
+
+    P1-10: the model proposes an order, the SERVER mints this row plus an
+    expiring confirmation code that is echoed into the chat, and only a quote
+    the customer confirmed — the code came back in THEIR message, matched
+    server-side — authorizes ``create_order`` to execute. The model can read
+    the code (it must, to show it) but can never confirm on the customer's
+    behalf: confirmation is a state transition keyed to an inbound message,
+    not to anything the model says or passes.
+
+    The lifecycle is one-way: pending → confirmed → consumed. ``expired`` is
+    written by the match-time sweep. The order is built from THIS row's items,
+    never from a later tool call's arguments, so what the customer confirmed
+    is exactly what gets ordered.
+    """
+
+    __tablename__ = "ai_order_quotes"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("conversations.id", ondelete="CASCADE")
+    )
+    customer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("customers.id", ondelete="CASCADE")
+    )
+    items: Mapped[list] = mapped_column(JSONB, server_default="[]")
+    grand_total: Mapped[Decimal] = mapped_column(AI_COST, default=0, server_default="0")
+    currency: Mapped[str] = mapped_column(String(3), server_default="EGP")
+    # The customer-facing confirmation code — 6 digits, chat-echoable.
+    code: Mapped[str] = mapped_column(String(12))
+    # allowed: pending | confirmed | consumed | expired
+    status: Mapped[str] = mapped_column(String(15), server_default="pending")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index("ix_ai_order_quotes_conversation_status", "tenant_id", "conversation_id", "status"),
+    )

@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import date
+import time
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 import httpx
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.core.errors import (
     ExternalProviderError,
@@ -15,8 +17,8 @@ from app.core.errors import (
     ValidationError,
 )
 from app.modules.ai import gateway as ai_gateway
-from app.modules.ai.gateway import AIGateway, resolve_model_config
-from app.modules.ai.models import AIUsage, ModelCall, ModelConfig
+from app.modules.ai.gateway import AIGateway, reserve_budget, resolve_model_config
+from app.modules.ai.models import AIBudgetReservation, AIUsage, ModelCall, ModelConfig
 
 
 class _StubSettings:
@@ -291,3 +293,78 @@ async def test_primary_without_model_name_fails_loudly(db, tenant_ctx, monkeypat
     monkeypatch.setattr(ai_gateway, "get_settings", lambda: _ProviderWithoutModel())
     with pytest.raises(ValidationError, match="AI_MODEL_PRIMARY"):
         await resolve_model_config(db, tenant_ctx.tenant_id, "fast")
+
+
+# ------------------------------ the reservation lock is bounded, not a hang --
+#
+# The lock is transaction-scoped, so it is held across the provider HTTP call.
+# A blocking acquire made every other AI call for the tenant wait as long as
+# that call took — with no lock_timeout, forever if the call stalled. The
+# bounded expiry must turn contention into a retryable 429 instead.
+
+
+def _engine(url: str):
+    return create_async_engine(url, connect_args={"statement_cache_size": 0})
+
+
+async def test_a_second_reservation_waits_bounded_then_requeues(
+    db, tenant_ctx, db_url, monkeypatch
+):
+    tenant_id = tenant_ctx.tenant_id
+    holder_engine = _engine(db_url)
+    try:
+        async with holder_engine.connect() as holder_conn:
+            holder_tx = await holder_conn.begin()
+            await holder_conn.execute(
+                text("SELECT pg_try_advisory_xact_lock(:k)"),
+                {"k": ai_gateway._tenant_budget_lock_id(tenant_id)},
+            )
+            monkeypatch.setattr(ai_gateway, "BUDGET_LOCK_WAIT_SECONDS", 0.15)
+            started = time.monotonic()
+            with pytest.raises(RateLimitExceededError, match="budget lock"):
+                await reserve_budget(db, tenant_id, estimated_cost=Decimal("0.01"))
+            assert time.monotonic() - started < 5.0
+            await holder_tx.rollback()
+
+        # With the holder gone, the reservation goes through normally.
+        reservation_id = await reserve_budget(db, tenant_id, estimated_cost=Decimal("0.01"))
+        assert reservation_id is not None
+    finally:
+        await holder_engine.dispose()
+
+
+async def test_reserve_budget_sweeps_reservations_no_run_will_ever_settle(
+    db, tenant_ctx, monkeypatch
+):
+    """A crash between reserve and settle used to leave an `active` row that
+    no settle would ever reach: it over-counted the tenant's held budget until
+    its TTL passed and then sat in the table as a lie. The reserve path now
+    marks those expired before reading the spend."""
+    tenant_id = tenant_ctx.tenant_id
+    monkeypatch.setattr(ai_gateway, "_default_cap", lambda: Decimal("50.0"))
+    zombie = AIBudgetReservation(
+        tenant_id=tenant_id,
+        amount=Decimal("5.00"),
+        status="active",
+        expires_at=datetime.now(UTC) - timedelta(minutes=1),
+    )
+    db.add(zombie)
+    await db.flush()
+
+    reservation_id = await reserve_budget(db, tenant_id, estimated_cost=Decimal("0.01"))
+
+    assert reservation_id is not None and reservation_id != zombie.id
+    await db.refresh(zombie)
+    assert zombie.status == "expired"
+    live = (
+        (
+            await db.execute(
+                select(AIBudgetReservation).where(
+                    AIBudgetReservation.id == reservation_id
+                )
+            )
+        )
+        .scalars()
+        .one()
+    )
+    assert live.status == "active"

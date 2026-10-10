@@ -142,4 +142,37 @@ if __name__ == "__main__":
         default=list(POOLS),
         help=f"pools to run (default: all of {', '.join(POOLS)})",
     )
-    asyncio.run(main(parser.parse_args().pools))
+
+    # P0-4 schema-skew gate: the workers service has NO pre-deploy (the api
+    # service owns `alembic upgrade head`, and two concurrent runs would race
+    # for the migration lock). A workers deploy that lands before the api's
+    # pre-deploy used to boot new code against an old schema and crash every
+    # pool on the first missing relation. Refusing here turns that skew into a
+    # crash-loop with an actionable message instead. Kept in the process
+    # entrypoint — not main() — because main() is the unit-tested orchestrator
+    # that tests drive without a database.
+    import sys
+
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from app.core.config import get_settings
+    from app.core.schema_guard import SchemaSkewError, assert_schema_current
+
+    async def _schema_gate() -> None:
+        engine = create_async_engine(
+            get_settings().database_url,
+            pool_pre_ping=True,
+            connect_args={"statement_cache_size": 0},
+        )
+        try:
+            await assert_schema_current(engine)
+        finally:
+            await engine.dispose()
+
+    try:
+        asyncio.run(_schema_gate())
+    except SchemaSkewError as exc:
+        sys.exit(f"workers refusing to start: {exc}")
+
+    args = parser.parse_args()
+    asyncio.run(main(args.pools))

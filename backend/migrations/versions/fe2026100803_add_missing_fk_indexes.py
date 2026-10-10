@@ -2,8 +2,15 @@
 
 Addresses 180 unindexed foreign keys flagged by Supabase Performance Advisor
 lint 0001_unindexed_foreign_keys.  Each index is created only when its table
-exists and with IF NOT EXISTS, so the migration is re-entrant and runs on a
-fresh database as well as on the live one.
+AND every indexed column exist, and with IF NOT EXISTS, so the migration is
+re-entrant and runs on a fresh database as well as on the live one.
+
+The column guard is not decoration: the first production deploy of this
+migration aborted on `ix_pos_cash_movements_created_by` because production's
+`pos_cash_movements` predates the `created_by` column — the table exists while
+the column it should index does not.  Guarding only the table cannot express
+"index the columns the table actually has"; skipping a drifted column is the
+honest reading of "add the index where the FK is".
 
 Revision ID: fe2026100803
 Revises: fe2026100802
@@ -12,7 +19,6 @@ Create Date: 2026-10-08 20:15:00.000000
 from collections.abc import Sequence
 
 from alembic import op
-
 
 revision: str = "fe2026100803"
 down_revision: str | None = "fe2026100802"
@@ -211,7 +217,7 @@ _INDEXES: list[tuple[str, str, str]] = [
     ("ix_orders_customer_id", "orders", "customer_id"),
 
     # ── POS ──────────────────────────────────────────────────────────────
-    ("ix_pos_cash_movements_created_by", "pos_cash_movements", "created_by"),
+    ("ix_pos_cash_movements_created_by_user_id", "pos_cash_movements", "created_by_user_id"),
     ("ix_pos_cash_movements_location_id", "pos_cash_movements", "location_id"),
     ("ix_pos_cash_movements_workspace_id", "pos_cash_movements", "workspace_id"),
     ("ix_pos_cash_movements_session_id", "pos_cash_movements", "session_id"),
@@ -285,24 +291,40 @@ _INDEXES: list[tuple[str, str, str]] = [
 
 def upgrade() -> None:
     for idx_name, table, cols in _INDEXES:
-        # Guarded on the table, not just the index. `IF NOT EXISTS` makes the
-        # index re-entrant but says nothing about its TABLE, and five of these
-        # targets are not in the committed chain: `agent_profiles`,
-        # `agent_profile_versions` and `eval_cases` exist only in the live
-        # database, and the `ai_usage_*` partitions are created dynamically for
-        # the months around whichever date the migration runs — so
-        # `ai_usage_2026_09` is absent on a fresh build and `relation does not
-        # exist` aborted `alembic upgrade head` for every environment.
+        # Guarded on the table AND its columns, not just the index. Two failures
+        # taught this shape:
         #
-        # Skipping a missing table is the honest reading of "add the index
-        # where the table is": a fresh database gets the indexes it has tables
-        # for, the live one gets all of them, and adopting the orphan tables is
-        # a separate decision with its own migration.
+        # 1. Missing TABLE. `IF NOT EXISTS` makes the index re-entrant but says
+        #    nothing about its TABLE: `agent_profiles`, `agent_profile_versions`
+        #    and `eval_cases` exist only in the live database, and the
+        #    `ai_usage_*` partitions are created dynamically for the months
+        #    around whichever date the migration runs — so `ai_usage_2026_09`
+        #    is absent on a fresh build and `relation does not exist` aborted
+        #    `alembic upgrade head`.
+        #
+        # 2. Missing COLUMN. Production's `pos_cash_movements` predates its
+        #    `created_by` column, so the table guard passed and CREATE INDEX
+        #    failed with `column ... does not exist`, aborting the API deploy.
+        #    A schema that drifted from the code gets the indexes its columns
+        #    allow; backfilling the drifted column is a separate migration.
+        wanted = ", ".join(f"('{c.strip()}')" for c in cols.split(","))
         op.execute(
             f"""
             DO $$
             BEGIN
-                IF to_regclass('public.{table}') IS NOT NULL THEN
+                IF to_regclass('public.{table}') IS NOT NULL
+                   AND NOT EXISTS (
+                       SELECT 1
+                       FROM (VALUES {wanted}) AS want(col)
+                       WHERE NOT EXISTS (
+                           SELECT 1
+                           FROM information_schema.columns c
+                           WHERE c.table_schema = 'public'
+                             AND c.table_name = '{table}'
+                             AND c.column_name = want.col
+                       )
+                   )
+                THEN
                     EXECUTE 'CREATE INDEX IF NOT EXISTS {idx_name} ' ||
                             'ON public.{table} ({cols})';
                 END IF;

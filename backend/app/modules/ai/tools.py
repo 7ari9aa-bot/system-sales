@@ -12,14 +12,15 @@ from __future__ import annotations
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import DomainError, NotFoundError, ValidationError
+from app.core.errors import ConflictError, DomainError, NotFoundError, ValidationError
 from app.core.sql import LIKE_ESCAPE, like_pattern
 from app.core.storage import get_storage
 from app.modules.ai.agents.customer.vision.schemas import ImageKind
@@ -58,14 +59,26 @@ def get_tool(name: str) -> ToolSpec | None:
     return TOOLS.get(name)
 
 
-async def requires_approval(spec: ToolSpec) -> bool:
-    """§135: True when a call to this tool must wait for human approval.
+async def requires_approval(spec: ToolSpec, context: dict | None = None) -> bool:
+    """§135: True when THIS call must wait for human approval before it runs.
 
     The agent runtime awaits this before executing; HIGH tools persist an
     ApprovalRequest (status PENDING) and the run parks in WAITING_APPROVAL
     until a user decides.
+
+    P1-10 phase awareness: create_order without a bound confirmed quote only
+    PROPOSES — it mints a priced quote the customer must confirm by typing
+    the server-minted code, and no order row can exist from that call. There
+    is nothing for a merchant to approve yet, so it runs inline. The
+    EXECUTION call (the coordinator binds the confirmed quote's id into the
+    server-side context) still parks: a human signs off on the exact order
+    the customer confirmed.
     """
-    return spec.risk_level == "HIGH"
+    if spec.risk_level != "HIGH":
+        return False
+    if spec.name == "create_order" and not (context or {}).get("confirmed_quote_id"):
+        return False
+    return True
 
 
 def tool_to_openai_schema(spec: ToolSpec) -> dict:
@@ -333,11 +346,76 @@ async def _create_order(
     channel: str = "ai",
     context: dict | None = None,
 ) -> dict:
+    """Two-phase ordering (P1-10): propose → customer confirms by code → execute.
+
+    Without a bound confirmed quote the call PROPOSES: prices are computed
+    server-side from the variant catalog, a 6-digit code is minted, and the
+    order does not exist. With the binding — derived by the turn coordinator
+    from the CUSTOMER's own message carrying the code, never from model
+    arguments — the order is created FROM THE QUOTE's items: the model's
+    arguments are ignored for execution, because the code the customer typed
+    confirmed those lines, not whatever the model sends this time.
+
+    §135 still applies to execution: the run parks for MERCHANT approval
+    before the handler runs (requires_approval is phase-aware), so a real
+    order needs BOTH the customer's code and the merchant's approval.
+    """
     # Server-side scope binding (§132): the customer is pinned from the
     # conversation context by the runtime — the model cannot choose it.
-    customer_id = (context or {}).get("customer_id")
-    if not customer_id:
-        raise DomainError("no customer bound to this conversation")
+    customer_id = _bound_customer_id(context)
+    conversation_id = _parse_bound_id((context or {}).get("conversation_id"))
+    if conversation_id is None:
+        raise DomainError("no conversation bound to this tool call")
+    bound_quote_id = _parse_bound_id((context or {}).get("confirmed_quote_id"))
+    if bound_quote_id is not None:
+        return await _execute_confirmed_order(
+            session,
+            tenant_id,
+            customer_id=customer_id,
+            conversation_id=conversation_id,
+            quote_id=bound_quote_id,
+            channel=channel,
+        )
+    return await _propose_quote(
+        session,
+        tenant_id,
+        customer_id=customer_id,
+        conversation_id=conversation_id,
+        requested_items=items,
+    )
+
+
+async def _execute_confirmed_order(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    customer_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    quote_id: uuid.UUID,
+    channel: str,
+) -> dict:
+    """Create the order the customer confirmed, from the QUOTE's items."""
+    from app.modules.ai.models import AIOrderQuote
+
+    quote = (
+        await session.execute(
+            select(AIOrderQuote).where(
+                AIOrderQuote.tenant_id == tenant_id,
+                AIOrderQuote.id == quote_id,
+                AIOrderQuote.conversation_id == conversation_id,
+                AIOrderQuote.customer_id == customer_id,
+                AIOrderQuote.status == "confirmed",
+            )
+        )
+    ).scalar_one_or_none()
+    if quote is None:
+        raise DomainError(
+            "create_order requires a confirmed quote — the customer has not "
+            "confirmed this order yet"
+        )
+    if quote.expires_at is not None and quote.expires_at <= datetime.now(UTC):
+        raise DomainError("the confirmed quote expired — propose a fresh quote")
+
     # Lazy import on purpose: the tool stays registered even if the orders
     # module has not landed yet (and tests can monkeypatch this import site).
     # Checkout's rules — product sellability included (§M4) — belong to
@@ -348,21 +426,97 @@ async def _create_order(
         OrderService = _order_service()
     except ImportError as exc:
         raise DomainError("orders unavailable") from exc
-
     order = await OrderService.create_order(
         session,
         tenant_id,
-        uuid.UUID(str(customer_id)),
-        [{"variant_id": item["variant_id"], "quantity": item["quantity"]} for item in items],
+        customer_id,
+        [
+            {"variant_id": uuid.UUID(str(item["variant_id"])), "quantity": int(item["quantity"])}
+            for item in (quote.items or [])
+        ],
         channel=channel,
     )
+    quote.status = "consumed"
+    quote.consumed_at = datetime.now(UTC)
+    await session.flush()
     return {
         "order_id": str(order.id),
         "number": order.number,
         "status": order.status,
         # Decimal as a string: the same amount the order row holds (§47).
         "grand_total": _money(order.grand_total),
+        "quote_id": str(quote.id),
     }
+
+
+async def _propose_quote(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    customer_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    requested_items: list[dict],
+) -> dict:
+    """Mint (or re-serve) the conversation's quote — never an order."""
+    from app.modules.ai.agents.customer.confirmation import live_quote, mint_quote, quote_payload
+
+    existing = await live_quote(
+        session, tenant_id, conversation_id=conversation_id, customer_id=customer_id
+    )
+    if existing is not None:
+        # One live quote per conversation: re-serving it keeps the code the
+        # customer is about to type the SAME one — a second mint would
+        # orphan the code and leave the confirmation unreachable.
+        return quote_payload(existing)
+
+    # Prices come from the variant catalog, tenant-scoped. The model's
+    # numbers never enter the quote; it may only choose which lines.
+    _, sellable_statuses = _order_deps()
+    priced: list[dict] = []
+    total = Decimal("0")
+    for item in requested_items:
+        variant_id = uuid.UUID(str(item["variant_id"]))
+        quantity = int(item["quantity"])
+        row = (
+            await session.execute(
+                select(ProductVariant, Product.status)
+                .join(Product, Product.id == ProductVariant.product_id)
+                .where(
+                    ProductVariant.tenant_id == tenant_id,
+                    ProductVariant.id == variant_id,
+                )
+            )
+        ).first()
+        if row is None:
+            raise NotFoundError(f"variant {variant_id} not found")
+        variant, product_status = row
+        # §M4 at the quote gate, through checkout's own vocabulary: a line the
+        # customer could never buy must not be quotable either. Refusing here
+        # is what stops the chat from offering an offer the order would reject.
+        if product_status not in sellable_statuses or not variant.is_active:
+            raise ConflictError(
+                f"variant {variant_id} is not on sale (product status "
+                f"{product_status or 'missing'}, variant active={variant.is_active})"
+            )
+        line_total = variant.price * quantity
+        total += line_total
+        priced.append(
+            {
+                "variant_id": str(variant_id),
+                "quantity": quantity,
+                "unit_price": _money(variant.price),
+                "line_total": _money(line_total),
+            }
+        )
+    quote = await mint_quote(
+        session,
+        tenant_id,
+        conversation_id=conversation_id,
+        customer_id=customer_id,
+        items=priced,
+        grand_total=total,
+    )
+    return quote_payload(quote)
 
 
 # ------------------------------------------------- customer / order reads ----
@@ -706,7 +860,14 @@ def _bootstrap() -> None:
     register_tool(
         ToolSpec(
             name="create_order",
-            description="Place an order for a customer from a list of variant/quantity pairs.",
+            description=(
+                "Place an order for the conversation's customer (server-bound). "
+                "Two-phase: a call without a confirmed quote PROPOSES — it returns "
+                "a priced quote with a 6-digit confirmation code the customer must "
+                "type in chat; no order exists yet. Once the customer's own message "
+                "carries the code, call create_order again to execute the confirmed "
+                "quote's items (the execution needs merchant approval)."
+            ),
             args_schema=CreateOrderArgs,
             handler=_create_order,
             tags=["orders"],

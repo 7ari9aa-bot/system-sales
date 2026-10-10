@@ -31,9 +31,17 @@ async def save_analysis(
     findings: list[Finding],
     run_id: uuid.UUID | None = None,
     model: str | None = None,
+    provider: str | None = None,
+    model_version: str | None = None,
     prompt_version: str | None = None,
 ) -> uuid.UUID:
-    """Persist one published analysis; returns the evidence id."""
+    """Persist one published analysis; returns the evidence id.
+
+    P1-12: `model` alone was the alias the agent asked for. The provider and
+    the concrete model behind the alias ride with it, so a published answer can
+    be attributed to the thing that actually produced it after the alias is
+    re-pointed at another model.
+    """
     pack_dict = pack.model_dump(mode="json")
     content_hash = (
         pack.content_hash
@@ -49,6 +57,8 @@ async def save_analysis(
         pack=pack_dict,
         content_hash=content_hash,
         model=model,
+        provider=provider,
+        model_version=model_version,
         prompt_version=prompt_version,
     )
     session.add(row)
@@ -104,6 +114,8 @@ async def load_analysis(
         "outcome": row.outcome,
         "content_hash": row.content_hash,
         "model": row.model,
+        "provider": row.provider,
+        "model_version": row.model_version,
         "prompt_version": row.prompt_version,
         "created_at": row.created_at.isoformat(),
         "pack": row.pack,

@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select, update
 
-from app.core.errors import ConflictError, NotFoundError, PermissionDeniedError
+from app.core.errors import ConflictError, NotFoundError, PermissionDeniedError, ValidationError
 from app.core.idempotency import IfMatch, apply_etag, apply_versioned_update
 from app.core.pagination import paginate
 from app.modules.ai import knowledge
@@ -39,17 +39,21 @@ from app.modules.ai.approvals import ApprovalService
 from app.modules.ai.models import Agent, AIHandover, AIUsage, KnowledgeItem, Memory
 from app.modules.ai.policy import AIProviderPolicyService
 from app.modules.ai.schemas import (
+    HANDOVER_OUTCOMES,
     AgentCreateRequest,
     AgentDetailOut,
     AgentKindOut,
     AgentOut,
+    AgentPublishRequest,
     AgentUpdateRequest,
+    AgentVersionOut,
     ApprovalDecisionOut,
     ApprovalList,
     EvaluationList,
     EvaluationOut,
     HandoverList,
     HandoverOut,
+    HandoverResolveRequest,
     KnowledgeIngested,
     KnowledgeIngestRequest,
     KnowledgeList,
@@ -272,6 +276,8 @@ async def get_sales_analysis(ctx: AnalyticsCtx, analysis_id: uuid.UUID) -> Sales
         outcome=stored["outcome"],
         content_hash=stored["content_hash"],
         model=stored["model"],
+        provider=stored["provider"],
+        model_version=stored["model_version"],
         prompt_version=stored["prompt_version"],
         created_at=stored["created_at"],
         pack=stored["pack"],
@@ -411,6 +417,30 @@ async def update_agent(
 
     apply_etag(response, agent.version)
     return AgentDetailOut.model_validate(agent)
+
+
+@router.post("/agents/{agent_id}/publish", status_code=201, response_model=AgentVersionOut)
+async def publish_agent_version(
+    agent_id: uuid.UUID,
+    ctx: SettingsCtx,
+    body: AgentPublishRequest | None = None,
+) -> AgentVersionOut:
+    """Snapshot the agent row into an immutable published version.
+
+    Idempotent for identical configuration: republishing unchanged settings
+    returns the existing snapshot rather than minting a no-op version.
+    """
+    from app.modules.ai.versions import AIAgentVersionService
+
+    policy = (body.tool_policy if body is not None else None) or None
+    version = await AIAgentVersionService.publish(
+        ctx.session,
+        ctx.tenant_id,
+        agent_id,
+        published_by=ctx.user_id,
+        tool_policy=policy,
+    )
+    return AgentVersionOut.model_validate(version)
 
 
 @router.get("/usage/summary", response_model=UsageSummaryOut)
@@ -935,6 +965,25 @@ async def approve_evaluation(agent_version_id: uuid.UUID, ctx: ApproveCtx):
 # ---------- §37/§150 Handover queue & workflow ----------
 
 
+def _handover_out(h: AIHandover) -> dict:
+    """One shape for every handover response — three routes used to build the
+    field list by hand, which is how a new column gets forgotten."""
+    return HandoverOut(
+        id=h.id,
+        conversation_id=h.conversation_id,
+        run_id=h.run_id,
+        reason=h.reason,
+        status=h.status,
+        claimed_by_user_id=h.claimed_by_user_id,
+        note=h.note,
+        created_at=h.created_at.isoformat() if h.created_at else None,
+        resolved_by_user_id=h.resolved_by_user_id,
+        resolved_at=h.resolved_at.isoformat() if h.resolved_at else None,
+        outcome=h.outcome,
+        outcome_note=h.outcome_note,
+    )
+
+
 @router.get("/handovers", response_model=HandoverList)
 async def list_handovers(
     ctx: TenantCtxDep,
@@ -947,22 +996,7 @@ async def list_handovers(
         query = query.where(AIHandover.status == status)
     query = query.order_by(AIHandover.created_at.desc())
     rows = (await ctx.session.execute(query)).scalars().all()
-    return {
-        "items": [
-            HandoverOut(
-                id=h.id,
-                conversation_id=h.conversation_id,
-                run_id=h.run_id,
-                reason=h.reason,
-                status=h.status,
-                claimed_by_user_id=h.claimed_by_user_id,
-                note=h.note,
-                created_at=h.created_at.isoformat() if h.created_at else None,
-            )
-            for h in rows
-        ],
-        "total": len(rows),
-    }
+    return {"items": [_handover_out(h) for h in rows], "total": len(rows)}
 
 
 @router.post("/handovers/{handover_id}/claim", response_model=HandoverOut)
@@ -1014,34 +1048,53 @@ async def claim_handover(
         },
     )
     await ctx.session.flush()
-    return HandoverOut(
-        id=handover.id,
-        conversation_id=handover.conversation_id,
-        run_id=handover.run_id,
-        reason=handover.reason,
-        status=handover.status,
-        claimed_by_user_id=handover.claimed_by_user_id,
-        note=handover.note,
-        created_at=handover.created_at.isoformat() if handover.created_at else None,
-    )
+    return _handover_out(handover)
 
 
 @router.post("/handovers/{handover_id}/resolve", response_model=HandoverOut)
 async def resolve_handover(
     handover_id: uuid.UUID,
     ctx: TenantCtxDep,
+    body: HandoverResolveRequest | None = None,
 ):
+    """Close a handover, recording WHO closed it, WHEN, and WITH WHAT RESULT.
+
+    §150's outcome half: this route used to flip `status` and leave no trace
+    behind, so the queue could count handovers created but never handovers
+    answered. `outcome` is a closed vocabulary (a free-text-only field is a
+    field nobody aggregates); `note` carries the detail a human would want
+    later. Resolving a resolved row is a conflict, not a silent re-write: the
+    second resolver would overwrite the first one's record of what happened.
+    """
+    from app.core.events.writer import add_outbox_event
+
     handover = (
         await ctx.session.execute(
-            select(AIHandover).where(
+            select(AIHandover)
+            .where(
                 AIHandover.id == handover_id,
                 AIHandover.tenant_id == ctx.tenant_id,
             )
+            # Two reviewers opening one handover both see PENDING; the row
+            # lock makes the second one read the resolved state instead of
+            # overwriting the first one's outcome.
+            .with_for_update()
         )
     ).scalar_one_or_none()
-    if not handover:
+    if handover is None:
         raise NotFoundError("handover not found")
+    if handover.status == "resolved":
+        raise ConflictError("handover is already resolved")
+
+    outcome = body.outcome if body is not None else None
+    if outcome is not None and outcome not in HANDOVER_OUTCOMES:
+        raise ValidationError(f"outcome must be one of: {', '.join(HANDOVER_OUTCOMES)}")
+
     handover.status = "resolved"
+    handover.resolved_by_user_id = ctx.user_id
+    handover.resolved_at = datetime.now(UTC)
+    handover.outcome = outcome
+    handover.outcome_note = body.note if body is not None else None
 
     # Synchronize conversation: conversation leaves waiting_human (§30)
     from sqlalchemy import text
@@ -1056,14 +1109,23 @@ async def resolve_handover(
             "tid": str(ctx.tenant_id),
         },
     )
-    await ctx.session.flush()
-    return HandoverOut(
-        id=handover.id,
-        conversation_id=handover.conversation_id,
-        run_id=handover.run_id,
-        reason=handover.reason,
-        status=handover.status,
-        claimed_by_user_id=handover.claimed_by_user_id,
-        note=handover.note,
-        created_at=handover.created_at.isoformat() if handover.created_at else None,
+    # The other half of `request_human_takeover`'s three writes: the row and
+    # the status moved, so the outbox says so too — that is how SLA clocks and
+    # the dashboard learn a handover ENDED rather than only that it began.
+    await add_outbox_event(
+        ctx.session,
+        aggregate_type="ai",
+        aggregate_id=handover.conversation_id,
+        event_type="ai.handover.resolved",
+        tenant_id=ctx.tenant_id,
+        payload={
+            "event_type": "ai.handover.resolved",
+            "handover_id": str(handover.id),
+            "conversation_id": str(handover.conversation_id),
+            "reason": handover.reason,
+            "outcome": outcome,
+            "resolved_by_user_id": str(ctx.user_id),
+        },
     )
+    await ctx.session.flush()
+    return _handover_out(handover)
