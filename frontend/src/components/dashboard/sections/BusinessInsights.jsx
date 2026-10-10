@@ -50,7 +50,7 @@ export default function BusinessInsights() {
   }
 
   return (
-    <SectionCard title={t("home.businessInsights.title")} action={t("home.exploreAnalytics")} actionTo="/analytics">
+    <SectionCard title={t("home.businessInsights.title")} action={t("home.exploreAnalytics")} actionTo="/analytics" className="h-full">
       {live?.dashboardError ? (
         <div role="alert" className="flex items-center justify-between gap-3 py-4 text-[12.5px] text-muted-foreground">
           <span>{live.dashboardError}</span>

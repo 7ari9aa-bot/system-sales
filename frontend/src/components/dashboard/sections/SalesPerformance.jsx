@@ -48,6 +48,7 @@ export default function SalesPerformance() {
       title={t("home.salesPerformance.title")}
       action={t("home.viewAnalytics")}
       actionTo="/analytics"
+      className="h-full"
       bodyClassName="pt-2"
     >
       <div className="flex items-center justify-between gap-3 mb-3">

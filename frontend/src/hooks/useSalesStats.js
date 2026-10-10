@@ -68,12 +68,35 @@ function overviewPath(range, timezone) {
   return `/analytics/overview?${params.toString()}`;
 }
 
+/** نافذة سابقة بنفس الطول، محسوبة من `since`/`until` اللي رجّعهم السيرفر نفسه —
+ *  فالمقارنة بتبقى بين نافذتين متطابقتي الطول ومن نفس المرجع الزمني، مش تقدير
+ *  من الساعة بتاعة المتصفح. */
+function previousWindow(overview) {
+  const from = Date.parse(overview?.since ?? "");
+  const to = Date.parse(overview?.until ?? "");
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) return null;
+  const span = to - from;
+  const params = new URLSearchParams();
+  params.set("since", new Date(from - span).toISOString());
+  params.set("until", new Date(from).toISOString());
+  if (overview.timezone) params.set("timezone", overview.timezone);
+  return `/analytics/overview?${params.toString()}`;
+}
+
+function percentDelta(current, previous) {
+  const now = Number(current);
+  const before = Number(previous);
+  if (!Number.isFinite(now) || !Number.isFinite(before) || before === 0) return null;
+  return ((now - before) / Math.abs(before)) * 100;
+}
+
 /** أرقام المبيعات الحقيقية لنطاق الداشبورد — من read models السيرفر:
  *  GET /analytics/dashboard للبيانات المساندة وGET /analytics/overview
  *  للنطاق المحدد، مع حدود اليوم المحلي في إعداد المنطقة الزمنية. */
 export default function useSalesStats(range) {
   const [dash, setDash] = useState(() => peekCache("/analytics/dashboard") || null);
   const [overviewState, setOverviewState] = useState({ path: null, data: null });
+  const [previous, setPrevious] = useState({ path: null, data: null });
   const [overviewFailure, setOverviewFailure] = useState({ path: null, error: "" });
   const [dashboardError, setDashboardError] = useState("");
   const [dashboardAttempt, setDashboardAttempt] = useState(0);
@@ -129,6 +152,24 @@ export default function useSalesStats(range) {
     };
   }, [path, overviewAttempt]);
 
+  const prevPath = useMemo(() => (overview ? previousWindow(overview) : null), [overview]);
+
+  useEffect(() => {
+    if (!prevPath) {
+      setPrevious({ path: null, data: null });
+      return undefined;
+    }
+    let alive = true;
+    const cached = peekCache(prevPath);
+    if (cached) setPrevious({ path: prevPath, data: cached });
+    apiCached(prevPath)
+      .then((d) => alive && setPrevious({ path: prevPath, data: d }))
+      .catch(() => alive && setPrevious({ path: prevPath, data: null }));
+    return () => {
+      alive = false;
+    };
+  }, [prevPath]);
+
   return useMemo(() => {
     if (!dash) {
       return dashboardError
@@ -136,6 +177,7 @@ export default function useSalesStats(range) {
         : null;
     }
     const customers = dash.customers ?? null;
+    const before = prevPath && previous.path === prevPath ? previous.data : null;
     const trend = (overview?.daily_series ?? []).map((r) => ({
       label: r.day,
       revenue: Number(r.net_revenue ?? 0),
@@ -143,7 +185,9 @@ export default function useSalesStats(range) {
     }));
     return {
       netSales: overview == null ? null : Number(overview.net_revenue ?? 0),
+      netSalesDelta: before ? percentDelta(overview?.net_revenue, before.net_revenue) : null,
       orders: overview == null ? null : overview.orders_count ?? 0,
+      ordersDelta: before ? percentDelta(overview?.orders_count, before.orders_count) : null,
       customers,
       aiOrders: dash.ai_orders_30d ?? null,
       activeProducts: dash.products_active ?? null,
@@ -159,5 +203,5 @@ export default function useSalesStats(range) {
       retryDashboard,
       retryOverview,
     };
-  }, [dash, overview, dashboardError, overviewError, retryDashboard, retryOverview]);
+  }, [dash, overview, previous, prevPath, dashboardError, overviewError, retryDashboard, retryOverview]);
 }

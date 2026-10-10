@@ -16,6 +16,11 @@ import {
   LogOut,
   PanelLeft,
   Settings2,
+  ScanLine,
+  Undo2,
+  ArrowLeftRight,
+  History,
+  CirclePlus,
 } from "lucide-react";
 import { useI18n, useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -33,7 +38,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 export default function Sidebar({ open, onClose, collapsed = false, onToggleCollapse }) {
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const navigate = useNavigate();
   const t = useT();
   const { lang } = useI18n();
@@ -76,8 +81,19 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
     {
       section: t("nav.sell"),
       items: [
-        { to: "/orders", label: t("nav.orders"), icon: ShoppingBag },
+        {
+          to: "/orders",
+          label: t("nav.orders"),
+          icon: ShoppingBag,
+          children: [
+            { key: "new", label: t("nav.newSale"), icon: ScanLine },
+            { key: "returns", label: t("nav.returns"), icon: Undo2 },
+            { key: "exchanges", label: t("nav.exchanges"), icon: ArrowLeftRight },
+            { key: "history", label: t("nav.salesHistory"), icon: History },
+          ],
+        },
         { to: "/products", label: t("nav.products"), icon: Package },
+        { to: "/products/new", label: t("nav.addProduct"), icon: CirclePlus },
         { to: "/inventory", label: t("nav.inventory"), icon: Boxes, badge: stockIssues },
       ],
     },
@@ -135,7 +151,7 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
           {NAV.map((group) => (
             <div key={group.section} className={collapsed ? "space-y-1" : undefined}>
               {!collapsed && (
-                <div className="px-3 mb-1.5 text-[10.5px] font-semibold tracking-[0.12em] uppercase text-muted-foreground whitespace-nowrap truncate text-center">
+                <div className="px-3 mb-1.5 text-[10.5px] font-semibold tracking-[0.06em] uppercase text-muted-foreground/80 whitespace-nowrap truncate text-start">
                   {group.section}
                 </div>
               )}
@@ -143,31 +159,58 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
                 {group.items.map((item) => {
                   const active = item.end ? pathname === item.to : pathname.startsWith(item.to);
                   const Icon = item.icon;
+                  const section = new URLSearchParams(search).get("s");
                   return (
-                    <Link
-                      key={item.to}
-                      to={item.to}
-                      onClick={onClose}
-                      title={collapsed ? item.label : undefined}
-                      className={cn(
-                        "group flex items-center rounded-lg text-[13.5px] font-medium transition-colors",
-                        collapsed ? "relative justify-center px-0 py-2.5" : "gap-3 px-3 py-2",
-                        active
-                          ? "bg-primary/10 text-primary"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                      )}
-                    >
-                      <Icon className={cn("h-[17px] w-[17px] shrink-0", active ? "text-primary" : "text-muted-foreground group-hover:text-foreground")} />
-                      {!collapsed && <span className="flex-1 min-w-0 truncate text-center">{item.label}</span>}
-                      {!collapsed && item.badge ? (
-                        <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-md bg-primary text-primary-foreground tabular-nums">
-                          {item.badge}
-                        </span>
+                    <React.Fragment key={item.to}>
+                      <Link
+                        to={item.to}
+                        onClick={onClose}
+                        title={collapsed ? item.label : undefined}
+                        aria-current={active ? "page" : undefined}
+                        className={cn(
+                          "group flex items-center rounded-lg text-[13.5px] font-medium transition-colors",
+                          collapsed ? "relative justify-center px-0 py-2.5" : "gap-3 px-3 py-2",
+                          active
+                            ? "bg-primary/10 text-primary"
+                            : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                        )}
+                      >
+                        <Icon className={cn("h-[17px] w-[17px] shrink-0", active ? "text-primary" : "text-muted-foreground group-hover:text-foreground")} />
+                        {!collapsed && <span className="flex-1 min-w-0 truncate text-start">{item.label}</span>}
+                        {!collapsed && item.badge ? (
+                          <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-md bg-pill text-pill-foreground tabular-nums">
+                            {item.badge}
+                          </span>
+                        ) : null}
+                        {collapsed && item.badge ? (
+                          <span className="absolute top-0 right-0 h-1.5 w-1.5 rounded-full bg-primary" />
+                        ) : null}
+                      </Link>
+                      {!collapsed && item.children && active ? (
+                        <div className="ms-5 mt-0.5 mb-1 space-y-0.5 border-s border-sidebar-border ps-2">
+                          {item.children.map((child) => {
+                            const childActive = section === child.key;
+                            const ChildIcon = child.icon;
+                            return (
+                              <Link
+                                key={child.key}
+                                to={`${item.to}?s=${child.key}`}
+                                onClick={onClose}
+                                className={cn(
+                                  "group flex items-center gap-3 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors",
+                                  childActive
+                                    ? "bg-primary/10 font-semibold text-primary"
+                                    : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                                )}
+                              >
+                                <ChildIcon className={cn("h-[17px] w-[17px] shrink-0", childActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground")} />
+                                <span className="flex-1 min-w-0 truncate text-start">{child.label}</span>
+                              </Link>
+                            );
+                          })}
+                        </div>
                       ) : null}
-                      {collapsed && item.badge ? (
-                        <span className="absolute top-0 right-0 h-1.5 w-1.5 rounded-full bg-primary" />
-                      ) : null}
-                    </Link>
+                    </React.Fragment>
                   );
                 })}
               </div>
@@ -189,7 +232,7 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
                   pathname.startsWith("/settings") ? "bg-primary/10" : "hover:bg-sidebar-accent"
                 )}
               >
-                <div className="h-9 w-9 rounded-full bg-accent/15 text-accent grid place-items-center text-[12px] font-semibold shrink-0">{initials}</div>
+                <div className="h-9 w-9 rounded-full bg-pill text-pill-foreground grid place-items-center text-[12px] font-semibold shrink-0">{initials}</div>
                 {!collapsed && (
                   <div className="leading-tight flex-1 min-w-0 text-left">
                     <div className={cn("text-[13px] font-medium whitespace-nowrap truncate", pathname.startsWith("/settings") ? "text-primary" : "text-foreground")} dir="ltr">{displayName}</div>

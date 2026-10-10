@@ -122,7 +122,7 @@ export default function NeedsAttention() {
                     <div className="text-[13.5px] font-medium truncate">{item.title}</div>
                     <div className="text-[12px] text-muted-foreground truncate">{item.detailKey}</div>
                   </div>
-                  <span className="hidden sm:inline-flex items-center gap-1 text-[12.5px] font-medium text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+                  <span className="ms-auto inline-flex items-center gap-1 text-[12px] font-medium text-primary shrink-0">
                     {item.actionKey}
                     <ArrowRight className="h-3.5 w-3.5" />
                   </span>

@@ -29,7 +29,7 @@ export function Delta({ value, className }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-0.5 text-[12px] font-semibold tabular-nums whitespace-nowrap",
+        "kpi-delta inline-flex items-center gap-0.5 text-[12px] font-semibold tabular-nums whitespace-nowrap",
         positive ? "text-success" : "text-destructive",
         className
       )}>

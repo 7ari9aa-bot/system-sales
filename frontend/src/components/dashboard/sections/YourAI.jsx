@@ -17,7 +17,7 @@ function Stat({ icon: Icon, label, value, tone }) {
     muted: "bg-surface text-muted-foreground",
   }[tone];
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-3 rounded-xl border border-border/70 bg-surface-subtle px-3.5 py-3">
       <span className={`h-9 w-9 shrink-0 rounded-lg grid place-items-center ${toneClass}`}>
         <Icon className="h-[17px] w-[17px]" />
       </span>
@@ -75,6 +75,8 @@ export default function YourAI() {
       }
       action={t("home.manageAI")}
       actionTo="/ai"
+      className="h-full"
+      bodyClassName="flex flex-col gap-4 h-[calc(100%-54px)]"
     >
       {(live?.dashboardError || usage?.error || approvals?.error || agentError) && <div role="status" className="mb-3 flex flex-wrap items-center justify-between gap-2 text-[11.5px] text-muted-foreground">
         <span>{live?.dashboardError || usage?.error || approvals?.error || agentError}</span>
@@ -85,7 +87,7 @@ export default function YourAI() {
           {agentError && <button type="button" onClick={() => setAgentAttempt((attempt) => attempt + 1)} className="text-primary hover:underline">{t("common.retry", "Retry")}</button>}
         </span>
       </div>}
-      <div className="grid grid-cols-2 gap-x-4 gap-y-4">
+      <div className="grid flex-1 grid-cols-2 gap-2.5 [grid-auto-rows:1fr]">
         <Stat icon={MessageSquare} label={t("ai.stat.openConversations")} value={live?.openConversations == null ? "—" : live.openConversations.toLocaleString()} tone="accent" />
         <Stat icon={ShoppingBag} label={t("home.aiOrdersHint")} value={live?.aiOrders == null ? "—" : live.aiOrders.toLocaleString()} tone="primary" />
         <Stat icon={ShieldCheck} label={t("ai.stat.pendingApprovals")} value={pending == null || approvals?.error ? "—" : `${pending.toLocaleString()}${approvals?.truncated ? "+" : ""}`} tone="warning" />

@@ -8,22 +8,22 @@ import { InventorySnapshot, MarketingSnapshot } from "@/components/dashboard/sec
 
 export default function Home() {
   return (
-    <div className="space-y-4 animate-fade-in">
+    <div className="space-y-3.5 animate-fade-in xl:space-y-5">
       <BusinessPulse />
 
       <NeedsAttention />
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <div className="xl:col-span-2">
+        <div className="xl:col-span-2 min-h-0">
           <SalesPerformance />
         </div>
-        <div className="xl:col-span-1">
+        <div className="xl:col-span-1 min-h-0">
           <YourAI />
         </div>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <div className="xl:col-span-1">
+        <div className="xl:col-span-1 min-h-0">
           <BusinessInsights />
         </div>
         <div className="xl:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">

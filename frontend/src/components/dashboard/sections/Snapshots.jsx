@@ -19,6 +19,7 @@ export function InventorySnapshot() {
       }
       action={t("common.review")}
       actionTo="/inventory"
+      className="h-full"
     >
       {live?.dashboardError && (
         <div role="alert" className="mb-2 flex items-center justify-between gap-2 text-[11.5px] text-destructive">
@@ -106,6 +107,7 @@ export function MarketingSnapshot() {
       }
       action={t("common.review")}
       actionTo="/marketing"
+      className="h-full"
     >
       {error && (
         <div role="status" className="mb-2 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">

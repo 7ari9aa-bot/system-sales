@@ -11,6 +11,7 @@
   /* Design tokens: the HSL triplets live in the :root / .dark blocks below. */
   --color-background: hsl(var(--background));
   --color-surface: hsl(var(--surface));
+  --color-surface-subtle: hsl(var(--surface-subtle));
   --color-foreground: hsl(var(--foreground));
   --color-card: hsl(var(--card));
   --color-card-foreground: hsl(var(--card-foreground));
@@ -48,6 +49,8 @@
   --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
   --color-sidebar-border: hsl(var(--sidebar-border));
   --color-sidebar-ring: hsl(var(--sidebar-ring));
+  --color-pill: hsl(var(--pill));
+  --color-pill-foreground: hsl(var(--pill-foreground));
 
   /* Self-referential on purpose (inline): resolves to the :root vars below. */
   --font-heading: var(--font-heading);
@@ -70,6 +73,7 @@
   --radius-xl: calc(var(--base-radius) + 4px);
   --radius-2xl: calc(var(--base-radius) + 10px);
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-card: 0 1px 2px hsl(var(--foreground) / 0.04), 0 4px 12px -6px hsl(var(--foreground) / 0.06);
   --blur-sm: 4px;
 
   --animate-accordion-down: accordion-down 0.2s ease-out;
@@ -203,69 +207,95 @@
    */
 
   :root:has([data-dashboard-theme-scope]) {
-    /* A quiet blue-gray canvas keeps the white cards distinct. */
-    --background: 210 22% 97%;
-    --surface: 210 20% 94%;
-    --surface-subtle: 210 24% 99%;
-    --foreground: 215 25% 16%;
-    --card: 0 0% 100%;
-    --card-foreground: 215 25% 16%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 215 25% 16%;
-    --primary: 214 83% 40%;
+    /* Warm cream canvas with a deep teal accent — the delivered dashboard theme. */
+    --background: 40 30% 95%;
+    --surface: 40 20% 90%;
+    --surface-subtle: 42 40% 97%;
+    --foreground: 30 14% 14%;
+    --card: 42 45% 99%;
+    --card-foreground: 30 14% 14%;
+    --popover: 42 45% 99%;
+    --popover-foreground: 30 14% 14%;
+    --primary: 174 62% 26%;
     --primary-foreground: 0 0% 100%;
-    --primary-soft: 214 70% 94%;
-    --secondary: 210 19% 92%;
-    --secondary-foreground: 215 22% 20%;
-    --muted: 210 19% 92%;
-    --muted-foreground: 215 13% 39%;
-    --accent: 214 83% 40%;
-    --accent-foreground: 0 0% 100%;
-    --accent-soft: 214 70% 94%;
-    --border: 215 16% 86%;
-    --input: 215 17% 80%;
-    --ring: 214 83% 40%;
-    --sidebar-background: 210 20% 95%;
-    --sidebar-foreground: 215 20% 27%;
-    --sidebar-primary: 214 83% 40%;
+    --primary-soft: 174 35% 91%;
+    --secondary: 40 20% 90%;
+    --secondary-foreground: 30 14% 14%;
+    --muted: 40 20% 90%;
+    --muted-foreground: 30 9% 36%;
+    --accent: 174 30% 90%;
+    --accent-foreground: 174 62% 22%;
+    --accent-soft: 174 30% 93%;
+    --destructive: 6 55% 42%;
+    --destructive-foreground: 0 0% 100%;
+    --warning: 36 70% 28%;
+    --warning-soft: 36 60% 90%;
+    --success: 150 30% 27%;
+    --success-soft: 150 30% 92%;
+    --border: 38 16% 85%;
+    --input: 38 14% 78%;
+    --ring: 174 62% 32%;
+    --chart-1: 174 62% 26%;
+    --chart-2: 150 30% 35%;
+    --chart-3: 36 70% 40%;
+    --chart-4: 212 26% 38%;
+    --chart-5: 6 55% 42%;
+    --sidebar-background: 40 24% 92%;
+    --sidebar-foreground: 30 14% 14%;
+    --sidebar-primary: 174 62% 26%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 210 20% 89%;
-    --sidebar-accent-foreground: 215 25% 17%;
-    --sidebar-border: 215 16% 87%;
-    --sidebar-ring: 214 83% 40%;
+    --sidebar-accent: 40 20% 87%;
+    --sidebar-accent-foreground: 30 14% 14%;
+    --sidebar-border: 38 16% 85%;
+    --sidebar-ring: 174 62% 32%;
+    --pill: 30 9% 17%;
+    --pill-foreground: 42 45% 99%;
   }
 
   :root.dark:has([data-dashboard-theme-scope]) {
-    /* Lifted charcoal-blue layers keep dark mode soft, not pure black. */
-    --background: 217 23% 11%;
-    --surface: 217 20% 14%;
-    --surface-subtle: 217 19% 17%;
-    --foreground: 210 20% 93%;
-    --card: 217 19% 15%;
-    --card-foreground: 210 20% 93%;
-    --popover: 217 18% 18%;
-    --popover-foreground: 210 20% 93%;
-    --primary: 213 68% 65%;
-    --primary-foreground: 217 23% 11%;
-    --primary-soft: 213 32% 23%;
-    --secondary: 217 17% 21%;
-    --secondary-foreground: 210 18% 90%;
-    --muted: 217 17% 20%;
-    --muted-foreground: 215 13% 71%;
-    --accent: 213 68% 65%;
-    --accent-foreground: 217 23% 11%;
-    --accent-soft: 213 32% 23%;
-    --border: 216 15% 28%;
-    --input: 216 14% 34%;
-    --ring: 213 68% 65%;
-    --sidebar-background: 217 20% 13%;
-    --sidebar-foreground: 216 14% 79%;
-    --sidebar-primary: 213 68% 65%;
-    --sidebar-primary-foreground: 217 23% 11%;
-    --sidebar-accent: 216 18% 21%;
-    --sidebar-accent-foreground: 210 20% 92%;
-    --sidebar-border: 216 15% 26%;
-    --sidebar-ring: 213 68% 65%;
+    /* Warm charcoal layers from the delivered theme — soft, never pure black. */
+    --background: 30 6% 11%;
+    --surface: 30 6% 16%;
+    --surface-subtle: 30 6% 19%;
+    --foreground: 38 14% 90%;
+    --card: 30 6% 14.5%;
+    --card-foreground: 38 14% 90%;
+    --popover: 30 6% 14.5%;
+    --popover-foreground: 38 14% 90%;
+    --primary: 38 14% 88%;
+    --primary-foreground: 30 6% 11%;
+    --primary-soft: 30 6% 22%;
+    --secondary: 30 6% 20%;
+    --secondary-foreground: 38 14% 90%;
+    --muted: 30 6% 19%;
+    --muted-foreground: 35 8% 67%;
+    --accent: 30 6% 22%;
+    --accent-foreground: 38 14% 90%;
+    --accent-soft: 30 6% 26%;
+    --destructive: 6 65% 65%;
+    --destructive-foreground: 30 6% 11%;
+    --warning: 38 70% 62%;
+    --warning-soft: 38 30% 18%;
+    --success: 150 40% 60%;
+    --success-soft: 150 20% 18%;
+    --border: 30 6% 26%;
+    --input: 30 6% 31%;
+    --ring: 212 48% 70%;
+    --chart-1: 38 14% 88%;
+    --chart-2: 150 40% 60%;
+    --chart-3: 38 70% 62%;
+    --chart-4: 212 48% 70%;
+    --chart-5: 6 65% 65%;
+    --sidebar-background: 30 6% 13%;
+    --sidebar-foreground: 38 14% 90%;
+    --sidebar-primary: 38 14% 88%;
+    --sidebar-primary-foreground: 30 6% 11%;
+    --sidebar-accent: 30 6% 20%;
+    --sidebar-accent-foreground: 38 14% 90%;
+    --sidebar-border: 30 6% 26%;
+    --sidebar-ring: 212 48% 70%;
+    --pill: 212 42% 44%;
+    --pill-foreground: 40 20% 96%;
   }
 }
 
@@ -940,3 +970,163 @@ html[lang="en"] .app :where(h1,h2,h3,h4,p,li,small,b,strong,label,option,.kicker
 .app.theme-dark .auth-form-side { background: var(--canvas); }
 .app.theme-dark .auth-input { background: var(--surface-deep); border-color: var(--line); color: var(--ink); }
 .app.theme-dark .auth-art-panel { background: linear-gradient(145deg, #304139, #202724); }
+
+/*
+ * Dashboard type scale and headings for the delivered theme. Unlayered and last
+ * so it outranks the marketing `.app :is(h1,h2,h3,p)` rule at equal specificity.
+ */
+[data-dashboard-theme-scope] {
+  --text-xs: 0.875rem;
+  --text-xs--line-height: 1.2rem;
+  --text-sm: 1rem;
+  --text-sm--line-height: 1.4rem;
+  --text-base: 1.125rem;
+  --text-base--line-height: 1.6rem;
+  --text-lg: 1.25rem;
+  --text-lg--line-height: 1.8rem;
+  --text-xl: 1.375rem;
+  --text-xl--line-height: 2rem;
+  --text-2xl: 1.75rem;
+  --text-2xl--line-height: 2.2rem;
+  --text-3xl: 2.125rem;
+  --text-3xl--line-height: 2.5rem;
+  --text-4xl: 2.5rem;
+  --text-4xl--line-height: 2.9rem;
+}
+
+[data-dashboard-theme-scope] :is(h1, h2, h3) {
+  font-weight: 650;
+  letter-spacing: -0.011em;
+}
+
+[data-dashboard-theme-scope],
+[data-dashboard-theme-scope] * {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--border)) transparent;
+}
+
+/*
+ * Delivered dashboard theme — surface and KPI layer.
+ * These rules key off the hooks the design itself uses (data-testid on the KPI
+ * strip and the attention list, aria-current on nav links), so the components
+ * stay data-driven and only the presentation lives here.
+ */
+[data-dashboard-theme-scope] main :is(section, .rounded-2xl) {
+  border-radius: 16px;
+  border: 1px solid hsl(var(--border));
+  box-shadow: 0 1px 2px rgba(40, 30, 10, 0.04), 0 4px 12px -6px rgba(40, 30, 10, 0.06);
+}
+
+[data-dashboard-theme-scope] aside nav a[aria-current="page"] {
+  background: hsl(var(--primary) / 0.09);
+  color: hsl(var(--primary));
+  font-weight: 600;
+  box-shadow: inset 3px 0 0 hsl(var(--primary));
+}
+
+[data-dashboard-theme-scope] [data-testid="dash-pulse"] {
+  gap: 16px;
+}
+
+@media (min-width: 640px) and (max-width: 1279px) {
+  [data-dashboard-theme-scope] [data-testid="dash-pulse"] {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1280px) {
+  [data-dashboard-theme-scope] [data-testid="dash-pulse"] {
+    grid-template-columns: 1.45fr repeat(4, minmax(0, 1fr));
+  }
+}
+
+[data-dashboard-theme-scope] [data-testid="dash-pulse"] a {
+  padding: 16px 16px 14px;
+  transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+}
+
+[data-dashboard-theme-scope] [data-testid="dash-pulse"] a .font-display {
+  font-size: 26px;
+  font-weight: 650;
+  letter-spacing: -0.025em;
+}
+
+[data-dashboard-theme-scope] [data-testid="dash-pulse"] a:not(:first-of-type) .font-display {
+  font-size: clamp(20px, 1.75vw, 26px);
+}
+
+[data-dashboard-theme-scope] [data-testid="dash-pulse"] a:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px -8px rgba(40, 30, 10, 0.25);
+}
+
+[data-dashboard-theme-scope] [data-testid="dash-pulse"] a:not(:first-of-type):hover {
+  box-shadow: 0 10px 22px -12px rgba(40, 30, 10, 0.22);
+}
+
+[data-dashboard-theme-scope] [data-testid="dash-pulse"] a:first-of-type {
+  background: linear-gradient(135deg, rgb(13, 59, 56) 0%, rgb(19, 96, 90) 100%);
+  border-color: transparent;
+  color: rgb(255, 255, 255);
+  box-shadow: 0 10px 24px -12px rgba(13, 59, 56, 0.55);
+}
+
+[data-dashboard-theme-scope] [data-testid="dash-pulse"] a:first-of-type :is(span, div, p) {
+  color: inherit;
+}
+
+[data-dashboard-theme-scope] [data-testid="dash-pulse"] a:first-of-type .text-muted-foreground {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+[data-dashboard-theme-scope] [data-testid="dash-pulse"] a:first-of-type span[class*="rounded-lg"] {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+[data-dashboard-theme-scope] [data-testid="dash-pulse"] a:first-of-type .kpi-delta {
+  background: rgba(255, 255, 255, 0.18);
+  color: rgb(255, 255, 255);
+}
+
+[data-dashboard-theme-scope] [data-testid="dash-pulse"] a:first-of-type .font-display {
+  font-size: clamp(26px, 2.4vw, 36px);
+}
+
+[data-dashboard-theme-scope] ul:has(> li[data-testid^="attention-"]) {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 10px;
+}
+
+[data-dashboard-theme-scope] ul:has(> li[data-testid^="attention-"]) > li {
+  border-radius: 14px;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--card));
+  padding: 8px 10px;
+}
+
+[data-dashboard-theme-scope] ul:has(> li[data-testid^="attention-"]) > li[data-testid*="inventory"]:has(.text-destructive) {
+  border-color: hsl(var(--destructive) / 0.35);
+}
+
+@media (max-width: 639px) {
+  [data-dashboard-theme-scope] ul:has(> li[data-testid^="attention-"]) > li a > span:last-child {
+    flex-basis: 100%;
+    margin-inline-start: 48px;
+    margin-top: -2px;
+  }
+}
+
+/* Headings and stat values scale with the viewport instead of truncating. */
+[data-dashboard-theme-scope] main .font-display.text-\[24px\] {
+  font-size: clamp(17px, 1.45vw, 24px);
+}
+
+[data-dashboard-theme-scope] main section .font-display.text-\[19px\] {
+  font-size: clamp(15px, 1.2vw, 18px);
+  white-space: nowrap;
+}
+
+[data-dashboard-theme-scope] main button:not([role="tab"]):not([aria-label]):hover {
+  border-color: hsl(var(--primary) / 0.4);
+}

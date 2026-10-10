@@ -25,6 +25,7 @@ const Inbox = lazy(() => import('@/pages/Inbox'));
 const Customers = lazy(() => import('@/pages/Customers'));
 const Orders = lazy(() => import('@/pages/Orders'));
 const Products = lazy(() => import('@/pages/Products'));
+const AddProduct = lazy(() => import('@/pages/AddProduct'));
 const Inventory = lazy(() => import('@/pages/Inventory'));
 const Marketing = lazy(() => import('@/pages/Marketing'));
 const MarketingCampaigns = lazy(() => import('@/pages/marketing/Campaigns'));
@@ -78,6 +79,7 @@ const DashboardRoutes = () => (
         <Route path="/customers" element={<Customers />} />
         <Route path="/orders" element={<Orders />} />
         <Route path="/products" element={<Products />} />
+        <Route path="/products/new" element={<AddProduct />} />
         <Route path="/inventory" element={<Inventory />} />
         <Route path="/marketing" element={<Marketing />}>
           <Route index element={<MarketingCampaigns />} />
@@ -135,8 +137,8 @@ function PathRouter() {
   const location = useLocation();
   const path = location.pathname;
   const under = (base) => path === base || path.startsWith(`${base}/`);
-  if (['/dashboard', '/inbox', '/customers', '/orders', '/products', '/inventory',
-    '/marketing', '/ai', '/analytics', '/usage', '/settings'].some(under)) {
+  if (['/dashboard', '/inbox', '/customers', '/orders', '/products', '/inventory', '/sales',
+    '/marketing', '/ai', '/analytics', '/usage', '/website', '/settings'].some(under)) {
     return <DashboardRoutes />;
   }
   if (['/login', '/register', '/forgot-password', '/reset-password', '/accept-invitation'].some(under)) {

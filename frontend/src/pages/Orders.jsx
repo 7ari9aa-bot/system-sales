@@ -1,6 +1,8 @@
 import React, { useMemo, useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Download, Search, DollarSign, ShoppingBag, TrendingUp, Loader2, X } from "lucide-react";
 import { PageHeader, KpiCard } from "@/components/dashboard/ui";
+import SalesWorkspace from "@/components/sales/SalesWorkspace";
 import { formatCurrency } from "@/lib/dashboardData";
 import useOrders from "@/hooks/useOrders";
 import useSalesStats from "@/hooks/useSalesStats";
@@ -8,6 +10,8 @@ import { useDashboard } from "@/lib/dashboardContext";
 import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
+
+const SALES_SECTIONS = new Map([["new", "new"], ["returns", "returns"], ["exchanges", "exchanges"]]);
 
 function formatOrderMoney(value, currency) {
   if (currency) {
@@ -37,6 +41,7 @@ export default function Orders() {
   const [exporting, setExporting] = useState(false);
   const [pageError, setPageError] = useState(null);
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [searchParams] = useSearchParams();
 
   const filters = useMemo(() => {
     const statuses = [...new Set(orders.map((order) => order.status).filter(Boolean))].sort();
@@ -96,6 +101,10 @@ export default function Orders() {
 
   const orderCount = live?.orders ?? null;
   const averageOrderValue = orderCount > 0 && live?.netSales != null ? Math.round(live.netSales / orderCount) : null;
+
+  // ?s=new|returns|exchanges يفتح هيكل وحدة المبيعات؛ السجل هو نفس هذه القائمة.
+  const salesSection = SALES_SECTIONS.get(searchParams.get("s"));
+  if (salesSection) return <SalesWorkspace section={salesSection} />;
 
   return (
     <div>
