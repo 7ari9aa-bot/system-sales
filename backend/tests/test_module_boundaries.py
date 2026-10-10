@@ -183,7 +183,15 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # tool computes are registered through `EvidenceStore.register_numbers`, the
 # analytics module's own door, so the SI adapter gained no new import site and
 # the skip rules live beside the pack contract that enforces them.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 144
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 145
+# 144 -> 145 on 2026-10-10: the SI orchestrator (ai/agents/sales_intelligence/
+# agent.py) now reads the merchant timezone through analytics.service.
+# resolve_report_timezone — the single resolver every si_* fact's period is
+# already stamped through (tools.py imports the same service). This is the
+# guard's own prescription ("use its service"): the removed inline
+# COALESCE('Africa/Cairo') disagreed with the facts it validated and raised in
+# validate_pack_inputs for every tenant without a declared zone. Function
+# scope; the ai->analytics module pair already existed, so no new cycle.
 # 101 -> 99 on 2026-09-29: the diagnostics engine (platform/diagnostics.py) had
 # module-scope imports of `ai.models.Agent`, `inventory.models` and
 # `orders.models` — three edges that re-merged the eleven-module SCC blob the
