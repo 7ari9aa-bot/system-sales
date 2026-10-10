@@ -27,6 +27,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -711,4 +712,91 @@ class AIOrderQuote(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, B
 
     __table_args__ = (
         Index("ix_ai_order_quotes_conversation_status", "tenant_id", "conversation_id", "status"),
+    )
+
+
+class AIChatThread(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
+    """Spec §SI-chat — one merchant conversation with the sales_intelligence agent.
+
+    Deliberately NOT the customer-messaging `conversations` table: this is a
+    merchant-facing analysis thread, private to its creator by default. The
+    compaction columns carry a deterministic summary of turns older than
+    `summary_through_seq` so bounded history stays bounded without a model
+    call rewriting what the merchant actually said.
+    """
+
+    __tablename__ = "ai_chat_threads"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    agent_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agents.id", ondelete="RESTRICT")
+    )
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    title: Mapped[str] = mapped_column(String(200), server_default="")
+    # allowed: active | archived | deleted
+    status: Mapped[str] = mapped_column(String(15), server_default="active")
+    # validated chat context: {"period": ..., "filters": {...}} — set by the UI, read by turns
+    context: Mapped[dict] = mapped_column(JSONB, server_default="{}")
+    # compaction: deterministic summary of turns older than summary_through_seq
+    context_summary: Mapped[str | None] = mapped_column(Text)
+    summary_through_seq: Mapped[int] = mapped_column(default=0, server_default="0")
+    last_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index(
+            "ix_ai_chat_threads_tenant_user_updated",
+            "tenant_id",
+            "created_by_user_id",
+            "updated_at",
+        ),
+        Index("ix_ai_chat_threads_workspace_id", "workspace_id"),
+        Index("ix_ai_chat_threads_location_id", "location_id"),
+    )
+
+
+class AIChatMessage(TenantMixin, AppendOnlyCreatedAtMixin, Base):
+    """One turn inside a merchant analysis thread — user prompt or assistant answer.
+
+    `structured_content` is a closed render-block vocabulary built by the server
+    from a validated AnalysisResult — never model-authored JSON. `idempotency_key`
+    makes a retried submit return the same turn instead of double-billing a run.
+    """
+
+    __tablename__ = "ai_chat_messages"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    thread_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("ai_chat_threads.id", ondelete="CASCADE")
+    )
+    sequence_no: Mapped[int] = mapped_column(nullable=False)
+    # allowed: user | assistant
+    role: Mapped[str] = mapped_column(String(15), nullable=False)
+    # allowed: pending | generating | completed | failed | cancelled
+    status: Mapped[str] = mapped_column(String(15), server_default="pending")
+    content: Mapped[str] = mapped_column(Text, server_default="")
+    # validated render blocks (chat/schemas.py) — never model-authored JSON
+    structured_content: Mapped[list | None] = mapped_column(JSONB)
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_runs.id", ondelete="SET NULL")
+    )
+    # opaque ref to the saved analysis/evidence row (analytics analyses) when one exists
+    analysis_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    idempotency_key: Mapped[str | None] = mapped_column(String(64))
+    error_code: Mapped[str | None] = mapped_column(String(63))
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "thread_id", "sequence_no", name="uq_ai_chat_messages_thread_seq"
+        ),
+        Index(
+            "uq_ai_chat_messages_thread_key",
+            "tenant_id",
+            "thread_id",
+            "idempotency_key",
+            unique=True,
+            postgresql_where=text("idempotency_key IS NOT NULL"),
+        ),
+        Index("ix_ai_chat_messages_thread_seq", "thread_id", "sequence_no"),
     )

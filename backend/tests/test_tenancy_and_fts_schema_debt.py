@@ -174,7 +174,8 @@ def test_the_three_new_revisions_exist_and_chain_from_the_head() -> None:
     # immutability, secret backfill, RLS on the version tables, ai_order_quotes,
     # the §150 handover outcome columns and the analysis provenance columns —
     # carried it fe2026100809 -> fe2026100815; the infra RLS convergence
-    # carried it fe2026100815 -> fe2026101001): the head is a fact of the
+    # carried it fe2026100815 -> fe2026101001; the SI chat persistence
+    # carried it fe2026101001 -> fe2026100816): the head is a fact of the
     # current chain, and this guard pins it so a fork is caught the day it
     # lands.
     #
@@ -183,8 +184,8 @@ def test_the_three_new_revisions_exist_and_chain_from_the_head() -> None:
     # purpose: it is a fork nobody has decided about yet.
     pointed_to = {parent for _, parent in ids.values() if parent}
     tail = set(ids) - pointed_to
-    assert tail == {"fe2026101001"}, (
-        f"expected one linear head fe2026101001, found {sorted(tail)} — "
+    assert tail == {"fe2026100816"}, (
+        f"expected one linear head fe2026100816, found {sorted(tail)} — "
         "two heads break `alembic upgrade head` for every environment"
     )
 
@@ -797,7 +798,7 @@ def test_alembic_still_reports_a_single_head() -> None:
     lines = [line for line in out.stdout.splitlines() if line.strip()]
     assert out.returncode == 0, out.stderr
     assert len(lines) == 1, f"multiple heads would break the build: {lines}"
-    assert lines[0].startswith("fe2026101001"), lines
+    assert lines[0].startswith("fe2026100816"), lines
 
 
 # ------------------------------------------- DB-backed: CI-only, not watched
