@@ -10,6 +10,8 @@
 
 **Spec:** `C:\Users\CS\.qoder\tmp\D--sales-system\attachments\219d0847-eb8a-4ef1-b383-693d50e5ce98\e3f79484-bf9b-49bb-8f10-a785838b3515.txt` (verbatim user attachment, 2026-10-10).
 
+**Executed 2026-10-10/11 — PR #3 green** (run 38091945874: backend 3805 passed / 14 skipped / coverage 84.58%, frontend, frontend-e2e incl. `sales-assistant.spec.js`). Deviations recorded where they happened, not here: the new migration chained from the head that had landed by then (`fe2026101001`, the infra RLS convergence) instead of `fe2026100815`; the import ratchet moved twice with dated justifications (SI timezone service read; chat schema's typed `Finding`); `live-api.spec.js` was repaired on `main` for two pre-existing stale expectations (register answers a neutral 202 since the auth wave; the delivered theme moved sign-out into the Radix account dropdown). No production migration or deployment was performed.
+
 ## Global Constraints
 
 - **Stage 0 gate (spec §10.1):** the in-flight CI blocker fix (fe2026100804 dollar-quote collision + `test_every_executed_sql_string_parses` pglast guard) MUST be landed green on `main` before the feature branch is cut. No new migrations until CI is green on main.
@@ -70,7 +72,7 @@
 **Interfaces:**
 - Produces: `AIChatThread`, `AIChatMessage` models; table names `ai_chat_threads`, `ai_chat_messages`; head `fe2026100816`.
 
-- [ ] **Step 1: Write the models** (follow `AIHandover` style in the same file)
+- [x] **Step 1: Write the models** (follow `AIHandover` style in the same file)
 
 ```python
 class AIChatThread(TenantMixin, WorkspaceScopeMixin, Base):
@@ -159,7 +161,7 @@ class AIChatMessage(TenantMixin, Base):
 
 Verify the actual mixin/column imports already at the top of `models.py` (`TenantMixin`, `WorkspaceScopeMixin`, `JSONB`, `UUID` import form) and match them exactly — do not introduce new import aliases. NOTE: the drift guard reads literal table names from `op.create_table` in the MIGRATION, and `tests/test_migrations.py` compares model columns vs migration columns — every column above must appear in the migration.
 
-- [ ] **Step 2: Write the migration** `fe2026100816_sales_chat.py` (down_revision `fe2026100815`), one statement per `op.execute`, literal table names, guarded grants:
+- [x] **Step 2: Write the migration** `fe2026100816_sales_chat.py` (down_revision `fe2026100815`), one statement per `op.execute`, literal table names, guarded grants:
 
 ```python
 def upgrade() -> None:
@@ -204,9 +206,9 @@ def upgrade() -> None:
 
 The FK-listing order inside `op.create_table` is irrelevant to Postgres but the file must satisfy `tests/test_migrations.py`'s model-vs-migration column diff — write every column.
 
-- [ ] **Step 3: Move both head pins** in `backend/tests/test_tenancy_and_fts_schema_debt.py` from `fe2026100815` to `fe2026100816` (chain-shape `tail == {...}` assert AND `lines[0].startswith(...)` in the subprocess test). Also confirm `alembic heads` reports exactly one head.
+- [x] **Step 3: Move both head pins** in `backend/tests/test_tenancy_and_fts_schema_debt.py` from `fe2026100815` to `fe2026100816` (chain-shape `tail == {...}` assert AND `lines[0].startswith(...)` in the subprocess test). Also confirm `alembic heads` reports exactly one head.
 
-- [ ] **Step 4: Write the RED tests** in `backend/tests/test_sales_chat_rls.py`:
+- [x] **Step 4: Write the RED tests** in `backend/tests/test_sales_chat_rls.py`:
 
 ```python
 import pytest
@@ -223,7 +225,7 @@ async def test_thread_policy_hides_other_tenant_rows_as_app_role(db):
 
 Two DB-backed tests minimum: (1) cross-tenant thread invisible as app role; (2) app role can INSERT/SELECT its own thread and message (proves grants exist — the `provision.py` prints-owner-counts lesson). These skip locally; their RED is a CI failure per the honest-RED convention.
 
-- [ ] **Step 5: Run the local gates**
+- [x] **Step 5: Run the local gates**
 
 ```bash
 cd backend && python -m pytest tests/test_migrations.py tests/test_tenancy_and_fts_schema_debt.py -q
@@ -232,7 +234,7 @@ cd backend && python -m ruff check app tests scripts
 
 Expected: migration tests PASS (including `test_every_executed_sql_string_parses` — it now parses the new migration's SQL), schema-debt tests PASS with the moved pins.
 
-- [ ] **Step 6: Commit** `git add ... && git commit -m "feat(ai): sales chat persistence — threads, messages, RLS (fe2026100816)"`
+- [x] **Step 6: Commit** `git add ... && git commit -m "feat(ai): sales chat persistence — threads, messages, RLS (fe2026100816)"`
 
 ### Task 2: Chat schemas + service (threads, messages, idempotency)
 
@@ -244,7 +246,7 @@ Expected: migration tests PASS (including `test_every_executed_sql_string_parses
 - Consumes: `AIChatThread`/`AIChatMessage` (Task 1), `TenantContext` (identity/deps.py), repo errors (`NotFoundError`, `ConflictError`, `ValidationError` from `app/core/errors`).
 - Produces: the service functions listed under **Interfaces** above; `TITLE_MAX=200`, `MESSAGE_MAX=4000`, `PAGE_LIMIT_MAX=100`, `IDEMPOTENCY_KEY_MAX=64`.
 
-- [ ] **Step 1: schemas.py** — Pydantic contracts (the wire format for Task 4's routes and the frontend):
+- [x] **Step 1: schemas.py** — Pydantic contracts (the wire format for Task 4's routes and the frontend):
 
 ```python
 class ThreadContextIn(BaseModel):
@@ -290,11 +292,11 @@ class MessageSendRequest(BaseModel):
 
 `FindingOut` already exists in `app/modules/ai/schemas.py` — import it, do not duplicate.
 
-- [ ] **Step 2: Write RED service tests** (`test_sales_chat_service.py`, no DB — fake session doubles following the `_FakeResult` pattern; DB truth is CI's job):
+- [x] **Step 2: Write RED service tests** (`test_sales_chat_service.py`, no DB — fake session doubles following the `_FakeResult` pattern; DB truth is CI's job):
 
 Idempotent re-submit returns `(same_row, False)`; new key creates `(new_row, True)` with `sequence_no = max+1`. `get_thread` raises `NotFoundError` for a foreign user's thread. `list_threads` filters `status != "deleted"` and `created_by_user_id == ctx.user.id` unless tenant owner. Rename validates non-empty title; archive/restore are legal status transitions; archive→archive raises `ConflictError`. Message pagination caps limit at 100.
 
-- [ ] **Step 3: Implement service.py** — key logic:
+- [x] **Step 3: Implement service.py** — key logic:
 
 ```python
 HISTORY = None  # (turns live in Task 3)
@@ -324,7 +326,7 @@ async def append_user_message(session, ctx, thread, *, content, idempotency_key)
 
 Visibility: every read filters `AIChatThread.created_by_user_id == ctx.user.id` OR tenant-owner check (`await _is_tenant_owner(session, ctx)` — reuse the same role/permission query pattern the hierarchy work uses; if none exists, filter strictly by creator). `delete_thread` sets `status="deleted"` (soft — audit) and always raises `NotFoundError` afterward.
 
-- [ ] **Step 4: Run service tests → green. Commit** `feat(ai): sales chat service — thread CRUD, message append, idempotency`.
+- [x] **Step 4: Run service tests → green. Commit** `feat(ai): sales chat service — thread CRUD, message append, idempotency`.
 
 ### Task 3: Turn executor + runtime history injection
 
@@ -337,9 +339,9 @@ Visibility: every read filters `AIChatThread.created_by_user_id == ctx.user.id` 
 - Consumes: `run_sales_analysis(session, tenant_id, *, agent_id, question, runner=None) -> AnalysisResult` (agent.py:287 — unchanged), `build_structured_blocks`, Task 2 service.
 - Produces: `run_chat_turn(session, ctx, thread) -> AIChatMessage`; `AgentRunner.run(..., history=...)`.
 
-- [ ] **Step 1: RED runtime test** (`test_ai_runtime_history.py`, no DB beyond the existing fake pattern in `test_wiring.py`): a fake gateway records the `messages` it receives; `runner.run(..., history=[{"role":"user","content":"قارن مبيعات الشهر ده باللي فات."},{"role":"assistant","content":"..."}], user_message="طب إيه سبب الانخفاض؟")` shows history turns BETWEEN the system message and the current user message, and NO `conversation_id` lookup occurs. Run → fails (no `history` param).
+- [x] **Step 1: RED runtime test** (`test_ai_runtime_history.py`, no DB beyond the existing fake pattern in `test_wiring.py`): a fake gateway records the `messages` it receives; `runner.run(..., history=[{"role":"user","content":"قارن مبيعات الشهر ده باللي فات."},{"role":"assistant","content":"..."}], user_message="طب إيه سبب الانخفاض؟")` shows history turns BETWEEN the system message and the current user message, and NO `conversation_id` lookup occurs. Run → fails (no `history` param).
 
-- [ ] **Step 2: Implement** — in `run()` add keyword `history: list[dict[str, str]] | None = None`, thread through `_loop(...)`; in `_loop` after the knowledge_context append:
+- [x] **Step 2: Implement** — in `run()` add keyword `history: list[dict[str, str]] | None = None`, thread through `_loop(...)`; in `_loop` after the knowledge_context append:
 
 ```python
         if history:
@@ -349,7 +351,7 @@ Visibility: every read filters `AIChatThread.created_by_user_id == ctx.user.id` 
             messages.extend(history)
 ```
 
-- [ ] **Step 3: turns.py** — the executor:
+- [x] **Step 3: turns.py** — the executor:
 
 ```python
 HISTORY_MESSAGE_LIMIT = 12  # 6 turns max reach the prompt
@@ -424,9 +426,9 @@ def build_structured_blocks(result):
     return blocks
 ```
 
-- [ ] **Step 4: Turn tests** (extend `test_sales_chat_service.py` with a fake `run_sales_analysis` monkeypatch): user message persisted + assistant terminal status (never left `generating` — assert the exception path also lands `failed`); history passed to the runner contains prior turns and the summary marker after compaction; `structured_content` validates against `MessageOut`; retry overwrites a failed assistant row (Task 4 route calls `run_chat_turn` again after clearing the failed row's `status` — retry only allowed when the last assistant row for that user message has `status="failed"`, else `ConflictError`).
+- [x] **Step 4: Turn tests** (extend `test_sales_chat_service.py` with a fake `run_sales_analysis` monkeypatch): user message persisted + assistant terminal status (never left `generating` — assert the exception path also lands `failed`); history passed to the runner contains prior turns and the summary marker after compaction; `structured_content` validates against `MessageOut`; retry overwrites a failed assistant row (Task 4 route calls `run_chat_turn` again after clearing the failed row's `status` — retry only allowed when the last assistant row for that user message has `status="failed"`, else `ConflictError`).
 
-- [ ] **Step 5: Gates + commit** `feat(ai): multi-turn SI chat — bounded history, validated turn executor`.
+- [x] **Step 5: Gates + commit** `feat(ai): multi-turn SI chat — bounded history, validated turn executor`.
 
 ### Task 4: Router `/ai/sales-chat/*` + OpenAPI lock
 
@@ -435,9 +437,9 @@ def build_structured_blocks(result):
 - Test: `backend/tests/test_sales_chat_api.py`
 - Regenerate: `desktop/openapi.lock.json`
 
-- [ ] **Step 1: RED API tests** — real ASGI stack with `dependency_overrides[get_tenant_ctx]` (the `_IncludedRouter` lesson: walking `app.routes` finds nothing — prove through the client). Cover: 201 create (client-supplied `agent_id` is IGNORED — server resolves SI kind), list pagination + search, foreign-user thread → 404, cross-tenant thread → 404, send message happy path returns assistant `MessageOut` (runner faked), duplicate `idempotency_key` returns the SAME message id, 422 on >4000 content, PATCH archive→restore, DELETE → subsequent GET 404, retry on failed allowed / on completed 409.
+- [x] **Step 1: RED API tests** — real ASGI stack with `dependency_overrides[get_tenant_ctx]` (the `_IncludedRouter` lesson: walking `app.routes` finds nothing — prove through the client). Cover: 201 create (client-supplied `agent_id` is IGNORED — server resolves SI kind), list pagination + search, foreign-user thread → 404, cross-tenant thread → 404, send message happy path returns assistant `MessageOut` (runner faked), duplicate `idempotency_key` returns the SAME message id, 422 on >4000 content, PATCH archive→restore, DELETE → subsequent GET 404, retry on failed allowed / on completed 409.
 
-- [ ] **Step 2: Implement routes** (all take `AnalyticsCtx`):
+- [x] **Step 2: Implement routes** (all take `AnalyticsCtx`):
 
 ```
 POST   /ai/sales-chat/threads                                   → 201 ThreadOut
@@ -452,9 +454,9 @@ POST   /ai/sales-chat/threads/{thread_id}/messages/{message_id}/retry → Messag
 
 The POST-messages handler: load thread via service (ownership enforced), `append_user_message`, commit; then `run_chat_turn`; return the assistant row. Duplicate `idempotency_key` (created=False) → return that user message's existing assistant reply by looking up `sequence_no = user.sequence_no + 1` — no second run (the "no duplicate billing" requirement). No SSE/streaming in v1: the execution path is not stream-capable; the frontend gets honest progress states (spec §2 explicitly allows this). Do NOT emit raw exceptions (repo error handlers already map DomainError family).
 
-- [ ] **Step 3: Regenerate the lock** `cd backend && python scripts/export_openapi_lock.py` and commit it with the routes.
+- [x] **Step 3: Regenerate the lock** `cd backend && python scripts/export_openapi_lock.py` and commit it with the routes.
 
-- [ ] **Step 4: Gates + commit** `feat(ai): sales chat API — threads, messages, retry under analytics:read`.
+- [x] **Step 4: Gates + commit** `feat(ai): sales chat API — threads, messages, retry under analytics:read`.
 
 ### Task 5: Frontend — `/sales-assistant` page, nav, i18n
 
@@ -463,7 +465,7 @@ The POST-messages handler: load thread via service (ownership enforced), `append
 - Modify: `frontend/src/App.jsx`, `frontend/src/components/dashboard/Sidebar.jsx`, `frontend/src/lib/i18n/ar.js`, `frontend/src/lib/i18n/en.js`
 - Constraint: the user's in-flight dashboard re-theme owns `frontend/src/components/sales/`, `AddProduct.jsx`, `ui.jsx`, `index.css` — do NOT edit those; consume shared components as they exist at execution time.
 
-- [ ] **Step 1: Route + nav + i18n.** In `App.jsx` mirror the `AI` route's exact wrapper (lazy import + `ProtectedRoute` + dashboard layout). In `Sidebar.jsx` insert between `/ai` and `/analytics`:
+- [x] **Step 1: Route + nav + i18n.** In `App.jsx` mirror the `AI` route's exact wrapper (lazy import + `ProtectedRoute` + dashboard layout). In `Sidebar.jsx` insert between `/ai` and `/analytics`:
 
 ```jsx
 { to: "/sales-assistant", label: t("nav.salesAssistant"), icon: MessageSquareText },
@@ -471,7 +473,7 @@ The POST-messages handler: load thread via service (ownership enforced), `append
 
 i18n (ar): `"salesAssistant": "مساعد المبيعات"` + strings for newChat/newThread/send/retry/copy/archive/rename/delete/thinking/empty-state examples ("قارن مبيعات الشهر ده باللي فات.", "أفضل المنتجات المبيع الشهر ده؟", "إيه أداء القنوات؟", "المرتجعات عملت إيه؟", "أداء الشحن والفروع", "المنتجات اللي مخزونها هيخلص") / (en) equivalents.
 
-- [ ] **Step 2: Data layer** (react-query; precise keys — the prefix-invalidation crash lesson):
+- [x] **Step 2: Data layer** (react-query; precise keys — the prefix-invalidation crash lesson):
 
 ```js
 const useThreads = (params) => useQuery({ queryKey: ["sales-chat", "threads", params ?? {}], queryFn: () => api("/ai/sales-chat/threads", { query: params }) });
@@ -480,28 +482,28 @@ const useMessages = (id) => useQuery({ queryKey: ["sales-chat", "thread", id, "m
 const sendTurn = useMutation(...) // POST messages; on success invalidate EXACTLY ["sales-chat","thread",id,"messages"] and the threads list key
 ```
 
-- [ ] **Step 3: Page + components.** Layout: right panel (RTL-aware) = thread list with search input, "new chat" button, per-thread menu (rename inline / archive / delete with confirm); main area = `MessageList` (user right, assistant left, react-markdown for `text` blocks, `BlockRenderer` for kpi/findings/notice/refs; money values rendered as strings, `Intl.NumberFormat` only for display grouping — never `parseFloat` into math), assistant turns show `thinking` state while the send mutation runs (honest progress — no fake token streaming), failed turns show retry button + safe error code, copy button per assistant message; `Composer` textarea pinned bottom: Enter sends, Shift+Enter newline, disabled while pending, draft preserved across thread switches (component-level `useState` keyed by thread id); empty thread shows the six example questions as buttons that prefill and send. Mobile: thread panel collapses into a drawer. Follow the dashboard's existing design tokens/classes (inspect `ui.jsx` exports at execution time and reuse its card/button/input primitives).
+- [x] **Step 3: Page + components.** Layout: right panel (RTL-aware) = thread list with search input, "new chat" button, per-thread menu (rename inline / archive / delete with confirm); main area = `MessageList` (user right, assistant left, react-markdown for `text` blocks, `BlockRenderer` for kpi/findings/notice/refs; money values rendered as strings, `Intl.NumberFormat` only for display grouping — never `parseFloat` into math), assistant turns show `thinking` state while the send mutation runs (honest progress — no fake token streaming), failed turns show retry button + safe error code, copy button per assistant message; `Composer` textarea pinned bottom: Enter sends, Shift+Enter newline, disabled while pending, draft preserved across thread switches (component-level `useState` keyed by thread id); empty thread shows the six example questions as buttons that prefill and send. Mobile: thread panel collapses into a drawer. Follow the dashboard's existing design tokens/classes (inspect `ui.jsx` exports at execution time and reuse its card/button/input primitives).
 
-- [ ] **Step 4: Local checks** (this sandbox's ceiling — say so in the report):
+- [x] **Step 4: Local checks** (this sandbox's ceiling — say so in the report):
 
 ```bash
 cd frontend && npx tsc --noEmit; npm run lint; npm run build; npx playwright test --list
 ```
 
-- [ ] **Step 5: Commit** `feat(frontend): dedicated sales-assistant chat page (/sales-assistant)`.
+- [x] **Step 5: Commit** `feat(frontend): dedicated sales-assistant chat page (/sales-assistant)`.
 
 ### Task 6: E2E spec + full gates + PR
 
 **Files:**
 - Create: `e2e/sales-assistant.spec.js`
 
-- [ ] **Step 1: Playwright spec** (auth via the existing e2e helpers; assertions per memory: `getByText(..., { exact: true })` for Radix toasts): create thread → send example question → assistant bubble renders (backend faked in e2e via `page.route` mocking `/api/v1/ai/sales-chat/*` so the spec tests UI, not the model) → switch thread → reload → history still renders → rename/archive/delete visible → AR and EN pass (`?lang=` / i18n toggle) → `/ai`, `/analytics`, `/inbox` unaffected.
+- [x] **Step 1: Playwright spec** (auth via the existing e2e helpers; assertions per memory: `getByText(..., { exact: true })` for Radix toasts): create thread → send example question → assistant bubble renders (backend faked in e2e via `page.route` mocking `/api/v1/ai/sales-chat/*` so the spec tests UI, not the model) → switch thread → reload → history still renders → rename/archive/delete visible → AR and EN pass (`?lang=` / i18n toggle) → `/ai`, `/analytics`, `/inbox` unaffected.
 
-- [ ] **Step 2: Full backend gate** before any push: `cd backend && python -m pytest -q -rs` (green, 0 failed) + `ruff check app tests scripts` + `alembic heads` single head.
+- [x] **Step 2: Full backend gate** before any push: `cd backend && python -m pytest -q -rs` (green, 0 failed) + `ruff check app tests scripts` + `alembic heads` single head.
 
-- [ ] **Step 3: Push branch + open PR** (`gh pr create --base main`): body lists files changed, migrations added (fe2026100816), routes, new/extended capabilities, tests actually executed with exact results, unsupported metrics (profit/margin/CLV/ROAS stay typed-unsupported — no invented values), and explicit confirmation that NO production migration/deployment was performed. CI verdicts (including `frontend-e2e`, which cannot run in this sandbox) are reported from the run, not assumed.
+- [x] **Step 3: Push branch + open PR** (`gh pr create --base main`): body lists files changed, migrations added (fe2026100816), routes, new/extended capabilities, tests actually executed with exact results, unsupported metrics (profit/margin/CLV/ROAS stay typed-unsupported — no invented values), and explicit confirmation that NO production migration/deployment was performed. CI verdicts (including `frontend-e2e`, which cannot run in this sandbox) are reported from the run, not assumed.
 
-- [ ] **Step 4: Watch CI properly** (capture `gh run watch`'s own exit code; re-query `--json conclusion` and per-job conclusions; DB tests + e2e get their first real run here — iterate on honest REDs).
+- [x] **Step 4: Watch CI properly** (capture `gh run watch`'s own exit code; re-query `--json conclusion` and per-job conclusions; DB tests + e2e get their first real run here — iterate on honest REDs).
 
 ---
 
