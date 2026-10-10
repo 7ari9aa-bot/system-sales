@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 336,
-    "sha256": "7f31a4109872d40e973de1a06c34349238b7fe66f28e0444208d838192731a0b",
-    "typed_operations": 214
+    "operations": 344,
+    "sha256": "8670586770e27b2a36f9e448bc69db3cfae1dca89d3f981420d04b16b39e3b34",
+    "typed_operations": 221
   },
   "spec": {
     "components": {
@@ -7631,6 +7631,72 @@
           "title": "FairnessCheckResult",
           "type": "object"
         },
+        "Finding": {
+          "description": "§9.1 — confidence is SYSTEM-computed (§9.3); the model never fills it.",
+          "properties": {
+            "confidence": {
+              "default": "LOW",
+              "enum": [
+                "HIGH",
+                "MEDIUM",
+                "LOW"
+              ],
+              "title": "Confidence",
+              "type": "string"
+            },
+            "confidence_reasons": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Confidence Reasons",
+              "type": "array"
+            },
+            "coverage_satisfied": {
+              "default": false,
+              "title": "Coverage Satisfied",
+              "type": "boolean"
+            },
+            "evidence_refs": {
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1,
+              "title": "Evidence Refs",
+              "type": "array"
+            },
+            "materiality": {
+              "default": 0.0,
+              "title": "Materiality",
+              "type": "number"
+            },
+            "relationship": {
+              "$ref": "#/components/schemas/Relationship"
+            },
+            "statement": {
+              "title": "Statement",
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "FACT",
+                "DERIVED",
+                "DRIVER",
+                "INTERPRETATION",
+                "HYPOTHESIS"
+              ],
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "statement",
+            "type",
+            "relationship",
+            "evidence_refs"
+          ],
+          "title": "Finding",
+          "type": "object"
+        },
         "FindingOut": {
           "properties": {
             "confidence": {
@@ -7719,6 +7785,28 @@
             "materiality"
           ],
           "title": "FindingStoredOut",
+          "type": "object"
+        },
+        "FindingsBlock": {
+          "properties": {
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/Finding"
+              },
+              "title": "Items",
+              "type": "array"
+            },
+            "type": {
+              "const": "findings",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "items"
+          ],
+          "title": "FindingsBlock",
           "type": "object"
         },
         "FlagCheckOut": {
@@ -8995,6 +9083,45 @@
           "title": "KnowledgeSearchHit",
           "type": "object"
         },
+        "KpiBlock": {
+          "properties": {
+            "label": {
+              "title": "Label",
+              "type": "string"
+            },
+            "metric": {
+              "title": "Metric",
+              "type": "string"
+            },
+            "type": {
+              "const": "kpi",
+              "title": "Type",
+              "type": "string"
+            },
+            "unit": {
+              "title": "Unit",
+              "type": "string"
+            },
+            "value": {
+              "title": "Value",
+              "type": "string"
+            },
+            "window": {
+              "title": "Window",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "metric",
+            "label",
+            "value",
+            "unit",
+            "window"
+          ],
+          "title": "KpiBlock",
+          "type": "object"
+        },
         "LeadOut": {
           "properties": {
             "id": {
@@ -9818,6 +9945,158 @@
           "title": "MergeBody",
           "type": "object"
         },
+        "MessageOut": {
+          "properties": {
+            "analysis_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Analysis Id"
+            },
+            "content": {
+              "title": "Content",
+              "type": "string"
+            },
+            "created_at": {
+              "format": "date-time",
+              "title": "Created At",
+              "type": "string"
+            },
+            "error_code": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error Code"
+            },
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "role": {
+              "title": "Role",
+              "type": "string"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            },
+            "sequence_no": {
+              "title": "Sequence No",
+              "type": "integer"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            },
+            "structured_content": {
+              "anyOf": [
+                {
+                  "items": {
+                    "discriminator": {
+                      "mapping": {
+                        "findings": "#/components/schemas/FindingsBlock",
+                        "kpi": "#/components/schemas/KpiBlock",
+                        "notice": "#/components/schemas/NoticeBlock",
+                        "refs": "#/components/schemas/RefsBlock",
+                        "text": "#/components/schemas/TextBlock"
+                      },
+                      "propertyName": "type"
+                    },
+                    "oneOf": [
+                      {
+                        "$ref": "#/components/schemas/TextBlock"
+                      },
+                      {
+                        "$ref": "#/components/schemas/KpiBlock"
+                      },
+                      {
+                        "$ref": "#/components/schemas/FindingsBlock"
+                      },
+                      {
+                        "$ref": "#/components/schemas/NoticeBlock"
+                      },
+                      {
+                        "$ref": "#/components/schemas/RefsBlock"
+                      }
+                    ]
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Structured Content"
+            },
+            "thread_id": {
+              "format": "uuid",
+              "title": "Thread Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "thread_id",
+            "sequence_no",
+            "role",
+            "status",
+            "content",
+            "structured_content",
+            "run_id",
+            "analysis_id",
+            "error_code",
+            "created_at"
+          ],
+          "title": "MessageOut",
+          "type": "object"
+        },
+        "MessageSendRequest": {
+          "properties": {
+            "content": {
+              "maxLength": 4000,
+              "minLength": 1,
+              "title": "Content",
+              "type": "string"
+            },
+            "idempotency_key": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency Key"
+            }
+          },
+          "required": [
+            "content"
+          ],
+          "title": "MessageSendRequest",
+          "type": "object"
+        },
         "MetaOAuthStartOut": {
           "description": "P8 contract for GET /integrations/meta/oauth/start: the ONLY field the\nfrontend consumes is the Meta-owned dialog URL it navigates to.",
           "properties": {
@@ -10612,6 +10891,34 @@
             "body"
           ],
           "title": "NoteOut",
+          "type": "object"
+        },
+        "NoticeBlock": {
+          "properties": {
+            "message": {
+              "title": "Message",
+              "type": "string"
+            },
+            "severity": {
+              "enum": [
+                "info",
+                "warning"
+              ],
+              "title": "Severity",
+              "type": "string"
+            },
+            "type": {
+              "const": "notice",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "severity",
+            "message"
+          ],
+          "title": "NoticeBlock",
           "type": "object"
         },
         "NotificationDigest": {
@@ -11434,6 +11741,44 @@
             }
           },
           "title": "RefreshRequest",
+          "type": "object"
+        },
+        "RefsBlock": {
+          "properties": {
+            "analysis_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Analysis Id"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            },
+            "type": {
+              "const": "refs",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "title": "RefsBlock",
           "type": "object"
         },
         "RefundCreateRequest": {
@@ -14306,6 +14651,165 @@
             }
           },
           "title": "TenantTimezoneRequest",
+          "type": "object"
+        },
+        "TextBlock": {
+          "properties": {
+            "body": {
+              "title": "Body",
+              "type": "string"
+            },
+            "type": {
+              "const": "text",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "body"
+          ],
+          "title": "TextBlock",
+          "type": "object"
+        },
+        "ThreadContextIn": {
+          "properties": {
+            "filters": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "title": "Filters",
+              "type": "object"
+            },
+            "period": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Period"
+            }
+          },
+          "title": "ThreadContextIn",
+          "type": "object"
+        },
+        "ThreadCreateRequest": {
+          "properties": {
+            "context": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ThreadContextIn"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            }
+          },
+          "title": "ThreadCreateRequest",
+          "type": "object"
+        },
+        "ThreadOut": {
+          "properties": {
+            "context": {
+              "additionalProperties": true,
+              "title": "Context",
+              "type": "object"
+            },
+            "created_at": {
+              "format": "date-time",
+              "title": "Created At",
+              "type": "string"
+            },
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "last_message_at": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Message At"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            },
+            "updated_at": {
+              "format": "date-time",
+              "title": "Updated At",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "title",
+            "status",
+            "context",
+            "created_at",
+            "updated_at",
+            "last_message_at"
+          ],
+          "title": "ThreadOut",
+          "type": "object"
+        },
+        "ThreadUpdateRequest": {
+          "properties": {
+            "status": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "active",
+                    "archived"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            }
+          },
+          "title": "ThreadUpdateRequest",
           "type": "object"
         },
         "TimelineEntry": {
@@ -19666,6 +20170,956 @@
             }
           },
           "summary": "Upsert Provider Policy",
+          "tags": [
+            "ai"
+          ]
+        }
+      },
+      "/api/v1/ai/sales-chat/threads": {
+        "get": {
+          "operationId": "list_sales_chat_threads_api_v1_ai_sales_chat_threads_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "include_archived",
+              "required": false,
+              "schema": {
+                "default": false,
+                "title": "Include Archived",
+                "type": "boolean"
+              }
+            },
+            {
+              "in": "query",
+              "name": "search",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Search"
+              }
+            },
+            {
+              "in": "query",
+              "name": "limit",
+              "required": false,
+              "schema": {
+                "default": 50,
+                "minimum": 1,
+                "title": "Limit",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "query",
+              "name": "before",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Before"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/ThreadOut"
+                    },
+                    "title": "Response List Sales Chat Threads Api V1 Ai Sales Chat Threads Get",
+                    "type": "array"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Sales Chat Threads",
+          "tags": [
+            "ai"
+          ]
+        },
+        "post": {
+          "operationId": "create_sales_chat_thread_api_v1_ai_sales_chat_threads_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadCreateRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ThreadOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Create Sales Chat Thread",
+          "tags": [
+            "ai"
+          ]
+        }
+      },
+      "/api/v1/ai/sales-chat/threads/{thread_id}": {
+        "delete": {
+          "operationId": "delete_sales_chat_thread_api_v1_ai_sales_chat_threads__thread_id__delete",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "thread_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Thread Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "204": {
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Delete Sales Chat Thread",
+          "tags": [
+            "ai"
+          ]
+        },
+        "get": {
+          "operationId": "get_sales_chat_thread_api_v1_ai_sales_chat_threads__thread_id__get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "thread_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Thread Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ThreadOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get Sales Chat Thread",
+          "tags": [
+            "ai"
+          ]
+        },
+        "patch": {
+          "operationId": "update_sales_chat_thread_api_v1_ai_sales_chat_threads__thread_id__patch",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "thread_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Thread Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadUpdateRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ThreadOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Update Sales Chat Thread",
+          "tags": [
+            "ai"
+          ]
+        }
+      },
+      "/api/v1/ai/sales-chat/threads/{thread_id}/messages": {
+        "get": {
+          "operationId": "list_sales_chat_messages_api_v1_ai_sales_chat_threads__thread_id__messages_get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "thread_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Thread Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "query",
+              "name": "limit",
+              "required": false,
+              "schema": {
+                "default": 50,
+                "minimum": 1,
+                "title": "Limit",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "query",
+              "name": "before_seq",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Before Seq"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/MessageOut"
+                    },
+                    "title": "Response List Sales Chat Messages Api V1 Ai Sales Chat Threads  Thread Id  Messages Get",
+                    "type": "array"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Sales Chat Messages",
+          "tags": [
+            "ai"
+          ]
+        },
+        "post": {
+          "operationId": "send_sales_chat_message_api_v1_ai_sales_chat_threads__thread_id__messages_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "thread_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Thread Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageSendRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MessageOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Send Sales Chat Message",
+          "tags": [
+            "ai"
+          ]
+        }
+      },
+      "/api/v1/ai/sales-chat/threads/{thread_id}/messages/{message_id}/retry": {
+        "post": {
+          "operationId": "retry_sales_chat_message_api_v1_ai_sales_chat_threads__thread_id__messages__message_id__retry_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "thread_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Thread Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "path",
+              "name": "message_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Message Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MessageOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Retry Sales Chat Message",
           "tags": [
             "ai"
           ]

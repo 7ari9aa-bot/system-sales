@@ -36,6 +36,23 @@ from app.modules.ai.agents.sales_intelligence.agent import (
     FindingStoredOut,
 )
 from app.modules.ai.approvals import ApprovalService
+from app.modules.ai.chat import service as chat_service
+from app.modules.ai.chat.schemas import (
+    MessageOut as SalesChatMessageOut,
+)
+from app.modules.ai.chat.schemas import (
+    MessageSendRequest as SalesChatMessageSendRequest,
+)
+from app.modules.ai.chat.schemas import (
+    ThreadCreateRequest as SalesChatThreadCreateRequest,
+)
+from app.modules.ai.chat.schemas import (
+    ThreadOut as SalesChatThreadOut,
+)
+from app.modules.ai.chat.schemas import (
+    ThreadUpdateRequest as SalesChatThreadUpdateRequest,
+)
+from app.modules.ai.chat.turns import retry_chat_turn, run_chat_turn
 from app.modules.ai.models import Agent, AIHandover, AIUsage, KnowledgeItem, Memory
 from app.modules.ai.policy import AIProviderPolicyService
 from app.modules.ai.schemas import (
@@ -1129,3 +1146,110 @@ async def resolve_handover(
     )
     await ctx.session.flush()
     return _handover_out(handover)
+
+
+# ————————————————————— Sales chat (spec §SI-chat) ———————————————————————
+# Merchant-facing analysis chat. `analytics:read` gates every route because a
+# turn IS an analysis run; the thread is creator-scoped unless the caller is
+# the tenant owner (service-enforced on every read).
+
+
+@router.post("/sales-chat/threads", status_code=201, response_model=SalesChatThreadOut)
+async def create_sales_chat_thread(
+    body: SalesChatThreadCreateRequest, ctx: AnalyticsCtx
+) -> SalesChatThreadOut:
+    return await chat_service.create_thread(
+        ctx.session,
+        ctx,
+        title=body.title,
+        context=body.context.model_dump() if body.context else None,
+    )
+
+
+@router.get("/sales-chat/threads", response_model=list[SalesChatThreadOut])
+async def list_sales_chat_threads(
+    ctx: AnalyticsCtx,
+    include_archived: bool = False,
+    search: str | None = None,
+    limit: int = Query(default=50, ge=1),
+    before: datetime | None = None,
+) -> list[SalesChatThreadOut]:
+    return await chat_service.list_threads(
+        ctx.session,
+        ctx,
+        include_archived=include_archived,
+        search=search,
+        limit=limit,
+        before=before,
+    )
+
+
+@router.get("/sales-chat/threads/{thread_id}", response_model=SalesChatThreadOut)
+async def get_sales_chat_thread(thread_id: uuid.UUID, ctx: AnalyticsCtx) -> SalesChatThreadOut:
+    return await chat_service.get_thread(ctx.session, ctx, thread_id)
+
+
+@router.patch("/sales-chat/threads/{thread_id}", response_model=SalesChatThreadOut)
+async def update_sales_chat_thread(
+    thread_id: uuid.UUID, body: SalesChatThreadUpdateRequest, ctx: AnalyticsCtx
+) -> SalesChatThreadOut:
+    thread = await chat_service.get_thread(ctx.session, ctx, thread_id)
+    return await chat_service.update_thread(
+        ctx.session, ctx, thread, title=body.title, status=body.status
+    )
+
+
+@router.delete("/sales-chat/threads/{thread_id}", status_code=204)
+async def delete_sales_chat_thread(thread_id: uuid.UUID, ctx: AnalyticsCtx) -> None:
+    thread = await chat_service.get_thread(ctx.session, ctx, thread_id)
+    await chat_service.delete_thread(ctx.session, ctx, thread)
+
+
+@router.get(
+    "/sales-chat/threads/{thread_id}/messages", response_model=list[SalesChatMessageOut]
+)
+async def list_sales_chat_messages(
+    thread_id: uuid.UUID,
+    ctx: AnalyticsCtx,
+    limit: int = Query(default=50, ge=1),
+    before_seq: int | None = None,
+) -> list[SalesChatMessageOut]:
+    thread = await chat_service.get_thread(ctx.session, ctx, thread_id)
+    return await chat_service.list_messages(
+        ctx.session, ctx, thread, limit=limit, before_seq=before_seq
+    )
+
+
+@router.post(
+    "/sales-chat/threads/{thread_id}/messages",
+    status_code=201,
+    response_model=SalesChatMessageOut,
+)
+async def send_sales_chat_message(
+    thread_id: uuid.UUID, body: SalesChatMessageSendRequest, ctx: AnalyticsCtx
+) -> SalesChatMessageOut:
+    thread = await chat_service.get_thread(ctx.session, ctx, thread_id)
+    user_row, created = await chat_service.append_user_message(
+        ctx.session, ctx, thread, content=body.content, idempotency_key=body.idempotency_key
+    )
+    await ctx.session.commit()
+    if not created:
+        # Replayed key: the answer already exists — return it verbatim. A
+        # second run here would double-bill the gateway for the same question.
+        reply = await chat_service.get_assistant_reply_for(
+            ctx.session, ctx, thread, user_seq=user_row.sequence_no
+        )
+        if reply is not None:
+            return reply
+    return await run_chat_turn(ctx.session, ctx, thread)
+
+
+@router.post(
+    "/sales-chat/threads/{thread_id}/messages/{message_id}/retry",
+    response_model=SalesChatMessageOut,
+)
+async def retry_sales_chat_message(
+    thread_id: uuid.UUID, message_id: uuid.UUID, ctx: AnalyticsCtx
+) -> SalesChatMessageOut:
+    thread = await chat_service.get_thread(ctx.session, ctx, thread_id)
+    return await retry_chat_turn(ctx.session, ctx, thread, message_id=message_id)

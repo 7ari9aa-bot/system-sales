@@ -235,3 +235,38 @@ async def run_chat_turn(session, ctx, thread) -> AIChatMessage:
     await _maybe_compact(session, ctx, thread, through_seq=user_row.sequence_no)
     await session.commit()
     return assistant
+
+
+async def retry_chat_turn(session, ctx, thread, *, message_id) -> AIChatMessage:
+    """Retry the LATEST failed assistant turn (spec §SI-chat retry).
+
+    Only a failed row in the slot the next turn would occupy is retryable —
+    anything else is a 409, because running a different slot would desync the
+    sequence the thread's history is built from.
+    """
+    stale = (
+        await session.execute(
+            select(AIChatMessage).where(
+                AIChatMessage.tenant_id == ctx.tenant_id,
+                AIChatMessage.id == message_id,
+                AIChatMessage.thread_id == thread.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if stale is None or stale.role != "assistant" or stale.status != "failed":
+        raise ConflictError("only a failed assistant turn can be retried")
+    last_user = (
+        await session.execute(
+            select(AIChatMessage)
+            .where(
+                AIChatMessage.tenant_id == ctx.tenant_id,
+                AIChatMessage.thread_id == thread.id,
+                AIChatMessage.role == "user",
+            )
+            .order_by(AIChatMessage.sequence_no.desc())
+            .limit(1)
+        )
+    ).scalars().first()
+    if last_user is None or last_user.sequence_no + 1 != stale.sequence_no:
+        raise ConflictError("only the latest failed turn can be retried")
+    return await run_chat_turn(session, ctx, thread)
