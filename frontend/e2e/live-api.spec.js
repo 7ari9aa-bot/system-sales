@@ -31,7 +31,12 @@ test("real registration, dashboard reads, orders, and logout work end to end", a
   await page.getByRole("button", { name: /إنشاء الحساب|create account/i }).click();
 
   const registerResponse = await registerResponsePromise;
-  expect(registerResponse.status(), await registerResponse.text()).toBe(201);
+  // Register answers a neutral 202 (email-verification wave): the body never
+  // distinguishes a fresh address from a taken one, and no session comes back
+  // with it. The page's own flow is register -> login, and an UNVERIFIED
+  // account can still sign in (verification gates invitation binding only),
+  // so the assertions below stay: login 200, then the real dashboard reads.
+  expect(registerResponse.status(), await registerResponse.text()).toBe(202);
   expect((await loginResponsePromise).status()).toBe(200);
   await expect(page).toHaveURL(/\/dashboard$/);
 
