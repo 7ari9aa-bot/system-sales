@@ -95,9 +95,14 @@ def test_every_entry_keeps_both_guards() -> None:
 def test_the_drifted_production_index_is_not_in_the_list() -> None:
     """The index that aborted production (`created_by` alone on a table whose
     column drifted) must never return in its old shape: the replacement
-    composite indexes only columns the domain actually defines."""
+    composite indexes only columns the domain actually
+    defines."""
     mig = _migration()
-    assert ("ix_pos_cash_movements_created_by", "pos_cash_movements", "created_by") not in mig._INDEXES
+    assert (
+        "ix_pos_cash_movements_created_by",
+        "pos_cash_movements",
+        "created_by",
+    ) not in mig._INDEXES
 
 
 # ------------------------------------- dynamic (admin on a real database) ----
