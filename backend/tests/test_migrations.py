@@ -123,6 +123,32 @@ def test_no_migration_issues_multiple_statements_per_execute() -> None:
     assert not offenders, "op.execute() called with multiple statements:\n" + "\n".join(offenders)
 
 
+def test_every_executed_sql_string_parses() -> None:
+    """Every string sent to op.execute() must be valid SQL exactly as written.
+
+    The recording harness captures SQL but nothing parses it, so a malformed
+    string — e.g. a `DO $$…$$` block whose body itself contains `$$` — sails
+    through every local test (fe2026100804 did exactly that) and explodes only
+    at `alembic upgrade head` on the first real database, aborting the deploy.
+    pglast wraps the same libpg_query grammar Postgres uses, so if it cannot
+    parse the string, neither can the migration.
+    """
+    pglast = pytest.importorskip("pglast", reason="pglast is a dev-only parser")
+    offenders: list[str] = []
+    for path in _all_migrations():
+        module, captured = _load_migration(path)
+        if hasattr(module, "upgrade"):
+            module.upgrade()
+        for sql in captured:
+            if "%s" in sql or "%(" in sql:
+                continue  # parametrized template; the args are bound at runtime
+            try:
+                pglast.parser.parse_sql(sql)
+            except Exception as exc:  # report every parse failure, not just ParseError
+                offenders.append(f"{path.name}: {exc}\n  {sql.strip()[:90]}")
+    assert not offenders, "SQL that Postgres cannot parse:\n" + "\n".join(offenders)
+
+
 def test_migration_files_are_importable() -> None:
     """Every migration must at least import — a syntax error blocks the deploy."""
     paths = sorted(p for p in VERSIONS_DIR.glob("*.py") if not p.name.startswith("__"))

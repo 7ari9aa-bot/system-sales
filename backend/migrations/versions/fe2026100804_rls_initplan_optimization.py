@@ -48,8 +48,12 @@ depends_on: str | Sequence[str] | None = None
 # The replacement also handles `auth.uid()` and `auth.jwt()`, which exhibit the
 # same per-row re-evaluation issue.
 # ---------------------------------------------------------------------------
+# The body is tagged `$rewrite$`, not `$$`: the pattern literals inside use
+# `$$…$$` dollar quotes, and a same-tag inner `$$` would terminate the DO body
+# at the first pattern, leaving `NULLIF(…` behind as the next token —
+# `syntax error at or near "NULLIF"` on the first real database.
 _REWRITE_BLOCK = r"""
-DO $$
+DO $rewrite$
 DECLARE
     r record;
     new_qual text;
@@ -152,7 +156,7 @@ BEGIN
         RAISE NOTICE 'Rewrote RLS policy %.% (%)',
                      r.tablename, r.policyname, r.cmd;
     END LOOP;
-END $$;
+END $rewrite$;
 """
 
 # For downgrade we cannot truly "un-wrap" because the original expressions
