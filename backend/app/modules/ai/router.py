@@ -1171,7 +1171,7 @@ async def list_sales_chat_threads(
     ctx: AnalyticsCtx,
     include_archived: bool = False,
     search: str | None = None,
-    limit: int = Query(default=50, ge=1),
+    limit: Annotated[int, Query(ge=1)] = 50,
     before: datetime | None = None,
 ) -> list[SalesChatThreadOut]:
     return await chat_service.list_threads(
@@ -1211,7 +1211,7 @@ async def delete_sales_chat_thread(thread_id: uuid.UUID, ctx: AnalyticsCtx) -> N
 async def list_sales_chat_messages(
     thread_id: uuid.UUID,
     ctx: AnalyticsCtx,
-    limit: int = Query(default=50, ge=1),
+    limit: Annotated[int, Query(ge=1)] = 50,
     before_seq: int | None = None,
 ) -> list[SalesChatMessageOut]:
     thread = await chat_service.get_thread(ctx.session, ctx, thread_id)

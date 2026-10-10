@@ -13,6 +13,7 @@ import uuid
 from sqlalchemy import func, select
 
 from app.core.errors import ConflictError, NotFoundError, ValidationError
+from app.core.sql import like_pattern
 from app.modules.ai.core.resolver import resolve_agent_by_kind
 from app.modules.ai.models import AIChatMessage, AIChatThread
 
@@ -91,7 +92,9 @@ async def list_threads(
     if not _is_tenant_owner(ctx):
         stmt = stmt.where(AIChatThread.created_by_user_id == ctx.user.id)
     if search:
-        stmt = stmt.where(AIChatThread.title.ilike(f"%{search.strip()}%"))
+        stmt = stmt.where(
+            AIChatThread.title.ilike(like_pattern(search.strip()), escape="\\")
+        )
     if before is not None:
         stmt = stmt.where(AIChatThread.updated_at < before)
     stmt = stmt.order_by(AIChatThread.updated_at.desc()).limit(cap)
