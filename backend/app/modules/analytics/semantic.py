@@ -201,23 +201,11 @@ def freshness_policies() -> dict[str, FreshnessPolicy]:
 
 
 async def load_store_metric_profile(session: object, tenant_id: object) -> StoreMetricProfile:
-    """Load store metric profile from persistent settings if configured,
-    otherwise falling back to default StoreMetricProfile."""
-    from sqlalchemy import text
+    """The tenant's metric profile; the default until a settings surface exists.
 
-    try:
-        row = (
-            await session.execute(
-                text(
-                    "SELECT value FROM platform_settings"
-                    " WHERE tenant_id = :tid"
-                    " AND key = 'primary_sales_metric'"
-                ),
-                {"tid": str(tenant_id)},
-            )
-        ).scalar_one_or_none()
-        if row and row in _registry:
-            return StoreMetricProfile(primary_sales_metric=row)
-    except Exception:
-        pass
+    There is no writer for ``primary_sales_metric`` and no settings table in the
+    schema — a query here against a fictional ``platform_settings`` used to fail
+    on every call, and the ``except Exception: pass`` around it swallowed the
+    abort, leaving the transaction poisoned for every statement that followed.
+    """
     return StoreMetricProfile()

@@ -247,11 +247,13 @@ class ApprovalService:
         if request.status != "PENDING":
             raise ValidationError(f"approval already {request.status}")
         if request.expires_at is not None and request.expires_at < datetime.now(UTC):
-            # The request transaction aborts with this raise, so NOTHING written
-            # here reaches the database — the row is still PENDING when the
-            # reviewer sees the 400. `expire_stale` is what actually expires it
-            # and closes the run it parked; this branch only refuses the decision.
-            request.status = "EXPIRED"
+            # Refuse, and write NOTHING on the way out. Stamping status here
+            # would survive in any caller that does not roll its transaction
+            # back (the API's 400 handler does, a caught-and-continued caller
+            # does not — the session autoflushes it on the next query), and
+            # the row would then vanish from `expire_stale`'s PENDING scan
+            # without the parked run or the customer's handover ever being
+            # closed out. `expire_stale` is the only writer of EXPIRED.
             raise ValidationError("approval request expired")
 
         request.status = decision

@@ -60,8 +60,35 @@ def _patch_gateway(monkeypatch, results: list[ChatCompletionResult]) -> None:
     monkeypatch.setattr(AIGateway, "chat", fake_chat)
 
 
+OPS_KIND = "approval-gate-ops"
+
+
+def _ensure_ops_kind() -> None:
+    """The runtime checks the registry's per-kind allowlist BEFORE the
+    AgentTool row, so a customer-kind agent could never reach the gate this
+    file tests. A test-only kind authorizes exactly the destructive tool."""
+    from app.modules.ai.core.registry import AgentDefinition, AgentRegistry
+
+    if AgentRegistry.get_or_none(OPS_KIND) is None:
+        AgentRegistry.register(
+            AgentDefinition(
+                kind=OPS_KIND,
+                name="Approval Gate Test",
+                description="test-only kind authorized for the destructive tool",
+                allowed_tools=[DANGEROUS_TOOL],
+            )
+        )
+
+
 async def _agent(db, tenant_id) -> Agent:
-    agent = Agent(tenant_id=tenant_id, name="Ops Agent", model="fast", system_prompt="Be careful.")
+    _ensure_ops_kind()
+    agent = Agent(
+        tenant_id=tenant_id,
+        kind=OPS_KIND,
+        name="Ops Agent",
+        model="fast",
+        system_prompt="Be careful.",
+    )
     db.add(agent)
     await db.flush()
     db.add(AgentTool(tenant_id=tenant_id, agent_id=agent.id, name=DANGEROUS_TOOL, policy={}))

@@ -142,7 +142,9 @@ async def test_asking_for_a_human_creates_the_handover(
     assert len(outbound) == 1
     assert "شخص من الفريق" in (outbound[0].body or "")
     events = (
-        (await db.execute(select(OutboxEvent).where(OutboxEvent.tenant_id == tenant_id)))
+        (await db.execute(select(OutboxEvent).where(
+                OutboxEvent.meta["tenant_id"].astext == str(tenant_id)
+            )))
         .scalars()
         .all()
     )
@@ -217,11 +219,15 @@ async def test_resolving_records_who_when_and_with_what_result(db, tenant_ctx) -
     )
 
     assert out.status == "resolved"
-    assert out.resolved_by_user_id == tenant_ctx.user.id
+    resolved_by = tenant_ctx.user.id
+    assert out.resolved_by_user_id == resolved_by
     assert out.resolved_at is not None
     assert out.outcome == "answered"
     assert out.outcome_note == "وضحنا سعر الشحنه للعميل"
 
+    # The route flips the status with a Core UPDATE; this session's identity
+    # map still holds the waiting_human object, so expire before re-reading.
+    db.expire_all()
     refreshed = await ConversationService.get(db, tenant_id, conversation.id)
     assert refreshed.status == "open"
 
@@ -229,7 +235,7 @@ async def test_resolving_records_who_when_and_with_what_result(db, tenant_ctx) -
         (
             await db.execute(
                 select(OutboxEvent).where(
-                    OutboxEvent.tenant_id == tenant_id,
+                    OutboxEvent.meta["tenant_id"].astext == str(tenant_id),
                     OutboxEvent.payload["event_type"].as_string() == "ai.handover.resolved",
                 )
             )
@@ -239,7 +245,7 @@ async def test_resolving_records_who_when_and_with_what_result(db, tenant_ctx) -
     )
     assert len(events) == 1
     assert events[0].payload["outcome"] == "answered"
-    assert events[0].payload["resolved_by_user_id"] == str(tenant_ctx.user.id)
+    assert events[0].payload["resolved_by_user_id"] == str(resolved_by)
 
 
 async def test_an_outcome_outside_the_vocabulary_is_refused(db, tenant_ctx) -> None:

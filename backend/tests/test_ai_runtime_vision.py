@@ -104,6 +104,9 @@ async def _conversation_with_inbound_image(
             message_id=message.id,
             storage_key=storage_key,
             mime_type="image/png",
+            # The state media.py leaves after a durable store+scan — the runner
+            # refuses to sign media that never passed the pipeline.
+            scan_status="stored",
         )
     )
     await db.flush()
@@ -190,6 +193,7 @@ async def test_older_photos_stay_text_markers(db, tenant_ctx, monkeypatch):
             message_id=message.id,
             storage_key="photos/new.png",
             mime_type="image/png",
+            scan_status="stored",
         )
     )
     await db.flush()
@@ -396,7 +400,12 @@ async def test_no_tool_results_skips_grounding(db, tenant_ctx, monkeypatch):
 async def test_media_collected_server_side_with_cap_and_shown_ids(db, tenant_ctx, monkeypatch):
     tenant_id = tenant_ctx.tenant_id
     agent = await _agent_with(db, tenant_id, "resolve_product_media")
-    product = Product(tenant_id=tenant_id, title="Abaya", slug=f"abaya-{uuid.uuid4().hex[:8]}")
+    product = Product(
+        tenant_id=tenant_id,
+        title="Abaya",
+        slug=f"abaya-{uuid.uuid4().hex[:8]}",
+        status="active",
+    )
     db.add(product)
     await db.flush()
     images = []

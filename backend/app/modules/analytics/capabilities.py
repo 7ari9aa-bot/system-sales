@@ -378,10 +378,16 @@ async def analyze_drivers(
     store: EvidenceStore,
     *,
     days: int = 30,
+    reference: datetime | None = None,
 ) -> CapabilityResult:
-    """§5.1 — why did revenue move: orders vs AOV, midpoint, exact."""
+    """§5.1 — why did revenue move: orders vs AOV, midpoint, exact.
+
+    ``reference`` anchors the windows for callers that analyze a store around a
+    fixed point (the golden harness replays a seeded day); live callers default
+    to now.
+    """
     started = time.monotonic()
-    reference = datetime.now(UTC)
+    reference = reference or datetime.now(UTC)
     current = _period_window(reference, days=days)
     previous = AnalysisPeriod(
         start=current.start - timedelta(days=days),

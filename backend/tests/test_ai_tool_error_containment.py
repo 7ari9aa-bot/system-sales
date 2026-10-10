@@ -91,8 +91,33 @@ def _tool_name() -> str:
     return _TOOL_NAME
 
 
+def _ensure_test_kind() -> None:
+    """The runtime's registry deny runs BEFORE the AgentTool row, so the boom
+    tool must be authorized for the agent's kind or every call dies as
+    `denied` and the containment path is never exercised."""
+    from app.modules.ai.core.registry import AgentDefinition, AgentRegistry
+
+    kind = "tool-error-containment-test"
+    if AgentRegistry.get_or_none(kind) is None:
+        AgentRegistry.register(
+            AgentDefinition(
+                kind=kind,
+                name="Tool Error Containment Test",
+                description="test-only kind authorized for the failing tool",
+                allowed_tools=[_TOOL_NAME],
+            )
+        )
+
+
 async def _agent_for(db, tenant_id) -> Agent:
-    agent = Agent(tenant_id=tenant_id, name="Sales Agent", model="fast", system_prompt="You sell.")
+    _ensure_test_kind()
+    agent = Agent(
+        tenant_id=tenant_id,
+        kind="tool-error-containment-test",
+        name="Sales Agent",
+        model="fast",
+        system_prompt="You sell.",
+    )
     db.add(agent)
     await db.flush()
     db.add(AgentTool(tenant_id=tenant_id, agent_id=agent.id, name=_TOOL_NAME, policy={}))

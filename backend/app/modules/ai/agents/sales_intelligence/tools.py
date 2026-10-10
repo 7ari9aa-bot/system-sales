@@ -485,6 +485,11 @@ async def _si_analyze_customers(
     from app.modules.analytics.capabilities import EvidenceStore, analyze_customers
 
     current = await _resolve_window(session, tenant_id, days)
+    # The 60-day returning-customer lookahead is computed here, not as
+    # ``:end + interval '60 days'``: Postgres resolves an untyped bind next to
+    # an interval literal as ``interval`` itself, and the statement dies with
+    # "timestamptz < interval" at prepare time.
+    lookahead_end = current.end + timedelta(days=60)
     rows = (
         await session.execute(
             _sql(
@@ -493,11 +498,11 @@ async def _si_analyze_customers(
                 "FROM orders o WHERE o.tenant_id = :tenant_id "
                 "AND o.deleted_at IS NULL "
                 "AND COALESCE(placed_at, created_at) >= :start "
-                "AND COALESCE(placed_at, created_at) < :end + interval '60 days' "
+                "AND COALESCE(placed_at, created_at) < :lookahead_end "
                 "ORDER BY COALESCE(placed_at, created_at) "
                 "LIMIT 5000"
             ),
-            {"tenant_id": str(tenant_id), "start": current.start, "end": current.end},
+            {"tenant_id": str(tenant_id), "start": current.start, "lookahead_end": lookahead_end},
         )
     ).all()
     orders = [{"customer_id": r.customer_id, "placed_at": r.placed_at} for r in rows]

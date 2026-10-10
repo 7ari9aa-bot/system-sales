@@ -416,6 +416,10 @@ async def test_canary_rollout_updates_the_real_deployment_state(db, tenant_ctx) 
         model="fast",
         system_prompt="stable",
     )
+    db.add(agent)
+    # agent_id is a bare FK column, not a relationship — the agent must be
+    # flushed before the versions are built or agent.id is still None.
+    await db.flush()
     stable_version = AgentVersion(
         tenant_id=tenant_id,
         agent_id=agent.id,
@@ -432,7 +436,7 @@ async def test_canary_rollout_updates_the_real_deployment_state(db, tenant_ctx) 
         system_prompt="candidate",
         model="fast",
     )
-    db.add_all([agent, stable_version, candidate_version])
+    db.add_all([stable_version, candidate_version])
     await db.flush()
 
     evaluation = AIEvaluation(

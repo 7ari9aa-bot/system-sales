@@ -31,7 +31,23 @@ AI_DIR = pathlib.Path(__file__).resolve().parents[1] / "app" / "modules" / "ai"
 
 async def _parked(db, tenant_id, *, ttl_minutes: int = 60):
     """A run suspended on a HIGH-risk approval, exactly as the gate leaves it."""
-    agent = Agent(tenant_id=tenant_id, name="Sales Agent", model="fast", system_prompt="s")
+    # uq_agents_tenant_kind allows one agent per (tenant, kind) and the tests
+    # park several runs in one tenant — reuse the tenant's customer agent.
+    agent = (
+        await db.execute(
+            select(Agent).where(Agent.tenant_id == tenant_id, Agent.kind == "customer")
+        )
+    ).scalar_one_or_none()
+    if agent is None:
+        agent = Agent(
+            tenant_id=tenant_id,
+            kind="customer",
+            name="Sales Agent",
+            model="fast",
+            system_prompt="s",
+        )
+        db.add(agent)
+        await db.flush()
     customer = Customer(tenant_id=tenant_id, name="Approval Customer")
     db.add_all([agent, customer])
     await db.flush()
@@ -120,7 +136,11 @@ async def test_a_rejection_hands_the_customer_to_a_human(db, tenant_ctx):
     events = (
         (
             await db.execute(
-                select(OutboxEvent).where(OutboxEvent.tenant_id == tenant_ctx.tenant_id)
+                # outbox_events has no tenant column by design — the §19
+                # envelope routing keys (tenant_id among them) ride in meta.
+                select(OutboxEvent).where(
+                    OutboxEvent.meta["tenant_id"].astext == str(tenant_ctx.tenant_id)
+                )
             )
         )
         .scalars()

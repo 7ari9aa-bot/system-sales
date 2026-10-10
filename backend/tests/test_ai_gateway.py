@@ -138,7 +138,12 @@ async def test_chat_without_any_model_config_raises(db, tenant_ctx, monkeypatch)
         .scalars()
         .all()
     )
-    assert rows == []
+    # The gateway audits EVERY invocation, including one that never reached a
+    # provider — the finally block records the failed resolution with
+    # status="error" so spend and failures stay observable.
+    assert len(rows) == 1
+    assert rows[0].status == "error"
+    assert rows[0].model == "unknown"
 
 
 async def test_unknown_alias_raises_validation_error(db, tenant_ctx):

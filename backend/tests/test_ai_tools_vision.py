@@ -13,7 +13,7 @@ import uuid
 
 import pytest
 
-from app.core.errors import DomainError
+from app.core.errors import DomainError, NotFoundError
 from app.modules.ai.agents.customer.vision import pipeline
 from app.modules.ai.agents.customer.vision.schemas import MatchResult
 from app.modules.ai.tools import _find_product_by_image, _resolve_product_media, get_tool
@@ -91,7 +91,12 @@ async def test_product_match_result_is_business_only(monkeypatch, db, tenant_ctx
 
 async def test_resolve_product_media_primary_returns_one_id(db, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
-    product = Product(tenant_id=tenant_id, title="Abaya", slug=f"abaya-{uuid.uuid4().hex[:8]}")
+    product = Product(
+        tenant_id=tenant_id,
+        title="Abaya",
+        slug=f"abaya-{uuid.uuid4().hex[:8]}",
+        status="active",
+    )
     db.add(product)
     await db.flush()
     for position in (2, 0, 1):
@@ -116,7 +121,12 @@ async def test_resolve_product_media_primary_returns_one_id(db, tenant_ctx):
 
 async def test_resolve_product_media_all_orders_by_position(db, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
-    product = Product(tenant_id=tenant_id, title="Abaya", slug=f"abaya-{uuid.uuid4().hex[:8]}")
+    product = Product(
+        tenant_id=tenant_id,
+        title="Abaya",
+        slug=f"abaya-{uuid.uuid4().hex[:8]}",
+        status="active",
+    )
     db.add(product)
     await db.flush()
     for position in (2, 0, 1):
@@ -135,8 +145,10 @@ async def test_resolve_product_media_all_orders_by_position(db, tenant_ctx):
     assert all(set(m) == {"image_id", "alt", "position"} for m in result["media"])
 
 
-async def test_resolve_product_media_unknown_product_is_empty(db, tenant_ctx):
-    result = await _resolve_product_media(
-        db, tenant_ctx.tenant_id, product_id=uuid.uuid4(), selection="all"
-    )
-    assert result == {"media": []}
+async def test_resolve_product_media_unknown_product_fails_loudly(db, tenant_ctx):
+    """Unknown metric, unknown product — a tool that invents an empty success
+    for a nonexistent entity lets the model answer from nothing."""
+    with pytest.raises(NotFoundError, match="not found"):
+        await _resolve_product_media(
+            db, tenant_ctx.tenant_id, product_id=uuid.uuid4(), selection="all"
+        )

@@ -26,6 +26,7 @@ async def _stage(db, tenant_ctx, question="ليه المبيعات قلت؟"):
     db.add(
         Agent(
             tenant_id=tenant_ctx.tenant_id,
+            kind="sales_intelligence",
             name="SI Agent",
             model="strong",
             system_prompt="analyze",
@@ -86,6 +87,7 @@ async def test_handler_failure_marks_the_shell_failed(db, tenant_ctx, monkeypatc
     db.add(
         Agent(
             tenant_id=tenant_ctx.tenant_id,
+            kind="sales_intelligence",
             name="SI Agent",
             model="strong",
             system_prompt="analyze",

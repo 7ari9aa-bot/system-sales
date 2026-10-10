@@ -90,7 +90,7 @@ async def evaluate_scenario(
     evidence.add_fact(orders_current)
 
     if store.scenario is Scenario.AOV_DECLINE:
-        result = await analyze_drivers(session, context, evidence, days=30)
+        result = await analyze_drivers(session, context, evidence, days=30, reference=reference)
         checks.append(
             (
                 "aov driver dominates",
@@ -108,7 +108,7 @@ async def evaluate_scenario(
         )
 
     if store.scenario is Scenario.ORDERS_DECLINE:
-        result = await analyze_drivers(session, context, evidence, days=30)
+        result = await analyze_drivers(session, context, evidence, days=30, reference=reference)
         checks.append(
             (
                 "orders driver dominates",

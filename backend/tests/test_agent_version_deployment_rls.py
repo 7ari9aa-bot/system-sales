@@ -30,9 +30,13 @@ async def _seed_agent_stack(db: AsyncSession, tenant_id: uuid.UUID) -> Agent:
         model="fast",
         system_prompt="p",
     )
+    db.add(agent)
+    # The children carry bare agent_id columns (no ORM relationship), so the
+    # unit of work has no dependency edge to order on — the agent must be
+    # flushed first or agent.id is still None when the rows are built.
+    await db.flush()
     db.add_all(
         [
-            agent,
             AgentVersion(
                 tenant_id=tenant_id,
                 agent_id=agent.id,
@@ -63,7 +67,7 @@ class TestPolicyPresence:
             assert row.relrowsecurity is True, f"{table} has no RLS"
             assert row.relforcerowsecurity is True, f"{table} RLS is not forced"
 
-            policy = (
+            policy_row = (
                 await db.execute(
                     sa.text(
                         "SELECT qual, with_check FROM pg_policies "
@@ -72,10 +76,11 @@ class TestPolicyPresence:
                     ),
                     {"t": table},
                 )
-            ).scalar_one_or_none()
-            assert policy is not None, f"{table} has no tenant_isolation policy"
-            assert "app.tenant_id" in policy.qual
-            assert "app.tenant_id" in policy.with_check
+            ).one()
+            assert "app.tenant_id" in policy_row.qual, f"{table} policy ignores the tenant GUC"
+            assert "app.tenant_id" in policy_row.with_check, (
+                f"{table} policy write path ignores the tenant GUC"
+            )
 
 
 class TestTenantIsolation:

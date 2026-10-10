@@ -256,7 +256,9 @@ async def test_get_customer_returns_the_bound_customer(db: AsyncSession, tenant_
     result = await spec.handler(db, tenant_ctx.tenant_id, context={"customer_id": str(customer.id)})
     assert result["customer_id"] == str(customer.id)
     assert result["name"] == "Bound Customer"
-    assert result["lifetime_value"] == str(customer.lifetime_value)
+    # P1-15: minimum necessary fields only — internal metrics never cross the
+    # model boundary, so the payload must not grow silently either.
+    assert set(result) == {"customer_id", "name", "locale"}
 
 
 async def test_get_customer_without_a_binding_is_refused(db: AsyncSession, tenant_ctx) -> None:

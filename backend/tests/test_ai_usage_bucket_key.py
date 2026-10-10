@@ -505,8 +505,17 @@ async def test_the_agent_bucket_still_converges_on_the_natural_key(
 
     from app.modules.ai.models import Agent
 
-    first = Agent(tenant_id=tenant_ctx.tenant_id, name="Bucket A", model="fast")
-    second = Agent(tenant_id=tenant_ctx.tenant_id, name="Bucket B", model="fast")
+    # Distinct kinds: uq_agents_tenant_kind allows one agent per (tenant, kind),
+    # and two agents is exactly what the per-agent bucket test needs.
+    first = Agent(
+        tenant_id=tenant_ctx.tenant_id, kind="customer", name="Bucket A", model="fast"
+    )
+    second = Agent(
+        tenant_id=tenant_ctx.tenant_id,
+        kind="sales_intelligence",
+        name="Bucket B",
+        model="fast",
+    )
     db.add_all([first, second])
     await db.flush()
 

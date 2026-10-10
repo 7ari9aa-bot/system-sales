@@ -196,11 +196,25 @@ class TestRuntimeResolution:
         agent = _agent(tenant_ctx.tenant_id)
         db.add(agent)
         await db.flush()
+        # "Points at nothing published", FK-honestly: a real version row that
+        # never left draft. The resolver must refuse it exactly like a missing
+        # row — the stable_version_id column has a real FK, so a random uuid
+        # cannot even be inserted.
+        draft = AgentVersion(
+            tenant_id=tenant_ctx.tenant_id,
+            agent_id=agent.id,
+            version=1,
+            status="draft",
+            system_prompt="p",
+            model="fast",
+        )
+        db.add(draft)
+        await db.flush()
         db.add(
             Deployment(
                 tenant_id=tenant_ctx.tenant_id,
                 agent_id=agent.id,
-                stable_version_id=uuid.uuid4(),  # points at nothing
+                stable_version_id=draft.id,
                 status="active",
             )
         )
