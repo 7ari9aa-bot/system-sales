@@ -94,9 +94,11 @@ async def test_a_spent_budget_parks_the_conversation_on_a_human(
     # Exactly one event, and it is the handover: nothing was sent to the
     # customer, so there is no `message.outbound` pretending otherwise.
     events = (
-        (await db.execute(select(OutboxEvent).where(
-            OutboxEvent.meta["tenant_id"].astext == str(tenant_id)
-        )))
+        (
+            await db.execute(
+                select(OutboxEvent).where(OutboxEvent.meta["tenant_id"].astext == str(tenant_id))
+            )
+        )
         .scalars()
         .all()
     )

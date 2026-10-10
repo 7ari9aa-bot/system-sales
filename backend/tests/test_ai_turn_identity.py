@@ -132,9 +132,7 @@ async def test_the_named_message_is_answered_even_when_a_newer_one_exists(
     )
 
 
-async def test_without_a_named_message_the_newest_inbound_is_answered(
-    db, tenant_ctx, monkeypatch
-):
+async def test_without_a_named_message_the_newest_inbound_is_answered(db, tenant_ctx, monkeypatch):
     """The resume path: no message is named, so the conversation's current
     context is re-evaluated rather than a stale one."""
     tenant_id = tenant_ctx.tenant_id
@@ -147,9 +145,7 @@ async def test_without_a_named_message_the_newest_inbound_is_answered(
     assert runner.user_messages == ["والبنطي؟"]
 
 
-async def test_an_outbound_message_never_becomes_the_turn(
-    db, tenant_ctx, monkeypatch
-):
+async def test_an_outbound_message_never_becomes_the_turn(db, tenant_ctx, monkeypatch):
     """A message id from the wrong side of the thread is not a customer turn."""
     tenant_id = tenant_ctx.tenant_id
     conversation, _first, _second = await _conversation_with_two_inbounds(db, tenant_id)
@@ -170,9 +166,7 @@ async def test_an_outbound_message_never_becomes_the_turn(
     assert runner.user_messages == [], "the agent was driven by its own reply"
 
 
-async def test_a_message_id_from_another_conversation_is_ignored(
-    db, tenant_ctx, monkeypatch
-):
+async def test_a_message_id_from_another_conversation_is_ignored(db, tenant_ctx, monkeypatch):
     tenant_id = tenant_ctx.tenant_id
     conversation, first, _second = await _conversation_with_two_inbounds(db, tenant_id)
     other_customer = Customer(tenant_id=tenant_id, name="Other Customer")

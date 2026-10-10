@@ -105,9 +105,9 @@ async def _quotes(db: AsyncSession, tenant_id: uuid.UUID) -> list[AIOrderQuote]:
     return list(
         (
             await db.execute(
-                select(AIOrderQuote).where(AIOrderQuote.tenant_id == tenant_id).order_by(
-                    AIOrderQuote.created_at
-                )
+                select(AIOrderQuote)
+                .where(AIOrderQuote.tenant_id == tenant_id)
+                .order_by(AIOrderQuote.created_at)
             )
         )
         .scalars()
@@ -193,9 +193,7 @@ async def test_the_customers_message_confirms_the_quote(db, tenant_ctx) -> None:
     assert quote is not None and quote.status == "confirmed"
     assert quote.confirmed_at is not None
     # Confirmation starts the EXECUTION window — merchant approval can be slow.
-    assert quote.expires_at > datetime.now(UTC) + timedelta(
-        minutes=QUOTE_TTL_MINUTES - 1
-    )
+    assert quote.expires_at > datetime.now(UTC) + timedelta(minutes=QUOTE_TTL_MINUTES - 1)
 
 
 async def test_text_without_the_code_never_confirms(db, tenant_ctx) -> None:
@@ -261,8 +259,8 @@ async def test_execution_creates_the_order_from_the_quotes_items(db, tenant_ctx)
     order = await db.get(Order, uuid.UUID(result["order_id"]))
     assert order is not None and order.customer_id == customer.id
     lines = (
-        await db.execute(select(OrderItem).where(OrderItem.order_id == order.id))
-    ).scalars().all()
+        (await db.execute(select(OrderItem).where(OrderItem.order_id == order.id))).scalars().all()
+    )
     assert [(str(item.variant_id), item.quantity) for item in lines] == [(str(variant.id), 2)]
     assert Decimal(result["grand_total"]) == Decimal("51.00")
     assert result["quote_id"] == str(quote.id)
@@ -361,9 +359,10 @@ async def test_a_stale_quote_frees_the_conversation_for_a_fresh_one(db, tenant_c
     quote.expires_at = datetime.now(UTC) - timedelta(seconds=1)
     await db.flush()
 
-    assert await live_quote(
-        db, tenant_id, conversation_id=conversation.id, customer_id=customer.id
-    ) is None
+    assert (
+        await live_quote(db, tenant_id, conversation_id=conversation.id, customer_id=customer.id)
+        is None
+    )
     fresh = await _propose(db, tenant_id, customer, conversation, variant, qty=3)
     assert fresh["quote_id"] != str(quote.id)
     assert fresh["status"] == "pending"

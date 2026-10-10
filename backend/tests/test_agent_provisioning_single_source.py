@@ -47,9 +47,7 @@ async def _provision(db, tenant_id) -> None:
 
 
 async def _agents(db, tenant_id) -> dict[str, Agent]:
-    rows = (
-        await db.execute(select(Agent).where(Agent.tenant_id == tenant_id))
-    ).scalars().all()
+    rows = (await db.execute(select(Agent).where(Agent.tenant_id == tenant_id))).scalars().all()
     return {a.kind: a for a in rows}
 
 

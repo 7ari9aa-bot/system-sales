@@ -99,9 +99,7 @@ async def _inbound(db: AsyncSession, tenant_id: uuid.UUID, body: str):
 # ------------------------------------------------- customer_request producer --
 
 
-async def test_asking_for_a_human_creates_the_handover(
-    db, tenant_ctx, monkeypatch
-) -> None:
+async def test_asking_for_a_human_creates_the_handover(db, tenant_ctx, monkeypatch) -> None:
     """The whole point: the reason vocabulary now has a writer."""
     tenant_id = tenant_ctx.tenant_id
     await _customer_agent(db, tenant_id)
@@ -142,9 +140,11 @@ async def test_asking_for_a_human_creates_the_handover(
     assert len(outbound) == 1
     assert "شخص من الفريق" in (outbound[0].body or "")
     events = (
-        (await db.execute(select(OutboxEvent).where(
-                OutboxEvent.meta["tenant_id"].astext == str(tenant_id)
-            )))
+        (
+            await db.execute(
+                select(OutboxEvent).where(OutboxEvent.meta["tenant_id"].astext == str(tenant_id))
+            )
+        )
         .scalars()
         .all()
     )

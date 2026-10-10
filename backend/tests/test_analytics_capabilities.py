@@ -134,9 +134,7 @@ async def test_get_metric_registers_fact_with_id(db, tenant_ctx):
 
     # Re-measuring the same window is the SAME fact, not a colliding second one.
     again = EvidenceStore()
-    second = await get_metric(
-        db, context, again, metric_name="delivered_revenue", period=period
-    )
+    second = await get_metric(db, context, again, metric_name="delivered_revenue", period=period)
     assert second.evidence_ids == [fact_id]
 
     # A different metric over the same window is a different fact.

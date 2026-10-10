@@ -105,6 +105,8 @@ class SIGetMetricArgs(BaseModel):
     metric_name: str
     days: int = Field(default=30, ge=1, le=90)
     channel: str | None = None
+
+
 async def _si_get_metric(
     session: AsyncSession,
     tenant_id: uuid.UUID,

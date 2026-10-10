@@ -364,9 +364,7 @@ async def test_reserve_budget_sweeps_reservations_no_run_will_ever_settle(
     live = (
         (
             await db.execute(
-                select(AIBudgetReservation).where(
-                    AIBudgetReservation.id == reservation_id
-                )
+                select(AIBudgetReservation).where(AIBudgetReservation.id == reservation_id)
             )
         )
         .scalars()

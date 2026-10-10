@@ -289,6 +289,38 @@ _INDEXES: list[tuple[str, str, str]] = [
 ]
 
 
+def _guarded_index_ddl(index_name: str, table: str, cols: str) -> str:
+    """The guarded CREATE INDEX for one entry as a self-contained DO block.
+
+    Extracted verbatim from upgrade() so the guard itself is testable: the
+    four scenarios the production abort taught (missing table, present
+    column, drifted column, one drifted column feeding several indexes) run
+    against a real database in tests/test_fk_index_guard.py.
+    """
+    wanted = ", ".join(f"('{c.strip()}')" for c in cols.split(","))
+    return f"""
+            DO $$
+            BEGIN
+                IF to_regclass('public.{table}') IS NOT NULL
+                   AND NOT EXISTS (
+                       SELECT 1
+                       FROM (VALUES {wanted}) AS want(col)
+                       WHERE NOT EXISTS (
+                           SELECT 1
+                           FROM information_schema.columns c
+                           WHERE c.table_schema = 'public'
+                             AND c.table_name = '{table}'
+                             AND c.column_name = want.col
+                       )
+                   )
+                THEN
+                    EXECUTE 'CREATE INDEX IF NOT EXISTS {index_name} ' ||
+                            'ON public.{table} ({cols})';
+                END IF;
+            END $$;
+            """
+
+
 def upgrade() -> None:
     for idx_name, table, cols in _INDEXES:
         # Guarded on the table AND its columns, not just the index. Two failures
@@ -307,30 +339,7 @@ def upgrade() -> None:
         #    failed with `column ... does not exist`, aborting the API deploy.
         #    A schema that drifted from the code gets the indexes its columns
         #    allow; backfilling the drifted column is a separate migration.
-        wanted = ", ".join(f"('{c.strip()}')" for c in cols.split(","))
-        op.execute(
-            f"""
-            DO $$
-            BEGIN
-                IF to_regclass('public.{table}') IS NOT NULL
-                   AND NOT EXISTS (
-                       SELECT 1
-                       FROM (VALUES {wanted}) AS want(col)
-                       WHERE NOT EXISTS (
-                           SELECT 1
-                           FROM information_schema.columns c
-                           WHERE c.table_schema = 'public'
-                             AND c.table_name = '{table}'
-                             AND c.column_name = want.col
-                       )
-                   )
-                THEN
-                    EXECUTE 'CREATE INDEX IF NOT EXISTS {idx_name} ' ||
-                            'ON public.{table} ({cols})';
-                END IF;
-            END $$;
-            """
-        )
+        op.execute(_guarded_index_ddl(idx_name, table, cols))
 
 
 def downgrade() -> None:

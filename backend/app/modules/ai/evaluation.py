@@ -62,9 +62,7 @@ class AIEvaluationService:
                 # caller handed us a version belonging to a different agent.
                 agent_id = version.agent_id
             elif agent_id != version.agent_id:
-                raise ValidationError(
-                    f"agent {agent_id} does not own version {agent_version_id}"
-                )
+                raise ValidationError(f"agent {agent_id} does not own version {agent_version_id}")
         elif agent_id is None:
             raise ValidationError("agent_id is required for evaluation")
         metrics = results or {}
