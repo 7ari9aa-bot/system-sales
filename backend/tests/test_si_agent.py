@@ -39,6 +39,9 @@ async def _seed(db, tenant_id, agent_with_tools: bool = True):
             name="SI Agent",
             model="fast",
             system_prompt="analyze",
+            # The registry gates si_* tools by agent kind; the server default
+            # ("customer") is fail-closed for them — 'denied', not 'error'.
+            kind="sales_intelligence",
         )
         db.add(agent)
         await db.flush()

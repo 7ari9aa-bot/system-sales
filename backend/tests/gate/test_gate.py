@@ -328,6 +328,11 @@ async def test_gate_prompt_injection_guarded():
 
 # --- 10. Approval expiry (§135/§176.11) ---
 async def test_gate_approval_expiry(db, tenant_ctx):
+    """A refused decide writes NOTHING. The API's 400 rolls the request
+    transaction back, so anything stamped here never reaches the database —
+    and a row flipped EXPIRED without its parked run closed would vanish from
+    the sweep's scan while the customer keeps waiting. The sweep is the only
+    writer of EXPIRED (§135 lifecycle)."""
     from app.modules.ai.approvals import ApprovalService
     from app.modules.ai.models import ApprovalRequest
 
@@ -343,7 +348,7 @@ async def test_gate_approval_expiry(db, tenant_ctx):
         ttl_minutes=-1,  # already expired
     )
     await db.flush()
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match="expired"):
         await ApprovalService.decide(
             db,
             tenant_ctx.tenant_id,
@@ -354,7 +359,9 @@ async def test_gate_approval_expiry(db, tenant_ctx):
     refreshed = (
         await db.execute(select(ApprovalRequest).where(ApprovalRequest.id == request.id))
     ).scalar_one()
-    assert refreshed.status == "EXPIRED"
+    assert refreshed.status == "PENDING", "a refused decision must not write"
+    assert await ApprovalService.expire_stale(db, tenant_ctx.tenant_id) == 1
+    assert request.status == "EXPIRED"
 
 
 # --- 11. Webhook tenant resolution (§125/§176.3) ---

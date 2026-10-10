@@ -17,6 +17,7 @@ by the event is the message answered.
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.core.events.schemas import EventEnvelope
@@ -106,6 +107,11 @@ async def _conversation_with_two_inbounds(db, tenant_id):
         sender_type="customer",
         body="والبنطي؟",
     )
+    # One transaction per test: both INSERTs share Postgres'
+    # transaction_timestamp(), so without pinned timestamps "newest" is
+    # decided by a random uuid tie-break — CI proved it picks either way.
+    second.created_at = datetime.now(UTC)
+    first.created_at = second.created_at - timedelta(seconds=1)
     await db.flush()
     return conversation, first, second
 

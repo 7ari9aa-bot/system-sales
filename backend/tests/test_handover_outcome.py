@@ -26,7 +26,7 @@ from app.modules.ai.hooks import maybe_auto_reply
 from app.modules.ai.models import Agent, AIHandover
 from app.modules.ai.router import resolve_handover
 from app.modules.ai.runtime import AgentRunner
-from app.modules.conversations.models import Message
+from app.modules.conversations.models import Conversation, Message
 from app.modules.conversations.service import ConversationService
 from app.modules.customers.models import Customer
 from app.modules.platform.models import OutboxEvent
@@ -219,17 +219,21 @@ async def test_resolving_records_who_when_and_with_what_result(db, tenant_ctx) -
     )
 
     assert out.status == "resolved"
-    resolved_by = tenant_ctx.user.id
-    assert out.resolved_by_user_id == resolved_by
+    assert out.resolved_by_user_id == tenant_ctx.user.id
     assert out.resolved_at is not None
     assert out.outcome == "answered"
     assert out.outcome_note == "وضحنا سعر الشحنه للعميل"
 
     # The route flips the status with a Core UPDATE; this session's identity
-    # map still holds the waiting_human object, so expire before re-reading.
-    db.expire_all()
-    refreshed = await ConversationService.get(db, tenant_id, conversation.id)
-    assert refreshed.status == "open"
+    # map still holds the waiting_human object, so read the column straight
+    # from the table. (expire_all would force a synchronous refresh on the
+    # next attribute touch — MissingGreenlet in an async session.)
+    refreshed_status = (
+        await db.execute(
+            select(Conversation.status).where(Conversation.id == conversation.id)
+        )
+    ).scalar_one()
+    assert refreshed_status == "open"
 
     events = (
         (
@@ -245,7 +249,7 @@ async def test_resolving_records_who_when_and_with_what_result(db, tenant_ctx) -
     )
     assert len(events) == 1
     assert events[0].payload["outcome"] == "answered"
-    assert events[0].payload["resolved_by_user_id"] == str(resolved_by)
+    assert events[0].payload["resolved_by_user_id"] == str(tenant_ctx.user.id)
 
 
 async def test_an_outcome_outside_the_vocabulary_is_refused(db, tenant_ctx) -> None:
