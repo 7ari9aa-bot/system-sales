@@ -23,6 +23,7 @@ def _result(content=None, tool_calls=None, tokens_in=0, tokens_out=0) -> ChatCom
         tool_calls=tool_calls or [],
         tokens_in=tokens_in,
         tokens_out=tokens_out,
+        raw_model="m",
     )
 
 
