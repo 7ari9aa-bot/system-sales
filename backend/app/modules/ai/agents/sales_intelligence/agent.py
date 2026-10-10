@@ -72,6 +72,7 @@ class AnalysisResult:
     evidence_hash: str | None = None
     analysis_id: uuid.UUID | None = None
     saved_evidence_id: uuid.UUID | None = None
+    run_id: uuid.UUID | None = None
     tool_calls_made: list[dict] = field(default_factory=list)
     data_quality: DataQuality = field(
         default_factory=lambda: DataQuality(status=DataQualityStatus.COMPLETE)
@@ -291,6 +292,7 @@ async def run_sales_analysis(
     agent_id: uuid.UUID,
     question: str,
     runner=None,
+    history: list[dict[str, str]] | None = None,
 ) -> AnalysisResult:
     """One sales question → an evidence-backed answer (or a safe one)."""
     from sqlalchemy import text as sa_text
@@ -338,6 +340,7 @@ async def run_sales_analysis(
         # agent. The row is provisioned from the definition, and
         # `_resolve_system_prompt` falls back to that definition when the row is
         # empty, so the configured prompt still always reaches the model.
+        history=history,
     )
 
     run_id = result.run_id
@@ -438,6 +441,7 @@ async def run_sales_analysis(
         evidence_hash=evidence_hash,
         analysis_id=analysis_id,
         saved_evidence_id=saved_evidence_id,
+        run_id=run_id,
         tool_calls_made=result.tool_calls_made,
         guardrail_reason=guardrail_reason,
         provider=provider_name,

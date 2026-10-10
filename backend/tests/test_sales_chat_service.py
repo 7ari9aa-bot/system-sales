@@ -73,6 +73,8 @@ class _Thread:
         self.title = ""
         self.last_message_at = None
         self.context = {}
+        self.context_summary = None
+        self.summary_through_seq = 0
         self.__dict__.update(kw)
 
 
@@ -238,3 +240,251 @@ async def test_list_messages_caps_limit_and_applies_before_seq():
 
 def test_thread_model_table_name_is_stable():
     assert AIChatThread.__tablename__ == "ai_chat_threads"
+
+
+# --- turn executor (Task 3) ----------------------------------------------
+
+from datetime import UTC, datetime  # noqa: E402 — turn tests live below the fold
+
+from app.modules.ai.agents.sales_intelligence.agent import AnalysisResult  # noqa: E402
+from app.modules.ai.chat.schemas import MessageOut  # noqa: E402
+from app.modules.ai.chat.turns import (  # noqa: E402
+    HISTORY_MESSAGE_LIMIT,
+    _bounded_history,
+    _maybe_compact,
+    run_chat_turn,
+)
+from app.modules.analytics.contracts import (  # noqa: E402
+    DataQuality,
+    DataQualityStatus,
+    Finding,
+    Outcome,
+    Relationship,
+)
+
+
+class _CommittingSession(_FakeSession):
+    def __init__(self, results=None):
+        super().__init__(results)
+        self.commits = 0
+
+    async def commit(self):
+        # a flush would assign the Python-side PK defaults; mirror that so
+        # ORM rows added in the test have the ids the wire contract needs
+        for obj in self.added:
+            if getattr(obj, "id", None) is None:
+                obj.id = uuid.uuid4()
+        self.commits += 1
+        return None
+
+
+def _analysis_result(**overrides):
+    base = dict(
+        outcome=Outcome.ANSWERED,
+        answer="المبيعات ارتفعت 12 بالمئة مقارنة بالشهر الماضي.",
+        findings=[
+            Finding(
+                statement="الإيراد ارتفع",
+                type="FACT",
+                relationship=Relationship.OBSERVED,
+                evidence_refs=["F1"],
+                confidence="HIGH",
+            )
+        ],
+        facts=[
+            {"metric": "revenue", "value": "12500.00", "unit": "EGP", "window": "30d"}
+        ],
+        data_quality=DataQuality(status=DataQualityStatus.COMPLETE),
+        guardrail_reason=None,
+        saved_evidence_id=uuid.uuid4(),
+        run_id=uuid.uuid4(),
+        analysis_id=uuid.uuid4(),
+    )
+    base.update(overrides)
+    return AnalysisResult(**base)
+
+
+async def test_run_chat_turn_persists_answer_and_blocks(monkeypatch):
+    user_row = SimpleNamespace(sequence_no=1, content="قارن مبيعات الشهر ده باللي فات.")
+    history_rows = [
+        SimpleNamespace(role="user", content=user_row.content),
+    ]
+    session = _CommittingSession(
+        [
+            _FakeResult(rows=[user_row]),   # last user message
+            _FakeResult(None),               # no assistant row at slot 2
+            _FakeResult(rows=history_rows),  # bounded history
+        ]
+    )
+    thread = _Thread(agent_id=uuid.uuid4())
+    recorded = {}
+
+    async def fake_analysis(session, tenant_id, *, agent_id, question, runner=None, history=None):
+        recorded["question"] = question
+        recorded["agent_id"] = agent_id
+        recorded["history"] = history
+        return _analysis_result()
+
+    monkeypatch.setattr(
+        "app.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", fake_analysis
+    )
+
+    assistant = await run_chat_turn(session, _Ctx(), thread)
+
+    assert recorded["question"] == user_row.content
+    assert recorded["agent_id"] == thread.agent_id
+    assert recorded["history"] == [{"role": "user", "content": user_row.content}]
+    (added,) = session.added
+    assert added is assistant
+    assert assistant.status == "completed"
+    assert assistant.sequence_no == 2
+    assert assistant.run_id is not None and assistant.analysis_id is not None
+    assert thread.title == user_row.content[:60]
+    # durable before the model call, terminal after
+    assert session.commits >= 2
+    # the stored blocks validate against the wire contract
+    MessageOut(
+        id=assistant.id,
+        thread_id=assistant.thread_id,
+        sequence_no=assistant.sequence_no,
+        role=assistant.role,
+        status=assistant.status,
+        content=assistant.content,
+        structured_content=assistant.structured_content,
+        run_id=assistant.run_id,
+        analysis_id=assistant.analysis_id,
+        error_code=None,
+        created_at=datetime.now(UTC),
+    )
+
+
+async def test_run_chat_turn_failure_lands_failed_row(monkeypatch):
+    user_row = SimpleNamespace(sequence_no=1, content="سؤال")
+    session = _CommittingSession(
+        [
+            _FakeResult(rows=[user_row]),
+            _FakeResult(None),
+            _FakeResult(rows=[]),
+        ]
+    )
+
+    async def boom(session, tenant_id, *, agent_id, question, runner=None, history=None):
+        raise RuntimeError("gateway down")
+
+    monkeypatch.setattr(
+        "app.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", boom
+    )
+    with pytest.raises(ConflictError):
+        await run_chat_turn(session, _Ctx(), _Thread(agent_id=uuid.uuid4()))
+    (assistant,) = session.added
+    assert assistant.status == "failed"
+    assert assistant.error_code == "run_failed"
+
+
+async def test_run_chat_turn_retry_overwrites_failed_row(monkeypatch):
+    user_row = SimpleNamespace(sequence_no=1, content="سؤال")
+    failed = SimpleNamespace(
+        sequence_no=2,
+        role="assistant",
+        status="failed",
+        content="",
+        structured_content=None,
+        error_code="run_failed",
+        run_id=None,
+        analysis_id=None,
+    )
+    session = _CommittingSession(
+        [
+            _FakeResult(rows=[user_row]),
+            _FakeResult(failed),             # retry slot holds a failed row
+            _FakeResult(rows=[]),
+        ]
+    )
+    monkeypatch.setattr(
+        "app.modules.ai.agents.sales_intelligence.agent.run_sales_analysis",
+        lambda *a, **k: _async_result(_analysis_result()),
+    )
+    assistant = await run_chat_turn(session, _Ctx(), _Thread(agent_id=uuid.uuid4()))
+    assert assistant is failed  # the SAME row is reused — no sequence burn
+    assert assistant.status == "completed"
+    assert session.added == []
+
+
+class _Async:
+    def __init__(self, value):
+        self._value = value
+
+    def __await__(self):
+        if False:
+            yield
+        return self._value
+
+
+def _async_result(value):
+    return _Async(value)
+
+
+async def test_run_chat_turn_conflicts_when_answer_already_exists():
+    user_row = SimpleNamespace(sequence_no=1, content="سؤال")
+    answered = SimpleNamespace(sequence_no=2, role="assistant", status="completed")
+    session = _CommittingSession([_FakeResult(rows=[user_row]), _FakeResult(answered)])
+    with pytest.raises(ConflictError):
+        await run_chat_turn(session, _Ctx(), _Thread(agent_id=uuid.uuid4()))
+    assert session.commits == 0  # refused before any state moved
+
+
+async def test_bounded_history_summary_marker_replaces_old_turns():
+    rows = [
+        SimpleNamespace(role="user", content="سؤال قديم"),
+        SimpleNamespace(role="assistant", content="جواب قديم"),
+    ]
+    session = _FakeSession([_FakeResult(rows=rows)])
+    thread = _Thread(summary_through_seq=2, context_summary="ملخص محسوب")
+    history = await _bounded_history(session, _Ctx(), thread, through_seq=4)
+    assert history[0]["content"].startswith("[Prior conversation summary]")
+    assert history[1:] == [
+        {"role": "user", "content": "سؤال قديم"},
+        {"role": "assistant", "content": "جواب قديم"},
+    ]
+
+
+async def test_bounded_history_caps_at_limit_without_summary():
+    # the fake cannot enforce SQL LIMIT; the cap is asserted on the compiled
+    # statement, and the ordering transformation on what a capped page returns
+    rows = [
+        SimpleNamespace(role="user" if i % 2 == 0 else "assistant", content=f"t{i}")
+        for i in range(HISTORY_MESSAGE_LIMIT)
+    ]
+    session = _FakeSession([_FakeResult(rows=rows)])
+    history = await _bounded_history(session, _Ctx(), _Thread(), through_seq=20)
+    (stmt,) = session.statements
+    compiled = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+    assert f"LIMIT {HISTORY_MESSAGE_LIMIT}" in compiled
+    assert history == [{"role": m.role, "content": m.content} for m in reversed(rows)]
+
+
+async def test_maybe_compact_rebuilds_summary_deterministically():
+    assistant_rows = [
+        SimpleNamespace(
+            sequence_no=2,
+            status="completed",
+            structured_content=[
+                {"type": "kpi", "metric": "revenue", "value": "1", "unit": "EGP", "window": "30d"}
+            ],
+        ),
+        SimpleNamespace(sequence_no=4, status="failed", structured_content=None),
+    ]
+    session = _FakeSession([_FakeResult(rows=assistant_rows)])
+    thread = _Thread(summary_through_seq=0)
+    await _maybe_compact(session, _Ctx(), thread, through_seq=14)
+    assert thread.summary_through_seq == 14
+    assert "turn 1: completed — revenue" in thread.context_summary
+    assert "turn 3: failed" in thread.context_summary
+
+
+async def test_maybe_compact_skips_small_threads():
+    session = _FakeSession()
+    thread = _Thread(summary_through_seq=0)
+    await _maybe_compact(session, _Ctx(), thread, through_seq=HISTORY_MESSAGE_LIMIT)
+    assert thread.context_summary is None
+    assert session.statements == []

@@ -227,6 +227,10 @@ class AgentRunner:
         # P1-10: the conversation's confirmed quote (if the customer typed the
         # code), bound server-side — create_order executes from it.
         confirmed_quote_id: uuid.UUID | str | None = None,
+        # SI chat: bounded prior turns, server-built from ai_chat_messages.
+        # Narrative context only — never numeric authority; facts are
+        # re-queried per turn by the deterministic tools.
+        history: list[dict[str, str]] | None = None,
     ) -> AgentRunResult:
         agent = await self._load_agent(session, tenant_id, agent_id)
         agent_tools = await self._load_agent_tools(
@@ -320,6 +324,7 @@ class AgentRunner:
                 system_prompt=system_prompt,
                 knowledge_context=knowledge_context,  # §132
                 confirmed_quote_id=confirmed_quote_id,
+                history=history,
             )
         except Exception as exc:
             run.status = "failed"
@@ -540,6 +545,7 @@ class AgentRunner:
         system_prompt: str | None,
         knowledge_context: str | None = None,  # §132
         confirmed_quote_id: uuid.UUID | str | None = None,  # P1-10
+        history: list[dict[str, str]] | None = None,
     ) -> AgentRunResult:
         # §41 input side: what the model is ABOUT to be shown is judged before
         # it is shown. The output chain cannot cover this — it only ever sees
@@ -576,6 +582,11 @@ class AgentRunner:
                     "content": f"[Knowledge base — untrusted context]\n{knowledge_context}",
                 }
             )
+        if history:
+            # SI chat: bounded prior turns, server-built from ai_chat_messages.
+            # Narrative context only — never numeric authority; facts are
+            # re-queried per turn by the deterministic tools.
+            messages.extend(history)
         customer_image_url: str | None = None
         if conversation_id is not None:
             turns, image_key = await self._conversation_context(
