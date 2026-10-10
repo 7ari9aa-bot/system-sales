@@ -32,6 +32,7 @@ const MarketingCampaigns = lazy(() => import('@/pages/marketing/Campaigns'));
 const MarketingAudience = lazy(() => import('@/pages/marketing/Audience'));
 const MarketingAutomation = lazy(() => import('@/pages/marketing/Automation'));
 const AI = lazy(() => import('@/pages/AI'));
+const SalesAssistant = lazy(() => import('@/pages/SalesAssistant'));
 const Analytics = lazy(() => import('@/pages/Analytics'));
 const Usage = lazy(() => import('@/pages/Usage'));
 const Website = lazy(() => import('@/pages/Website'));
@@ -87,6 +88,7 @@ const DashboardRoutes = () => (
           <Route path="automation" element={<MarketingAutomation />} />
         </Route>
         <Route path="/ai" element={<AI />} />
+        <Route path="/sales-assistant" element={<SalesAssistant />} />
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/usage" element={<Usage />} />
         <Route path="/website" element={<Website />} />

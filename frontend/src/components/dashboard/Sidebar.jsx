@@ -21,6 +21,7 @@ import {
   ArrowLeftRight,
   History,
   CirclePlus,
+  MessageSquareText,
 } from "lucide-react";
 import { useI18n, useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -102,6 +103,7 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
       items: [
         { to: "/marketing", label: t("nav.marketing"), icon: Megaphone },
         { to: "/ai", label: t("nav.ai"), icon: Sparkles },
+        { to: "/sales-assistant", label: t("nav.salesAssistant"), icon: MessageSquareText },
         { to: "/analytics", label: t("nav.analytics"), icon: BarChart3 },
         { to: "/website", label: t("nav.website"), icon: Globe },
         { to: "/usage", label: t("nav.usage"), icon: Gauge },
