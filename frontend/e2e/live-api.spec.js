@@ -49,7 +49,11 @@ test("real registration, dashboard reads, orders, and logout work end to end", a
     daily_orders: expect.any(Array),
     revenue_by_source: expect.any(Array),
   }));
-  await expect(page.getByRole("button", { name: /تسجيل الخروج|sign out/i })).toBeVisible();
+  // The delivered theme moved sign-out into the account dropdown — the item
+  // exists only while the menu is open, so assert it through the trigger.
+  await page.getByRole("button", { name: /قائمة الحساب|account menu/i }).click();
+  await expect(page.getByRole("menuitem", { name: /تسجيل الخروج|sign out/i })).toBeVisible();
+  await page.keyboard.press("Escape");
 
   const ordersResponsePromise = page.waitForResponse((response) => {
     const url = new URL(response.url());
@@ -67,7 +71,8 @@ test("real registration, dashboard reads, orders, and logout work end to end", a
     const url = new URL(response.url());
     return url.pathname === "/api/v1/auth/logout" && response.request().method() === "POST";
   });
-  await page.getByRole("button", { name: /تسجيل الخروج|sign out/i }).click();
+  await page.getByRole("button", { name: /قائمة الحساب|account menu/i }).click();
+  await page.getByRole("menuitem", { name: /تسجيل الخروج|sign out/i }).click();
   expect((await logoutResponsePromise).status()).toBe(204);
   // v7 note: after logout the guard's redirect wins — /login?returnTo=<where you were>.
   await expect(page).toHaveURL(/\/login(\?|$)/);
