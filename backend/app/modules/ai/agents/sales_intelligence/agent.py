@@ -298,19 +298,22 @@ async def run_sales_analysis(
     from app.modules.ai.gateway import AIGateway
     from app.modules.ai.runtime import AgentRunner
 
-    # Load tenant settings (merchant timezone & currency)
+    # The merchant zone is the one every fact's period is stamped through —
+    # caller → tenant → deployment → UTC (analytics timekit, §6.5/P1-19). This
+    # query used to COALESCE a hardcoded 'Africa/Cairo' over a NULL
+    # tenants.timezone, and every tenant that never declared a zone then
+    # failed its own evidence pack: the facts carried UTC, the pack demanded
+    # Africa/Cairo, and validate_pack_inputs raised before the answer shipped.
+    from app.modules.analytics.service import resolve_report_timezone
+
+    merchant_tz = str(await resolve_report_timezone(session, tenant_id))
     tenant_row = (
         await session.execute(
-            sa_text(
-                "SELECT COALESCE(timezone, 'Africa/Cairo'),"
-                " COALESCE(currency, 'EGP')"
-                " FROM tenants WHERE id = :tid"
-            ),
+            sa_text("SELECT COALESCE(currency, 'EGP') FROM tenants WHERE id = :tid"),
             {"tid": str(tenant_id)},
         )
     ).first()
-    merchant_tz = tenant_row[0] if tenant_row else "Africa/Cairo"
-    merchant_currency = tenant_row[1] if tenant_row else "EGP"
+    merchant_currency = tenant_row[0] if tenant_row else "EGP"
 
     profile = await load_store_metric_profile(session, tenant_id)
 
