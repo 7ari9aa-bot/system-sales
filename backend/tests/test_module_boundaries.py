@@ -183,7 +183,13 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # tool computes are registered through `EvidenceStore.register_numbers`, the
 # analytics module's own door, so the SI adapter gained no new import site and
 # the skip rules live beside the pack contract that enforces them.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 145
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 146
+# 145 -> 146 on 2026-10-10: the SI-chat render-block schema
+# (ai/chat/schemas.py) imports analytics.contracts.Finding — the typed
+# finding contract the assistant's structured blocks are built from. Same
+# module pair the orchestrator already reads (ai->analytics), so no new
+# edge and no SCC change; the chat feature ships numbers and findings as
+# analytics contracts, never as model-authored JSON.
 # 144 -> 145 on 2026-10-10: the SI orchestrator (ai/agents/sales_intelligence/
 # agent.py) now reads the merchant timezone through analytics.service.
 # resolve_report_timezone — the single resolver every si_* fact's period is
