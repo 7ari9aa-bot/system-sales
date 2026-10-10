@@ -334,7 +334,7 @@ async def test_reconciliation_never_reactivates_a_disabled_tool() -> None:
     mock_res.scalars.return_value.all.return_value = [disabled_default]
     mock_session.execute.return_value = mock_res
 
-    added = await _sync_agent_tools(mock_session, tenant_id, agent_id, kind="customer")
+    await _sync_agent_tools(mock_session, tenant_id, agent_id, kind="customer")
 
     assert disabled_default.is_active is False, (
         "reconciliation must not re-enable a tool the tenant disabled"

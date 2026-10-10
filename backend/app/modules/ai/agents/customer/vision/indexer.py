@@ -12,14 +12,13 @@ never surface a draft or archived product.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
-
-import logging
 
 from app.core.config import get_settings
 from app.core.storage import get_storage
@@ -99,9 +98,7 @@ async def index_product_images(
 
     params: dict = {"tenant_id": str(tenant_id), "sellable": statuses}
     if only_missing:
-        params.update(
-            model=settings.ai_embedding_vision_model, model_version=model_version
-        )
+        params.update(model=settings.ai_embedding_vision_model, model_version=model_version)
         rows = (await session.execute(_IMAGES_MISSING_SQL, params)).all()
     else:
         rows = (await session.execute(_IMAGES_SQL, params)).all()
@@ -194,9 +191,10 @@ async def sweep_unindexed_product_images(*, batch_size: int = 16) -> int:
     try:
         async with admin_engine.connect() as conn:
             tenant_ids = (
-                await conn.execute(
-                    sa.text(
-                        """
+                (
+                    await conn.execute(
+                        sa.text(
+                            """
                         SELECT DISTINCT pi.tenant_id
                         FROM product_images pi
                         JOIN products p ON p.id = pi.product_id
@@ -210,14 +208,17 @@ async def sweep_unindexed_product_images(*, batch_size: int = 16) -> int:
                                 AND pe.model_version = :model_version
                           )
                         """
-                    ),
-                    {
-                        "sellable": statuses,
-                        "model": settings.ai_embedding_vision_model,
-                        "model_version": MODEL_VERSION,
-                    },
+                        ),
+                        {
+                            "sellable": statuses,
+                            "model": settings.ai_embedding_vision_model,
+                            "model_version": MODEL_VERSION,
+                        },
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
     finally:
         await admin_engine.dispose()
 
@@ -234,7 +235,5 @@ async def sweep_unindexed_product_images(*, batch_size: int = 16) -> int:
                 await session.commit()
                 indexed_total += stats["indexed"]
         except Exception:  # noqa: BLE001 — one tenant's provider must not stop the rest
-            logger.warning(
-                "vision.indexing_sweep_failed tenant=%s", tenant_id, exc_info=True
-            )
+            logger.warning("vision.indexing_sweep_failed tenant=%s", tenant_id, exc_info=True)
     return indexed_total

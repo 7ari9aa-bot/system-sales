@@ -66,9 +66,7 @@ async def _cleanup(maker, tenant_ids: list[uuid.UUID]) -> None:
     try:
         async with engine.begin() as conn:
             for tid in tenant_ids:
-                await conn.execute(
-                    text("DELETE FROM tenants WHERE id = :t"), {"t": str(tid)}
-                )
+                await conn.execute(text("DELETE FROM tenants WHERE id = :t"), {"t": str(tid)})
     finally:
         await engine.dispose()
 
@@ -89,9 +87,7 @@ async def _new_tenant(maker, tenants: list[uuid.UUID]) -> uuid.UUID:
     return tenant_id
 
 
-async def _seed_product_image(
-    maker, tenant_id: uuid.UUID, title: str
-) -> uuid.UUID:
+async def _seed_product_image(maker, tenant_id: uuid.UUID, title: str) -> uuid.UUID:
     """Active product + one image, committed as the app role with the tenant
     GUC bound (RLS admits the write; the sweep's own sessions must see it)."""
     async with maker() as session:
@@ -186,9 +182,7 @@ def fake_gateway(monkeypatch):
 # ------------------------------------------------------------ the sweeps -----
 
 
-async def test_sweep_indexes_images_missing_the_current_model(
-    sweep_sessions, fake_gateway
-) -> None:
+async def test_sweep_indexes_images_missing_the_current_model(sweep_sessions, fake_gateway) -> None:
     tenants: list[uuid.UUID] = []
     try:
         tenant_id = await _new_tenant(sweep_sessions, tenants)
@@ -203,9 +197,7 @@ async def test_sweep_indexes_images_missing_the_current_model(
         await _cleanup(sweep_sessions, tenants)
 
 
-async def test_second_sweep_makes_zero_embedding_calls(
-    sweep_sessions, fake_gateway
-) -> None:
+async def test_second_sweep_makes_zero_embedding_calls(sweep_sessions, fake_gateway) -> None:
     tenants: list[uuid.UUID] = []
     try:
         tenant_id = await _new_tenant(sweep_sessions, tenants)
@@ -216,8 +208,7 @@ async def test_second_sweep_makes_zero_embedding_calls(
 
         await sweep_unindexed_product_images()
         assert len(fake_gateway.calls) == calls_after_first, (
-            "already-indexed images must not be re-embedded by the "
-            "reconciliation sweep"
+            "already-indexed images must not be re-embedded by the reconciliation sweep"
         )
         assert await _embedding_count(sweep_sessions, tenant_id) == 1
     finally:
@@ -253,9 +244,7 @@ async def test_a_lost_embedding_row_is_reconciled(sweep_sessions, fake_gateway) 
         await _cleanup(sweep_sessions, tenants)
 
 
-async def test_one_tenant_failure_does_not_block_the_others(
-    sweep_sessions, fake_gateway
-) -> None:
+async def test_one_tenant_failure_does_not_block_the_others(sweep_sessions, fake_gateway) -> None:
     tenants: list[uuid.UUID] = []
     try:
         tenant_a = await _new_tenant(sweep_sessions, tenants)

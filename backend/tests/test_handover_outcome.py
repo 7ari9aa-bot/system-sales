@@ -229,9 +229,7 @@ async def test_resolving_records_who_when_and_with_what_result(db, tenant_ctx) -
     # from the table. (expire_all would force a synchronous refresh on the
     # next attribute touch — MissingGreenlet in an async session.)
     refreshed_status = (
-        await db.execute(
-            select(Conversation.status).where(Conversation.id == conversation.id)
-        )
+        await db.execute(select(Conversation.status).where(Conversation.id == conversation.id))
     ).scalar_one()
     assert refreshed_status == "open"
 
