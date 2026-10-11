@@ -36,12 +36,16 @@ def test_registry_registration_and_queries() -> None:
     cust_defn = AgentRegistry.get("customer")
     assert cust_defn.kind == "customer"
     assert "search_products" in cust_defn.allowed_tools
-    assert "create_order" in cust_defn.allowed_tools
+    # Review P0-2: the customer agent is REPLY-ONLY — commerce tools are not
+    # authorized for it at the registry, the only gate that matters.
+    assert "create_order" not in cust_defn.allowed_tools
+    assert "add_task" not in cust_defn.allowed_tools
+    assert "add_tag" not in cust_defn.allowed_tools
     assert cust_defn.guardrail_profile == "customer"
 
     # Authorization enforcement checks
     assert AgentRegistry.is_tool_authorized("customer", "search_products") is True
-    assert AgentRegistry.is_tool_authorized("customer", "create_order") is True
+    assert AgentRegistry.is_tool_authorized("customer", "create_order") is False
     # Customer agent must NEVER be authorized for sales intelligence tools
     assert AgentRegistry.is_tool_authorized("customer", "si_analyze_drivers") is False
     assert AgentRegistry.is_tool_authorized("customer", "unknown_tool_xyz") is False
@@ -128,10 +132,13 @@ async def test_runtime_tool_isolation_enforcement() -> None:
     loaded_names = [t.name for t in loaded]
     # Authorized tools must remain
     assert "search_products" in loaded_names
-    assert "create_order" in loaded_names
+    # Review P0-2: create_order is no longer authorized for the customer
+    # kind — the enforcement boundary strips it exactly like the injected
+    # sales-intelligence tool.
+    assert "create_order" not in loaded_names
     # Injected / unauthorized tool MUST be stripped by the enforcement boundary
     assert "si_analyze_drivers" not in loaded_names
-    assert len(loaded) == 2
+    assert len(loaded) == 1
 
 
 @pytest.mark.asyncio
@@ -573,7 +580,7 @@ def test_worker_process_discovers_registry() -> None:
             "from app.modules.ai.core.registry import AgentRegistry\n"
             "assert 'customer' in AgentRegistry.kinds(), 'customer missing in worker'\n"
             "assert 'sales_intelligence' in AgentRegistry.kinds(), 'sales_intelligence missing'\n"
-            "assert AgentRegistry.is_tool_authorized('customer', 'create_order')\n"
+            "assert not AgentRegistry.is_tool_authorized('customer', 'create_order')\n"
             "assert AgentRegistry.is_tool_authorized('sales_intelligence', 'si_get_metric')\n"
         ),
     ]

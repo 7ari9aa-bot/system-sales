@@ -8,16 +8,18 @@ from __future__ import annotations
 
 from app.modules.ai.core.registry import AgentCapability, AgentDefinition, AgentRegistry
 
+# REPLY-ONLY (review P0-2): the customer agent answers and looks things up —
+# it never mutates state. Orders, tasks and tags are handled by human staff
+# via handover; the commerce tools stay implemented in tools.py but are NOT
+# authorized for this kind (the runtime refuses them even if a stale row
+# flips back on, and the sync quarantine disables the rows).
 CUSTOMER_TOOLS = [
     "search_products",
     "get_variant_price",
     "check_stock",
-    "create_order",
     "get_customer",
     "get_order",
     "search_knowledge",
-    "add_task",
-    "add_tag",
     "find_product_by_image",
     "resolve_product_media",
 ]
@@ -38,13 +40,11 @@ _DEFINITION = AgentDefinition(
     kind="customer",
     name="Customer Service Agent",
     description=(
-        "Handles customer inquiries, catalog search, orders, tasks, "
-        "and vision-based product matching."
+        "Handles customer inquiries, catalog search, order status, and "
+        "vision-based product matching. Reply-only: orders and record "
+        "changes are handled by human staff."
     ),
     capabilities=[
-        AgentCapability(
-            name="create_order", description="Place an order for the customer", required=True
-        ),
         AgentCapability(
             name="get_customer", description="Read current customer profile", required=True
         ),
@@ -67,10 +67,6 @@ _DEFINITION = AgentDefinition(
             required=False,
         ),
         AgentCapability(
-            name="add_task", description="Create follow-up operational task", required=False
-        ),
-        AgentCapability(name="add_tag", description="Add tag to customer record", required=False),
-        AgentCapability(
             name="find_product_by_image", description="Match product from image", required=False
         ),
     ],
@@ -81,7 +77,6 @@ _DEFINITION = AgentDefinition(
     allowed_tools=CUSTOMER_TOOLS,
     task_types=[
         "customer_inquiry",
-        "order_placement",
         "product_search",
         "vision_match",
         "voice_turn",

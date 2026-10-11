@@ -421,7 +421,11 @@ async def _run_turn(db, tenant_ctx, customer, conversation, body: str) -> _FakeR
     return runner
 
 
-async def test_the_turn_binds_a_confirmed_quote_for_the_runner(db, tenant_ctx) -> None:
+async def test_the_turn_never_wires_quotes_for_the_runner(db, tenant_ctx) -> None:
+    """Review P0-2: the customer agent is REPLY-ONLY — the coordinator no
+    longer matches confirmation codes, binds quotes, or announces pending
+    ones. A customer typing a quote code gets a normal reply; the commerce
+    tools are not authorized for this kind at all."""
     tenant_id = tenant_ctx.tenant_id
     customer, conversation = await _participant(db, tenant_id)
     variant = await _variant(db, tenant_id)
@@ -429,36 +433,19 @@ async def test_the_turn_binds_a_confirmed_quote_for_the_runner(db, tenant_ctx) -
 
     runner = await _run_turn(db, tenant_ctx, customer, conversation, proposal["confirmation_code"])
 
-    quote = (await _quotes(db, tenant_id))[0]
-    assert runner.calls[0]["confirmed_quote_id"] == quote.id
-    assert "العميل أكّد الطلب" in runner.calls[0]["knowledge_context"]
+    assert "confirmed_quote_id" not in runner.calls[0]
+    assert "quote" not in (runner.calls[0]["knowledge_context"] or "").lower()
 
 
-async def test_the_turn_announces_a_pending_quote_without_binding_it(db, tenant_ctx) -> None:
-    tenant_id = tenant_ctx.tenant_id
-    customer, conversation = await _participant(db, tenant_id)
-    variant = await _variant(db, tenant_id)
-    await _propose(db, tenant_id, customer, conversation, variant)
+async def test_the_registry_authorizes_no_commerce_tools_for_customers() -> None:
+    """The definition-level half of the same decision: create_order,
+    add_task and add_tag are NOT in the customer agent's authorized set —
+    the runtime refuses them even if a stale enabled row survives in the
+    database."""
+    from app.modules.ai.agents.customer.definition import CUSTOMER_TOOLS
+    from app.modules.ai.core.registry import AgentRegistry
 
-    runner = await _run_turn(db, tenant_ctx, customer, conversation, "ممكن خصم شوية؟")
-
-    assert runner.calls[0]["confirmed_quote_id"] is None
-    context = runner.calls[0]["knowledge_context"]
-    assert "مستني تأكيد العميل" in context
-    assert (await _quotes(db, tenant_id))[0].code in context
-
-
-async def test_a_turn_without_a_customer_skips_confirmation(db, tenant_ctx) -> None:
-    runner = _FakeRunner()
-    await run_customer_turn(
-        db,
-        TurnInput(
-            tenant_id=tenant_ctx.tenant_id,
-            conversation_id=uuid.uuid4(),
-            agent_id=uuid.uuid4(),
-            body="عايز أشتري",
-        ),
-        runner=runner,
-    )
-    assert runner.calls[0]["confirmed_quote_id"] is None
-    assert "مستني تأكيد" not in (runner.calls[0]["knowledge_context"] or "")
+    definition = AgentRegistry.get("customer")
+    assert set(definition.allowed_tools) == set(CUSTOMER_TOOLS)
+    assert not {"create_order", "add_task", "add_tag"} & set(definition.allowed_tools)
+    assert not {"create_order", "add_task", "add_tag"} & set(definition.default_tools)
