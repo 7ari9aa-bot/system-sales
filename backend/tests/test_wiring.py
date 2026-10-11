@@ -441,9 +441,10 @@ def test_tool_risk_levels_and_requires_approval():
     # P1-10 phase-aware gate: only the execution call — the one with a bound
     # confirmed quote — parks for the merchant. A proposal (no binding) mints
     # a quote the customer must confirm first, so there is nothing to approve.
-    assert asyncio.run(
-        requires_approval(create_order, {"confirmed_quote_id": str(uuid.uuid4())})
-    ) is True
+    assert (
+        asyncio.run(requires_approval(create_order, {"confirmed_quote_id": str(uuid.uuid4())}))
+        is True
+    )
     assert asyncio.run(requires_approval(create_order)) is False
     assert asyncio.run(requires_approval(TOOLS["check_stock"])) is False
 

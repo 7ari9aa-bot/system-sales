@@ -68,9 +68,7 @@ def _fact_identity(fact: MetricFact) -> str:
     """
     window = f"{fact.period.start:%Y%m%d%H}-{fact.period.end:%Y%m%d%H}"
     filters = "|".join(f"{k}={v}" for k, v in sorted((fact.filters or {}).items()))
-    digest = hashlib.sha256(
-        f"{fact.metric}|{fact.unit}|{window}|{filters}".encode()
-    ).hexdigest()
+    digest = hashlib.sha256(f"{fact.metric}|{fact.unit}|{window}|{filters}".encode()).hexdigest()
     return f"{fact.metric}_{digest[:8]}"
 
 

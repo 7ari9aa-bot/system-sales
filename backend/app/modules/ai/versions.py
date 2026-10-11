@@ -26,9 +26,7 @@ from app.core.errors import NotFoundError
 from app.modules.ai.models import Agent, AgentVersion
 
 
-def filter_agent_tools_by_policy(
-    tools: list, policy: dict | None
-) -> list:
+def filter_agent_tools_by_policy(tools: list, policy: dict | None) -> list:
     """Narrow ``tools`` (AgentTool rows) by a version/agent tool policy.
 
     Malformed policies fail OPEN (treated as empty) — a typo in a publish
@@ -47,9 +45,7 @@ def filter_agent_tools_by_policy(
     if not deny_set and allow_set is None:
         return tools
     return [
-        t
-        for t in tools
-        if t.name not in deny_set and (allow_set is None or t.name in allow_set)
+        t for t in tools if t.name not in deny_set and (allow_set is None or t.name in allow_set)
     ]
 
 
@@ -99,12 +95,15 @@ class AIAgentVersionService:
         # JSONB columns normalize before comparing: an agent row whose
         # run_limits server default has not been flushed back into memory
         # (None in-process, {} in the database) must not read as "changed".
-        identical = published is not None and all(
-            getattr(published, field) == getattr(agent, field)
-            for field in ("system_prompt", "model", "temperature", "max_output_tokens")
-        ) and dict(published.run_limits or {}) == dict(agent.run_limits or {}) and dict(
-            published.tool_policy or {}
-        ) == dict(tool_policy or {})
+        identical = (
+            published is not None
+            and all(
+                getattr(published, field) == getattr(agent, field)
+                for field in ("system_prompt", "model", "temperature", "max_output_tokens")
+            )
+            and dict(published.run_limits or {}) == dict(agent.run_limits or {})
+            and dict(published.tool_policy or {}) == dict(tool_policy or {})
+        )
         if identical:
             return published
 

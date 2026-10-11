@@ -115,7 +115,10 @@ async def _sync_agent_tools(
 
     Reconciliation rules:
     - Missing required/default tools -> created with is_active=True.
-    - Previously disabled default tools -> reactivated.
+    - Existing tools with is_active=False -> LEFT AS THEY ARE. A disabled row
+      is a decision (the merchant turned it off, or the quarantine bit while
+      it was unauthorized); reconciliation must never silently override it —
+      re-enabling belongs to the merchant's settings surface (12.5).
     - Unauthorized tools in DB -> quarantined/disabled (is_active=False)
       without deleting historical records so run audit remains intact.
     """
@@ -159,8 +162,9 @@ async def _sync_agent_tools(
             )
             added += 1
         elif not tool.is_active:
-            tool.is_active = True
-            added += 1
+            # 12.5: an existing disabled row is an explicit decision — never
+            # reactivated by reconciliation (see the rules docstring).
+            continue
 
     # 2. Quarantine/disable any unauthorized tools in DB
     for tool in existing_tools:

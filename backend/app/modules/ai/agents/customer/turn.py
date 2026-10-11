@@ -310,8 +310,7 @@ async def run_customer_turn(
         if matched is not None:
             confirmed_quote_id = matched.id
             quote_line = (
-                f"العميل أكّد الطلب (كود: {matched.code}) — "
-                "نادي create_order لتنفيذ البنود المؤكدة."
+                f"العميل أكّد الطلب (كود: {matched.code}) — نادي create_order لتنفيذ البنود المؤكدة."
             )
         else:
             live = await live_quote(
@@ -330,8 +329,7 @@ async def run_customer_turn(
     # lines (state, referents, vision) follow — both stay OUTSIDE the system
     # prompt (§132 untrusted zone).
     merged_context = (
-        "\n".join(part for part in (params.knowledge_context, context, quote_line) if part)
-        or None
+        "\n".join(part for part in (params.knowledge_context, context, quote_line) if part) or None
     )
 
     result: AgentRunResult = await _runner.run(

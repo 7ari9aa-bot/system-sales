@@ -68,9 +68,7 @@ async def test_only_high_risk_tools_require_approval() -> None:
     # the binding it executes a confirmed order and parks for the merchant.
     assert await requires_approval(get_tool("create_order"), {}) is False
     assert (
-        await requires_approval(
-            get_tool("create_order"), {"confirmed_quote_id": str(uuid.uuid4())}
-        )
+        await requires_approval(get_tool("create_order"), {"confirmed_quote_id": str(uuid.uuid4())})
         is True
     )
     for name in NEW_TOOLS:

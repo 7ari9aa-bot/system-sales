@@ -78,9 +78,7 @@ class TestPublish:
         assert version.published_by == tenant_ctx.user.id
         assert version.published_at is not None
 
-    async def test_republishing_identical_config_returns_the_same_row(
-        self, db, tenant_ctx
-    ) -> None:
+    async def test_republishing_identical_config_returns_the_same_row(self, db, tenant_ctx) -> None:
         agent = _agent(tenant_ctx.tenant_id)
         db.add(agent)
         await db.flush()
@@ -134,18 +132,14 @@ class TestPublishedImmutability:
     async def test_archive_flip_is_the_one_allowed_transition(self, db, tenant_ctx) -> None:
         version = await self._published(db, tenant_ctx.tenant_id)
         await db.execute(
-            sa.update(AgentVersion)
-            .where(AgentVersion.id == version.id)
-            .values(status="archived")
+            sa.update(AgentVersion).where(AgentVersion.id == version.id).values(status="archived")
         )
 
     async def test_draft_rows_stay_editable(self, db, tenant_ctx) -> None:
         agent = _agent(tenant_ctx.tenant_id)
         db.add(agent)
         await db.flush()
-        draft = AgentVersion(
-            tenant_id=tenant_ctx.tenant_id, agent_id=agent.id, status="draft"
-        )
+        draft = AgentVersion(tenant_id=tenant_ctx.tenant_id, agent_id=agent.id, status="draft")
         db.add(draft)
         await db.flush()
         draft.system_prompt = "still drafting"

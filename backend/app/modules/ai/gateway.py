@@ -88,6 +88,7 @@ def _tenant_budget_lock_id(tenant_id: UUID) -> int:
     """Deterministic 63-bit advisory-lock key for a tenant's budget."""
     return int.from_bytes(tenant_id.bytes[:8], byteorder="big", signed=False) & 0x7FFFFFFFFFFFFFFF
 
+
 # §43: PII redaction patterns. Applied to message content before sending to
 # an external AI provider when the tenant's AIProviderPolicy has
 # pii_redaction_required=True. The redactor is deliberately conservative — it
@@ -973,9 +974,7 @@ class AIGateway:
                 contents = [
                     MultimodalContent(
                         text=(
-                            _redact_pii([{"role": "user", "content": c.text}])[0][
-                                "content"
-                            ]
+                            _redact_pii([{"role": "user", "content": c.text}])[0]["content"]
                             if c.text is not None
                             else None
                         ),

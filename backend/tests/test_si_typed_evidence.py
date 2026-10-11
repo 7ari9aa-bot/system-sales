@@ -112,12 +112,8 @@ def test_id_is_stable_per_measurement_and_changes_with_the_window() -> None:
 def test_filters_make_a_bucket_its_own_fact() -> None:
     store = EvidenceStore()
     period = _period()
-    web = store.add_fact(
-        _fact("orders_placed", "20", period, filters={"channel": "web"})
-    )
-    whatsapp = store.add_fact(
-        _fact("orders_placed", "14", period, filters={"channel": "whatsapp"})
-    )
+    web = store.add_fact(_fact("orders_placed", "20", period, filters={"channel": "web"}))
+    whatsapp = store.add_fact(_fact("orders_placed", "14", period, filters={"channel": "whatsapp"}))
     assert web != whatsapp
     assert store.facts[web].filters == {"channel": "web"}
 
@@ -126,9 +122,7 @@ def test_ids_fit_the_placeholder_charset() -> None:
     """`{{fact_id:format}}` parses [A-Za-z0-9_] — a colon or hyphen in an id
     would make the fact unquotable, which is worse than having no id."""
     store = EvidenceStore()
-    fid = store.add_fact(
-        _fact("delivered_revenue", "5", _period(), filters={"channel": "web"})
-    )
+    fid = store.add_fact(_fact("delivered_revenue", "5", _period(), filters={"channel": "web"}))
     assert _PLACEHOLDER_ID_RE.fullmatch(fid), fid
 
 
@@ -193,12 +187,8 @@ def test_negative_refund_buckets_still_validate() -> None:
     refund split by channel is legitimately negative."""
     store = EvidenceStore()
     period = _period()
-    store.add_fact(
-        _fact("refund_amount_by_channel", "-50.00", period, filters={"channel": "web"})
-    )
-    problems = validate_pack_inputs(
-        store, tenant_id=uuid.uuid4(), timezone="UTC", currency="EGP"
-    )
+    store.add_fact(_fact("refund_amount_by_channel", "-50.00", period, filters={"channel": "web"}))
+    problems = validate_pack_inputs(store, tenant_id=uuid.uuid4(), timezone="UTC", currency="EGP")
     assert problems == []
     with pytest.raises(ValueError):
         build_pack(
@@ -259,9 +249,7 @@ async def _seed_store(db: AsyncSession, tenant_id: uuid.UUID) -> list[uuid.UUID]
     return ids
 
 
-async def test_si_breakdown_produces_typed_evidence_for_every_bucket(
-    db, tenant_ctx
-) -> None:
+async def test_si_breakdown_produces_typed_evidence_for_every_bucket(db, tenant_ctx) -> None:
     """Before P1-12 this call raised AttributeError (`store.dimensions` did not
     exist) and the buckets existed only as summary text."""
     tenant_id = tenant_ctx.tenant_id
@@ -284,9 +272,7 @@ async def test_si_breakdown_produces_typed_evidence_for_every_bucket(
     assert any(f["metric"].endswith("_sample_by_channel") for f in facts)
 
 
-async def test_si_customers_and_fulfillment_and_seasonality_emit_facts(
-    db, tenant_ctx
-) -> None:
+async def test_si_customers_and_fulfillment_and_seasonality_emit_facts(db, tenant_ctx) -> None:
     tenant_id = tenant_ctx.tenant_id
     await _seed_store(db, tenant_id)
 
@@ -311,9 +297,7 @@ async def test_si_customers_and_fulfillment_and_seasonality_emit_facts(
         }
 
 
-async def test_merged_facts_keep_their_filters_through_the_pack(
-    db, tenant_ctx
-) -> None:
+async def test_merged_facts_keep_their_filters_through_the_pack(db, tenant_ctx) -> None:
     """The pack is rebuilt from tool payloads; a fact that loses its filters
     stops saying which bucket it measured."""
     tenant_id = tenant_ctx.tenant_id
@@ -399,8 +383,6 @@ def test_the_pack_is_validated_in_the_window_its_facts_were_measured_in() -> Non
     with pytest.raises(ValueError, match="timezone"):
         build_pack(store, context, question="إيه حصل؟", timezone="UTC")
 
-    pack = build_pack(
-        store, context, question="إيه حصل؟", timezone="Africa/Cairo", currency="EGP"
-    )
+    pack = build_pack(store, context, question="إيه حصل؟", timezone="Africa/Cairo", currency="EGP")
     assert pack.facts[0].id == fact_id
     assert pack.content_hash

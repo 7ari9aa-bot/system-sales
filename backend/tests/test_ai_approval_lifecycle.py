@@ -84,11 +84,7 @@ async def _parked(db, tenant_id, *, ttl_minutes: int = 60):
 
 async def _handovers(db, tenant_id) -> list[AIHandover]:
     return list(
-        (
-            await db.execute(
-                select(AIHandover).where(AIHandover.tenant_id == tenant_id)
-            )
-        )
+        (await db.execute(select(AIHandover).where(AIHandover.tenant_id == tenant_id)))
         .scalars()
         .all()
     )
@@ -264,13 +260,17 @@ async def test_expire_stale_is_bounded_per_call(db, tenant_ctx):
     assert len(await _handovers(db, tenant_ctx.tenant_id)) == 2
 
     remaining = (
-        await db.execute(
-            select(ApprovalRequest).where(
-                ApprovalRequest.tenant_id == tenant_ctx.tenant_id,
-                ApprovalRequest.status == "PENDING",
+        (
+            await db.execute(
+                select(ApprovalRequest).where(
+                    ApprovalRequest.tenant_id == tenant_ctx.tenant_id,
+                    ApprovalRequest.status == "PENDING",
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(remaining) == 1
 
     assert await ApprovalService.expire_stale(db, tenant_ctx.tenant_id) == 1

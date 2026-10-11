@@ -248,14 +248,10 @@ def _facts_to_contracts(
     for payload in payloads:
         fact_tz = payload.get("timezone") or timezone
         data_as_of = (
-            datetime.fromisoformat(payload["data_as_of"])
-            if payload.get("data_as_of")
-            else now
+            datetime.fromisoformat(payload["data_as_of"]) if payload.get("data_as_of") else now
         )
         computed_at = (
-            datetime.fromisoformat(payload["computed_at"])
-            if payload.get("computed_at")
-            else now
+            datetime.fromisoformat(payload["computed_at"]) if payload.get("computed_at") else now
         )
 
         period = AnalysisPeriod(

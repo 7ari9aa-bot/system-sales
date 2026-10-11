@@ -12,6 +12,7 @@ never surface a draft or archived product.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import TYPE_CHECKING
 
@@ -25,6 +26,8 @@ from app.modules.ai.agents.customer.vision.retrieval import MODEL_VERSION
 from app.modules.ai.models import ProductEmbedding
 from app.modules.ai.providers import MultimodalContent
 from app.modules.ai.tools import sellable_product_statuses
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from app.modules.ai.providers import MultimodalEmbeddingProvider
@@ -45,6 +48,32 @@ _IMAGES_SQL = sa.text(
     """
 )
 
+# Reconciliation variant: ONLY images lacking an embedding for the CURRENT
+# model+version. A model change empties the matching set (new model_version
+# matches nothing) and the sweep re-indexes the whole catalog by itself —
+# the same lever a manual full re-index used to pull.
+_IMAGES_MISSING_SQL = sa.text(
+    """
+    SELECT pi.id    AS image_id,
+           pi.url   AS url,
+           pi.alt   AS alt,
+           pi.product_id AS product_id
+    FROM product_images pi
+    JOIN products p ON p.id = pi.product_id
+    WHERE pi.tenant_id = :tenant_id
+      AND p.status = ANY(:sellable)
+      AND pi.url IS NOT NULL
+      AND pi.url <> ''
+      AND NOT EXISTS (
+          SELECT 1 FROM product_embeddings pe
+          WHERE pe.product_image_id = pi.id
+            AND pe.model = :model
+            AND pe.model_version = :model_version
+      )
+    ORDER BY pi.id
+    """
+)
+
 
 async def index_product_images(
     session: AsyncSession,
@@ -52,6 +81,7 @@ async def index_product_images(
     *,
     batch_size: int = 16,
     model_version: str = MODEL_VERSION,
+    only_missing: bool = False,
     _provider: MultimodalEmbeddingProvider | None = None,
     _client=None,
 ) -> dict:
@@ -66,9 +96,12 @@ async def index_product_images(
     settings = get_settings()
     statuses = sorted(sellable_product_statuses())
 
-    rows = (
-        await session.execute(_IMAGES_SQL, {"tenant_id": str(tenant_id), "sellable": statuses})
-    ).all()
+    params: dict = {"tenant_id": str(tenant_id), "sellable": statuses}
+    if only_missing:
+        params.update(model=settings.ai_embedding_vision_model, model_version=model_version)
+        rows = (await session.execute(_IMAGES_MISSING_SQL, params)).all()
+    else:
+        rows = (await session.execute(_IMAGES_SQL, params)).all()
 
     indexed = 0
     for start in range(0, len(rows), batch_size):
@@ -121,3 +154,86 @@ async def index_product_images(
         "indexed": indexed,
         "batches": (len(rows) + batch_size - 1) // batch_size,
     }
+
+
+async def sweep_unindexed_product_images(*, batch_size: int = 16) -> int:
+    """6.3's operational half: keep the catalog's embeddings current FOREVER.
+
+    ``index_product_images`` existed only as a manual CLI, so production sat
+    at images=1 / embeddings=0 — the vision feature silently matched nothing.
+    This sweep enumerates every tenant holding sellable product images that
+    lack an embedding for the CURRENT model, indexes them through the
+    governed gateway (budget, egress, breaker, record), and commits per
+    tenant so one tenant's provider failure cannot roll the others back.
+
+    Idempotent by construction: the ``only_missing`` selection plus the
+    UNIQUE (image, model, version) upsert mean the hourly run is the initial
+    backfill, the reconciliation for failed batches, and the model-change
+    re-index — the same lever a manual full re-index used to pull.
+    """
+    import logging
+
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from app.core.db import SessionLocal, bind_tenant
+
+    logger = logging.getLogger(__name__)
+    settings = get_settings()
+    statuses = sorted(sellable_product_statuses())
+    indexed_total = 0
+
+    # The enumeration is CROSS-TENANT by definition, and product_images is a
+    # tenant-scoped RLS table: an unbound app-role session sees zero rows.
+    # Catalog enumeration therefore rides the ADMIN connection (the same role
+    # the migration itself runs under); per-tenant indexing stays on the app
+    # role with the GUC bound.
+    admin_engine = create_async_engine(settings.database_url_admin)
+    try:
+        async with admin_engine.connect() as conn:
+            tenant_ids = (
+                (
+                    await conn.execute(
+                        sa.text(
+                            """
+                        SELECT DISTINCT pi.tenant_id
+                        FROM product_images pi
+                        JOIN products p ON p.id = pi.product_id
+                        WHERE p.status = ANY(:sellable)
+                          AND pi.url IS NOT NULL
+                          AND pi.url <> ''
+                          AND NOT EXISTS (
+                              SELECT 1 FROM product_embeddings pe
+                              WHERE pe.product_image_id = pi.id
+                                AND pe.model = :model
+                                AND pe.model_version = :model_version
+                          )
+                        """
+                        ),
+                        {
+                            "sellable": statuses,
+                            "model": settings.ai_embedding_vision_model,
+                            "model_version": MODEL_VERSION,
+                        },
+                    )
+                )
+                .scalars()
+                .all()
+            )
+    finally:
+        await admin_engine.dispose()
+
+    for tenant_id in tenant_ids:
+        try:
+            async with SessionLocal() as session:
+                await bind_tenant(session, tenant_id)
+                stats = await index_product_images(
+                    session,
+                    tenant_id,
+                    batch_size=batch_size,
+                    only_missing=True,
+                )
+                await session.commit()
+                indexed_total += stats["indexed"]
+        except Exception:  # noqa: BLE001 — one tenant's provider must not stop the rest
+            logger.warning("vision.indexing_sweep_failed tenant=%s", tenant_id, exc_info=True)
+    return indexed_total
