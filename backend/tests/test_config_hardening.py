@@ -400,3 +400,38 @@ def test_an_ops_script_without_an_environment_says_what_to_set() -> None:
     assert "Traceback (most recent call last)" not in result.stdout + result.stderr, (
         "an operator must get instructions, not a stack trace"
     )
+
+
+# ------------------------------- ADR-062: the media scanner is optional ----
+
+
+def test_an_unconfigured_media_scanner_boots_but_logs_loudly(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """ADR-062 (amended): no clamd configured must NOT refuse boot — but the
+    state is a LOUD one, because every customer image stays unscanned and the
+    vision gate refuses all of them. The operator has to be told why vision
+    is dead (fail-closed, not fail-silent)."""
+    with caplog.at_level(logging.WARNING, logger="app.core.config"):
+        settings = _build("production")
+    assert settings.media_scanner_configured is False
+    assert any("media_scanner_not_configured" in record.message for record in caplog.records)
+
+
+def test_a_configured_media_scanner_is_not_logged_as_missing(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level(logging.WARNING, logger="app.core.config"):
+        settings = _build(
+            "production", media_scanner_host="clamd.internal", media_scanner_port=3310
+        )
+    assert settings.media_scanner_configured is True
+    assert not [r for r in caplog.records if "media_scanner_not_configured" in r.message]
+
+
+def test_a_portless_media_scanner_host_is_not_configured() -> None:
+    """A half-typed config (host, no port) must count as unconfigured."""
+    assert (
+        _build("production", media_scanner_host="clamd.internal").media_scanner_configured is False
+    )
+    assert _build("local", media_scanner_port=3310).media_scanner_configured is False

@@ -82,6 +82,30 @@ class TestPolicyPresence:
                 f"{table} policy write path ignores the tenant GUC"
             )
 
+    async def test_immutability_function_search_path_is_pinned(self, db):
+        """fe2026100818: Supabase's function_search_path_mutable lint.
+
+        The immutability trigger function shipped relying on the session's
+        search_path; a hostile `SET search_path` before an UPDATE on
+        agent_versions could have redirected the names it resolves. The pin
+        makes the setting immutable per call. (The body touches no relations —
+        only TG_OP/OLD/NEW — so the pin is purely defensive hardening.)
+        """
+        proconfig = (
+            await db.execute(
+                sa.text(
+                    "SELECT proconfig FROM pg_proc "
+                    "WHERE proname = 'agent_versions_published_immutability' "
+                    "AND pronamespace = 'public'::regnamespace"
+                )
+            )
+        ).scalar_one_or_none()
+        assert proconfig is not None, "immutability trigger function is missing"
+        assert "search_path=public" in list(proconfig), (
+            "agent_versions_published_immutability search_path is not pinned "
+            f"(proconfig={proconfig!r})"
+        )
+
 
 class TestTenantIsolation:
     async def test_other_tenant_rows_are_invisible(self, db, tenant_ctx):

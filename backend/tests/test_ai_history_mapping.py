@@ -270,7 +270,7 @@ async def _conversation_with_image(db, tenant_ctx, *, scan_status: str):
             mime_type="image/jpeg",
             storage_key=f"media/{scan_status}-{uuid.uuid4().hex[:8]}.jpg",
             scan_status=scan_status,
-            processing_status="pending" if scan_status == "stored" else "failed",
+            processing_status="failed" if scan_status == "failed" else "pending",
         )
     )
     await db.flush()
@@ -278,14 +278,14 @@ async def _conversation_with_image(db, tenant_ctx, *, scan_status: str):
 
 
 async def test_a_failed_scan_attachment_never_rides_the_turn(db, tenant_ctx) -> None:
-    """DB-backed (CI only): the storage key outlives a failed scan.
+    """DB-backed (CI only): a failed scan is refused by the runtime too.
 
     ``MediaService`` writes ``storage_key`` before it knows whether the object
     is durable, and a non-durable store then marks the row
-    ``scan_status="failed"`` (``media.py:285,312``). ``MediaService`` itself
-    refuses such a row (``scan_status != "failed"``, ``media.py:236``) — the
-    runtime has to agree, or it mints a signed URL for an object that was never
-    safely stored and hands it to an external provider.
+    ``scan_status="failed"``. The runtime has to refuse such a row — and, per
+    ADR-062 (amended), every other non-``scanned`` state as well — or it mints
+    a signed URL for bytes no scanner ever cleared and hands them to an
+    external provider.
     """
     conversation = await _conversation_with_image(db, tenant_ctx, scan_status="failed")
 
@@ -296,9 +296,9 @@ async def test_a_failed_scan_attachment_never_rides_the_turn(db, tenant_ctx) -> 
     assert image_key is None
 
 
-async def test_a_stored_attachment_still_rides_the_turn(db, tenant_ctx) -> None:
-    """The gate above must not become "no image ever reaches the model"."""
-    conversation = await _conversation_with_image(db, tenant_ctx, scan_status="stored")
+async def test_a_scanned_attachment_still_rides_the_turn(db, tenant_ctx) -> None:
+    """The strict gate must not become "no image ever reaches the model"."""
+    conversation = await _conversation_with_image(db, tenant_ctx, scan_status="scanned")
 
     _turns, image_key = await AgentRunner._conversation_context(
         db, tenant_ctx.tenant_id, conversation.id

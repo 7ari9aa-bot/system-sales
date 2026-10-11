@@ -445,12 +445,18 @@ class AgentRunner:
         """
         from app.modules.ai.models import AgentVersion, Deployment
 
+        # `fully_rollout` is a LIVE deployment, not a dead one: it is the state
+        # the evaluation service writes when a canary reached 100% and its
+        # candidate was promoted to stable. Excluding it used to send every
+        # post-canary run back to the mutable settings fallback — the exact
+        # un-pinned execution the version platform exists to prevent. Only
+        # `rolled_back` (traffic deliberately withdrawn) falls through.
         deployment = (
             await session.execute(
                 select(Deployment).where(
                     Deployment.tenant_id == tenant_id,
                     Deployment.agent_id == agent.id,
-                    Deployment.status == "active",
+                    Deployment.status.in_(("active", "fully_rollout")),
                 )
             )
         ).scalar_one_or_none()
@@ -1078,13 +1084,15 @@ class AgentRunner:
                         _conversations_models.Attachment.message_id == message.id,
                         _conversations_models.Attachment.mime_type.like("image/%"),
                         _conversations_models.Attachment.storage_key.is_not(None),
-                        # A failed scan leaves the storage key behind (media.py
-                        # writes it before it knows the object is durable), and
-                        # MediaService itself refuses such a row. Sending it
-                        # anyway would sign a URL for an object that was never
-                        # safely stored and hand it to an external provider.
-                        _conversations_models.Attachment.scan_status.in_(["stored", "scanned"]),
-                        _conversations_models.Attachment.processing_status != "failed",
+                        # ADR-062 (amended): ONLY a scanned image egresses.
+                        # media.py advances the row to "scanned" on a clean
+                        # ClamAV verdict; "pending" (no scanner configured, or
+                        # a scanner outage — retryable), "quarantined"
+                        # (infected) and "failed" (fetch/store error) ALL
+                        # refuse here, so the turn proceeds without vision
+                        # instead of signing a URL for unscanned bytes and
+                        # handing them to an external provider.
+                        _conversations_models.Attachment.scan_status == "scanned",
                     )
                     .order_by(_conversations_models.Attachment.created_at.desc())
                     .limit(1)

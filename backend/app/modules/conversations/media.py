@@ -23,19 +23,42 @@ failure never rolls back the message. When a media worker lands, the call
 should move there; the pipeline below is already a standalone, idempotent
 method so that move is a one-line change.
 
-What this deliberately does NOT do (§35 + the scanner, both deferred)
---------------------------------------------------------------------
-* No AV / content scanning — a successful capture is left at
-  `scan_status="stored"`, never "scanned", for a scanner that does not exist
-  yet.
-* No transcoding or thumbnailing — `processing_status` stays "pending".
-* No speech-to-text — `transcription_status` stays NULL.
+What this deliberately does NOT do (§35: transcoding, STT)
+----------------------------------------------------------
+* No transcoding or thumbnailing — ``processing_status`` stays "pending"
+  after a durable store, and NOTHING advances it today (the transcoder of
+  §33-34 does not exist). ADR-062 records the consequence: the vision gate
+  cannot demand ``processing_status="processed"`` without killing the
+  feature, so it enforces the scan half only. That gap is documented, not
+  faked.
+* No speech-to-text — ``transcription_status`` stays NULL until a durable
+  audio object queues it below.
 
-The gap this leaves: we trust the provider's declared Content-Type. There is
-no magic-byte / MIME sniffing, so a file labelled `image/png` is stored and
-later served as `image/png` even if its bytes are something else. Content-type
-and size screening below is defence against obviously-hostile *inputs*, not a
-substitute for the scanner.
+What it DOES do now (ADR-062, amended): the scan
+------------------------------------------------
+Images are scanned for malware by a ClamAV clamd daemon (see
+``app.core.media_scanner``) BEFORE the row can ever be admitted to vision
+egress, straight on the in-memory bytes at ingest — the same "capture it
+while the URL is alive" moment that stores them:
+
+* scanner clean      → ``scan_status="scanned"``  (the ONLY egress-admissible value)
+* scanner infected   → ``scan_status="quarantined"`` (logged with the signature)
+* scanner unconfigured → the row stays ``scan_status="pending"`` — fail-CLOSED:
+  the runtime gate refuses every non-``scanned`` image, so vision egress is
+  disabled, loudly, until an operator configures a scanner (the settings
+  validator logs this once at startup; ingest logs each skip here).
+* scanner error      → the row also stays ``pending`` — a scanner outage is
+  "not yet scanned" (retryable), never a false "scanned".
+
+Non-image media keeps the durable ``stored`` mark: no egress gate exists for
+audio/video/documents on this path, so scanning them is out of this wave's
+scope and is recorded here rather than silently skipped.
+
+The gap this leaves elsewhere: we trust the provider's declared Content-Type.
+There is no magic-byte / MIME sniffing, so a file labelled `image/png` is
+stored and later served as `image/png` even if its bytes are something else.
+Content-type and size screening below is defence against obviously-hostile
+*inputs*, not a substitute for the scanner (which now sees the real bytes).
 
 Failure policy
 --------------
@@ -56,7 +79,10 @@ from typing import Protocol
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import media_scanner
+from app.core.config import get_settings
 from app.core.errors import NotFoundError, ValidationError
+from app.core.media_scanner import MediaScannerError
 from app.core.storage import (
     MAX_MEDIA_BYTES,
     FetchedMedia,
@@ -205,9 +231,16 @@ class MediaService:
         """Persist `media_url` and link the resulting Attachment to `message`.
 
         Idempotent for at-least-once redelivery: an Attachment that already
-        succeeded is returned untouched and the provider is not fetched again.
-        A previously FAILED attachment is retried, because a transient fetch
-        error must be recoverable.
+        reached a terminal pipeline state (``scanned``, ``quarantined``, the
+        legacy ``stored``) is returned untouched and the provider is not
+        fetched again. Two states RETRY, because their causes are transient:
+
+        * ``failed`` — a fetch/store error is recoverable on a healthy pass;
+        * ``pending`` WITH a scanner configured — the scan never produced a
+          verdict (scanner down at the original ingest), so a re-entry retries
+          fetch + scan together. With NO scanner configured a pending row is
+          NOT retried: nothing would change, and the provider URL is not
+          worth burning.
 
         Failure policy — media is a bonus, the message is not. A policy
         refusal, a provider fetch error, or ANY unexpected error out of the
@@ -215,7 +248,9 @@ class MediaService:
         dependency, a socket error) is contained here: the Attachment is
         recorded `scan_status="failed"` and the error is logged with a
         traceback. Nothing in this method lets a media failure propagate to
-        `add_message` and roll back the customer's message.
+        `add_message` and roll back the customer's message. A scanner failure
+        is contained the same way but leaves the row `pending` — see
+        `_scan_image`.
         """
         if not media_url:
             return None
@@ -233,8 +268,12 @@ class MediaService:
             )
         ).scalar_one_or_none()
 
-        if attachment is not None and attachment.scan_status != "failed":
-            return attachment
+        if attachment is not None:
+            retryable = attachment.scan_status == "failed" or (
+                attachment.scan_status == "pending" and get_settings().media_scanner_configured
+            )
+            if not retryable:
+                return attachment
 
         if attachment is None:
             attachment = Attachment(
@@ -245,6 +284,10 @@ class MediaService:
                 location_id=message.location_id,
             )
             session.add(attachment)
+            # Flush NOW so the row owns its UUID before the scan below logs
+            # (and so a quarantined attachment is triage-able by id from its
+            # first log line). Same transaction — no durability change.
+            await session.flush()
 
         # The provider URL is recorded regardless of outcome: it is the only
         # evidence of what the customer actually sent.
@@ -289,15 +332,22 @@ class MediaService:
         attachment.size = len(fetched.data)
         attachment.checksum = stored.checksum
         if stored.durable:
-            # §33-34: the bytes are durable. The deferred scanner moves this to
-            # "scanned"; the deferred transcoder moves processing to "ready".
-            attachment.scan_status = "stored"
+            # §33-34: the bytes are durable. Processing stays "pending" — no
+            # transcoder exists (see the module docstring's ADR-062 gap).
             attachment.processing_status = "pending"
-            if mime.startswith("audio/"):
-                # §35: a durable audio object IS a transcription job. This is the
-                # only thing that ever queues one — VoiceService has no other
-                # trigger, and without this a voice note is never transcribed.
-                attachment.transcription_status = "pending"
+            if mime.startswith("image/"):
+                # ADR-062: the scan that gates vision egress runs HERE, on the
+                # in-memory bytes, before the turn can ever see the row.
+                await MediaService._scan_image(attachment, fetched.data)
+            else:
+                # Non-image media has no egress gate on this path; it keeps
+                # the durable mark the deferred worker used to leave.
+                attachment.scan_status = "stored"
+                if mime.startswith("audio/"):
+                    # §35: a durable audio object IS a transcription job. This is the
+                    # only thing that ever queues one — VoiceService has no other
+                    # trigger, and without this a voice note is never transcribed.
+                    attachment.transcription_status = "pending"
         else:
             # S3 is not configured, so the object was NOT persisted durably and
             # only the expiring provider URL remains. That contradicts §33-34
@@ -313,6 +363,59 @@ class MediaService:
             attachment.processing_status = "failed"
         await session.flush()
         return attachment
+
+    @staticmethod
+    async def _scan_image(attachment: Attachment, data: bytes) -> None:
+        """ADR-062: the malware scan that gates customer-image egress.
+
+        The verdict vocabulary is the one ADR-062 (as amended) pins:
+
+        * clean        → ``scanned``      — the ONLY value the runtime gate admits;
+        * infected     → ``quarantined``  — logged with the ClamAV signature;
+        * no scanner   → stays ``pending`` — fail-closed (boot is never refused
+          for this; the settings validator logs the disabled-egress state);
+        * scanner error → stays ``pending`` — "not yet scanned" is the honest
+          state for an outage, and the gate refuses pending rows, so an
+          unreachable clamd can never widen egress.
+
+        The row is (re)set to ``pending`` first so a retried ``failed`` row
+        can never inherit its old failure state past this point, and so a
+        scanner error below lands on a clean retryable state.
+        """
+        settings = get_settings()
+        attachment.scan_status = "pending"
+        if not settings.media_scanner_configured:
+            logger.info(
+                "media.scan_skipped attachment=%s — no media scanner configured: "
+                "the image stays pending and the vision gate refuses it (ADR-062 "
+                "fail-closed)",
+                attachment.id,
+            )
+            return
+        try:
+            result = await media_scanner.scan(
+                data,
+                host=settings.media_scanner_host.strip(),
+                port=settings.media_scanner_port,
+            )
+        except MediaScannerError as exc:
+            logger.warning(
+                "media.scan_unavailable attachment=%s — scan_status stays pending "
+                "(retryable; the vision gate refuses pending rows): %s",
+                attachment.id,
+                exc,
+            )
+            return
+        if result.status == "infected":
+            attachment.scan_status = "quarantined"
+            logger.error(
+                "media.quarantined attachment=%s signature=%s — the object stays "
+                "in storage and vision egress refuses it",
+                attachment.id,
+                result.signature,
+            )
+            return
+        attachment.scan_status = "scanned"
 
     @staticmethod
     async def _mark_failed(

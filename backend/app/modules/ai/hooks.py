@@ -173,7 +173,23 @@ async def _do_auto_reply(
             attachments.append((mime, att.storage_key))
             if mime.startswith("image/"):
                 has_image = True
-                image_urls[att.storage_key] = get_storage().public_url(att.storage_key)
+                # ADR-062 (amended): the URL minted here is exactly what the
+                # coordinator's vision pass sends to the external provider, so
+                # it exists ONLY for a scanned attachment — the same gate the
+                # runtime applies to its own media selection. A pending row
+                # (no scanner configured, or a scanner outage), a quarantined
+                # one, or a failed one gets NO URL: the coordinator counts the
+                # photo as skipped and the turn answers without vision.
+                if att.scan_status == "scanned":
+                    image_urls[att.storage_key] = get_storage().public_url(att.storage_key)
+                else:
+                    logger.info(
+                        "ai.image_refused_unscanned conversation=%s message=%s "
+                        "scan_status=%s — no provider URL minted (ADR-062)",
+                        conversation_id,
+                        last_inbound.id,
+                        att.scan_status,
+                    )
             elif mime.startswith("audio/"):
                 has_voice = True
         if att.transcription_status == "completed" and att.transcript_text:
@@ -182,9 +198,10 @@ async def _do_auto_reply(
     body = last_inbound.body.strip() if last_inbound.body and last_inbound.body.strip() else None
     # A placeholder survives only where the coordinator has no vocabulary: an
     # image whose bytes were never captured durably has no key to mint a URL
-    # from, so build_turn would see nothing at all — say so in words instead.
-    # Voice stays unplaceholdered: the coordinator surfaces an untranscribed
-    # note as state ("we could not hear them yet"), never hides it.
+    # from — and since ADR-062 an image whose scan never came back clean gets
+    # no URL minted either — so build_turn would see nothing at all; say so in
+    # words instead. Voice stays unplaceholdered: the coordinator surfaces an
+    # untranscribed note as state ("we could not hear them yet"), never hides it.
     if body is None and has_image and not image_urls:
         body = "[Customer sent an image]"
     elif (

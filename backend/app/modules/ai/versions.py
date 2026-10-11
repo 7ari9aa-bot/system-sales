@@ -16,14 +16,18 @@ is the publisher's veto on top).
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import NotFoundError
 from app.modules.ai.models import Agent, AgentVersion
+
+logger = logging.getLogger(__name__)
 
 
 def filter_agent_tools_by_policy(tools: list, policy: dict | None) -> list:
@@ -47,6 +51,73 @@ def filter_agent_tools_by_policy(tools: list, policy: dict | None) -> list:
     return [
         t for t in tools if t.name not in deny_set and (allow_set is None or t.name in allow_set)
     ]
+
+
+async def _ensure_stable_deployment(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    agent_id: uuid.UUID,
+    version: AgentVersion,
+) -> None:
+    """Activate the published version as stable when NO deployment exists.
+
+    This is the publish path's half of the pinning contract: a store whose
+    agent has never been deployed (the pre-fe2026100818 production state —
+    22 published versions, zero ``agent_deployments`` rows) kept running the
+    agent's MUTABLE settings on every run, because the runtime's resolver
+    falls back exactly when the deployment row is missing. Publishing must
+    therefore leave the store in the state the runtime pins to, in the SAME
+    transaction as the version itself — a published version with no
+    deployment is a snapshot nobody serves.
+
+    Deliberately creation-ONLY: an existing deployment row — active canary,
+    full rollout, or a human rollback — is never touched here. Canary and
+    rollback belong to the evaluation service and the deployment API; a
+    republish must not silently rewrite what traffic is being served. An
+    existing row with a NULL stable slot (degenerate, test-seeded) is also
+    left alone for the same reason.
+
+    The SELECT-then-INSERT has a concurrency window; the savepoint turns a
+    loser of the ``uq_agent_deployments_tenant_agent`` insert race into a
+    no-op instead of a poisoned transaction — same containment the runtime
+    uses for its idempotency-keyed ToolCall inserts.
+    """
+    from app.modules.ai.models import Deployment
+
+    existing = (
+        await session.execute(
+            select(Deployment).where(
+                Deployment.tenant_id == tenant_id,
+                Deployment.agent_id == agent_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return
+    try:
+        async with session.begin_nested():
+            session.add(
+                Deployment(
+                    tenant_id=tenant_id,
+                    agent_id=agent_id,
+                    stable_version_id=version.id,
+                    canary_percent=0,
+                    status="active",
+                )
+            )
+            await session.flush()
+    except IntegrityError:
+        logger.info(
+            "ai.deployment_activate_lost_race agent=%s version=%s",
+            agent_id,
+            version.version,
+        )
+        return
+    logger.info(
+        "ai.deployment_activated agent=%s version=%s source=publish",
+        agent_id,
+        version.version,
+    )
 
 
 class AIAgentVersionService:
@@ -105,6 +176,7 @@ class AIAgentVersionService:
             and dict(published.tool_policy or {}) == dict(tool_policy or {})
         )
         if identical:
+            await _ensure_stable_deployment(session, tenant_id, agent_id, published)
             return published
 
         version = AgentVersion(
@@ -123,4 +195,5 @@ class AIAgentVersionService:
         )
         session.add(version)
         await session.flush()
+        await _ensure_stable_deployment(session, tenant_id, agent_id, version)
         return version
