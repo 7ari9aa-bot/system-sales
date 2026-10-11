@@ -80,21 +80,21 @@ def test_the_migration_declares_the_reference_plane_policies() -> None:
     source = POLICY_MIGRATION.read_text(encoding="utf-8")
     declared: list[str] = []
     for node in ast.walk(ast.parse(source)):
-        targets = node.targets if isinstance(node, ast.Assign) else (
-            [node.target] if isinstance(node, ast.AnnAssign) else []
+        targets = (
+            node.targets
+            if isinstance(node, ast.Assign)
+            else ([node.target] if isinstance(node, ast.AnnAssign) else [])
         )
         for target in targets:
             if isinstance(target, ast.Name) and target.id == "_REFERENCE_TABLES":
-                declared = [
-                    elt.value for elt in node.value.elts if isinstance(elt, ast.Constant)
-                ]
+                declared = [elt.value for elt in node.value.elts if isinstance(elt, ast.Constant)]
     assert set(declared) == set(REFERENCE_TABLES), (
         "fe2026100805 no longer covers exactly the four reference-plane tables; "
         "update REFERENCE_TABLES here to the migration's contract"
     )
-    assert (
-        source.count("IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'sales_app')") >= 1
-    ), "the migration's policy creation must stay guarded on the role existing"
+    assert source.count("IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'sales_app')") >= 1, (
+        "the migration's policy creation must stay guarded on the role existing"
+    )
 
 
 # ------------------------------------------------------ the rule -----------
@@ -158,9 +158,7 @@ async def test_the_app_role_reads_the_reference_plane(db: AsyncSession) -> None:
         pytest.skip(f"{user!r} is a superuser/BYPASSRLS — RLS is not enforced")
 
     for table in REFERENCE_TABLES:
-        rows = (
-            await db.execute(text(f"SELECT count(*) FROM public.{table}"))
-        ).scalar_one()
+        rows = (await db.execute(text(f"SELECT count(*) FROM public.{table}"))).scalar_one()
         assert rows > 0, (
             f"sales_app reads zero rows from public.{table} — the table is "
             "under RLS with no usable policy for the runtime role (DENY ALL), "

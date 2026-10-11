@@ -105,9 +105,7 @@ async def _do_auto_reply(
     # customer who wrote first got silence, and the other got a duplicate.
     last_inbound = None
     if inbound_message_id is not None:
-        named = await ConversationService.find_message(
-            session, tenant_id, inbound_message_id
-        )
+        named = await ConversationService.find_message(session, tenant_id, inbound_message_id)
         # Scoped here, not in the service: an id from another conversation or an
         # outbound row is not this turn. That includes the resume event's legacy
         # shape, whose aggregate_id was an APPROVAL id — it resolves to nothing

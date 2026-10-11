@@ -100,10 +100,23 @@ async def _purge_expired_offboarding_tenants() -> int:
 # Global maintenance tasks cannot be represented as ScheduledJob rows because
 # that table is tenant-scoped and recurring-job seeding only sees active
 # tenants. Each function owns its own durable claim/transaction semantics.
+async def _sweep_vision_product_indexing() -> int:
+    from app.modules.ai.agents.customer.vision.indexer import (
+        sweep_unindexed_product_images,
+    )
+
+    return await sweep_unindexed_product_images()
+
+
 GLOBAL_SWEEPERS: dict[str, tuple[timedelta, Callable[[], object]]] = {
     "password_reset_email": (timedelta(seconds=5), _deliver_password_reset_email),
     "email_verification_email": (timedelta(seconds=5), _deliver_email_verification_email),
     "offboarding.purge": (timedelta(hours=1), _purge_expired_offboarding_tenants),
+    # 6.3: product image embeddings lived only behind a manual CLI — prod sat
+    # at images=1/embeddings=0 and vision matched nothing. Hourly, idempotent,
+    # only-missing selection doubles as backfill, reconciliation, and the
+    # model-change re-index.
+    "vision.product_indexing": (timedelta(hours=1), _sweep_vision_product_indexing),
 }
 
 

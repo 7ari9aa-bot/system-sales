@@ -95,9 +95,7 @@ async def main() -> int:
                     },
                     # §68: the key lives in secret_values; the row keeps only
                     # the pointer. Never inline it into the config JSONB.
-                    "secret_ref": await set_model_config_secret(
-                        session, tenant.id, alias, api_key
-                    ),
+                    "secret_ref": await set_model_config_secret(session, tenant.id, alias, api_key),
                     "is_active": True,
                 }
                 if row is None:

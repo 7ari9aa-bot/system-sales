@@ -317,6 +317,32 @@ async def test_two_way_tool_reconciliation_quarantines_unauthorized_tools() -> N
 
 
 @pytest.mark.asyncio
+async def test_reconciliation_never_reactivates_a_disabled_tool() -> None:
+    """12.5: an existing row with is_active=False is the merchant's (or the
+    quarantine's) decision — reconciliation creates MISSING tools and never
+    flips an existing one back on behind their back."""
+    from app.modules.ai.core.provisioning import _sync_agent_tools
+
+    tenant_id = uuid.uuid4()
+    agent_id = uuid.uuid4()
+
+    disabled_default = AgentTool(
+        tenant_id=tenant_id, agent_id=agent_id, name="search_products", is_active=False
+    )
+    mock_session = AsyncMock()
+    mock_res = MagicMock()
+    mock_res.scalars.return_value.all.return_value = [disabled_default]
+    mock_session.execute.return_value = mock_res
+
+    await _sync_agent_tools(mock_session, tenant_id, agent_id, kind="customer")
+
+    assert disabled_default.is_active is False, (
+        "reconciliation must not re-enable a tool the tenant disabled"
+    )
+    assert mock_session.add.called  # the missing defaults WERE created
+
+
+@pytest.mark.asyncio
 async def test_handover_atomic_claim_and_resolve_lifecycle() -> None:
     """§29-30 Handover claim atomicity and resolve conversation status sync."""
     from app.core.errors import ConflictError

@@ -63,9 +63,7 @@ async def test_backfill_ignores_blank_api_keys(db, tenant_ctx):
     assert await db.run_sync(lambda s: backfill_model_config_secrets(s.connection())) == 0
 
 
-async def test_set_model_config_secret_rotates_and_gateway_prefers_it(
-    db, tenant_ctx, monkeypatch
-):
+async def test_set_model_config_secret_rotates_and_gateway_prefers_it(db, tenant_ctx, monkeypatch):
     tenant_id = tenant_ctx.tenant_id
     vault_key = await set_model_config_secret(db, tenant_id, "fast", "sk-new-1")
     vault_key2 = await set_model_config_secret(db, tenant_id, "fast", "sk-new-2")

@@ -344,7 +344,8 @@ def _run(args: list[str], *, env: dict[str, str] | None = None) -> subprocess.Co
             # Only file-path args resolve against BACKEND_ROOT; interpreter
             # flags such as `-c`/`-m` and their inline code must pass through
             # untouched.
-            (str(Path(BACKEND_ROOT, a)) if a.endswith(".py") else a) for a in args
+            (str(Path(BACKEND_ROOT, a)) if a.endswith(".py") else a)
+            for a in args
         ]
         return subprocess.run(
             [sys.executable, *absolute_args],

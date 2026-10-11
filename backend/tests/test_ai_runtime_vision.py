@@ -325,9 +325,7 @@ async def test_ungrounded_twice_hands_over(db, tenant_ctx, monkeypatch):
     assert calls["count"] == 3  # exactly ONE regeneration, then hand over
 
 
-async def test_grounding_regeneration_is_bounded_by_the_run_wall_clock(
-    db, tenant_ctx, monkeypatch
-):
+async def test_grounding_regeneration_is_bounded_by_the_run_wall_clock(db, tenant_ctx, monkeypatch):
     """§134's clock has to cover the correction call, not only the first one.
 
     The loop bounded its first model call by the remaining budget and left

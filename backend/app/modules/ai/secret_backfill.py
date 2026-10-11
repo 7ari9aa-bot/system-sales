@@ -22,9 +22,7 @@ def model_config_vault_key(tenant_id, alias: str) -> str:
     return f"{VAULT_KEY_PREFIX}:{tenant_id}:{alias}"
 
 
-def backfill_model_config_secrets(
-    conn, *, store: EnvelopeSecretStore | None = None
-) -> int:
+def backfill_model_config_secrets(conn, *, store: EnvelopeSecretStore | None = None) -> int:
     """Move every inline api_key into secret_values; returns rows migrated.
 
     Sync (over a Connection) because its production caller is the alembic
@@ -74,9 +72,7 @@ def backfill_model_config_secrets(
     return moved
 
 
-async def set_model_config_secret(
-    session, tenant_id, alias: str, api_key: str
-) -> str:
+async def set_model_config_secret(session, tenant_id, alias: str, api_key: str) -> str:
     """Write-path for operator tooling: store the key, return the vault_key.
 
     The caller sets ModelConfig.secret_ref to the returned key and leaves

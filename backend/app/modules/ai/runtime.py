@@ -251,10 +251,8 @@ class AgentRunner:
             bucket = int(hashlib.md5(conversation_id.bytes).hexdigest(), 16) % 100
             canary_chosen = bucket < canary_percent
 
-        agent_version_id, version_source, version_tool_policy = (
-            await self._resolve_agent_version(
-                session, tenant_id, agent, canary_chosen=canary_chosen
-            )
+        agent_version_id, version_source, version_tool_policy = await self._resolve_agent_version(
+            session, tenant_id, agent, canary_chosen=canary_chosen
         )
         # The published version's policy narrows the registry-authorized set
         # for this run; it can never widen it (filter is veto-only).
@@ -1074,9 +1072,7 @@ class AgentRunner:
                         # MediaService itself refuses such a row. Sending it
                         # anyway would sign a URL for an object that was never
                         # safely stored and hand it to an external provider.
-                        _conversations_models.Attachment.scan_status.in_(
-                            ["stored", "scanned"]
-                        ),
+                        _conversations_models.Attachment.scan_status.in_(["stored", "scanned"]),
                         _conversations_models.Attachment.processing_status != "failed",
                     )
                     .order_by(_conversations_models.Attachment.created_at.desc())
@@ -1267,9 +1263,7 @@ class AgentRunner:
                         approval_args = {k: v for k, v in kwargs.items() if k != "context"}
                         if tool_context is not None:
                             approval_args["context"] = {
-                                k: v
-                                for k, v in tool_context.items()
-                                if k != "customer_image"
+                                k: v for k, v in tool_context.items() if k != "customer_image"
                             }
                         approval_payload = {"arguments": approval_args}
                         granted = await ApprovalService.find_granted(
