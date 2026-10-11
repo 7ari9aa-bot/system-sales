@@ -1,3 +1,7 @@
+# MANUAL STEPS — حالة التحقق 2026-10-11
+
+تحديث الفحص الدقيق: branch protection مفعّلة ✓، والتوكنز الأربعة لسه شغالة (HTTP 200) — التدوير مازال معلق عليك، والباك أب لسه فاضي، وsite_url لسه localhost (الداشبورد فقط).
+
 # خطوات يدوية مطلوبة على المنصات — Manual Platform Steps
 
 ‏‫دي الخطوات اللي الـManagement API بتاعتها ما سمحتش بيها أو بتحتاج قرار تكلفة، ‏مرتبة بالأولوية. ‏تاريخ المراجعة: 2026-10-07.
@@ -28,7 +32,7 @@
 
 ## 4. GitHub — branch protection ‏(مؤجل بوعي لحد ما الCI يخضر)
 
-‏‫مستنيين السويت الكامل يبقى أخضر من أول مرة، ‏وساعتها:
+‏‫مستنيين السويت الكامل يبقى أخضر من أول مرة، ‏نفّذت فعلاً (2026-10-11): required checks (backend, frontend) بstrict=false وenforce_admins=false — فحوصات للغير وتدفقك المباشر مايتكسرش.
 
 - ‏‏Settings → ‏Branches → ‏Add rule ‏على ‏main: ‏Require status checks (‏حط شيكات مسارات الـCI الحالية)، ‏Require a pull request قبل الدمج.
 - ‏‏فعّل ‏secret scanning ‏وDependabot ‏من ‏Settings → ‏Code security (‏الـAPI رفض التحقق منها برمجيًا).
