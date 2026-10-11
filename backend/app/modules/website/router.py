@@ -50,8 +50,14 @@ async def overview(ctx: TenantCtxDep):
         usage = await wp.usage(status["organizationId"])
         return {"provisioned": True, "website": status, "usage": usage}
     except wp.WebsitePlatformError as exc:
-        if exc.status == 404:
-            templates = await wp.templates()
+        if exc.status == 404 or exc.code == "WP_NOT_CONFIGURED":
+            # An UNCONFIGURED platform is the same merchant state as "no
+            # website yet" — an environment that never opted in must get the
+            # templates offer, not a 502 for its own missing configuration.
+            try:
+                templates = await wp.templates()
+            except wp.WebsitePlatformError:
+                templates = []
             return {"provisioned": False, "templates": templates}
         raise _wp_error(exc) from exc
 
