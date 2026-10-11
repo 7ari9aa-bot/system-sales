@@ -140,7 +140,7 @@ function PathRouter() {
   const path = location.pathname;
   const under = (base) => path === base || path.startsWith(`${base}/`);
   if (['/dashboard', '/inbox', '/customers', '/orders', '/products', '/inventory', '/sales',
-    '/marketing', '/ai', '/analytics', '/usage', '/website', '/settings'].some(under)) {
+    '/sales-assistant', '/marketing', '/ai', '/analytics', '/usage', '/website', '/settings'].some(under)) {
     return <DashboardRoutes />;
   }
   if (['/login', '/register', '/forgot-password', '/reset-password', '/accept-invitation'].some(under)) {
