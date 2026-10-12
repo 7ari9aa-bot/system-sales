@@ -82,9 +82,7 @@ async def test_history_lands_between_system_and_user_turn(db, tenant_ctx, monkey
     assert run_row.status == "succeeded"
 
 
-async def test_history_does_not_enter_the_customer_messaging_path(
-    db, tenant_ctx, monkeypatch
-):
+async def test_history_does_not_enter_the_customer_messaging_path(db, tenant_ctx, monkeypatch):
     import app.core.lease as lease
 
     def _explode(*_a, **_k):

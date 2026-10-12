@@ -90,33 +90,39 @@ async def _bounded_history(session, ctx, thread, *, through_seq: int) -> list[di
             "content": f"[Prior conversation summary]\n{thread.context_summary}",
         }
         rows = (
+            (
+                await session.execute(
+                    select(AIChatMessage)
+                    .where(
+                        AIChatMessage.tenant_id == ctx.tenant_id,
+                        AIChatMessage.thread_id == thread.id,
+                        AIChatMessage.sequence_no > thread.summary_through_seq,
+                        AIChatMessage.sequence_no <= through_seq,
+                    )
+                    .order_by(AIChatMessage.sequence_no.asc())
+                    .limit(HISTORY_MESSAGE_LIMIT)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return [summary_marker] + [{"role": m.role, "content": m.content} for m in rows]
+    rows = (
+        (
             await session.execute(
                 select(AIChatMessage)
                 .where(
                     AIChatMessage.tenant_id == ctx.tenant_id,
                     AIChatMessage.thread_id == thread.id,
-                    AIChatMessage.sequence_no > thread.summary_through_seq,
                     AIChatMessage.sequence_no <= through_seq,
                 )
-                .order_by(AIChatMessage.sequence_no.asc())
+                .order_by(AIChatMessage.sequence_no.desc())
                 .limit(HISTORY_MESSAGE_LIMIT)
             )
-        ).scalars().all()
-        return [summary_marker] + [
-            {"role": m.role, "content": m.content} for m in rows
-        ]
-    rows = (
-        await session.execute(
-            select(AIChatMessage)
-            .where(
-                AIChatMessage.tenant_id == ctx.tenant_id,
-                AIChatMessage.thread_id == thread.id,
-                AIChatMessage.sequence_no <= through_seq,
-            )
-            .order_by(AIChatMessage.sequence_no.desc())
-            .limit(HISTORY_MESSAGE_LIMIT)
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return [{"role": m.role, "content": m.content} for m in reversed(rows)]
 
 
@@ -127,18 +133,22 @@ async def _maybe_compact(session, ctx, thread, *, through_seq: int) -> None:
     if through_seq - thread.summary_through_seq <= HISTORY_MESSAGE_LIMIT:
         return
     rows = (
-        await session.execute(
-            select(AIChatMessage)
-            .where(
-                AIChatMessage.tenant_id == ctx.tenant_id,
-                AIChatMessage.thread_id == thread.id,
-                AIChatMessage.sequence_no > thread.summary_through_seq,
-                AIChatMessage.sequence_no <= through_seq,
-                AIChatMessage.role == "assistant",
+        (
+            await session.execute(
+                select(AIChatMessage)
+                .where(
+                    AIChatMessage.tenant_id == ctx.tenant_id,
+                    AIChatMessage.thread_id == thread.id,
+                    AIChatMessage.sequence_no > thread.summary_through_seq,
+                    AIChatMessage.sequence_no <= through_seq,
+                    AIChatMessage.role == "assistant",
+                )
+                .order_by(AIChatMessage.sequence_no.asc())
             )
-            .order_by(AIChatMessage.sequence_no.asc())
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     lines: list[str] = []
     for row in rows:
         metrics = [
@@ -160,18 +170,22 @@ async def run_chat_turn(session, ctx, thread) -> AIChatMessage:
     overwrites THAT row, so a sequence number is never burned twice.
     """
     user_rows = (
-        await session.execute(
-            select(AIChatMessage)
-            .where(
-                AIChatMessage.tenant_id == ctx.tenant_id,
-                AIChatMessage.thread_id == thread.id,
-                AIChatMessage.role == "user",
+        (
+            await session.execute(
+                select(AIChatMessage)
+                .where(
+                    AIChatMessage.tenant_id == ctx.tenant_id,
+                    AIChatMessage.thread_id == thread.id,
+                    AIChatMessage.role == "user",
+                )
+                .order_by(AIChatMessage.sequence_no.desc())
+                .limit(1)
+                .with_for_update(of=AIChatMessage)  # serialize concurrent submits per thread
             )
-            .order_by(AIChatMessage.sequence_no.desc())
-            .limit(1)
-            .with_for_update(of=AIChatMessage)  # serialize concurrent submits per thread
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     if not user_rows:
         raise ConflictError("no user message to answer")
     user_row = user_rows[0]
@@ -256,17 +270,21 @@ async def retry_chat_turn(session, ctx, thread, *, message_id) -> AIChatMessage:
     if stale is None or stale.role != "assistant" or stale.status != "failed":
         raise ConflictError("only a failed assistant turn can be retried")
     last_user = (
-        await session.execute(
-            select(AIChatMessage)
-            .where(
-                AIChatMessage.tenant_id == ctx.tenant_id,
-                AIChatMessage.thread_id == thread.id,
-                AIChatMessage.role == "user",
+        (
+            await session.execute(
+                select(AIChatMessage)
+                .where(
+                    AIChatMessage.tenant_id == ctx.tenant_id,
+                    AIChatMessage.thread_id == thread.id,
+                    AIChatMessage.role == "user",
+                )
+                .order_by(AIChatMessage.sequence_no.desc())
+                .limit(1)
             )
-            .order_by(AIChatMessage.sequence_no.desc())
-            .limit(1)
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
     if last_user is None or last_user.sequence_no + 1 != stale.sequence_no:
         raise ConflictError("only the latest failed turn can be retried")
     return await run_chat_turn(session, ctx, thread)

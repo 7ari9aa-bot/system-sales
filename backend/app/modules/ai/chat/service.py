@@ -92,9 +92,7 @@ async def list_threads(
     if not _is_tenant_owner(ctx):
         stmt = stmt.where(AIChatThread.created_by_user_id == ctx.user.id)
     if search:
-        stmt = stmt.where(
-            AIChatThread.title.ilike(like_pattern(search.strip()), escape="\\")
-        )
+        stmt = stmt.where(AIChatThread.title.ilike(like_pattern(search.strip()), escape="\\"))
     if before is not None:
         stmt = stmt.where(AIChatThread.updated_at < before)
     stmt = stmt.order_by(AIChatThread.updated_at.desc()).limit(cap)

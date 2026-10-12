@@ -292,9 +292,7 @@ async def run_customer_turn(
     # The hook's retrieved snippets ride FIRST; the system-owned context
     # lines (state, referents, vision) follow — both stay OUTSIDE the system
     # prompt (§132 untrusted zone).
-    merged_context = (
-        "\n".join(part for part in (params.knowledge_context, context) if part) or None
-    )
+    merged_context = "\n".join(part for part in (params.knowledge_context, context) if part) or None
 
     result: AgentRunResult = await _runner.run(
         session,

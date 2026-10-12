@@ -1205,9 +1205,7 @@ async def delete_sales_chat_thread(thread_id: uuid.UUID, ctx: AnalyticsCtx) -> N
     await chat_service.delete_thread(ctx.session, ctx, thread)
 
 
-@router.get(
-    "/sales-chat/threads/{thread_id}/messages", response_model=list[SalesChatMessageOut]
-)
+@router.get("/sales-chat/threads/{thread_id}/messages", response_model=list[SalesChatMessageOut])
 async def list_sales_chat_messages(
     thread_id: uuid.UUID,
     ctx: AnalyticsCtx,
