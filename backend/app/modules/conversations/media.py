@@ -432,6 +432,64 @@ class MediaService:
         return attachment
 
     @staticmethod
+    async def rescan_pending_images(
+        session: AsyncSession, tenant_id: uuid.UUID, *, limit: int = 100
+    ) -> int:
+        """ADR-062 sweep: re-scan stored images whose verdict never came back.
+
+        A row lands ``pending`` when the scanner was unreachable at ingest —
+        or not deployed at all. The egress gate refuses pending rows, so every
+        such image is permanently invisible to the customer agent's vision
+        unless something re-scans it; this sweep is that something, hourly per
+        tenant through the scheduler. It re-reads the DURABLE object by its
+        storage key (the provider URL may be long expired) and reuses the exact
+        ingest scan path, so the verdict vocabulary cannot drift between the
+        two call sites.
+
+        Returns the number of rows the scan ran on. Rows stay ``pending``
+        when the scanner is unconfigured (sweep is a no-op then) or errors —
+        fail-closed, never widened.
+        """
+        settings = get_settings()
+        if not settings.media_scanner_configured:
+            return 0
+        rows = (
+            (
+                await session.execute(
+                    select(Attachment)
+                    .where(
+                        Attachment.tenant_id == tenant_id,
+                        Attachment.mime_type.like("image/%"),
+                        Attachment.scan_status == "pending",
+                        Attachment.storage_key.is_not(None),
+                    )
+                    .order_by(Attachment.created_at.asc())
+                    .limit(limit)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if not rows:
+            return 0
+        storage = get_storage()
+        scanned = 0
+        for attachment in rows:
+            try:
+                fetched = await storage.read_object(attachment.storage_key)
+            except Exception:  # noqa: BLE001 — one unreadable object skips, not the sweep
+                logger.exception(
+                    "media.rescan_fetch_failed tenant=%s attachment=%s",
+                    tenant_id,
+                    attachment.id,
+                )
+                continue
+            await MediaService._scan_image(attachment, fetched.data)
+            scanned += 1
+        await session.flush()
+        return scanned
+
+    @staticmethod
     async def get(
         session: AsyncSession, tenant_id: uuid.UUID, attachment_id: uuid.UUID
     ) -> Attachment:

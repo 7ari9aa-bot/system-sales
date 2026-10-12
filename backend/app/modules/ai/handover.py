@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import uuid
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -71,4 +72,52 @@ async def request_human_takeover(
             "note": note,
         },
     )
+
+    # The outbox event reaches the dashboard's SSE stream, but a stream only
+    # helps whoever is already watching the page. The persistent notification
+    # is what makes the handover visible later — the same transaction, so the
+    # row, the status and the bell badge commit (or roll back) together.
+    #
+    # Owner lookup via SQL rather than `identity.models`: `identity` already
+    # imports `ai`, and a model import here would close a NEW cycle that
+    # tests/test_module_boundaries.py fails on — the same shape gateway.py's
+    # budget alerts use.
+    from app.modules.notifications.service import NotificationService
+
+    owner_ids = (
+        (
+            await session.execute(
+                text(
+                    "SELECT tu.user_id FROM tenant_users tu "
+                    "JOIN roles r ON r.id = tu.role_id "
+                    "WHERE tu.tenant_id = :tenant_id AND r.code = 'owner'"
+                ),
+                {"tenant_id": str(tenant_id)},
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for owner_id in owner_ids:
+        await NotificationService.create(
+            session,
+            tenant_id,
+            owner_id,
+            kind="ai_handover",
+            title="Human handover needed",
+            body=(
+                f"The AI handed conversation {conversation_id} to the team "
+                f"(reason: {reason}). It is waiting for a human reply."
+            ),
+            payload={
+                "conversation_id": str(conversation_id),
+                "run_id": str(run_id) if run_id else None,
+                "reason": reason,
+                "note": note,
+            },
+            # One bell per conversation+reason: the three withhold paths can
+            # fire back-to-back on the same stuck conversation, and five
+            # identical notifications hide the one that matters.
+            dedup_key=f"ai_handover:{conversation_id}:{reason}",
+        )
     return True

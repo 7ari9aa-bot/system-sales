@@ -196,6 +196,21 @@ class ObjectStorage:
             raise ValueError("product image key is outside the tenant image prefix")
         return self.signed_url(key, expires_in=7 * 24 * 60 * 60)
 
+    async def read_object(
+        self, key: str, *, max_bytes: int | None = MAX_MEDIA_BYTES
+    ) -> FetchedMedia:
+        """Fetch a stored object back by its own storage key.
+
+        The ADR-062 rescan sweep's read path: an attachment row whose verdict
+        never came back carries the durable key, and the sweep re-scans the
+        BYTES — never the provider URL, which may be long expired. Shares
+        ``fetch``'s breaker and SSRF guard by routing through ``_download``
+        on a freshly signed URL.
+        """
+        return await get_breaker(STORAGE_OBJECTS).call(
+            self._download, self.signed_url(key), max_bytes
+        )
+
     MAX_REDIRECTS = 3
 
     async def fetch(self, url: str, *, max_bytes: int | None = MAX_MEDIA_BYTES) -> FetchedMedia:

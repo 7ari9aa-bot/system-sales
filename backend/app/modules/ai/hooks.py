@@ -139,6 +139,26 @@ async def _do_auto_reply(
     if last_inbound is None:
         return
 
+    # Duplicate-answer guard (crash window + replay). The reply commits in its
+    # own transaction and the ProcessedEvent marker in a LATER one, so a worker
+    # that dies between them (or a 5-minute stale-claim reclaim) re-delivers the
+    # event — and re-running the turn would send the customer the same answer
+    # twice. The AI threads every reply to the inbound it answers via
+    # ``reply_to_message_id``, so "already answered" is one indexed lookup.
+    # The resume path (no carried id) stays unguarded on purpose: its job is to
+    # add the post-approval outcome on an inbound the first turn may already
+    # have acknowledged, and suppressing THAT is a silent customer-facing loss.
+    if inbound_message_id is not None:
+        already = await ConversationService.find_ai_reply(session, tenant_id, last_inbound.id)
+        if already is not None:
+            logger.info(
+                "ai.duplicate_reply_skipped conversation=%s inbound=%s reply=%s",
+                conversation_id,
+                last_inbound.id,
+                already.id,
+            )
+            return
+
     # §8: intake belongs to the turn coordinator, not to six inline ways of
     # asking "did the customer send a photo?". Fetch the attachments once and
     # hand the coordinator the raw shape (§155 kinds + (mime, key) pairs).
@@ -335,6 +355,7 @@ async def _do_auto_reply(
             direction="outbound",
             sender_type="ai",
             body=outcome.reply,
+            reply_to_message_id=last_inbound.id,
         )
     except OutboundBlockedError as exc:
         # §30: outside the customer-service window a free-form AI reply is not
@@ -403,6 +424,7 @@ async def _do_auto_reply(
                     media_url=item["image_url"],
                     media_type="image",
                     content_type="image",
+                    reply_to_message_id=last_inbound.id,
                 )
             except OutboundBlockedError as exc:
                 # The text went out; the window closed mid-delivery. Stop
