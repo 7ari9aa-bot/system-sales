@@ -94,6 +94,7 @@ _ALLOWED_PUBLIC_ROUTES: frozenset[str] = frozenset(
         "POST /api/v1/realtime/stream-token",
         # public webchat visitor ingress (widget public key + visitor token)
         "POST /api/v1/webchat/{public_key}/messages",
+        "GET /api/v1/webchat/{public_key}/messages",
         # provider webhook entrypoints (signature-verified inside the handler)
         "GET /api/v1/webhooks/{channel}",
         "POST /api/v1/webhooks/{channel}",

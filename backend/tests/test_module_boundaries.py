@@ -183,8 +183,22 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # tool computes are registered through `EvidenceStore.register_numbers`, the
 # analytics module's own door, so the SI adapter gained no new import site and
 # the skip rules live beside the pack contract that enforces them.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 146
-# 145 -> 146 on 2026-10-10: the SI-chat render-block schema
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 148
+# 146 -> 148 on 2026-10-13: two function-scope reads through another module's
+# SERVICE — the guard's own prescription ("use its service"), not a table
+# reach-through. Both landed on separate branches, so the count moves by two
+# even though each branch measured +1 on its own:
+#   • ai/handover.py -> notifications.service.NotificationService (on main,
+#     commit a0d60d6 "close the four reply-only agent gaps"): the human-takeover
+#     path notifies staff through the notifications service. The ai->notifications
+#     pair already existed (ai/gateway.py), so no new edge type and no SCC change.
+#   • conversations/service.py -> customers.service.CustomerService (on
+#     feature/sales-assistant-chat): find_webchat_conversation resolves a webchat
+#     visitor's customer by identity through CustomerService.find_by_identity,
+#     rather than reading the customers tables from the conversations module.
+# Measured, not assumed: main@a0d60d6 = 91 unique edges, the feature worktree =
+# 91, their UNION = 92 (= 148 occurrences). Neither branch alone reaches 148.
+# # 145 -> 146 on 2026-10-10: the SI-chat render-block schema
 # (ai/chat/schemas.py) imports analytics.contracts.Finding — the typed
 # finding contract the assistant's structured blocks are built from. Same
 # module pair the orchestrator already reads (ai->analytics), so no new

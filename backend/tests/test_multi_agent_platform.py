@@ -36,12 +36,17 @@ def test_registry_registration_and_queries() -> None:
     cust_defn = AgentRegistry.get("customer")
     assert cust_defn.kind == "customer"
     assert "search_products" in cust_defn.allowed_tools
-    assert "create_order" in cust_defn.allowed_tools
+    # Reply-only: the customer agent answers, it does not transact. The DB
+    # permissions were removed first; this asserts the DEFINITION agrees, so the
+    # prompt, the capability list and the allowlist cannot drift apart again.
+    for transacting in ("create_order", "add_task", "add_tag"):
+        assert transacting not in cust_defn.allowed_tools
     assert cust_defn.guardrail_profile == "customer"
 
     # Authorization enforcement checks
     assert AgentRegistry.is_tool_authorized("customer", "search_products") is True
-    assert AgentRegistry.is_tool_authorized("customer", "create_order") is True
+    for transacting in ("create_order", "add_task", "add_tag"):
+        assert AgentRegistry.is_tool_authorized("customer", transacting) is False
     # Customer agent must NEVER be authorized for sales intelligence tools
     assert AgentRegistry.is_tool_authorized("customer", "si_analyze_drivers") is False
     assert AgentRegistry.is_tool_authorized("customer", "unknown_tool_xyz") is False
@@ -97,11 +102,15 @@ async def test_runtime_tool_isolation_enforcement() -> None:
     agent_id = uuid.uuid4()
 
     # Suppose DB contains 3 tools linked to a customer agent:
-    # 2 legitimate customer tools + 1 injected SI tool
+    # 2 legitimate customer tools + 1 transacting tool that is no longer
+    # authorized + 1 injected SI tool
     legit_tool1 = AgentTool(
         tenant_id=tenant_id, agent_id=agent_id, name="search_products", is_active=True
     )
     legit_tool2 = AgentTool(
+        tenant_id=tenant_id, agent_id=agent_id, name="get_order", is_active=True
+    )
+    transacting_tool = AgentTool(
         tenant_id=tenant_id, agent_id=agent_id, name="create_order", is_active=True
     )
     injected_tool = AgentTool(
@@ -113,6 +122,7 @@ async def test_runtime_tool_isolation_enforcement() -> None:
     mock_execute_result.scalars.return_value.all.return_value = [
         legit_tool1,
         legit_tool2,
+        transacting_tool,
         injected_tool,
     ]
     mock_session.execute.return_value = mock_execute_result
@@ -128,7 +138,10 @@ async def test_runtime_tool_isolation_enforcement() -> None:
     loaded_names = [t.name for t in loaded]
     # Authorized tools must remain
     assert "search_products" in loaded_names
-    assert "create_order" in loaded_names
+    assert "get_order" in loaded_names
+    # Reply-only: a tool ROW that still exists in the database is stripped
+    # anyway — authorization is the definition's allowlist, not the row.
+    assert "create_order" not in loaded_names
     # Injected / unauthorized tool MUST be stripped by the enforcement boundary
     assert "si_analyze_drivers" not in loaded_names
     assert len(loaded) == 2
@@ -573,7 +586,7 @@ def test_worker_process_discovers_registry() -> None:
             "from app.modules.ai.core.registry import AgentRegistry\n"
             "assert 'customer' in AgentRegistry.kinds(), 'customer missing in worker'\n"
             "assert 'sales_intelligence' in AgentRegistry.kinds(), 'sales_intelligence missing'\n"
-            "assert AgentRegistry.is_tool_authorized('customer', 'create_order')\n"
+            "assert not AgentRegistry.is_tool_authorized('customer', 'create_order')\n"
             "assert AgentRegistry.is_tool_authorized('sales_intelligence', 'si_get_metric')\n"
         ),
     ]

@@ -100,8 +100,12 @@ DATABASE_URL_ADMIN=... .venv/bin/alembic upgrade head
 ## Provisioning (idempotent)
 
 ```bash
+# Automated local database spin-up and verification (pgvector + redis + migrations + seeds + RLS smoke):
+.venv/bin/python scripts/dev_db.py
+
+# Or individually:
 .venv/bin/python scripts/provision.py   # app role + RLS policies + seeds
-.venv/bin/python scripts/rls_smoke_test.py  # must print 7/7 PASS
+.venv/bin/python scripts/rls_smoke_test.py  # exit 0 and every verdict line reads [PASS]
 ```
 
 ## Backups & DR
@@ -109,7 +113,8 @@ DATABASE_URL_ADMIN=... .venv/bin/alembic upgrade head
 - Supabase daily backups + PITR (enable in project settings; production plan).
 - Quarterly restore drill: restore a backup to a scratch project, run
   `scripts/rls_smoke_test.py` + `pytest -q` against it, verify tenant counts
-  per `tenants` vs `customers` sample.
+  per `tenants` vs `customers` sample. Automated via:
+  `.venv/bin/python scripts/restore_drill.py --target-url <POSTGRES_URL>`
 - Redis is transport-only, but a full Redis loss also removes entries whose
   outbox rows already reached `published`. Pending/failed rows are retried by
   the normal relay; published-but-unprocessed entries require the explicit
@@ -141,6 +146,8 @@ DATABASE_URL_ADMIN=... .venv/bin/alembic upgrade head
 - Redis consumer group lag on `message.events` > 1000 — scale message workers.
 - DLQ depth > 0 for > 1h — on-call review.
 - HTTP 5xx rate > 2% for 5 min.
+- Monitor all 5 invariants automatically:
+  `.venv/bin/python scripts/monitor_alerts.py`
 
 ## Scaling order (when pressure rises)
 

@@ -59,6 +59,33 @@ class ConversationService:
         return conversation
 
     @staticmethod
+    async def find_webchat_conversation(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        session_key: str,
+    ) -> Conversation | None:
+        """Find the active webchat conversation for a visitor session key."""
+        from app.modules.customers.service import CustomerService
+
+        customer = await CustomerService.find_by_identity(
+            session, tenant_id, "webchat", session_key
+        )
+        if customer is None:
+            return None
+        return (
+            await session.execute(
+                select(Conversation)
+                .where(
+                    Conversation.tenant_id == tenant_id,
+                    Conversation.customer_id == customer.id,
+                    Conversation.channel == "webchat",
+                )
+                .order_by(Conversation.last_message_at.desc().nullslast())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
     async def find_message(
         session: AsyncSession, tenant_id: uuid.UUID, message_id: uuid.UUID
     ) -> Message | None:
@@ -426,24 +453,41 @@ class ConversationService:
         limit: int = 100,
         before_created_at=None,
         before_id: uuid.UUID | None = None,
+        after_created_at=None,
+        after_id: uuid.UUID | None = None,
     ) -> list[Message]:
         """Newest-first keyset fetch, returned oldest-first for display.
 
         Pass before_created_at (with before_id for stable ties) to page
         backwards through the history.
+        Pass after_created_at (with after_id for stable ties) to page
+        forwards / poll for newer messages.
         """
         await ConversationService.get(session, tenant_id, conversation_id)
         stmt = select(Message).where(
-            Message.tenant_id == tenant_id, Message.conversation_id == conversation_id
+            Message.tenant_id == tenant_id,
+            Message.conversation_id == conversation_id,
+            Message.deleted_at.is_(None),
         )
-        if before_created_at is not None and before_id is not None:
+        if after_created_at is not None and after_id is not None:
+            stmt = stmt.where(
+                tuple_(Message.created_at, Message.id) > tuple_(after_created_at, after_id)
+            )
+        elif after_created_at is not None:
+            stmt = stmt.where(Message.created_at > after_created_at)
+        elif before_created_at is not None and before_id is not None:
             stmt = stmt.where(
                 tuple_(Message.created_at, Message.id) < tuple_(before_created_at, before_id)
             )
         elif before_created_at is not None:
             stmt = stmt.where(Message.created_at < before_created_at)
-        stmt = stmt.order_by(Message.created_at.desc(), Message.id.desc()).limit(limit)
-        return list((await session.execute(stmt)).scalars().all())[::-1]
+
+        if after_created_at is not None:
+            stmt = stmt.order_by(Message.created_at.asc(), Message.id.asc()).limit(limit)
+            return list((await session.execute(stmt)).scalars().all())
+        else:
+            stmt = stmt.order_by(Message.created_at.desc(), Message.id.desc()).limit(limit)
+            return list((await session.execute(stmt)).scalars().all())[::-1]
 
     @staticmethod
     async def audio_transcripts(

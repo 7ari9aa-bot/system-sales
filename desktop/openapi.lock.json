@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 344,
-    "sha256": "8670586770e27b2a36f9e448bc69db3cfae1dca89d3f981420d04b16b39e3b34",
+    "operations": 345,
+    "sha256": "1d0e2aceb1fd27dc0c5667e7b5b8830ed3adc7085e4c5766a9ec63fc7372c85e",
     "typed_operations": 221
   },
   "spec": {
@@ -52426,6 +52426,108 @@
         }
       },
       "/api/v1/webchat/{public_key}/messages": {
+        "get": {
+          "description": "Retrieve or poll messages for a webchat visitor conversation.",
+          "operationId": "webchat_list_messages_api_v1_webchat__public_key__messages_get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "public_key",
+              "required": true,
+              "schema": {
+                "title": "Public Key",
+                "type": "string"
+              }
+            },
+            {
+              "in": "query",
+              "name": "session_token",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "maxLength": 4096,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Session Token"
+              }
+            },
+            {
+              "in": "query",
+              "name": "cursor",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "maxLength": 512,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Cursor"
+              }
+            },
+            {
+              "in": "query",
+              "name": "after",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "maxLength": 512,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "After"
+              }
+            },
+            {
+              "in": "query",
+              "name": "limit",
+              "required": false,
+              "schema": {
+                "default": 50,
+                "maximum": 100,
+                "minimum": 1,
+                "title": "Limit",
+                "type": "integer"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Webchat List Messages",
+          "tags": [
+            "channels"
+          ]
+        },
         "post": {
           "operationId": "webchat_inbound_api_v1_webchat__public_key__messages_post",
           "parameters": [

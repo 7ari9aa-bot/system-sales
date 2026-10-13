@@ -266,3 +266,122 @@ async def test_ingest_dedupe_scope_includes_tenant(monkeypatch) -> None:
     assert result is None
     assert captured["scope"] == f"webhook:webchat:{tenant_id}"
     assert captured["key"] == "client-msg-1"
+
+
+async def test_webchat_list_messages_requires_token(monkeypatch) -> None:
+    from httpx import ASGITransport, AsyncClient
+
+    from app.main import create_app
+
+    app = create_app()
+    tenant_id = uuid.uuid4()
+    public_key = "pk_test_widget"
+
+    async def fake_resolve_tenant(session, channel, key):
+        return tenant_id if key == public_key else None
+
+    monkeypatch.setattr(IngestService, "resolve_tenant", staticmethod(fake_resolve_tenant))
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get(f"/api/v1/webchat/{public_key}/messages")
+        assert resp.status_code in (400, 422)
+
+
+async def test_webchat_list_messages_enforces_widget_and_tenant(monkeypatch) -> None:
+    from httpx import ASGITransport, AsyncClient
+
+    from app.main import create_app
+
+    app = create_app()
+    tenant_id = uuid.uuid4()
+    foreign_tenant_id = uuid.uuid4()
+    public_key = "pk_test_widget"
+
+    async def fake_resolve_tenant(session, channel, key):
+        return tenant_id if key == public_key else None
+
+    monkeypatch.setattr(IngestService, "resolve_tenant", staticmethod(fake_resolve_tenant))
+
+    bad_tenant_token = create_visitor_token("sess-1", str(foreign_tenant_id), widget=public_key)
+    bad_widget_token = create_visitor_token("sess-1", str(tenant_id), widget="pk_other")
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp1 = await client.get(
+            f"/api/v1/webchat/{public_key}/messages",
+            params={"session_token": bad_tenant_token},
+        )
+        assert resp1.status_code == 403
+
+        resp2 = await client.get(
+            f"/api/v1/webchat/{public_key}/messages",
+            params={"session_token": bad_widget_token},
+        )
+        assert resp2.status_code == 403
+
+
+async def test_webchat_list_messages_polling_success(monkeypatch) -> None:
+    from datetime import UTC, datetime
+
+    from httpx import ASGITransport, AsyncClient
+
+    from app.main import create_app
+    from app.modules.conversations.service import ConversationService
+
+    app = create_app()
+    tenant_id = uuid.uuid4()
+    public_key = "pk_test_widget"
+
+    async def fake_resolve_tenant(session, channel, key):
+        return tenant_id
+
+    async def fake_bind_tenant(session, t_id):
+        pass
+
+    class DummyConv:
+        id = uuid.uuid4()
+
+    class DummyMsg:
+        id = uuid.uuid4()
+        direction = "outbound"
+        sender_type = "agent"
+        body = "Hello from agent!"
+        media_url = None
+        media_type = None
+        content_type = "text/plain"
+        created_at = datetime(2026, 10, 14, 12, 0, 0, tzinfo=UTC)
+
+    async def fake_find_conv(session, t_id, s_key):
+        return DummyConv()
+
+    async def fake_list_messages(session, t_id, c_id, limit, **kwargs):
+        return [DummyMsg()]
+
+    async def fake_attachment_keys(session, t_id, msg_ids):
+        return {}
+
+    monkeypatch.setattr(IngestService, "resolve_tenant", staticmethod(fake_resolve_tenant))
+    monkeypatch.setattr("app.core.db.bind_tenant", fake_bind_tenant)
+    monkeypatch.setattr(
+        ConversationService, "find_webchat_conversation", staticmethod(fake_find_conv)
+    )
+    monkeypatch.setattr(ConversationService, "list_messages", staticmethod(fake_list_messages))
+    monkeypatch.setattr(
+        ConversationService, "attachment_storage_keys", staticmethod(fake_attachment_keys)
+    )
+
+    from app.core.pagination import encode_cursor
+    cursor_str = encode_cursor(datetime(2026, 10, 14, 0, 0, 0, tzinfo=UTC), uuid.uuid4())
+
+    token = create_visitor_token("sess-1", str(tenant_id), widget=public_key)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get(
+            f"/api/v1/webchat/{public_key}/messages",
+            params={"session_token": token, "after": cursor_str},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["items"]) == 1
+        assert data["items"][0]["body"] == "Hello from agent!"
+        assert data["items"][0]["direction"] == "outbound"
+

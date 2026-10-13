@@ -17,7 +17,7 @@ from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel, Field
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, literal_column, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ConflictError, DomainError, NotFoundError, ValidationError
@@ -208,11 +208,24 @@ def _money(value) -> str | None:
 
 class SearchProductsArgs(BaseModel):
     query: str = Field(min_length=1, max_length=255)
+    # Structured specs the model extracted from the customer's own words, e.g.
+    # {"color": "أحمر"} for a product attribute, or {"size": "M"} for a variant
+    # option. Keys and values are DATA: they are bound as a JSONB containment
+    # payload and never interpolated into SQL, and a key the tenant does not use
+    # simply matches nothing.
+    attributes: dict[str, str | int | float | bool] | None = None
+    option_values: dict[str, str | int | float | bool] | None = None
     limit: int = Field(default=5, ge=1, le=20)
 
 
 async def _search_products(
-    session: AsyncSession, tenant_id: uuid.UUID, *, query: str, limit: int = 5
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    query: str,
+    attributes: dict[str, object] | None = None,
+    option_values: dict[str, object] | None = None,
+    limit: int = 5,
 ) -> dict:
     # §M4: browse agrees with the sell gate. A variant is visible to the
     # assistant only when its product's status is one checkout would sell —
@@ -222,19 +235,46 @@ async def _search_products(
     # `_` the caller typed, and the escape character is declared so the
     # backslashes are honoured rather than treated as literal text.
     pattern = like_pattern(query)
+    # §45: `products.search_ts` is a GENERATED tsvector carrying title (weight A)
+    # and description (weight B), with a GIN index (`ix_products_search_ts`), so
+    # a multi-word query is matched by the index instead of by a scan. The ILIKE
+    # arms stay because a substring INSIDE a word ("قطن" in "قطني") is trigram
+    # work, not tsvector — the column's own note. `simple` matches the generated
+    # expression's configuration exactly, so the query cannot drift from it.
+    #
+    # The configuration is a fixed SQL literal, not a bind parameter: it is a
+    # constant this code owns, and Postgres types the argument as REGCONFIG,
+    # which has no literal renderer — a bound form compiles in production but
+    # breaks every offline `literal_binds=True` compile (the browse sell-gate
+    # test does exactly that).
+    ts_query = func.plainto_tsquery(literal_column("'simple'"), query)
+
+    conditions = [
+        ProductVariant.tenant_id == tenant_id,
+        ProductVariant.is_active.is_(True),
+        Product.status.in_(sellable_statuses),
+        or_(
+            Product.search_ts.op("@@")(ts_query),
+            Product.title.ilike(pattern, escape=LIKE_ESCAPE),
+            ProductVariant.title.ilike(pattern, escape=LIKE_ESCAPE),
+            ProductVariant.sku.ilike(pattern, escape=LIKE_ESCAPE),
+        ),
+    ]
+    # Structured specs as JSONB containment (`@>`): the customer says
+    # "أحمر مقاس M", the model puts color in `attributes` (product level) and
+    # size in `option_values` (variant level), and the DATABASE decides — instead
+    # of a LIKE over a name that may not carry the value at all. `attributes`
+    # also holds importer bookkeeping keys (`_source`, `_external_id`); a filter
+    # can only narrow to what the caller asked for, so those stay unreachable.
+    if attributes:
+        conditions.append(Product.attributes.contains(attributes))
+    if option_values:
+        conditions.append(ProductVariant.option_values.contains(option_values))
+
     stmt = (
         select(ProductVariant, Product.title)
         .join(Product, Product.id == ProductVariant.product_id)
-        .where(
-            ProductVariant.tenant_id == tenant_id,
-            ProductVariant.is_active.is_(True),
-            Product.status.in_(sellable_statuses),
-            or_(
-                ProductVariant.title.ilike(pattern, escape=LIKE_ESCAPE),
-                ProductVariant.sku.ilike(pattern, escape=LIKE_ESCAPE),
-                Product.title.ilike(pattern, escape=LIKE_ESCAPE),
-            ),
-        )
+        .where(*conditions)
         .order_by(Product.title.asc(), ProductVariant.id.asc())
         .limit(limit)
     )
@@ -833,7 +873,12 @@ def _bootstrap() -> None:
     register_tool(
         ToolSpec(
             name="search_products",
-            description="Search the tenant catalog by keyword; returns variant, sku and price.",
+            description=(
+                "Search the tenant catalog. Pass the customer's words as `query`, and any "
+                "specs they named as structured filters: `attributes` for product properties "
+                "(color, material) and `option_values` for variant options (size). Returns "
+                "variant, sku and price."
+            ),
             args_schema=SearchProductsArgs,
             handler=_search_products,
             tags=["catalog"],

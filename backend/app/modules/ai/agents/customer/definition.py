@@ -12,39 +12,45 @@ CUSTOMER_TOOLS = [
     "search_products",
     "get_variant_price",
     "check_stock",
-    "create_order",
     "get_customer",
     "get_order",
     "search_knowledge",
-    "add_task",
-    "add_tag",
     "find_product_by_image",
     "resolve_product_media",
 ]
 
+# Reply-only contract (the customer agent answers, it does not transact).
+# `create_order`, `add_task` and `add_tag` are deliberately NOT here: the agent's
+# only job is to understand the customer's message and answer it from trusted
+# store data. Reading an existing order to answer a question stays allowed
+# (`get_order`); acting on the store does not. The tool policy and the DB
+# permissions are a second and third gate — this list is the first.
 CUSTOMER_SYSTEM_PROMPT = (
-    "أنت مساعد خدمة العملاء والمبيعات الذكي للمتجر. تتحدث بلهجة مصرية مهذبة وودودة ومباشرة.\n"
-    "مهمتك مساعدة العملاء في الاستفسار عن المنتجات، الأسعار، المخزون، وحالة الطلبات، وإتمام "
-    "عمليات الشراء.\n"
+    "أنت مساعد خدمة العملاء للمتجر. تتحدث بلهجة مصرية مهذبة وودودة ومباشرة.\n"
+    "دورك الوحيد: تفهم سؤال العميل وترد عليه بمعلومة صحيحة من بيانات المتجر.\n"
+    "ممنوع تماماً: إنشاء طلب، أو تعديل سلة، أو تنفيذ دفع، أو تغيير أي سجل في المتجر.\n"
     "القواعد الإلزامية:\n"
     "1. لا تذكر أو تؤكد أي سعر أو كمية متوفرة إلا بعد الاستعلام عنها عبر الأدوات المخصصة.\n"
-    "2. قبل تسجيل أي طلب، تأكد من وضوح كافة بيانات العميل والمنتج والكمية.\n"
-    "3. التزم بسياسات المتجر المعلنة بدقة (الشحن، الدفع، الاسترجاع والاستبدال).\n"
-    "4. إذا طلب العميل التحدث مع موظف خدمة عملاء أو واجهت طلباً لا تستطيع حله، حوّل "
-    "المحادثة لموظف بشري بلطف."
+    "2. لو السؤال ناقص أو غامض، اسأل العميل للتوضيح بدل ما تخمّن.\n"
+    "3. لو العميل وصف منتجاً بمواصفاته (لون، مقاس، خامة)، استخدم أداة البحث بالكلمات "
+    "والخصائص اللي فهمتها منه، مش باسم المنتج بس.\n"
+    "4. لو العميل طلب صور منتج، ابعت الصور الصحيحة من كتالوج المتجر.\n"
+    "5. لو العميل بعت صورة، افهمها وقارنها بمنتجات المتجر قبل ما ترد.\n"
+    "6. قراءة حالة طلب موجود للرد على سؤال العميل مسموحة، لكن ده مش تنفيذ عملية بيع.\n"
+    "7. التزم بسياسات المتجر المعلنة بدقة (الشحن، الدفع، الاسترجاع والاستبدال).\n"
+    "8. لو طلب العميل التحدث مع موظف، أو مش قادر ترد بشكل آمن، حوّل المحادثة لموظف بشري "
+    "فوراً من غير ما تألّف إجابة."
 )
 
 _DEFINITION = AgentDefinition(
     kind="customer",
     name="Customer Service Agent",
     description=(
-        "Handles customer inquiries, catalog search, orders, tasks, "
-        "and vision-based product matching."
+        "Answers customer questions from trusted store data: catalog search, "
+        "prices, stock, order status, product photos, and vision-based product "
+        "matching. Reply-only — it never places orders or changes store records."
     ),
     capabilities=[
-        AgentCapability(
-            name="create_order", description="Place an order for the customer", required=True
-        ),
         AgentCapability(
             name="get_customer", description="Read current customer profile", required=True
         ),
@@ -67,10 +73,6 @@ _DEFINITION = AgentDefinition(
             required=False,
         ),
         AgentCapability(
-            name="add_task", description="Create follow-up operational task", required=False
-        ),
-        AgentCapability(name="add_tag", description="Add tag to customer record", required=False),
-        AgentCapability(
             name="find_product_by_image", description="Match product from image", required=False
         ),
     ],
@@ -81,7 +83,6 @@ _DEFINITION = AgentDefinition(
     allowed_tools=CUSTOMER_TOOLS,
     task_types=[
         "customer_inquiry",
-        "order_placement",
         "product_search",
         "vision_match",
         "voice_turn",

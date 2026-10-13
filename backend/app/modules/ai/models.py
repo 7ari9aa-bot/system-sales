@@ -502,8 +502,12 @@ class AIHandover(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Bas
     #        | guardrail | messaging_window_closed | approval
     # `ai.handover.request_human_takeover` is the ONLY writer of these rows in
     # app/. Producers today: budget | guardrail | messaging_window_closed |
-    # failure | approval | customer_request (the customer asked for a person —
-    # §37's `policy` and `low_confidence` still have no producer).
+    # failure (a blocked/failed run, and a tenant entitled to AI whose canonical
+    # customer agent is not provisioned) | approval | customer_request (the
+    # customer asked for a person) | policy (the tenant's plan does not include
+    # AI). §37's `low_confidence` is the one reason still without a producer.
+    # One conversation holds at most ONE open row: enforced in the service AND
+    # by the partial unique index `uq_handovers_open_conversation`.
     reason: Mapped[str] = mapped_column(String(31))
     # allowed: pending | claimed | resolved
     status: Mapped[str] = mapped_column(String(15), server_default="pending")

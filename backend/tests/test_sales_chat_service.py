@@ -291,9 +291,7 @@ def _analysis_result(**overrides):
                 confidence="HIGH",
             )
         ],
-        facts=[
-            {"metric": "revenue", "value": "12500.00", "unit": "EGP", "window": "30d"}
-        ],
+        facts=[{"metric": "revenue", "value": "12500.00", "unit": "EGP", "window": "30d"}],
         data_quality=DataQuality(status=DataQualityStatus.COMPLETE),
         guardrail_reason=None,
         saved_evidence_id=uuid.uuid4(),
@@ -311,8 +309,8 @@ async def test_run_chat_turn_persists_answer_and_blocks(monkeypatch):
     ]
     session = _CommittingSession(
         [
-            _FakeResult(rows=[user_row]),   # last user message
-            _FakeResult(None),               # no assistant row at slot 2
+            _FakeResult(rows=[user_row]),  # last user message
+            _FakeResult(None),  # no assistant row at slot 2
             _FakeResult(rows=history_rows),  # bounded history
         ]
     )
@@ -371,9 +369,7 @@ async def test_run_chat_turn_failure_lands_failed_row(monkeypatch):
     async def boom(session, tenant_id, *, agent_id, question, runner=None, history=None):
         raise RuntimeError("gateway down")
 
-    monkeypatch.setattr(
-        "app.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", boom
-    )
+    monkeypatch.setattr("app.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", boom)
     with pytest.raises(ConflictError):
         await run_chat_turn(session, _Ctx(), _Thread(agent_id=uuid.uuid4()))
     (assistant,) = session.added
@@ -396,7 +392,7 @@ async def test_run_chat_turn_retry_overwrites_failed_row(monkeypatch):
     session = _CommittingSession(
         [
             _FakeResult(rows=[user_row]),
-            _FakeResult(failed),             # retry slot holds a failed row
+            _FakeResult(failed),  # retry slot holds a failed row
             _FakeResult(rows=[]),
         ]
     )

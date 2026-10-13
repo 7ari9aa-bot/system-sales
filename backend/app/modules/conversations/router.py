@@ -401,6 +401,127 @@ async def webchat_inbound(public_key: str, body: WebchatInbound, session: DbSess
     }
 
 
+@public_router.get("/webchat/{public_key}/messages")
+async def webchat_list_messages(
+    public_key: str,
+    request: Request,
+    session: DbSession,
+    session_token: Annotated[str | None, Query(max_length=4096)] = None,
+    cursor: Annotated[str | None, Query(max_length=512)] = None,
+    after: Annotated[str | None, Query(max_length=512)] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+):
+    """Retrieve or poll messages for a webchat visitor conversation."""
+    from app.core.db import bind_tenant
+    from app.core.security import decode_visitor_token
+
+    adapter = get_adapter("webchat")
+    if adapter is None:
+        raise NotFoundError("webchat disabled")
+    tenant_id = await IngestService.resolve_tenant(session, "webchat", public_key)
+    if tenant_id is None:
+        raise NotFoundError("unknown widget key")
+
+    token = session_token or request.headers.get("x-session-token")
+    if not token:
+        auth_header = request.headers.get("authorization")
+        if auth_header and auth_header.lower().startswith("bearer "):
+            token = auth_header[7:].strip()
+    if not token:
+        raise ValidationError("session_token required to fetch webchat messages")
+
+    claims = decode_visitor_token(token)
+    if claims.get("tenant_id") != str(tenant_id):
+        raise PermissionDeniedError("visitor session belongs to another tenant")
+    if claims.get("widget") != public_key:
+        raise PermissionDeniedError("visitor session belongs to another widget")
+    session_key = str(claims["sub"])
+
+    await bind_tenant(session, tenant_id)
+
+    conversation = await ConversationService.find_webchat_conversation(
+        session, tenant_id, session_key
+    )
+    if conversation is None:
+        return {"items": [], "next_cursor": None, "has_more": False}
+
+    after_created_at, after_id = decode_cursor(after) if after else (None, None)
+    before_created_at, before_id = decode_cursor(cursor) if cursor else (None, None)
+
+    if after is not None:
+        rows = await ConversationService.list_messages(
+            session,
+            tenant_id,
+            conversation.id,
+            limit=limit + 1,
+            after_created_at=after_created_at,
+            after_id=after_id,
+        )
+        has_more = len(rows) > limit
+        items_to_show = rows[:limit]
+        next_cursor = (
+            encode_cursor(items_to_show[-1].created_at, items_to_show[-1].id)
+            if items_to_show
+            else after
+        )
+    else:
+        rows = await ConversationService.list_messages(
+            session,
+            tenant_id,
+            conversation.id,
+            limit=limit + 1,
+            before_created_at=before_created_at,
+            before_id=before_id,
+        )
+        has_more = len(rows) > limit
+        if has_more:
+            items_to_show = rows[1:]
+        else:
+            items_to_show = rows
+        next_cursor = (
+            encode_cursor(items_to_show[-1].created_at, items_to_show[-1].id)
+            if items_to_show
+            else None
+        )
+
+    storage_keys = await ConversationService.attachment_storage_keys(
+        session, tenant_id, [message.id for message in items_to_show]
+    )
+    media_urls: dict[uuid.UUID, str | None] = {}
+    if storage_keys:
+        from app.core.storage import get_storage
+
+        storage = get_storage()
+        for message_id, key in storage_keys.items():
+            try:
+                media_urls[message_id] = storage.signed_url(key)
+            except Exception:
+                logger.exception(
+                    "media.signed_url_failed tenant=%s message=%s",
+                    tenant_id,
+                    message_id,
+                )
+                media_urls[message_id] = None
+
+    return {
+        "items": [
+            {
+                "id": str(m.id),
+                "direction": m.direction,
+                "sender_type": m.sender_type,
+                "body": m.body,
+                "media_url": media_urls.get(m.id, m.media_url),
+                "media_type": m.media_type,
+                "content_type": m.content_type,
+                "created_at": m.created_at.isoformat(),
+            }
+            for m in items_to_show
+        ],
+        "next_cursor": next_cursor,
+        "has_more": has_more,
+    }
+
+
 # ---------- channel webhooks (generic dispatch through the registry) ----------
 
 # Channels accepted on the generic webhook endpoint. Webchat is deliberately

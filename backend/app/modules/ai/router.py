@@ -98,6 +98,13 @@ router = APIRouter(prefix="/ai", tags=["ai"])
 SettingsCtx = Annotated[TenantContext, Depends(require_permission("settings:write"))]
 SettingsReadCtx = Annotated[TenantContext, Depends(require_permission("settings:read"))]
 AnalyticsCtx = Annotated[TenantContext, Depends(require_permission("analytics:read"))]
+# The handover queue is conversation work, so it is gated by the conversation
+# permissions rather than by bare tenant membership (`TenantCtxDep`): reading
+# the queue needs `conversations:read`, taking or closing an item needs
+# `conversations:write`. Tenant isolation is unchanged — `require_permission`
+# resolves the tenant the same way and RLS still binds every row.
+HandoverReadCtx = Annotated[TenantContext, Depends(require_permission("conversations:read"))]
+HandoverWriteCtx = Annotated[TenantContext, Depends(require_permission("conversations:write"))]
 
 
 class require_ai_approve:
@@ -1003,7 +1010,7 @@ def _handover_out(h: AIHandover) -> dict:
 
 @router.get("/handovers", response_model=HandoverList)
 async def list_handovers(
-    ctx: TenantCtxDep,
+    ctx: HandoverReadCtx,
     status: Annotated[
         str | None, Query(description="Filter by pending | claimed | resolved")
     ] = None,
@@ -1019,7 +1026,7 @@ async def list_handovers(
 @router.post("/handovers/{handover_id}/claim", response_model=HandoverOut)
 async def claim_handover(
     handover_id: uuid.UUID,
-    ctx: TenantCtxDep,
+    ctx: HandoverWriteCtx,
 ):
     from sqlalchemy import text
 
@@ -1071,7 +1078,7 @@ async def claim_handover(
 @router.post("/handovers/{handover_id}/resolve", response_model=HandoverOut)
 async def resolve_handover(
     handover_id: uuid.UUID,
-    ctx: TenantCtxDep,
+    ctx: HandoverWriteCtx,
     body: HandoverResolveRequest | None = None,
 ):
     """Close a handover, recording WHO closed it, WHEN, and WITH WHAT RESULT.
@@ -1205,9 +1212,7 @@ async def delete_sales_chat_thread(thread_id: uuid.UUID, ctx: AnalyticsCtx) -> N
     await chat_service.delete_thread(ctx.session, ctx, thread)
 
 
-@router.get(
-    "/sales-chat/threads/{thread_id}/messages", response_model=list[SalesChatMessageOut]
-)
+@router.get("/sales-chat/threads/{thread_id}/messages", response_model=list[SalesChatMessageOut])
 async def list_sales_chat_messages(
     thread_id: uuid.UUID,
     ctx: AnalyticsCtx,

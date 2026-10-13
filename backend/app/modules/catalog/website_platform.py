@@ -1,4 +1,4 @@
-"""Website Platform catalog exposure (§208 External SDK — receive side).
+r"""Website Platform catalog exposure (§208 External SDK — receive side).
 
 The external Website Platform (D:\website builder) reads this tenant's
 published catalog to render ProductGrid sections. Access is key-based, NOT

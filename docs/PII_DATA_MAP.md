@@ -21,6 +21,12 @@ deletion/retention behavior. Deletion propagation order follows §172.
 | Vector store | embeddings | derived | rebuildable | deletable per customer |
 | Backups | full DB copy | full | declared window (§70) | expires with backup rotation — documented, not individually editable |
 | Logs (structlog) | no raw PII by default | minimal | short | request_id correlation only |
+| `integrations.credentials` | channel tokens / secrets | sensitive / creds | life of integration | encrypted via EnvelopeSecretStore; cascade on integration delete |
+| `model_configs` | tenant provider keys | sensitive / creds | life of tenant | encrypted via EnvelopeSecretStore; deleted on tenant offboarding |
+| `security_events` | actor ID, IP, user-agent | security audit | 90 days declared | **not purged today** — no purge path exists (the table is outside the retention allowlist); recorded so the gap is visible; no raw passwords ever recorded |
+| `webhook_events` | raw provider payload | transient external | 30 days / policy | retention worker purge |
+| `user_mfa_secrets` | TOTP seeds, backup codes | sensitive / auth | life of user | encrypted at rest; hard-deleted on MFA disable or user delete |
+| `refresh_tokens` | token hashes, family | auth transient | expires_at | revoked on logout; expired rows are refused at verify but **not deleted today** — no purge path exists |
 
 ## Deletion propagation order (§172)
 1. customers tombstone (this service)

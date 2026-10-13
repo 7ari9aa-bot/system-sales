@@ -18,6 +18,10 @@ _INSECURE_JWT_SECRETS = frozenset({"", "change-me", "changeme", "secret", "test"
 _INSECURE_SERVICE_TOKENS = frozenset({"", "change-me", "change-me-too"})
 _INSECURE_MASTER_KEYS = frozenset({"", "change-me", "change-me-too", "secret", "test"})
 
+# Used only when neither the voice setting nor the primary AI provider names a
+# base URL. Kept here so the two resolution properties cannot drift apart.
+_DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_ignore_empty=True, extra="ignore")
@@ -154,6 +158,46 @@ class Settings(BaseSettings):
     # billed per minute, so this is what the budget gate reserves before the
     # provider call. Operator-tunable for the same reason as the cap above.
     ai_stt_cost_per_minute: float = 0.01
+
+    # §35/§36 voice: speech-to-text and text-to-speech are their OWN services.
+    #
+    # Separate settings rather than a reuse of the chat provider because the
+    # model names differ — `whisper-1` and `tts-1` are not chat models — and an
+    # operator may point voice at a different vendor. Each credential and base
+    # URL FALLS BACK to the primary AI provider's, so a deployment that already
+    # configured AI gets voice working without a second key.
+    #
+    # These fields exist because the previous version read
+    # `getattr(settings, "openai_api_key", None)` — a field that has never
+    # existed. `extra="ignore"` means even an operator who exported
+    # OPENAI_API_KEY got nothing, so the provider factory returned None
+    # forever: voice was unreachable in EVERY environment, production included,
+    # and it failed silently. A missing field must not be spelled `getattr`.
+    ai_stt_api_key: str = ""
+    ai_stt_base_url: str = ""
+    ai_stt_model: str = "whisper-1"
+    ai_tts_api_key: str = ""
+    ai_tts_base_url: str = ""
+    ai_tts_model: str = "tts-1"
+    ai_tts_voice: str = "alloy"
+
+    @property
+    def stt_api_key(self) -> str:
+        """The STT credential: its own, else the primary AI provider's."""
+        return self.ai_stt_api_key or self.ai_api_key_primary
+
+    @property
+    def stt_base_url(self) -> str:
+        return self.ai_stt_base_url or self.ai_base_url_primary or _DEFAULT_OPENAI_BASE_URL
+
+    @property
+    def tts_api_key(self) -> str:
+        """The TTS credential: its own, else the primary AI provider's."""
+        return self.ai_tts_api_key or self.ai_api_key_primary
+
+    @property
+    def tts_base_url(self) -> str:
+        return self.ai_tts_base_url or self.ai_base_url_primary or _DEFAULT_OPENAI_BASE_URL
 
     # Circuit breaker (§47) applied to every external dependency — AI provider,
     # WhatsApp/Telegram, object storage. Tunable so an operator can loosen the

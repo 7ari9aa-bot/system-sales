@@ -147,9 +147,7 @@ def _patch_analysis(monkeypatch, *, explode=False, result=None):
         calls["count"] += 1
         return result or _analysis_result()
 
-    monkeypatch.setattr(
-        "app.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", fake
-    )
+    monkeypatch.setattr("app.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", fake)
     return calls
 
 
@@ -172,12 +170,12 @@ async def test_send_message_happy_path_returns_assistant_turn(monkeypatch):
     user_row = SimpleNamespace(sequence_no=1, content="قارن مبيعات الشهر ده باللي فات.")
     session = _FakeSession(
         [
-            _FakeResult(thread),               # get_thread
-            _FakeResult(None),                 # idempotency lookup
-            _FakeResult(0),                    # max sequence_no
-            _FakeResult(rows=[user_row]),      # run_chat_turn: last user message
-            _FakeResult(None),                 # run_chat_turn: assistant slot free
-            _FakeResult(rows=[]),              # bounded history
+            _FakeResult(thread),  # get_thread
+            _FakeResult(None),  # idempotency lookup
+            _FakeResult(0),  # max sequence_no
+            _FakeResult(rows=[user_row]),  # run_chat_turn: last user message
+            _FakeResult(None),  # run_chat_turn: assistant slot free
+            _FakeResult(rows=[]),  # bounded history
         ]
     )
     calls = _patch_analysis(monkeypatch)
@@ -215,9 +213,9 @@ async def test_duplicate_idempotency_key_returns_same_reply_without_rerun(monkey
     )
     session = _FakeSession(
         [
-            _FakeResult(thread),      # get_thread
-            _FakeResult(user_row),    # idempotency lookup -> existing user turn
-            _FakeResult(reply),       # assistant reply for seq 2
+            _FakeResult(thread),  # get_thread
+            _FakeResult(user_row),  # idempotency lookup -> existing user turn
+            _FakeResult(reply),  # assistant reply for seq 2
         ]
     )
     _patch_analysis(monkeypatch, explode=True)
@@ -309,17 +307,23 @@ async def test_retry_reruns_a_failed_turn(monkeypatch):
         id=uuid.uuid4(),
         thread_id=thread.id,
         created_at=datetime.now(UTC),
-        sequence_no=2, role="assistant", status="failed", content="", structured_content=None,
-        error_code="run_failed", run_id=None, analysis_id=None,
+        sequence_no=2,
+        role="assistant",
+        status="failed",
+        content="",
+        structured_content=None,
+        error_code="run_failed",
+        run_id=None,
+        analysis_id=None,
     )
     session = _FakeSession(
         [
-            _FakeResult(thread),               # get_thread
-            _FakeResult(failed),               # retry: the stale row is failed
-            _FakeResult(rows=[user_row]),      # retry: latest user turn matches the slot
-            _FakeResult(rows=[user_row]),      # run_chat_turn: last user message
-            _FakeResult(failed),               # run_chat_turn: failed slot reused
-            _FakeResult(rows=[]),              # bounded history
+            _FakeResult(thread),  # get_thread
+            _FakeResult(failed),  # retry: the stale row is failed
+            _FakeResult(rows=[user_row]),  # retry: latest user turn matches the slot
+            _FakeResult(rows=[user_row]),  # run_chat_turn: last user message
+            _FakeResult(failed),  # run_chat_turn: failed slot reused
+            _FakeResult(rows=[]),  # bounded history
         ]
     )
     calls = _patch_analysis(monkeypatch)

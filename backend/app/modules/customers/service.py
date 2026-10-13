@@ -666,6 +666,15 @@ class CustomerService:
         )
 
     @staticmethod
+    async def find_by_identity(
+        session: AsyncSession, tenant_id: UUID, channel: str, external_id: str
+    ) -> Customer | None:
+        """Find a live customer holding this channel identity, or None."""
+        return await CustomerService._resolve_by_identity(
+            session, tenant_id, channel, external_id
+        )
+
+    @staticmethod
     async def _resolve_by_identity(
         session: AsyncSession, tenant_id: UUID, channel: str, external_id: str
     ) -> Customer | None:

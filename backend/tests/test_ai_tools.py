@@ -472,3 +472,135 @@ def test_search_products_percent_query_does_not_match_everything() -> None:
     _, params = _search_patterns("%")
     assert "%%%" not in params, f"match-all pattern bound: {params!r}"
     assert r"%\%%" in params, params
+
+
+# ------------------------------- structured spec search (P1, DB-free) -------
+
+
+def _search_sql(**kwargs: object) -> str:
+    """Compile ``_search_products``'s SELECT for the given arguments, offline."""
+    import asyncio
+
+    from sqlalchemy.dialects import postgresql
+
+    from app.modules.ai.tools import _search_products
+
+    session = _CapturingSession()
+    asyncio.run(_search_products(session, uuid.uuid4(), **kwargs))
+    return str(session.statement.compile(dialect=postgresql.dialect()))
+
+
+def test_search_products_uses_the_indexed_full_text_arm() -> None:
+    """`products.search_ts` is a generated tsvector with a GIN index (§45).
+
+    Before this, a multi-word query was a LIKE scan over the title only, so a
+    word in the DESCRIPTION could never match and the index went unused.
+    """
+    sql = _search_sql(query="قميص قطن", limit=5)
+    assert "plainto_tsquery" in sql.lower()
+    assert "@@" in sql
+    # The substring arms stay: a substring INSIDE a word ("قطن" in "قطني") is
+    # trigram work, not tsvector — the column's own note.
+    assert "ILIKE" in sql.upper()
+
+
+def test_search_products_without_specs_is_still_the_plain_keyword_path() -> None:
+    """Optional filters must not change the shape of the default query."""
+    sql = _search_sql(query="قميص", limit=5)
+    assert "@>" not in sql, "a containment predicate appeared with no specs given"
+
+
+def test_search_products_matches_structured_specs_by_containment() -> None:
+    """A spec the customer named is decided by the database, not by a LIKE.
+
+    Color lives in `products.attributes`, size in `product_variants.option_values`
+    — neither is in a name the old ILIKE could reach.
+    """
+    sql = _search_sql(
+        query="قميص", attributes={"color": "أحمر"}, option_values={"size": "M"}, limit=5
+    )
+    assert sql.count("@>") == 2, sql
+    assert "products.attributes" in sql
+    assert "product_variants.option_values" in sql
+
+
+def test_search_products_keeps_the_sellable_gate() -> None:
+    """Browsing must agree with checkout: active variants of sellable products."""
+    upper = _search_sql(query="x", limit=5).upper()
+    assert "IS_ACTIVE" in upper
+    assert "STATUS IN" in upper
+
+
+def test_the_search_tool_advertises_the_structured_specs() -> None:
+    """The model can only pass a filter the tool's schema declares."""
+    from app.modules.ai.tools import SearchProductsArgs
+
+    fields = SearchProductsArgs.model_fields
+    assert "attributes" in fields
+    assert "option_values" in fields
+    # Optional, so the previous call shape keeps working unchanged.
+    args = SearchProductsArgs(query="x")
+    assert args.attributes is None
+    assert args.option_values is None
+
+
+async def test_structured_specs_are_matched_by_the_database(db, tenant_ctx):
+    """CI-only: needs `DATABASE_URL_APP_ADMIN`, skips locally.
+
+    The behavioural half of the containment filter. Two shirts share the title
+    "قميص" and differ only in `attributes.color`; two variants of the red one
+    differ only in `option_values.size`. A name-based ILIKE cannot tell any of
+    them apart — the JSONB containment is what does.
+    """
+    tenant_id = tenant_ctx.tenant_id
+    red = Product(
+        tenant_id=tenant_id,
+        title="قميص",
+        slug=f"shirt-red-{uuid.uuid4().hex[:8]}",
+        status="active",
+        attributes={"color": "أحمر", "material": "قطن"},
+    )
+    blue = Product(
+        tenant_id=tenant_id,
+        title="قميص",
+        slug=f"shirt-blue-{uuid.uuid4().hex[:8]}",
+        status="active",
+        attributes={"color": "أزرق", "material": "قطن"},
+    )
+    db.add_all([red, blue])
+    await db.flush()
+
+    red_m = ProductVariant(
+        tenant_id=tenant_id,
+        product_id=red.id,
+        sku=f"RM-{uuid.uuid4().hex[:6].upper()}",
+        title="قميص M",
+        price=Decimal("100.00"),
+        option_values={"size": "M"},
+    )
+    red_l = ProductVariant(
+        tenant_id=tenant_id,
+        product_id=red.id,
+        sku=f"RL-{uuid.uuid4().hex[:6].upper()}",
+        title="قميص L",
+        price=Decimal("100.00"),
+        option_values={"size": "L"},
+    )
+    blue_m = ProductVariant(
+        tenant_id=tenant_id,
+        product_id=blue.id,
+        sku=f"BM-{uuid.uuid4().hex[:6].upper()}",
+        title="قميص M",
+        price=Decimal("100.00"),
+        option_values={"size": "M"},
+    )
+    db.add_all([red_m, red_l, blue_m])
+    await db.flush()
+
+    spec = get_tool("search_products")
+    kwargs = spec.args_schema(
+        query="قميص", attributes={"color": "أحمر"}, option_values={"size": "M"}, limit=20
+    ).model_dump()
+    result = await spec.handler(db, tenant_id, **kwargs)
+
+    assert [row["variant_id"] for row in result["results"]] == [str(red_m.id)]

@@ -98,16 +98,23 @@ class SynthesisResult:
 
 
 class OpenAIWhisperSTTProvider:
-    """§35: STT provider using OpenAI's Whisper API.
+    """§35: STT provider using an OpenAI-compatible transcription endpoint.
 
-    Requires OPENAI_API_KEY in settings. If the key is absent, the provider
-    raises on first call — VoiceService catches it and marks the attachment
-    as failed, preserving the "best-effort" rule.
+    Reads its credential, base URL and model from settings
+    (`AI_STT_*`, falling back to the primary AI provider). If no credential
+    resolves, the provider raises on first call — VoiceService catches it and
+    marks the attachment as failed, preserving the "best-effort" rule.
     """
 
-    def __init__(self, api_key: str | None = None, base_url: str | None = None):
+    def __init__(
+        self,
+        api_key: str | None = None,
+        base_url: str | None = None,
+        model: str | None = None,
+    ):
         self._api_key = api_key
-        self._base_url = base_url or "https://api.openai.com/v1"
+        self._base_url = base_url
+        self._model = model
 
     async def transcribe(
         self,
@@ -121,9 +128,13 @@ class OpenAIWhisperSTTProvider:
         from app.core.config import get_settings
 
         settings = get_settings()
-        key = self._api_key or getattr(settings, "openai_api_key", None)
+        key = self._api_key or settings.stt_api_key
         if not key:
-            raise RuntimeError("OPENAI_API_KEY not configured for STT")
+            raise RuntimeError(
+                "no STT credential configured — set AI_STT_API_KEY or AI_API_KEY_PRIMARY"
+            )
+        base_url = self._base_url or settings.stt_base_url
+        model = self._model or settings.ai_stt_model
 
         # Fetch the audio from storage
         from app.core.storage import get_storage
@@ -134,12 +145,12 @@ class OpenAIWhisperSTTProvider:
         async with httpx.AsyncClient(timeout=60.0) as client:
             files = {
                 "file": ("audio", audio_bytes, mime_type or "audio/mpeg"),
-                "model": (None, "whisper-1"),
+                "model": (None, model),
             }
             if language:
                 files["language"] = (None, language)
             resp = await client.post(
-                f"{self._base_url}/audio/transcriptions",
+                f"{base_url}/audio/transcriptions",
                 headers={"Authorization": f"Bearer {key}"},
                 files=files,
             )
@@ -148,14 +159,21 @@ class OpenAIWhisperSTTProvider:
 
 
 class OpenAITTSProvider:
-    """§36: TTS provider using OpenAI's TTS API.
+    """§36: TTS provider using an OpenAI-compatible speech endpoint.
 
-    Requires OPENAI_API_KEY in settings. Returns (audio_bytes, mime_type).
+    Reads its credential, base URL, model and voice from settings (`AI_TTS_*`,
+    falling back to the primary AI provider). Returns (audio_bytes, mime_type).
     """
 
-    def __init__(self, api_key: str | None = None, base_url: str | None = None):
+    def __init__(
+        self,
+        api_key: str | None = None,
+        base_url: str | None = None,
+        model: str | None = None,
+    ):
         self._api_key = api_key
-        self._base_url = base_url or "https://api.openai.com/v1"
+        self._base_url = base_url
+        self._model = model
 
     async def synthesize(
         self,
@@ -169,21 +187,24 @@ class OpenAITTSProvider:
         from app.core.config import get_settings
 
         settings = get_settings()
-        key = self._api_key or getattr(settings, "openai_api_key", None)
+        key = self._api_key or settings.tts_api_key
         if not key:
-            raise RuntimeError("OPENAI_API_KEY not configured for TTS")
+            raise RuntimeError(
+                "no TTS credential configured — set AI_TTS_API_KEY or AI_API_KEY_PRIMARY"
+            )
+        base_url = self._base_url or settings.tts_base_url
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
-                f"{self._base_url}/audio/speech",
+                f"{base_url}/audio/speech",
                 headers={
                     "Authorization": f"Bearer {key}",
                     "Content-Type": "application/json",
                 },
                 json={
-                    "model": "tts-1",
+                    "model": self._model or settings.ai_tts_model,
                     "input": text,
-                    "voice": voice or "alloy",
+                    "voice": voice or settings.ai_tts_voice,
                 },
             )
             resp.raise_for_status()
@@ -191,22 +212,29 @@ class OpenAITTSProvider:
 
 
 def get_default_stt_provider() -> STTProvider | None:
-    """§35: return the default STT provider, or None if not configured."""
+    """§35: the default STT provider, or None when no credential resolves.
+
+    None is a real state (voice stays off) and the caller logs it; it must not
+    be the state a misconfigured deployment lands in BY ACCIDENT, which is what
+    reading a non-existent setting produced.
+    """
     from app.core.config import get_settings
 
     settings = get_settings()
-    if getattr(settings, "openai_api_key", None):
-        return OpenAIWhisperSTTProvider(api_key=settings.openai_api_key)
+    if settings.stt_api_key:
+        return OpenAIWhisperSTTProvider(
+            api_key=settings.stt_api_key, base_url=settings.stt_base_url
+        )
     return None
 
 
 def get_default_tts_provider() -> TTSProvider | None:
-    """§36: return the default TTS provider, or None if not configured."""
+    """§36: the default TTS provider, or None when no credential resolves."""
     from app.core.config import get_settings
 
     settings = get_settings()
-    if getattr(settings, "openai_api_key", None):
-        return OpenAITTSProvider(api_key=settings.openai_api_key)
+    if settings.tts_api_key:
+        return OpenAITTSProvider(api_key=settings.tts_api_key, base_url=settings.tts_base_url)
     return None
 
 

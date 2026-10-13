@@ -72,8 +72,8 @@ async def _do_auto_reply(
     from app.modules.ai.handover import request_human_takeover
     from app.modules.conversations.service import ConversationService
 
-    async def handover(reason: str, note: str, run_id: uuid.UUID | None) -> None:
-        await request_human_takeover(
+    async def handover(reason: str, note: str, run_id: uuid.UUID | None) -> bool:
+        return await request_human_takeover(
             session,
             tenant_id,
             conversation_id=conversation_id,
@@ -82,20 +82,35 @@ async def _do_auto_reply(
             run_id=run_id,
         )
 
-    agent = await resolve_agent_by_kind_optional(session, tenant_id, "customer")
-    if agent is None:
-        return
-
-    # §165: whether the plan includes AI is an entitlement, and it is checked
-    # in ONE service rather than here. A tenant without it is not an error —
-    # the conversation simply waits for a human, so we skip (never raise: a
-    # raised error would retry and dead-letter the customer's message).
+    # §165: whether the plan includes AI is an entitlement, and it is checked in
+    # ONE service rather than here. A tenant without it is not an error (never
+    # raise: a raised error would retry and dead-letter the customer's message) —
+    # but it is also not "nobody's problem". Without AI the conversation owes the
+    # customer a human answer, so the withhold is recorded like every other one:
+    # the row, the status and the event. §37's `policy` reason had no producer
+    # before this; a plan that excludes AI is exactly what it names.
     from app.modules.billing.service import EntitlementService
 
     if not await EntitlementService.can(session, tenant_id, "CanUseAI"):
+        created = await handover("policy", "plan does not include AI", None)
         logger.info(
-            "auto-reply skipped: plan does not include AI conversation=%s",
+            "auto-reply skipped: plan does not include AI conversation=%s handover_created=%s",
             conversation_id,
+            created,
+        )
+        return
+
+    agent = await resolve_agent_by_kind_optional(session, tenant_id, "customer")
+    if agent is None:
+        # Entitled to AI, but the canonical customer agent is not provisioned:
+        # a misconfiguration, not a customer problem. Record it as a failure so a
+        # human takes over, instead of the message sitting unanswered in a
+        # conversation with no owner.
+        created = await handover("failure", "customer agent is not provisioned", None)
+        logger.warning(
+            "auto-reply skipped: no customer agent conversation=%s handover_created=%s",
+            conversation_id,
+            created,
         )
         return
 
