@@ -289,48 +289,10 @@ async def run_customer_turn(
             blocked_reason="empty_turn",
         )
 
-    # P1-10: the customer's own message may carry a quote's confirmation
-    # code. Matched HERE, server-side, against the inbound text — a model
-    # sentence claiming "the customer confirmed" changes nothing. The id of
-    # a confirmed quote flows to the tools through the runtime's server-bound
-    # context, so create_order can only execute lines the customer typed a
-    # code for.
-    confirmed_quote_id: uuid.UUID | None = None
-    quote_line: str | None = None
-    if params.customer_id is not None:
-        from app.modules.ai.agents.customer.confirmation import live_quote, match_confirmation
-
-        matched = await match_confirmation(
-            session,
-            params.tenant_id,
-            conversation_id=params.conversation_id,
-            customer_id=params.customer_id,
-            text=turn.text,
-        )
-        if matched is not None:
-            confirmed_quote_id = matched.id
-            quote_line = (
-                f"العميل أكّد الطلب (كود: {matched.code}) — نادي create_order لتنفيذ البنود المؤكدة."
-            )
-        else:
-            live = await live_quote(
-                session,
-                params.tenant_id,
-                conversation_id=params.conversation_id,
-                customer_id=params.customer_id,
-            )
-            if live is not None and live.status == "pending":
-                quote_line = (
-                    f"فيه عرض سعر مستني تأكيد العميل (كود التأكيد: {live.code}). "
-                    "الطلب لم ينفذ — لازم العميل يبعت الكود بنفسه الأول."
-                )
-
     # The hook's retrieved snippets ride FIRST; the system-owned context
     # lines (state, referents, vision) follow — both stay OUTSIDE the system
     # prompt (§132 untrusted zone).
-    merged_context = (
-        "\n".join(part for part in (params.knowledge_context, context, quote_line) if part) or None
-    )
+    merged_context = "\n".join(part for part in (params.knowledge_context, context) if part) or None
 
     result: AgentRunResult = await _runner.run(
         session,
@@ -341,7 +303,6 @@ async def run_customer_turn(
         user_message=user_message,
         customer_id=params.customer_id,
         knowledge_context=merged_context,
-        confirmed_quote_id=confirmed_quote_id,
     )
 
     deadline_exceeded = (time.monotonic() - started) > deadline_seconds

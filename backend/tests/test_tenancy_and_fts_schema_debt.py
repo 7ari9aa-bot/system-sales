@@ -175,9 +175,12 @@ def test_the_three_new_revisions_exist_and_chain_from_the_head() -> None:
     # the §150 handover outcome columns and the analysis provenance columns —
     # carried it fe2026100809 -> fe2026100815; the infra RLS convergence
     # carried it fe2026100815 -> fe2026101001; the SI chat persistence
-    # carried it fe2026101001 -> fe2026100816; the one-open-handover-per-
-    # conversation guarantee carried it fe2026100816 -> fe2026101401): the head
-    # is a fact of the current chain, and this guard pins it so a fork is caught
+    # carried it fe2026101001 -> fe2026100816; the agent-layer closure waves
+    # carried it fe2026100816 -> fe2026100818 — the customer commerce-tool
+    # disable, then the deployments backfill + search_path; the one-open-
+    # handover-per-conversation guarantee carried it fe2026100818 ->
+    # fe2026101401): the head is a fact of the current chain, and this guard
+    # pins it so a fork is caught
     # the day it lands.
     #
     # The pin names the COMMITTED head, because CI is what runs the build. A

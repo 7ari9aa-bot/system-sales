@@ -106,6 +106,31 @@ class ConversationService:
         ).scalar_one_or_none()
 
     @staticmethod
+    async def find_ai_reply(
+        session: AsyncSession, tenant_id: uuid.UUID, inbound_message_id: uuid.UUID
+    ) -> Message | None:
+        """The AI outbound message already threaded to this inbound, or None.
+
+        The duplicate-answer check reads THIS, not "any recent outbound": a
+        human agent replying in parallel must not suppress the AI, and the AI
+        must not suppress a human. Only ``sender_type='ai'`` rows threaded via
+        ``reply_to_message_id`` count as "already answered".
+        """
+        return (
+            await session.execute(
+                select(Message)
+                .where(
+                    Message.tenant_id == tenant_id,
+                    Message.reply_to_message_id == inbound_message_id,
+                    Message.direction == "outbound",
+                    Message.sender_type == "ai",
+                )
+                .order_by(Message.created_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
     async def get(
         session: AsyncSession, tenant_id: uuid.UUID, conversation_id: uuid.UUID
     ) -> Conversation:

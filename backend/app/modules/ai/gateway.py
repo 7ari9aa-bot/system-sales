@@ -204,30 +204,39 @@ async def resolve_model_config(
     }
 
 
-async def _month_spend(session: AsyncSession, tenant_id: UUID) -> Decimal:
-    """Sum of ai_usage cost for the current calendar month, for this tenant."""
+async def _month_spend(
+    session: AsyncSession, tenant_id: UUID, *, agent_id: UUID | None = None
+) -> Decimal:
+    """Sum of ai_usage cost for the current calendar month, for this tenant.
+
+    With ``agent_id`` the sum is THAT agent's spend only — the measurement
+    scope of an agent-specific cap (see ``_resolve_cap``'s third element)."""
     month_start = datetime.now(UTC).date().replace(day=1)
+    conditions = [
+        AIUsage.tenant_id == tenant_id,
+        AIUsage.period_date >= month_start,
+    ]
+    if agent_id is not None:
+        conditions.append(AIUsage.agent_id == agent_id)
     total = (
-        await session.execute(
-            select(func.coalesce(func.sum(AIUsage.cost), 0)).where(
-                AIUsage.tenant_id == tenant_id,
-                AIUsage.period_date >= month_start,
-            )
-        )
+        await session.execute(select(func.coalesce(func.sum(AIUsage.cost), 0)).where(*conditions))
     ).scalar_one()
     return Decimal(total or 0)
 
 
-async def _day_spend(session: AsyncSession, tenant_id: UUID) -> Decimal:
+async def _day_spend(
+    session: AsyncSession, tenant_id: UUID, *, agent_id: UUID | None = None
+) -> Decimal:
     """§42: sum of ai_usage cost for today (UTC), for this tenant."""
     today = datetime.now(UTC).date()
+    conditions = [
+        AIUsage.tenant_id == tenant_id,
+        AIUsage.period_date == today,
+    ]
+    if agent_id is not None:
+        conditions.append(AIUsage.agent_id == agent_id)
     total = (
-        await session.execute(
-            select(func.coalesce(func.sum(AIUsage.cost), 0)).where(
-                AIUsage.tenant_id == tenant_id,
-                AIUsage.period_date == today,
-            )
-        )
+        await session.execute(select(func.coalesce(func.sum(AIUsage.cost), 0)).where(*conditions))
     ).scalar_one()
     return Decimal(total or 0)
 
@@ -239,17 +248,22 @@ def _daily_cap(monthly_cap: Decimal) -> Decimal:
     return (monthly_cap / Decimal(30)).quantize(Decimal("0.01"))
 
 
-async def _reserved_spend(session: AsyncSession, tenant_id: UUID) -> Decimal:
+async def _reserved_spend(
+    session: AsyncSession, tenant_id: UUID, *, agent_id: UUID | None = None
+) -> Decimal:
     """Budget already committed to in-flight runs (not yet settled)."""
     from app.modules.ai.models import AIBudgetReservation
 
+    conditions = [
+        AIBudgetReservation.tenant_id == tenant_id,
+        AIBudgetReservation.status == "active",
+        AIBudgetReservation.expires_at > datetime.now(UTC),
+    ]
+    if agent_id is not None:
+        conditions.append(AIBudgetReservation.agent_id == agent_id)
     total = (
         await session.execute(
-            select(func.coalesce(func.sum(AIBudgetReservation.amount), 0)).where(
-                AIBudgetReservation.tenant_id == tenant_id,
-                AIBudgetReservation.status == "active",
-                AIBudgetReservation.expires_at > datetime.now(UTC),
-            )
+            select(func.coalesce(func.sum(AIBudgetReservation.amount), 0)).where(*conditions)
         )
     ).scalar_one()
     return Decimal(total or 0)
@@ -311,18 +325,26 @@ def _default_cap() -> Decimal:
         return Decimal(str(MONTHLY_BUDGET_CAP))
 
 
-def _resolve_cap(policies: list, agent_id: UUID | None) -> tuple[Decimal, str]:
+def _resolve_cap(policies: list, agent_id: UUID | None) -> tuple[Decimal, str, bool]:
     """Agent-scoped policy wins over tenant-scoped; falls back to the default.
 
     "No policy" must never mean "no limit": a tenant without a BudgetPolicy row
     still gets the deployment default, so a misconfigured (or never-configured)
     tenant cannot spend without bound.
+
+    The third element says WHICH scope the winning cap speaks for, because the
+    spend that is compared against it must match: an agent-specific cap judged
+    against the WHOLE tenant's spend blames one agent for every other agent's
+    calls — it blocks while the agent itself has spent a fraction of its own
+    ceiling, and the tenant-level cap loses its meaning the same way in
+    reverse.
     """
     for scope_policy in policies:
         if scope_policy.agent_id is not None and scope_policy.agent_id != agent_id:
             continue
-        return Decimal(scope_policy.hard_cap), scope_policy.on_exceed
-    return _default_cap(), "block"
+        agent_scoped = scope_policy.agent_id is not None
+        return Decimal(scope_policy.hard_cap), scope_policy.on_exceed, agent_scoped
+    return _default_cap(), "block", False
 
 
 async def _raise_budget_alerts(
@@ -518,13 +540,18 @@ async def reserve_budget(
         .scalars()
         .all()
     )
-    cap, on_exceed = _resolve_cap(list(policies), agent_id)
+    cap, on_exceed, agent_scoped = _resolve_cap(list(policies), agent_id)
 
     if cap <= 0:
         return None
 
-    spend = await _month_spend(session, tenant_id)
-    reserved = await _reserved_spend(session, tenant_id)
+    # Measure the spend at the CAP's scope: an agent-specific ceiling is judged
+    # against that agent's own spend (and holds), a tenant ceiling against the
+    # tenant's. Comparing an agent cap against tenant-wide spend blocked an
+    # agent whose own spend was a fraction of its ceiling.
+    scope_agent_id = agent_id if agent_scoped else None
+    spend = await _month_spend(session, tenant_id, agent_id=scope_agent_id)
+    reserved = await _reserved_spend(session, tenant_id, agent_id=scope_agent_id)
     estimate = Decimal(str(estimated_cost or 0))
     committed = spend + reserved
 
@@ -535,7 +562,7 @@ async def reserve_budget(
 
     # §42: daily cost cap — prevents a single day from burning the entire
     # monthly budget. Defaults to monthly_cap / 30.
-    day_spend = await _day_spend(session, tenant_id)
+    day_spend = await _day_spend(session, tenant_id, agent_id=scope_agent_id)
     daily_cap = _daily_cap(cap)
     if committed + estimate >= cap:
         _on_budget_exceeded(
@@ -597,9 +624,9 @@ async def enforce_budget(
         .scalars()
         .all()
     )
-    cap, on_exceed = _resolve_cap(list(policies), agent_id)
+    cap, on_exceed, agent_scoped = _resolve_cap(list(policies), agent_id)
 
-    spend = await _month_spend(session, tenant_id)
+    spend = await _month_spend(session, tenant_id, agent_id=agent_id if agent_scoped else None)
     ratio = float(spend / cap * 100) if cap > 0 else 0.0
     if spend >= cap and on_exceed == "block":
         raise AIBudgetExhaustedError(

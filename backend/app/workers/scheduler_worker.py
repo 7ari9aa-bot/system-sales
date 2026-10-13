@@ -73,6 +73,10 @@ RECURRING_JOBS: dict[str, tuple[timedelta, dict]] = {
     # recompute could never run ("built, tested in isolation, never called").
     # This sweep is that producer: per tenant, it ENQUEUES the runner job.
     "segments.recompute": (timedelta(hours=6), {}),
+    # ADR-062: images whose malware verdict never came back at ingest sit
+    # "pending" and the vision gate refuses them forever. Hourly per tenant,
+    # scanner-configured only — see MediaService.rescan_pending_images.
+    "media.rescan_pending_images": (timedelta(hours=1), {}),
 }
 
 
@@ -276,6 +280,23 @@ async def _handle_segments_recompute(session, tenant_id, payload: dict) -> dict:
 
 
 register_job_handler("segments.recompute", _handle_segments_recompute)
+
+
+async def _handle_media_rescan(session, tenant_id, payload: dict) -> dict:
+    """ADR-062: give scanner-orphaned images a second verdict chance.
+
+    The ingest scan runs on in-memory bytes; when clamd is down (or was never
+    deployed yet) the row stays ``pending`` and no other code ever revisits
+    it. This is the revisit. A no-scanner tenant is a cheap no-op, not an
+    error — the sweep must not retry-loop against a decision not to scan.
+    """
+    from app.modules.conversations.media import MediaService
+
+    scanned = await MediaService.rescan_pending_images(session, tenant_id)
+    return {"scanned": scanned}
+
+
+register_job_handler("media.rescan_pending_images", _handle_media_rescan)
 
 
 async def _handle_journey_resume(session, tenant_id, payload: dict) -> dict:

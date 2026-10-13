@@ -1,7 +1,7 @@
 """ai_handovers — at most ONE open handover per conversation.
 
 Revision ID: fe2026101401
-Revises: fe2026100816
+Revises: fe2026100818
 Create Date: 2026-10-14 01:40:00.000000
 
 Spec §37/§150: a conversation must not hold two open handovers. The service
@@ -30,7 +30,7 @@ from collections.abc import Sequence
 from alembic import op
 
 revision: str = "fe2026101401"
-down_revision: str | None = "fe2026100816"
+down_revision: str | None = "fe2026100818"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

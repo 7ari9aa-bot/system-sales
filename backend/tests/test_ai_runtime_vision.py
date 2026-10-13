@@ -104,9 +104,10 @@ async def _conversation_with_inbound_image(
             message_id=message.id,
             storage_key=storage_key,
             mime_type="image/png",
-            # The state media.py leaves after a durable store+scan — the runner
-            # refuses to sign media that never passed the pipeline.
-            scan_status="stored",
+            # The only egress-admissible state (ADR-062 amended): media.py
+            # leaves this after a clean ClamAV verdict; anything else is
+            # refused by the runner's media gate.
+            scan_status="scanned",
         )
     )
     await db.flush()
@@ -193,7 +194,7 @@ async def test_older_photos_stay_text_markers(db, tenant_ctx, monkeypatch):
             message_id=message.id,
             storage_key="photos/new.png",
             mime_type="image/png",
-            scan_status="stored",
+            scan_status="scanned",
         )
     )
     await db.flush()

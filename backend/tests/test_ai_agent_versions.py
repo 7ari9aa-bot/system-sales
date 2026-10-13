@@ -107,6 +107,74 @@ class TestPublish:
         with pytest.raises(NotFoundError):
             await AIAgentVersionService.publish(db, tenant_ctx.tenant_id, uuid.uuid4())
 
+    async def test_publish_activates_a_stable_deployment_when_none_exists(
+        self, db, tenant_ctx
+    ) -> None:
+        agent = _agent(tenant_ctx.tenant_id)
+        db.add(agent)
+        await db.flush()
+
+        version = await AIAgentVersionService.publish(db, tenant_ctx.tenant_id, agent.id)
+
+        deployment = (
+            await db.execute(
+                sa.select(Deployment).where(
+                    Deployment.tenant_id == tenant_ctx.tenant_id,
+                    Deployment.agent_id == agent.id,
+                )
+            )
+        ).scalar_one()
+        assert deployment.stable_version_id == version.id
+        assert deployment.candidate_version_id is None
+        assert deployment.canary_percent == 0
+        assert deployment.status == "active"
+
+    async def test_publish_never_touches_an_existing_deployment(self, db, tenant_ctx) -> None:
+        agent = _agent(tenant_ctx.tenant_id)
+        db.add(agent)
+        await db.flush()
+        first = await AIAgentVersionService.publish(db, tenant_ctx.tenant_id, agent.id)
+        deployment = (
+            await db.execute(sa.select(Deployment).where(Deployment.agent_id == agent.id))
+        ).scalar_one()
+        # A canary in flight: 25% of traffic on the candidate, stable on v1.
+        deployment.canary_percent = 25
+        await db.flush()
+
+        agent.system_prompt = "edited prompt"
+        await db.flush()
+        second = await AIAgentVersionService.publish(db, tenant_ctx.tenant_id, agent.id)
+
+        assert second.version == 2
+        # Publishing v2 must not silently rewrite what traffic is served —
+        # canary/rollout state belongs to the evaluation service and the
+        # deployment API, not to the publish endpoint.
+        assert deployment.stable_version_id == first.id
+        assert deployment.canary_percent == 25
+
+    async def test_republishing_identical_config_also_ensures_the_deployment(
+        self, db, tenant_ctx
+    ) -> None:
+        agent = _agent(tenant_ctx.tenant_id)
+        db.add(agent)
+        await db.flush()
+        first = await AIAgentVersionService.publish(db, tenant_ctx.tenant_id, agent.id)
+        # The pre-fe2026100818 production shape: a published version with no
+        # deployment row, so every run fell back to the mutable settings.
+        await db.execute(sa.delete(Deployment).where(Deployment.agent_id == agent.id))
+        await db.flush()
+
+        # The idempotent-return path is still a publish, and must still leave
+        # the store in the state the runtime pins to.
+        again = await AIAgentVersionService.publish(db, tenant_ctx.tenant_id, agent.id)
+        assert again.id == first.id
+
+        deployment = (
+            await db.execute(sa.select(Deployment).where(Deployment.agent_id == agent.id))
+        ).scalar_one()
+        assert deployment.stable_version_id == first.id
+        assert deployment.status == "active"
+
 
 class TestPublishedImmutability:
     async def _published(self, db: AsyncSession, tenant_id: uuid.UUID) -> AgentVersion:
@@ -152,17 +220,12 @@ class TestRuntimeResolution:
         agent = _agent(tenant_ctx.tenant_id)
         db.add(agent)
         await db.flush()
+        # No manual Deployment here on purpose: since the publish path wires
+        # activation (fe2026100818 wave), the publish call itself leaves the
+        # stable deployment behind — and THIS test proves the resolver serves
+        # exactly that row, pin + policy and all.
         version = await AIAgentVersionService.publish(
             db, tenant_ctx.tenant_id, agent.id, tool_policy={"deny": ["create_order"]}
-        )
-        db.add(
-            Deployment(
-                tenant_id=tenant_ctx.tenant_id,
-                agent_id=agent.id,
-                stable_version_id=version.id,
-                canary_percent=0,
-                status="active",
-            )
         )
         await db.flush()
 

@@ -154,6 +154,16 @@ class Settings(BaseSettings):
     # without a deploy; the default preserves the previous hard-coded constant.
     ai_monthly_budget_cap_default: float = 50.0
 
+    # ADR-062: the ClamAV clamd INSTREAM endpoint that scans inbound media.
+    # TCP host/port of a running clamd daemon (e.g. a clamav/clamav container
+    # beside the API). Empty (the default) means NO scanner is configured —
+    # which does NOT refuse boot: it leaves every durable image at
+    # scan_status="pending", and the runtime vision gate (which admits only
+    # "scanned") then refuses ALL customer-image egress. Fail-closed by
+    # construction; the state is logged loudly at startup instead.
+    media_scanner_host: str = ""
+    media_scanner_port: int = 0
+
     # §36: USD per minute of audio for inbound voice transcription. Whisper is
     # billed per minute, so this is what the budget gate reserves before the
     # provider call. Operator-tunable for the same reason as the cap above.
@@ -366,6 +376,11 @@ class Settings(BaseSettings):
         """Whether either supported server-side Storage connection is ready."""
         return self.object_storage_configured or self.supabase_storage_configured
 
+    @property
+    def media_scanner_configured(self) -> bool:
+        """Whether a clamd endpoint is configured for the ADR-062 media scan."""
+        return bool(self.media_scanner_host.strip()) and self.media_scanner_port > 0
+
     @model_validator(mode="after")
     def _refuse_insecure_configuration(self) -> "Settings":
         """Fail fast (H2, review G-05): refuse insecure settings outside local/test.
@@ -527,6 +542,20 @@ class Settings(BaseSettings):
                 raise ValueError(f"FRONTEND_PUBLIC_URL must use HTTPS {where}")
             if parsed_frontend_url.scheme not in {"http", "https"}:
                 raise ValueError(f"FRONTEND_PUBLIC_URL must use HTTP or HTTPS {where}")
+
+        # ADR-062: the media scanner is OPTIONAL — but its absence is a LOUD
+        # security state, not a silent one. Without clamd, every durable image
+        # stays scan_status="pending" and the runtime vision gate (admitting
+        # only "scanned") refuses all customer-image egress: vision is dead,
+        # not unsafe. Boot proceeds; the operator must see WHY.
+        if not self.media_scanner_configured:
+            logger.warning(
+                "media_scanner_not_configured environment=%s — no ClamAV clamd "
+                "endpoint is set (MEDIA_SCANNER_HOST/MEDIA_SCANNER_PORT); customer "
+                "images stay unscanned and vision egress is REFUSED for all of "
+                "them (ADR-062 fail-closed). Configure a scanner to enable it.",
+                self.environment,
+            )
 
         # DEBUG is NOT a hard failure: it only controls the log level, and
         # refusing to boot over log verbosity would take a running deployment

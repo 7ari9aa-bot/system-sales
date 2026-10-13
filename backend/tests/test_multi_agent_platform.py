@@ -101,7 +101,7 @@ async def test_runtime_tool_isolation_enforcement() -> None:
     tenant_id = uuid.uuid4()
     agent_id = uuid.uuid4()
 
-    # Suppose DB contains 3 tools linked to a customer agent:
+    # Suppose DB contains 4 tools linked to a customer agent:
     # 2 legitimate customer tools + 1 transacting tool that is no longer
     # authorized + 1 injected SI tool
     legit_tool1 = AgentTool(
@@ -144,6 +144,8 @@ async def test_runtime_tool_isolation_enforcement() -> None:
     assert "create_order" not in loaded_names
     # Injected / unauthorized tool MUST be stripped by the enforcement boundary
     assert "si_analyze_drivers" not in loaded_names
+    # search_products + get_order survive; create_order and the injected SI
+    # tool are both stripped.
     assert len(loaded) == 2
 
 

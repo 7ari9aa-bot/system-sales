@@ -8,6 +8,11 @@ from __future__ import annotations
 
 from app.modules.ai.core.registry import AgentCapability, AgentDefinition, AgentRegistry
 
+# REPLY-ONLY (review P0-2): the customer agent answers and looks things up —
+# it never mutates state. Orders, tasks and tags are handled by human staff
+# via handover; the commerce tools stay implemented in tools.py but are NOT
+# authorized for this kind (the runtime refuses them even if a stale row
+# flips back on, and the sync quarantine disables the rows).
 CUSTOMER_TOOLS = [
     "search_products",
     "get_variant_price",
@@ -48,7 +53,8 @@ _DEFINITION = AgentDefinition(
     description=(
         "Answers customer questions from trusted store data: catalog search, "
         "prices, stock, order status, product photos, and vision-based product "
-        "matching. Reply-only — it never places orders or changes store records."
+        "matching. Reply-only — orders and record changes are handled by human "
+        "staff via handover."
     ),
     capabilities=[
         AgentCapability(

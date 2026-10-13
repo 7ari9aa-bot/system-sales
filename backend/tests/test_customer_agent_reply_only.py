@@ -128,7 +128,7 @@ def test_the_partial_unique_index_migration_exists() -> None:
     # conversation can be handed over again after its handover is resolved.
     assert '_OPEN_STATUSES = "(\'pending\', \'claimed\')"' in source
     assert "WHERE status IN {_OPEN_STATUSES}" in source
-    assert 'down_revision: str | None = "fe2026100816"' in source
+    assert 'down_revision: str | None = "fe2026100818"' in source
 
 
 # ------------------------------------------------- 3. every path hands over ---
