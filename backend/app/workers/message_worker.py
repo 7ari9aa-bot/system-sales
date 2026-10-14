@@ -617,7 +617,84 @@ class MessageWorker(StreamWorker):
             await BillingService.record_usage(
                 session, tenant_id, feature="messages_outbound", quantity=Decimal("1")
             )
+        elif status in ("failed", "unknown"):
+            # Both terminal failures dead-letter the event for MANUAL
+            # reconciliation (§130) — and until now that was the whole story:
+            # the row said "failed", nobody was told, and a customer who had
+            # asked a question waited forever for an answer that had already
+            # been written. A notification in the SAME transaction as the
+            # status flip is what makes the dead letter visible — the same
+            # shape the handover's bell uses, so the owner can go reconcile.
+            await self._notify_delivery_failed(
+                session, tenant_id, message=message, status=status, error=error
+            )
         await session.flush()
+
+    async def _notify_delivery_failed(
+        self,
+        session,
+        tenant_id: uuid.UUID,
+        *,
+        message,
+        status: str,
+        error: str | None,
+    ) -> None:
+        """Ring the owner's bell when an outbound message dies in the queue.
+
+        Owner lookup via SQL rather than `identity.models` — the same import-
+        cycle shape handover.py uses. One bell per message, deduped: an
+        `unknown` outcome that later flips on a delivery webhook must not
+        double-notify, and a replayed event skips this phase entirely via the
+        ProcessedEvent marker anyway.
+        """
+        if status not in ("failed", "unknown"):
+            return
+
+        from sqlalchemy import text as sa_text
+
+        from app.modules.notifications.service import NotificationService
+
+        try:
+            owner_ids = (
+                (
+                    await session.execute(
+                        sa_text(
+                            "SELECT tu.user_id FROM tenant_users tu "
+                            "JOIN roles r ON r.id = tu.role_id "
+                            "WHERE tu.tenant_id = :tenant_id AND r.code = 'owner'"
+                        ),
+                        {"tenant_id": str(tenant_id)},
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            for owner_id in owner_ids:
+                await NotificationService.create(
+                    session,
+                    tenant_id,
+                    owner_id,
+                    kind="delivery_failed",
+                    title="Message delivery failed",
+                    body=(
+                        f"An outbound message to a customer could not be delivered "
+                        f"(outcome: {status}). The customer is still waiting for a "
+                        f"reply — the message needs manual reconciliation."
+                    ),
+                    payload={
+                        "message_id": str(message.id),
+                        "conversation_id": str(message.conversation_id),
+                        "outcome": status,
+                        "error": error,
+                    },
+                    dedup_key=f"delivery_failed:{message.id}",
+                )
+        except Exception:  # noqa: BLE001 — a bell is best-effort by contract
+            logger.warning(
+                "outbound.delivery_failed_notification_failed message=%s",
+                message.id,
+                exc_info=True,
+            )
 
 
 def _classify_send_failure(exc: Exception) -> str:

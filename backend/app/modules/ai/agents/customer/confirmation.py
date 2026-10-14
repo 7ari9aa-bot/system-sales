@@ -1,5 +1,20 @@
 """Server-side customer confirmation for orders (P1-10).
 
+STATUS (2026-10-14): DELIBERATELY DORMANT. This whole flow — mint a quote,
+match the customer's code, execute a confirmed quote as an order — is fully
+built (migration fe2026100812, this module, the `propose_quote` and
+`create_order` tools, the runtime's `confirmed_quote_id` binding) and fully
+TESTED, but nothing in `app/` invokes it: `match_confirmation` has zero
+application callers (tests only), no coordinator binds `confirmed_quote_id`,
+and no agent kind authorizes the two tools. That is the reply-only decision,
+not an accident: the customer agent answers and hands over, it does not sell.
+When selling returns it belongs to a SEPARATE agent kind (a checkout agent)
+whose definition opts into these tools — the layer makes that a one-file
+change — or to a human-assisted flow. Until then, treat this module as a
+documented capability, not a live path: do not "re-wire" it casually, and do
+not delete it as dead code without weighing the tests and migration that ride
+with it.
+
 The model proposes an order; the SERVER mints a quote row plus an expiring
 6-digit code that the reply echoes into the chat. Only the CUSTOMER's own
 next message — matched server-side for the code — turns the quote into a

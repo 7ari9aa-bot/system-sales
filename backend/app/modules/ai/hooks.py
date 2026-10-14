@@ -360,6 +360,24 @@ async def _do_auto_reply(
         return
 
     if not outcome.reply:
+        # A turn that COMPLETED — not blocked, not handed over — yet produced
+        # nothing sendable. The main empty-content routes are caught earlier
+        # (the guardrail's validity check blocks them, and a blocked reason
+        # hands over above), so what reaches here is an edge shape: a run that
+        # exhausted its step budget without a final assistant message, or a
+        # provider that answered with nothing usable. Whatever it is, the
+        # customer WROTE SOMETHING and silence is not an answer — a human
+        # takes the conversation rather than nobody.
+        #
+        # (Parked approval runs never reach the hook's turn path for this
+        # agent: every customer tool is read-only, so no run ever suspends
+        # awaiting a HIGH-risk approval here.)
+        await handover("failure", "turn produced no reply", outcome.run_id)
+        logger.warning(
+            "ai.turn_empty_reply conversation=%s run=%s — handed to a human",
+            conversation_id,
+            outcome.run_id,
+        )
         return
 
     try:
@@ -400,16 +418,23 @@ async def _do_auto_reply(
     )
 
     if outcome.handover_reason is not None:
-        # §37/P1-11: the customer asked for a person and the ack went out —
-        # now the conversation actually moves. This is the writer that gives
-        # the `customer_request` reason a producer: before it, a customer
-        # saying "اتكلم مع حد" was answered by the model and nothing else
-        # ever learned they had asked.
-        await handover(outcome.handover_reason, "customer asked for a human", outcome.run_id)
+        # §37/P1-11: the turn REQUIRES the conversation to move. The ack (or,
+        # for a policy handover, the model's own reply) already went out — now
+        # it actually moves. This is the writer that gives `customer_request`
+        # a producer: before it, a customer saying "اتكلم مع حد" was answered
+        # by the model and nothing else ever learned they had asked. The note
+        # says WHY: the customer's own words, or the §12.5 image verdict.
+        await handover(
+            outcome.handover_reason,
+            outcome.handover_note or "customer asked for a human",
+            outcome.run_id,
+        )
         logger.info(
-            "ai.customer_request_handover conversation=%s run=%s",
+            "ai.turn_handover conversation=%s run=%s reason=%s note=%s",
             conversation_id,
             outcome.run_id,
+            outcome.handover_reason,
+            outcome.handover_note,
         )
         return
 

@@ -100,6 +100,10 @@ class TurnOutcome:
     # ai_handovers. Set when the customer asked for a person — the caller
     # (the hook) owns the handover write, because it owns the conversation.
     handover_reason: str | None = None
+    # The note that goes WITH handover_reason. Kept separate so the reason
+    # stays vocabulary ("customer_request", "policy") while the note says WHAT
+    # happened; the hook falls back to the classic phrasing when None.
+    handover_note: str | None = None
 
 
 #: Normalized markers that SIGNAL a pointing attempt — matched to decide
@@ -163,6 +167,40 @@ def wants_human_request(text: str | None) -> bool:
     return any(want in normalized for want in _HUMAN_REQUEST_WANTING) and any(
         person in normalized for person in _HUMAN_REQUEST_PERSON
     )
+
+
+#: §12.5: the classifier's handoff verdicts, exactly as they surface in a
+#: failed tool call's error string. Matched literally, by value: the mapping
+#: from "the model called find_product_by_image on a payment receipt" to "a
+#: human must take this" must not depend on the model choosing to act on the
+#: error text — the coordinator decides, deterministically.
+_IMAGE_HANDOFF_REASONS = frozenset(
+    {
+        "payment_proof_requires_human",
+        "complaint_requires_human",
+    }
+)
+
+
+def _image_handoff_reason(tool_calls: list[dict]) -> str | None:
+    """The deterministic handover for a non-product image, or None.
+
+    The tool already refuses to run the pipeline on a payment proof or a
+    complaint photo and returns the reason as a tool error the model may act
+    on. This function makes the CONSEQUENCE independent of that acting: if the
+    model called the vision tool on such an image at all, the conversation
+    moves to a human no matter what the reply said.
+    """
+    for call in tool_calls or []:
+        if call.get("name") != "find_product_by_image" or call.get("status") != "error":
+            continue
+        error = call.get("error") or ""
+        prefix = "image requires handover: "
+        if error.startswith(prefix):
+            reason = error[len(prefix) :]
+            if reason in _IMAGE_HANDOFF_REASONS:
+                return reason
+    return None
 
 
 def _context_lines(
@@ -357,6 +395,11 @@ async def run_customer_turn(
             patched = await apply_patch(session, params.tenant_id, params.conversation_id, patch)
         final_version = patched.state_version
 
+    # §12.5: the model PROPOSED an image kind and the classifier refused it —
+    # a payment proof or a complaint photo is a human's job. Deterministic:
+    # the conversation moves even if the model's own reply was vague.
+    image_handoff = _image_handoff_reason(result.tool_calls_made)
+
     return TurnOutcome(
         reply=reply,
         media=result.media,
@@ -376,4 +419,6 @@ async def run_customer_turn(
         tokens_in=result.tokens_in,
         tokens_out=result.tokens_out,
         run_id=result.run_id,
+        handover_reason="policy" if image_handoff else None,
+        handover_note=f"image:{image_handoff}" if image_handoff else None,
     )

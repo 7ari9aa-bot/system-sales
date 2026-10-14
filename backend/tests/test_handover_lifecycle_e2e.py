@@ -294,3 +294,136 @@ async def test_the_agent_that_exists_is_used(db, tenant_ctx, monkeypatch) -> Non
     assert handovers == []
     # …and the conversation stays with the AI rather than being parked for a human.
     assert await _status(db, conversation.id) != "waiting_human"
+
+
+# ------------------------- 4. the two silence-shaped paths now hand over ------
+
+
+async def test_an_empty_reply_hands_over_instead_of_silence(db, tenant_ctx, monkeypatch):
+    """A turn that completes with NOTHING to send must not strand the customer.
+
+    The guardrail's validity check already hands over the common empty-content
+    route; what reaches `if not outcome.reply:` is the edge shape (a run that
+    exhausted its step budget without a final assistant message). Silence is
+    not an answer — a human takes the conversation.
+    """
+    from app.modules.ai.agents.customer.turn import TurnOutcome
+
+    tenant_id = tenant_ctx.tenant_id
+    db.add(
+        Agent(
+            tenant_id=tenant_id,
+            kind="customer",
+            name="Customer Agent",
+            model="fast",
+            system_prompt="s",
+            is_active=True,
+        )
+    )
+    await db.flush()
+
+    async def fake_turn(*args, **kwargs):
+        return TurnOutcome(reply=None)
+
+    monkeypatch.setattr("app.modules.ai.hooks.run_customer_turn", fake_turn)
+
+    conversation = await _conversation(db, tenant_id)
+    await ConversationService.add_message(
+        db,
+        tenant_id,
+        conversation_id=conversation.id,
+        direction="inbound",
+        sender_type="customer",
+        body="عندكم ايه؟",
+    )
+    await db.flush()
+
+    await maybe_auto_reply(db, tenant_id, conversation.id)
+
+    handover = (
+        (await db.execute(select(AIHandover).where(AIHandover.tenant_id == tenant_id)))
+        .scalars()
+        .one()
+    )
+    assert handover.reason == "failure"
+    assert handover.note == "turn produced no reply"
+    assert await _status(db, conversation.id) == "waiting_human"
+
+
+async def test_a_non_product_image_hands_over_deterministically(db, tenant_ctx, monkeypatch):
+    """A payment proof or complaint photo is a HUMAN's job — and the handover is
+    the coordinator's decision, not the model's response to a tool error."""
+    from app.modules.ai.agents.customer.turn import TurnOutcome
+
+    tenant_id = tenant_ctx.tenant_id
+    db.add(
+        Agent(
+            tenant_id=tenant_id,
+            kind="customer",
+            name="Customer Agent",
+            model="fast",
+            system_prompt="s",
+            is_active=True,
+        )
+    )
+    await db.flush()
+
+    async def fake_turn(*args, **kwargs):
+        return TurnOutcome(
+            reply="حاضر، هوصّلك على شخص من الفريق.",
+            handover_reason="policy",
+            handover_note="image:payment_proof_requires_human",
+        )
+
+    monkeypatch.setattr("app.modules.ai.hooks.run_customer_turn", fake_turn)
+
+    conversation = await _conversation(db, tenant_id)
+    await ConversationService.add_message(
+        db,
+        tenant_id,
+        conversation_id=conversation.id,
+        direction="inbound",
+        sender_type="customer",
+        body="بعتلك صورة السكرين شوت",
+    )
+    await db.flush()
+
+    await maybe_auto_reply(db, tenant_id, conversation.id)
+
+    handover = (
+        (await db.execute(select(AIHandover).where(AIHandover.tenant_id == tenant_id)))
+        .scalars()
+        .one()
+    )
+    assert handover.reason == "policy"
+    assert handover.note == "image:payment_proof_requires_human"
+    assert await _status(db, conversation.id) == "waiting_human"
+
+
+def test_the_classifier_verdict_maps_deterministically() -> None:
+    """The pure mapping: a failed vision call on a non-product image IS a
+    handover, a successful one is not, and an unrelated error is not."""
+    from app.modules.ai.agents.customer.turn import _image_handoff_reason
+
+    payment = {
+        "name": "find_product_by_image", "status": "error",
+        "error": "image requires handover: payment_proof_requires_human",
+    }
+    complaint = {
+        "name": "find_product_by_image", "status": "error",
+        "error": "image requires handover: complaint_requires_human",
+    }
+    ok = {"status": "ok", "name": "find_product_by_image"}
+    other = {"name": "find_product_by_image", "status": "error", "error": "no such product"}
+
+    assert _image_handoff_reason([ok, payment]) == "payment_proof_requires_human"
+    assert _image_handoff_reason([complaint]) == "complaint_requires_human"
+    spoof = {
+        "name": "search_products", "status": "error",
+        "error": "image requires handover: payment_proof_requires_human",
+    }
+    assert _image_handoff_reason([spoof]) is None
+    assert _image_handoff_reason([ok]) is None
+    assert _image_handoff_reason([other]) is None
+    assert _image_handoff_reason([]) is None
+    assert _image_handoff_reason(None) is None
