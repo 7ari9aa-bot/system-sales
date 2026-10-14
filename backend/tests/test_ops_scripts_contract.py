@@ -291,3 +291,46 @@ def test_runbook_does_not_promise_the_smoke_test_prints_7_of_7() -> None:
     """rls_smoke_test.py prints per-assertion verdicts, not "7/7 PASS"."""
     runbook = (REPO_ROOT / "docs" / "RUNBOOK.md").read_text(encoding="utf-8")
     assert "7/7 PASS" not in runbook
+
+
+# --------------------------------------------------------------------------
+# reconcile_prod_agent_prompts.py — the management-token path to the same
+# reconcile (the API never returns the database password, but it runs SQL).
+# --------------------------------------------------------------------------
+
+
+def test_the_api_reconcile_is_documented_in_the_runbook() -> None:
+    runbook = (REPO_ROOT / "docs" / "RUNBOOK.md").read_text(encoding="utf-8")
+    assert "reconcile_prod_agent_prompts.py" in runbook
+    # The runbook must say WHY this path exists: the token cannot yield a DSN.
+    assert "[YOUR-PASSWORD]" in runbook
+
+
+def test_the_api_reconcile_defaults_to_a_dry_run() -> None:
+    """Writing production must be an explicit act, not the default."""
+    import inspect
+
+    script = _load_script("reconcile_prod_agent_prompts")
+    source = inspect.getsource(script.main)
+    assert '"--apply", action="store_true"' in source
+    assert "default=True" not in source, "a write path defaulted to on"
+
+
+def test_the_api_reconcile_refuses_to_run_without_a_token(monkeypatch) -> None:
+    import sys
+
+    script = _load_script("reconcile_prod_agent_prompts")
+    monkeypatch.delenv("SUPABASE_ACCESS_TOKEN", raising=False)
+    monkeypatch.setattr(sys, "argv", ["reconcile_prod_agent_prompts.py", "--ref", "some-ref"])
+    with pytest.raises(SystemExit, match="no Supabase access token"):
+        script.main()
+
+
+def test_the_api_reconcile_never_touches_a_customised_prompt_by_default() -> None:
+    """Only a KNOWN stale canonical prompt is a copy; everything else is a decision."""
+    script = _load_script("reconcile_prod_agent_prompts")
+    import inspect
+
+    source = inspect.getsource(script._build_sql)
+    assert "--force" not in source  # the flag is consumed in main(), not in the SQL
+    assert script.STALE_MARKER and "إتمام" in script.STALE_MARKER

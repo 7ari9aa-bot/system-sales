@@ -172,6 +172,24 @@ path create the stable `agent_deployments` row when none exists. Until that row
 exists the runtime serves the agent's MUTABLE settings, so a published version
 with no deployment is a snapshot nobody serves.
 
+### No database DSN? The management-token path
+
+Where only a Supabase management token exists (it never returns the database
+password — the connection string comes back with the literal placeholder
+`[YOUR-PASSWORD]`), the same reconcile runs through the project's SQL endpoint:
+
+```bash
+export SUPABASE_ACCESS_TOKEN=sbp_...
+.venv/bin/python scripts/reconcile_prod_agent_prompts.py --ref <project-ref>          # dry run
+.venv/bin/python scripts/reconcile_prod_agent_prompts.py --ref <ref> --apply
+```
+
+One atomic statement: the row, an immutable version (`max+1`), and the stable
+deployment pointer move together or not at all. An agent whose deployment is
+mid-canary is skipped and reported; `--force` is required to touch an agent whose
+prompt is not the known stale canonical text, because a store that edited its
+prompt on purpose must not be silently overwritten.
+
 ## Scaling order (when pressure rises)
 
 1. Message workers (hot path first — never let AI load squeeze messages).
