@@ -211,8 +211,80 @@ def test_dev_db_pins_the_child_environment_to_local() -> None:
 
 def test_every_ops_script_is_reachable_from_the_runbook() -> None:
     runbook = (REPO_ROOT / "docs" / "RUNBOOK.md").read_text(encoding="utf-8")
-    for script in ("dev_db.py", "restore_drill.py", "monitor_alerts.py"):
+    for script in (
+        "dev_db.py",
+        "restore_drill.py",
+        "monitor_alerts.py",
+        "sync_canonical_agent_prompts.py",
+    ):
         assert script in runbook, f"{script} is not referenced by docs/RUNBOOK.md"
+
+
+# --------------------------------------------------------------------------
+# sync_canonical_agent_prompts.py — a prompt fix in a definition never reached
+# the agent rows, because provisioning only re-syncs TOOLS on an existing agent
+# and `publish` snapshots the ROW. Editing the file and publishing were both
+# necessary and neither was sufficient.
+# --------------------------------------------------------------------------
+
+
+def test_prompt_digest_is_stable_and_short() -> None:
+    script = _load_script("sync_canonical_agent_prompts")
+    assert script.prompt_digest("abc") == script.prompt_digest("abc")
+    assert script.prompt_digest("abc") != script.prompt_digest("abd")
+    assert len(script.prompt_digest("abc")) == 12
+    # A None prompt (a row that never had one) must not explode.
+    assert len(script.prompt_digest(None)) == 12
+
+
+def test_first_differing_line_points_at_the_change() -> None:
+    script = _load_script("sync_canonical_agent_prompts")
+    assert "line 2" in script.first_differing_line("a\nb\nc", "a\nX\nc")
+    assert script.first_differing_line("a\nb", "a\nb") == "identical"
+    # A shorter/longer prompt reports the first missing line, not an IndexError.
+    assert "line 2" in script.first_differing_line("a", "a\nb")
+
+
+def test_the_reconcile_targets_the_reply_only_customer_definition() -> None:
+    """The script exists to push THIS text into the rows that still sell."""
+    script = _load_script("sync_canonical_agent_prompts")
+    definitions = script.canonical_definitions()
+    assert "customer" in definitions
+    prompt = definitions["customer"].system_prompt_template
+    assert "ممنوع" in prompt
+    assert "إتمام" not in prompt
+
+
+def test_the_reconcile_refuses_a_remote_database_without_a_flag() -> None:
+    script = _load_script("sync_canonical_agent_prompts")
+    message = script._refuse_remote("db.example.supabase.co")
+    assert "--allow-remote" in message
+    assert "db.example.supabase.co" in message
+
+
+def test_the_reconcile_defaults_to_a_dry_run() -> None:
+    """Writing every tenant's prompt must be an explicit act, not the default."""
+    script = _load_script("sync_canonical_agent_prompts")
+    parser = script.build_parser()
+
+    defaults = parser.parse_args([])
+    assert defaults.apply is False, "the reconcile would write without being asked"
+    assert defaults.publish is False
+    assert defaults.allow_remote is False
+
+    explicit = parser.parse_args(["--apply", "--publish", "--allow-remote"])
+    assert explicit.apply is True
+    assert explicit.publish is True
+    assert explicit.allow_remote is True
+
+
+def test_the_reconcile_never_publishes_a_row_it_did_not_update() -> None:
+    """`--publish` alone would snapshot the OLD prompt into a new version."""
+    import inspect
+
+    script = _load_script("sync_canonical_agent_prompts")
+    source = inspect.getsource(script.main)
+    assert "publish and not args.apply" in source
 
 
 def test_runbook_does_not_promise_the_smoke_test_prints_7_of_7() -> None:

@@ -145,9 +145,32 @@ DATABASE_URL_ADMIN=... .venv/bin/alembic upgrade head
 - Outbox oldest pending row age > 5 min — relay stuck.
 - Redis consumer group lag on `message.events` > 1000 — scale message workers.
 - DLQ depth > 0 for > 1h — on-call review.
-- HTTP 5xx rate > 2% for 5 min.
-- Monitor all 5 invariants automatically:
+- HTTP 5xx rate > 2% for 5 min (needs the metrics backend — R-F2; the script
+  below covers the live invariants and the `/readyz` probe, not the rate).
+- Monitor the live invariants automatically:
   `.venv/bin/python scripts/monitor_alerts.py`
+
+## Canonical agent prompts (why a code change is not enough)
+
+`agents.system_prompt` is written ONLY when the agent row is created
+(`core/provisioning.py`); re-provisioning re-syncs tools, never the prompt. So a
+prompt fix in `agents/<kind>/definition.py` does NOT reach existing agent rows —
+and `POST /ai/agents/{id}/publish` snapshots the ROW, so a new version would carry
+the old text. Editing the file and publishing are both necessary and neither is
+sufficient.
+
+Reconcile the rows, then snapshot and pin them (dry run first — it is a dry run by
+default, and it refuses a non-local database without `--allow-remote`):
+
+```bash
+.venv/bin/python scripts/sync_canonical_agent_prompts.py                 # dry run, shows the diff
+.venv/bin/python scripts/sync_canonical_agent_prompts.py --apply --publish --allow-remote
+```
+
+`--publish` mints an immutable version from the corrected row and lets the publish
+path create the stable `agent_deployments` row when none exists. Until that row
+exists the runtime serves the agent's MUTABLE settings, so a published version
+with no deployment is a snapshot nobody serves.
 
 ## Scaling order (when pressure rises)
 

@@ -59,7 +59,18 @@ async def provision_canonical_agents(
         ).scalar_one_or_none()
 
         if existing is not None:
-            # Agent exists — ensure it has all default tools
+            # Agent exists — ensure it has all default tools.
+            #
+            # The PROMPT is deliberately not re-synced here. A store may have
+            # edited its prompt through the API, and a background pass silently
+            # overwriting that would be a worse bug than the drift it fixes — so
+            # the reconcile is the explicit, auditable command in
+            # `scripts/sync_canonical_agent_prompts.py` (dry run by default).
+            #
+            # This is not a small caveat: because the row keeps its old text and
+            # `AIAgentVersionService.publish` snapshots the ROW, editing a
+            # definition and publishing are BOTH necessary and NEITHER is
+            # sufficient — the row has to be reconciled first.
             await _sync_agent_tools(session, tenant_id, existing.id, defn.kind)
             continue
 
