@@ -234,7 +234,7 @@ async def test_the_fetched_history_deduplicates_the_current_message(db, tenant_c
         body="how much is the blue widget?",
     )
 
-    history, _image_key = await AgentRunner._conversation_context(
+    history, _image_key, _audio = await AgentRunner._conversation_context(
         db,
         tenant_ctx.tenant_id,
         conversation.id,
@@ -289,7 +289,7 @@ async def test_a_failed_scan_attachment_never_rides_the_turn(db, tenant_ctx) -> 
     """
     conversation = await _conversation_with_image(db, tenant_ctx, scan_status="failed")
 
-    _turns, image_key = await AgentRunner._conversation_context(
+    _turns, image_key, _audio = await AgentRunner._conversation_context(
         db, tenant_ctx.tenant_id, conversation.id
     )
 
@@ -300,7 +300,7 @@ async def test_a_scanned_attachment_still_rides_the_turn(db, tenant_ctx) -> None
     """The strict gate must not become "no image ever reaches the model"."""
     conversation = await _conversation_with_image(db, tenant_ctx, scan_status="scanned")
 
-    _turns, image_key = await AgentRunner._conversation_context(
+    _turns, image_key, _audio = await AgentRunner._conversation_context(
         db, tenant_ctx.tenant_id, conversation.id
     )
 

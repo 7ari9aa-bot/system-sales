@@ -283,10 +283,19 @@ class MessageWorker(StreamWorker):
                             logger.info("received.event_already_claimed id=%s", envelope.id)
                             return
 
-            # Phase 2: Transcribe inbound voice note before answering (§35, §126)
+            # Phase 2: Transcribe inbound voice unless the customer-agent's
+            # direct Omni audio path is explicitly enabled. That path reads
+            # only scanner-cleared attachments in _conversation_context; if a
+            # scan is pending, the model gets a safe "please type it" marker
+            # rather than egressing unscanned bytes to Whisper or Omni.
+            from app.core.config import get_settings
+
             async with SessionLocal() as session:
                 await bind_tenant(session, tenant_id)
-                await transcribe_inbound_voice(session, tenant_id, message_id=turn_message_id)
+                if not get_settings().ai_voice_audio_input:
+                    await transcribe_inbound_voice(
+                        session, tenant_id, message_id=turn_message_id
+                    )
 
             # Phase 3: AI Auto-reply (runs under conversation_lease internally)
             async with SessionLocal() as session:

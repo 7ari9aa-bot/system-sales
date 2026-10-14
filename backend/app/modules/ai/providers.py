@@ -116,6 +116,10 @@ class AIProvider:
         # never even reaches a constructed request string.
         url = f"{assert_provider_base_url(base_url).rstrip('/')}/chat/completions"
         payload: dict = {"model": model, "messages": messages, "temperature": temperature}
+        if "omni" in model.lower():
+            # Qwen Omni Flash is audio/image input but text-output in this
+            # customer-support path; state the output modality explicitly.
+            payload["modalities"] = ["text"]
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
         if tools:

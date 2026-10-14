@@ -201,7 +201,9 @@ async def test_the_runner_refuses_every_non_scanned_state(db, tenant_ctx):
         conversation = await _conversation_with_image(
             db, tenant_id, scan_status=scan_status, processing_status=processing
         )
-        _turns, image_key = await AgentRunner._conversation_context(db, tenant_id, conversation.id)
+        _turns, image_key, _audio = await AgentRunner._conversation_context(
+            db, tenant_id, conversation.id
+        )
         assert image_key is None, f"scan_status={scan_status} must not egress"
 
 
@@ -209,7 +211,9 @@ async def test_the_runner_admits_a_scanned_image(db, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     conversation = await _conversation_with_image(db, tenant_id, scan_status="scanned")
 
-    _turns, image_key = await AgentRunner._conversation_context(db, tenant_id, conversation.id)
+    _turns, image_key, _audio = await AgentRunner._conversation_context(
+        db, tenant_id, conversation.id
+    )
 
     assert image_key == STORAGE_KEY
 

@@ -28,7 +28,7 @@ from sqlalchemy import select
 
 from app.core.errors import ValidationError
 from app.modules.ai import gateway as ai_gateway
-from app.modules.ai.gateway import AIGateway
+from app.modules.ai.gateway import AIGateway, _contains_nontext_media, _redact_pii
 from app.modules.ai.models import AIProviderPolicy, ModelCall, ModelConfig
 from app.modules.ai.policy import classify_data, decide
 
@@ -81,6 +81,47 @@ def test_classify_data_detects_pii_in_message_content() -> None:
     ]
     assert classify_data(clean) == "internal"
     assert classify_data(pii) == "restricted"
+
+
+def test_classify_data_treats_multimodal_parts_as_restricted() -> None:
+    image = [
+        {"role": "user", "content": [{"type": "image_url", "image_url": {"url": "https://x/image"}}]}
+    ]
+    audio = [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "input_audio",
+                    "input_audio": {"data": "data:audio/ogg;base64,AAAA", "format": "ogg"},
+                }
+            ],
+        }
+    ]
+    assert classify_data(image) == "restricted"
+    assert classify_data(audio) == "restricted"
+    assert _contains_nontext_media(image) is True
+    assert _contains_nontext_media(audio) is True
+    text_only = [{"role": "user", "content": [{"type": "text", "text": "hello"}]}]
+    assert _contains_nontext_media(text_only) is False
+
+
+def test_text_redaction_masks_text_parts_inside_multimodal_content() -> None:
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "call +20 100 555 7788"},
+                {
+                    "type": "input_audio",
+                    "input_audio": {"data": "data:audio/ogg;base64,AAAA", "format": "ogg"},
+                },
+            ],
+        }
+    ]
+    redacted = _redact_pii(messages)
+    assert "[REDACTED_PHONE]" in redacted[0]["content"][0]["text"]
+    assert redacted[0]["content"][1] == messages[0]["content"][1]
 
 
 def test_classify_data_scans_embedding_texts_too() -> None:
@@ -291,6 +332,51 @@ async def test_embed_honours_residency_before_calling_the_provider(db, tenant_ct
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         with pytest.raises(ValidationError, match="data-egress"):
             await AIGateway().embed(db, tenant_id, texts=["any text"], _client=client)
+
+
+async def test_redaction_required_policy_refuses_unredactable_audio_before_http(
+    db, tenant_ctx, monkeypatch
+):
+    tenant_id = tenant_ctx.tenant_id
+    monkeypatch.setattr(ai_gateway, "get_settings", lambda: _StubSettings())
+    db.add(
+        ModelConfig(
+            tenant_id=tenant_id,
+            alias="fast",
+            provider="openai",
+            model="qwen3.8-omni-flash",
+            config={"base_url": "https://api.test/v1", "api_key": "cfg-key"},
+        )
+    )
+    db.add(
+        _policy(
+            tenant_id=tenant_id,
+            provider="openai",
+            status="allowed",
+            pii_redaction_required=True,
+            data_classification="restricted",
+        )
+    )
+    await db.flush()
+
+    def handler(request: httpx.Request) -> httpx.Response:  # pragma: no cover
+        raise AssertionError("unredactable voice must be refused before HTTP")
+
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "hello"},
+                {
+                    "type": "input_audio",
+                    "input_audio": {"data": "data:audio/ogg;base64,AAAA", "format": "ogg"},
+                },
+            ],
+        }
+    ]
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(ValidationError, match="cannot be redacted"):
+            await AIGateway().chat(db, tenant_id, alias="fast", messages=messages, _client=client)
 
 
 # ---------------------------------------------------------------------------

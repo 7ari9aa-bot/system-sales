@@ -238,6 +238,26 @@ def get_default_tts_provider() -> TTSProvider | None:
     return None
 
 
+def omni_audio_format(mime_type: str | None) -> str | None:
+    """The input_audio formats verified for Qwen Omni.
+
+    WhatsApp voice notes arrive as Ogg/Opus. Qwen Omni accepts Ogg audio as
+    base64 in the OpenAI-compatible `input_audio` part (live-verified); WAV
+    and MP3 are also supported. Unknown containers must NOT be mislabeled —
+    the caller falls back to STT or asks for a resend instead.
+    """
+    normalized = (mime_type or "").split(";", 1)[0].strip().lower()
+    return {
+        "audio/ogg": "ogg",
+        "audio/opus": "ogg",
+        "application/ogg": "ogg",
+        "audio/wav": "wav",
+        "audio/x-wav": "wav",
+        "audio/mpeg": "mp3",
+        "audio/mp3": "mp3",
+    }.get(normalized)
+
+
 class VoiceService:
     """§35-36: voice transcription and synthesis."""
 

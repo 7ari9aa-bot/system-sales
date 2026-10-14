@@ -16,6 +16,7 @@ from app.modules.ai.readiness import multimodal_readiness
 def _settings(**overrides):
     base = dict(
         stt_api_key="",
+        ai_voice_audio_input=False,
         ai_stt_model="whisper-1",
         media_scanner_configured=False,
         ai_embedding_vision_api_key="",
@@ -30,6 +31,8 @@ def test_an_empty_deployment_names_every_dark_feature() -> None:
     configured, warnings = multimodal_readiness(_settings())
 
     assert configured["voice_in_stt"] is False
+    assert configured["voice_in_omni"] is False
+    assert configured["voice_in_pipeline"] is False
     assert configured["images_scanner"] is False
     assert configured["images_embedding"] is False
     assert configured["images_reranker"] is False
@@ -49,7 +52,7 @@ def test_a_full_deployment_warns_about_nothing() -> None:
         )
     )
 
-    operational = ("voice_in_stt", "images_scanner", "images_embedding", "images_reranker")
+    operational = ("voice_in_pipeline", "images_scanner", "images_embedding", "images_reranker")
     assert all(configured[flag] for flag in operational)
     assert configured["voice_out_tts"] is False, "TTS is a roadmap item, not a deployment need"
     assert warnings == [], f"a fully configured deployment must be silent, got: {warnings}"
@@ -78,18 +81,21 @@ def test_vision_providers_without_a_scanner_name_the_closed_gate() -> None:
     assert "MEDIA_SCANNER_HOST" in joined
 
 
-def test_tts_is_a_roadmap_item_not_a_warning() -> None:
-    """Voice-out is deliberately unwired (v1 replies are text): a TTS key
-    enables a future feature, it does not un-break one — so its absence is
-    never in the warning list."""
+def test_tts_is_a_roadmap_item_and_omni_audio_satisfies_voice_input() -> None:
+    """Voice-out stays unwired; direct Omni audio can satisfy voice-in without
+    a second STT key."""
     _configured, warnings = multimodal_readiness(_settings())
     assert all("TTS" not in warning and "tts" not in warning for warning in warnings)
     assert "voice_out_tts_wired" in _configured
+
+    omni_configured, omni_warnings = multimodal_readiness(_settings(ai_voice_audio_input=True))
+    assert omni_configured["voice_in_pipeline"] is True
+    assert not any("voice" in warning.lower() for warning in omni_warnings)
 
 
 def test_off_flags_are_reported_individually() -> None:
     """Every dark flag is its own line, so an operator can tick them off."""
     _configured, warnings = multimodal_readiness(_settings())
     off_lines = [w for w in warnings if w.startswith("multimodal flag ")]
-    assert any("voice_in_stt: OFF" in line for line in off_lines)
+    assert any("voice_in_pipeline: OFF" in line for line in off_lines)
     assert any("images_scanner: OFF" in line for line in off_lines)

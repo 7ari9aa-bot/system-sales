@@ -81,7 +81,7 @@ RESERVATION_TTL_MINUTES = 30
 BUDGET_LOCK_WAIT_SECONDS = 5.0
 _BUDGET_LOCK_POLL_SECONDS = 0.05
 
-ALIASES = frozenset({"fast", "strong", "cheap", "embedding", "fallback"})
+ALIASES = frozenset({"fast", "strong", "cheap", "embedding", "fallback", "omni"})
 
 
 def _tenant_budget_lock_id(tenant_id: UUID) -> int:
@@ -107,6 +107,21 @@ _PII_PATTERNS: list[tuple[str, str]] = [
 ]
 
 
+def _contains_nontext_media(messages: list[dict]) -> bool:
+    """Whether a provider payload contains image/audio/video bytes or URLs."""
+    for message in messages:
+        content = message.get("content")
+        if not isinstance(content, list):
+            continue
+        if any(
+            isinstance(part, dict)
+            and part.get("type") in {"image_url", "input_audio", "audio_url", "video_url"}
+            for part in content
+        ):
+            return True
+    return False
+
+
 def _redact_pii(messages: list[dict]) -> list[dict]:
     """§43: mask PII in message content before sending to an AI provider.
 
@@ -123,6 +138,19 @@ def _redact_pii(messages: list[dict]) -> list[dict]:
             for pattern, replacement in _PII_PATTERNS:
                 content = pattern.sub(replacement, content)
             redacted.append({**msg, "content": content})
+        elif role in ("user", "assistant", "system") and isinstance(content, list):
+            parts = []
+            for part in content:
+                if isinstance(part, dict) and part.get("type") == "text" and isinstance(
+                    part.get("text"), str
+                ):
+                    text = part["text"]
+                    for pattern, replacement in _PII_PATTERNS:
+                        text = pattern.sub(replacement, text)
+                    parts.append({**part, "text": text})
+                else:
+                    parts.append(part)
+            redacted.append({**msg, "content": parts})
         else:
             redacted.append(msg)
     return redacted
@@ -755,6 +783,15 @@ class AIGateway:
                 region=region or None,
             )
             if egress_decision.redact_required:
+                if _contains_nontext_media(messages):
+                    # Text redaction cannot remove spoken PII, labels embedded
+                    # in a photo, or the media itself. Do not send any
+                    # multimodal payload under a policy that requires
+                    # redaction we cannot faithfully perform.
+                    raise ValidationError(
+                        "AI provider policy requires redaction, but this request contains "
+                        "non-text media that cannot be redacted"
+                    )
                 # §43: actually redact PII before sending to the provider.
                 messages = _redact_pii(messages)
                 data_class = classify_data(messages)

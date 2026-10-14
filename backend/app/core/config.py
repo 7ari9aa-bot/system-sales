@@ -169,6 +169,14 @@ class Settings(BaseSettings):
     # provider call. Operator-tunable for the same reason as the cap above.
     ai_stt_cost_per_minute: float = 0.01
 
+    # Customer voice notes may go DIRECTLY to an Omni-capable model (text reply
+    # only), bypassing separate STT. Off by default: enable only after the
+    # tenant's `omni` model_configs alias has been verified to accept the
+    # `input_audio` chat-completions content part. The worker uses the same
+    # flag to skip Whisper transcription so there is no duplicate call.
+    ai_voice_audio_input: bool = False
+    ai_voice_model_alias: str = "omni"
+
     # §35/§36 voice: speech-to-text and text-to-speech are their OWN services.
     #
     # Separate settings rather than a reuse of the chat provider because the

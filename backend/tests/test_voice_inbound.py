@@ -22,11 +22,13 @@ import hashlib
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
+from types import SimpleNamespace
 
+import pytest
 from sqlalchemy import select
 
 from app.modules.ai.models import AIUsage, BudgetPolicy
-from app.modules.ai.runtime import AgentRunner
+from app.modules.ai.runtime import AgentRunner, _customer_user_content, _omni_audio_content_part
 from app.modules.conversations.media import (
     FetchedMedia,
     MediaService,
@@ -34,12 +36,48 @@ from app.modules.conversations.media import (
 )
 from app.modules.conversations.models import Attachment, Message
 from app.modules.conversations.service import ConversationService
+from app.modules.conversations.voice import omni_audio_format
 from app.modules.customers.service import CustomerService
 from app.workers.message_worker import transcribe_inbound_voice
 
 VOICE_URL = "https://cdn.example.test/voice1.ogg"
 VOICE_BYTES = b"OggS\x02\x00\x00\x00fake-opus-frame"
 TRANSCRIPT = "عايز اعرف سعر اللون الأزرق"
+
+
+@pytest.mark.parametrize(
+    ("mime", "expected"),
+    [
+        ("audio/ogg", "ogg"),
+        ("audio/opus", "ogg"),
+        ("application/ogg", "ogg"),
+        ("audio/wav", "wav"),
+        ("audio/mpeg", "mp3"),
+        ("audio/x-ms-wma", None),
+        ("application/octet-stream", None),
+    ],
+)
+def test_omni_audio_format_is_allow_listed(mime: str, expected: str | None) -> None:
+    assert omni_audio_format(mime) == expected
+
+
+def test_omni_audio_content_part_carries_encoded_bytes_and_format() -> None:
+    part = _omni_audio_content_part("audio/ogg", b"OggSvoice-bytes")
+    assert part is not None
+    assert part["type"] == "input_audio"
+    assert part["input_audio"]["format"] == "ogg"
+    assert part["input_audio"]["data"].startswith("data:audio/ogg;base64,")
+
+
+def test_customer_user_content_keeps_text_image_and_audio_together() -> None:
+    audio = _omni_audio_content_part("audio/ogg", b"OggSvoice-bytes")
+    parts = _customer_user_content(
+        "ممكن تساعدني؟", image_url="https://storage.test/photo.jpg", audio_part=audio
+    )
+    assert isinstance(parts, list)
+    assert parts[0] == {"type": "text", "text": "ممكن تساعدني؟"}
+    assert parts[1]["type"] == "image_url"
+    assert parts[2]["type"] == "input_audio"
 
 
 class _VoiceStorage:
@@ -113,6 +151,34 @@ async def _attachment_of(db, tenant_id, message_id) -> Attachment:
     return (await MediaService.list_for_message(db, tenant_id, message_id))[0]
 
 
+async def test_only_scanned_audio_is_eligible_for_direct_omni(db, tenant_ctx, monkeypatch):
+    import app.modules.ai.runtime as runtime_module
+
+    tenant_id = tenant_ctx.tenant_id
+    conversation = await _conversation(db, tenant_id)
+    message = await _voice_note(db, tenant_id, conversation)
+    attachment = await _attachment_of(db, tenant_id, message.id)
+    monkeypatch.setattr(
+        runtime_module,
+        "get_settings",
+        lambda: SimpleNamespace(ai_voice_audio_input=True),
+    )
+
+    attachment.scan_status = "pending"
+    await db.flush()
+    _turns, _image, audio = await AgentRunner._conversation_context(
+        db, tenant_id, conversation.id
+    )
+    assert audio is None, "unscanned audio must not egress to Omni"
+
+    attachment.scan_status = "scanned"
+    await db.flush()
+    _turns, _image, audio = await AgentRunner._conversation_context(
+        db, tenant_id, conversation.id
+    )
+    assert audio == ("audio/ogg", "media/voice1.ogg")
+
+
 # ------------------------------------------------- §33-34: ingest queues ----
 
 
@@ -129,7 +195,7 @@ async def test_inbound_audio_is_queued_for_transcription(db, tenant_ctx) -> None
     attachment = await _attachment_of(db, tenant_id, message.id)
 
     assert attachment.mime_type == "audio/ogg"
-    assert attachment.scan_status == "stored"
+    assert attachment.scan_status == "pending"  # no scanner: direct Omni egress stays closed
     assert attachment.transcription_status == "pending"
 
 
@@ -297,7 +363,9 @@ async def _voice_transcript_in_history(db, tenant_ctx, *, transcript: str | None
         attachment.transcription_status = "completed"
         attachment.transcript_text = transcript
     await db.flush()
-    turns, _image_key = await AgentRunner._conversation_context(db, tenant_id, conversation.id)
+    turns, _image_key, _audio = await AgentRunner._conversation_context(
+        db, tenant_id, conversation.id
+    )
     return turns
 
 
@@ -337,18 +405,22 @@ async def test_text_message_still_becomes_its_own_body(db, tenant_ctx) -> None:
         channel_message_id=f"wamid-{uuid.uuid4().hex[:12]}",
     )
 
-    history, _image_key = await AgentRunner._conversation_context(db, tenant_id, conversation.id)
+    history, _image_key, _audio = await AgentRunner._conversation_context(
+        db, tenant_id, conversation.id
+    )
     assert history[-1] == {"role": "user", "content": "سعر اللون الأزرق؟"}
 
 
 # ------------------------------------------------- the worker seam ----------
 
 
-async def test_message_worker_transcribes_before_answering(
-    db, tenant_ctx, app_sessions_on_test_connection, monkeypatch
+@pytest.mark.parametrize("direct_omni", [False, True], ids=["stt-legacy", "direct-omni"])
+async def test_message_worker_uses_one_voice_understanding_path(
+    db, tenant_ctx, app_sessions_on_test_connection, monkeypatch, direct_omni
 ) -> None:
-    """Ordering is the whole point: the reply is built from history, so a
-    transcript that lands AFTER the answer is a transcript nobody reads."""
+    """STT and direct Omni are mutually exclusive: direct mode never calls
+    Whisper, while the default/legacy mode preserves transcript-before-reply."""
+    import app.core.config as config
     import app.workers.message_worker as mw
     from app.core.events.schemas import EventEnvelope
     from app.modules.ai import hooks as ai_hooks
@@ -366,6 +438,9 @@ async def test_message_worker_transcribes_before_answering(
         order.append("reply")
 
     monkeypatch.setattr(mw, "SessionLocal", app_sessions_on_test_connection)
+    monkeypatch.setattr(
+        config, "get_settings", lambda: SimpleNamespace(ai_voice_audio_input=direct_omni)
+    )
     monkeypatch.setattr(mw, "transcribe_inbound_voice", fake_transcribe)
     monkeypatch.setattr(ai_hooks, "maybe_auto_reply", fake_auto_reply)
 
@@ -384,4 +459,4 @@ async def test_message_worker_transcribes_before_answering(
     worker.name = "test"
     await worker._on_received(envelope)
 
-    assert order == ["transcribe", "reply"]
+    assert order == (["reply"] if direct_omni else ["transcribe", "reply"])

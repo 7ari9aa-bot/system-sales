@@ -103,6 +103,48 @@ async def test_chat_sends_openai_payload_and_auth_header():
     assert captured["body"]["max_tokens"] == 128
 
 
+async def test_omni_audio_chat_sets_text_output_and_preserves_input_audio():
+    captured: dict = {}
+    audio_part = {
+        "type": "input_audio",
+        "input_audio": {"data": "data:audio/ogg;base64,T2dnUw==", "format": "ogg"},
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json=_chat_body())
+
+    async with _client(handler) as client:
+        await AIProvider().chat(
+            base_url=BASE_URL,
+            api_key="k",
+            model="qwen3.8-omni-flash",
+            messages=[{"role": "user", "content": [{"type": "text", "text": "hi"}, audio_part]}],
+            _client=client,
+        )
+
+    assert captured["body"]["modalities"] == ["text"]
+    assert captured["body"]["messages"][0]["content"][1] == audio_part
+
+
+async def test_non_omni_chat_does_not_get_omni_modalities():
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json=_chat_body())
+
+    async with _client(handler) as client:
+        await AIProvider().chat(
+            base_url=BASE_URL,
+            api_key="k",
+            model="gpt-test",
+            messages=[{"role": "user", "content": "hi"}],
+            _client=client,
+        )
+    assert "modalities" not in captured["body"]
+
+
 async def test_chat_http_401_raises_external_provider_error():
     async with _client(lambda request: httpx.Response(401, json={"error": "bad key"})) as client:
         with pytest.raises(ExternalProviderError) as exc_info:

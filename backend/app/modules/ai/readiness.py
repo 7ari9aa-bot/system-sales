@@ -34,17 +34,21 @@ def multimodal_readiness(settings: Any) -> tuple[dict[str, bool], list[str]]:
     """(configured flags, startup warnings) for voice and customer photos."""
     configured = {
         "voice_in_stt": _set(getattr(settings, "stt_api_key", None)),
+        "voice_in_omni": bool(getattr(settings, "ai_voice_audio_input", False)),
         "images_scanner": bool(getattr(settings, "media_scanner_configured", False)),
         "images_embedding": _set(getattr(settings, "ai_embedding_vision_api_key", None)),
         "images_reranker": _set(getattr(settings, "ai_reranker_api_key", None)),
         "voice_out_tts": _set(getattr(settings, "tts_api_key", None)),
     }
 
+    configured["voice_in_pipeline"] = configured["voice_in_stt"] or configured["voice_in_omni"]
+
     warnings: list[str] = []
-    if not configured["voice_in_stt"]:
+    if not configured["voice_in_stt"] and not configured["voice_in_omni"]:
         warnings.append(
-            "voice notes will be acknowledged but NEVER transcribed — set AI_STT_API_KEY "
-            f"(model: {getattr(settings, 'ai_stt_model', 'whisper-1')})"
+            "voice notes will be acknowledged but NEVER understood — enable direct Omni audio "
+            "(AI_VOICE_AUDIO_INPUT=true with a verified omni model_configs alias) or set "
+            f"AI_STT_API_KEY (model: {getattr(settings, 'ai_stt_model', 'whisper-1')})"
         )
     if not configured["images_scanner"]:
         warnings.append(
@@ -74,7 +78,7 @@ def multimodal_readiness(settings: Any) -> tuple[dict[str, bool], list[str]]:
     # It therefore gets a flag but never a warning line.
     configured["voice_out_tts_wired"] = False
 
-    for flag in ("voice_in_stt", "images_scanner", "images_embedding", "images_reranker"):
+    for flag in ("voice_in_pipeline", "images_scanner", "images_embedding", "images_reranker"):
         if not configured[flag]:
             warnings.append(f"multimodal flag {flag}: OFF")
 

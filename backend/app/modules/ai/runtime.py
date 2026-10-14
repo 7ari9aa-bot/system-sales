@@ -11,6 +11,7 @@ app.modules.ai.tools, gated by the agent's tool policy.
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import json
 import logging
@@ -24,6 +25,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.errors import DomainError, NotFoundError
 from app.modules.ai.gateway import (
     AIBudgetFallbackRequested,
@@ -35,6 +37,38 @@ from app.modules.ai.models import Agent, AgentRun, AgentTool, ToolCall
 from app.modules.ai.providers import ToolCallRequest
 from app.modules.ai.tools import tool_to_openai_schema  # noqa: E402
 from app.modules.ai.usage import record_usage  # noqa: E402
+from app.modules.conversations.voice import omni_audio_format  # noqa: E402
+
+
+def _omni_audio_content_part(audio_mime: str, audio_bytes: bytes) -> dict | None:
+    """Build a Qwen Omni OpenAI-compatible ``input_audio`` part.
+
+    The format map is deliberately allow-listed: never label an unknown
+    container as WAV/OGG. Bytes arrive only after the attachment's scanner
+    verdict is ``scanned`` and are read from our own storage.
+    """
+    audio_format = omni_audio_format(audio_mime)
+    if audio_format is None or not audio_bytes:
+        return None
+    data_url = f"data:{audio_mime};base64,{base64.b64encode(audio_bytes).decode('ascii')}"
+    return {"type": "input_audio", "input_audio": {"data": data_url, "format": audio_format}}
+
+
+def _customer_user_content(
+    user_message: str,
+    *,
+    image_url: str | None = None,
+    audio_part: dict | None = None,
+) -> str | list[dict]:
+    """Build one OpenAI-compatible user content value, preserving both media."""
+    if not image_url and not audio_part:
+        return user_message
+    parts: list[dict] = [{"type": "text", "text": user_message}]
+    if image_url:
+        parts.append({"type": "image_url", "image_url": {"url": image_url}})
+    if audio_part:
+        parts.append(audio_part)
+    return parts
 
 
 def _assistant_tool_call(tc: ToolCallRequest) -> dict:
@@ -592,8 +626,9 @@ class AgentRunner:
             # re-queried per turn by the deterministic tools.
             messages.extend(history)
         customer_image_url: str | None = None
+        customer_audio: tuple[str, str] | None = None  # (mime, storage_key)
         if conversation_id is not None:
-            turns, image_key = await self._conversation_context(
+            turns, image_key, audio_media = await self._conversation_context(
                 session,
                 tenant_id,
                 conversation_id,
@@ -611,6 +646,12 @@ class AgentRunner:
                     customer_image_url = get_storage().signed_url(image_key)
                 except Exception:  # noqa: BLE001 — vision is best-effort
                     logger.warning("ai.customer_image_sign_failed key=%s", image_key, exc_info=True)
+            if audio_media and get_settings().ai_voice_audio_input:
+                # Direct Omni input is opt-in and requires a scanner-cleared,
+                # supported-format attachment. The audio bytes are read from
+                # our own Supabase object store and encoded as a data URL; the
+                # expiring channel URL never reaches the provider.
+                customer_audio = audio_media
         # §38: retrieve customer memories and inject into context (best-effort).
         # ADR-036: each line carries its provenance so the model (and anyone
         # reading the trace) can tell "customer said X" from "the AI guessed X"
@@ -636,18 +677,46 @@ class AgentRunner:
             except Exception:  # noqa: BLE001 — memory is best-effort context
                 logger.warning("ai.memory_search_failed customer=%s", customer_id, exc_info=True)
 
-        if customer_image_url:
-            messages.append(
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": user_message},
-                        {"type": "image_url", "image_url": {"url": customer_image_url}},
-                    ],
-                }
-            )
-        else:
-            messages.append({"role": "user", "content": user_message})
+        customer_audio_part: dict[str, str] | None = None
+        if customer_audio:
+            audio_mime, audio_key = customer_audio
+            audio_format = omni_audio_format(audio_mime)
+            if audio_format is not None:
+                from app.core.storage import get_storage
+
+                # Keep one audio turn bounded well below the 25 MiB ingest cap:
+                # base64 adds ~33%, and oversized bodies are a provider failure
+                # (not a reason to retry/dead-letter an otherwise normal turn).
+                try:
+                    audio_blob = await get_storage().read_object(
+                        audio_key, max_bytes=10 * 1024 * 1024
+                    )
+                    customer_audio_part = _omni_audio_content_part(audio_mime, audio_blob.data)
+                except Exception:  # noqa: BLE001 — audio input is best-effort, never lose the turn
+                    logger.warning(
+                        "ai.customer_audio_read_failed key=%s — voice was not sent",
+                        audio_key,
+                        exc_info=True,
+                    )
+                if customer_audio_part is None:
+                    logger.warning(
+                        "ai.customer_audio_unsupported_format key=%s mime=%s",
+                        audio_key,
+                        audio_mime,
+                    )
+            else:
+                logger.warning(
+                    "ai.customer_audio_unsupported_format key=%s mime=%s",
+                    audio_key,
+                    audio_mime,
+                )
+
+        user_content = _customer_user_content(
+            user_message,
+            image_url=customer_image_url,
+            audio_part=customer_audio_part,
+        )
+        messages.append({"role": "user", "content": user_content})
 
         tools_schema = [
             tool_to_openai_schema(spec)
@@ -676,12 +745,16 @@ class AgentRunner:
                 hit_limit = "max_wall_time"
                 break
             remaining = (max_wall_time - elapsed).total_seconds()
+            if customer_audio_part:
+                chat_alias = get_settings().ai_voice_model_alias
+            else:
+                chat_alias = self._alias_for(agent)
             try:
                 chat_result = await asyncio.wait_for(
                     self.gateway.chat(
                         session,
                         tenant_id,
-                        alias=self._alias_for(agent),
+                        alias=chat_alias,
                         messages=messages,
                         tools=tools_schema,
                         temperature=float(agent.temperature),
@@ -695,6 +768,12 @@ class AgentRunner:
                 hit_limit = "max_wall_time"
                 break
             except AIBudgetFallbackRequested:
+                # Direct audio contains the customer's actual voice and must
+                # not be sent to the text-only cheap fallback. Fail closed:
+                # hand over rather than stripping the audio and guessing.
+                if customer_audio_part:
+                    hit_limit = "audio_budget_fallback_unavailable"
+                    break
                 # §42: cap exhausted, policy says downgrade — retry this step
                 # on the "fallback" alias (the cheap model). If the fallback
                 # alias is what just failed, stop and hand over instead of
@@ -1041,7 +1120,17 @@ class AgentRunner:
             current_message is not None
             and turns
             and turns[-1]["role"] == "user"
-            and turns[-1]["content"].strip() == current_message.strip()
+            and (
+                turns[-1]["content"].strip() == current_message.strip()
+                or (
+                    current_message.strip() == "بعت لي رسالة صوتية."
+                    and turns[-1]["content"].startswith("[customer sent a voice message;")
+                )
+                or (
+                    turns[-1]["content"].startswith("[customer voice message,")
+                    and current_message.strip() in turns[-1]["content"]
+                )
+            )
         ):
             turns.pop()
         return turns
@@ -1053,13 +1142,12 @@ class AgentRunner:
         conversation_id: uuid.UUID,
         *,
         current_message: str | None = None,
-    ) -> tuple[list[dict], str | None]:
-        """History turns plus the newest inbound photo's storage key (§7.1.3).
+    ) -> tuple[list[dict], str | None, tuple[str, str] | None]:
+        """History plus the newest scanner-cleared photo and direct-Omni audio.
 
-        One method on purpose: the boundary ratchet counts import NODES
-        (tests/test_module_boundaries.py), so the turns and the image lookup
-        share this single lazy ConversationService import, and the attachment
-        query rides the module-scope conversations-models import above.
+        Audio is eligible only when its attachment was scanned clean, its MIME
+        format is explicitly supported by Qwen Omni, and the deployment opted
+        in. Older audio stays a text-only transcript marker.
         """
         # Lazy import: conversations module owns the message table.
         from app.modules.conversations.service import ConversationService
@@ -1073,6 +1161,7 @@ class AgentRunner:
         turns = AgentRunner._provider_turns(history, voice=voice, current_message=current_message)
 
         image_key: str | None = None
+        audio_media: tuple[str, str] | None = None
         for message in reversed(history):
             if message.direction != "inbound":
                 continue
@@ -1085,13 +1174,6 @@ class AgentRunner:
                         _conversations_models.Attachment.mime_type.like("image/%"),
                         _conversations_models.Attachment.storage_key.is_not(None),
                         # ADR-062 (amended): ONLY a scanned image egresses.
-                        # media.py advances the row to "scanned" on a clean
-                        # ClamAV verdict; "pending" (no scanner configured, or
-                        # a scanner outage — retryable), "quarantined"
-                        # (infected) and "failed" (fetch/store error) ALL
-                        # refuse here, so the turn proceeds without vision
-                        # instead of signing a URL for unscanned bytes and
-                        # handing them to an external provider.
                         _conversations_models.Attachment.scan_status == "scanned",
                     )
                     .order_by(_conversations_models.Attachment.created_at.desc())
@@ -1100,8 +1182,30 @@ class AgentRunner:
             ).first()
             if row is not None:
                 image_key = row.storage_key
-            break  # only the NEWEST inbound message's photo rides the turn
-        return turns, image_key
+            if get_settings().ai_voice_audio_input:
+                audio_row = (
+                    await session.execute(
+                        select(
+                            _conversations_models.Attachment.mime_type,
+                            _conversations_models.Attachment.storage_key,
+                        )
+                        .where(
+                            _conversations_models.Attachment.tenant_id == tenant_id,
+                            _conversations_models.Attachment.message_id == message.id,
+                            _conversations_models.Attachment.mime_type.like("audio/%"),
+                            _conversations_models.Attachment.storage_key.is_not(None),
+                            # Audio is customer PII as well: only clamd-cleared
+                            # bytes may egress to an Omni model.
+                            _conversations_models.Attachment.scan_status == "scanned",
+                        )
+                        .order_by(_conversations_models.Attachment.created_at.desc())
+                        .limit(1)
+                    )
+                ).first()
+                if audio_row is not None and omni_audio_format(audio_row.mime_type):
+                    audio_media = (audio_row.mime_type, audio_row.storage_key)
+            break  # only the NEWEST inbound message's media rides the turn
+        return turns, image_key, audio_media
 
     @staticmethod
     async def _collect_media(

@@ -211,12 +211,25 @@ API now logs a WARNING per dark feature (`ai.readiness`) naming the exact env
 var — grep Railway logs for `multimodal_readiness` after any deploy.
 
 **Voice-in (customer sends a note, agent answers in TEXT):**
+
+Preferred (owner design): Qwen Omni receives the audio directly, with no separate STT model and no TTS:
+```
+AI_VOICE_AUDIO_INPUT=true
+AI_VOICE_MODEL_ALIAS=omni
+```
+The tenant must have a `model_configs` row for alias `omni` pointing to an Omni endpoint that accepts
+`input_audio` (the Vercel AI Gateway currently rejects this content part; the tested direct DashScope
+INTL endpoint accepts WAV and OGG base64). The audio attachment must pass the ClamAV scan first; only
+then are its durable bytes read from Supabase and sent as a data URL. Unknown audio formats, missing
+scanner verdicts, storage errors and Omni budget fallback do not send the bytes: the customer is asked
+to type or is handed to a human. Audio egress is therefore behind the same malware verdict as images.
+
+Legacy fallback if direct Omni is disabled:
 ```
 AI_STT_API_KEY=<key>          # whisper-1; AI_STT_MODEL/AI_STT_BASE_URL optional
 ```
-Budget is reserved before the provider call; a spent ceiling hands the
-conversation to a human, never dead-letters the note. TTS is deliberately
-UNWIRED (replies are text) — `AI_TTS_*` enables a future feature only.
+Budget is reserved before a Whisper call. TTS is deliberately UNWIRED (replies are text) — `AI_TTS_*`
+enables a future feature only.
 
 **Photos-in (customer sends a photo, agent matches it to the catalog):**
 ```

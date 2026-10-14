@@ -85,11 +85,28 @@ def classify_data(payload) -> str:
         texts = [payload]
     elif isinstance(payload, list):
         texts = []
+        contains_media = False
         for item in payload:
             if isinstance(item, str):
                 texts.append(item)
-            elif isinstance(item, dict) and isinstance(item.get("content"), str):
-                texts.append(item["content"])
+            elif isinstance(item, dict):
+                content = item.get("content")
+                if isinstance(content, str):
+                    texts.append(content)
+                elif isinstance(content, list):
+                    for part in content:
+                        if not isinstance(part, dict):
+                            continue
+                        media_types = {"image_url", "input_audio", "audio_url", "video_url"}
+                        if part.get("type") in media_types:
+                            contains_media = True
+                        if part.get("type") == "text" and isinstance(part.get("text"), str):
+                            texts.append(part["text"])
+        # Media cannot be redacted by the text redactor (spoken PII / text in
+        # images). Classify it at the most sensitive level; policies requiring
+        # redaction are enforced separately as a hard block below.
+        if contains_media:
+            return "restricted"
     else:  # pragma: no cover - defensive
         return "internal"
     joined = "\n".join(texts)

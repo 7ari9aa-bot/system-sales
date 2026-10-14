@@ -36,23 +36,22 @@ What this deliberately does NOT do (§35: transcoding, STT)
 
 What it DOES do now (ADR-062, amended): the scan
 ------------------------------------------------
-Images are scanned for malware by a ClamAV clamd daemon (see
-``app.core.media_scanner``) BEFORE the row can ever be admitted to vision
+Customer images and voice notes are scanned for malware by a ClamAV clamd daemon (see
+``app.core.media_scanner``) BEFORE the row can ever be admitted to model
 egress, straight on the in-memory bytes at ingest — the same "capture it
 while the URL is alive" moment that stores them:
 
 * scanner clean      → ``scan_status="scanned"``  (the ONLY egress-admissible value)
 * scanner infected   → ``scan_status="quarantined"`` (logged with the signature)
 * scanner unconfigured → the row stays ``scan_status="pending"`` — fail-CLOSED:
-  the runtime gate refuses every non-``scanned`` image, so vision egress is
-  disabled, loudly, until an operator configures a scanner (the settings
+  the runtime gate refuses every non-``scanned`` image/audio, so media egress
+  is disabled, loudly, until an operator configures a scanner (the settings
   validator logs this once at startup; ingest logs each skip here).
 * scanner error      → the row also stays ``pending`` — a scanner outage is
   "not yet scanned" (retryable), never a false "scanned".
 
-Non-image media keeps the durable ``stored`` mark: no egress gate exists for
-audio/video/documents on this path, so scanning them is out of this wave's
-scope and is recorded here rather than silently skipped.
+Video/documents keep the durable ``stored`` mark: they have no external
+interpretation path in this wave. Images and audio require a clean verdict.
 
 The gap this leaves elsewhere: we trust the provider's declared Content-Type.
 There is no magic-byte / MIME sniffing, so a file labelled `image/png` is
@@ -76,7 +75,7 @@ import logging
 import uuid
 from typing import Protocol
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import media_scanner
@@ -250,7 +249,7 @@ class MediaService:
         traceback. Nothing in this method lets a media failure propagate to
         `add_message` and roll back the customer's message. A scanner failure
         is contained the same way but leaves the row `pending` — see
-        `_scan_image`.
+        `_scan_media`.
         """
         if not media_url:
             return None
@@ -335,19 +334,19 @@ class MediaService:
             # §33-34: the bytes are durable. Processing stays "pending" — no
             # transcoder exists (see the module docstring's ADR-062 gap).
             attachment.processing_status = "pending"
-            if mime.startswith("image/"):
-                # ADR-062: the scan that gates vision egress runs HERE, on the
-                # in-memory bytes, before the turn can ever see the row.
-                await MediaService._scan_image(attachment, fetched.data)
+            if mime.startswith(("image/", "audio/")):
+                # ADR-062: scan BOTH images and voice notes HERE, on the
+                # in-memory bytes, before either can egress to a vision or Omni
+                # provider. Voice is customer PII too; the direct audio path
+                # must not become a shortcut around the malware gate.
+                await MediaService._scan_media(attachment, fetched.data)
             else:
-                # Non-image media has no egress gate on this path; it keeps
-                # the durable mark the deferred worker used to leave.
+                # Other media has no external interpretation path in this wave.
                 attachment.scan_status = "stored"
-                if mime.startswith("audio/"):
-                    # §35: a durable audio object IS a transcription job. This is the
-                    # only thing that ever queues one — VoiceService has no other
-                    # trigger, and without this a voice note is never transcribed.
-                    attachment.transcription_status = "pending"
+            if mime.startswith("audio/"):
+                # §35: a durable audio object IS a transcription/direct-Omni
+                # job. VoiceService has no other trigger.
+                attachment.transcription_status = "pending"
         else:
             # S3 is not configured, so the object was NOT persisted durably and
             # only the expiring provider URL remains. That contradicts §33-34
@@ -365,8 +364,8 @@ class MediaService:
         return attachment
 
     @staticmethod
-    async def _scan_image(attachment: Attachment, data: bytes) -> None:
-        """ADR-062: the malware scan that gates customer-image egress.
+    async def _scan_media(attachment: Attachment, data: bytes) -> None:
+        """ADR-062: the malware scan that gates image and audio egress.
 
         The verdict vocabulary is the one ADR-062 (as amended) pins:
 
@@ -438,13 +437,10 @@ class MediaService:
         """ADR-062 sweep: re-scan stored images whose verdict never came back.
 
         A row lands ``pending`` when the scanner was unreachable at ingest —
-        or not deployed at all. The egress gate refuses pending rows, so every
-        such image is permanently invisible to the customer agent's vision
-        unless something re-scans it; this sweep is that something, hourly per
-        tenant through the scheduler. It re-reads the DURABLE object by its
-        storage key (the provider URL may be long expired) and reuses the exact
-        ingest scan path, so the verdict vocabulary cannot drift between the
-        two call sites.
+        or not deployed at all. The egress gate refuses pending images/audio,
+        so this sweep re-reads the DURABLE object by its storage key (the
+        provider URL may be long expired) and reuses the exact ingest scan
+        path, so verdict vocabulary cannot drift between call sites.
 
         Returns the number of rows the scan ran on. Rows stay ``pending``
         when the scanner is unconfigured (sweep is a no-op then) or errors —
@@ -459,7 +455,10 @@ class MediaService:
                     select(Attachment)
                     .where(
                         Attachment.tenant_id == tenant_id,
-                        Attachment.mime_type.like("image/%"),
+                        or_(
+                            Attachment.mime_type.like("image/%"),
+                            Attachment.mime_type.like("audio/%"),
+                        ),
                         Attachment.scan_status == "pending",
                         Attachment.storage_key.is_not(None),
                     )
@@ -484,7 +483,7 @@ class MediaService:
                     attachment.id,
                 )
                 continue
-            await MediaService._scan_image(attachment, fetched.data)
+            await MediaService._scan_media(attachment, fetched.data)
             scanned += 1
         await session.flush()
         return scanned

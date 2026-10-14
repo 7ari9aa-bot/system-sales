@@ -774,6 +774,44 @@ async def test_a_pending_scan_is_retried_once_a_scanner_is_configured(db, tenant
     assert len(await MediaService.list_for_message(db, tenant_id, message.id)) == 1
 
 
+async def test_audio_note_is_scanned_before_any_external_model_egress(db, tenant_ctx, monkeypatch):
+    """Direct Omni must not turn voice notes into an unscanned egress path."""
+    tenant_id = tenant_ctx.tenant_id
+    conversation = await _conversation(db, tenant_id)
+    daemon = await FakeClamd(reply="stream: OK\n").start()
+    try:
+        _set_scanner(monkeypatch, host=daemon.host, port=daemon.port)
+        message = await _inbound(
+            db,
+            tenant_id,
+            conversation,
+            FakeStorage(data=b"OggSvoice", content_type="audio/ogg"),
+        )
+    finally:
+        await daemon.stop()
+
+    attachment = (await MediaService.list_for_message(db, tenant_id, message.id))[0]
+    assert attachment.scan_status == "scanned"
+    assert attachment.transcription_status == "pending"
+    assert daemon.last_stream == b"OggSvoice"
+
+
+async def test_audio_note_stays_pending_when_scanner_is_missing(db, tenant_ctx, monkeypatch):
+    tenant_id = tenant_ctx.tenant_id
+    conversation = await _conversation(db, tenant_id)
+    _set_scanner(monkeypatch)
+    message = await _inbound(
+        db,
+        tenant_id,
+        conversation,
+        FakeStorage(data=b"OggSvoice", content_type="audio/ogg"),
+    )
+
+    attachment = (await MediaService.list_for_message(db, tenant_id, message.id))[0]
+    assert attachment.scan_status == "pending"
+    assert attachment.transcription_status == "pending"
+
+
 async def test_non_image_media_keeps_the_stored_mark(db, tenant_ctx, monkeypatch):
     """The scan gates IMAGE egress (ADR-062); other media is untouched."""
     tenant_id = tenant_ctx.tenant_id
