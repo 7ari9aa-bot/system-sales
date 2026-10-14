@@ -126,7 +126,7 @@ def test_the_partial_unique_index_migration_exists() -> None:
     assert "UNIQUE INDEX" in source.upper()
     # The index is PARTIAL: only the open statuses compete for the slot, so a
     # conversation can be handed over again after its handover is resolved.
-    assert '_OPEN_STATUSES = "(\'pending\', \'claimed\')"' in source
+    assert "_OPEN_STATUSES = \"('pending', 'claimed')\"" in source
     assert "WHERE status IN {_OPEN_STATUSES}" in source
     assert 'down_revision: str | None = "fe2026100818"' in source
 

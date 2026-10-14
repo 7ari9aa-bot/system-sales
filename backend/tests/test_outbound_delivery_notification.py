@@ -132,9 +132,7 @@ async def test_a_sent_message_rings_nobody(db, tenant_ctx):
     message = await _failed_outbound_message(db, tenant_id)
     worker = MessageWorker(bus=MagicMock())
 
-    await worker._notify_delivery_failed(
-        db, tenant_id, message=message, status="sent", error=None
-    )
+    await worker._notify_delivery_failed(db, tenant_id, message=message, status="sent", error=None)
     await db.flush()
 
     bells = (

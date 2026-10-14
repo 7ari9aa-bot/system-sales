@@ -61,9 +61,7 @@ def test_a_full_deployment_warns_about_nothing() -> None:
 def test_the_half_configured_trap_is_named() -> None:
     """Scanner without vision providers: photos get scanned and STILL never
     matched — the most confusing state, so it gets its own explicit warning."""
-    _configured, warnings = multimodal_readiness(
-        _settings(media_scanner_configured=True)
-    )
+    _configured, warnings = multimodal_readiness(_settings(media_scanner_configured=True))
     joined = "\n".join(warnings)
     assert "scanned and STILL never matched" in joined
     assert "AI_EMBEDDING_VISION_API_KEY" in joined

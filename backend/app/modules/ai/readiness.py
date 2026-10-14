@@ -64,9 +64,11 @@ def multimodal_readiness(settings: Any) -> tuple[dict[str, bool], list[str]]:
             "scanned and STILL never matched; set AI_EMBEDDING_VISION_API_KEY and "
             "AI_RERANKER_API_KEY, then run scripts/index_product_images.py"
         )
-    if configured["images_embedding"] and configured["images_reranker"] and not configured[
-        "images_scanner"
-    ]:
+    if (
+        configured["images_embedding"]
+        and configured["images_reranker"]
+        and not configured["images_scanner"]
+    ):
         warnings.append(
             "the vision providers are configured but the media scanner is not — the ADR-062 gate "
             "refuses to mint URLs, so nothing will ever reach them; set MEDIA_SCANNER_HOST/"

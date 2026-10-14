@@ -370,6 +370,7 @@ async def test_webchat_list_messages_polling_success(monkeypatch) -> None:
     )
 
     from app.core.pagination import encode_cursor
+
     cursor_str = encode_cursor(datetime(2026, 10, 14, 0, 0, 0, tzinfo=UTC), uuid.uuid4())
 
     token = create_visitor_token("sess-1", str(tenant_id), widget=public_key)
@@ -384,4 +385,3 @@ async def test_webchat_list_messages_polling_success(monkeypatch) -> None:
         assert len(data["items"]) == 1
         assert data["items"][0]["body"] == "Hello from agent!"
         assert data["items"][0]["direction"] == "outbound"
-

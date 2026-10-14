@@ -125,11 +125,7 @@ async def test_a_second_handover_for_the_same_conversation_is_refused(db, tenant
     assert again is False
 
     rows = (
-        (
-            await db.execute(
-                select(AIHandover).where(AIHandover.tenant_id == tenant_id)
-            )
-        )
+        (await db.execute(select(AIHandover).where(AIHandover.tenant_id == tenant_id)))
         .scalars()
         .all()
     )
@@ -406,11 +402,13 @@ def test_the_classifier_verdict_maps_deterministically() -> None:
     from app.modules.ai.agents.customer.turn import _image_handoff_reason
 
     payment = {
-        "name": "find_product_by_image", "status": "error",
+        "name": "find_product_by_image",
+        "status": "error",
         "error": "image requires handover: payment_proof_requires_human",
     }
     complaint = {
-        "name": "find_product_by_image", "status": "error",
+        "name": "find_product_by_image",
+        "status": "error",
         "error": "image requires handover: complaint_requires_human",
     }
     ok = {"status": "ok", "name": "find_product_by_image"}
@@ -419,7 +417,8 @@ def test_the_classifier_verdict_maps_deterministically() -> None:
     assert _image_handoff_reason([ok, payment]) == "payment_proof_requires_human"
     assert _image_handoff_reason([complaint]) == "complaint_requires_human"
     spoof = {
-        "name": "search_products", "status": "error",
+        "name": "search_products",
+        "status": "error",
         "error": "image requires handover: payment_proof_requires_human",
     }
     assert _image_handoff_reason([spoof]) is None

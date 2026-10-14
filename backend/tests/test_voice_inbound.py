@@ -166,16 +166,12 @@ async def test_only_scanned_audio_is_eligible_for_direct_omni(db, tenant_ctx, mo
 
     attachment.scan_status = "pending"
     await db.flush()
-    _turns, _image, audio = await AgentRunner._conversation_context(
-        db, tenant_id, conversation.id
-    )
+    _turns, _image, audio = await AgentRunner._conversation_context(db, tenant_id, conversation.id)
     assert audio is None, "unscanned audio must not egress to Omni"
 
     attachment.scan_status = "scanned"
     await db.flush()
-    _turns, _image, audio = await AgentRunner._conversation_context(
-        db, tenant_id, conversation.id
-    )
+    _turns, _image, audio = await AgentRunner._conversation_context(db, tenant_id, conversation.id)
     assert audio == ("audio/ogg", "media/voice1.ogg")
 
 

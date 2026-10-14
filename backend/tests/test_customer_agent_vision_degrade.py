@@ -105,13 +105,8 @@ async def test_a_failing_vision_provider_degrades_instead_of_dying(db, tenant_ct
     assert "مشكلة في نظامنا" in runner.seen_context
     # And the outbound message row does not exist yet — the hook owns sending.
     rows = (
-        (
-            await db.execute(
-                select(Message).where(Message.conversation_id == conversation.id)
-            )
-        )
+        (await db.execute(select(Message).where(Message.conversation_id == conversation.id)))
         .scalars()
         .all()
     )
     assert [m.direction for m in rows] == ["inbound"]
-

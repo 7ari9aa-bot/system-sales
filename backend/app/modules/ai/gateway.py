@@ -141,8 +141,10 @@ def _redact_pii(messages: list[dict]) -> list[dict]:
         elif role in ("user", "assistant", "system") and isinstance(content, list):
             parts = []
             for part in content:
-                if isinstance(part, dict) and part.get("type") == "text" and isinstance(
-                    part.get("text"), str
+                if (
+                    isinstance(part, dict)
+                    and part.get("type") == "text"
+                    and isinstance(part.get("text"), str)
                 ):
                     text = part["text"]
                     for pattern, replacement in _PII_PATTERNS:

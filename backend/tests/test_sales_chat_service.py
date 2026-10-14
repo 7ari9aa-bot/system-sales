@@ -15,7 +15,7 @@ import pytest
 
 from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.modules.ai.chat import service as chat_service
-from app.modules.ai.models import AIChatThread
+from app.modules.ai.models import AIChatMessage, AIChatThread
 
 TENANT = uuid.uuid4()
 USER = uuid.uuid4()
@@ -56,6 +56,9 @@ class _FakeSession:
         self.added.append(obj)
 
     async def flush(self):
+        return None
+
+    async def rollback(self):
         return None
 
 
@@ -267,6 +270,22 @@ class _CommittingSession(_FakeSession):
     def __init__(self, results=None):
         super().__init__(results)
         self.commits = 0
+        self.loaded: list[object] = []
+
+    async def execute(self, statement):
+        statement_result = self.results[0] if self.results else None
+        if isinstance(statement_result, _FakeResult):
+            if statement_result._value is not None:
+                self.loaded.append(statement_result._value)
+            self.loaded.extend(statement_result._rows)
+        return await super().execute(statement)
+
+    async def get(self, model, obj_id):
+        """The fresh-transaction re-fetch `_mark_turn_failed` relies on."""
+        for obj in [*self.added, *self.loaded]:
+            if isinstance(obj, model) and getattr(obj, "id", None) == obj_id:
+                return obj
+        return None
 
     async def commit(self):
         # a flush would assign the Python-side PK defaults; mirror that so
@@ -380,6 +399,7 @@ async def test_run_chat_turn_failure_lands_failed_row(monkeypatch):
 async def test_run_chat_turn_retry_overwrites_failed_row(monkeypatch):
     user_row = SimpleNamespace(sequence_no=1, content="سؤال")
     failed = SimpleNamespace(
+        id=uuid.uuid4(),
         sequence_no=2,
         role="assistant",
         status="failed",
@@ -484,3 +504,111 @@ async def test_maybe_compact_skips_small_threads():
     await _maybe_compact(session, _Ctx(), thread, through_seq=HISTORY_MESSAGE_LIMIT)
     assert thread.context_summary is None
     assert session.statements == []
+
+
+# --- the poisoned-transaction 500 (production, 2026-10-14) -----------------
+
+
+class _PoisonedSession(_CommittingSession):
+    """commit() raises like asyncpg does on a closed transaction until a
+    rollback() lands — the exact shape the production 500 hit."""
+
+    def __init__(self, results=None):
+        super().__init__(results)
+        self.poisoned = False
+        self.rollbacks = 0
+
+    def poison(self):
+        self.poisoned = True
+
+    async def commit(self):
+        if self.poisoned:
+            raise RuntimeError("Can't operate on a closed transaction")
+        await super().commit()
+
+    async def rollback(self):
+        # the database truth: the durable row is `generating` — any uncommitted
+        # in-memory mutation reverts, exactly like a real rollback reloads it
+        self.poisoned = False
+        self.rollbacks += 1
+        for obj in self.added:
+            if isinstance(obj, AIChatMessage):
+                obj.status = "generating"
+
+    async def get(self, model, obj_id):
+        # the fresh-transaction re-fetch: the durable `generating` row
+        for obj in self.added:
+            if isinstance(obj, model) and obj.id == obj_id:
+                return obj
+        return None
+
+
+async def test_a_poisoned_transaction_still_lands_the_failed_row(monkeypatch):
+    """The model call raised AND closed the transaction server-side. Writing
+    `failed` on that closed transaction was the 500; the fix rolls back first
+    and writes in a fresh one — the customer gets a retryable row, not a 500."""
+    user_row = SimpleNamespace(sequence_no=1, content="سؤال")
+    session = _PoisonedSession(
+        [
+            _FakeResult(rows=[user_row]),
+            _FakeResult(None),
+            _FakeResult(rows=[]),
+        ]
+    )
+    thread = _Thread(agent_id=uuid.uuid4())
+
+    async def boom_and_poison(session, tenant_id, *, agent_id, question, runner=None, history=None):
+        session.poison()  # statement timeout / asyncpg error closes the tx
+        raise RuntimeError("statement timeout")
+
+    monkeypatch.setattr(
+        "app.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", boom_and_poison
+    )
+    with pytest.raises(ConflictError):
+        await run_chat_turn(session, _Ctx(), thread)
+
+    (assistant,) = session.added
+    assert assistant.status == "failed"
+    assert assistant.error_code == "run_failed"
+    assert session.rollbacks >= 1, "the poisoned transaction was never rolled back"
+
+
+async def test_a_failed_completion_write_still_lands_the_failed_row(monkeypatch):
+    """The answer came back fine but the terminal write hit the poison — same
+    containment: rollback, then `failed` on a fresh transaction, 409 not 500."""
+    user_row = SimpleNamespace(sequence_no=1, content="سؤال")
+    session = _PoisonedSession(
+        [
+            _FakeResult(rows=[user_row]),
+            _FakeResult(None),
+            _FakeResult(rows=[]),
+        ]
+    )
+    thread = _Thread(agent_id=uuid.uuid4())
+
+    async def fine_analysis(session, tenant_id, *, agent_id, question, runner=None, history=None):
+        return _analysis_result()
+
+    async def poison_on_third_commit():
+        return None
+
+    original_commit = session.commit
+
+    commits = {"n": 0}
+
+    async def flaky_commit():
+        commits["n"] += 1
+        if commits["n"] == 2:  # the durable `generating` commit succeeds; the terminal one poisons
+            session.poison()
+        await original_commit()
+
+    session.commit = flaky_commit
+    monkeypatch.setattr(
+        "app.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", fine_analysis
+    )
+    with pytest.raises(ConflictError):
+        await run_chat_turn(session, _Ctx(), thread)
+
+    (assistant,) = session.added
+    assert assistant.status == "failed"
+    assert session.rollbacks >= 1

@@ -9,12 +9,47 @@ never a silently missing answer.
 
 from __future__ import annotations
 
+import logging
+import uuid
+
 from sqlalchemy import select
 
 from app.core.errors import ConflictError
 from app.modules.ai.models import AIChatMessage
 
 HISTORY_MESSAGE_LIMIT = 12  # 6 turns max reach the prompt
+
+logger = logging.getLogger(__name__)
+
+
+async def _mark_turn_failed(session, thread, assistant_id: uuid.UUID) -> None:
+    """Land the assistant row `failed` in a FRESH transaction.
+
+    The model call can poison the caller's transaction — a statement timeout or
+    any asyncpg error closes it server-side, and writing the failure state on
+    that closed transaction is exactly what produced the production 500
+    ("Can't operate on a closed transaction") on this route. Roll back the
+    debris first, then write the failure on a new transaction: the row was
+    committed durable as `generating` before the call, so it exists to update.
+
+    A failure here is logged and swallowed, never a second 500: the retry path
+    overwrites THIS row, so no sequence slot is burned either way.
+    """
+    try:
+        await session.rollback()
+        row = await session.get(AIChatMessage, assistant_id)
+        if row is not None and row.status == "generating":
+            row.status = "failed"
+            row.error_code = "run_failed"
+            await session.commit()
+    except Exception:  # noqa: BLE001 — containment, never a second failure
+        logger.exception(
+            "chat_turn.mark_failed_failed thread=%s assistant=%s", thread.id, assistant_id
+        )
+        try:
+            await session.rollback()
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def build_structured_blocks(result) -> list[dict]:
@@ -221,6 +256,7 @@ async def run_chat_turn(session, ctx, thread) -> AIChatMessage:
         assistant.content = ""
         assistant.structured_content = None
     await session.commit()  # durable BEFORE the model call (§lease lesson)
+    assistant_id = assistant.id
 
     history = await _bounded_history(session, ctx, thread, through_seq=user_row.sequence_no)
     try:
@@ -234,20 +270,22 @@ async def run_chat_turn(session, ctx, thread) -> AIChatMessage:
             history=history,
         )
     except Exception as exc:  # noqa: BLE001 — the row must land `failed`
-        assistant.status = "failed"
-        assistant.error_code = "run_failed"
-        await session.commit()
+        await _mark_turn_failed(session, thread, assistant_id)
         raise ConflictError("assistant turn failed; retry is available") from exc
 
-    assistant.content = result.answer
-    assistant.structured_content = build_structured_blocks(result)
-    assistant.status = "completed"
-    assistant.run_id = result.run_id
-    assistant.analysis_id = result.saved_evidence_id or result.analysis_id
-    if thread.title == "" and user_row.sequence_no == 1:
-        thread.title = user_row.content[:60]
-    await _maybe_compact(session, ctx, thread, through_seq=user_row.sequence_no)
-    await session.commit()
+    try:
+        assistant.content = result.answer
+        assistant.structured_content = build_structured_blocks(result)
+        assistant.status = "completed"
+        assistant.run_id = result.run_id
+        assistant.analysis_id = result.saved_evidence_id or result.analysis_id
+        if thread.title == "" and user_row.sequence_no == 1:
+            thread.title = user_row.content[:60]
+        await _maybe_compact(session, ctx, thread, through_seq=user_row.sequence_no)
+        await session.commit()
+    except Exception as exc:  # noqa: BLE001 — same poison rule as the call itself
+        await _mark_turn_failed(session, thread, assistant_id)
+        raise ConflictError("assistant turn failed; retry is available") from exc
     return assistant
 
 

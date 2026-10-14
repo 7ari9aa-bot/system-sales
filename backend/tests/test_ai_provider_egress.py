@@ -85,7 +85,10 @@ def test_classify_data_detects_pii_in_message_content() -> None:
 
 def test_classify_data_treats_multimodal_parts_as_restricted() -> None:
     image = [
-        {"role": "user", "content": [{"type": "image_url", "image_url": {"url": "https://x/image"}}]}
+        {
+            "role": "user",
+            "content": [{"type": "image_url", "image_url": {"url": "https://x/image"}}],
+        }
     ]
     audio = [
         {

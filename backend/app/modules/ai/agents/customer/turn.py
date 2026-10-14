@@ -183,6 +183,7 @@ def _person_noun_matches(marker: str, normalized: str) -> bool:
         return _SHORT_NOUN.search(normalized) is not None
     return marker in normalized
 
+
 # The service's OWN name is not always a request FOR a human: "عايز أعرف
 # مواعيد خدمة العملاء" asks about its hours, not to be connected to one. When
 # the only person-marker is the service name AND the text asks for its
@@ -223,9 +224,7 @@ def wants_human_request(text: str | None) -> bool:
     if not any(want in normalized for want in _HUMAN_REQUEST_WANTING):
         return False
     matched = [
-        marker
-        for marker in _HUMAN_REQUEST_PERSON
-        if _person_noun_matches(marker, normalized)
+        marker for marker in _HUMAN_REQUEST_PERSON if _person_noun_matches(marker, normalized)
     ]
     if not matched:
         return False

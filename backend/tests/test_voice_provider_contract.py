@@ -100,9 +100,7 @@ def test_the_factory_returns_none_only_without_a_credential(monkeypatch) -> None
 def test_the_factory_returns_a_provider_when_a_credential_resolves(monkeypatch) -> None:
     from app.modules.conversations import voice
 
-    monkeypatch.setattr(
-        "app.core.config.get_settings", lambda: _settings(ai_api_key_primary="k")
-    )
+    monkeypatch.setattr("app.core.config.get_settings", lambda: _settings(ai_api_key_primary="k"))
     stt = voice.get_default_stt_provider()
     tts = voice.get_default_tts_provider()
     assert stt is not None and tts is not None

@@ -293,9 +293,7 @@ class MessageWorker(StreamWorker):
             async with SessionLocal() as session:
                 await bind_tenant(session, tenant_id)
                 if not get_settings().ai_voice_audio_input:
-                    await transcribe_inbound_voice(
-                        session, tenant_id, message_id=turn_message_id
-                    )
+                    await transcribe_inbound_voice(session, tenant_id, message_id=turn_message_id)
 
             # Phase 3: AI Auto-reply (runs under conversation_lease internally)
             async with SessionLocal() as session:

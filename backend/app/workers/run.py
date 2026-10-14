@@ -97,6 +97,16 @@ async def main(pools: list[str], *, stop: asyncio.Event | None = None) -> None:
     from app.modules.ai.core.registry import discover_agents
 
     discover_agents()
+    # Multimodal readiness for the WORKER process: the voice transcription and
+    # the customer-image gate run HERE, not in the API — a scanner/credential
+    # that is off in this process fails closed invisibly unless the startup
+    # log says exactly what is off and which env var turns it on.
+    from app.core.config import get_settings
+    from app.modules.ai.readiness import multimodal_readiness
+
+    _, worker_warnings = multimodal_readiness(get_settings())
+    for _warning in worker_warnings:
+        logging.getLogger("ai.readiness").warning("multimodal_readiness %s", _warning)
     bus = RedisStreamsBus(get_redis())
     relay = OutboxRelay(bus)
     tasks = [asyncio.create_task(relay.run(), name="outbox-relay")]
