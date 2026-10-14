@@ -183,7 +183,20 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # tool computes are registered through `EvidenceStore.register_numbers`, the
 # analytics module's own door, so the SI adapter gained no new import site and
 # the skip rules live beside the pack contract that enforces them.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 148
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 149
+# 148 -> 149 on 2026-10-15: the voice-path seam (commits 20bfae9 + ed91f64).
+#   • ai/runtime.py -> conversations.voice.omni_audio_format (module scope):
+#     the ONE format gate every direct-Omni voice turn passes — ogg/wav/mp3
+#     only, so an unsupported customer voice note is refused before any
+#     provider egress. ai->conversations was already an endorsed direction
+#     (runtime reads ConversationService); .voice is a new kind on that pair.
+#   • workers/message_worker.py -> ai.readiness.multimodal_readiness (function
+#     scope): the worker prints the same OFF/ON truth the API prints — the
+#     scanner/model settings live in the worker process, not the API.
+#   • ai/hooks.py -> notifications.service (function scope): the outbound
+#     delivery-failure bell, same producer shape handover.py already holds.
+# Net +1 after the voices dedup elsewhere; no new SCC (the cyclic test
+# above still passes on this tree).
 # 146 -> 148 on 2026-10-13: two function-scope reads through another module's
 # SERVICE — the guard's own prescription ("use its service"), not a table
 # reach-through. Both landed on separate branches, so the count moves by two
