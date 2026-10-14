@@ -277,6 +277,7 @@ def _context_lines(
     referent: Referent | None,
     vision_results: list[MatchResult],
     skipped_photos: int,
+    vision_failures: int = 0,
 ) -> str | None:
     """The system-owned context block, or None when there is nothing to say.
 
@@ -310,6 +311,13 @@ def _context_lines(
         )
     if skipped_photos:
         lines.append(f"فيه {skipped_photos} صورة إضافية لم تُحلَّل في هذه الدورة.")
+    if vision_failures:
+        # OUR failure, not the customer's: say so honestly, and route the
+        # conversation if the photo was the point of the message.
+        lines.append(
+            "صورة العميل مقدرناش نحللها بسبب مشكلة في نظامنا — اعتذر واعرض "
+            "تحويله لموظف لو الصورة ضرورية، ومتحاولش تخمّن محتواها."
+        )
     if turn.has_voice and not turn.voice_transcript:
         lines.append("بعت عميل رسالة صوتية ولسه متنسّختش — اعرض عليه تكتبها.")
     if turn.other_media:
@@ -368,24 +376,40 @@ async def run_customer_turn(
 
     # Vision: first photo only (v1); URLs are minted by the caller, keys
     # without one are acknowledged as unprocessed rather than dropped.
+    #
+    # A vision FAILURE must degrade, never fail the ingest: the provider
+    # raising (a misconfigured key, an outage) used to propagate out of the
+    # turn and dead-letter a perfectly healthy message — a customer photo
+    # would have killed the conversation the moment the scanner was turned on
+    # before the vision keys landed. Vision is a BONUS, the same policy the
+    # knowledge context rides under: log loudly, tell the model, keep going.
     vision_results: list[MatchResult] = []
     processed = 0
+    vision_failures = 0
     for key in turn.image_keys[:MAX_PHOTOS_PER_TURN]:
         url = params.image_urls.get(key)
         if not url:
             continue
         processed += 1
-        vision_results.append(
-            await run_vision_match(
-                session,
-                params.tenant_id,
-                image_url=url,
-                text_hint=turn.text_hint(),
+        try:
+            vision_results.append(
+                await run_vision_match(
+                    session,
+                    params.tenant_id,
+                    image_url=url,
+                    text_hint=turn.text_hint(),
+                )
             )
-        )
+        except Exception:  # noqa: BLE001 — a broken photo pipeline is not the customer's problem
+            vision_failures += 1
+            logger.warning(
+                "ai.vision_failed storage_key=%s — the turn answers WITHOUT this photo",
+                key,
+                exc_info=True,
+            )
     skipped_photos = len(turn.image_keys) - processed
 
-    context = _context_lines(turn, shown, referent, vision_results, skipped_photos)
+    context = _context_lines(turn, shown, referent, vision_results, skipped_photos, vision_failures)
     user_message = _message_text(turn, bool(vision_results))
     if not user_message and not context:
         # Nothing actionable arrived (e.g. an empty body after stripping).
