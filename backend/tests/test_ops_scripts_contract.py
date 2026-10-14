@@ -326,11 +326,14 @@ def test_the_api_reconcile_refuses_to_run_without_a_token(monkeypatch) -> None:
         script.main()
 
 
-def test_the_api_reconcile_never_touches_a_customised_prompt_by_default() -> None:
-    """Only a KNOWN stale canonical prompt is a copy; everything else is a decision."""
-    script = _load_script("reconcile_prod_agent_prompts")
-    import inspect
+def test_the_api_reconcile_declares_stale_markers_per_kind() -> None:
+    """Only a KNOWN stale canonical prompt is a copy; everything else is a decision.
 
-    source = inspect.getsource(script._build_sql)
-    assert "--force" not in source  # the flag is consumed in main(), not in the SQL
-    assert script.STALE_MARKER and "إتمام" in script.STALE_MARKER
+    The markers are DATA (a dict keyed by kind), so a THIRD agent needs an entry
+    here — or --force — before the tool touches its rows.
+    """
+    script = _load_script("reconcile_prod_agent_prompts")
+    markers = script.STALE_MARKERS
+    assert isinstance(markers, dict)
+    assert "إتمام" in markers.get("customer", ""), "the customer marker disappeared"
+    assert "customer" in markers

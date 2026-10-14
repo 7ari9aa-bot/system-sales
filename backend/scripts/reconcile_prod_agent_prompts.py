@@ -2,15 +2,26 @@
 
 WHY THIS EXISTS
 ---------------
-`scripts/sync_canonical_agent_prompts.py` is the right tool — it runs the app's
+``scripts/sync_canonical_agent_prompts.py`` is the right tool — it runs the app's
 own publish path — but it needs a database DSN, and a deployment that only holds
 a Supabase MANAGEMENT token has no way to obtain the database password (the API
 returns the literal placeholder ``[YOUR-PASSWORD]``). This script uses the
 management API's SQL endpoint instead, so the same reconcile is possible with
 nothing but that token.
 
-WHAT IT DOES, in ONE statement
-------------------------------
+KIND-AGNOSTIC BY DESIGN
+-----------------------
+It iterates every canonical kind in the registry, so a THIRD agent is reconciled
+by this tool without an edit — its prompt comes from its own definition. What IS
+declared per kind is the STALE MARKER (``STALE_MARKERS``): the phrase a kind's
+retired prompt used to describe the agent's job, whose presence marks a row as a
+stale copy of the canonical prompt rather than a deliberate store edit. A kind
+without a marker is never reconciled without ``--force`` — a prompt that does not
+match a known canonical revision is the store's own, and overwriting it silently
+would be a worse bug than the drift it fixes.
+
+WHAT IT DOES, in ONE statement per kind
+---------------------------------------
 1. ``UPDATE agents.system_prompt`` — the row, so the definition and the store agree,
 2. ``INSERT INTO agent_versions`` — an immutable snapshot, version = max + 1,
 3. ``UPDATE agent_deployments.stable_version_id`` — repoint the stable slot.
@@ -23,13 +34,10 @@ pins the STABLE version, not the row.
 SAFETY
 ------
 - Dry run by default. The write needs ``--apply``.
-- One atomic statement: all three writes commit together or not at all.
+- One atomic statement per kind: all three writes commit together or not at all.
 - An agent whose deployment is mid-canary (``canary_percent > 0``) or not
   ``active`` is SKIPPED and reported — repointing a slot a rollout is writing to
   is the deployment API's job, not this script's.
-- An agent whose prompt does NOT contain the known-stale marker is SKIPPED
-  unless ``--force``: a store that customised its prompt must not be silently
-  overwritten by a background pass.
 - The prompt travels base64-encoded, so no quoting or dialect can corrupt it.
 
 Usage (from backend/):
@@ -52,10 +60,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-# The phrase the retired prompt used to describe the agent's job. Its presence
-# marks a row that is a stale copy of the canonical prompt rather than a
-# deliberate edit — this is the only thing distinguishing the two.
-STALE_MARKER = "إتمام عمليات الشراء"
+# Per kind: the phrase its RETIRED prompt used to describe the agent's job. Its
+# presence marks a row that is a stale copy of the canonical prompt rather than a
+# deliberate edit — the only thing distinguishing the two. A kind WITHOUT an
+# entry is never reconciled without --force.
+STALE_MARKERS: dict[str, str] = {
+    "customer": "إتمام عمليات الشراء",
+}
 
 _API = "https://api.supabase.com/v1/projects/{ref}/database/query"
 
@@ -64,13 +75,26 @@ def _fail(message: str) -> None:
     raise SystemExit(message)
 
 
-def new_prompt() -> str:
-    """The canonical customer prompt, straight from the definition in this tree."""
-    import app.modules.ai.agents.customer.definition as definition
+def canonical_definitions() -> dict[str, object]:
+    """Every registered definition that declares itself canonical."""
+    from app.modules.ai.core.registry import AgentRegistry, discover_agents
 
-    prompt = definition.CUSTOMER_SYSTEM_PROMPT
+    discover_agents()
+    return {
+        definition.kind: definition
+        for definition in AgentRegistry.get_all()
+        if (definition.provisioning_policy or {}).get("is_canonical")
+    }
+
+
+def prompt_for(kind: str) -> str:
+    """The canonical prompt of `kind`, straight from its definition in this tree."""
+    definition = canonical_definitions().get(kind)
+    if definition is None:
+        _fail(f"{kind} is not a canonical kind")
+    prompt = definition.system_prompt_template  # type: ignore[attr-defined]
     if not prompt.strip():
-        _fail("the canonical customer prompt is empty")
+        _fail(f"the canonical {kind} prompt is empty")
     return prompt
 
 
@@ -78,13 +102,17 @@ def _b64(text: str) -> str:
     return base64.b64encode(text.encode("utf-8")).decode("ascii")
 
 
-def _build_sql(*, marker: str, apply: bool) -> str:
-    """One statement. With `apply=False` the writes are replaced by SELECTs."""
-    prompt_literal = f"convert_from(decode('{_b64(new_prompt())}','base64'),'UTF8')"
-    stale = (
-        f"(SELECT id FROM agents WHERE kind='customer' "
-        f"AND position({_sq(marker)} in system_prompt) > 0)"
-    )
+def _sq(text: str) -> str:
+    return "'" + text.replace("'", "''") + "'"
+
+
+def _build_sql(*, kind: str, marker: str, prompt: str, apply: bool) -> str:
+    """One atomic statement for ONE kind: row, snapshot, stable pointer.
+
+    With ``apply=False`` the writes are replaced by SELECTs that report what
+    WOULD change, so a dry run exercises the same eligibility rules.
+    """
+    prompt_literal = f"convert_from(decode('{_b64(prompt)}','base64'),'UTF8')"
     if apply:
         head = f"""
 WITH params AS (SELECT {prompt_literal} AS new_prompt),
@@ -100,7 +128,7 @@ target AS (
              ORDER BY ver.version DESC
              LIMIT 1
       ) v ON true
-     WHERE a.kind='customer'
+     WHERE a.kind = {_sq(kind)}
        AND a.is_active
        AND (position({_sq(marker)} in a.system_prompt) > 0)
        AND NOT EXISTS (
@@ -139,7 +167,12 @@ SELECT (SELECT count(*) FROM upd) AS rows_updated,
        (SELECT count(*) FROM dep) AS deployments_repointed"""
     else:
         head = f"""
-WITH stale AS {stale},
+WITH stale AS (
+    SELECT id FROM agents
+     WHERE kind = {_sq(kind)}
+       AND is_active
+       AND (position({_sq(marker)} in system_prompt) > 0)
+),
 skipped_canary AS (
     SELECT a.id FROM agents a
      WHERE a.id IN (SELECT id FROM stale)
@@ -153,10 +186,6 @@ SELECT (SELECT count(*) FROM stale) AS stale_rows,
        (SELECT count(*) FROM eligible) AS would_update,
        md5({prompt_literal}) AS new_prompt_digest"""
     return head.strip()
-
-
-def _sq(text: str) -> str:
-    return "'" + text.replace("'", "''") + "'"
 
 
 def run(ref: str, token: str, sql: str) -> list[dict]:
@@ -177,15 +206,20 @@ def run(ref: str, token: str, sql: str) -> list[dict]:
     return []
 
 
-def probe(token: str, ref: str) -> dict:
-    """Read the current state so every run prints before and after."""
+def probe(ref: str, token: str, kind: str) -> dict:
+    """Read the current state of ONE kind so every run prints before and after."""
     rows = run(
         ref,
         token,
-        "SELECT (SELECT count(*) FROM agents WHERE kind='customer') AS customer_agents, "
-        "(SELECT count(*) FROM agents WHERE kind='customer' AND is_active AND "
-        f"position({_sq(STALE_MARKER)} in system_prompt) > 0) AS stale_prompts, "
-        "(SELECT count(*) FROM agent_deployments WHERE coalesce(canary_percent,0) > 0) "
+        "SELECT (SELECT count(*) FROM agents WHERE kind = "
+        + _sq(kind)
+        + ") AS agents, "
+        + "(SELECT count(*) FROM agents WHERE kind = "
+        + _sq(kind)
+        + " AND is_active AND position("
+        + _sq(STALE_MARKERS.get(kind, "\x00"))
+        + " in system_prompt) > 0) AS stale_prompts, "
+        + "(SELECT count(*) FROM agent_deployments WHERE coalesce(canary_percent,0) > 0) "
         "AS mid_rollout",
     )
     return rows[0] if rows else {}
@@ -200,7 +234,11 @@ def main() -> None:
     parser.add_argument(
         "--force",
         action="store_true",
-        help=f"include agents whose prompt does not contain {STALE_MARKER!r}",
+        help="reconcile a kind with no known stale marker, and rows that are not "
+        "stale canonical copies (a store's own edit)",
+    )
+    parser.add_argument(
+        "--only-kind", help="restrict to one kind, e.g. customer (default: every canonical kind)"
     )
     parser.add_argument(
         "--token",
@@ -212,33 +250,54 @@ def main() -> None:
     if not token:
         _fail("no Supabase access token: set SUPABASE_ACCESS_TOKEN or pass --token")
 
-    marker = STALE_MARKER if not args.force else "%"
+    definitions = canonical_definitions()
+    kinds = [args.only_kind] if args.only_kind else sorted(definitions)
+    unknown = [kind for kind in kinds if kind not in definitions]
+    if unknown:
+        _fail(f"not a canonical kind: {', '.join(unknown)}")
 
-    before = probe(token, args.ref)
-    print(f"=== {args.ref} ===")
-    print(f"customer agents          : {before.get('customer_agents')}")
-    print(f"carrying the stale prompt: {before.get('stale_prompts')}")
-    print(f"deployments mid-rollout  : {before.get('mid_rollout')}")
+    totals = {"rows": 0, "versions": 0, "deployments": 0}
+    for kind in kinds:
+        marker = STALE_MARKERS.get(kind)
+        forced = args.force and marker is None
+        if marker is None and not args.force:
+            print(f"\n=== {kind}: no stale marker declared — skipped (use --force) ===")
+            continue
+        if forced:
+            marker = "%"
+            print(f"\n=== {kind} (--force: every active row is eligible) ===")
+        else:
+            print(f"\n=== {kind} ===")
 
-    sql = _build_sql(marker=marker, apply=args.apply)
-    result = run(args.ref, token, sql)
-    payload = result[0] if result else {}
+        before = probe(args.ref, token, kind)
+        print(f"agents                  : {before.get('agents')}")
+        print(f"carrying a stale prompt : {before.get('stale_prompts')}")
+        print(f"deployments mid-rollout : {before.get('mid_rollout')}")
+
+        sql = _build_sql(kind=kind, marker=marker, prompt=prompt_for(kind), apply=args.apply)
+        payload = (run(args.ref, token, sql) or [{}])[0]
+
+        if args.apply:
+            rows = payload.get("rows_updated", 0) or 0
+            versions = payload.get("versions_published", 0) or 0
+            deployments = payload.get("deployments_repointed", 0) or 0
+            totals["rows"] += rows
+            totals["versions"] += versions
+            totals["deployments"] += deployments
+            after = probe(args.ref, token, kind)
+            print(f"rows updated          : {rows}")
+            print(f"versions published    : {versions}")
+            print(f"deployments repointed : {deployments}")
+            print(f"stale prompts left    : {after.get('stale_prompts')}")
+        else:
+            print(f"would update           : {payload.get('would_update')}")
+            print(f"skipped (mid-rollout)  : {payload.get('skipped_mid_rollout')}")
+            print(f"new prompt digest      : {payload.get('new_prompt_digest')}")
 
     if args.apply:
-        print(f"\nrows updated          : {payload.get('rows_updated')}")
-        print(f"versions published    : {payload.get('versions_published')}")
-        print(f"deployments repointed : {payload.get('deployments_repointed')}")
-        after = probe(token, args.ref)
-        print(f"stale prompts left     : {after.get('stale_prompts')}")
-        if after.get("stale_prompts"):
-            print(
-                "\nremaining stale prompts are either customised (re-run with --force) "
-                "or belong to an agent whose deployment is mid-rollout"
-            )
+        print(f"\nTOTAL rows updated: {totals['rows']} | versions: {totals['versions']} "
+              f"| deployments: {totals['deployments']}")
     else:
-        print(f"\nwould update           : {payload.get('would_update')}")
-        print(f"skipped (mid-rollout)  : {payload.get('skipped_mid_rollout')}")
-        print(f"new prompt digest      : {payload.get('new_prompt_digest')}")
         print("\ndry run — re-run with --apply to write")
 
 
