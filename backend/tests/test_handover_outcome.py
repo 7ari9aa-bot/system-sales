@@ -43,6 +43,16 @@ from app.modules.platform.models import OutboxEvent
         "لو ممكن كلام مع مسؤول",
         "نفسى أكلم خدمة العملاء",
         "I'd like to talk to a human please",
+        # The phrases real customers actually type — the original vocabulary
+        # missed every one of these (verified live before the fix).
+        "محتاج موظف حقيقي",
+        "عايز حد حقيقي",
+        "حولني لموظف",
+        "ممكن حد من خدمة العملاء؟",
+        "مش عايز بوت",
+        "وصّلني بخدمة العملاء",
+        "Could you connect me with a human?",
+        "I need a real person",
     ],
 )
 def test_asking_for_a_person_is_detected(text: str) -> None:
@@ -56,6 +66,8 @@ def test_asking_for_a_person_is_detected(text: str) -> None:
         "الموظف اللي بعتلي Says the price is 200",  # a person mentioned, not asked for
         "هو انت روبوت؟",  # a question ABOUT the bot, not a request for a person
         "عايز اشتري اتنين",
+        "عايز أعرف مواعيد خدمة العملاء",  # asking ABOUT the service, not for a human
+        "شروط خدمة العملاء إيه؟",
         None,
         "",
     ],

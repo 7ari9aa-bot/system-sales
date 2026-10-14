@@ -25,6 +25,7 @@ platform AgentRunner.
 from __future__ import annotations
 
 import logging
+import re
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -130,12 +131,19 @@ _HUMAN_REQUEST_WANTING = (
     "عيز",
     "اريد",
     "ابغي",
+    "محتاج",
+    "محتاجين",
+    "حولني",
+    "نقلني",
+    "ممكن",
     "نفسي",
     "وصلني",
     "كلمني",
     "speak",
     "talk",
     "need",
+    "connect me",
+    "transfer me",
 )
 _HUMAN_REQUEST_PERSON = (
     "موظف",
@@ -144,13 +152,55 @@ _HUMAN_REQUEST_PERSON = (
     "انسان",
     "ادمي",
     "بشر",
+    "بشري",
+    "حد",
+    "بوت",
+    "روبوت",
     "خدمه العملاء",
     "فريق",
     "human",
     "person",
+    "real person",
     "representative",
     "agent",
     "staff",
+    "bot",
+    "robot",
+)
+
+# Word-boundary matching for the person nouns: `حد` must not fire inside
+# `حدود`, and `بوت` not inside a product name. A plain `\b` is WRONG here:
+# Arabic attaches prepositions to the noun (`لموظف`, `بخدمه`), so the boundary
+# between the prefix letter and the noun does not exist. The short two-letter
+# noun therefore matches only when neither side is another Arabic/Latin letter;
+# every longer noun uses the forgiving substring the verb matching uses.
+_SHORT_NOUN = re.compile(r"(?<![a-zا-ي])حد(?![a-zا-ي])")
+
+
+def _person_noun_matches(marker: str, normalized: str) -> bool:
+    """One person noun against the folded text (see _SHORT_NOUN for why)."""
+    if marker == "حد":
+        return _SHORT_NOUN.search(normalized) is not None
+    return marker in normalized
+
+# The service's OWN name is not always a request FOR a human: "عايز أعرف
+# مواعيد خدمة العملاء" asks about its hours, not to be connected to one. When
+# the only person-marker is the service name AND the text asks for its
+# details, the agent should answer — not hand over. A real human noun
+# (موظف / انسان / حد / بشري / بوت) always fires regardless.
+_HUMAN_SERVICE_NAMES = ("خدمه العملاء", "customer service")
+_ABOUT_SERVICE_MARKERS = (
+    "اعرف",
+    "مواعيد",
+    "موعد",
+    "رقم",
+    "خط ساخن",
+    "شروط",
+    "يفتح",
+    "تفتح",
+    "امتى",
+    "فين",
+    "متاح",
 )
 
 #: What the customer hears when they ask for a person. Fixed words: it states
@@ -160,13 +210,31 @@ _HUMAN_REQUEST_ACK = "حاضر، هوصّلك على شخص من الفريق �
 
 
 def wants_human_request(text: str | None) -> bool:
-    """True when the customer asked, in their own words, for a human."""
+    """True when the customer asked, in their own words, for a human.
+
+    Verb matching is substring (a conjugated `نتكلم` should fire); noun
+    matching is word-boundary (`حد` inside `حدود` must not). Lowercasing is
+    applied on top of the Arabic fold so the English vocabulary matches a
+    capitalized message.
+    """
     if not text:
         return False
-    normalized = normalize_arabic(text)
-    return any(want in normalized for want in _HUMAN_REQUEST_WANTING) and any(
-        person in normalized for person in _HUMAN_REQUEST_PERSON
-    )
+    normalized = normalize_arabic(text).lower()
+    if not any(want in normalized for want in _HUMAN_REQUEST_WANTING):
+        return False
+    matched = [
+        marker
+        for marker in _HUMAN_REQUEST_PERSON
+        if _person_noun_matches(marker, normalized)
+    ]
+    if not matched:
+        return False
+    if all(marker in _HUMAN_SERVICE_NAMES for marker in matched) and any(
+        about in normalized for about in _ABOUT_SERVICE_MARKERS
+    ):
+        # Asking ABOUT the customer-service line, not to be handed to one.
+        return False
+    return True
 
 
 #: §12.5: the classifier's handoff verdicts, exactly as they surface in a
