@@ -332,6 +332,8 @@ def _message_text(turn: InboundTurn, vision_used: bool) -> str:
     if vision_used:
         return "بعت لي صورة منتج."
     if turn.has_voice:
+        if turn.voice_transcript:
+            return turn.voice_transcript
         return "بعت لي رسالة صوتية."
     if turn.other_media:
         return "بعت لي مرفق."
