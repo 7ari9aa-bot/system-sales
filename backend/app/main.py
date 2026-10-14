@@ -137,6 +137,17 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
     discover_agents()
 
+    # Multimodal readiness (voice-in, customer photos): every one of these
+    # features fails CLOSED on a missing credential, and a closed gate with no
+    # signpost is indistinguishable from "the model is bad". Say exactly what
+    # is off and which env var turns it on — at WARNING, so a normal log scan
+    # catches it (the ADR-062 scan gate's behavior itself is unchanged).
+    from app.modules.ai.readiness import multimodal_readiness
+
+    _, multimodal_warnings = multimodal_readiness(get_settings())
+    for _warning in multimodal_warnings:
+        get_logger("ai.readiness").warning("multimodal_readiness %s", _warning)
+
     yield
     await engine.dispose()
     await close_redis()

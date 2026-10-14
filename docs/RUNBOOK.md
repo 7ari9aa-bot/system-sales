@@ -203,3 +203,36 @@ prompt on purpose must not be silently overwritten.
 - Provider tokens live in `integrations.credentials` — encrypt at rest before
   storing production WhatsApp tokens (Stage 11 hardening item).
 - Rotate `sales_app` password via `scripts/provision.py` (rewrites .env DSNs).
+
+## Voice & customer photos — the switches (customer agent)
+
+Both features are built and fail CLOSED on a missing credential. At startup the
+API now logs a WARNING per dark feature (`ai.readiness`) naming the exact env
+var — grep Railway logs for `multimodal_readiness` after any deploy.
+
+**Voice-in (customer sends a note, agent answers in TEXT):**
+```
+AI_STT_API_KEY=<key>          # whisper-1; AI_STT_MODEL/AI_STT_BASE_URL optional
+```
+Budget is reserved before the provider call; a spent ceiling hands the
+conversation to a human, never dead-letters the note. TTS is deliberately
+UNWIRED (replies are text) — `AI_TTS_*` enables a future feature only.
+
+**Photos-in (customer sends a photo, agent matches it to the catalog):**
+```
+MEDIA_SCANNER_HOST=<clamd host>   MEDIA_SCANNER_PORT=3310   # clamav/clamav beside the API
+AI_EMBEDDING_VISION_API_KEY=<dashscope key>                  # tongyi-embedding-vision-flash
+AI_RERANKER_API_KEY=<jina key>                               # jina-reranker-m0
+```
+Then INDEX the catalog once (and after catalog changes):
+`.venv/bin/python scripts/index_product_images.py`
+Without the scanner the ADR-062 gate never mints a URL and vision never runs —
+photos are acknowledged, not analyzed. A scanner without the two provider keys
+scans photos and STILL never matches; the readiness warning names that trap.
+
+**Quality (spec §12.2/§23.7):** the decision thresholds are documented
+PLACEHOLDERS (high_floor 0.62, gap_min 0.04, rerank_floor 0.45) pending a
+labelled corpus run (200-500 real photos incl. out-of-catalog). The design
+degrades toward "present with uncertainty, never a confident wrong match":
+a dead reranker can never yield HIGH, and only sellable, in-stock products
+verify. Calibration is a config change (`VisionThresholds`), not a code one.
