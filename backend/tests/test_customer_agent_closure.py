@@ -173,14 +173,22 @@ async def test_a_handover_notifies_the_owners(db, tenant_ctx):
     assert notifications[0].user_id == tenant_ctx.user.id
     assert notifications[0].payload["conversation_id"] == str(conversation.id)
 
-    # Three withhold paths can fire back-to-back on one stuck conversation:
-    # the handover rows are distinct, the bell is not.
-    await request_human_takeover(
+    # Three withhold paths can fire back-to-back on one stuck conversation.
+    # §150's idempotency contract — and the partial unique index
+    # `uq_handovers_open_conversation` — allow ONE OPEN row per conversation, so
+    # the second and third calls are no-ops: the queue is not tripled, the owner
+    # is not rung again for the same problem, and a database that already carries
+    # the index refuses a second open row even if a caller tries to bypass the
+    # service.
+    again_guardrail = await request_human_takeover(
         db, tenant_id, conversation_id=conversation.id, reason="guardrail", run_id=None
     )
-    await request_human_takeover(
+    again_budget = await request_human_takeover(
         db, tenant_id, conversation_id=conversation.id, reason="budget", run_id=None
     )
+    assert again_guardrail is False, "a second open handover was created"
+    assert again_budget is False, "a second open handover was created"
+
     handovers = list(
         (await db.execute(select(AIHandover).where(AIHandover.tenant_id == tenant_id)))
         .scalars()
@@ -198,8 +206,8 @@ async def test_a_handover_notifies_the_owners(db, tenant_ctx):
         .scalars()
         .all()
     )
-    assert len(handovers) == 3
-    assert len(notifications) == 2, "same conversation + reason must dedup into one bell"
+    assert len(handovers) == 1, "one conversation, one open handover"
+    assert len(notifications) == 1, "one problem, one bell"
 
 
 async def test_a_closed_conversation_notifies_nobody(db, tenant_ctx):

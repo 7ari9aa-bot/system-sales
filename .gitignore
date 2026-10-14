@@ -49,6 +49,13 @@ blob-report/
 .vscode/
 .vercel
 .env*
+# The EXAMPLE file is documentation, not a secret: it is the contract an operator
+# reads (and the contract test asserts on). It must come AFTER `.env*`, because
+# the last matching pattern wins — a negation placed earlier is silently
+# overridden, which is how `backend/.env.example` stayed untracked and CI's
+# env-example guard failed on a file that existed on every laptop.
+!.env.example
+!**/.env.example
 
 # --- assistant workspace (local agent memory / notes, not project source) ---
 .workbuddy-ai/
