@@ -1,14 +1,22 @@
-/** Bottom composer — Enter sends, Shift+Enter newline, disabled while a turn
- *  runs. The DRAFT lives in the page (keyed by thread id) so switching threads
- *  never loses what the merchant typed. */
+/** Bottom composer — Enter sends, Shift+Enter newline, auto-grows to ~6 rows,
+ *  disabled while a turn runs. The DRAFT lives in the page (keyed by thread
+ *  id) so switching threads never loses what the merchant typed. */
 
 import React from "react";
-import { SendHorizontal } from "lucide-react";
+import { ArrowUp } from "lucide-react";
 import { useT } from "@/lib/i18n";
 
 export default function Composer({ value, onChange, onSend, disabled }) {
   const t = useT();
   const ref = React.useRef(null);
+
+  // auto-grow: the textarea tracks its content height up to a ceiling
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 144)}px`;
+  }, [value]);
 
   const submit = () => {
     const text = value.trim();
@@ -18,8 +26,12 @@ export default function Composer({ value, onChange, onSend, disabled }) {
   };
 
   return (
-    <div className="border-t border-border bg-card/60 p-3">
-      <div className="flex items-end gap-2">
+    <div className="border-t border-border bg-card/70 backdrop-blur p-3">
+      <div
+        className={`flex items-end gap-2 rounded-2xl border bg-card p-2 shadow-sm transition-colors ${
+          disabled ? "border-border opacity-70" : "border-border focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/20"
+        }`}
+      >
         <textarea
           ref={ref}
           rows={1}
@@ -33,18 +45,21 @@ export default function Composer({ value, onChange, onSend, disabled }) {
             }
           }}
           placeholder={t("salesAssistant.composerPlaceholder")}
-          className="max-h-40 min-h-[42px] w-full resize-y rounded-xl border border-border bg-card px-3 py-2.5 text-[13.5px] leading-6 outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-primary/40 disabled:opacity-60"
+          className="max-h-36 min-h-[36px] w-full resize-none bg-transparent px-2 py-1.5 text-[13.5px] leading-6 outline-none placeholder:text-muted-foreground"
         />
         <button
           type="button"
           onClick={submit}
           disabled={disabled || !value.trim()}
-          className="inline-flex h-[42px] shrink-0 items-center justify-center gap-1.5 rounded-xl bg-primary px-3.5 text-[13px] font-medium text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-40"
+          title={t("salesAssistant.send")}
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground shadow-sm hover:opacity-90 active:scale-95 transition-all disabled:opacity-35 disabled:shadow-none"
         >
-          <SendHorizontal className="h-4 w-4" />
-          {t("salesAssistant.send")}
+          <ArrowUp className="h-4.5 w-4.5" />
         </button>
       </div>
+      <p className="mt-1.5 px-1 text-[10.5px] text-muted-foreground/70">
+        {t("salesAssistant.composerHint")}
+      </p>
     </div>
   );
 }

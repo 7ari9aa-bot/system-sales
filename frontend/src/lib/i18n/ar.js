@@ -109,6 +109,10 @@ export default {
   "salesAssistant.composerPlaceholder": "اكتب سؤالك عن المبيعات…",
   "salesAssistant.refAnalysis": "تحليل محفوظ",
   "salesAssistant.refRun": "سجل تشغيل",
+  "salesAssistant.findingsTitle": "النتائج المدعومة بالأدلة",
+  "salesAssistant.confidence": "الثقة",
+  "salesAssistant.composerHint": "Enter للإرسال · Shift+Enter لسطر جديد — كل إجابة بتتحقق من أدلة متجرك.",
+  "salesAssistant.groundingNote": "كل رقم في الإجابات دي جاي من بيانات متجرك الحقيقية — مفيش تخمين.",
 
   // Common
   "common.viewSales": "عرض المبيعات",

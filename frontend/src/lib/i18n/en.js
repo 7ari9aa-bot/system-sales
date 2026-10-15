@@ -109,6 +109,10 @@ export default {
   "salesAssistant.composerPlaceholder": "Type your sales question…",
   "salesAssistant.refAnalysis": "Saved analysis",
   "salesAssistant.refRun": "Run record",
+  "salesAssistant.findingsTitle": "Evidence-backed findings",
+  "salesAssistant.confidence": "Confidence",
+  "salesAssistant.composerHint": "Enter to send · Shift+Enter for a new line — every answer is validated against your store's evidence.",
+  "salesAssistant.groundingNote": "Every number in these answers comes from your store's real data — no guessing.",
 
   // Common
   "common.viewSales": "View sales",
