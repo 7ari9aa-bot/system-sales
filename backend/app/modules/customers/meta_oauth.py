@@ -53,7 +53,9 @@ _INSTAGRAM_SCOPES = (
     "pages_show_list,pages_read_engagement,pages_manage_metadata,pages_messaging,"
     "instagram_basic,instagram_manage_messages"
 )
-_META_PROVIDERS = ("messenger", "instagram")
+# A Facebook connection is the same page-messaging grant as Messenger — the
+# page-scoped token IS the credential; the provider value only names the row.
+_META_PROVIDERS = ("messenger", "instagram", "facebook")
 _META_STATE_TTL_SECONDS = 600
 
 #: The page fields the flow consumes: tasks gates the MESSAGING capability,
@@ -109,7 +111,10 @@ def _build_authorize_url(
         # business configuration (system-user / long-lived tokens).
         params["override_default_response_type"] = "true"
     else:
-        params["scope"] = _MESSENGER_SCOPES if provider == "messenger" else _INSTAGRAM_SCOPES
+        if provider == "instagram":
+            params["scope"] = _INSTAGRAM_SCOPES
+        else:  # messenger + facebook: the same page-messaging grant
+            params["scope"] = _MESSENGER_SCOPES
     return f"https://www.facebook.com/{_META_VERSION}/dialog/oauth?{urlencode(params)}"
 
 
@@ -256,8 +261,15 @@ async def _meta_exchange_and_connect(
         #      (/{ig-id}/messages with the PAGE token), so that id must ride
         #      the encrypted credentials too.
         page_token = page["access_token"]
-        config = {"account_id": str(page["id"])}
-        credentials = {"api_key": page_token}
+        if provider == "facebook":
+            # The Facebook spec verifies the PASTED page id against the token
+            # (same anti-mismatch guard as WhatsApp), so the flow hands it the
+            # page's own id and the spec's credential key.
+            config = {"page_id": str(page["id"])}
+            credentials = {"page_access_token": page_token}
+        else:
+            config = {"account_id": str(page["id"])}
+            credentials = {"api_key": page_token}
         if provider == "instagram":
             ig_account = page.get("instagram_business_account") or {}
             ig_id = str(ig_account.get("id") or "")

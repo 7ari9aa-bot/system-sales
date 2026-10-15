@@ -55,6 +55,7 @@ class ChannelMessagingPolicy:
 CHANNEL_POLICIES: dict[str, ChannelMessagingPolicy] = {
     "whatsapp": ChannelMessagingPolicy("whatsapp", 24, True, "whatsapp"),
     "messenger": ChannelMessagingPolicy("messenger", 24, True, "messenger"),
+    "facebook": ChannelMessagingPolicy("facebook", 24, True, "messenger"),
     "instagram": ChannelMessagingPolicy("instagram", 24, True, "instagram"),
     "telegram": ChannelMessagingPolicy("telegram", None, False, None),
     "webchat": ChannelMessagingPolicy("webchat", None, False, None),

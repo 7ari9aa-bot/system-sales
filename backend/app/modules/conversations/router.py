@@ -528,7 +528,7 @@ async def webchat_list_messages(
 # EXCLUDED: it has no provider signature to verify, so accepting it here would
 # let anyone inject messages with a forged "public_key" body field. Webchat
 # traffic goes through public_router only (validated + rate-limited there).
-_WEBHOOK_CHANNELS = {"whatsapp", "telegram", "messenger", "instagram"}
+_WEBHOOK_CHANNELS = {"whatsapp", "telegram", "messenger", "instagram", "facebook"}
 
 
 @webhook_router.get("/webhooks/{channel}")

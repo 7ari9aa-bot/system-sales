@@ -560,13 +560,18 @@ _CANONICAL_INBOUND = {
 }
 
 
-def test_registry_has_exactly_the_six_channels():
-    """The registry is the single source of channel truth — no more, no less."""
+def test_registry_has_exactly_the_seven_channels():
+    """The registry is the single source of channel truth — no more, no less.
+
+    Seven since 2026-10-15: the owner asked for Facebook Page as its own
+    channel, and FacebookPageAdapter reuses Messenger's Meta plumbing.
+    """
     assert set(ADAPTERS) == {
         "whatsapp",
         "messenger",
         "instagram",
         "telegram",
+        "facebook",
         "email",
         "webchat",
     }

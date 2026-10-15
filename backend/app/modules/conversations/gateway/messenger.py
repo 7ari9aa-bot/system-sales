@@ -130,7 +130,7 @@ class MessengerAdapter(ChannelAdapter):
 
         return [
             InboundMessage(
-                channel="messenger",
+                channel=self.channel,
                 channel_message_id=mid,
                 customer_ref=str(sender.get("id", "")),
                 customer_name=None,
@@ -153,7 +153,7 @@ class MessengerAdapter(ChannelAdapter):
 
         _client is an injection point for tests (MockTransport).
         """
-        token = credentials.get("api_key")
+        token = credentials.get("api_key") or credentials.get("page_access_token")
         if not token:
             raise ExternalProviderError("messenger integration missing api_key")
         url = f"{self._base}/me/messages"

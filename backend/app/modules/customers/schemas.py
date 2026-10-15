@@ -82,7 +82,9 @@ class IntegrationBody(BaseModel):
 class IntegrationConnectBody(BaseModel):
     """Credentials are accepted only by the server-side verifier."""
 
-    provider: Literal["whatsapp", "instagram", "messenger", "telegram", "webchat"]
+    # Must stay in lockstep with platform.channel_specs.CONNECTION_SPECS —
+    # the drift is pinned by tests/test_channel_connections.py.
+    provider: Literal["facebook", "instagram", "messenger", "telegram", "webchat", "whatsapp"]
     credentials: dict[str, str] = Field(default_factory=dict)
     config: dict[str, Any] = Field(default_factory=dict)
 

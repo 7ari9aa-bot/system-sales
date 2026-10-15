@@ -39,7 +39,9 @@ from app.modules.customers.timeline import Customer360Service
 from app.modules.identity.deps import TenantContext, require_permission
 from app.modules.identity.models import Invitation, Role
 from app.modules.platform.integration_verifier import (
+    channel_field_allow_lists,
     configure_telegram_webhook,
+    signed_webhook_providers,
     telegram_webhook_secret_configured,
     verify_channel_credentials,
 )
@@ -415,21 +417,11 @@ async def add_customer_note(customer_id: UUID, body: NoteBody, ctx: WriteCtx):
 # a jump from a state the lifecycle table does not name.
 _LEGACY_STATUS_ALIASES = {"connected": "active", "error": "reauth_required"}
 _CHANNEL_PROVIDERS = frozenset({"whatsapp", "instagram", "messenger", "telegram", "webchat"})
-_CHANNEL_CREDENTIAL_FIELDS = {
-    "whatsapp": frozenset({"access_token"}),
-    "instagram": frozenset({"api_key"}),
-    "messenger": frozenset({"api_key"}),
-    "telegram": frozenset({"bot_token"}),
-    "webchat": frozenset(),
-}
-_CHANNEL_CONFIG_FIELDS = {
-    "whatsapp": frozenset({"phone_number_id"}),
-    "instagram": frozenset({"account_id"}),
-    "messenger": frozenset(),
-    "telegram": frozenset(),
-    "webchat": frozenset(),
-}
-_SIGNED_WEBHOOK_PROVIDERS = frozenset({"whatsapp", "instagram", "messenger", "telegram"})
+# The field allow-lists are DERIVED from the per-channel specs
+# (platform.channel_specs) — the specs are the single source of truth, so a
+# new channel needs no edit here. Drift is pinned by tests/test_channel_connections.py.
+_CHANNEL_CREDENTIAL_FIELDS, _CHANNEL_CONFIG_FIELDS = channel_field_allow_lists()
+_SIGNED_WEBHOOK_PROVIDERS = signed_webhook_providers()
 
 
 def _last_webhook_at(integration: Integration) -> str | None:

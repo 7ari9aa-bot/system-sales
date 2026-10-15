@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from app.modules.conversations.gateway.base import ChannelAdapter
 from app.modules.conversations.gateway.email import email_adapter
+from app.modules.conversations.gateway.facebook import facebook_adapter
 from app.modules.conversations.gateway.instagram import instagram_adapter
 from app.modules.conversations.gateway.messenger import messenger_adapter
 from app.modules.conversations.gateway.telegram import telegram_adapter
@@ -15,6 +16,7 @@ ADAPTERS: dict[str, ChannelAdapter] = {
     whatsapp_adapter.name: whatsapp_adapter,
     telegram_adapter.name: telegram_adapter,
     messenger_adapter.name: messenger_adapter,
+    facebook_adapter.name: facebook_adapter,
     instagram_adapter.name: instagram_adapter,
     email_adapter.name: email_adapter,
 }
