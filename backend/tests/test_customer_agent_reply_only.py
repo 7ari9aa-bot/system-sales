@@ -191,3 +191,16 @@ def test_handover_routes_are_gated_by_a_permission(path: str, expected: str) -> 
     assert len(routes) == 1, f"expected one route for {path}, found {len(routes)}"
     codes = _permission_codes(routes[0])
     assert expected in codes, f"{path} is gated by {sorted(codes) or 'nothing'}"
+
+
+def test_the_runtime_fallback_prompt_matches_the_canonical_reply_only_prompt():
+    """The DEFAULT_SYSTEM_PROMPT is what an agent row with an empty prompt
+    serves. It drifted once into teaching the agent to sell (the exact state
+    the reply-only wave closed) — pin it to the canonical definition text so
+    the two can never diverge again."""
+    from app.modules.ai.agents.customer.definition import CUSTOMER_SYSTEM_PROMPT
+    from app.modules.ai.runtime import DEFAULT_SYSTEM_PROMPT
+
+    assert DEFAULT_SYSTEM_PROMPT == CUSTOMER_SYSTEM_PROMPT
+    assert "إتمام عمليات الشراء" not in DEFAULT_SYSTEM_PROMPT
+    assert "تسجيل أي طلب" not in DEFAULT_SYSTEM_PROMPT
