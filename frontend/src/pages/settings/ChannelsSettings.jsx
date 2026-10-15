@@ -33,7 +33,33 @@ const ATTENTION_STATES = new Set(["reauth_required", "restricted", "disconnected
  *  never asks for app ids or tokens). The backend mints the signed state
  *  and hands back the authorize URL; Meta's callback returns here with the
  *  outcome. docs/META_SETUP.md holds the console-side setup. */
-const META_OAUTH_CHANNELS = new Set(["messenger", "instagram"]);
+const META_OAUTH_CHANNELS = new Set(["messenger", "instagram", "facebook"]);
+
+/** WhatsApp Embedded Signup: a JS-SDK POPUP (not a redirect). Meta's own
+ *  window runs the whole signup — the store owner logs in with THEIR Meta
+ *  account, creates/selects the WhatsApp Business account and number — and
+ *  Meta posts the session back to this page with { waba_id, phone_number_id }.
+ *  We then send the one-time code plus those ids to the server, which
+ *  exchanges it, subscribes the WABA and stores the channel.
+ *  docs/META_SETUP.md §WhatsApp holds the console-side setup. */
+const WA_SIGNUP_EVENT = "WA_EMBEDDED_SIGNUP";
+
+function loadFacebookSdk(appId, version) {
+  if (window.FB) return Promise.resolve(window.FB);
+  return new Promise((resolve, reject) => {
+    window.fbAsyncInit = function () {
+      window.FB.init({ appId, cookie: true, xfbml: true, version });
+      resolve(window.FB);
+    };
+    const script = document.createElement("script");
+    script.src = "https://connect.facebook.net/en_US/sdk.js";
+    script.async = true;
+    script.defer = true;
+    script.crossOrigin = "anonymous";
+    script.onerror = () => reject(new Error("Could not load the Facebook SDK."));
+    document.body.appendChild(script);
+  });
+}
 
 /** Map the marker the OAuth callback appended (meta_error=<value>) onto a
  *  sentence the operator can act on. Unknown values are shown verbatim —
@@ -112,6 +138,104 @@ export default function ChannelsSettings() {
     }
     void reload().catch(() => {});
   }, [reload, isAr]);
+
+  async function connectWhatsApp(channel) {
+    if (metaConnecting) return;
+    setMetaConnecting(channel.id);
+    setFormError("");
+    setNotice("");
+    try {
+      const { app_id: appId, config_id: configId, graph_version: version } = await api(
+        "/integrations/whatsapp/embedded-signup/start"
+      );
+      if (!appId || !configId) {
+        throw new Error(
+          isAr
+            ? "ربط واتساب غير مُعد على الخادم: اضبط META_WHATSAPP_CONFIG_ID (انظر docs/META_SETUP.md)."
+            : "WhatsApp connect is not configured on the server: set META_WHATSAPP_CONFIG_ID (see docs/META_SETUP.md)."
+        );
+      }
+      const fb = await loadFacebookSdk(appId, version || "v26.0");
+
+      // TWO things arrive asynchronously and BOTH are required:
+      //   * the login callback carries the one-time authorization code;
+      //   * Meta posts the session (waba_id + phone_number_id) to this window.
+      // The listener is registered BEFORE the popup opens — a listener added
+      // afterwards misses a FINISH that lands while the popup is closing.
+      let resolveCode;
+      let rejectCode;
+      const codePromise = new Promise((resolve, reject) => {
+        resolveCode = resolve;
+        rejectCode = reject;
+      });
+      const sessionPromise = new Promise((resolve, reject) => {
+        const timer = window.setTimeout(() => {
+          window.removeEventListener("message", onMessage);
+          reject(new Error(isAr ? "انتهت مدة الربط. أعد المحاولة." : "The signup timed out. Try again."));
+        }, 10 * 60 * 1000);
+
+        function onMessage(event) {
+          if (event.origin !== "https://www.facebook.com" && event.origin !== "https://web.facebook.com") {
+            return;
+          }
+          let payload;
+          try {
+            payload = JSON.parse(event.data);
+          } catch {
+            return;
+          }
+          if (payload?.type !== WA_SIGNUP_EVENT) return;
+          if (payload.event === "CANCEL" || payload.event === "ERROR") {
+            window.clearTimeout(timer);
+            window.removeEventListener("message", onMessage);
+            reject(new Error(isAr ? "أُلغيت عملية الربط قبل اكتمالها." : "The signup was cancelled before it completed."));
+            return;
+          }
+          if (payload.event === "FINISH" || payload.event === "FINISH_ONLY_WABA") {
+            window.clearTimeout(timer);
+            window.removeEventListener("message", onMessage);
+            resolve(payload.data || {});
+          }
+        }
+
+        window.addEventListener("message", onMessage);
+        fb.login(
+          (response) => {
+            const code = response?.authResponse?.code;
+            if (code) resolveCode(code);
+            else rejectCode(new Error(isAr ? "لم يُرجع فيسبوك رمز التفويض. أعد المحاولة." : "Facebook returned no authorization code. Try again."));
+          },
+          {
+            config_id: configId,
+            response_type: "code",
+            override_default_response_type: true,
+            extras: { setup: {}, featureType: "", sessionInfoVersion: "3" },
+          }
+        );
+      });
+
+      const [authCode, session] = await Promise.all([codePromise, sessionPromise]);
+      const wabaId = String(session.waba_id || "");
+      const phoneNumberId = String(session.phone_number_id || "");
+      if (!wabaId || !phoneNumberId) {
+        throw new Error(
+          isAr
+            ? "أكمل خطوات إنشاء رقم واتساب داخل نافذة فيسبوك، ثم أعد المحاولة."
+            : "Finish creating the WhatsApp number inside the Facebook window, then retry."
+        );
+      }
+      await api("/integrations/whatsapp/embedded-signup/complete", {
+        method: "POST",
+        body: { code: authCode, waba_id: wabaId, phone_number_id: phoneNumberId },
+      });
+      setNotice(isAr ? "تم ربط رقم واتساب بنجاح." : "The WhatsApp number is connected.");
+      setMetaConnecting("");
+      await reload().catch(() => {});
+    } catch (connectError) {
+      setFormError(connectError?.message || (isAr ? "تعذر ربط واتساب." : "Could not connect WhatsApp."));
+      setMetaConnecting("");
+    }
+  }
 
   async function connectViaMeta(channel) {
     if (metaConnecting) return;
@@ -316,6 +440,17 @@ export default function ChannelsSettings() {
                           >
                             {verifyingId === channel.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
                             {isAr ? "اختبار الاتصال" : "Verify"}
+                          </button>
+                        )}
+                        {channel.id === "whatsapp" && (
+                          <button
+                            type="button"
+                            onClick={() => connectWhatsApp(channel)}
+                            disabled={saving || Boolean(metaConnecting)}
+                            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[12px] font-medium text-foreground hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {metaConnecting === channel.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Facebook className="h-3.5 w-3.5" />}
+                            {isAr ? "ربط عبر فيسبوك" : "Connect via Facebook"}
                           </button>
                         )}
                         {META_OAUTH_CHANNELS.has(channel.id) && (

@@ -1006,5 +1006,9 @@ async def upsert_integration(
 # The Meta OAuth connect flow registers onto the same platform surface
 # (deferred bottom import: meta_oauth defers router helpers back here).
 from app.modules.customers.meta_oauth import meta_oauth_router  # noqa: E402
+from app.modules.customers.meta_whatsapp_signup import (  # noqa: E402
+    whatsapp_signup_router,
+)
 
 platform_router.include_router(meta_oauth_router)
+platform_router.include_router(whatsapp_signup_router)

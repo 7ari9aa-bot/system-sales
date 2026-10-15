@@ -240,6 +240,10 @@ class Settings(BaseSettings):
     # login dialog (developers.facebook.com/docs/facebook-login/facebook-
     # login-for-business). Leave empty for classic Consumer-type apps.
     meta_oauth_config_id: str = ""
+    # WhatsApp Embedded Signup uses its OWN Facebook Login for Business
+    # configuration (created from Meta's "WhatsApp Embedded Signup
+    # Configuration" template) — a page-messaging config id cannot open it.
+    meta_whatsapp_config_id: str = ""
     messenger_app_secret: str = ""
     messenger_verify_token: str = ""
     instagram_app_secret: str = ""

@@ -53,7 +53,32 @@ INSTAGRAM_VERIFY_TOKEN  توكن التحقق لإنستجرام
 FRONTEND_PUBLIC_URL     عنوان لوحة التحكم، وعليه يهبط المتصفح بعد الربط
 ```
 
-ملاحظة: القيمتان للواتساب embedded signup هما اختياريتان وغير مطلوبتين لزر الربط الحالي.
+## سادسًا: واتساب — زر الربط بنقرة واحدة (Embedded Signup)
+
+زر واتساب في صفحة القنوات يفتح **نافذة ميتا نفسها** (Popup وليس تحويلًا): صاحب المتجر يسجّل بحسابه، ينشئ أو يختار حساب WhatsApp Business والرقم، وميتا ترجّع للخادم `code` + `waba_id` + `phone_number_id`. الخادم يبادل الكود برمز أعمال، **يشترك في الـWABA** (بدونها لا تصل أي رسالة واردة)، يتحقق من الرقم، ثم يحفظ القناة.
+
+### الإعداد في Meta Developer Console
+1. من قائمة المنتجات أضف **Facebook Login for Business**.
+2. من **Configurations** اضغط **Create from template** واختر قالب
+   **WhatsApp Embedded Signup Configuration** (المزوّدون يسمونه أحيانًا "With 60 Expiration Token").
+3. انسخ **Configuration ID** الناتج → هذا هو `META_WHATSAPP_CONFIG_ID` (وهو **مختلف** عن إعداد ماسنجر).
+4. من **Settings** أضف نطاق لوحة التحكم إلى **Allowed Domains for the JavaScript SDK**
+   (بدونها يرفض المتصفح فتح النافذة).
+
+### المتغير المطلوب إضافته
+```text
+META_WHATSAPP_CONFIG_ID   معرف إعداد WhatsApp Embedded Signup (من الخطوة 3)
+```
+
+### الصلاحيات المطلوبة
+`whatsapp_business_management` و`whatsapp_business_messaging` — ووضع التطوير يكفي للاختبار بحساب له دور عليه.
+
+### ما يحدث تقنيًا (للمرجع)
+- الواجهة تحمّل Facebook JS SDK ثم `FB.login` بـ `config_id` و`response_type: "code"` و`override_default_response_type: true` و`extras: { featureType: "", sessionInfoVersion: "3" }`.
+- ميتا ترسل حدث `WA_EMBEDDED_SIGNUP` بنوع `FINISH` إلى نافذة الصفحة، ويحتوي `data` على `waba_id` و`phone_number_id` و`business_id`.
+- الخادم: `GET /oauth/access_token` (بدون redirect_uri) → `POST /{waba_id}/subscribed_apps` → `GET /{phone_number_id}` → تحقق ثم حفظ.
+
+ملاحظة: القيمتان `META_APP_ID` و`META_APP_SECRET` مشتركتان بين كل قنوات ميتا.
 
 ---
 
@@ -107,4 +132,22 @@ INSTAGRAM_VERIFY_TOKEN  verify token for the Instagram webhook registration
 FRONTEND_PUBLIC_URL     dashboard origin the callback redirects back to
 ```
 
-WhatsApp Embedded Signup (FB.login with config_id and the WHATSAPP_EMBEDDED_SIGNUP window events) is a documented follow-up; the current connect flow covers Messenger and Instagram only.
+## 6. WhatsApp — one-click connect (Embedded Signup)
+
+The WhatsApp button on the channels page opens **Meta's own popup** (not a redirect): the store owner signs in, creates or selects the WhatsApp Business account and number, and Meta returns `code` + `waba_id` + `phone_number_id`. The server exchanges the code for a business token, **subscribes the app to the WABA** (without it no inbound message ever arrives), verifies the number, and stores the channel.
+
+### Console setup
+1. Add the **Facebook Login for Business** product.
+2. **Configurations → Create from template → "WhatsApp Embedded Signup Configuration"**.
+3. Copy the generated **Configuration ID** → `META_WHATSAPP_CONFIG_ID` (it is NOT the same as the Messenger configuration).
+4. Under **Settings**, add the dashboard domain to **Allowed Domains for the JavaScript SDK**.
+
+### Permissions
+`whatsapp_business_management` and `whatsapp_business_messaging`; development mode is enough to test with an account that holds a role on the app.
+
+### Technical reference
+- The page loads the Facebook JS SDK, then `FB.login` with `config_id`, `response_type: "code"`, `override_default_response_type: true`, `extras: { featureType: "", sessionInfoVersion: "3" }`.
+- Meta posts `WA_EMBEDDED_SIGNUP` / `FINISH` to the page window with `data = { waba_id, phone_number_id, business_id }`.
+- Server: `GET /oauth/access_token` (no redirect_uri) → `POST /{waba_id}/subscribed_apps` → `GET /{phone_number_id}` → verify → store.
+
+`META_APP_ID` and `META_APP_SECRET` are shared across all Meta channels.
