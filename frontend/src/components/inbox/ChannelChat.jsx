@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
-import { ArrowLeft, ArrowRight, ArrowUpRight, Search, Sparkles, X, Check, CheckCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, ArrowUpRight, Search, Sparkles, X, Check, CheckCheck, Paperclip, Smile, Mic } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // A themed chat pane that renders in the selected channel's real look.
@@ -113,7 +113,7 @@ export default function ChannelChat({
       {/* Header */}
       <div
         dir={isWhatsApp ? "ltr" : undefined}
-        className={cn("flex items-center gap-3 px-4 shrink-0", isWhatsApp ? "h-[80px] px-5" : "h-14")}
+        className={cn("flex items-center gap-3 px-4 shrink-0", isWhatsApp ? "h-[60px] px-4" : "h-14")}
         style={isApp ? { background: "hsl(var(--card))", borderBottom: "1px solid hsl(var(--border))" } : { background: th.headerBg, color: th.headerText, borderBottom: isWhatsApp ? `1px solid ${th.divider}` : undefined }}>
 
         {isWhatsApp && onBack && (
@@ -129,14 +129,14 @@ export default function ChannelChat({
         )}
         
         <div
-          className={cn("rounded-full grid place-items-center text-[13px] font-semibold shrink-0", isWhatsApp ? "h-12 w-12" : "h-9 w-9")}
-          style={{ background: conversation.color, color: "#fff" }}>
+          className={cn("rounded-full grid place-items-center font-semibold shrink-0", isWhatsApp ? "h-10 w-10 text-[12px]" : "h-9 w-9 text-[13px]")}
+          style={{ background: isWhatsApp ? "#dfe5e7" : conversation.color, color: isWhatsApp ? "#54656f" : "#fff" }}>
           
           {conversation.initials}
         </div>
         <div className="flex-1 min-w-0">
-          <div dir={isWhatsApp ? "auto" : undefined} className={cn("truncate", isWhatsApp ? "text-left text-[16px] font-medium text-[#111b21]" : "text-[14px] font-semibold", isApp && "text-foreground")}>{conversation.customer}</div>
-          <div className={cn("truncate", isWhatsApp ? "text-left text-[13px] text-[#667781]" : "text-[11.5px]", isApp && "text-muted-foreground", !isApp && !isWhatsApp && "opacity-80")}>{channel.name}</div>
+          <div dir={isWhatsApp ? "auto" : undefined} className={cn("truncate", isWhatsApp ? "text-left text-[15px] font-medium text-[#111b21]" : "text-[14px] font-semibold", isApp && "text-foreground")}>{conversation.customer}</div>
+          <div className={cn("truncate", isWhatsApp ? "text-left text-[12px] text-[#667781]" : "text-[11.5px]", isApp && "text-muted-foreground", !isApp && !isWhatsApp && "opacity-80")}>{channel.name}</div>
         </div>
         {isWhatsApp && (
           <button
@@ -178,10 +178,10 @@ export default function ChannelChat({
         onScroll={handleMessagesScroll}
         className={cn("flex-1 min-h-0 overflow-y-auto scrollbar-thin px-4 py-3 space-y-2", isWhatsApp && "px-5 py-4 space-y-2")}
         style={isWhatsApp ? {
-          backgroundColor: "#f5f1eb",
-          backgroundImage: "url('/whatsapp-doodle-wallpaper.svg')",
+          backgroundColor: "#efeae2",
+          backgroundImage: "url('https://static.whatsapp.net/rsrc.php/yp/r/OA5z0a81CZk.webp')",
           backgroundRepeat: "repeat",
-          backgroundSize: "1040px 840px",
+          backgroundSize: "540px 960px",
         } : undefined}
       >
         {loadingOlderMessages && <div role="status" className="py-2 text-center text-[11.5px] text-muted-foreground">{t("common.loading")}</div>}
@@ -257,36 +257,93 @@ export default function ChannelChat({
       </div>
 
       {/* Input */}
-      <div className={cn("shrink-0 p-2", isWhatsApp && "px-3 py-3 sm:px-4 sm:py-4")} style={isApp ? { background: "hsl(var(--card))", borderTop: "1px solid hsl(var(--border))" } : { background: isWhatsApp ? "#f7f5f3" : th.inputBg, borderTop: `1px solid ${th.inputBorder}` }}>
-        <div
-          dir={isWhatsApp ? "ltr" : undefined}
-          className={cn("flex items-center gap-2 rounded-full px-3 py-1.5", isWhatsApp && "min-h-11 sm:min-h-12")}
-          style={isApp ?
-          { background: "hsl(var(--surface))", border: "1px solid hsl(var(--border))" } :
-          { background: "#fff", border: `1px solid ${th.inputBorder}` }}>
-          
-          <input
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            dir={isWhatsApp ? (lang === "ar" ? "rtl" : "ltr") : undefined}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void submitMessage(); } }}
-            placeholder={t("inbox.typeMessage")}
-            aria-label={t("inbox.typeMessage")}
-            disabled={sending}
-            className={cn("flex-1 bg-transparent text-[13px] focus:outline-hidden", isWhatsApp && (lang === "ar" ? "text-right" : "text-left"))}
-            style={isApp ? undefined : { color: "#111" }} />
-          <button
-            type="button"
-            onClick={() => { void submitMessage(); }}
-            disabled={!text.trim() || sending}
-            aria-label={t("inbox.send")}
-            className="h-8 w-8 grid place-items-center rounded-full text-white shrink-0"
-            style={{ background: isWhatsApp ? "#00a884" : channel.accent, opacity: !text.trim() || sending ? 0.55 : 1 }}
-            title={t("inbox.send")}>
-
-            <ArrowUpRight className="h-4 w-4" />
-          </button>
-        </div>
+      <div className={cn("shrink-0 p-2", isWhatsApp && "px-3 py-2.5 sm:px-4")} style={isApp ? { background: "hsl(var(--card))", borderTop: "1px solid hsl(var(--border))" } : { background: isWhatsApp ? "#f0f2f5" : th.inputBg, borderTop: `1px solid ${th.inputBorder}` }}>
+        {isWhatsApp ? (
+          <div dir="ltr" className="flex h-12 items-center gap-1.5 rounded-full bg-white px-2 sm:h-16 sm:gap-2 sm:px-3">
+            <button
+              type="button"
+              disabled
+              aria-label={lang === "ar" ? "المرفقات غير متاحة" : "Attachments unavailable"}
+              title={lang === "ar" ? "المرفقات غير متاحة" : "Attachments unavailable"}
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#54656f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884]"
+              style={{ color: "#54656f" }}
+            >
+              <Paperclip className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              disabled
+              aria-label={lang === "ar" ? "اختيار الرموز غير متاح" : "Emoji picker unavailable"}
+              title={lang === "ar" ? "اختيار الرموز غير متاح" : "Emoji picker unavailable"}
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#54656f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884]"
+              style={{ color: "#54656f" }}
+            >
+              <Smile className="h-[21px] w-[21px]" />
+            </button>
+            <input
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              dir={lang === "ar" ? "rtl" : "ltr"}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void submitMessage(); } }}
+              placeholder={t("inbox.typeMessage")}
+              aria-label={t("inbox.typeMessage")}
+              disabled={sending}
+              className={cn("h-full min-w-0 flex-1 bg-transparent px-2 text-[14px] text-[#111b21] focus:outline-none placeholder:text-[#8696a0]", lang === "ar" ? "text-right" : "text-left")}
+            />
+            {text.trim() ? (
+              <button
+                type="button"
+                onClick={() => { void submitMessage(); }}
+                disabled={sending}
+                aria-label={t("inbox.send")}
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#00a884] text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884] focus-visible:ring-offset-2"
+                title={t("inbox.send")}
+                style={{ backgroundColor: "#00a884", color: "#fff" }}
+              >
+                <ArrowUpRight className="h-[18px] w-[18px]" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                aria-disabled="true"
+                aria-label={lang === "ar" ? "الرسائل الصوتية غير متاحة" : "Voice messages unavailable"}
+                title={lang === "ar" ? "الرسائل الصوتية غير متاحة" : "Voice messages unavailable"}
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-[#54656f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884]"
+                style={{ color: "#54656f" }}
+              disabled
+              >
+                <Mic className="h-[21px] w-[21px]" />
+              </button>
+            )}
+          </div>
+        ) : (
+          <div
+            className="flex items-center gap-2 rounded-full px-3 py-1.5"
+            style={isApp ? { background: "hsl(var(--surface))", border: "1px solid hsl(var(--border))" } : { background: "#fff", border: `1px solid ${th.inputBorder}` }}
+          >
+            <input
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void submitMessage(); } }}
+              placeholder={t("inbox.typeMessage")}
+              aria-label={t("inbox.typeMessage")}
+              disabled={sending}
+              className="flex-1 bg-transparent text-[13px] focus:outline-hidden"
+              style={isApp ? undefined : { color: "#111" }}
+            />
+            <button
+              type="button"
+              onClick={() => { void submitMessage(); }}
+              disabled={!text.trim() || sending}
+              aria-label={t("inbox.send")}
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-white"
+              style={{ background: channel.accent, opacity: !text.trim() || sending ? 0.55 : 1 }}
+              title={t("inbox.send")}
+            >
+              <ArrowUpRight className="h-4 w-4" />
+            </button>
+          </div>
+        )}
       </div>
     </div>);
 
