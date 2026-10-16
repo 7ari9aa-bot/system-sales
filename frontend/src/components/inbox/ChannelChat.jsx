@@ -257,9 +257,9 @@ export default function ChannelChat({
       </div>
 
       {/* Input */}
-      <div className={cn("shrink-0 p-2", isWhatsApp && "px-3 py-2.5 sm:px-4")} style={isApp ? { background: "hsl(var(--card))", borderTop: "1px solid hsl(var(--border))" } : { background: isWhatsApp ? "#f0f2f5" : th.inputBg, borderTop: `1px solid ${th.inputBorder}` }}>
+      <div className={cn("shrink-0 p-2", isWhatsApp && "px-3 py-1 sm:px-4")} style={isApp ? { background: "hsl(var(--card))", borderTop: "1px solid hsl(var(--border))" } : { background: isWhatsApp ? "#f0f2f5" : th.inputBg, borderTop: `1px solid ${th.inputBorder}` }}>
         {isWhatsApp ? (
-          <div dir="ltr" className="flex h-12 items-center gap-1.5 rounded-full bg-white px-2 sm:h-16 sm:gap-2 sm:px-3">
+          <div dir="ltr" className="flex h-11 items-center gap-1.5 overflow-hidden rounded-full bg-white px-2 shadow-[0_1px_2px_rgba(0,0,0,0.12)] sm:h-14 sm:gap-2 sm:px-3" style={{ borderRadius: 9999 }}>
             <button
               type="button"
               disabled
