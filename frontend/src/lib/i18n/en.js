@@ -458,6 +458,7 @@ export default {
   "inbox.addChannel": "Add channel",
   "inbox.lockedChannel": "{name} is not connected yet",
   "inbox.noConversations": "No conversations in this channel yet.",
+  "inbox.loadMore": "Load more conversations",
   "inbox.selectConversation": "Select a conversation to start chatting",
   "inbox.typeMessage": "Type a message…",
   "inbox.approve": "Approve",

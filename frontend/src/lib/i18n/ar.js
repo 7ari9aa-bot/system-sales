@@ -458,6 +458,7 @@ export default {
   "inbox.addChannel": "إضافة قناة",
   "inbox.lockedChannel": "{name} غير متصلة بعد",
   "inbox.noConversations": "لا توجد محادثات في هذه القناة بعد.",
+  "inbox.loadMore": "تحميل محادثات أخرى",
   "inbox.selectConversation": "اختر محادثة لبدء الدردشة",
   "inbox.typeMessage": "اكتب رسالة…",
   "inbox.approve": "موافقة",

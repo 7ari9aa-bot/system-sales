@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
 import { ArrowUpRight, Sparkles, Check, CheckCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -10,6 +10,9 @@ export default function ChannelChat({
   conversation,
   approval,
   loadingMessages = false,
+  loadingOlderMessages = false,
+  hasOlderMessages = false,
+  onLoadOlderMessages,
   messagesError = "",
   onRetryMessages,
   sending = false,
@@ -21,12 +24,27 @@ export default function ChannelChat({
 }) {
   const [text, setText] = useState("");
   const scrollRef = useRef(null);
+  const preserveScrollRef = useRef(null);
+  const messageViewportRef = useRef({ conversationId: null, latestMessageId: null });
   const isApp = channel.theme === "app";
   const th = isApp ? null : channel.theme;
 
-  useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [conversation?.id, conversation?.messages?.length]);
+  useLayoutEffect(() => {
+    const element = scrollRef.current;
+    if (!element || !conversation) return;
+    const messages = conversation.messages || [];
+    const latestMessageId = messages.at(-1)?.id ?? null;
+    const previous = messageViewportRef.current;
+    const preserve = preserveScrollRef.current;
+
+    if (preserve?.conversationId === conversation.id) {
+      element.scrollTop = preserve.scrollTop + element.scrollHeight - preserve.scrollHeight;
+      preserveScrollRef.current = null;
+    } else if (previous.conversationId !== conversation.id || previous.latestMessageId !== latestMessageId) {
+      element.scrollTop = element.scrollHeight;
+    }
+    messageViewportRef.current = { conversationId: conversation.id, latestMessageId };
+  }, [conversation?.id, conversation?.messages]);
 
   useEffect(() => {
     setText("");
@@ -38,6 +56,29 @@ export default function ChannelChat({
     const sent = await onSend?.(conversation.id, body);
     if (sent !== false) setText("");
   }
+
+  const loadOlderAtTop = useCallback(async (element) => {
+    if (!element || element.scrollTop > 48 || !hasOlderMessages || loadingMessages || loadingOlderMessages) return;
+    preserveScrollRef.current = {
+      conversationId: conversation.id,
+      scrollHeight: element.scrollHeight,
+      scrollTop: element.scrollTop,
+    };
+    const loaded = await onLoadOlderMessages?.();
+    if (!loaded) preserveScrollRef.current = null;
+  }, [conversation?.id, hasOlderMessages, loadingMessages, loadingOlderMessages, onLoadOlderMessages]);
+
+  const handleMessagesScroll = useCallback((event) => {
+    void loadOlderAtTop(event.currentTarget);
+  }, [loadOlderAtTop]);
+
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element || !conversation || loadingMessages || loadingOlderMessages || !hasOlderMessages) return undefined;
+    if (element.scrollHeight > element.clientHeight + 1) return undefined;
+    const frame = requestAnimationFrame(() => void loadOlderAtTop(element));
+    return () => cancelAnimationFrame(frame);
+  }, [conversation?.id, conversation?.messages?.length, hasOlderMessages, loadingMessages, loadingOlderMessages, loadOlderAtTop]);
 
   if (!conversation) {
     return (
@@ -59,7 +100,7 @@ export default function ChannelChat({
       
       {/* Header */}
       <div
-        className="flex items-center gap-3 px-4 h-16 shrink-0"
+        className="flex items-center gap-3 px-4 h-14 shrink-0"
         style={isApp ? { background: "hsl(var(--card))", borderBottom: "1px solid hsl(var(--border))" } : { background: th.headerBg, color: th.headerText }}>
         
         <div
@@ -75,7 +116,8 @@ export default function ChannelChat({
       </div>
 
       {/* Messages */}
-      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto scrollbar-thin px-4 py-4 space-y-2">
+      <div ref={scrollRef} onScroll={handleMessagesScroll} className="flex-1 min-h-0 overflow-y-auto scrollbar-thin px-4 py-3 space-y-2">
+        {loadingOlderMessages && <div role="status" className="py-2 text-center text-[11.5px] text-muted-foreground">{t("common.loading")}</div>}
         {loadingMessages && (conversation.messages || []).length === 0 && (
           <div className="py-10 text-center text-[12.5px] text-muted-foreground">{t("common.loading")}</div>
         )}
@@ -92,8 +134,8 @@ export default function ChannelChat({
             {t("inbox.noMessages", "No messages are available for this conversation yet.")}
           </div>
         )}
-        {(conversation.messages || []).map((m, i) =>
-        <Bubble key={i} m={m} isApp={isApp} th={th} />
+        {(conversation.messages || []).map((m) =>
+        <Bubble key={m.id} m={m} isApp={isApp} th={th} />
         )}
         {approval &&
         <div
@@ -132,7 +174,7 @@ export default function ChannelChat({
       </div>
 
       {/* Input */}
-      <div className="shrink-0 p-3" style={isApp ? { background: "hsl(var(--card))", borderTop: "1px solid hsl(var(--border))" } : { background: th.inputBg, borderTop: `1px solid ${th.inputBorder}` }}>
+      <div className="shrink-0 p-2" style={isApp ? { background: "hsl(var(--card))", borderTop: "1px solid hsl(var(--border))" } : { background: th.inputBg, borderTop: `1px solid ${th.inputBorder}` }}>
         <div
           className="flex items-center gap-2 rounded-full px-3 py-1.5"
           style={isApp ?

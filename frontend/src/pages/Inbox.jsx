@@ -1,12 +1,14 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Search } from "lucide-react";
-import { PageHeader } from "@/components/dashboard/ui";
 import ChannelSwitcher from "@/components/inbox/ChannelSwitcher";
 import ChannelChat from "@/components/inbox/ChannelChat";
 import { CHANNELS, getChannel } from "@/lib/channels";
 import { api } from "@/lib/api";
 import { useI18n, useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+
+const INBOX_PAGE_SIZE = 50;
+const MESSAGE_PAGE_SIZE = 50;
 
 function displayTime(value) {
   if (!value) return "";
@@ -70,25 +72,58 @@ export default function Inbox() {
   const [approvalLoadError, setApprovalLoadError] = useState("");
   const [loadingInbox, setLoadingInbox] = useState(true);
   const [inboxLoadError, setInboxLoadError] = useState("");
+  const [inboxMoreError, setInboxMoreError] = useState("");
+  const [inboxCursor, setInboxCursor] = useState(null);
+  const [loadingMoreInbox, setLoadingMoreInbox] = useState(false);
+  const loadingMoreInboxRef = useRef(false);
   const [inboxRetryAttempt, setInboxRetryAttempt] = useState(0);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
+  const loadingOlderMessagesRef = useRef(false);
+  const [messageCursor, setMessageCursor] = useState(null);
   const [messagesError, setMessagesError] = useState(null);
   const [messageRetryAttempt, setMessageRetryAttempt] = useState(0);
   const [sending, setSending] = useState(false);
   const [pendingDecision, setPendingDecision] = useState(false);
   const [error, setError] = useState(null);
+  const activeMessageRequestRef = useRef({ conversationId: null, channelId: null });
 
-  const reloadInbox = useCallback(async () => {
-    const response = await api("/inbox?limit=200");
-    const map = Object.fromEntries(CHANNELS.map((channel) => [channel.id, []]));
+  const loadInboxPage = useCallback(async ({ cursor = null, replace = false } = {}) => {
+    const params = new URLSearchParams({ limit: String(INBOX_PAGE_SIZE) });
+    if (cursor) params.set("cursor", cursor);
+    const response = await api(`/inbox?${params.toString()}`);
+    const page = Object.fromEntries(CHANNELS.map((channel) => [channel.id, []]));
     for (const row of response?.items ?? []) {
       const channel = row.channel || "webchat";
-      if (!map[channel]) continue;
-      map[channel].push(toConversation(row, getChannel(channel)));
+      if (!page[channel]) continue;
+      page[channel].push(toConversation(row, getChannel(channel)));
     }
-    setConvMap(map);
-    return response?.next_cursor ?? null;
+    setConvMap((previous) => Object.fromEntries(CHANNELS.map((channel) => {
+      const existing = replace ? [] : previous[channel.id] || [];
+      const seen = new Set(existing.map((conversation) => conversation.id));
+      return [channel.id, [...existing, ...(page[channel.id] || []).filter((conversation) => !seen.has(conversation.id))]];
+    })));
+    const nextCursor = response?.next_cursor ?? null;
+    setInboxCursor(nextCursor);
+    return nextCursor;
   }, []);
+
+  const reloadInbox = useCallback(async () => loadInboxPage({ replace: true }), [loadInboxPage]);
+
+  const loadMoreConversations = useCallback(async () => {
+    if (!inboxCursor || loadingMoreInboxRef.current) return;
+    loadingMoreInboxRef.current = true;
+    setLoadingMoreInbox(true);
+    setInboxMoreError("");
+    try {
+      await loadInboxPage({ cursor: inboxCursor });
+    } catch (e) {
+      setInboxMoreError(e?.message || "Could not load more conversations.");
+    } finally {
+      loadingMoreInboxRef.current = false;
+      setLoadingMoreInbox(false);
+    }
+  }, [inboxCursor, loadInboxPage]);
 
   const reloadApprovals = useCallback(async () => {
     const response = await api("/ai/approvals?status=PENDING");
@@ -121,20 +156,14 @@ export default function Inbox() {
         setApprovalLoadError("");
       })
       .catch((e) => alive && setApprovalLoadError(e?.message || "Could not load pending approvals."));
-    api("/inbox?limit=200")
-      .then((inbox) => {
-        if (!alive) return;
-        const map = Object.fromEntries(CHANNELS.map((channel) => [channel.id, []]));
-        for (const row of inbox?.items ?? []) {
-          const channel = row.channel || "webchat";
-          if (map[channel]) map[channel].push(toConversation(row, getChannel(channel)));
-        }
-        setConvMap(map);
-      })
+    setInboxCursor(null);
+    setInboxMoreError("");
+    loadInboxPage({ replace: true })
+      .then(() => { if (alive) setInboxLoadError(""); })
       .catch((e) => alive && setInboxLoadError(e?.message || "Could not load the inbox."))
       .finally(() => alive && setLoadingInbox(false));
     return () => { alive = false; };
-  }, [inboxRetryAttempt]);
+  }, [inboxRetryAttempt, loadInboxPage]);
 
   const channels = useMemo(() => {
     const connected = integrationAccess
@@ -189,6 +218,7 @@ export default function Inbox() {
     return matchesFilter && matchesQuery;
   });
   const current = filtered.find((conversation) => conversation.id === activeId) || filtered[0] || null;
+  activeMessageRequestRef.current = { conversationId: current?.id ?? null, channelId: activeChannel };
   const pendingApproval = current?.approval || null;
   const connectedCount = channels.filter((item) => item.connected).length;
   const unreadByChannel = Object.fromEntries(
@@ -205,11 +235,15 @@ export default function Inbox() {
     const conversationId = current.id;
     const channelId = activeChannel;
     setLoadingMessages(true);
+    setLoadingOlderMessages(false);
+    loadingOlderMessagesRef.current = false;
+    setMessageCursor(null);
     setMessagesError(null);
-    api(`/conversations/${conversationId}/messages?limit=100`)
+    api(`/conversations/${conversationId}/messages?limit=${MESSAGE_PAGE_SIZE}`)
       .then((response) => {
         if (!alive) return;
         const messages = (response?.items || []).map(toMessage);
+        setMessageCursor(response?.next_cursor ?? null);
         setConvMap((previous) => ({
           ...previous,
           [channelId]: (previous[channelId] || []).map((row) =>
@@ -225,6 +259,36 @@ export default function Inbox() {
       .finally(() => alive && setLoadingMessages(false));
     return () => { alive = false; };
   }, [activeChannel, current?.id, messageRetryAttempt]);
+
+  const loadOlderMessages = useCallback(async () => {
+    if (!current?.id || !messageCursor || loadingOlderMessagesRef.current) return false;
+    const conversationId = current.id;
+    const channelId = activeChannel;
+    loadingOlderMessagesRef.current = true;
+    setLoadingOlderMessages(true);
+    try {
+      const params = new URLSearchParams({ limit: String(MESSAGE_PAGE_SIZE), cursor: messageCursor });
+      const response = await api(`/conversations/${conversationId}/messages?${params.toString()}`);
+      if (activeMessageRequestRef.current.conversationId !== conversationId || activeMessageRequestRef.current.channelId !== channelId) return false;
+      const older = (response?.items || []).map(toMessage);
+      setMessageCursor(response?.next_cursor ?? null);
+      setConvMap((previous) => ({
+        ...previous,
+        [channelId]: (previous[channelId] || []).map((row) => {
+          if (row.id !== conversationId) return row;
+          const existingIds = new Set((row.messages || []).map((message) => message.id));
+          return { ...row, messages: [...older.filter((message) => !existingIds.has(message.id)), ...(row.messages || [])] };
+        }),
+      }));
+      return true;
+    } catch (e) {
+      setMessagesError({ conversationId, channelId, message: e?.message || "Could not load earlier messages." });
+      return false;
+    } finally {
+      loadingOlderMessagesRef.current = false;
+      setLoadingOlderMessages(false);
+    }
+  }, [activeChannel, current?.id, messageCursor]);
 
   function selectConversation(conversation) {
     setActiveId(conversation.id);
@@ -292,8 +356,8 @@ export default function Inbox() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-112px)]">
-      <div className={cn("mb-6 flex min-w-0 items-start justify-between gap-2 sm:hidden", lang === "ar" ? "flex-row-reverse" : "flex-row")}>
+    <div className="flex h-[calc(100dvh-88px)] flex-col lg:h-[calc(100dvh-48px)]">
+      <div className={cn("mb-2 flex min-w-0 items-start justify-between gap-2 sm:hidden", lang === "ar" ? "flex-row-reverse" : "flex-row")}>
         <div className={cn("min-w-0 flex-1", lang === "ar" && "text-right")}>
           <h1 className="truncate whitespace-nowrap font-display text-[22px] font-semibold tracking-tight">{t("inbox.title")}</h1>
           <p className="mt-1 truncate text-[12px] text-muted-foreground">{t("inbox.channelsConnected", { n: connectedCount })}</p>
@@ -307,19 +371,19 @@ export default function Inbox() {
           />
         </div>
       </div>
-      <div className="hidden sm:block">
-        <PageHeader
-          title={t("inbox.title")}
-          subtitle={t("inbox.channelsConnected", { n: connectedCount })}
-          actions={(
-            <ChannelSwitcher
-              channels={channels}
-              active={activeChannel}
-              unreadByChannel={unreadByChannel}
-              onSelect={(id) => { setActiveChannel(id); setActiveId(null); setFilter("all"); }}
-            />
-          )}
-        />
+      <div className={cn("mb-2 hidden min-w-0 sm:flex sm:flex-col sm:items-stretch sm:gap-2 lg:flex-row lg:items-center lg:justify-between lg:gap-4", lang === "ar" && "lg:flex-row-reverse")}>
+        <div className={cn("min-w-0", lang === "ar" && "text-right")}>
+          <h1 className="truncate whitespace-nowrap font-display text-[22px] font-semibold tracking-tight">{t("inbox.title")}</h1>
+          <p className="mt-0.5 truncate text-[12px] text-muted-foreground">{t("inbox.channelsConnected", { n: connectedCount })}</p>
+        </div>
+        <div className="min-w-0 overflow-x-auto scrollbar-thin">
+          <ChannelSwitcher
+            channels={channels}
+            active={activeChannel}
+            unreadByChannel={unreadByChannel}
+            onSelect={(id) => { setActiveChannel(id); setActiveId(null); setFilter("all"); }}
+          />
+        </div>
       </div>
 
       {error && (
@@ -334,7 +398,7 @@ export default function Inbox() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] grid-rows-[260px_1fr] lg:grid-rows-1 gap-4 flex-1 min-h-0">
+      <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(180px,30dvh)_minmax(0,1fr)] gap-3 sm:grid-rows-[minmax(240px,32dvh)_minmax(0,1fr)] lg:grid-cols-[clamp(320px,28vw,440px)_minmax(0,1fr)] lg:grid-rows-1 lg:gap-3">
         <div className="rounded-2xl bg-card border border-border flex flex-col min-h-0 overflow-hidden">
           <div className="p-3 border-b border-border space-y-2.5">
             <div className="relative">
@@ -364,7 +428,13 @@ export default function Inbox() {
               ))}
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto scrollbar-thin">
+          <div
+            className="flex-1 overflow-y-auto scrollbar-thin"
+            onScroll={(event) => {
+              const node = event.currentTarget;
+              if (node.scrollHeight - node.scrollTop - node.clientHeight < 120) void loadMoreConversations();
+            }}
+          >
             {loadingInbox ? (
               <div className="py-10 text-center px-4 text-[13px] text-muted-foreground">{t("common.loading")}</div>
             ) : inboxLoadError ? (
@@ -375,7 +445,7 @@ export default function Inbox() {
                 </button>
               </div>
             ) : filtered.length === 0 ? (
-              <div className="py-10 text-center px-4">
+              <div className="py-8 text-center px-4">
                 <p className="text-[13px] text-muted-foreground">{t("inbox.noConversations")}</p>
               </div>
             ) : filtered.map((conversation) => (
@@ -385,12 +455,12 @@ export default function Inbox() {
                 aria-pressed={current?.id === conversation.id}
                 onClick={() => selectConversation(conversation)}
                 className={cn(
-                  "w-full flex gap-3 px-3.5 py-3 text-left border-b border-border/60 hover:bg-surface/60 transition-colors",
+                  "w-full flex gap-3 px-3 py-2.5 text-left border-b border-border/60 hover:bg-surface/60 transition-colors",
                   current?.id === conversation.id && "bg-primary/5"
                 )}
               >
                 <div className="relative shrink-0">
-                  <div className="h-9 w-9 rounded-full grid place-items-center text-[12px] font-semibold text-white" style={{ background: conversation.color }}>
+                  <div className="h-11 w-11 rounded-full grid place-items-center text-[12px] font-semibold text-white" style={{ background: conversation.color }}>
                     {conversation.initials}
                   </div>
                 </div>
@@ -400,7 +470,7 @@ export default function Inbox() {
                     <span className="text-[11px] text-muted-foreground shrink-0">{conversation.time}</span>
                   </div>
                   <p className="text-[12px] text-muted-foreground truncate mt-0.5">{conversation.preview}</p>
-                  <div className="flex items-center gap-1.5 mt-1.5">
+                  <div className="flex items-center gap-1.5 mt-1">
                     <span className="rounded-md bg-surface px-1.5 py-0.5 text-[10px] text-muted-foreground">
                       {t(`inbox.status.${conversation.status}`)}
                     </span>
@@ -413,6 +483,15 @@ export default function Inbox() {
                 </div>
               </button>
             ))}
+            {(loadingMoreInbox || inboxMoreError || inboxCursor) && (
+              <div className="px-3 py-2 text-center text-[11.5px] text-muted-foreground">
+                {inboxMoreError ? (
+                  <button type="button" onClick={() => void loadMoreConversations()} className="text-primary hover:underline">{t("common.retry", "Retry")}</button>
+                ) : loadingMoreInbox ? t("common.loading") : (
+                  <button type="button" onClick={() => void loadMoreConversations()} className="text-primary hover:underline">{t("inbox.loadMore", "Load more conversations")}</button>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -421,6 +500,9 @@ export default function Inbox() {
           conversation={current}
           approval={pendingApproval}
           loadingMessages={loadingMessages}
+          loadingOlderMessages={loadingOlderMessages}
+          hasOlderMessages={Boolean(messageCursor)}
+          onLoadOlderMessages={loadOlderMessages}
           messagesError={messagesError?.conversationId === current?.id && messagesError?.channelId === activeChannel ? messagesError.message : ""}
           onRetryMessages={() => setMessageRetryAttempt((attempt) => attempt + 1)}
           sending={sending}
