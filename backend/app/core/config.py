@@ -296,6 +296,12 @@ class Settings(BaseSettings):
     # Internal service credential used by trusted metrics scrapers.
     service_token_internal: str = "change-me-too"
 
+    # Platform impersonation (the owner console entering a tenant as one of
+    # its users). Empty = the feature does not exist — both routes answer 404
+    # and the secret is never probed. The value is shared ONLY with the owner
+    # console's server; the browser never sees it.
+    impersonation_platform_token: str = ""
+
     # Website Platform integration (external presentation plane): per-tenant
     # keys for the catalog exposure endpoint. JSON of tenant_id -> key.
     # Example: WEBSITE_PLATFORM_TENANT_KEYS='{"<tenant-uuid>":"wpk-tenant-secret"}'
