@@ -141,11 +141,11 @@ function PathRouter() {
   const location = useLocation();
   const path = location.pathname;
   const under = (base) => path === base || path.startsWith(`${base}/`);
-  if (['/dashboard', '/inbox', '/customers', '/orders', '/products', '/inventory', '/sales',
+  if (['/dashboard', '/inbox', '/customers', '/orders', '/products', '/inventory', '/pos', '/sales',
     '/sales-assistant', '/marketing', '/ai', '/analytics', '/usage', '/website', '/settings'].some(under)) {
     return <DashboardRoutes />;
   }
-  if (['/login', '/register', '/forgot-password', '/reset-password', '/accept-invitation'].some(under)) {
+  if (['/login', '/register', '/forgot-password', '/reset-password', '/verify-email', '/accept-invitation'].some(under)) {
     return <AuthRoutes />;
   }
   return <MarketingRoutes />;
