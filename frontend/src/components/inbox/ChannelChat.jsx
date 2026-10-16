@@ -130,7 +130,7 @@ export default function ChannelChat({
         
         <div
           className={cn("rounded-full grid place-items-center font-semibold shrink-0", isWhatsApp ? "h-10 w-10 text-[12px]" : "h-9 w-9 text-[13px]")}
-          style={{ background: isWhatsApp ? "#dfe5e7" : conversation.color, color: isWhatsApp ? "#54656f" : "#fff" }}>
+          style={{ background: conversation.color, color: isWhatsApp ? "#54656f" : "#fff" }}>
           
           {conversation.initials}
         </div>
@@ -179,9 +179,9 @@ export default function ChannelChat({
         className={cn("flex-1 min-h-0 overflow-y-auto scrollbar-thin px-4 py-3 space-y-2", isWhatsApp && "px-5 py-4 space-y-2")}
         style={isWhatsApp ? {
           backgroundColor: "#efeae2",
-          backgroundImage: "url('https://static.whatsapp.net/rsrc.php/yp/r/OA5z0a81CZk.webp')",
-          backgroundRepeat: "repeat",
-          backgroundSize: "540px 960px",
+          backgroundImage: "linear-gradient(rgba(245,240,232,0.88), rgba(245,240,232,0.88)), url('https://static.whatsapp.net/rsrc.php/yp/r/OA5z0a81CZk.webp')",
+          backgroundRepeat: "no-repeat, repeat",
+          backgroundSize: "100% 100%, 320px 570px",
         } : undefined}
       >
         {loadingOlderMessages && <div role="status" className="py-2 text-center text-[11.5px] text-muted-foreground">{t("common.loading")}</div>}

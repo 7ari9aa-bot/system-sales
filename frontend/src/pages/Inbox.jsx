@@ -14,7 +14,7 @@ const CHAT_LIST_MAX_WIDTH = 560;
 const CHAT_PANE_MIN_WIDTH = 360;
 const CHAT_LIST_DEFAULT_WIDTH = 330;
 const CHAT_LIST_WIDTH_STORAGE_KEY = "fihrist:inboxChatListWidth";
-const WHATSAPP_AVATAR_COLORS = ["#7b8794", "#8b6f86", "#6f8580", "#9a795e", "#71859b", "#8a815f", "#7b7b91"];
+const WHATSAPP_AVATAR_COLORS = ["#f3d7c5", "#ddd9f2", "#d4e9dd", "#f2dce0", "#d6e6f4", "#efe8c9", "#dce2ef"];
 
 function clampChatListWidth(value, max = CHAT_LIST_MAX_WIDTH) {
   return Math.min(max, Math.max(CHAT_LIST_MIN_WIDTH, Math.round(value)));
@@ -567,7 +567,7 @@ export default function Inbox() {
                 )}
               >
                 <div className="relative shrink-0">
-                  <div className={cn("rounded-full grid place-items-center text-[12px] font-semibold text-white", isWhatsApp ? "h-12 w-12" : "h-11 w-11")} style={{ background: conversation.color }}>
+                  <div className={cn("rounded-full grid place-items-center text-[12px] font-semibold text-white", isWhatsApp ? "h-12 w-12 text-[#54656f]" : "h-11 w-11")} style={{ background: conversation.color, color: isWhatsApp ? "#54656f" : "#fff" }}>
                     {conversation.initials}
                   </div>
                 </div>
