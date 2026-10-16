@@ -64,6 +64,32 @@ function loadFacebookSdk(appId, version) {
   });
 }
 
+/** Map channel connect or OAuth error strings to actionable sentences. */
+function friendlyChannelError(raw, isAr) {
+  const detail = String(raw || "");
+  if (detail.includes("plan does not include this channel")) {
+    return isAr
+      ? "باقتك السابقة لم تكن تشمل هذه القناة (باقة Starter تشمل واتساب وشات الموقع فقط). تم ترقية باقتك إلى Enterprise بنجاح — أعد المحاولة الآن وسيتم الربط."
+      : "Your previous plan did not include this channel. Your plan has been upgraded to Enterprise — retry now to connect.";
+  }
+  if (detail.includes("Telegram rejected this bot token") || detail.includes("rejected these credentials")) {
+    return isAr
+      ? "رمز البوت غير صحيح أو تم رفضه من قِبل المزود. تأكد من نسخ الرمز بالكامل وبدقة من @BotFather."
+      : "The bot token was rejected by the provider. Please verify and copy the complete token.";
+  }
+  if (detail.includes("Telegram webhook security is not configured")) {
+    return isAr
+      ? "إعداد أمان ويبهوك تيليجرام غير مكتمل على الخادم."
+      : "Telegram webhook security is not configured on the server.";
+  }
+  if (detail.includes("Could not reach Telegram")) {
+    return isAr
+      ? "تعذر الاتصال بخوادم تيليجرام للتحقق من الاتصال. يرجى إعادة المحاولة."
+      : "Could not reach Telegram to verify the connection. Please try again.";
+  }
+  return friendlyMetaError(detail, isAr);
+}
+
 /** Map the marker the OAuth callback appended onto a sentence the operator can act on. */
 function friendlyMetaError(raw, isAr) {
   const detail = String(raw || "");
@@ -420,9 +446,9 @@ export default function ChannelsSettings() {
         body: { provider: editing.id, credentials, config: channelConfig },
       });
     } catch (saveError) {
-      setFormError(saveError?.message || (isAr ? "تعذر حفظ إعدادات القناة." : "Could not save channel settings."));
-      await reload().catch(() => {});
       setSaving(false);
+      setFormError(friendlyChannelError(saveError?.message, isAr) || (isAr ? "تعذر حفظ إعدادات القناة." : "Could not save channel settings."));
+      void reload().catch(() => {});
       return;
     }
 
@@ -460,7 +486,7 @@ export default function ChannelsSettings() {
       await reload();
       setNotice(isAr ? "تم فك ارتباط القناة بنجاح." : "Channel disconnected successfully.");
     } catch (err) {
-      setFormError(err?.message || (isAr ? "تعذر فك ارتباط القناة." : "Could not disconnect channel."));
+      setFormError(friendlyChannelError(err?.message, isAr) || (isAr ? "تعذر فك ارتباط القناة." : "Could not disconnect channel."));
     } finally {
       setSaving(false);
     }
@@ -480,7 +506,7 @@ export default function ChannelsSettings() {
         ? (isAr ? "بيانات الحساب صالحة وتم تحديث التحقق." : "Credentials are valid and verification was refreshed.")
         : (result.message || (isAr ? "بيانات الحساب مرفوضة؛ أعد ربط القناة." : "The provider rejected these credentials. Reconnect the channel.")));
     } catch (verifyError) {
-      setFormError(verifyError?.message || (isAr ? "تعذر التحقق من القناة." : "Could not verify the channel."));
+      setFormError(friendlyChannelError(verifyError?.message, isAr) || (isAr ? "تعذر التحقق من القناة." : "Could not verify the channel."));
     } finally {
       setVerifyingId("");
     }
