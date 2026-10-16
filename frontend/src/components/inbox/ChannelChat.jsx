@@ -72,14 +72,6 @@ export default function ChannelChat({
     void loadOlderAtTop(event.currentTarget);
   }, [loadOlderAtTop]);
 
-  useEffect(() => {
-    const element = scrollRef.current;
-    if (!element || !conversation || loadingMessages || loadingOlderMessages || !hasOlderMessages) return undefined;
-    if (element.scrollHeight > element.clientHeight + 1) return undefined;
-    const frame = requestAnimationFrame(() => void loadOlderAtTop(element));
-    return () => cancelAnimationFrame(frame);
-  }, [conversation?.id, conversation?.messages?.length, hasOlderMessages, loadingMessages, loadingOlderMessages, loadOlderAtTop]);
-
   if (!conversation) {
     return (
       <div className="flex-1 grid place-items-center rounded-2xl border border-border bg-card text-center p-8">
@@ -116,61 +108,75 @@ export default function ChannelChat({
       </div>
 
       {/* Messages */}
-      <div ref={scrollRef} onScroll={handleMessagesScroll} className="flex-1 min-h-0 overflow-y-auto scrollbar-thin px-4 py-3 space-y-2">
-        {loadingOlderMessages && <div role="status" className="py-2 text-center text-[11.5px] text-muted-foreground">{t("common.loading")}</div>}
-        {loadingMessages && (conversation.messages || []).length === 0 && (
-          <div className="py-10 text-center text-[12.5px] text-muted-foreground">{t("common.loading")}</div>
-        )}
-        {messagesError && (
-          <div role="alert" className="mx-auto mb-3 max-w-lg rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-center text-[12.5px] text-destructive">
-            <span>{messagesError}</span>
-            <button type="button" onClick={onRetryMessages} className="ml-2 font-medium underline">
-              {t("common.retry", "Retry")}
-            </button>
-          </div>
-        )}
-        {!loadingMessages && !messagesError && (conversation.messages || []).length === 0 && (
-          <div className="py-10 text-center text-[12.5px] text-muted-foreground">
-            {t("inbox.noMessages", "No messages are available for this conversation yet.")}
-          </div>
-        )}
-        {(conversation.messages || []).map((m) =>
-        <Bubble key={m.id} m={m} isApp={isApp} th={th} />
-        )}
-        {approval &&
-        <div
-          className="mt-2 rounded-xl px-3.5 py-3 text-[12.5px]"
-          style={isApp ?
-          { background: "hsl(var(--warning-soft))", border: "1px solid hsl(var(--warning) / 0.3)", color: "hsl(var(--warning))" } :
-          { background: "#FFF8E1", border: "1px solid #FFE082", color: "#8a6d00" }}>
-          
-            <div className="font-medium mb-1">{t("inbox.approval.title")}</div>
-            <p className="opacity-90">{approval.action}</p>
-            {approval.payload?.arguments && (
-              <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-black/5 p-2 text-[11px]">
-                {JSON.stringify(approval.payload.arguments, null, 2)}
-              </pre>
-            )}
-            <div className="flex gap-2 mt-2.5">
+      <div ref={scrollRef} onScroll={handleMessagesScroll} className="flex-1 min-h-0 overflow-y-auto scrollbar-thin px-4 py-3">
+        <div className="flex min-h-full flex-col">
+          {hasOlderMessages && (
+            <div className="py-1 text-center">
               <button
                 type="button"
-                disabled={pendingDecision}
-                onClick={() => onApprove?.(conversation.id)}
-                className="h-8 px-3 rounded-lg text-[12px] font-medium text-white"
-                style={{ background: "#16a34a" }}>
-                {t("inbox.approve")}
-              </button>
-              <button
-                type="button"
-                disabled={pendingDecision}
-                onClick={() => onDecline?.(conversation.id)}
-                className="h-8 px-3 rounded-lg text-[12px] font-medium"
-                style={{ background: isApp ? "hsl(var(--surface))" : "#fff", border: "1px solid #e5e7eb" }}>
-                {t("inbox.decline")}
+                disabled={loadingMessages || loadingOlderMessages}
+                onClick={() => void loadOlderAtTop(scrollRef.current)}
+                className="rounded-full px-3 py-1 text-[11.5px] text-muted-foreground hover:bg-black/5 disabled:opacity-60">
+                {loadingOlderMessages ? t("common.loading") : t("inbox.loadEarlier", "Load earlier messages")}
               </button>
             </div>
+          )}
+          {loadingOlderMessages && <div role="status" className="py-2 text-center text-[11.5px] text-muted-foreground">{t("common.loading")}</div>}
+          <div className="mt-auto flex flex-col gap-2">
+            {loadingMessages && (conversation.messages || []).length === 0 && (
+              <div className="py-10 text-center text-[12.5px] text-muted-foreground">{t("common.loading")}</div>
+            )}
+            {messagesError && (
+              <div role="alert" className="mx-auto mb-3 max-w-lg rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-center text-[12.5px] text-destructive">
+                <span>{messagesError}</span>
+                <button type="button" onClick={onRetryMessages} className="ml-2 font-medium underline">
+                  {t("common.retry", "Retry")}
+                </button>
+              </div>
+            )}
+            {!loadingMessages && !messagesError && (conversation.messages || []).length === 0 && (
+              <div className="py-10 text-center text-[12.5px] text-muted-foreground">
+                {t("inbox.noMessages", "No messages are available for this conversation yet.")}
+              </div>
+            )}
+            {(conversation.messages || []).map((m) =>
+              <Bubble key={m.id} m={m} isApp={isApp} th={th} />
+            )}
+            {approval &&
+              <div
+                className="mt-2 rounded-xl px-3.5 py-3 text-[12.5px]"
+                style={isApp ?
+                  { background: "hsl(var(--warning-soft))", border: "1px solid hsl(var(--warning) / 0.3)", color: "hsl(var(--warning))" } :
+                  { background: "#FFF8E1", border: "1px solid #FFE082", color: "#8a6d00" }}>
+                <div className="font-medium mb-1">{t("inbox.approval.title")}</div>
+                <p className="opacity-90">{approval.action}</p>
+                {approval.payload?.arguments && (
+                  <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-black/5 p-2 text-[11px]">
+                    {JSON.stringify(approval.payload.arguments, null, 2)}
+                  </pre>
+                )}
+                <div className="flex gap-2 mt-2.5">
+                  <button
+                    type="button"
+                    disabled={pendingDecision}
+                    onClick={() => onApprove?.(conversation.id)}
+                    className="h-8 px-3 rounded-lg text-[12px] font-medium text-white"
+                    style={{ background: "#16a34a" }}>
+                    {t("inbox.approve")}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={pendingDecision}
+                    onClick={() => onDecline?.(conversation.id)}
+                    className="h-8 px-3 rounded-lg text-[12px] font-medium"
+                    style={{ background: isApp ? "hsl(var(--surface))" : "#fff", border: "1px solid #e5e7eb" }}>
+                    {t("inbox.decline")}
+                  </button>
+                </div>
+              </div>
+            }
           </div>
-        }
+        </div>
       </div>
 
       {/* Input */}
