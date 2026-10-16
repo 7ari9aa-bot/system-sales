@@ -18,7 +18,10 @@ export default function Inventory() {
   const [adjusting, setAdjusting] = useState(null);
   const [error, setError] = useState(null);
   const [metadataError, setMetadataError] = useState("");
-  const [metadata, setMetadata] = useState({ products: [], warehouses: [] });
+  const [metadata, setMetadata] = useState(() => ({
+    variantNames: new Map(),
+    warehouses: new Map(),
+  }));
   const [loading, setLoading] = useState(() => peekCache(BALANCES_PATH) == null);
 
   const load = useCallback(async () => {
@@ -101,8 +104,8 @@ export default function Inventory() {
   }
 
   const metadataMaps = useMemo(() => ({
-    variantNames: metadata.variantNames || new Map(),
-    warehouses: metadata.warehouses || new Map(),
+    variantNames: metadata?.variantNames instanceof Map ? metadata.variantNames : new Map(),
+    warehouses: metadata?.warehouses instanceof Map ? metadata.warehouses : new Map(),
   }), [metadata]);
 
   return (
@@ -160,9 +163,9 @@ export default function Inventory() {
                   const available = onHand - (Number(b.reserved) || 0);
                   const outNow = available <= 0;
                   const rowKey = `${b.variant_id}-${b.warehouse_id}`;
-                  const names = metadataMaps.variantNames.get(b.variant_id);
+                  const names = metadataMaps.variantNames?.get ? metadataMaps.variantNames.get(b.variant_id) : null;
                   const variantLabel = names ? [names.product, names.variant].filter(Boolean).join(" · ") : `${b.variant_id?.slice(0, 8)}…`;
-                  const warehouseLabel = metadataMaps.warehouses.get(b.warehouse_id) || `${b.warehouse_id?.slice(0, 8)}…`;
+                  const warehouseLabel = (metadataMaps.warehouses?.get ? metadataMaps.warehouses.get(b.warehouse_id) : null) || `${b.warehouse_id?.slice(0, 8)}…`;
                   return (
                     <tr key={rowKey} className="hover:bg-surface/50 transition-colors">
                       <td className="px-5 py-3 text-[12.5px] font-medium" dir="auto">{variantLabel}</td>
