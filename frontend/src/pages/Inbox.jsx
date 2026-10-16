@@ -493,6 +493,11 @@ export default function Inbox() {
               </div>
             )}
           </div>
+          {integrations && connectedCount === 0 && (
+            <p className="shrink-0 border-t border-border px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
+              {t("inbox.noConnectedChannels", "Connect a channel in Settings → Channels to start receiving messages.")}
+            </p>
+          )}
         </div>
 
         <ChannelChat
@@ -514,9 +519,6 @@ export default function Inbox() {
           onDecline={() => decideApproval(pendingApproval, "REJECTED")}
         />
       </div>
-      {integrations && connectedCount === 0 && (
-        <p className="mt-2 text-xs text-muted-foreground">{t("inbox.noConnectedChannels", "Connect a channel in Settings → Channels to start receiving messages.")}</p>
-      )}
     </div>
   );
 }

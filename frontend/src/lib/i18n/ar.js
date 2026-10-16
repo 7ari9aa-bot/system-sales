@@ -459,7 +459,6 @@ export default {
   "inbox.lockedChannel": "{name} غير متصلة بعد",
   "inbox.noConversations": "لا توجد محادثات في هذه القناة بعد.",
   "inbox.loadMore": "تحميل محادثات أخرى",
-  "inbox.loadEarlier": "تحميل رسائل أقدم",
   "inbox.selectConversation": "اختر محادثة لبدء الدردشة",
   "inbox.typeMessage": "اكتب رسالة…",
   "inbox.approve": "موافقة",
