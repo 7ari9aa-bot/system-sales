@@ -37,7 +37,9 @@ platform_router = APIRouter(tags=["platform"])
 # mapping — otherwise every re-registration of a legacy row would look like
 # a jump from a state the lifecycle table does not name.
 _LEGACY_STATUS_ALIASES = {"connected": "active", "error": "reauth_required"}
-_CHANNEL_PROVIDERS = frozenset({"whatsapp", "instagram", "messenger", "telegram", "webchat"})
+_CHANNEL_PROVIDERS = frozenset(
+    {"whatsapp", "facebook", "instagram", "messenger", "telegram", "webchat"}
+)
 # The field allow-lists are DERIVED from the per-channel specs
 # (platform.channel_specs) — the specs are the single source of truth, so a
 # new channel needs no edit here. Drift is pinned by tests/test_channel_connections.py.
@@ -55,11 +57,7 @@ def _last_webhook_at(integration: Integration) -> str | None:
 
 def _webhook_status(integration: Integration) -> str:
     if integration.provider == "webchat":
-        config = integration.config if isinstance(integration.config, dict) else {}
-        connection = config.get("_connection")
-        verified = isinstance(connection, dict) and bool(connection.get("verified_at"))
-        connected = integration.status in {"active", "connected"}
-        return "ready" if verified and connected else "server_setup_required"
+        return "ready"
 
     from app.core.config import get_settings
 
@@ -69,6 +67,8 @@ def _webhook_status(integration: Integration) -> str:
         "whatsapp": public_api_configured
         and bool(settings.whatsapp_app_secret and settings.whatsapp_verify_token),
         "messenger": public_api_configured
+        and bool(settings.messenger_app_secret and settings.messenger_verify_token),
+        "facebook": public_api_configured
         and bool(settings.messenger_app_secret and settings.messenger_verify_token),
         "instagram": public_api_configured
         and bool(settings.instagram_app_secret and settings.instagram_verify_token),
@@ -422,6 +422,18 @@ async def verify_integration(
             "public_key": config.get("public_key") if integration.provider == "webchat" else None,
             "message": exc.message,
         }
+    except ExternalProviderError as exc:
+        config = dict(integration.config or {})
+        return {
+            "id": str(integration.id),
+            "provider": integration.provider,
+            "status": integration.status,
+            "credentials_verified": bool((config.get("_connection") or {}).get("verified_at")),
+            "display_name": (config.get("_connection") or {}).get("display_name"),
+            "verified_at": (config.get("_connection") or {}).get("verified_at"),
+            "public_key": config.get("public_key") if integration.provider == "webchat" else None,
+            "message": exc.message,
+        }
 
     _activate_verified_channel(integration)
     verified_at = datetime.now(UTC).isoformat()
@@ -523,9 +535,9 @@ async def disconnect_integration(
         return _integration_output(integration)
     if current == "disabled":
         raise ValidationError("This channel was permanently disabled.")
-    if current not in ("active", "restricted"):
+    if current not in ("active", "restricted", "reauth_required", "connecting", "pending"):
         raise ValidationError(
-            "only an active or restricted channel can be disconnected",
+            "this channel cannot be disconnected in its current status",
             details={
                 "integration_id": str(integration_id),
                 "status": integration.status,

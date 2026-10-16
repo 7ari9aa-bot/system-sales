@@ -12,6 +12,10 @@ const CONNECTION_FIELDS = {
     { name: "phone_number_id", type: "text", label: ["معرّف رقم الهاتف", "Phone number ID"] },
     { name: "access_token", type: "password", label: ["رمز الوصول", "Access token"] },
   ],
+  facebook: [
+    { name: "page_id", type: "text", label: ["معرّف الصفحة", "Page ID"] },
+    { name: "page_access_token", type: "password", label: ["رمز وصول الصفحة", "Page access token"] },
+  ],
   instagram: [
     { name: "account_id", type: "text", label: ["معرّف الحساب", "Account ID"] },
     { name: "api_key", type: "password", label: ["رمز وصول الحساب", "Account access token"] },
@@ -295,6 +299,9 @@ export default function ChannelsSettings() {
     if (editing.id === "whatsapp") {
       channelConfig.phone_number_id = String(values.phone_number_id || "").trim();
       credentials.access_token = String(values.access_token || "").trim();
+    } else if (editing.id === "facebook") {
+      channelConfig.page_id = String(values.page_id || "").trim();
+      credentials.page_access_token = String(values.page_access_token || "").trim();
     } else if (editing.id === "instagram") {
       channelConfig.account_id = String(values.account_id || "").trim();
       credentials.api_key = String(values.api_key || "").trim();
@@ -327,6 +334,30 @@ export default function ChannelsSettings() {
       setNotice(isAr
         ? "تم الحفظ، لكن تعذر تحديث حالة القناة. أعد تحميل الصفحة."
         : "Saved, but the channel status could not be refreshed. Reload the page.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function disconnectConnection(channel) {
+    if (!channel.integrationId || saving) return;
+    const confirmMessage = isAr
+      ? `هل أنت متأكد من فك ارتباط ${t(`channel.${channel.id}`)}؟ سيتوقف تدفق الرسائل عبر هذه القناة.`
+      : `Are you sure you want to disconnect ${t(`channel.${channel.id}`)}? Message flow will stop.`;
+    if (!window.confirm(confirmMessage)) return;
+
+    setSaving(true);
+    setFormError("");
+    setNotice("");
+    try {
+      await api(`/integrations/${encodeURIComponent(channel.integrationId)}/disconnect`, {
+        method: "POST",
+        body: { confirm: true },
+      });
+      await reload();
+      setNotice(isAr ? "تم فك ارتباط القناة بنجاح." : "Channel disconnected successfully.");
+    } catch (err) {
+      setFormError(err?.message || (isAr ? "تعذر فك ارتباط القناة." : "Could not disconnect channel."));
     } finally {
       setSaving(false);
     }
@@ -401,7 +432,7 @@ export default function ChannelsSettings() {
               const status = statusFor(channel);
               const needsAttention = ATTENTION_STATES.has(channel.status);
               const needsVerification = channel.integrationId && ["active", "connected"].includes(channel.status) && !channel.credentialsVerified;
-              const unsupported = channel.id === "facebook";
+              const unsupported = false;
               const terminal = channel.status === "disabled";
               const fields = CONNECTION_FIELDS[channel.id];
 
@@ -476,6 +507,18 @@ export default function ChannelsSettings() {
                               : channel.webhookUrl
                                 ? (isAr ? "نسخ رابط Webhook" : "Copy webhook URL")
                                 : (isAr ? "نسخ مفتاح الودجت" : "Copy widget key")}
+                          </button>
+                        )}
+                        {channel.integrationId && channel.status !== "disconnected" && (
+                          <button
+                            type="button"
+                            onClick={() => disconnectConnection(channel)}
+                            disabled={saving}
+                            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-destructive/30 px-2.5 text-[12px] font-medium text-destructive hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-50"
+                            title={isAr ? "فك الارتباط" : "Disconnect"}
+                          >
+                            <Unplug className="h-3.5 w-3.5" />
+                            {isAr ? "فك الارتباط" : "Disconnect"}
                           </button>
                         )}
                         <button

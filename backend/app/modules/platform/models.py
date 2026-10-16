@@ -127,10 +127,10 @@ class Integration(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
 
     # §145: channel account lifecycle — allowed transitions.
     _LIFECYCLE_TRANSITIONS: dict[str, set[str]] = {
-        "pending": {"connecting", "disabled"},
-        "connecting": {"active", "reauth_required", "disabled"},
+        "pending": {"connecting", "disconnected", "disabled"},
+        "connecting": {"active", "reauth_required", "disconnected", "disabled"},
         "active": {"reauth_required", "restricted", "disconnected", "disabled"},
-        "reauth_required": {"connecting", "active", "disabled"},
+        "reauth_required": {"connecting", "active", "disconnected", "disabled"},
         "restricted": {"active", "disconnected", "disabled"},
         "disconnected": {"connecting", "disabled"},
         "disabled": set(),  # terminal
