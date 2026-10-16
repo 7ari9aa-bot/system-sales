@@ -32,7 +32,9 @@ function toMessage(message) {
     side: message.direction === "outbound" ? "out" : "in",
     text: message.body || message.media_type || "",
     time: displayTime(message.created_at),
+    createdAt: message.created_at,
     status: message.status,
+    senderType: message.sender_type,
     ai: message.sender_type === "ai",
     mediaUrl: message.media_url,
     mediaType: message.media_type,
@@ -325,11 +327,13 @@ export default function Inbox() {
         method: "POST",
         body: { body: text },
       });
+      const createdAt = sent?.created_at || new Date().toISOString();
       const localMessage = {
         id: sent?.id || `${conversationId}-${Date.now()}`,
         side: "out",
         text,
-        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        time: displayTime(createdAt),
+        createdAt,
         status: sent?.status || "queued",
       };
       setConvMap((previous) => ({
@@ -369,6 +373,7 @@ export default function Inbox() {
 
   return (
     <div className="flex h-[calc(100dvh-88px)] flex-col lg:h-[calc(100dvh-48px)]">
+      {!isWhatsApp && <>
       <div className={cn("mb-2 flex min-w-0 items-start justify-between gap-2 sm:hidden", lang === "ar" ? "flex-row-reverse" : "flex-row")}>
         <div className={cn("min-w-0 flex-1", lang === "ar" && "text-right")}>
           <h1 className="truncate whitespace-nowrap font-display text-[22px] font-semibold tracking-tight">{t("inbox.title")}</h1>
@@ -397,6 +402,7 @@ export default function Inbox() {
           />
         </div>
       </div>
+      </>}
 
       {error && (
         <div role="alert" className="mb-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -411,15 +417,29 @@ export default function Inbox() {
       )}
 
       <div dir="ltr" className={cn(
-        "grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[clamp(320px,28vw,440px)_minmax(0,1fr)] lg:grid-rows-1 lg:gap-3",
-        isWhatsApp ? "grid-rows-[minmax(0,1fr)]" : "grid-rows-[minmax(180px,30dvh)_minmax(0,1fr)] sm:grid-rows-[minmax(240px,32dvh)_minmax(0,1fr)]"
+        "grid min-h-0 flex-1 grid-cols-1 lg:grid-rows-1",
+        isWhatsApp
+          ? "grid-rows-[minmax(0,1fr)] gap-3 lg:grid-cols-[clamp(300px,19vw,350px)_minmax(0,1fr)] lg:gap-0"
+          : "grid-rows-[minmax(180px,30dvh)_minmax(0,1fr)] gap-3 sm:grid-rows-[minmax(240px,32dvh)_minmax(0,1fr)] lg:grid-cols-[clamp(320px,28vw,440px)_minmax(0,1fr)] lg:gap-3"
       )}>
         <div className={cn(
           "bg-card border flex-col min-h-0 overflow-hidden",
-          isWhatsApp ? "rounded-xl border-[#d1d7db]" : "rounded-2xl border-border",
+          isWhatsApp ? "rounded-xl border-[#d1d7db] shadow-sm lg:rounded-none lg:border-y lg:border-l lg:border-r" : "rounded-2xl border-border",
           isWhatsApp && mobileChatOpen ? "hidden lg:flex" : "flex"
         )}>
-          <div className={cn("p-3 space-y-2.5", isWhatsApp ? "border-b border-[#d1d7db]" : "border-b border-border")}>
+          <div className={cn("p-3", isWhatsApp ? "space-y-3 border-b border-[#d1d7db]" : "space-y-2.5 border-b border-border")}>
+            {isWhatsApp && (
+              <div className="flex min-h-8 items-center justify-between gap-3">
+                <h2 className="font-display text-[22px] font-medium leading-none text-[#111b21]">{t("inbox.listHeading", "Chats")}</h2>
+                <ChannelSwitcher
+                  variant="compact"
+                  channels={channels}
+                  active={activeChannel}
+                  unreadByChannel={unreadByChannel}
+                  onSelect={(id) => { setActiveChannel(id); setActiveId(null); setMobileChatOpen(false); setFilter("all"); }}
+                />
+              </div>
+            )}
             <div className="relative">
               <Search className={cn("absolute top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground", isWhatsApp && lang === "ar" ? "right-3" : "left-3")} />
               <input
@@ -429,13 +449,14 @@ export default function Inbox() {
                 aria-label={t("inbox.search")}
                 placeholder={t("inbox.search")}
                 className={cn(
-                  "w-full h-9 rounded-lg text-[13px] placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-ring/30",
+                  "w-full text-[13px] placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-ring/30",
+                  isWhatsApp ? "h-10 rounded-full" : "h-9 rounded-lg",
                   isWhatsApp && lang === "ar" ? "pr-9 pl-3 text-right" : "pl-9 pr-3",
                   isWhatsApp ? "bg-[#f0f2f5] border border-[#f0f2f5]" : "bg-surface border border-border"
                 )}
               />
             </div>
-            <div className={cn("flex gap-1", isWhatsApp && "-mb-3 border-b border-[#d1d7db]")}>
+            <div className={cn("flex gap-1", isWhatsApp && lang === "ar" && "flex-row-reverse")}>
               {FILTERS.map((item) => (
                 <button
                   key={item.id}
@@ -445,9 +466,16 @@ export default function Inbox() {
                   className={cn(
                     "whitespace-nowrap transition-colors",
                     isWhatsApp
-                      ? cn("px-2.5 py-2 text-[12px]", filter === item.id ? "border-b-2 border-[#00a884] font-semibold text-[#008f72]" : "border-b-2 border-transparent text-[#667781] hover:text-[#111b21]")
+                      ? cn("rounded-full border px-3 py-1.5 text-[12px]", filter === item.id ? "border-[#cdebd8] bg-[#e8f9ee] font-medium text-[#111b21]" : "border-[#d1d7db] bg-white text-[#54656f] hover:bg-[#f5f6f6]")
                       : cn("px-2.5 py-1 rounded-md text-[12px] font-medium", filter === item.id ? "bg-primary text-primary-foreground" : "bg-surface text-muted-foreground hover:text-foreground")
                   )}
+                  style={isWhatsApp ? {
+                    backgroundColor: filter === item.id ? "#e8f9ee" : "#fff",
+                    borderColor: filter === item.id ? "#cdebd8" : "#d1d7db",
+                    color: filter === item.id ? "#111b21" : "#54656f",
+                    borderStyle: "solid",
+                    borderWidth: 1,
+                  } : undefined}
                 >
                   {item.label}
                 </button>
@@ -494,10 +522,10 @@ export default function Inbox() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
-                    <span dir={isWhatsApp ? "auto" : undefined} className={cn("truncate", isWhatsApp ? "text-[14px] font-medium text-[#111b21]" : "text-[13px] font-medium")}>{conversation.customer}</span>
+                    <span dir={isWhatsApp ? "auto" : undefined} className={cn("truncate", isWhatsApp ? "text-left text-[14px] font-medium text-[#111b21]" : "text-[13px] font-medium")}>{conversation.customer}</span>
                     <span dir={isWhatsApp ? "ltr" : undefined} className={cn("shrink-0", isWhatsApp ? "text-[11px] text-[#667781]" : "text-[11px] text-muted-foreground")}>{conversation.time}</span>
                   </div>
-                  <p dir={isWhatsApp ? "auto" : undefined} className={cn("truncate mt-0.5", isWhatsApp ? "text-[12px] text-[#667781]" : "text-[12px] text-muted-foreground")}>{conversation.preview}</p>
+                  <p dir={isWhatsApp ? "auto" : undefined} className={cn("truncate mt-0.5", isWhatsApp ? "text-left text-[12px] text-[#667781]" : "text-[12px] text-muted-foreground")}>{conversation.preview}</p>
                   <div className="flex items-center gap-1.5 mt-1">
                     <span className={cn("px-1.5 py-0.5 text-[10px]", isWhatsApp ? "rounded-full bg-[#f0f2f5] text-[#667781]" : "rounded-md bg-surface text-muted-foreground")}>
                       {t(`inbox.status.${conversation.status}`)}

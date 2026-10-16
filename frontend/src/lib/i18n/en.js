@@ -445,6 +445,13 @@ export default {
   "inbox.status.approval": "Needs approval",
   "inbox.status.ai": "AI handling",
   "inbox.status.resolved": "Resolved",
+  "inbox.listHeading": "Chats",
+  "inbox.searchMessages": "Search messages",
+  "inbox.noMessageMatches": "No matching messages",
+
+  "inbox.date.today": "Today",
+
+  "inbox.date.yesterday": "Yesterday",
   "inbox.today": "Today",
   "inbox.via": "via",
   "inbox.ago": "ago",

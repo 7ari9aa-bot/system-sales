@@ -8,7 +8,7 @@ export const CHANNELS = [
     icon: "MessageCircle",
     accent: "#25D366",
     theme: {
-      headerBg: "#f0f2f5",
+      headerBg: "#ffffff",
       headerText: "#111b21",
       chatBg: "#efeae2",
       out: "#d9fdd3",

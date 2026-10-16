@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
-import { ArrowLeft, ArrowRight, ArrowUpRight, Sparkles, Check, CheckCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, ArrowUpRight, Search, Sparkles, X, Check, CheckCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // A themed chat pane that renders in the selected channel's real look.
@@ -26,12 +26,18 @@ export default function ChannelChat({
   onDecline,
 }) {
   const [text, setText] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const scrollRef = useRef(null);
   const preserveScrollRef = useRef(null);
   const messageViewportRef = useRef({ conversationId: null, latestMessageId: null });
   const isApp = channel.theme === "app";
   const isWhatsApp = channel.id === "whatsapp";
   const th = isApp ? null : channel.theme;
+  const allMessages = conversation?.messages || [];
+  const visibleMessages = isWhatsApp && searchQuery.trim()
+    ? allMessages.filter((message) => String(message.text || "").toLocaleLowerCase().includes(searchQuery.trim().toLocaleLowerCase()))
+    : allMessages;
 
   useLayoutEffect(() => {
     const element = scrollRef.current;
@@ -52,6 +58,8 @@ export default function ChannelChat({
 
   useEffect(() => {
     setText("");
+    setSearchQuery("");
+    setSearchOpen(false);
   }, [conversation?.id]);
 
   async function submitMessage() {
@@ -86,7 +94,7 @@ export default function ChannelChat({
 
   if (!conversation) {
     return (
-      <div className={cn("flex-1 grid place-items-center border bg-card text-center p-8", isWhatsApp ? "rounded-xl border-[#d1d7db]" : "rounded-2xl border-border", className)}>
+      <div className={cn("flex-1 grid place-items-center border bg-card text-center p-8", isWhatsApp ? "rounded-xl border-[#d1d7db] lg:rounded-none lg:border-y lg:border-r lg:border-l-0" : "rounded-2xl border-border", className, "lg:items-center lg:justify-center")}>
         <div>
           <div className="h-12 w-12 rounded-full bg-surface grid place-items-center mx-auto mb-3">
             <Sparkles className="h-5 w-5 text-muted-foreground" />
@@ -99,12 +107,12 @@ export default function ChannelChat({
 
   return (
     <div
-      className={cn("flex-1 flex flex-col min-h-0 overflow-hidden border", isWhatsApp ? "rounded-xl border-[#d1d7db]" : "rounded-2xl border-border", className)}
+      className={cn("flex-1 flex flex-col min-h-0 overflow-hidden border", isWhatsApp ? "rounded-xl border-[#d1d7db] lg:rounded-none lg:border-y lg:border-r lg:border-l-0" : "rounded-2xl border-border", className)}
       style={isApp ? undefined : { background: th.chatBg }}>
       
       {/* Header */}
       <div
-        dir={isWhatsApp ? (lang === "ar" ? "rtl" : "ltr") : undefined}
+        dir={isWhatsApp ? "ltr" : undefined}
         className={cn("flex items-center gap-3 px-4 shrink-0", isWhatsApp ? "h-[60px]" : "h-14")}
         style={isApp ? { background: "hsl(var(--card))", borderBottom: "1px solid hsl(var(--border))" } : { background: th.headerBg, color: th.headerText, borderBottom: isWhatsApp ? `1px solid ${th.divider}` : undefined }}>
 
@@ -127,10 +135,42 @@ export default function ChannelChat({
           {conversation.initials}
         </div>
         <div className="flex-1 min-w-0">
-          <div dir={isWhatsApp ? "auto" : undefined} className={cn("truncate", isWhatsApp ? "text-[15px] font-medium text-[#111b21]" : "text-[14px] font-semibold", isApp && "text-foreground")}>{conversation.customer}</div>
-          <div className={cn("truncate", isWhatsApp ? "text-[12px] text-[#667781]" : "text-[11.5px]", isApp && "text-muted-foreground", !isApp && !isWhatsApp && "opacity-80")}>{channel.name}</div>
+          <div dir={isWhatsApp ? "auto" : undefined} className={cn("truncate", isWhatsApp ? "text-left text-[15px] font-medium text-[#111b21]" : "text-[14px] font-semibold", isApp && "text-foreground")}>{conversation.customer}</div>
+          <div className={cn("truncate", isWhatsApp ? "text-left text-[12px] text-[#667781]" : "text-[11.5px]", isApp && "text-muted-foreground", !isApp && !isWhatsApp && "opacity-80")}>{channel.name}</div>
         </div>
+        {isWhatsApp && (
+          <button
+            type="button"
+            aria-label={t("inbox.searchMessages", "Search messages")}
+            aria-expanded={searchOpen}
+            onClick={() => { setSearchOpen((open) => !open); setSearchQuery(""); }}
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#54656f] transition-colors hover:bg-[#f5f6f6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884]"
+          >
+            <Search className="h-[18px] w-[18px]" />
+          </button>
+        )}
       </div>
+
+      {isWhatsApp && searchOpen && (
+        <div className="flex h-12 shrink-0 items-center gap-2 border-b border-[#d1d7db] bg-white px-3">
+          <Search className="h-4 w-4 shrink-0 text-[#667781]" />
+          <input
+            type="search"
+            autoFocus
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            dir={lang === "ar" ? "rtl" : "ltr"}
+            aria-label={t("inbox.searchMessages", "Search messages")}
+            placeholder={t("inbox.searchMessages", "Search messages")}
+            className={cn("min-w-0 flex-1 bg-transparent text-[13px] text-[#111b21] outline-none placeholder:text-[#8696a0]", lang === "ar" ? "text-right" : "text-left")}
+          />
+          {searchQuery && (
+            <button type="button" onClick={() => setSearchQuery("")} aria-label={t("common.clear", "Clear search")} className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-[#667781] hover:bg-[#f0f2f5]">
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Messages */}
       <div
@@ -139,14 +179,9 @@ export default function ChannelChat({
         className={cn("flex-1 min-h-0 overflow-y-auto scrollbar-thin px-4 py-3 space-y-2", isWhatsApp && "px-4 py-4")}
         style={isWhatsApp ? {
           backgroundColor: th.chatBg,
-          backgroundImage: [
-            "radial-gradient(ellipse 13px 9px at 28px 29px, transparent 91%, rgba(84, 101, 111, 0.035) 94%, transparent 100%)",
-            "radial-gradient(ellipse 7px 13px at 112px 82px, transparent 90%, rgba(84, 101, 111, 0.03) 94%, transparent 100%)",
-            "linear-gradient(34deg, transparent 49.6%, rgba(84, 101, 111, 0.022) 50%, transparent 50.5%)",
-            "linear-gradient(145deg, transparent 49.6%, rgba(84, 101, 111, 0.02) 50%, transparent 50.5%)",
-          ].join(", "),
-          backgroundSize: "197px 173px, 263px 221px, 179px 157px, 241px 203px",
-          backgroundPosition: "0 0, 51px 37px, 17px 26px, 83px 11px",
+          backgroundImage: "url('/whatsapp-doodle-wallpaper.svg')",
+          backgroundRepeat: "repeat",
+          backgroundSize: "1040px 840px",
         } : undefined}
       >
         {loadingOlderMessages && <div role="status" className="py-2 text-center text-[11.5px] text-muted-foreground">{t("common.loading")}</div>}
@@ -166,9 +201,25 @@ export default function ChannelChat({
             {t("inbox.noMessages", "No messages are available for this conversation yet.")}
           </div>
         )}
-        {(conversation.messages || []).map((m) =>
-        <Bubble key={m.id} m={m} isApp={isApp} isWhatsApp={isWhatsApp} th={th} />
+        {searchQuery.trim() && visibleMessages.length === 0 && (
+          <div className="py-8 text-center text-[12.5px] text-[#667781]">{t("inbox.noMessageMatches", "No matching messages")}</div>
         )}
+        {visibleMessages.map((m, index) => {
+          const dayKey = isWhatsApp ? getMessageDayKey(m.createdAt) : "";
+          const previousDayKey = isWhatsApp && index > 0 ? getMessageDayKey(visibleMessages[index - 1].createdAt) : "";
+          return (
+            <React.Fragment key={m.id}>
+              {dayKey && dayKey !== previousDayKey && (
+                <div className="flex justify-center py-1.5" aria-label={formatWhatsAppDay(m.createdAt, lang, t)}>
+                  <span className="rounded-md bg-white/90 px-2.5 py-1 text-[11px] font-medium text-[#54656f] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]">
+                    {formatWhatsAppDay(m.createdAt, lang, t)}
+                  </span>
+                </div>
+              )}
+              <Bubble m={m} isApp={isApp} isWhatsApp={isWhatsApp} th={th} />
+            </React.Fragment>
+          );
+        })}
         {approval &&
         <div
           className="mt-2 rounded-xl px-3.5 py-3 text-[12.5px]"
@@ -208,7 +259,7 @@ export default function ChannelChat({
       {/* Input */}
       <div className={cn("shrink-0 p-2", isWhatsApp && "px-3 py-2.5")} style={isApp ? { background: "hsl(var(--card))", borderTop: "1px solid hsl(var(--border))" } : { background: th.inputBg, borderTop: `1px solid ${th.inputBorder}` }}>
         <div
-          dir={isWhatsApp ? (lang === "ar" ? "rtl" : "ltr") : undefined}
+          dir={isWhatsApp ? "ltr" : undefined}
           className={cn("flex items-center gap-2 rounded-full px-3 py-1.5", isWhatsApp && "min-h-11")}
           style={isApp ?
           { background: "hsl(var(--surface))", border: "1px solid hsl(var(--border))" } :
@@ -230,7 +281,7 @@ export default function ChannelChat({
             disabled={!text.trim() || sending}
             aria-label={t("inbox.send")}
             className="h-8 w-8 grid place-items-center rounded-full text-white shrink-0"
-            style={{ background: channel.accent, opacity: !text.trim() || sending ? 0.55 : 1 }}
+            style={{ background: isWhatsApp ? "#00a884" : channel.accent, opacity: !text.trim() || sending ? 0.55 : 1 }}
             title={t("inbox.send")}>
 
             <ArrowUpRight className="h-4 w-4" />
@@ -246,6 +297,17 @@ function Bubble({ m, isApp, isWhatsApp, th }) {
   const showTail = !isApp && th?.tail;
 
   if (isWhatsApp) {
+    if (m.senderType === "system") {
+      return (
+        <div className="flex justify-center py-1">
+          <div className="max-w-[85%] rounded-lg bg-white/90 px-2.5 py-1.5 text-center text-[11.5px] leading-snug text-[#54656f] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]">
+            <span>{m.text}</span>
+            {m.time && <span className="ms-1.5 whitespace-nowrap text-[10px] text-[#8696a0]" dir="ltr">{m.time}</span>}
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className={cn("flex", out ? "justify-end" : "justify-start")}>
         <div
@@ -255,6 +317,16 @@ function Bubble({ m, isApp, isWhatsApp, th }) {
           )}
           style={{ background: out ? th.out : th.in, color: out ? th.outText : th.inText }}
         >
+          {showTail && (
+            <span
+              aria-hidden="true"
+              className={cn("absolute bottom-0 h-2.5 w-2", out ? "-right-[5px]" : "-left-[5px]")}
+              style={{
+                background: out ? th.out : th.in,
+                clipPath: out ? "polygon(0 0, 100% 100%, 0 100%)" : "polygon(100% 0, 100% 100%, 0 100%)",
+              }}
+            />
+          )}
           <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]" dir="auto">
             {m.text}{" "}
             <span className="inline-flex items-center gap-0.5 whitespace-nowrap align-baseline text-[10px] leading-none text-[#667781]" dir="ltr">
@@ -299,6 +371,28 @@ function Bubble({ m, isApp, isWhatsApp, th }) {
       </div>
     </div>);
 
+}
+
+function getMessageDayKey(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+
+function formatWhatsAppDay(value, lang, t) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  if (getMessageDayKey(date) === getMessageDayKey(today)) return t("inbox.date.today", "Today");
+  if (getMessageDayKey(date) === getMessageDayKey(yesterday)) return t("inbox.date.yesterday", "Yesterday");
+  return new Intl.DateTimeFormat(lang === "ar" ? "ar-EG" : "en-GB", {
+    day: "numeric",
+    month: "long",
+    year: date.getFullYear() === today.getFullYear() ? undefined : "numeric",
+  }).format(date);
 }
 
 function Foot({ m, isApp, th }) {

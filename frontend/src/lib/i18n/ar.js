@@ -445,6 +445,13 @@ export default {
   "inbox.status.approval": "تحتاج موافقة",
   "inbox.status.ai": "يتولاه الذكاء",
   "inbox.status.resolved": "تم الحل",
+  "inbox.listHeading": "المحادثات",
+  "inbox.searchMessages": "البحث في الرسائل",
+  "inbox.noMessageMatches": "لا توجد رسائل مطابقة",
+
+  "inbox.date.today": "اليوم",
+
+  "inbox.date.yesterday": "أمس",
   "inbox.today": "اليوم",
   "inbox.via": "عبر",
   "inbox.ago": "مضت",
