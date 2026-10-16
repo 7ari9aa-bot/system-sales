@@ -113,7 +113,7 @@ export default function ChannelChat({
       {/* Header */}
       <div
         dir={isWhatsApp ? "ltr" : undefined}
-        className={cn("flex items-center gap-3 px-4 shrink-0", isWhatsApp ? "h-[60px]" : "h-14")}
+        className={cn("flex items-center gap-3 px-4 shrink-0", isWhatsApp ? "h-[80px] px-5" : "h-14")}
         style={isApp ? { background: "hsl(var(--card))", borderBottom: "1px solid hsl(var(--border))" } : { background: th.headerBg, color: th.headerText, borderBottom: isWhatsApp ? `1px solid ${th.divider}` : undefined }}>
 
         {isWhatsApp && onBack && (
@@ -129,14 +129,14 @@ export default function ChannelChat({
         )}
         
         <div
-          className={cn("rounded-full grid place-items-center text-[13px] font-semibold shrink-0", isWhatsApp ? "h-10 w-10" : "h-9 w-9")}
+          className={cn("rounded-full grid place-items-center text-[13px] font-semibold shrink-0", isWhatsApp ? "h-12 w-12" : "h-9 w-9")}
           style={{ background: conversation.color, color: "#fff" }}>
           
           {conversation.initials}
         </div>
         <div className="flex-1 min-w-0">
-          <div dir={isWhatsApp ? "auto" : undefined} className={cn("truncate", isWhatsApp ? "text-left text-[15px] font-medium text-[#111b21]" : "text-[14px] font-semibold", isApp && "text-foreground")}>{conversation.customer}</div>
-          <div className={cn("truncate", isWhatsApp ? "text-left text-[12px] text-[#667781]" : "text-[11.5px]", isApp && "text-muted-foreground", !isApp && !isWhatsApp && "opacity-80")}>{channel.name}</div>
+          <div dir={isWhatsApp ? "auto" : undefined} className={cn("truncate", isWhatsApp ? "text-left text-[16px] font-medium text-[#111b21]" : "text-[14px] font-semibold", isApp && "text-foreground")}>{conversation.customer}</div>
+          <div className={cn("truncate", isWhatsApp ? "text-left text-[13px] text-[#667781]" : "text-[11.5px]", isApp && "text-muted-foreground", !isApp && !isWhatsApp && "opacity-80")}>{channel.name}</div>
         </div>
         {isWhatsApp && (
           <button
@@ -176,9 +176,9 @@ export default function ChannelChat({
       <div
         ref={scrollRef}
         onScroll={handleMessagesScroll}
-        className={cn("flex-1 min-h-0 overflow-y-auto scrollbar-thin px-4 py-3 space-y-2", isWhatsApp && "px-4 py-4")}
+        className={cn("flex-1 min-h-0 overflow-y-auto scrollbar-thin px-4 py-3 space-y-2", isWhatsApp && "px-5 py-4 space-y-2")}
         style={isWhatsApp ? {
-          backgroundColor: th.chatBg,
+          backgroundColor: "#f5f1eb",
           backgroundImage: "url('/whatsapp-doodle-wallpaper.svg')",
           backgroundRepeat: "repeat",
           backgroundSize: "1040px 840px",
@@ -257,10 +257,10 @@ export default function ChannelChat({
       </div>
 
       {/* Input */}
-      <div className={cn("shrink-0 p-2", isWhatsApp && "px-3 py-2.5")} style={isApp ? { background: "hsl(var(--card))", borderTop: "1px solid hsl(var(--border))" } : { background: th.inputBg, borderTop: `1px solid ${th.inputBorder}` }}>
+      <div className={cn("shrink-0 p-2", isWhatsApp && "px-3 py-3 sm:px-4 sm:py-4")} style={isApp ? { background: "hsl(var(--card))", borderTop: "1px solid hsl(var(--border))" } : { background: isWhatsApp ? "#f7f5f3" : th.inputBg, borderTop: `1px solid ${th.inputBorder}` }}>
         <div
           dir={isWhatsApp ? "ltr" : undefined}
-          className={cn("flex items-center gap-2 rounded-full px-3 py-1.5", isWhatsApp && "min-h-11")}
+          className={cn("flex items-center gap-2 rounded-full px-3 py-1.5", isWhatsApp && "min-h-11 sm:min-h-12")}
           style={isApp ?
           { background: "hsl(var(--surface))", border: "1px solid hsl(var(--border))" } :
           { background: "#fff", border: `1px solid ${th.inputBorder}` }}>
@@ -300,7 +300,7 @@ function Bubble({ m, isApp, isWhatsApp, th }) {
     if (m.senderType === "system") {
       return (
         <div className="flex justify-center py-1">
-          <div className="max-w-[85%] rounded-lg bg-white/90 px-2.5 py-1.5 text-center text-[11.5px] leading-snug text-[#54656f] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]">
+          <div className="max-w-[85%] rounded-lg bg-white/95 px-3 py-2 text-center text-[12px] leading-snug text-[#54656f] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]">
             <span>{m.text}</span>
             {m.time && <span className="ms-1.5 whitespace-nowrap text-[10px] text-[#8696a0]" dir="ltr">{m.time}</span>}
           </div>
@@ -312,7 +312,7 @@ function Bubble({ m, isApp, isWhatsApp, th }) {
       <div className={cn("flex", out ? "justify-end" : "justify-start")}>
         <div
           className={cn(
-            "relative max-w-[82%] rounded-lg px-2.5 py-1.5 text-[13px] leading-[1.45] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] sm:max-w-[72%]",
+            "relative max-w-[82%] rounded-lg px-3 py-2 text-[14px] leading-[1.4] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] sm:max-w-[72%] lg:max-w-[65%]",
             showTail && (out ? "rounded-br-sm" : "rounded-bl-sm")
           )}
           style={{ background: out ? th.out : th.in, color: out ? th.outText : th.inText }}
@@ -329,7 +329,7 @@ function Bubble({ m, isApp, isWhatsApp, th }) {
           )}
           <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]" dir="auto">
             {m.text}{" "}
-            <span className="inline-flex items-center gap-0.5 whitespace-nowrap align-baseline text-[10px] leading-none text-[#667781]" dir="ltr">
+            <span className="inline-flex items-center gap-0.5 whitespace-nowrap align-baseline text-[11px] leading-none text-[#667781]" dir="ltr">
               <span>{m.time}</span>
             {out && th.checkmarks && (m.status === "read"
               ? <CheckCheck className="h-3.5 w-3.5 text-[#53bdeb]" />
