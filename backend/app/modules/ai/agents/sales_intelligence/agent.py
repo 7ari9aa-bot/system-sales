@@ -53,12 +53,8 @@ from app.modules.analytics.contracts import (
 )
 
 logger = logging.getLogger(__name__)
-
-SI_SYSTEM_PROMPT = (
-    "أنت محلل مبيعات المتجر. عندك أدوات تحليل جاهزة — استخدمها للتحقيق "
-    "قبل ما تجاوب، وكل رقم في إجابتك لازم يكون من نتيجة أداة. "
-    "لو البيانات مش كفاية قول كده بصراحة. التوصيات اقتراحات مراجعة مش أفعال."
-)
+# Canonical system prompt defined in dedicated prompts.py module
+from app.modules.ai.agents.sales_intelligence.prompts import SI_SYSTEM_PROMPT
 
 
 @dataclass(slots=True)

@@ -96,6 +96,7 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
         { to: "/products", label: t("nav.products"), icon: Package },
         { to: "/products/new", label: t("nav.addProduct"), icon: CirclePlus },
         { to: "/inventory", label: t("nav.inventory"), icon: Boxes, badge: stockIssues },
+        { to: "/pos", label: t("nav.pos"), icon: ScanLine },
       ],
     },
     {

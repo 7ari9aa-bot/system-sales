@@ -125,6 +125,33 @@ class ResendEmailSender:
         }
         await self._send(delivery_id=delivery_id, payload=payload)
 
+    async def send_receipt(
+        self,
+        *,
+        delivery_id: uuid.UUID,
+        recipient: str,
+        subject: str,
+        html: str,
+        text: str,
+    ) -> None:
+        """Generic transactional send — currently the POS receipt request.
+
+        Same transport and Idempotency-Key discipline as the auth mail; the
+        caller owns the copy. The configured gate is re-checked here so the
+        adapter can never turn into an unauthenticated send path.
+        """
+        settings = get_settings()
+        if not settings.auth_email_delivery_configured:
+            raise EmailDeliveryError("email delivery is not configured", retryable=True)
+        payload = {
+            "from": settings.email_from,
+            "to": [recipient],
+            "subject": subject,
+            "html": html,
+            "text": text,
+        }
+        await self._send(delivery_id=delivery_id, payload=payload)
+
     async def _send(self, *, delivery_id: uuid.UUID, payload: dict) -> None:
         settings = get_settings()
         try:

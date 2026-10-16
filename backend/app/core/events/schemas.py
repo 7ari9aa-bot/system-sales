@@ -157,6 +157,13 @@ DOMAIN_EVENT_TYPES: tuple[str, ...] = (
     # §189: the POS session close is the cash reconciliation record — the
     # variance rides the event so analytics never reads the session mid-shift.
     "pos.session.closed",
+    # §189 phase 2: the POS line-level return is its own durable record —
+    # the daily projection and analytics reconcile returns from this event,
+    # never by reading return rows mid-transaction.
+    "pos.sale.returned",
+    # §189: "email me this receipt" is queued durably and sent by the pos
+    # worker pool; the request path never sends mail inline.
+    "pos.receipt.email_requested",
     # §69: master-key rotation emits this through the outbox (durable audit of
     # a security-relevant event — see app.core.secrets.rotate_master_key).
     "platform.secret_rotated",

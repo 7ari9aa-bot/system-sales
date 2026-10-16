@@ -37,53 +37,12 @@ from app.modules.ai.models import Agent, AgentRun, AgentTool, ToolCall
 from app.modules.ai.providers import ToolCallRequest
 from app.modules.ai.tools import tool_to_openai_schema  # noqa: E402
 from app.modules.ai.usage import record_usage  # noqa: E402
-from app.modules.conversations.voice import omni_audio_format  # noqa: E402
-
-
-def _omni_audio_content_part(audio_mime: str, audio_bytes: bytes) -> dict | None:
-    """Build a Qwen Omni OpenAI-compatible ``input_audio`` part.
-
-    The format map is deliberately allow-listed: never label an unknown
-    container as WAV/OGG. Bytes arrive only after the attachment's scanner
-    verdict is ``scanned`` and are read from our own storage.
-    """
-    audio_format = omni_audio_format(audio_mime)
-    if audio_format is None or not audio_bytes:
-        return None
-    data_url = f"data:{audio_mime};base64,{base64.b64encode(audio_bytes).decode('ascii')}"
-    return {"type": "input_audio", "input_audio": {"data": data_url, "format": audio_format}}
-
-
-def _customer_user_content(
-    user_message: str,
-    *,
-    image_url: str | None = None,
-    audio_part: dict | None = None,
-) -> str | list[dict]:
-    """Build one OpenAI-compatible user content value, preserving both media."""
-    if not image_url and not audio_part:
-        return user_message
-    parts: list[dict] = [{"type": "text", "text": user_message}]
-    if image_url:
-        parts.append({"type": "image_url", "image_url": {"url": image_url}})
-    if audio_part:
-        parts.append(audio_part)
-    return parts
-
-
-def _assistant_tool_call(tc: ToolCallRequest) -> dict:
-    """OpenAI tool_call entry — with Gemini 3.x thought_signature when present
-    (required on the next turn, otherwise the provider 400s)."""
-    entry: dict = {
-        "id": tc.id,
-        "type": "function",
-        "function": {"name": tc.name, "arguments": json.dumps(tc.arguments or {})},
-    }
-    if tc.thought_signature:
-        entry["extra_content"] = {"google": {"thought_signature": tc.thought_signature}}
-    return entry
-
-
+from app.modules.ai.multimodal import (
+    _assistant_tool_call,
+    _customer_user_content,
+    _omni_audio_content_part,
+)
+from app.modules.ai.prompts import DEFAULT_SYSTEM_PROMPT
 from app.modules.conversations import models as _conversations_models  # noqa: E402,F401
 
 # Importing the conversations models registers their tables in the shared
@@ -94,22 +53,7 @@ logger = logging.getLogger(__name__)
 
 MAX_ITERATIONS = 5
 HISTORY_MESSAGES = 10
-DEFAULT_SYSTEM_PROMPT = (
-    "أنت مساعد خدمة العملاء للمتجر. تتحدث بلهجة مصرية مهذبة وودودة ومباشرة.\n"
-    "دورك الوحيد: تفهم سؤال العميل وترد عليه بمعلومة صحيحة من بيانات المتجر.\n"
-    "ممنوع تماماً: إنشاء طلب، أو تعديل سلة، أو تنفيذ دفع، أو تغيير أي سجل في المتجر.\n"
-    "القواعد الإلزامية:\n"
-    "1. لا تذكر أو تؤكد أي سعر أو كمية متوفرة إلا بعد الاستعلام عنها عبر الأدوات المخصصة.\n"
-    "2. لو السؤال ناقص أو غامض، اسأل العميل للتوضيح بدل ما تخمّن.\n"
-    "3. لو العميل وصف منتجاً بمواصفاته (لون، مقاس، خامة)، استخدم أداة البحث بالكلمات "
-    "والخصائص اللي فهمتها منه، مش باسم المنتج بس.\n"
-    "4. لو العميل طلب صور منتج، ابعت الصور الصحيحة من كتالوج المتجر.\n"
-    "5. لو العميل بعت صورة، افهمها وقارنها بمنتجات المتجر قبل ما ترد.\n"
-    "6. قراءة حالة طلب موجود للرد على سؤال العميل مسموحة، لكن ده مش تنفيذ عملية بيع.\n"
-    "7. التزم بسياسات المتجر المعلنة بدقة (الشحن، الدفع، الاسترجاع والاستبدال).\n"
-    "8. لو طلب العميل التحدث مع موظف، أو مش قادر ترد بشكل آمن، حوّل المحادثة لموظف بشري "
-    "فوراً من غير ما تألّف إجابة."
-)
+
 # Outbound rows whose send did not land: "failed" is terminal and "unknown" is
 # a result that went missing mid-flight (conversations/models.py:172). Neither
 # is a turn the customer read.

@@ -24,28 +24,8 @@ CUSTOMER_TOOLS = [
     "resolve_product_media",
 ]
 
-# Reply-only contract (the customer agent answers, it does not transact).
-# `create_order`, `add_task` and `add_tag` are deliberately NOT here: the agent's
-# only job is to understand the customer's message and answer it from trusted
-# store data. Reading an existing order to answer a question stays allowed
-# (`get_order`); acting on the store does not. The tool policy and the DB
-# permissions are a second and third gate — this list is the first.
-CUSTOMER_SYSTEM_PROMPT = (
-    "أنت مساعد خدمة العملاء للمتجر. تتحدث بلهجة مصرية مهذبة وودودة ومباشرة.\n"
-    "دورك الوحيد: تفهم سؤال العميل وترد عليه بمعلومة صحيحة من بيانات المتجر.\n"
-    "ممنوع تماماً: إنشاء طلب، أو تعديل سلة، أو تنفيذ دفع، أو تغيير أي سجل في المتجر.\n"
-    "القواعد الإلزامية:\n"
-    "1. لا تذكر أو تؤكد أي سعر أو كمية متوفرة إلا بعد الاستعلام عنها عبر الأدوات المخصصة.\n"
-    "2. لو السؤال ناقص أو غامض، اسأل العميل للتوضيح بدل ما تخمّن.\n"
-    "3. لو العميل وصف منتجاً بمواصفاته (لون، مقاس، خامة)، استخدم أداة البحث بالكلمات "
-    "والخصائص اللي فهمتها منه، مش باسم المنتج بس.\n"
-    "4. لو العميل طلب صور منتج، ابعت الصور الصحيحة من كتالوج المتجر.\n"
-    "5. لو العميل بعت صورة، افهمها وقارنها بمنتجات المتجر قبل ما ترد.\n"
-    "6. قراءة حالة طلب موجود للرد على سؤال العميل مسموحة، لكن ده مش تنفيذ عملية بيع.\n"
-    "7. التزم بسياسات المتجر المعلنة بدقة (الشحن، الدفع، الاسترجاع والاستبدال).\n"
-    "8. لو طلب العميل التحدث مع موظف، أو مش قادر ترد بشكل آمن، حوّل المحادثة لموظف بشري "
-    "فوراً من غير ما تألّف إجابة."
-)
+# Canonical system prompt defined in dedicated prompts.py module
+from app.modules.ai.agents.customer.prompts import CUSTOMER_SYSTEM_PROMPT
 
 _DEFINITION = AgentDefinition(
     kind="customer",

@@ -6,7 +6,7 @@ Import triggers registration (used by ``discover_agents``).
 
 from __future__ import annotations
 
-from app.modules.ai.agents.sales_intelligence.agent import SI_SYSTEM_PROMPT
+from app.modules.ai.agents.sales_intelligence.prompts import SI_SYSTEM_PROMPT
 from app.modules.ai.agents.sales_intelligence.tools import SI_TOOLS
 from app.modules.ai.core.registry import AgentCapability, AgentDefinition, AgentRegistry
 

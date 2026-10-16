@@ -113,6 +113,10 @@ DOMAIN_PRIORITIES: dict[str, EventPriority] = {
     # POS session close is the cash reconciliation record (§189): the variance
     # rides the event, so it lands with the money tier.
     "pos.session.closed": EventPriority.CRITICAL_SYSTEM,
+    # POS return is a refund event — money tier (§189).
+    "pos.sale.returned": EventPriority.CRITICAL_SYSTEM,
+    # Receipt email is a fire-and-forget delivery — automation tier.
+    "pos.receipt.email_requested": EventPriority.NORMAL_AUTOMATION,
     "privacy.customer_deleted": EventPriority.CRITICAL_SYSTEM,
     "privacy.customer_purge_required": EventPriority.CRITICAL_SYSTEM,
     "platform.secret_rotated": EventPriority.CRITICAL_SYSTEM,

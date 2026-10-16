@@ -75,6 +75,7 @@ CUSTOMERS_ROUTE_COUNT = 15
 # /integrations/{integration_id}/disconnect — the §145 disconnected state
 # (active|restricted -> disconnected) had no route driving it, so a channel
 # could never be detached from the settings surface at all.
+# Sub-routers (meta_oauth, meta_whatsapp_signup) are traversed via _routes().
 PLATFORM_ROUTE_COUNT = 7
 
 #: Routes that answer 204 and therefore have NO body to type. Enumerated by
@@ -123,6 +124,8 @@ GATED_WRITES: dict[str, str] = {
     "POST /integrations/{integration_id}/verify": "settings:write",
     "POST /integrations/{integration_id}/disconnect": "settings:write",
     "GET /integrations/meta/oauth/start": "settings:write",
+    "GET /integrations/whatsapp/embedded-signup/start": "settings:write",
+    "POST /integrations/whatsapp/embedded-signup/complete": "settings:write",
     "GET /invitations": "settings:write",
     "DELETE /invitations/{invitation_id}": "settings:write",
 }

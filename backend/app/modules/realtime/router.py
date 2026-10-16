@@ -230,6 +230,9 @@ _ALL_STREAMS = [
     "conversation.events",
     "notification.events",
     "order.events",
+    # §189: open tills watch for their shift being closed elsewhere (the
+    # cashier page subscribes with ?streams=pos_session.events).
+    "pos_session.events",
 ]
 
 _HEARTBEAT_INTERVAL_S = 25  # seconds

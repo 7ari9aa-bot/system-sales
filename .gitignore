@@ -93,3 +93,9 @@ scratch/
 supabase/
 schema.ts
 schema_utf8.ts
+
+# Image-generation scratch (large binaries, never source)
+kids-sweatshirt-gen/
+
+# Demo login body with cleartext credentials
+backend/scripts/_login_body.json

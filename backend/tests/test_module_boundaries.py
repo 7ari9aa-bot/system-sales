@@ -183,8 +183,25 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # tool computes are registered through `EvidenceStore.register_numbers`, the
 # analytics module's own door, so the SI adapter gained no new import site and
 # the skip rules live beside the pack contract that enforces them.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 149
-# 148 -> 149 on 2026-10-15: the voice-path seam (commits 20bfae9 + ed91f64).
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 181
+# 167 -> 177 on 2026-10-15: POS receipt returns, refund lines & orders cross-module linkage (pos/service.py)
+# 177 -> 181 on 2026-10-16: POS phase 4/5 — all function-scope, all endorsed
+# directions, no new cycles (verified: SCCs unchanged):
+#   1-2. pos/service.py -> orders.models ×2 (the close event's seed figures and
+#        the upsert_daily_projection recompute — §137 parameter-bound aggregate
+#        read-models over the orders ledger, the same pattern _write_reconciliation
+#        already holds).
+#   3. pos/router.py -> identity.service (UserService, the grantee display names
+#      the handover picker shows — adapter reading the owning service).
+#   4. pos/profiles.py -> catalog.service (categories_exist, the item-group
+#      scoping guard — through the catalog's own door, not its tables).
+# and router sub-package decompositions.
+# 162 -> 167 on 2026-10-15: POS session handovers and profiles expansion (pos/service.py + pos/profiles.py).
+# 154 -> 162 on 2026-10-15: POS profiles expansion (pos/profiles.py + pos/service.py)
+# and conversations sub-router decomposition.
+# 149 -> 154 on 2026-10-15: locks the voice-path seam (commits 20bfae9 + ed91f64)
+# and router decomposition. Sub-router decomposition added net-zero edges
+# by centralising shared dependencies in _deps.py.
 #   • ai/runtime.py -> conversations.voice.omni_audio_format (module scope):
 #     the ONE format gate every direct-Omni voice turn passes — ogg/wav/mp3
 #     only, so an unsupported customer voice note is refused before any

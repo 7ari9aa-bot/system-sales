@@ -59,6 +59,17 @@ class WhatsAppSignupCompleteBody(BaseModel):
     phone_number_id: str = Field(min_length=3, max_length=64)
 
 
+class WhatsAppSignupCompleteOut(BaseModel):
+    """Details of the newly configured WhatsApp channel integration."""
+
+    id: str
+    provider: str
+    status: str
+    display_name: str | None = None
+    phone_number_id: str
+    waba_id: str
+
+
 def _whatsapp_config() -> tuple[str, str, str]:
     """(app_id, app_secret, embedded-signup config id) or a loud failure."""
     s = get_settings()
@@ -66,11 +77,23 @@ def _whatsapp_config() -> tuple[str, str, str]:
     app_secret = s.meta_app_secret.strip()
     config_id = s.meta_whatsapp_config_id.strip()
     if not (app_id and app_secret and config_id):
+        # Name ONLY what is actually missing: the live production user test
+        # showed app id + secret already set and just the WhatsApp config id
+        # absent — listing all three sends an operator hunting for values that
+        # are already there.
+        missing = [
+            name
+            for name, value in (
+                ("META_APP_ID", app_id),
+                ("META_APP_SECRET", app_secret),
+                ("META_WHATSAPP_CONFIG_ID", config_id),
+            )
+            if not value
+        ]
         raise ValidationError(
-            "WhatsApp Embedded Signup is not configured on this server — set "
-            "META_APP_ID, META_APP_SECRET and META_WHATSAPP_CONFIG_ID (create the "
-            "configuration from Meta's 'WhatsApp Embedded Signup Configuration' "
-            "template; see docs/META_SETUP.md)."
+            "WhatsApp Embedded Signup is not fully configured on this server — "
+            f"set {', '.join(missing)} (create the configuration from Meta's "
+            "'WhatsApp Embedded Signup Configuration' template; see docs/META_SETUP.md)."
         )
     return app_id, app_secret, config_id
 
@@ -180,7 +203,7 @@ async def _subscribe_app_to_waba(http: httpx.AsyncClient, *, waba_id: str, token
 
 @whatsapp_signup_router.post(
     "/integrations/whatsapp/embedded-signup/complete",
-    response_model=dict,
+    response_model=WhatsAppSignupCompleteOut,
     status_code=201,
 )
 async def whatsapp_signup_complete(

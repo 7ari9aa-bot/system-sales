@@ -31,6 +31,7 @@ from app.workers.correlation import install_log_correlation
 from app.workers.job_runner import JobRunner
 from app.workers.message_worker import MessageWorker
 from app.workers.platform_workers import NotificationWorker, WebhookWorker
+from app.workers.pos_worker import PosWorker
 from app.workers.scheduler_worker import SchedulerWorker
 
 #: The worker process's log format. The `correlation_id=` field is the point
@@ -57,6 +58,10 @@ POOLS: dict[str, type[StreamWorker]] = {
     "campaigns": CampaignWorker,
     "scheduler": SchedulerWorker,
     "jobs": JobRunner,
+    # §189: the till's async surface — the daily sales projection (the
+    # event-fed consolidation) and queued receipt email — rides
+    # pos_session.events. One pool because both jobs are cold-path and rare.
+    "pos": PosWorker,
     # `RetentionWorker` is deliberately absent. It is not a pool: nothing can
     # wake it. Its `handle()` only acts on a payload whose event_type is
     # `retention.run`, and a stream name is derived from the aggregate type

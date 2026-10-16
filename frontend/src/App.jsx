@@ -27,6 +27,7 @@ const Orders = lazy(() => import('@/pages/Orders'));
 const Products = lazy(() => import('@/pages/Products'));
 const AddProduct = lazy(() => import('@/pages/AddProduct'));
 const Inventory = lazy(() => import('@/pages/Inventory'));
+const POS = lazy(() => import('@/pages/POS'));
 const Marketing = lazy(() => import('@/pages/Marketing'));
 const MarketingCampaigns = lazy(() => import('@/pages/marketing/Campaigns'));
 const MarketingAudience = lazy(() => import('@/pages/marketing/Audience'));
@@ -82,6 +83,7 @@ const DashboardRoutes = () => (
         <Route path="/products" element={<Products />} />
         <Route path="/products/new" element={<AddProduct />} />
         <Route path="/inventory" element={<Inventory />} />
+        <Route path="/pos" element={<POS />} />
         <Route path="/marketing" element={<Marketing />}>
           <Route index element={<MarketingCampaigns />} />
           <Route path="audience" element={<MarketingAudience />} />

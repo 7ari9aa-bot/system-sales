@@ -1,29 +1,191 @@
-"""POS routes — thin REST over PosService (§189)."""
+"""POS routes — thin REST over PosService + PosProfileService (§189).
+
+The scan/quote/sell/close surface is the cashier's day: a code resolves to a
+variant, a cart prices, a split tender settles, and the shift closes with a
+per-method reconciliation. The profile routes configure the terminal.
+"""
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
+from app.modules.errors import ValidationError
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
+from app.modules.pos.profiles import PosProfileService
 from app.modules.pos.service import PosService
 
 router = APIRouter(prefix="/pos", tags=["pos"])
 
 PosWriteCtx = Annotated[TenantContext, Depends(require_permission("orders:write"))]
+PosConfigCtx = Annotated[TenantContext, Depends(require_permission("settings:write"))]
+
+_MONEY = r"^\d+(\.\d{1,2})?$"
+
+
+# ------------------------------------------------------------- profiles ----
+
+
+class CreateProfileRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=127)
+    code: str = Field(min_length=1, max_length=31)
+    warehouse_id: UUID
+    default_customer_id: UUID | None = None
+    allowed_payment_methods: list[str] | None = None
+    discount_ceiling_pct: str = Field(default="0", pattern=_MONEY)
+    require_customer: bool = False
+    default_payment_method: str | None = Field(
+        default=None, pattern="^(cash|card|wallet|bank_transfer)$"
+    )
+    returns_allowed_methods: list[str] | None = None
+    item_group_ids: list[str] | None = None
+
+
+class UpdateProfileRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=127)
+    warehouse_id: UUID | None = None
+    default_customer_id: UUID | None = None
+    allowed_payment_methods: list[str] | None = None
+    discount_ceiling_pct: str | None = Field(default=None, pattern=_MONEY)
+    require_customer: bool | None = None
+    is_active: bool | None = None
+    default_payment_method: str | None = Field(
+        default=None, pattern="^(cash|card|wallet|bank_transfer)$"
+    )
+    returns_allowed_methods: list[str] | None = None
+    item_group_ids: list[str] | None = None
+
+
+class GrantUserRequest(BaseModel):
+    user_id: UUID
+
+
+def _profile_out(profile) -> dict:
+    return {
+        "id": str(profile.id),
+        "name": profile.name,
+        "code": profile.code,
+        "warehouse_id": str(profile.warehouse_id),
+        "default_customer_id": (
+            str(profile.default_customer_id) if profile.default_customer_id else None
+        ),
+        "allowed_payment_methods": list(profile.allowed_payment_methods or []),
+        "discount_ceiling_pct": str(profile.discount_ceiling_pct),
+        "require_customer": profile.require_customer,
+        "is_active": profile.is_active,
+        "default_payment_method": profile.default_payment_method,
+        "returns_allowed_methods": list(profile.returns_allowed_methods or []),
+        "item_group_ids": [str(g) for g in (profile.item_group_ids or [])],
+    }
+
+
+@router.post("/profiles", status_code=201)
+async def create_profile(body: CreateProfileRequest, ctx: PosConfigCtx):
+    profile = await PosProfileService.create(
+        ctx.session,
+        ctx.tenant_id,
+        name=body.name,
+        code=body.code,
+        warehouse_id=body.warehouse_id,
+        default_customer_id=body.default_customer_id,
+        allowed_payment_methods=body.allowed_payment_methods,
+        discount_ceiling_pct=body.discount_ceiling_pct,
+        require_customer=body.require_customer,
+        default_payment_method=body.default_payment_method,
+        returns_allowed_methods=body.returns_allowed_methods,
+        item_group_ids=body.item_group_ids,
+    )
+    return _profile_out(profile)
+
+
+@router.get("/profiles")
+async def list_profiles(ctx: TenantCtxDep):
+    return [
+        _profile_out(p) for p in await PosProfileService.list_profiles(ctx.session, ctx.tenant_id)
+    ]
+
+
+@router.get("/profiles/{profile_id}")
+async def get_profile(profile_id: UUID, ctx: TenantCtxDep):
+    return _profile_out(await PosProfileService.get(ctx.session, ctx.tenant_id, profile_id))
+
+
+@router.patch("/profiles/{profile_id}")
+async def update_profile(profile_id: UUID, body: UpdateProfileRequest, ctx: PosConfigCtx):
+    profile = await PosProfileService.update(
+        ctx.session,
+        ctx.tenant_id,
+        profile_id,
+        name=body.name,
+        warehouse_id=body.warehouse_id,
+        default_customer_id=body.default_customer_id,
+        allowed_payment_methods=body.allowed_payment_methods,
+        discount_ceiling_pct=body.discount_ceiling_pct,
+        require_customer=body.require_customer,
+        is_active=body.is_active,
+        default_payment_method=body.default_payment_method,
+        returns_allowed_methods=body.returns_allowed_methods,
+        item_group_ids=body.item_group_ids,
+    )
+    return _profile_out(profile)
+
+
+@router.post("/profiles/{profile_id}/users", status_code=201)
+async def grant_profile_user(profile_id: UUID, body: GrantUserRequest, ctx: PosConfigCtx):
+    row = await PosProfileService.grant_user(
+        ctx.session, ctx.tenant_id, profile_id, body.user_id
+    )
+    return {"profile_id": str(row.profile_id), "user_id": str(row.user_id)}
+
+
+@router.get("/profiles/{profile_id}/users")
+async def list_profile_users(profile_id: UUID, ctx: TenantCtxDep):
+    rows = await PosProfileService.list_users(ctx.session, ctx.tenant_id, profile_id)
+    from app.modules.identity.service import UserService
+
+    out = []
+    for r in rows:
+        full_name = None
+        try:
+            full_name = (await UserService.get(ctx.session, r.user_id)).full_name
+        except Exception:  # noqa: BLE001 — a deleted user must not blank the list
+            full_name = None
+        out.append(
+            {
+                "profile_id": str(r.profile_id),
+                "user_id": str(r.user_id),
+                "full_name": full_name,
+            }
+        )
+    return out
+
+
+@router.delete("/profiles/{profile_id}/users/{user_id}", status_code=204)
+async def revoke_profile_user(profile_id: UUID, user_id: UUID, ctx: PosConfigCtx):
+    await PosProfileService.revoke_user(ctx.session, ctx.tenant_id, profile_id, user_id)
+
+
+# ------------------------------------------------------------ registers ----
 
 
 class CreateRegisterRequest(BaseModel):
     name: str = Field(min_length=1, max_length=127)
     code: str = Field(min_length=1, max_length=31)
     warehouse_id: UUID
+    profile_id: UUID | None = None
 
 
 class OpenSessionRequest(BaseModel):
-    opening_float: str = Field(default="0.00", pattern=r"^\d+(\.\d{1,2})?$")
+    opening_float: str = Field(default="0.00", pattern=_MONEY)
+    profile_id: UUID | None = None
+    cashier_user_id: UUID | None = None
+    # The drawer's float PER METHOD (ERPNext's per-method opening entry);
+    # values are money strings, validated in the service.
+    floats_by_method: dict[str, str] | None = None
 
 
 class CashMovementRequest(BaseModel):
@@ -33,25 +195,91 @@ class CashMovementRequest(BaseModel):
         # cash_sale/cash_refund are the sell flow's rows — the pattern makes
         # that a wire contract, not just a service rule (§189).
     )
-    amount: str = Field(pattern=r"^\d+(\.\d{1,2})?$")
+    amount: str = Field(pattern=_MONEY)
     reference_id: UUID | None = None
 
 
-class SellRequest(BaseModel):
-    customer_id: UUID
+class ScanRequest(BaseModel):
+    identifier_type: str = Field(min_length=1, max_length=31)
+    value: str = Field(min_length=1, max_length=255)
+
+
+class QuoteRequest(BaseModel):
     items: list[dict] = Field(min_length=1)
-    method: str = Field(default="cash", pattern="^(cash|card|wallet|bank_transfer)$")
-    amount: str | None = Field(default=None, pattern=r"^\d+(\.\d{1,2})?$")
+    discount_total: str | None = Field(default=None, pattern=_MONEY)
+    approved: bool = False
+
+
+class TenderLine(BaseModel):
+    method: str = Field(pattern="^(cash|card|wallet|bank_transfer)$")
+    amount: str = Field(pattern=_MONEY)
+
+
+class SellRequest(BaseModel):
+    # Optional ONLY when held_cart_id names the cart whose lines are the sale.
+    items: list[dict] | None = None
+    customer_id: UUID | None = None
+    # Legacy single-tender shape; or pass `tenders` for a split payment.
+    method: str | None = Field(default=None, pattern="^(cash|card|wallet|bank_transfer)$")
+    amount: str | None = Field(default=None, pattern=_MONEY)
+    tenders: list[TenderLine] | None = None
+    discount_total: str | None = Field(default=None, pattern=_MONEY)
+    discount_approved: bool = False
+    tendered_cash: str | None = Field(default=None, pattern=_MONEY)
+    # Atomic resume: the cart's lines become this sale inside one transaction.
+    held_cart_id: UUID | None = None
 
 
 class CloseSessionRequest(BaseModel):
-    counted_cash: str = Field(pattern=r"^\d+(\.\d{1,2})?$")
+    counted_cash: str = Field(pattern=_MONEY)
+    # Optional per-method counts; keys are payment methods, values are counts.
+    counted_by_method: dict[str, str] | None = None
+
+
+class HoldCartRequest(BaseModel):
+    items: list[dict] = Field(min_length=1)
+    customer_id: UUID | None = None
+    discount_total: str | None = Field(default=None, pattern=_MONEY)
+    label: str | None = Field(default=None, max_length=127)
+
+
+class RefundRequest(BaseModel):
+    order_id: UUID
+    amount: str = Field(pattern=_MONEY)
+    method: str = Field(default="cash", pattern="^(cash|card|wallet|bank_transfer)$")
+    reason: str = Field(default="customer_return", max_length=31)
+    # Put the goods back on the shelf (a counter return). Off by default: a
+    # refund can be money-only (goodwill) with the customer keeping the goods.
+    restock: bool = False
+
+
+class ReturnLine(BaseModel):
+    variant_id: UUID
+    quantity: int = Field(ge=1)
+
+
+class ReturnRequest(BaseModel):
+    """A line-level return of a POS sale (ERPNext's POS return document)."""
+
+    order_id: UUID
+    lines: list[ReturnLine] = Field(min_length=1)
+    restock: bool = False
+
+
+class HandoverRequest(BaseModel):
+    to_user_id: UUID
+    counted_cash: str = Field(pattern=_MONEY)
+    note: str | None = Field(default=None, max_length=255)
 
 
 def _session_out(pos_session, inflow=None, outflow=None, expected_now=None) -> dict:
     out = {
         "id": str(pos_session.id),
         "register_id": str(pos_session.register_id),
+        "profile_id": str(pos_session.profile_id) if pos_session.profile_id else None,
+        "cashier_user_id": (
+            str(pos_session.cashier_user_id) if pos_session.cashier_user_id else None
+        ),
         "status": pos_session.status,
         "opening_float": str(pos_session.opening_float),
         "opened_at": pos_session.opened_at.isoformat(),
@@ -82,6 +310,7 @@ def _register_out(register) -> dict:
         "name": register.name,
         "code": register.code,
         "warehouse_id": str(register.warehouse_id),
+        "profile_id": str(register.profile_id) if register.profile_id else None,
         "is_active": register.is_active,
     }
 
@@ -94,6 +323,7 @@ async def create_register(body: CreateRegisterRequest, ctx: PosWriteCtx):
         name=body.name,
         code=body.code,
         warehouse_id=body.warehouse_id,
+        profile_id=body.profile_id,
     )
     return _register_out(register)
 
@@ -111,8 +341,24 @@ async def open_session(register_id: UUID, body: OpenSessionRequest, ctx: PosWrit
         register_id,
         opening_float=body.opening_float,
         opened_by=ctx.user.id,
+        profile_id=body.profile_id,
+        cashier_user_id=body.cashier_user_id,
+        floats_by_method=body.floats_by_method,
     )
     return _session_out(pos_session)
+
+
+@router.get("/sessions")
+async def list_sessions(
+    ctx: TenantCtxDep,
+    status: str | None = None,
+    register_id: UUID | None = None,
+):
+    """Resume the till: sessions behind this drawer, newest first."""
+    rows = await PosService.list_sessions(
+        ctx.session, ctx.tenant_id, status=status, register_id=register_id
+    )
+    return [_session_out(s) for s in rows]
 
 
 @router.get("/sessions/{session_id}")
@@ -123,6 +369,32 @@ async def get_session(session_id: UUID, ctx: TenantCtxDep):
         inflow=detail["inflow"],
         outflow=detail["outflow"],
         expected_now=detail["expected_now"],
+    )
+
+
+@router.post("/sessions/{session_id}/scan")
+async def scan(session_id: UUID, body: ScanRequest, ctx: PosWriteCtx):
+    """§179: a code resolves to one variant, priced — the till's entry point."""
+    result = await PosService.scan(
+        ctx.session,
+        ctx.tenant_id,
+        session_id,
+        identifier_type=body.identifier_type,
+        value=body.value,
+    )
+    return {k: (str(v) if isinstance(v, UUID) else v) for k, v in result.items()}
+
+
+@router.post("/sessions/{session_id}/quote")
+async def quote(session_id: UUID, body: QuoteRequest, ctx: PosWriteCtx):
+    """Price a cart without writing anything — what the customer sees."""
+    return await PosService.quote(
+        ctx.session,
+        ctx.tenant_id,
+        session_id,
+        items=body.items,
+        discount_total=body.discount_total,
+        approved=body.approved,
     )
 
 
@@ -146,17 +418,34 @@ async def record_cash_movement(session_id: UUID, body: CashMovementRequest, ctx:
     }
 
 
+@router.get("/sessions/{session_id}/close-preview")
+async def get_close_preview(session_id: UUID, ctx: TenantCtxDep):
+    """The close screen's target: per-method expected + sales summary."""
+    preview = await PosService.close_preview(ctx.session, ctx.tenant_id, session_id)
+    return {k: (str(v) if isinstance(v, UUID) else v) for k, v in preview.items()}
+
+
 @router.post("/sessions/{session_id}/sell")
 async def sell(session_id: UUID, body: SellRequest, ctx: PosWriteCtx):
     """§189: the whole sell is one command chain in one transaction."""
+    tenders = (
+        [{"method": t.method, "amount": t.amount} for t in body.tenders]
+        if body.tenders
+        else None
+    )
     result = await PosService.sell(
         ctx.session,
         ctx.tenant_id,
         session_id,
         customer_id=body.customer_id,
         items=body.items,
+        tenders=tenders,
         method=body.method,
         amount=body.amount,
+        discount_total=body.discount_total,
+        discount_approved=body.discount_approved,
+        tendered_cash=body.tendered_cash,
+        held_cart_id=body.held_cart_id,
         actor_user_id=ctx.user.id,
     )
     return {k: str(v) for k, v in result.items()}
@@ -169,6 +458,260 @@ async def close_session(session_id: UUID, body: CloseSessionRequest, ctx: PosWri
         ctx.tenant_id,
         session_id,
         counted_cash=body.counted_cash,
+        counted_by_method=body.counted_by_method,
         closed_by=ctx.user.id,
     )
     return _session_out(pos_session)
+
+
+@router.get("/sessions/{session_id}/reconciliation")
+async def get_reconciliation(session_id: UUID, ctx: TenantCtxDep):
+    rows = await PosService.list_reconciliation(ctx.session, ctx.tenant_id, session_id)
+    return [
+        {
+            "method": r.method,
+            "expected_amount": str(r.expected_amount),
+            "counted_amount": str(r.counted_amount),
+            "variance": str(r.variance),
+        }
+        for r in rows
+    ]
+
+
+# ------------------------------------------------------------- receipts ----
+
+
+@router.get("/sessions/{session_id}/receipts")
+async def list_receipts(session_id: UUID, ctx: TenantCtxDep):
+    """The shift's receipts with their return state — the refund picker."""
+    rows = await PosService.list_receipts(ctx.session, ctx.tenant_id, session_id)
+    return [
+        {
+            **row,
+            "id": str(row["id"]),
+            "order_id": str(row["order_id"]),
+            "session_id": str(row["session_id"]),
+        }
+        for row in rows
+    ]
+
+
+@router.get("/reports/daily")
+async def daily_report(
+    ctx: TenantCtxDep,
+    business_date: str,
+    register_id: UUID | None = None,
+):
+    """The event-fed daily projection: one row per register for the date."""
+    try:
+        day = date.fromisoformat(business_date)
+    except ValueError:
+        raise ValidationError("business_date must be YYYY-MM-DD") from None
+    rows = await PosService.daily_report(
+        ctx.session, ctx.tenant_id, business_date=day, register_id=register_id
+    )
+    return [
+        {
+            "business_date": str(r.business_date),
+            "register_id": str(r.register_id),
+            "session_count": r.session_count,
+            "invoice_count": r.invoice_count,
+            "returns_count": r.returns_count,
+            "sales_total": str(r.sales_total),
+            "returns_total": str(r.returns_total),
+            "taxes_total": str(r.taxes_total),
+            "variance_total": str(r.variance_total),
+            "by_method": list(r.by_method or []),
+        }
+        for r in rows
+    ]
+
+
+@router.get("/sessions/{session_id}/items")
+async def browse_items(
+    session_id: UUID,
+    ctx: TenantCtxDep,
+    q: str | None = None,
+    limit: int = 20,
+    offset: int = 0,
+):
+    """The till's catalog grid: active variants, ladder price, bin stock."""
+    return await PosService.browse(
+        ctx.session, ctx.tenant_id, session_id, q=q, limit=limit, offset=offset
+    )
+
+
+@router.get("/sessions/{session_id}/report")
+async def get_session_report(session_id: UUID, ctx: TenantCtxDep):
+    """The shift's report — per method, cash trail, sales, returns, handovers."""
+    return await PosService.session_report(ctx.session, ctx.tenant_id, session_id)
+
+
+@router.get("/receipts/{receipt_id}")
+async def get_receipt(receipt_id: UUID, ctx: TenantCtxDep):
+    """The printed artifact: receipt header + order lines + tenders."""
+    payload = await PosService.get_receipt(ctx.session, ctx.tenant_id, receipt_id)
+    return {
+        "receipt": {
+            **payload["receipt"],
+            "id": str(payload["receipt"]["id"]),
+        },
+        "order": {
+            **payload["order"],
+            "id": str(payload["order"]["id"]),
+        },
+        "lines": [
+            {**line, "variant_id": str(line["variant_id"])} for line in payload["lines"]
+        ],
+        "tenders": payload["tenders"],
+    }
+
+
+class ReceiptEmailRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+
+
+@router.post("/receipts/{receipt_id}/email", status_code=202)
+async def email_receipt(receipt_id: UUID, body: ReceiptEmailRequest, ctx: PosWriteCtx):
+    """Queue "email me this receipt" — sent by the pos worker pool, never
+    inline. Refused up front when the deployment has no email delivery."""
+    result = await PosService.request_receipt_email(
+        ctx.session,
+        ctx.tenant_id,
+        receipt_id,
+        email=body.email,
+        requested_by=ctx.user.id,
+    )
+    return {**result, "receipt_id": str(result["receipt_id"])}
+
+
+# ---------------------------------------------------------- held carts ----
+
+
+def _held_cart_out(held) -> dict:
+    return {
+        "id": str(held.id),
+        "session_id": str(held.session_id),
+        "items": list(held.items or []),
+        "customer_id": str(held.customer_id) if held.customer_id else None,
+        "discount_total": str(held.discount_total) if held.discount_total is not None else None,
+        "label": held.label,
+        "held_by_user_id": str(held.held_by_user_id) if held.held_by_user_id else None,
+        "created_at": held.created_at.isoformat(),
+    }
+
+
+@router.post("/sessions/{session_id}/held-carts", status_code=201)
+async def hold_cart(session_id: UUID, body: HoldCartRequest, ctx: PosWriteCtx):
+    """Park a basket on the open session; reserve nothing, book nothing."""
+    held = await PosService.hold_cart(
+        ctx.session,
+        ctx.tenant_id,
+        session_id,
+        items=body.items,
+        customer_id=body.customer_id,
+        discount_total=body.discount_total,
+        label=body.label,
+        held_by=ctx.user.id,
+    )
+    return _held_cart_out(held)
+
+
+@router.get("/sessions/{session_id}/held-carts")
+async def list_held_carts(session_id: UUID, ctx: TenantCtxDep):
+    rows = await PosService.list_held_carts(ctx.session, ctx.tenant_id, session_id)
+    return [_held_cart_out(h) for h in rows]
+
+
+@router.get("/held-carts/{held_cart_id}")
+async def get_held_cart(held_cart_id: UUID, ctx: TenantCtxDep):
+    return _held_cart_out(await PosService.get_held_cart(ctx.session, ctx.tenant_id, held_cart_id))
+
+
+@router.delete("/held-carts/{held_cart_id}", status_code=204)
+async def release_held_cart(held_cart_id: UUID, ctx: PosWriteCtx):
+    await PosService.release_held_cart(ctx.session, ctx.tenant_id, held_cart_id)
+
+
+# ------------------------------------------------------------- refunds ----
+
+
+@router.post("/sessions/{session_id}/refunds", status_code=201)
+async def refund(session_id: UUID, body: RefundRequest, ctx: PosWriteCtx):
+    """Refund a POS sale by AMOUNT — the money-only path (goodwill, adjust).
+
+    For returning goods, use ``/returns``: it is line-aware, priced at the
+    original sale, and allocates the money across the original tenders.
+    """
+    return await PosService.refund(
+        ctx.session,
+        ctx.tenant_id,
+        session_id,
+        order_id=body.order_id,
+        amount=body.amount,
+        method=body.method,
+        reason=body.reason,
+        restock=body.restock,
+        actor_user_id=ctx.user.id,
+    )
+
+
+@router.post("/sessions/{session_id}/returns", status_code=201)
+async def return_sale(session_id: UUID, body: ReturnRequest, ctx: PosWriteCtx):
+    """Line-level return of a POS sale, with its own POS-RET receipt."""
+    result = await PosService.return_sale(
+        ctx.session,
+        ctx.tenant_id,
+        session_id,
+        order_id=body.order_id,
+        lines=[
+            {"variant_id": str(line.variant_id), "quantity": line.quantity}
+            for line in body.lines
+        ],
+        restock=body.restock,
+        actor_user_id=ctx.user.id,
+    )
+    return {
+        **result,
+        "receipt_id": str(result["receipt_id"]),
+    }
+
+
+# ----------------------------------------------------------- handovers ----
+
+
+def _handover_out(row) -> dict:
+    return {
+        "id": str(row.id),
+        "session_id": str(row.session_id),
+        "from_user_id": str(row.from_user_id) if row.from_user_id else None,
+        "to_user_id": str(row.to_user_id),
+        "expected_cash": str(row.expected_cash),
+        "counted_cash": str(row.counted_cash),
+        "variance": str(row.variance),
+        "note": row.note,
+        "created_at": row.created_at.isoformat(),
+    }
+
+
+@router.post("/sessions/{session_id}/handover", status_code=201)
+async def handover_session(session_id: UUID, body: HandoverRequest, ctx: PosWriteCtx):
+    """Hand the open drawer to another cashier; the same session keeps running."""
+    row = await PosService.handover_session(
+        ctx.session,
+        ctx.tenant_id,
+        session_id,
+        to_user_id=body.to_user_id,
+        counted_cash=body.counted_cash,
+        by_user_id=ctx.user.id,
+        note=body.note,
+    )
+    return _handover_out(row)
+
+
+@router.get("/sessions/{session_id}/handovers")
+async def list_handovers(session_id: UUID, ctx: TenantCtxDep):
+    rows = await PosService.list_handovers(ctx.session, ctx.tenant_id, session_id)
+    return [_handover_out(r) for r in rows]
+
+

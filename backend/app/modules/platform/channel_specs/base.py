@@ -124,11 +124,14 @@ async def graph_get(
     try:
         payload = response.json()
     except ValueError:
-        raise ValidationError(
+        # A malformed body (HTML error page, empty 302, CDN garbage) is a
+        # PROVIDER failure, not a credential refusal — the original contract,
+        # pinned by test_integration_verifier.py.
+        raise ExternalProviderError(
             f"{provider_label} returned an invalid verification response."
         ) from None
     if not isinstance(payload, dict):
-        raise ValidationError(
+        raise ExternalProviderError(
             f"{provider_label} returned an invalid verification response."
         )
     if payload.get("error"):
