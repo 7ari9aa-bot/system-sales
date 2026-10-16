@@ -14,6 +14,10 @@ export default defineConfig({
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
+  // The deep crawl registers a real tenant through the UI — it needs the
+  // live API (the backend job sets E2E_LIVE_API=1); without a backend the
+  // vite proxy errors would fail the whole suite.
+  testIgnore: process.env.E2E_LIVE_API ? [] : ["**/deep-crawl.spec.js"],
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: runAgainstLocalBuild
     ? {

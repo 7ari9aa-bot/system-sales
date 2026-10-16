@@ -20,19 +20,87 @@ import asyncio
 import logging
 import re
 import time
-from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 from urllib.parse import urlsplit
 from uuid import UUID
 
-from sqlalchemy import func, select, text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.circuit_breaker import PROVIDER_AI, get_breaker
 from app.core.config import get_settings
-from app.core.errors import RateLimitExceededError, ValidationError
-from app.modules.ai.models import AIUsage, ModelCall, ModelConfig
+from app.core.errors import ValidationError
+from app.modules.ai.budget import (
+    _COST_PER_INPUT_TOKEN as _COST_PER_INPUT_TOKEN,
+)
+from app.modules.ai.budget import (
+    _COST_PER_OUTPUT_TOKEN as _COST_PER_OUTPUT_TOKEN,
+)
+from app.modules.ai.budget import (
+    _IMAGE_TOKEN_FLOOR as _IMAGE_TOKEN_FLOOR,
+)
+from app.modules.ai.budget import (
+    BUDGET_ALERT_THRESHOLDS as BUDGET_ALERT_THRESHOLDS,
+)
+from app.modules.ai.budget import (
+    BUDGET_LOCK_WAIT_SECONDS as BUDGET_LOCK_WAIT_SECONDS,
+)
+from app.modules.ai.budget import (
+    MONTHLY_BUDGET_CAP as MONTHLY_BUDGET_CAP,
+)
+from app.modules.ai.budget import (
+    RESERVATION_TTL_MINUTES as RESERVATION_TTL_MINUTES,
+)
+from app.modules.ai.budget import (
+    AIBudgetExhaustedError as AIBudgetExhaustedError,
+)
+from app.modules.ai.budget import (
+    AIBudgetFallbackRequested as AIBudgetFallbackRequested,
+)
+from app.modules.ai.budget import (
+    _daily_cap as _daily_cap,
+)
+from app.modules.ai.budget import (
+    _day_spend as _day_spend,
+)
+from app.modules.ai.budget import (
+    _default_cap as _default_cap,
+)
+from app.modules.ai.budget import (
+    _month_spend as _month_spend,
+)
+from app.modules.ai.budget import (
+    _on_budget_exceeded as _on_budget_exceeded,
+)
+from app.modules.ai.budget import (
+    _raise_budget_alerts as _raise_budget_alerts,
+)
+from app.modules.ai.budget import (
+    _reserved_spend as _reserved_spend,
+)
+from app.modules.ai.budget import (
+    _resolve_cap as _resolve_cap,
+)
+from app.modules.ai.budget import (
+    _tenant_budget_lock_id as _tenant_budget_lock_id,
+)
+from app.modules.ai.budget import (
+    enforce_budget as enforce_budget,
+)
+from app.modules.ai.budget import (
+    estimate_cost as estimate_cost,
+)
+from app.modules.ai.budget import (
+    expire_stale_reservations as expire_stale_reservations,
+)
+from app.modules.ai.budget import (
+    reserve_budget as reserve_budget,
+)
+from app.modules.ai.budget import (
+    settle_reservation as settle_reservation,
+)
+from app.modules.ai.models import ModelCall, ModelConfig
 from app.modules.ai.providers import (
     AIProvider,
     ChatCompletionResult,
@@ -43,33 +111,6 @@ from app.modules.ai.providers import (
 )
 
 logger = logging.getLogger(__name__)
-
-# Budget management & financial guardrails (§42) — re-exported from budget.py
-from app.modules.ai.budget import (
-    BUDGET_ALERT_THRESHOLDS,
-    BUDGET_LOCK_WAIT_SECONDS,
-    MONTHLY_BUDGET_CAP,
-    RESERVATION_TTL_MINUTES,
-    AIBudgetExhaustedError,
-    AIBudgetFallbackRequested,
-    _COST_PER_INPUT_TOKEN,
-    _COST_PER_OUTPUT_TOKEN,
-    _IMAGE_TOKEN_FLOOR,
-    _daily_cap,
-    _day_spend,
-    _default_cap,
-    _month_spend,
-    _on_budget_exceeded,
-    _raise_budget_alerts,
-    _reserved_spend,
-    _resolve_cap,
-    _tenant_budget_lock_id,
-    enforce_budget,
-    estimate_cost,
-    expire_stale_reservations,
-    reserve_budget,
-    settle_reservation,
-)
 
 ALIASES = frozenset({"fast", "strong", "cheap", "embedding", "fallback", "omni"})
 
