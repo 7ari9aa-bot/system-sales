@@ -59,11 +59,14 @@ async def test_disabled_feature_answers_404_without_probing_the_secret():
     get_settings.cache_clear()
     app = create_app()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        res = await client.post(
+        mint = await client.post(
             "/api/v1/platform/impersonation/tickets",
             json={"tenant_id": str(TENANT), "user_id": str(USER), "reason": "probe"},
         )
-    assert res.status_code == 404
+        # the GET handoff cannot even leak the page when disabled
+        page = await client.get("/api/v1/platform/impersonation/redeem", params={"ticket": "x"})
+    assert mint.status_code == 404
+    assert page.status_code == 404
 
 
 async def test_wrong_token_is_403_not_404(monkeypatch):

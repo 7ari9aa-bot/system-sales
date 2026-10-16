@@ -23,6 +23,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import UTC, datetime
+from typing import Literal
 
 import httpx
 from fastapi import APIRouter, Depends
@@ -49,6 +50,18 @@ class WhatsAppSignupStartOut(BaseModel):
     app_id: str
     config_id: str
     graph_version: str
+
+
+class WhatsAppSignupCompleteOut(BaseModel):
+    """The connected channel, typed — the AI surface refuses free-form bodies
+    (the open-body schema is the permission to drop any field)."""
+
+    id: str
+    provider: Literal["whatsapp"]
+    status: str
+    display_name: str | None = None
+    phone_number_id: str
+    waba_id: str
 
 
 class WhatsAppSignupCompleteBody(BaseModel):
@@ -180,7 +193,7 @@ async def _subscribe_app_to_waba(http: httpx.AsyncClient, *, waba_id: str, token
 
 @whatsapp_signup_router.post(
     "/integrations/whatsapp/embedded-signup/complete",
-    response_model=dict,
+    response_model=WhatsAppSignupCompleteOut,
     status_code=201,
 )
 async def whatsapp_signup_complete(
