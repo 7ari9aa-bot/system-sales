@@ -33,7 +33,14 @@ _ORDINALS: dict[str, int] = {
 }
 
 #: markers that mean "the last one shown" (the current topic of the chat).
-_LAST_MARKERS = ("الاخير", "اللي فات", "الفات", "ده", "دي", "دا")
+_LAST_MARKERS = ("الاخير", "اللي فات", "الفات")
+
+#: Bare "this one" in Egyptian Arabic. Matched at word boundaries, because a
+#: substring match made "بعده", "كده" and "مواعده" all resolve to the last
+#: shown product and inject a wrong "the customer means item N" into the
+#: context. A false negative (an unusual fused form that stops matching) costs
+#: one clarifying question; a false positive costs a wrong factual claim.
+_DEICTIC_RE = re.compile(r"(?<![a-zا-ي])(?:ده|دي|دا)(?![a-zا-ي])")
 
 
 def normalize_arabic(text: str) -> str:
@@ -79,6 +86,8 @@ def resolve_referent(utterance: str, shown_items: list[str]) -> Referent | None:
     for marker in _LAST_MARKERS:
         if marker in text:
             return _at(shown_items, len(shown_items), marker)
+    if _DEICTIC_RE.search(text):
+        return _at(shown_items, len(shown_items), "ده")
     return None
 
 

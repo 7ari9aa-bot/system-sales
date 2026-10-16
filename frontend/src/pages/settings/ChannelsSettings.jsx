@@ -1,5 +1,5 @@
 import React from "react";
-import { Copy, Facebook, Loader2, PlugZap, ShieldCheck, Unplug } from "lucide-react";
+import { Copy, Loader2, LinkIcon, ShieldCheck, Unplug } from "lucide-react";
 import { useI18n, useT } from "@/lib/i18n";
 import { api } from "@/lib/api";
 import { useRealChannels } from "@/hooks/useRealData";
@@ -31,22 +31,14 @@ const CONNECTION_FIELDS = {
 
 const ATTENTION_STATES = new Set(["reauth_required", "restricted", "disconnected", "degraded", "error"]);
 
-/** Facebook Login for Business: the connect button navigates straight to
- *  Meta's own login dialog (manual redirect flow — the dialog page belongs
- *  to Meta and the operator consents with their Meta account; the dialog
- *  never asks for app ids or tokens). The backend mints the signed state
- *  and hands back the authorize URL; Meta's callback returns here with the
- *  outcome. docs/META_SETUP.md holds the console-side setup. */
+/** Channels that use Meta OAuth popup flow (Instagram, Messenger, Facebook). */
 const META_OAUTH_CHANNELS = new Set(["messenger", "instagram", "facebook"]);
 
-/** WhatsApp Embedded Signup: a JS-SDK POPUP (not a redirect). Meta's own
- *  window runs the whole signup — the store owner logs in with THEIR Meta
- *  account, creates/selects the WhatsApp Business account and number — and
- *  Meta posts the session back to this page with { waba_id, phone_number_id }.
- *  We then send the one-time code plus those ids to the server, which
- *  exchanges it, subscribes the WABA and stores the channel.
- *  docs/META_SETUP.md §WhatsApp holds the console-side setup. */
+/** WhatsApp Embedded Signup event type from Meta's JS SDK. */
 const WA_SIGNUP_EVENT = "WA_EMBEDDED_SIGNUP";
+
+/** Meta OAuth popup result event type (sent by our callback page). */
+const META_OAUTH_RESULT = "META_OAUTH_RESULT";
 
 function loadFacebookSdk(appId, version) {
   if (window.FB) return Promise.resolve(window.FB);
@@ -98,6 +90,17 @@ function friendlyMetaError(raw, isAr) {
   return detail;
 }
 
+/** Open a centered popup window. */
+function openCenteredPopup(url, name, w = 600, h = 700) {
+  const left = window.screenX + (window.outerWidth - w) / 2;
+  const top = window.screenY + (window.outerHeight - h) / 2;
+  return window.open(
+    url,
+    name,
+    `width=${w},height=${h},left=${Math.max(0, left)},top=${Math.max(0, top)},scrollbars=yes,resizable=yes`
+  );
+}
+
 export default function ChannelsSettings() {
   const t = useT();
   const { lang } = useI18n();
@@ -114,9 +117,33 @@ export default function ChannelsSettings() {
 
   const editing = channels.find((channel) => channel.id === editingId) || null;
 
-  // The OAuth callback lands back here with meta_connected / meta_error.
-  // Read once, surface the outcome, and strip the params so a refresh
-  // never replays a stale result.
+  // Listen for Meta OAuth popup results (postMessage from the callback page).
+  React.useEffect(() => {
+    function onMessage(event) {
+      // Only accept messages from our own origin (the callback page is
+      // served from the API domain but posts to the frontend origin).
+      if (!event.data || event.data.type !== META_OAUTH_RESULT) return;
+      const { connected, error: oauthError } = event.data;
+      if (connected) {
+        const sep = connected.indexOf(":");
+        const pageName = sep === -1 ? connected : connected.slice(sep + 1);
+        setNotice(isAr
+          ? `تم ربط صفحة ${pageName || "فيسبوك"} بنجاح.`
+          : `Connected the page ${pageName || "Facebook"} successfully.`);
+      } else if (oauthError) {
+        setFormError(isAr
+          ? `تعذر إكمال الربط: ${friendlyMetaError(oauthError, isAr)}`
+          : `Could not complete the connect: ${friendlyMetaError(oauthError, isAr)}`);
+      }
+      setMetaConnecting("");
+      void reload().catch(() => {});
+    }
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [reload, isAr]);
+
+  // Also handle legacy URL params (in case the popup was blocked and the
+  // callback redirected instead).
   const oauthHandled = React.useRef(false);
   React.useEffect(() => {
     if (oauthHandled.current) return;
@@ -133,16 +160,17 @@ export default function ChannelsSettings() {
       const sep = connected.indexOf(":");
       const pageName = sep === -1 ? connected : connected.slice(sep + 1);
       setNotice(isAr
-        ? `تم ربط صفحة ${pageName || "فيسبوك"} عبر فيسبوك بنجاح.`
-        : `Connected the page ${pageName || "Facebook"} via Facebook Login.`);
+        ? `تم ربط صفحة ${pageName || "فيسبوك"} بنجاح.`
+        : `Connected the page ${pageName || "Facebook"} successfully.`);
     } else {
       setFormError(isAr
-        ? `تعذر إكمال ربط فيسبوك: ${friendlyMetaError(oauthError, isAr)}`
-        : `Could not complete the Facebook connect: ${friendlyMetaError(oauthError, isAr)}`);
+        ? `تعذر إكمال الربط: ${friendlyMetaError(oauthError, isAr)}`
+        : `Could not complete the connect: ${friendlyMetaError(oauthError, isAr)}`);
     }
     void reload().catch(() => {});
   }, [reload, isAr]);
 
+  /** Connect WhatsApp via Embedded Signup (JS SDK popup). */
   async function connectWhatsApp(channel) {
     if (metaConnecting) return;
     setMetaConnecting(channel.id);
@@ -161,11 +189,6 @@ export default function ChannelsSettings() {
       }
       const fb = await loadFacebookSdk(appId, version || "v26.0");
 
-      // TWO things arrive asynchronously and BOTH are required:
-      //   * the login callback carries the one-time authorization code;
-      //   * Meta posts the session (waba_id + phone_number_id) to this window.
-      // The listener is registered BEFORE the popup opens — a listener added
-      // afterwards misses a FINISH that lands while the popup is closing.
       let resolveCode;
       let rejectCode;
       const codePromise = new Promise((resolve, reject) => {
@@ -241,6 +264,7 @@ export default function ChannelsSettings() {
     }
   }
 
+  /** Connect a Meta channel (Instagram/Messenger/Facebook) via popup OAuth. */
   async function connectViaMeta(channel) {
     if (metaConnecting) return;
     setMetaConnecting(channel.id);
@@ -253,10 +277,27 @@ export default function ChannelsSettings() {
       if (!authorizeUrl) {
         throw new Error(isAr ? "لم يصل رابط التفويض من الخادم." : "The server returned no authorize URL.");
       }
-      // Top-level navigation to Meta's dialog — the user consents there with
-      // their Meta account (no app id or token is pasted anywhere), and the
-      // callback returns to this exact page with the outcome.
-      window.location.assign(authorizeUrl);
+      // Open the Meta OAuth dialog in a centered popup — the callback page
+      // will post the result back via window.postMessage and close itself.
+      const popup = openCenteredPopup(authorizeUrl, "meta_oauth_popup");
+      if (!popup || popup.closed) {
+        throw new Error(
+          isAr
+            ? "تعذر فتح نافذة الربط — تأكد من السماح بالنوافذ المنبثقة لهذا الموقع."
+            : "Could not open the connect window — make sure popups are allowed for this site."
+        );
+      }
+      // Poll to detect if user closed the popup without completing.
+      const pollTimer = window.setInterval(() => {
+        if (popup.closed) {
+          window.clearInterval(pollTimer);
+          // If metaConnecting is still set, user closed without completing
+          setMetaConnecting((prev) => {
+            if (prev === channel.id) return "";
+            return prev;
+          });
+        }
+      }, 1000);
     } catch (connectError) {
       const raw = connectError?.message || "";
       setFormError(
@@ -264,9 +305,21 @@ export default function ChannelsSettings() {
           ? (isAr
             ? `ربط فيسبوك غير مُعد على الخادم: ${raw}`
             : `Facebook connect is not configured on the server: ${raw}`)
-          : (raw || (isAr ? "تعذر بدء ربط فيسبوك." : "Could not start the Facebook connect."))
+          : (raw || (isAr ? "تعذر بدء الربط." : "Could not start the connect."))
       );
       setMetaConnecting("");
+    }
+  }
+
+  /** Unified connect handler — routes to the right flow per channel type. */
+  function handleConnect(channel) {
+    if (channel.id === "whatsapp") {
+      connectWhatsApp(channel);
+    } else if (META_OAUTH_CHANNELS.has(channel.id)) {
+      connectViaMeta(channel);
+    } else {
+      // Manual credential entry (Telegram, Webchat)
+      openConnection(channel);
     }
   }
 
@@ -417,6 +470,16 @@ export default function ChannelsSettings() {
     return statuses[channel.webhookStatus] || "";
   }
 
+  /** Whether the channel needs a manual credential form (Telegram, Webchat manual entry). */
+  function needsManualForm(channel) {
+    return channel.id === "telegram" || channel.id === "webchat";
+  }
+
+  /** Whether the channel can be connected via a single-click flow (Meta popup or WA SDK). */
+  function hasOneClickConnect(channel) {
+    return channel.id === "whatsapp" || META_OAUTH_CHANNELS.has(channel.id);
+  }
+
   return (
     <SettingsShell title={t("channels.title")} subtitle={t("channels.subtitle")}>
       <SettingCard>
@@ -432,13 +495,15 @@ export default function ChannelsSettings() {
               const status = statusFor(channel);
               const needsAttention = ATTENTION_STATES.has(channel.status);
               const needsVerification = channel.integrationId && ["active", "connected"].includes(channel.status) && !channel.credentialsVerified;
-              const unsupported = false;
               const terminal = channel.status === "disabled";
               const fields = CONNECTION_FIELDS[channel.id];
+              const isConnected = channel.connected || channel.webhookStatus === "receiving";
+              const isConnecting = metaConnecting === channel.id;
 
               return (
                 <div key={channel.id} className="py-3.5 first:pt-1 last:pb-1">
-                  <div className="flex flex-wrap items-center gap-3">
+                  {/* Main channel row — RTL aligned */}
+                  <div className="flex flex-wrap items-center gap-3" style={{ direction: isAr ? "rtl" : "ltr" }}>
                     <ChannelIcon channel={channel.id} />
                     <div className="min-w-0 flex-1">
                       <div className="text-[13.5px] font-medium">{t(`channel.${channel.id}`)}</div>
@@ -451,17 +516,17 @@ export default function ChannelsSettings() {
                         </div>
                       )}
                     </div>
-                    <Badge tone={channel.connected || channel.webhookStatus === "receiving" ? "success" : needsAttention || needsVerification ? "warning" : "muted"}>{status}</Badge>
-                    {unsupported ? (
-                      <span className="text-[11px] text-muted-foreground">
-                        {isAr ? "رسائل صفحات فيسبوك تمر عبر تكامل Messenger؛ لا يوجد موصل Facebook منفصل بعد." : "Facebook Page messages use the Messenger integration; a separate Facebook connector is not available yet."}
-                      </span>
-                    ) : terminal ? (
+
+                    <Badge tone={isConnected ? "success" : needsAttention || needsVerification ? "warning" : "muted"}>{status}</Badge>
+
+                    {/* Action buttons */}
+                    {terminal ? (
                       <span className="text-[11px] text-muted-foreground">
                         {isAr ? "لا يتيح الـAPI الحالي إعادة تفعيل اتصال معطّل نهائيًا." : "The current API cannot reactivate a permanently disabled connection."}
                       </span>
                     ) : (
                       <div className="flex flex-wrap items-center gap-2">
+                        {/* Verify button — only when connected */}
                         {channel.integrationId && (
                           <button
                             type="button"
@@ -470,31 +535,11 @@ export default function ChannelsSettings() {
                             className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[12px] font-medium text-foreground hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             {verifyingId === channel.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
-                            {isAr ? "اختبار الاتصال" : "Verify"}
+                            {isAr ? "اختبار" : "Verify"}
                           </button>
                         )}
-                        {channel.id === "whatsapp" && (
-                          <button
-                            type="button"
-                            onClick={() => connectWhatsApp(channel)}
-                            disabled={saving || Boolean(metaConnecting)}
-                            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[12px] font-medium text-foreground hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            {metaConnecting === channel.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Facebook className="h-3.5 w-3.5" />}
-                            {isAr ? "ربط عبر فيسبوك" : "Connect via Facebook"}
-                          </button>
-                        )}
-                        {META_OAUTH_CHANNELS.has(channel.id) && (
-                          <button
-                            type="button"
-                            onClick={() => connectViaMeta(channel)}
-                            disabled={saving || Boolean(metaConnecting)}
-                            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[12px] font-medium text-foreground hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            {metaConnecting === channel.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Facebook className="h-3.5 w-3.5" />}
-                            {isAr ? "ربط عبر فيسبوك" : "Connect via Facebook"}
-                          </button>
-                        )}
+
+                        {/* Copy webhook/widget key */}
                         {(channel.publicKey || channel.webhookUrl) && (
                           <button
                             type="button"
@@ -509,6 +554,8 @@ export default function ChannelsSettings() {
                                 : (isAr ? "نسخ مفتاح الودجت" : "Copy widget key")}
                           </button>
                         )}
+
+                        {/* Disconnect button */}
                         {channel.integrationId && channel.status !== "disconnected" && (
                           <button
                             type="button"
@@ -521,25 +568,44 @@ export default function ChannelsSettings() {
                             {isAr ? "فك الارتباط" : "Disconnect"}
                           </button>
                         )}
-                        <button
-                          type="button"
-                          onClick={() => editingId === channel.id ? closeConnection() : openConnection(channel)}
-                          disabled={saving || !fields}
-                          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[12px] font-medium text-foreground hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {editingId === channel.id ? <Unplug className="h-3.5 w-3.5" /> : <PlugZap className="h-3.5 w-3.5" />}
-                          {editingId === channel.id
-                            ? (isAr ? "إلغاء" : "Cancel")
-                            : channel.connected || needsAttention || needsVerification
-                              ? t("channels.reconnect")
-                              : t("channels.connect")}
-                        </button>
+
+                        {/* ═══ Single green "ربط" / "Connect" button ═══ */}
+                        {hasOneClickConnect(channel) ? (
+                          /* Meta OAuth / WhatsApp Embedded Signup — popup flow */
+                          <button
+                            type="button"
+                            onClick={() => handleConnect(channel)}
+                            disabled={saving || Boolean(metaConnecting)}
+                            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 text-[12px] font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60 transition-colors"
+                          >
+                            {isConnecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LinkIcon className="h-3.5 w-3.5" />}
+                            {channel.connected || needsAttention || needsVerification
+                              ? (isAr ? "إعادة ربط" : "Reconnect")
+                              : (isAr ? "ربط" : "Connect")}
+                          </button>
+                        ) : (
+                          /* Manual credential channels (Telegram, Webchat) — opens form */
+                          <button
+                            type="button"
+                            onClick={() => editingId === channel.id ? closeConnection() : openConnection(channel)}
+                            disabled={saving || !fields}
+                            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 text-[12px] font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60 transition-colors"
+                          >
+                            {editingId === channel.id ? <Unplug className="h-3.5 w-3.5" /> : <LinkIcon className="h-3.5 w-3.5" />}
+                            {editingId === channel.id
+                              ? (isAr ? "إلغاء" : "Cancel")
+                              : channel.connected || needsAttention || needsVerification
+                                ? (isAr ? "إعادة ربط" : "Reconnect")
+                                : (isAr ? "ربط" : "Connect")}
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
 
+                  {/* Manual credential form (Telegram, Webchat) */}
                   {editingId === channel.id && fields && (
-                    <form onSubmit={saveConnection} className="mt-3 grid gap-3 rounded-xl border border-border bg-surface/60 p-3.5 sm:grid-cols-2">
+                    <form onSubmit={saveConnection} className="mt-3 grid gap-3 rounded-xl border border-border bg-surface/60 p-3.5 sm:grid-cols-2" style={{ direction: isAr ? "rtl" : "ltr" }}>
                       {channel.id === "webchat" ? (
                         <div className="sm:col-span-2">
                           <label htmlFor="webchat-public-key" className="mb-1.5 block text-[12px] font-medium text-foreground">

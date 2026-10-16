@@ -76,6 +76,22 @@ def test_everything_else_is_not(text: str | None) -> None:
     assert wants_human_request(text) is False
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "عايز حد أدنى للطلب؟",
+        "إيه الحد الأدنى للطلب؟",
+        "فيه حد أقصى للكمية؟",
+        "الحد الأقصى كام؟",
+    ],
+)
+def test_quantity_limits_are_not_a_person(text: str) -> None:
+    # "حد أدنى / حد أقصى" name a quantity LIMIT, not a human — the most common
+    # commercial false positive of the two-letter noun (each fired a full
+    # handover + owner notification on a pricing question).
+    assert wants_human_request(text) is False
+
+
 async def _customer_agent(db: AsyncSession, tenant_id: uuid.UUID) -> None:
     db.add(
         Agent(

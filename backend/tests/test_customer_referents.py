@@ -57,3 +57,20 @@ def test_no_marker_returns_none():
 
 def test_empty_shown_list_returns_none_even_for_a_clear_marker():
     assert resolve_referent("التاني", []) is None
+
+
+def test_deictic_markers_do_not_match_inside_words():
+    # "ده/دي" fused into other words never resolves a referent — the old
+    # substring match made "بعده", "كده" and "مواعده" all claim "the customer
+    # means the last shown item", a wrong factual claim injected into context.
+    assert resolve_referent("بعده", SHOWN) is None
+    assert resolve_referent("كده", SHOWN) is None
+    assert resolve_referent("مواعده", SHOWN) is None
+
+
+def test_bare_deictic_markers_still_resolve():
+    for utterance in ("ده", "وريني دي", "عايز دا"):
+        ref = resolve_referent(utterance, SHOWN)
+        assert ref is not None, utterance
+        assert ref.product_id == "p-third"
+        assert ref.position == 3

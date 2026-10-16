@@ -52,6 +52,21 @@ async def _mark_turn_failed(session, thread, assistant_id: uuid.UUID) -> None:
             pass
 
 
+def _fact_window(fact: dict) -> str:
+    """The measurement window for display: tool-provided, else the period bounds.
+
+    Never render an empty window — it reads as "this number came from nowhere",
+    when the fact always knows the period it was measured over.
+    """
+    if fact.get("window"):
+        return str(fact["window"])
+    start = str(fact.get("period_start", ""))[:10]
+    end = str(fact.get("period_end", ""))[:10]
+    if start or end:
+        return f"{start}..{end}"
+    return ""
+
+
 def build_structured_blocks(result) -> list[dict]:
     """Server-built render blocks from a validated AnalysisResult.
 
@@ -69,7 +84,7 @@ def build_structured_blocks(result) -> list[dict]:
                 "label": f.get("metric", "").replace("_", " "),
                 "value": str(f.get("value", "")),
                 "unit": str(f.get("unit", "")),
-                "window": str(f.get("window", "")),
+                "window": _fact_window(f),
             }
         )
     if result.findings:
@@ -258,7 +273,10 @@ async def run_chat_turn(session, ctx, thread) -> AIChatMessage:
     await session.commit()  # durable BEFORE the model call (§lease lesson)
     assistant_id = assistant.id
 
-    history = await _bounded_history(session, ctx, thread, through_seq=user_row.sequence_no)
+    # Prior turns ONLY: the question itself rides the runner's user_message,
+    # so including the current user row here put it in the prompt TWICE — the
+    # same echo the customer agent's history mapping had to un-deliver.
+    history = await _bounded_history(session, ctx, thread, through_seq=user_row.sequence_no - 1)
     try:
         from app.modules.ai.agents.sales_intelligence.agent import run_sales_analysis
 

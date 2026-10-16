@@ -80,6 +80,12 @@ class TurnInput:
     # Retrieved knowledge snippets, owned by the caller (the hook); merged
     # with the system-owned context lines into the runner's untrusted block.
     knowledge_context: str | None = None
+    # Direct-Omni input: the caller determined the newest message's audio will
+    # ride the model call itself (scanner-cleared, supported format, flag on).
+    # When True the "voice not transcribed yet — ask them to type" context
+    # line must NOT fire: the model is about to HEAR the customer, and telling
+    # it the voice was unintelligible contradicts the bytes in its own payload.
+    audio_rides: bool = False
 
 
 @dataclass(slots=True)
@@ -174,7 +180,10 @@ _HUMAN_REQUEST_PERSON = (
 # between the prefix letter and the noun does not exist. The short two-letter
 # noun therefore matches only when neither side is another Arabic/Latin letter;
 # every longer noun uses the forgiving substring the verb matching uses.
-_SHORT_NOUN = re.compile(r"(?<![a-zا-ي])حد(?![a-zا-ي])")
+# "حد أدنى / حد أقصى" name a LIMIT, not a person — the most common commercial
+# question the two-letter noun fires on (negative lookahead, on normalized
+# text where أدنى→ادني and أقصى→اقصي).
+_SHORT_NOUN = re.compile(r"(?<![a-zا-ي])حد(?!\s*(?:ادني|اقصي))(?![a-zا-ي])")
 
 
 def _person_noun_matches(marker: str, normalized: str) -> bool:
@@ -277,6 +286,7 @@ def _context_lines(
     vision_results: list[MatchResult],
     skipped_photos: int,
     vision_failures: int = 0,
+    audio_rides: bool = False,
 ) -> str | None:
     """The system-owned context block, or None when there is nothing to say.
 
@@ -317,7 +327,11 @@ def _context_lines(
             "صورة العميل مقدرناش نحللها بسبب مشكلة في نظامنا — اعتذر واعرض "
             "تحويله لموظف لو الصورة ضرورية، ومتحاولش تخمّن محتواها."
         )
-    if turn.has_voice and not turn.voice_transcript:
+    if turn.has_voice and not turn.voice_transcript and not audio_rides:
+        # Only when the audio will NOT reach the model. On the direct-Omni
+        # path the worker skips transcription on purpose and the bytes ride
+        # the call — telling the model the voice "could not be transcribed"
+        # while it hears the customer makes it distrust its own ears.
         lines.append("بعت عميل رسالة صوتية ولسه متنسّختش — اعرض عليه تكتبها.")
     if turn.other_media:
         lines.append("فيه مرفق غير متاح للتحليل (ملف/فيديو/موقع) — اعترف بيه فقط.")
@@ -410,7 +424,15 @@ async def run_customer_turn(
             )
     skipped_photos = len(turn.image_keys) - processed
 
-    context = _context_lines(turn, shown, referent, vision_results, skipped_photos, vision_failures)
+    context = _context_lines(
+        turn,
+        shown,
+        referent,
+        vision_results,
+        skipped_photos,
+        vision_failures,
+        audio_rides=params.audio_rides,
+    )
     user_message = _message_text(turn, bool(vision_results))
     if not user_message and not context:
         # Nothing actionable arrived (e.g. an empty body after stripping).
@@ -450,13 +472,14 @@ async def run_customer_turn(
             # Skip contract: the unsourced-claim guardrail owns this case.
             grounding = "skipped_no_facts"
         else:
+            # v1 deliberately does NOT regenerate on failure (§8): a second
+            # model call burns budget on a reply the deterministic check may
+            # bounce again. The deadline does not change the outcome — a
+            # grounded reply that arrived late is still sendable, only
+            # `deadline_exceeded` reports it.
             reason = check_grounding(result.content, facts)
             if reason is None:
                 grounding = "ok"
-            elif deadline_exceeded:
-                grounding = "failed"
-                reply = None
-                blocked_reason = f"grounding:{reason}"
             else:
                 grounding = "failed"
                 reply = None

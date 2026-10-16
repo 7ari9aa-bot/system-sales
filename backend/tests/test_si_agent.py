@@ -234,3 +234,37 @@ async def test_unknown_metric_fails_the_tool_loudly(db, tenant_ctx, monkeypatch)
     assert result.facts == []
     metric_call = next(c for c in result.tool_calls_made if c["name"] == "si_get_metric")
     assert metric_call["status"] == "error"
+
+
+async def test_failed_run_emits_the_failed_analysis_event(db, tenant_ctx):
+    """A started event with no counterpart reads as 'stuck forever' to
+    anything pairing them — the run failure now emits ai.analysis.failed
+    (same transaction, best-effort) before re-raising."""
+    import pytest
+    from sqlalchemy import select as sa_select
+
+    from app.modules.platform.models import OutboxEvent
+
+    tenant_id = tenant_ctx.tenant_id
+    agent = await _seed(db, tenant_id, agent_with_tools=False)
+
+    class _Boom:
+        async def run(self, *args, **kwargs):
+            raise RuntimeError("gateway down")
+
+    with pytest.raises(RuntimeError, match="gateway down"):
+        await run_sales_analysis(db, tenant_id, agent_id=agent.id, question="سؤال", runner=_Boom())
+
+    rows = (
+        (
+            await db.execute(
+                sa_select(OutboxEvent).where(
+                    OutboxEvent.tenant_id == tenant_id,
+                    OutboxEvent.event_type == "ai.analysis.failed",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(rows) == 1

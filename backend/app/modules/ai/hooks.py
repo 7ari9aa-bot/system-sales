@@ -18,10 +18,12 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.storage import get_storage
 from app.modules.ai.agents.customer.turn import TurnInput, run_customer_turn
 from app.modules.ai.gateway import AIBudgetExhaustedError
 from app.modules.conversations.policy import OutboundBlockedError
+from app.modules.conversations.voice import omni_audio_format
 
 logger = logging.getLogger(__name__)
 
@@ -231,6 +233,7 @@ async def _do_auto_reply(
             transcript = att.transcript_text.strip() or None
 
     body = last_inbound.body.strip() if last_inbound.body and last_inbound.body.strip() else None
+    synthetic_body = False
     # A placeholder survives only where the coordinator has no vocabulary: an
     # image whose bytes were never captured durably has no key to mint a URL
     # from — and since ADR-062 an image whose scan never came back clean gets
@@ -239,6 +242,7 @@ async def _do_auto_reply(
     # untranscribed note as state ("we could not hear them yet"), never hides it.
     if body is None and has_image and not image_urls:
         body = "[Customer sent an image]"
+        synthetic_body = True
     elif (
         body is None
         and not has_image
@@ -247,8 +251,26 @@ async def _do_auto_reply(
         and last_inbound.media_url
     ):
         body = f"[Customer sent an attachment: {last_inbound.content_type}]"
+        synthetic_body = True
     if body is None and not has_image and not has_voice and not attachments:
         return
+
+    # Direct-Omni input: does this turn's audio actually reach the model? The
+    # runtime re-derives the same condition against the newest inbound message
+    # (which is this one); the coordinator needs the verdict to decide whether
+    # the "voice not transcribed yet" context line belongs in the prompt.
+    audio_rides = False
+    if get_settings().ai_voice_audio_input:
+        for att in att_rows:
+            mime = (att.mime_type or "").lower()
+            if (
+                mime.startswith("audio/")
+                and att.storage_key
+                and att.scan_status == "scanned"
+                and omni_audio_format(mime) is not None
+            ):
+                audio_rides = True
+                break
 
     conversation = await ConversationService.get(session, tenant_id, conversation_id)
     # A6: never talk over a human. When the conversation is closed, paused or
@@ -275,7 +297,10 @@ async def _do_auto_reply(
     # untrusted retrieved content. The system prompt itself is no longer passed
     # from here: the runtime resolves it from the agent row.
     knowledge_context: str | None = None
-    retrieval_query = body or transcript or ""
+    # A synthetic placeholder ("[Customer sent an image]") is OUR text, not the
+    # customer's words — retrieving knowledge for it injects irrelevant
+    # snippets into every unscanned-photo turn.
+    retrieval_query = (None if synthetic_body else body) or transcript or ""
     if retrieval_query:
         try:
             from app.modules.ai.knowledge import retrieve_relevant
@@ -318,6 +343,7 @@ async def _do_auto_reply(
                 attachments=attachments,
                 transcript=transcript,
                 image_urls=image_urls,
+                audio_rides=audio_rides,
                 knowledge_context=knowledge_context,  # §132: separate from system prompt
             ),
         )

@@ -53,8 +53,6 @@ from app.modules.analytics.contracts import (
 )
 
 logger = logging.getLogger(__name__)
-# Canonical system prompt defined in dedicated prompts.py module
-from app.modules.ai.agents.sales_intelligence.prompts import SI_SYSTEM_PROMPT
 
 
 @dataclass(slots=True)
@@ -323,20 +321,41 @@ async def run_sales_analysis(
         run_id=None,
         payload={"question": question, "currency": merchant_currency},
     )
-    result = await runner.run(
-        session,
-        tenant_id,
-        agent_id=agent_id,
-        user_message=question,
-        # No `system_prompt` here on purpose. `_resolve_system_prompt` ranks an
-        # override ABOVE the agent row, so passing SI_SYSTEM_PROMPT made this
-        # call ignore whatever the tenant's Agent actually holds: merchant edits
-        # and any prompt rollout were inert for the whole Sales Intelligence
-        # agent. The row is provisioned from the definition, and
-        # `_resolve_system_prompt` falls back to that definition when the row is
-        # empty, so the configured prompt still always reaches the model.
-        history=history,
-    )
+    result = None
+    try:
+        result = await runner.run(
+            session,
+            tenant_id,
+            agent_id=agent_id,
+            user_message=question,
+            # No `system_prompt` here on purpose. `_resolve_system_prompt` ranks an
+            # override ABOVE the agent row, so passing SI_SYSTEM_PROMPT made this
+            # call ignore whatever the tenant's Agent actually holds: merchant edits
+            # and any prompt rollout were inert for the whole Sales Intelligence
+            # agent. The row is provisioned from the definition, and
+            # `_resolve_system_prompt` falls back to that definition when the row is
+            # empty, so the configured prompt still always reaches the model.
+            history=history,
+        )
+    except Exception:
+        # A started event with no counterpart reads as "stuck forever" to
+        # anything pairing them. Best-effort: a poisoned transaction (the
+        # statement-timeout case the chat turn handler knows about) can refuse
+        # even this write — the original failure is re-raised either way.
+        try:
+            await emit_analysis_event(
+                session,
+                tenant_id,
+                event_type="ai.analysis.failed",
+                analysis_id=analysis_id,
+                run_id=None,
+                payload={"question": question, "currency": merchant_currency},
+            )
+        except Exception:  # noqa: BLE001 — containment, never masks the run failure
+            logger.warning(
+                "ai.analysis.failed_event_unwritten analysis=%s", analysis_id, exc_info=True
+            )
+        raise
 
     run_id = result.run_id
     evidence = _rebuild_evidence(result.tool_calls_made)

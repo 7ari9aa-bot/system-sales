@@ -283,3 +283,48 @@ class TestRuntimeResolution:
         assert version_id is None
         assert source == "fallback:version_not_published"
         assert policy is None
+
+    async def test_version_override_never_persists_to_the_mutable_row(
+        self, db, tenant_ctx
+    ) -> None:
+        # The plain-assignment override dirtied the session-attached Agent and
+        # the next flush (the AgentRun insert) wrote the snapshot's values back
+        # onto the mutable agents table — silently reverting every merchant
+        # edit for as long as a deployment stayed active. The override serves
+        # the snapshot for THIS run and the row must not move.
+        agent = _agent(tenant_ctx.tenant_id)
+        db.add(agent)
+        await db.flush()
+        version = AgentVersion(
+            tenant_id=tenant_ctx.tenant_id,
+            agent_id=agent.id,
+            version=1,
+            status="published",
+            system_prompt="snapshot prompt",
+            model="strong",
+        )
+        db.add(version)
+        await db.flush()
+        db.add(
+            Deployment(
+                tenant_id=tenant_ctx.tenant_id,
+                agent_id=agent.id,
+                stable_version_id=version.id,
+                status="active",
+            )
+        )
+        await db.flush()
+
+        version_id, source, _policy = await AgentRunner._resolve_agent_version(
+            db, tenant_ctx.tenant_id, agent, canary_chosen=False
+        )
+        assert source == "deployment"
+        assert version_id == version.id
+        assert agent.system_prompt == "snapshot prompt"  # served in-memory
+
+        await db.flush()
+        agent_id = agent.id
+        db.expire_all()
+        row = (await db.execute(sa.select(Agent).where(Agent.id == agent_id))).scalar_one()
+        assert row.system_prompt == "row prompt"  # the mutable row never moved
+        assert row.model == "fast"

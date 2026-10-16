@@ -612,3 +612,35 @@ async def test_a_failed_completion_write_still_lands_the_failed_row(monkeypatch)
     (assistant,) = session.added
     assert assistant.status == "failed"
     assert session.rollbacks >= 1
+
+
+async def test_run_chat_turn_history_excludes_the_current_question(monkeypatch):
+    """The question rides the runner's user_message; the bounded history must
+    hold PRIOR turns only. Including the current user row put the question in
+    the prompt TWICE — the same echo the customer agent's history mapping had
+    to un-deliver. The fake cannot enforce SQL, so the bound is asserted on
+    the compiled statement (the caps test's precedent)."""
+    user_row = SimpleNamespace(sequence_no=5, content="السؤال الحالي")
+    session = _CommittingSession(
+        [
+            _FakeResult(rows=[user_row]),
+            _FakeResult(None),
+            _FakeResult(rows=[]),
+        ]
+    )
+    thread = _Thread(agent_id=uuid.uuid4())
+
+    async def fine_analysis(session, tenant_id, *, agent_id, question, runner=None, history=None):
+        return _analysis_result()
+
+    monkeypatch.setattr(
+        "app.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", fine_analysis
+    )
+    await run_chat_turn(session, _Ctx(), thread)
+
+    history_stmt = session.statements[2]
+    compiled = str(history_stmt.compile(compile_kwargs={"literal_binds": True}))
+    assert "sequence_no <= 4" in compiled, (
+        "history must stop BEFORE the current user row (seq 5), not include it"
+    )
+    assert "sequence_no <= 5" not in compiled

@@ -456,3 +456,69 @@ async def test_message_worker_uses_one_voice_understanding_path(
     await worker._on_received(envelope)
 
     assert order == (["reply"] if direct_omni else ["transcribe", "reply"])
+
+
+# ------------------------------------------------ §8b: direct-Omni context ---
+
+
+def test_runtime_module_resolves_omni_audio_format() -> None:
+    """DB-free guard for the 405e924 regression: the refactor deleted the
+    `omni_audio_format` import from runtime.py while its two call sites
+    remained — every voice turn on the direct path raised NameError and the
+    ruff F821 that should have caught it was buried under a repo-wide red
+    lint gate. The symbol must resolve in the module that calls it."""
+    import app.modules.ai.runtime as runtime_module
+
+    assert callable(runtime_module.omni_audio_format)
+    assert runtime_module.omni_audio_format("audio/ogg") == "ogg"
+
+
+def test_voice_context_line_yields_when_audio_rides() -> None:
+    """The 'please type it' line contradicts the audio bytes the model is
+    about to hear — it fires only when the audio will NOT reach the model."""
+    from app.modules.ai.agents.customer.intake import InboundTurn
+    from app.modules.ai.agents.customer.turn import _context_lines
+
+    turn = InboundTurn(text=None, has_voice=True, voice_transcript=None)
+    # Audio rides: no contradictory line — the model hears the customer.
+    assert _context_lines(turn, [], None, [], 0, 0, audio_rides=True) is None
+    # Audio does not ride: the ask-to-type line stays.
+    surfaced = _context_lines(turn, [], None, [], 0, 0, audio_rides=False)
+    assert surfaced is not None
+    assert "صوتية" in surfaced
+
+
+@pytest.mark.parametrize("direct_omni", [True, False])
+async def test_hook_tells_the_coordinator_whether_audio_rides(
+    db, tenant_ctx, monkeypatch, direct_omni
+) -> None:
+    """The hook owns the attachment scan statuses and the settings flag, so it
+    — not the coordinator — decides whether the voice context line applies."""
+    from app.modules.ai import hooks as ai_hooks
+    from app.modules.ai.agents.customer.turn import TurnInput, TurnOutcome
+    from app.modules.ai.models import Agent
+
+    tenant_id = tenant_ctx.tenant_id
+    db.add(Agent(tenant_id=tenant_id, name="Customer", kind="customer", model="fast"))
+    await db.flush()
+    conversation = await _conversation(db, tenant_id)
+    message = await _voice_note(db, tenant_id, conversation)
+    attachment = await _attachment_of(db, tenant_id, message.id)
+    attachment.scan_status = "scanned"
+    await db.flush()
+
+    captured: list[TurnInput] = []
+
+    async def fake_turn(session, params, *, runner=None, deadline_seconds=45.0):
+        captured.append(params)
+        return TurnOutcome(reply="ok", state_version=1)
+
+    monkeypatch.setattr(ai_hooks, "run_customer_turn", fake_turn)
+    monkeypatch.setattr(
+        ai_hooks, "get_settings", lambda: SimpleNamespace(ai_voice_audio_input=direct_omni)
+    )
+
+    await ai_hooks.maybe_auto_reply(db, tenant_id, conversation.id, inbound_message_id=message.id)
+
+    assert len(captured) == 1
+    assert captured[0].audio_rides is direct_omni

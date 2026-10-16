@@ -11,7 +11,6 @@ app.modules.ai.tools, gated by the agent's tool policy.
 from __future__ import annotations
 
 import asyncio
-import base64
 import hashlib
 import json
 import logging
@@ -24,6 +23,7 @@ from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import set_committed_value
 
 from app.core.config import get_settings
 from app.core.errors import DomainError, NotFoundError
@@ -34,16 +34,17 @@ from app.modules.ai.gateway import (
 )
 from app.modules.ai.guardrails import analytics_guardrail, default_guardrail, screen_inbound
 from app.modules.ai.models import Agent, AgentRun, AgentTool, ToolCall
-from app.modules.ai.providers import ToolCallRequest
-from app.modules.ai.tools import tool_to_openai_schema  # noqa: E402
-from app.modules.ai.usage import record_usage  # noqa: E402
 from app.modules.ai.multimodal import (
     _assistant_tool_call,
     _customer_user_content,
     _omni_audio_content_part,
 )
 from app.modules.ai.prompts import DEFAULT_SYSTEM_PROMPT
+from app.modules.ai.providers import ToolCallRequest
+from app.modules.ai.tools import tool_to_openai_schema  # noqa: E402
+from app.modules.ai.usage import record_usage  # noqa: E402
 from app.modules.conversations import models as _conversations_models  # noqa: E402,F401
+from app.modules.conversations.voice import omni_audio_format  # noqa: E402
 
 # Importing the conversations models registers their tables in the shared
 # metadata so agent_runs' FK to conversations.id resolves even when the AI
@@ -471,17 +472,22 @@ class AgentRunner:
             )
             return None, "fallback:version_not_published", None
 
-        # Override in-memory agent config for this run only (never flushed).
+        # Override in-memory agent config for this run only. set_committed_value
+        # rewrites the attribute's LOADED state without creating pending
+        # history — a plain assignment would dirty the session-attached row and
+        # the next flush (the AgentRun insert) would write the snapshot's
+        # prompt/model/limits back onto the mutable agents table, silently
+        # reverting every merchant edit while a deployment is active.
         if version.system_prompt is not None:
-            agent.system_prompt = version.system_prompt
+            set_committed_value(agent, "system_prompt", version.system_prompt)
         if version.model is not None:
-            agent.model = version.model
+            set_committed_value(agent, "model", version.model)
         if version.temperature is not None:
-            agent.temperature = version.temperature
+            set_committed_value(agent, "temperature", version.temperature)
         if version.max_output_tokens is not None:
-            agent.max_output_tokens = version.max_output_tokens
+            set_committed_value(agent, "max_output_tokens", version.max_output_tokens)
         if version.run_limits:
-            agent.run_limits = version.run_limits
+            set_committed_value(agent, "run_limits", version.run_limits)
         return version.id, "deployment", (version.tool_policy or None)
 
     @staticmethod
@@ -1154,6 +1160,18 @@ class AgentRunner:
                 if audio_row is not None and omni_audio_format(audio_row.mime_type):
                     audio_media = (audio_row.mime_type, audio_row.storage_key)
             break  # only the NEWEST inbound message's media rides the turn
+        # When the newest message's own media rides this turn, its history
+        # marker ("its contents are not available to me") is a lie the model
+        # reads immediately before the real content — drop that one marker;
+        # older photos keep theirs.
+        if (image_key or audio_media) and turns:
+            last = turns[-1]
+            if (
+                last["role"] == "user"
+                and isinstance(last["content"], str)
+                and last["content"].startswith("[the customer sent ")
+            ):
+                turns.pop()
         return turns, image_key, audio_media
 
     @staticmethod

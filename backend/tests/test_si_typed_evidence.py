@@ -386,3 +386,64 @@ def test_the_pack_is_validated_in_the_window_its_facts_were_measured_in() -> Non
     pack = build_pack(store, context, question="إيه حصل؟", timezone="Africa/Cairo", currency="EGP")
     assert pack.facts[0].id == fact_id
     assert pack.content_hash
+
+
+async def test_fulfillment_excludes_soft_deleted_orders(db, tenant_ctx) -> None:
+    """A soft-deleted order keeps its shipment rows — CASCADE fires on hard
+    DELETE only. The carrier stats used to count ghosts the rest of the SI
+    tools exclude: seasonality and the customer split both filter
+    orders.deleted_at, and the carrier table silently disagreed with them."""
+    tenant_id = tenant_ctx.tenant_id
+    customer = Customer(tenant_id=tenant_id, name="Ghost Owner")
+    db.add(customer)
+    await db.flush()
+    day = NOW.replace(hour=0, minute=0, second=0, microsecond=0)
+    ghost = Order(
+        tenant_id=tenant_id,
+        number=f"GHOST-{uuid.uuid4().hex[:6]}",
+        customer_id=customer.id,
+        status="fulfilled",
+        grand_total=100.0,
+        channel="web",
+        placed_at=day - timedelta(days=2),
+        deleted_at=day - timedelta(days=1),
+    )
+    db.add(ghost)
+    await db.flush()
+    db.add(
+        Shipment(
+            tenant_id=tenant_id,
+            order_id=ghost.id,
+            carrier="GhostExpress",
+            status="delivered",
+            shipped_at=day - timedelta(days=2),
+            delivered_at=day - timedelta(days=1),
+        )
+    )
+    live = Order(
+        tenant_id=tenant_id,
+        number=f"LIVE-{uuid.uuid4().hex[:6]}",
+        customer_id=customer.id,
+        status="fulfilled",
+        grand_total=100.0,
+        channel="web",
+        placed_at=day - timedelta(days=2),
+    )
+    db.add(live)
+    await db.flush()
+    db.add(
+        Shipment(
+            tenant_id=tenant_id,
+            order_id=live.id,
+            carrier="LiveExpress",
+            status="delivered",
+            shipped_at=day - timedelta(days=2),
+            delivered_at=day - timedelta(days=1),
+        )
+    )
+    await db.flush()
+
+    result = await _si_analyze_fulfillment(db, tenant_id, days=30, minimum_volume=1)
+    carriers = {row.get("carrier") for row in result["summary"].get("carriers") or []}
+    assert "LiveExpress" in carriers
+    assert "GhostExpress" not in carriers

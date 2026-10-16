@@ -70,6 +70,10 @@ def _fact_payload(fact) -> dict:
         "metric": fact.metric,
         "value": str(fact.value),
         "unit": fact.unit,
+        # The window length is itself a measurement the answer may state
+        # ("آخر 30 يوم") — without it the model cannot name the period it
+        # queried without tripping the free-number gate.
+        "window": f"{max((fact.period.end - fact.period.start).days, 0)}d",
         # P1-12: the split a fact belongs to is part of its meaning. Without
         # the filters, "shipments_total = 2" does not say whose two shipments
         # it is, and the model can attribute a bucket to the wrong carrier.
@@ -475,6 +479,21 @@ class SICustomersArgs(BaseModel):
     days: int = Field(default=30, ge=1, le=90)
 
 
+#: The hard row cap on the new/returning scan. Hitting it means the counts
+#: below are computed over a truncated sample — saying so keeps a lower bound
+#: from reading as the whole truth.
+CUSTOMERS_SAMPLE_CAP = 5000
+
+
+def _sample_cap_limitation(rows: int) -> list[str]:
+    if rows < CUSTOMERS_SAMPLE_CAP:
+        return []
+    return [
+        f"order sample capped at {CUSTOMERS_SAMPLE_CAP} rows — "
+        "new/returning counts are a lower bound, not the whole window"
+    ]
+
+
 async def _si_analyze_customers(
     session: AsyncSession,
     tenant_id: uuid.UUID,
@@ -524,7 +543,7 @@ async def _si_analyze_customers(
         "capability": result.capability,
         "status": result.status,
         "summary": result.summary,
-        "limitations": result.limitations,
+        "limitations": list(result.limitations or []) + _sample_cap_limitation(len(orders)),
         "facts": facts,
     }
 
@@ -551,7 +570,10 @@ async def _si_analyze_fulfillment(
         await session.execute(
             _sql(
                 "SELECT s.carrier, s.status, s.shipped_at, s.delivered_at "
-                "FROM shipments s WHERE s.tenant_id = :tenant_id "
+                "FROM shipments s "
+                "JOIN orders o ON o.id = s.order_id AND o.tenant_id = s.tenant_id "
+                "WHERE s.tenant_id = :tenant_id "
+                "AND o.deleted_at IS NULL "
                 "AND COALESCE(s.shipped_at, s.created_at) >= :start "
                 "AND COALESCE(s.shipped_at, s.created_at) < :end"
             ),

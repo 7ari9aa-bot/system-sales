@@ -341,6 +341,41 @@ async def _meta_exchange_and_connect(
         return provider, display_name
 
 
+def _popup_html(result: dict, frontend_origin: str) -> str:
+    """Small self-closing HTML page that posts the OAuth result to the opener.
+
+    The opener (ChannelsSettings) listens for a ``META_OAUTH_RESULT`` message
+    on its own origin. This page posts it, then closes itself — so the whole
+    Meta consent flow happens in a popup window and the operator never leaves
+    the settings page.
+    """
+    import json as _json
+
+    payload_json = _json.dumps(result)
+    # Escape for embedding inside a <script> tag (no </script> injection).
+    safe_json = payload_json.replace("<", "\\u003c").replace(">", "\\u003e")
+    safe_origin = _json.dumps(frontend_origin)
+    return f"""<!DOCTYPE html>
+<html><head><title>Connecting…</title></head>
+<body style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;direction:rtl">
+<p>جارٍ إتمام الربط…</p>
+<script>
+(function(){{
+  var msg = {safe_json};
+  var origin = {safe_origin};
+  if (window.opener) {{
+    window.opener.postMessage(msg, origin);
+  }}
+  window.close();
+  // Fallback: if popup-blocker prevents close, show a manual instruction.
+  setTimeout(function(){{
+    document.body.innerHTML = '<p style="text-align:center;margin-top:40vh">تم الربط — يمكنك إغلاق هذه النافذة والعودة للإعدادات.</p>';
+  }}, 800);
+}})();
+</script>
+</body></html>"""
+
+
 @meta_oauth_router.get("/integrations/meta/oauth/callback", include_in_schema=False)
 async def meta_oauth_callback(
     request: Request,
@@ -357,22 +392,24 @@ async def meta_oauth_callback(
 
     PUBLIC by design: the state JWT (10-minute TTL, server-signed) is the
     authorization — it was minted to a settings:write holder at start time.
-    Every outcome lands back on the settings page with an explicit marker;
-    Meta's own dialog errors (access_denied for a cancelled consent or a
-    non-tester on a dev-mode app, redirect_uri mismatches, …) are carried
-    through verbatim instead of collapsing into a generic failure."""
-    from fastapi.responses import RedirectResponse
+    Every outcome posts back to the opener window via postMessage — the
+    operator never leaves the settings page. Meta's own dialog errors
+    (access_denied for a cancelled consent or a non-tester on a dev-mode
+    app, redirect_uri mismatches, …) are carried through verbatim."""
+    from fastapi.responses import HTMLResponse
 
     from app.core.config import get_settings
     from app.core.db import bind_tenant
 
     frontend = get_settings().frontend_public_url.rstrip("/")
-    target = f"{frontend}/settings/channels"
 
     def _back(marker: str, value: str):
-        return RedirectResponse(
-            f"{target}?meta_{marker}={urlencode({'v': value})[2:]}", status_code=302
-        )
+        result = {"type": "META_OAUTH_RESULT"}
+        if marker == "connected":
+            result["connected"] = value
+        else:
+            result["error"] = value
+        return HTMLResponse(_popup_html(result, frontend))
 
     # Meta redirects here with error params when the DIALOG failed (the user
     # declined, the app is in dev mode and the user is not a tester, the
