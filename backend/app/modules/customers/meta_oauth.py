@@ -248,11 +248,21 @@ async def _meta_exchange_and_connect(
             _logger.warning("meta_oauth.accounts_failed %s", failure)
             raise ValidationError(failure[:200])
 
+        all_pages = accounts.get("data", [])
+        if not all_pages:
+            raise ValidationError(
+                "لم يتم العثور على أي صفحة فيسبوك في حسابك — يجب إنشاء صفحة فيسبوك وتحديدها عند منح الصلاحيات."
+            )
+
         pages = [
-            page for page in accounts.get("data", []) if "MESSAGING" in (page.get("tasks") or [])
+            page
+            for page in all_pages
+            if not page.get("tasks")
+            or "MESSAGING" in (page.get("tasks") or [])
+            or "MANAGE" in (page.get("tasks") or [])
         ]
         if not pages:
-            raise ValidationError("No messaging-capable page was authorized.")
+            pages = all_pages
         page = pages[0]
 
         # 4) Credentials + routing identity per gateway contract:
@@ -274,9 +284,9 @@ async def _meta_exchange_and_connect(
             ig_account = page.get("instagram_business_account") or {}
             ig_id = str(ig_account.get("id") or "")
             if not ig_id:
+                page_title = page.get("name") or str(page.get("id") or "المحددة")
                 raise ValidationError(
-                    "No Instagram professional account is linked to the "
-                    "authorized page — link one in Meta Business Suite first."
+                    f"صفحة فيسبوك '{page_title}' غير مرتبطة بحساب إنستجرام احترافي — اربط الحساب في Meta Business Suite أولاً."
                 )
             config["account_id"] = ig_id
             credentials["account_id"] = ig_id
@@ -344,33 +354,173 @@ async def _meta_exchange_and_connect(
 def _popup_html(result: dict, frontend_origin: str) -> str:
     """Small self-closing HTML page that posts the OAuth result to the opener.
 
-    The opener (ChannelsSettings) listens for a ``META_OAUTH_RESULT`` message
-    on its own origin. This page posts it, then closes itself — so the whole
-    Meta consent flow happens in a popup window and the operator never leaves
-    the settings page.
+    Uses multiple fallback channels:
+    1. window.opener.postMessage()
+    2. BroadcastChannel('meta_oauth')
+    3. localStorage event ('meta_oauth_result')
+    Displays a clear success or error banner so the user never sees a misleading message.
     """
+    import html as _html
     import json as _json
 
     payload_json = _json.dumps(result)
-    # Escape for embedding inside a <script> tag (no </script> injection).
     safe_json = payload_json.replace("<", "\\u003c").replace(">", "\\u003e")
     safe_origin = _json.dumps(frontend_origin)
+
+    is_connected = "connected" in result
+    error_val = result.get("error", "")
+
+    if is_connected:
+        raw_val = result["connected"]
+        sep = raw_val.find(":")
+        page_name = raw_val[sep + 1 :] if sep != -1 else raw_val
+        title_text = "تم الربط بنجاح"
+        subtitle_text = f"صفحة: {page_name}"
+        card_class = "success"
+        icon_html = '<svg class="icon success-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>'
+        action_html = '<p class="hint">سيتم إغلاق هذه النافذة تلقائيًا والعودة للإعدادات...</p>'
+    else:
+        title_text = "تعذر إتمام الربط"
+        card_class = "error"
+        icon_html = '<svg class="icon error-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>'
+
+        s = str(error_val)
+        if "Invalid Scopes" in s or "instagram_basic" in s:
+            subtitle_text = "تطبيق Meta ينقصه صلاحيات إنستجرام: يرجى إضافة منتج Instagram Graph API وصلاحيات instagram_basic وinstagram_manage_messages في لوحة مطوري Meta."
+        elif "access_denied" in s:
+            subtitle_text = "أُلغيت الموافقة أو أن حسابك ليس مطوراً/مسؤولاً في تطبيق فيسبوك."
+        elif "No messaging-capable page" in s or "لم يتم العثور على أي صفحة" in s:
+            subtitle_text = "لم يتم العثور على أي صفحة فيسبوك في حسابك، أو لم يتم تحديد صفحة عند منح الصلاحيات."
+        elif "غير مرتبطة بحساب إنستجرام" in s or "No Instagram professional account" in s:
+            subtitle_text = "صفحة فيسبوك المحددة غير مرتبطة بحساب إنستجرام احترافي (Business/Creator)."
+        elif "missing_code_or_state" in s:
+            subtitle_text = "أُلغيت العملية أو لم يُرجع فيسبوك رمز التفويض."
+        elif "invalid_state" in s:
+            subtitle_text = "انتهت صلاحية جلسة الربط (10 دقائق). اضغط على زر الربط مجدداً."
+        else:
+            subtitle_text = s[:200]
+
+        action_html = '<button onclick="window.close()" class="btn-close">إغلاق النافذة</button>'
+
+    esc_title = _html.escape(title_text)
+    esc_subtitle = _html.escape(subtitle_text)
+
+    auto_close_js = "setTimeout(function(){ window.close(); }, 1400);" if is_connected else ""
+
     return f"""<!DOCTYPE html>
-<html><head><title>Connecting…</title></head>
-<body style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;direction:rtl">
-<p>جارٍ إتمام الربط…</p>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{esc_title}</title>
+<style>
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "IBM Plex Sans Arabic", sans-serif;
+    background-color: #0c0d0e;
+    color: #f3f4f6;
+    padding: 20px;
+    direction: rtl;
+  }}
+  .card {{
+    background: #16181a;
+    border: 1px solid #272a2e;
+    border-radius: 16px;
+    padding: 32px 24px;
+    text-align: center;
+    max-width: 440px;
+    width: 100%;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+  }}
+  .icon-wrapper {{
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 16px;
+  }}
+  .success .icon-wrapper {{
+    background: rgba(16, 185, 129, 0.15);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+  }}
+  .error .icon-wrapper {{
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+  }}
+  .icon {{
+    width: 28px;
+    height: 28px;
+  }}
+  .success-icon {{ stroke: #10b981; }}
+  .error-icon {{ stroke: #ef4444; }}
+  h2 {{
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 10px;
+  }}
+  .success h2 {{ color: #10b981; }}
+  .error h2 {{ color: #ef4444; }}
+  .desc {{
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: #9ca3af;
+    margin-bottom: 20px;
+  }}
+  .hint {{
+    font-size: 12px;
+    color: #6b7280;
+  }}
+  .btn-close {{
+    display: inline-block;
+    background: #272a2e;
+    color: #f3f4f6;
+    border: 1px solid #373b40;
+    padding: 8px 24px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }}
+  .btn-close:hover {{ background: #32363b; }}
+</style>
+</head>
+<body>
+<div class="card {card_class}">
+  <div class="icon-wrapper">{icon_html}</div>
+  <h2>{esc_title}</h2>
+  <p class="desc">{esc_subtitle}</p>
+  {action_html}
+</div>
 <script>
 (function(){{
   var msg = {safe_json};
   var origin = {safe_origin};
+  
   if (window.opener) {{
-    window.opener.postMessage(msg, origin);
+    try {{
+      window.opener.postMessage(msg, origin || "*");
+    }} catch (e) {{
+      try {{ window.opener.postMessage(msg, "*"); }} catch (_) {{}}
+    }}
   }}
-  window.close();
-  // Fallback: if popup-blocker prevents close, show a manual instruction.
-  setTimeout(function(){{
-    document.body.innerHTML = '<p style="text-align:center;margin-top:40vh">تم الربط — يمكنك إغلاق هذه النافذة والعودة للإعدادات.</p>';
-  }}, 800);
+
+  try {{
+    var bc = new BroadcastChannel("meta_oauth");
+    bc.postMessage(msg);
+  }} catch (_) {{}}
+
+  try {{
+    localStorage.setItem("meta_oauth_result", JSON.stringify(msg));
+  }} catch (_) {{}}
+
+  {auto_close_js}
 }})();
 </script>
 </body></html>"""
@@ -384,18 +534,16 @@ async def meta_oauth_callback(
     state: str | None = None,
     error: str | None = None,
     error_description: str | None = None,
-    # Typed as text on purpose: a coercion failure would 422 the PUBLIC
-    # callback instead of redirecting the operator back with the reason.
     error_code: str | None = None,
+    error_message: str | None = None,
 ):
     """Meta redirects the operator's browser here with the authorization code.
 
     PUBLIC by design: the state JWT (10-minute TTL, server-signed) is the
     authorization — it was minted to a settings:write holder at start time.
-    Every outcome posts back to the opener window via postMessage — the
-    operator never leaves the settings page. Meta's own dialog errors
-    (access_denied for a cancelled consent or a non-tester on a dev-mode
-    app, redirect_uri mismatches, …) are carried through verbatim."""
+    Every outcome posts back to the opener window via postMessage / BroadcastChannel —
+    the operator never leaves the settings page. Meta's own dialog errors
+    (access_denied, Invalid Scopes, etc.) are carried through verbatim."""
     from fastapi.responses import HTMLResponse
 
     from app.core.config import get_settings
@@ -411,17 +559,16 @@ async def meta_oauth_callback(
             result["error"] = value
         return HTMLResponse(_popup_html(result, frontend))
 
-    # Meta redirects here with error params when the DIALOG failed (the user
-    # declined, the app is in dev mode and the user is not a tester, the
-    # redirect_uri is not whitelisted, …). Surface Meta's own description.
-    if error and not code:
-        description = (error_description or "").strip() or "authorization was denied"
-        detail = f"{error}:{description}"[:160]
+    # Meta redirects here with error params when the DIALOG failed
+    if (error or error_code or error_message) and not code:
+        description = (error_description or error_message or "").strip()
+        code_tag = error or (f"error_{error_code}" if error_code else "dialog_error")
+        detail = f"{code_tag}:{description}" if description else code_tag
         _logger.warning(
             "meta_oauth.dialog_error error=%s code=%s desc=%s",
             error,
             error_code,
-            (error_description or "")[:200],
+            description[:200],
         )
         return _back("error", detail)
 

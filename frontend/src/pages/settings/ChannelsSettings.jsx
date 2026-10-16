@@ -52,16 +52,36 @@ function loadFacebookSdk(appId, version) {
     script.async = true;
     script.defer = true;
     script.crossOrigin = "anonymous";
-    script.onerror = () => reject(new Error("Could not load the Facebook SDK."));
+    script.onerror = () =>
+      reject(
+        new Error(
+          isAr
+            ? "تعذر تحميل Facebook SDK — إذا كنت تستخدم مانع إعلانات (AdBlocker) يرجى إيقافه مؤقتًا لهذه الصفحة ثم إعادة المحاولة."
+            : "Could not load the Facebook SDK — if using an AdBlocker, please disable it for this page and retry."
+        )
+      );
     document.body.appendChild(script);
   });
 }
 
-/** Map the marker the OAuth callback appended (meta_error=<value>) onto a
- *  sentence the operator can act on. Unknown values are shown verbatim —
- *  Meta's own descriptions are the most precise diagnostic there is. */
+/** Map the marker the OAuth callback appended onto a sentence the operator can act on. */
 function friendlyMetaError(raw, isAr) {
   const detail = String(raw || "");
+  if (detail.includes("Invalid Scopes") || detail.includes("instagram_basic")) {
+    return isAr
+      ? "تطبيق Meta ينقصه صلاحيات إنستجرام: يرجى إضافة منتج Instagram Graph API وصلاحيات instagram_basic وinstagram_manage_messages في لوحة مطوري Meta (developers.facebook.com)."
+      : "The Meta app is missing Instagram permissions: add Instagram Graph API and permissions (instagram_basic, instagram_manage_messages) in Meta Developer Console.";
+  }
+  if (detail.includes("No messaging-capable page") || detail.includes("لم يتم العثور على أي صفحة")) {
+    return isAr
+      ? "لم يتم العثور على أي صفحة فيسبوك تدعم المراسلة في حسابك، أو لم يتم تحديد الصفحة أثناء منح الصلاحيات."
+      : "No messaging-capable Facebook page was authorized on your account.";
+  }
+  if (detail.includes("غير مرتبطة بحساب إنستجرام") || detail.includes("No Instagram professional account")) {
+    return isAr
+      ? "صفحة فيسبوك غير مرتبطة بحساب إنستجرام احترافي — يرجى ربط حساب إنستجرام بالصفحة أولاً من Meta Business Suite."
+      : "No Instagram professional account is linked to the authorized Facebook page.";
+  }
   if (detail.startsWith("access_denied")) {
     return isAr
       ? "لم تُمنح صلاحيات فيسبوك: إما أن الموافقة أُلغيت، أو التطبيق في وضع التطوير وحسابك ليس Tester أو Admin عليه. أضف الحساب من Meta Developer Console ثم أعد المحاولة."
@@ -79,8 +99,8 @@ function friendlyMetaError(raw, isAr) {
   }
   if (detail === "missing_code_or_state" || detail === "invalid_provider") {
     return isAr
-      ? "عاد ربط فيسبوك بلا بيانات مكتملة. أعد المحاولة، وإن تكررت أعد التحميل أولًا."
-      : "The Facebook connect returned without a complete response. Retry; if it repeats, reload the page first.";
+      ? "أُلغيت العملية أو عاد ربط فيسبوك بلا بيانات مكتملة. أعد المحاولة."
+      : "The Facebook connect returned without a complete response. Retry.";
   }
   if (detail.startsWith("meta_exchange_failed")) {
     return isAr
@@ -117,29 +137,58 @@ export default function ChannelsSettings() {
 
   const editing = channels.find((channel) => channel.id === editingId) || null;
 
-  // Listen for Meta OAuth popup results (postMessage from the callback page).
+  // Listen for Meta OAuth popup results (postMessage / BroadcastChannel / storage).
   React.useEffect(() => {
-    function onMessage(event) {
-      // Only accept messages from our own origin (the callback page is
-      // served from the API domain but posts to the frontend origin).
-      if (!event.data || event.data.type !== META_OAUTH_RESULT) return;
-      const { connected, error: oauthError } = event.data;
+    function handleResult(data) {
+      if (!data || data.type !== META_OAUTH_RESULT) return;
+      const { connected, error: oauthError } = data;
       if (connected) {
         const sep = connected.indexOf(":");
         const pageName = sep === -1 ? connected : connected.slice(sep + 1);
-        setNotice(isAr
-          ? `تم ربط صفحة ${pageName || "فيسبوك"} بنجاح.`
-          : `Connected the page ${pageName || "Facebook"} successfully.`);
+        setNotice(
+          isAr
+            ? `تم ربط صفحة ${pageName || "فيسبوك"} بنجاح.`
+            : `Connected the page ${pageName || "Facebook"} successfully.`
+        );
+        setFormError("");
       } else if (oauthError) {
-        setFormError(isAr
-          ? `تعذر إكمال الربط: ${friendlyMetaError(oauthError, isAr)}`
-          : `Could not complete the connect: ${friendlyMetaError(oauthError, isAr)}`);
+        setFormError(
+          isAr
+            ? `تعذر إكمال الربط: ${friendlyMetaError(oauthError, isAr)}`
+            : `Could not complete the connect: ${friendlyMetaError(oauthError, isAr)}`
+        );
       }
       setMetaConnecting("");
       void reload().catch(() => {});
     }
+
+    function onMessage(event) {
+      handleResult(event.data);
+    }
+
+    function onStorage(event) {
+      if (event.key === "meta_oauth_result" && event.newValue) {
+        try {
+          const parsed = JSON.parse(event.newValue);
+          localStorage.removeItem("meta_oauth_result");
+          handleResult(parsed);
+        } catch (_) {}
+      }
+    }
+
+    let bc = null;
+    try {
+      bc = new BroadcastChannel("meta_oauth");
+      bc.onmessage = (event) => handleResult(event.data);
+    } catch (_) {}
+
     window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener("message", onMessage);
+      window.removeEventListener("storage", onStorage);
+      if (bc) bc.close();
+    };
   }, [reload, isAr]);
 
   // Also handle legacy URL params (in case the popup was blocked and the
@@ -291,13 +340,14 @@ export default function ChannelsSettings() {
       const pollTimer = window.setInterval(() => {
         if (popup.closed) {
           window.clearInterval(pollTimer);
-          // If metaConnecting is still set, user closed without completing
           setMetaConnecting((prev) => {
             if (prev === channel.id) return "";
             return prev;
           });
+          // Always reload to catch any updated status from backend
+          void reload().catch(() => {});
         }
-      }, 1000);
+      }, 800);
     } catch (connectError) {
       const raw = connectError?.message || "";
       setFormError(
