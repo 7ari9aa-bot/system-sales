@@ -23,7 +23,6 @@ const AcceptInvitation = lazy(() => import('@/pages/AcceptInvitation'));
 const Home = lazy(() => import('@/pages/Home'));
 const Inbox = lazy(() => import('@/pages/Inbox'));
 const Customers = lazy(() => import('@/pages/Customers'));
-const Orders = lazy(() => import('@/pages/Orders'));
 const Products = lazy(() => import('@/pages/Products'));
 const AddProduct = lazy(() => import('@/pages/AddProduct'));
 const Inventory = lazy(() => import('@/pages/Inventory'));
@@ -79,7 +78,6 @@ const DashboardRoutes = () => (
         <Route path="/dashboard" element={<Home />} />
         <Route path="/inbox" element={<Inbox />} />
         <Route path="/customers" element={<Customers />} />
-        <Route path="/orders" element={<Orders />} />
         <Route path="/products" element={<Products />} />
         <Route path="/products/new" element={<AddProduct />} />
         <Route path="/inventory" element={<Inventory />} />

@@ -4,7 +4,6 @@ import {
   LayoutDashboard,
   Inbox,
   Users,
-  ShoppingBag,
   Package,
   Boxes,
   Megaphone,
@@ -17,9 +16,6 @@ import {
   PanelLeft,
   Settings2,
   ScanLine,
-  Undo2,
-  ArrowLeftRight,
-  History,
   CirclePlus,
   MessageSquareText,
 } from "lucide-react";
@@ -82,21 +78,10 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
     {
       section: t("nav.sell"),
       items: [
-        {
-          to: "/orders",
-          label: t("nav.orders"),
-          icon: ShoppingBag,
-          children: [
-            { key: "new", label: t("nav.newSale"), icon: ScanLine },
-            { key: "returns", label: t("nav.returns"), icon: Undo2 },
-            { key: "exchanges", label: t("nav.exchanges"), icon: ArrowLeftRight },
-            { key: "history", label: t("nav.salesHistory"), icon: History },
-          ],
-        },
+        { to: "/pos", label: t("nav.pos"), icon: ScanLine },
         { to: "/products", label: t("nav.products"), icon: Package },
         { to: "/products/new", label: t("nav.addProduct"), icon: CirclePlus },
         { to: "/inventory", label: t("nav.inventory"), icon: Boxes, badge: stockIssues },
-        { to: "/pos", label: t("nav.pos"), icon: ScanLine },
       ],
     },
     {

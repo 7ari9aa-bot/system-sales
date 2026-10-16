@@ -9,7 +9,7 @@ const ENTITY_ICONS = { customer: Users, order: ShoppingBag, product: Package };
 
 const HREF_BY_TYPE = {
   customer: "/customers",
-  order: "/orders",
+  order: "/pos",
   product: "/products",
 };
 
