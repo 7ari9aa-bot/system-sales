@@ -17,7 +17,7 @@ const TONE = {
  *  طلبات الذكاء. الرؤية بتظهر بس لما بياناتها موجودة. */
 export default function BusinessInsights() {
   const t = useT();
-  const live = useSalesStats("30d");
+  const live = useSalesStats();
 
   const insights = [];
   const top = live?.sources?.[0];

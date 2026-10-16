@@ -34,7 +34,7 @@ function Stat({ icon: Icon, label, value, tone }) {
  *  ومصروف من /ai/usage/summary. مفيش معدلات أتمتة وهمية. */
 export default function YourAI() {
   const t = useT();
-  const live = useSalesStats("30d");
+  const live = useSalesStats();
   const usage = useUsageSummary();
   const approvals = useApprovals();
   const [agents, setAgents] = React.useState(null);

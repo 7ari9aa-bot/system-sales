@@ -1,7 +1,6 @@
 import React from "react";
 import { DollarSign, ShoppingBag, Sparkles, TrendingUp, Users } from "lucide-react";
 import { KpiCard, KpiSkeleton } from "@/components/dashboard/ui";
-import { useDashboard } from "@/lib/dashboardContext";
 import { formatCurrency } from "@/lib/dashboardData";
 import { useT } from "@/lib/i18n";
 import useSalesStats from "@/hooks/useSalesStats";
@@ -12,9 +11,8 @@ import useUsageSummary from "@/hooks/useUsageSummary";
  *  /analytics/dashboard والمصروف من /ai/usage/summary. مفيش نسب تغيّر
  *  وهمية — الـbackend مش بينشر delta، فالشارة مش بتظهر. */
 export default function BusinessPulse() {
-  const { range } = useDashboard();
   const t = useT();
-  const live = useSalesStats(range);
+  const live = useSalesStats();
   const usage = useUsageSummary();
 
   const netSales = live?.netSales ?? null;

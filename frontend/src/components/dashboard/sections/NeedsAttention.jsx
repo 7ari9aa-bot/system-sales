@@ -19,7 +19,7 @@ const ICONS = {
  *  نفدت، ومنتجات مخزونها منخفض. */
 export default function NeedsAttention() {
   const t = useT();
-  const live = useSalesStats("30d");
+  const live = useSalesStats();
   const approvals = useApprovals();
 
   const items = [];

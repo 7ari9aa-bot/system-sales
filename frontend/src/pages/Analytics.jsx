@@ -5,7 +5,6 @@ import {
 import { Link } from "react-router-dom";
 import { TrendingUp, ArrowRight, Package, Clock, ShoppingBag } from "lucide-react";
 import { PageHeader, SectionCard } from "@/components/dashboard/ui";
-import { useDashboard } from "@/lib/dashboardContext";
 import { formatCurrency } from "@/lib/dashboardData";
 import useSalesStats from "@/hooks/useSalesStats";
 import { useT } from "@/lib/i18n";
@@ -30,8 +29,7 @@ function ChartTooltip({ active, payload, label }) {
 
 export default function Analytics() {
   const t = useT();
-  const { range } = useDashboard();
-  const live = useSalesStats(range);
+  const live = useSalesStats();
   const data = live?.trend || [];
   const s = {
     netSales: { value: live?.netSales ?? null },

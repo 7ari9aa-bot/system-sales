@@ -8,7 +8,7 @@ import { apiCached, peekCache } from "@/lib/api";
 
 export function InventorySnapshot() {
   const t = useT();
-  const live = useSalesStats("30d");
+  const live = useSalesStats();
   return (
     <SectionCard
       title={

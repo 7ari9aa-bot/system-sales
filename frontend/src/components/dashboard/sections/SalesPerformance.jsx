@@ -3,7 +3,6 @@ import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from "recharts";
 import { SectionCard, Skeleton } from "@/components/dashboard/ui";
-import { useDashboard } from "@/lib/dashboardContext";
 import { formatCurrency } from "@/lib/dashboardData";
 import useSalesStats from "@/hooks/useSalesStats";
 import { useT } from "@/lib/i18n";
@@ -32,9 +31,8 @@ function ChartTooltip({ active, payload, t }) {
  *  GET /analytics/overview)، وبدل «أفضل المنتجات» الوهمية: أعلى
  *  المصادر المنسوبة لآخر لمسة من /analytics/dashboard بوسم صريح. */
 export default function SalesPerformance() {
-  const { range } = useDashboard();
   const t = useT();
-  const live = useSalesStats(range);
+  const live = useSalesStats();
   const data = live?.trend || [];
   const netSales = live?.netSales ?? null;
   const orders = live?.orders ?? null;

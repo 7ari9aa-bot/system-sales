@@ -2,69 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiCached, peekCache } from "@/lib/api";
 import { setRegionalConfig, useRegional } from "@/lib/regional";
 
-const DAYS = { "7d": 7, "30d": 30, "90d": 90 };
-
-function zonedParts(date, timezone) {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: timezone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(date);
-  return Object.fromEntries(parts.map(({ type, value }) => [type, value]));
-}
-
-function zonedMidnightToUtc({ year, month, day }, timezone) {
-  const target = { year: Number(year), month: Number(month), day: Number(day), hour: 0, minute: 0, second: 0 };
-  const desiredUtc = Date.UTC(target.year, target.month - 1, target.day);
-  let guess = desiredUtc;
-  const formatter = new Intl.DateTimeFormat("en-US", {
-    timeZone: timezone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23",
-  });
-  for (let attempt = 0; attempt < 4; attempt += 1) {
-    const parts = Object.fromEntries(formatter.formatToParts(new Date(guess)).map(({ type, value }) => [type, value]));
-    const observedUtc = Date.UTC(
-      Number(parts.year), Number(parts.month) - 1, Number(parts.day),
-      Number(parts.hour), Number(parts.minute), Number(parts.second),
-    );
-    const delta = desiredUtc - observedUtc;
-    if (delta === 0) break;
-    guess += delta;
-  }
-  return new Date(guess);
-}
-
-function overviewPath(range, timezone) {
-  const params = new URLSearchParams();
-  if (range === "today" || range === "yesterday") {
-    const now = new Date();
-    const todayParts = zonedParts(now, timezone);
-    const todayStart = zonedMidnightToUtc(todayParts, timezone);
-    if (range === "today") {
-      params.set("since", todayStart.toISOString());
-      params.set("until", now.toISOString());
-    } else {
-      const previousDay = new Date(Date.UTC(Number(todayParts.year), Number(todayParts.month) - 1, Number(todayParts.day) - 1));
-      const previousParts = {
-        year: previousDay.getUTCFullYear(),
-        month: previousDay.getUTCMonth() + 1,
-        day: previousDay.getUTCDate(),
-      };
-      params.set("since", zonedMidnightToUtc(previousParts, timezone).toISOString());
-      params.set("until", todayStart.toISOString());
-    }
-    params.set("timezone", timezone);
-  } else {
-    params.set("days", String(DAYS[range] || DAYS["30d"]));
-    params.set("timezone", timezone);
-  }
+function overviewPath(timezone) {
+  const params = new URLSearchParams({ days: "30", timezone });
   return `/analytics/overview?${params.toString()}`;
 }
 
@@ -90,10 +29,10 @@ function percentDelta(current, previous) {
   return ((now - before) / Math.abs(before)) * 100;
 }
 
-/** أرقام المبيعات الحقيقية لنطاق الداشبورد — من read models السيرفر:
+/** أرقام المبيعات الحقيقية لآخر 30 يومًا من read models السيرفر:
  *  GET /analytics/dashboard للبيانات المساندة وGET /analytics/overview
- *  للنطاق المحدد، مع حدود اليوم المحلي في إعداد المنطقة الزمنية. */
-export default function useSalesStats(range) {
+ *  للمبيعات اليومية، محسوبة حسب المنطقة الزمنية لإعداد المتجر. */
+export default function useSalesStats() {
   const [dash, setDash] = useState(() => peekCache("/analytics/dashboard") || null);
   const [overviewState, setOverviewState] = useState({ path: null, data: null });
   const [previous, setPrevious] = useState({ path: null, data: null });
@@ -103,7 +42,7 @@ export default function useSalesStats(range) {
   const [overviewAttempt, setOverviewAttempt] = useState(0);
   const { country } = useRegional();
   const timezone = dash?.orders?.timezone || country.timezone;
-  const path = useMemo(() => overviewPath(range, timezone), [range, timezone]);
+  const path = useMemo(() => overviewPath(timezone), [timezone]);
   const overview = overviewState.path === path ? overviewState.data : null;
   const overviewError = overviewFailure.path === path ? overviewFailure.error : "";
   const currency = overview?.currency || dash?.orders?.currency;

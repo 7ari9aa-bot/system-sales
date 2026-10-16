@@ -1,8 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, Bell, CircleHelp, Menu, ChevronDown, Check, Sun, Moon, Languages, BookOpen, LifeBuoy, Keyboard, Settings2 } from "lucide-react";
-import { useDashboard } from "@/lib/dashboardContext";
-import { DATE_RANGES } from "@/lib/dashboardData";
+import { Search, Bell, CircleHelp, Menu, Sun, Moon, Languages, BookOpen, LifeBuoy, Keyboard, Settings2 } from "lucide-react";
 import { api, apiCached } from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
 import { useT, useI18n } from "@/lib/i18n";
@@ -58,14 +56,12 @@ function greeting(t) {
 }
 
 export default function Header({ onMenu }) {
-  const { range, setRange } = useDashboard();
   const navigate = useNavigate();
   const t = useT();
   const { user } = useAuth();
   const { theme, setTheme } = useTheme();
   const { lang, setLang } = useI18n();
   const [searchOpen, setSearchOpen] = useState(false);
-  const currentRange = DATE_RANGES.find((r) => r.id === range) || DATE_RANGES[3];
 
   // إشعارات حقيقية من /notifications — بدل القائمة الثابتة
   const [notifications, setNotifications] = useState(null);
@@ -164,33 +160,6 @@ export default function Header({ onMenu }) {
           >
             <Languages className="h-4 w-4" />
           </button>
-
-          {/* Date range */}
-          <Dropdown
-            width="w-44"
-            trigger={(open) => (
-              <span className="flex items-center justify-center gap-1.5 h-9 min-w-[150px] px-3 rounded-lg border border-border text-[13px] font-medium hover:bg-surface cursor-pointer whitespace-nowrap">
-                {t(`range.${currentRange.id}`)}
-                <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", open && "rotate-180")} />
-              </span>
-            )}
-          >
-            {(close) =>
-              DATE_RANGES.map((r) => (
-                <button
-                  key={r.id}
-                  onClick={() => {
-                    setRange(r.id);
-                    close();
-                  }}
-                  className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[13px] hover:bg-surface text-left"
-                >
-                  {t(`range.${r.id}`)}
-                  {r.id === range && <Check className="h-4 w-4 text-primary" />}
-                </button>
-              ))
-            }
-          </Dropdown>
 
           {/* Mobile search toggle */}
           <button

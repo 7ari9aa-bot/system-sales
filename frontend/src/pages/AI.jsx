@@ -51,7 +51,7 @@ export default function AI() {
   const { lang } = useI18n();
   const navigate = useNavigate();
   const isAr = lang === "ar";
-  const live = useSalesStats("30d");
+  const live = useSalesStats();
   const usage = useUsageSummary();
   const approvals = useApprovals();
   const [agents, setAgents] = React.useState(() => peekCache(AGENTS_PATH) || null);

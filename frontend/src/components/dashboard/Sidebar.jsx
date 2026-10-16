@@ -44,7 +44,7 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
 
   // شارات حقيقية: غير المقروء من read model السيرفر، والمخزون من
   // النطاقين المنفصلين (منخفض + نافد) — بدل أرقام ثابتة.
-  const live = useSalesStats("30d");
+  const live = useSalesStats();
   const unread = live?.unread ?? null;
   const stockIssues = live?.lowStock == null || live?.outOfStock == null
     ? null
