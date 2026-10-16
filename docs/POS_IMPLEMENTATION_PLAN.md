@@ -85,6 +85,58 @@ Still missing for full parity — CLOSED 2026-10-16 (the "close every gap" pass)
 The only parity item left is the VAT decision itself: the roll-up plumbing is
 live end to end and stays at zero until the owner defines the tax engine.
 
+## 11. Exchange (الاستبدال) — deep-search conclusions + design
+
+Deep search (2026-10-16): **neither ERPNext v16.51.1 nor Odoo Community master
+has a first-class exchange** — verified in source: ERPNext's POS UI offers
+Return only; Odoo's refund orders REJECT positive quantities outright
+(`isSaleDisallowed` in pos_order.js) and `PosOrderLineRefund.refundableQty`
+implements the same per-line cap as our `PosReturnLine`. Both systems force
+exchange = return document + separate new sale.
+
+The commercial state of the art DOES have it (deep search: Shopify POS 11.5
+"returns and exchanges in cart", Square for Retail, Cin7 Core, Scantranx,
+StoreConnect): **one cart, one transaction** — scan the original, mark return
+lines (capped), add replacements, and the net difference is settled
+automatically (customer pays the balance / shop refunds the difference, back
+to the original payment method by default). This is the pattern we adopt.
+
+Design (one transaction, reusing every existing primitive):
+
+```
+POST /pos/sessions/{session_id}/exchanges
+{ order_id, return_lines: [{variant_id, quantity}], new_lines: [...],
+  restock: bool, tenders?: [{method, amount}], tendered_cash?: str }
+```
+
+1. Return half = `return_sale`'s rules exactly: same-session receipt, per-line
+   caps (sold − returned), original-sale pricing with the proportional discount
+   share, `returns_allowed_methods` gate on refund legs.
+2. New half = `sell`'s pricing rules (ladder, sellability), same customer as
+   the original order, no discount on replacements (v1).
+3. Net = new_total − return_total. Positive → capture tenders (must total the
+   NET exactly, change via `tendered_cash`). Negative → allocate the refund
+   across the ORIGINAL captured tenders (cash-first). Zero → pure swap.
+4. Two receipts in one transaction: `POS-RET-` (return) + `POS-` (new sale).
+   Drawer arithmetic stays honest: new cash in, refund cash out.
+5. One outbox event `pos.sale.exchanged` carrying both sides (registered in
+   DOMAIN_EVENT_TYPES — the static guard enforces it).
+6. Restock rides the existing per-variant goods cap.
+
+Status: **BUILT and verified on a real database** (fe — `PosService.exchange`,
+`POST /pos/sessions/{id}/exchanges`, `pos.sale.exchanged` registered, 8 tests).
+One ledger lesson the verification forced: the credit conversion must be
+double-entry — the FULL return value refunds across the original tenders
+(cash-first) AND the replacement is funded from that credit walking the legs
+in REVERSE (non-cash first). Recording only the net left the per-method
+reconciliation describing money that never flowed. With the gross pair, a
+pure swap books two offsetting legs and moves nothing; a net-negative
+exchange leaves the drawer by exactly the cash refund the customer receives;
+a net-positive one charges the caller's tenders, whose cash — not the
+funding echo — drives tendered/change. The UI: the returns panel gained an
+Exchange mode (replacement picker off the scoped grid, live net summary,
+tender for a positive difference).
+
 ## 10. Verification audit (2026-10-16) — DB-backed tests EXECUTED, 4 bugs found and fixed
 
 The suite was run against a REAL PostgreSQL 17 (a fresh local `pos_audit`

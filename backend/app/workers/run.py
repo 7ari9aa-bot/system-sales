@@ -22,6 +22,12 @@ import asyncio
 import logging
 import signal
 
+# The API process imports every router and therefore every model, so its
+# Base.metadata is complete by accident of wiring. A worker imports only the
+# pools it runs — without this, a mapper whose FK points at a table another
+# module owns (pos_daily_sales.location_id -> locations) explodes at first
+# use with NoReferencedTableError. The registry is the single complete-import.
+import app.core.model_registry  # noqa: F401
 from app.core.events.bus import RedisStreamsBus
 from app.core.events.outbox import OutboxRelay
 from app.core.redis import close_redis, get_redis

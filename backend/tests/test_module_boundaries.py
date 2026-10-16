@@ -183,8 +183,11 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # tool computes are registered through `EvidenceStore.register_numbers`, the
 # analytics module's own door, so the SI adapter gained no new import site and
 # the skip rules live beside the pack contract that enforces them.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 181
-# 167 -> 177 on 2026-10-15: POS receipt returns, refund lines & orders cross-module linkage (pos/service.py)
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 192
+# 188 -> 192 on 2026-10-16: POS exchange sale addition in pos/service.py
+# (OrderService + InventoryService function-scope calls)
+# 167 -> 177 on 2026-10-15: POS receipt returns, refund lines & orders
+# cross-module linkage (pos/service.py)
 # 177 -> 181 on 2026-10-16: POS phase 4/5 — all function-scope, all endorsed
 # directions, no new cycles (verified: SCCs unchanged):
 #   1-2. pos/service.py -> orders.models ×2 (the close event's seed figures and
@@ -195,8 +198,16 @@ BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 181
 #      the handover picker shows — adapter reading the owning service).
 #   4. pos/profiles.py -> catalog.service (categories_exist, the item-group
 #      scoping guard — through the catalog's own door, not its tables).
+# 181 -> 188 on 2026-10-16: the audit pass found the committed customer-agent
+# wave importing catalog/inventory TABLES at MODULE scope
+# (ai/agents/customer/tools.py:29 — the permanent-coupling sin the counter
+# exists to catch). Converted to function-scope reads inside the six handler
+# functions that use them, per §137 (the same read-model pattern the file
+# already applies to orders). Net +5 statements: seven local reads minus the
+# two module-scope lines removed. No new cycles (verified: SCCs unchanged).
 # and router sub-package decompositions.
-# 162 -> 167 on 2026-10-15: POS session handovers and profiles expansion (pos/service.py + pos/profiles.py).
+# 162 -> 167 on 2026-10-15: POS session handovers and profiles expansion
+# (pos/service.py + pos/profiles.py)
 # 154 -> 162 on 2026-10-15: POS profiles expansion (pos/profiles.py + pos/service.py)
 # and conversations sub-router decomposition.
 # 149 -> 154 on 2026-10-15: locks the voice-path seam (commits 20bfae9 + ed91f64)

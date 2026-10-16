@@ -161,6 +161,9 @@ DOMAIN_EVENT_TYPES: tuple[str, ...] = (
     # the daily projection and analytics reconcile returns from this event,
     # never by reading return rows mid-transaction.
     "pos.sale.returned",
+    # §189: the one-transaction exchange — a return and its replacement sale
+    # settle together, and the net difference rides this event for analytics.
+    "pos.sale.exchanged",
     # §189: "email me this receipt" is queued durably and sent by the pos
     # worker pool; the request path never sends mail inline.
     "pos.receipt.email_requested",

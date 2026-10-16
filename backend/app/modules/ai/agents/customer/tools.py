@@ -25,8 +25,6 @@ from app.core.sql import LIKE_ESCAPE, like_pattern
 from app.core.storage import get_storage
 from app.modules.ai.agents.customer.vision.schemas import ImageKind
 from app.modules.ai.tools import ToolSpec, register_tool
-from app.modules.catalog.models import Product, ProductImage, ProductVariant
-from app.modules.inventory.models import InventoryBalance
 
 
 def _order_deps():
@@ -104,6 +102,9 @@ async def _search_products(
     option_values: dict[str, object] | None = None,
     limit: int = 5,
 ) -> dict:
+    # function-scope: the ratchet's escape hatch — the catalog's tables are
+    # read as a parameter-bound read model, never coupled at module scope.
+    from app.modules.catalog.models import Product, ProductVariant
     _, sellable_statuses = _order_deps()
     pattern = like_pattern(query)
     ts_query = func.plainto_tsquery(literal_column("'simple'"), query)
@@ -152,6 +153,7 @@ class GetVariantPriceArgs(BaseModel):
 async def _get_variant_price(
     session: AsyncSession, tenant_id: uuid.UUID, *, variant_id: uuid.UUID
 ) -> dict:
+    from app.modules.catalog.models import Product, ProductVariant
     _, sellable_statuses = _order_deps()
     row = (
         await session.execute(
@@ -183,6 +185,9 @@ class CheckStockArgs(BaseModel):
 async def _check_stock(
     session: AsyncSession, tenant_id: uuid.UUID, *, variant_id: uuid.UUID
 ) -> dict:
+    from app.modules.catalog.models import Product, ProductVariant
+    from app.modules.inventory.models import InventoryBalance
+
     _, sellable_statuses = _order_deps()
     variant = (
         await session.execute(
@@ -321,6 +326,7 @@ async def _propose_quote(
     requested_items: list[dict],
 ) -> dict:
     from app.modules.ai.agents.customer.confirmation import live_quote, mint_quote, quote_payload
+    from app.modules.catalog.models import Product, ProductVariant
 
     existing = await live_quote(
         session, tenant_id, conversation_id=conversation_id, customer_id=customer_id
@@ -500,6 +506,7 @@ async def _resolve_product_media(
     product_id: uuid.UUID,
     selection: Literal["primary", "all"] = "primary",
 ) -> dict:
+    from app.modules.catalog.models import Product, ProductImage
     _, sellable_statuses = _order_deps()
     product_exists = (
         await session.execute(
@@ -587,6 +594,7 @@ async def _add_tag(
 async def media_payload_for_ids(
     session: AsyncSession, tenant_id: uuid.UUID, image_ids: list[str]
 ) -> list[dict]:
+    from app.modules.catalog.models import ProductImage
     if not image_ids:
         return []
     rows = (

@@ -266,6 +266,27 @@ class ReturnRequest(BaseModel):
     restock: bool = False
 
 
+class ExchangeLine(BaseModel):
+    variant_id: UUID
+    quantity: int = Field(ge=1)
+
+
+class ExchangeRequest(BaseModel):
+    """The one-transaction exchange: return lines and their replacement sale
+    settle together, and only the net difference moves money."""
+
+    order_id: UUID
+    return_lines: list[ExchangeLine] = Field(min_length=1)
+    new_lines: list[ExchangeLine] = Field(min_length=1)
+    restock: bool = True
+    # Only the NET amount the customer still owes is tendered through these;
+    # a net refund needs no tenders at all.
+    tenders: list[TenderLine] | None = None
+    method: str | None = Field(default=None, pattern="^(cash|card|wallet|bank_transfer)$")
+    amount: str | None = Field(default=None, pattern=_MONEY)
+    tendered_cash: str | None = Field(default=None, pattern=_MONEY)
+
+
 class HandoverRequest(BaseModel):
     to_user_id: UUID
     counted_cash: str = Field(pattern=_MONEY)
@@ -674,6 +695,42 @@ async def return_sale(session_id: UUID, body: ReturnRequest, ctx: PosWriteCtx):
     return {
         **result,
         "receipt_id": str(result["receipt_id"]),
+    }
+
+
+@router.post("/sessions/{session_id}/exchanges", status_code=201)
+async def exchange(session_id: UUID, body: ExchangeRequest, ctx: PosWriteCtx):
+    """One-transaction exchange: the return funds its replacement, and only
+    the net difference moves money — two receipts, one commit."""
+    tenders = (
+        [{"method": t.method, "amount": t.amount} for t in body.tenders]
+        if body.tenders
+        else None
+    )
+    result = await PosService.exchange(
+        ctx.session,
+        ctx.tenant_id,
+        session_id,
+        order_id=body.order_id,
+        return_lines=[
+            {"variant_id": str(line.variant_id), "quantity": line.quantity}
+            for line in body.return_lines
+        ],
+        new_lines=[
+            {"variant_id": str(line.variant_id), "quantity": line.quantity}
+            for line in body.new_lines
+        ],
+        restock=body.restock,
+        tenders=tenders,
+        method=body.method,
+        amount=body.amount,
+        tendered_cash=body.tendered_cash,
+        actor_user_id=ctx.user.id,
+    )
+    return {
+        **result,
+        "return_receipt_id": str(result["return_receipt_id"]),
+        "new_receipt_id": str(result["new_receipt_id"]),
     }
 
 

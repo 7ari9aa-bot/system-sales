@@ -143,6 +143,18 @@ export default {
   "pos.returnedBadge": "رجع {n}",
   "pos.fullyReturned": "البيعة دي اترجعت بالكامل.",
   "pos.shiftClosedRemote": "الوردية اتقفلت من مكان تاني.",
+  "pos.exchangeMode": "استبدال",
+  "pos.returnOnly": "مرتجع فقط",
+  "pos.replacements": "البدائل",
+  "pos.searchToAdd": "امسح أو دوّر على البديل…",
+  "pos.returnEst": "قيمة المرتجع",
+  "pos.newEst": "قيمة البدائل",
+  "pos.netDue": "على العميل",
+  "pos.netRefund": "لصالح العميل",
+  "pos.exchangeSubmit": "نفّذ الاستبدال",
+  "pos.exchanged": "الاستبدال تم. إيصال {n} و {m}.",
+  "pos.err.exchange": "تعذّر تنفيذ الاستبدال.",
+  "pos.err.noReplacement": "ضيف البدائل الأول.",
 
   // Sales module (structure only until wired to /api/v1)
 

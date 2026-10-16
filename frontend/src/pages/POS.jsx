@@ -755,6 +755,12 @@ export default function POS() {
                       sessionId={session.id}
                       onNotice={setNotice}
                       onError={setError}
+                      onDone={(result) => {
+                        if (result?.new_receipt_id) {
+                          // الاستبدال بيطلع إيصالين — نعرض إيصال البيع الجديد.
+                          setLastReceiptId(result.new_receipt_id);
+                        }
+                      }}
                     />
                   </div>
                 )}

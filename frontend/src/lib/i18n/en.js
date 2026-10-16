@@ -143,6 +143,18 @@ export default {
   "pos.returnedBadge": "{n} returned",
   "pos.fullyReturned": "This sale was fully returned already.",
   "pos.shiftClosedRemote": "This shift was closed from somewhere else.",
+  "pos.exchangeMode": "Exchange",
+  "pos.returnOnly": "Return only",
+  "pos.replacements": "Replacements",
+  "pos.searchToAdd": "Scan or search the replacement…",
+  "pos.returnEst": "Return value",
+  "pos.newEst": "Replacements total",
+  "pos.netDue": "Customer owes",
+  "pos.netRefund": "Shop owes",
+  "pos.exchangeSubmit": "Process exchange",
+  "pos.exchanged": "Exchange done. Receipts {n} and {m}.",
+  "pos.err.exchange": "Could not process the exchange.",
+  "pos.err.noReplacement": "Add the replacement items first.",
 
   // Sales module (structure only until wired to /api/v1)
 

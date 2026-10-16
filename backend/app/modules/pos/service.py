@@ -2595,6 +2595,430 @@ class PosService:
             "restocked": restocked,
         }
 
+    # ----------------------------------------------------------- exchanges ----
+
+    @staticmethod
+    async def exchange(
+        session: AsyncSession,
+        tenant_id: UUID,
+        session_id: UUID,
+        *,
+        order_id: UUID,
+        return_lines: list[dict],
+        new_lines: list[dict],
+        restock: bool = True,
+        tenders: list[dict] | None = None,
+        method: str | None = None,
+        amount: object | None = None,
+        tendered_cash: object | None = None,
+        actor_user_id: UUID | None = None,
+    ) -> dict:
+        """The one-transaction exchange (§189 — beyond ERPNext and Odoo).
+
+        The customer's return funds its own replacement: the return value is
+        first credited against the ORIGINAL captured tenders (cash-first),
+        the credit pays the new order, and only the leftover — if the return
+        was worth more than the replacement — is actually refunded (cash
+        legs physically leave the drawer; card legs are ledger rows). When
+        the replacement costs more, the customer is charged just the
+        difference through the caller's tenders. Either way the return and
+        the new sale commit together or not at all, under two receipts.
+
+        The exchange keeps the original order's customer, and the new lines
+        are priced off the CURRENT ladder with no discount (v1).
+        """
+        from app.core.events.writer import add_outbox_event
+        from app.modules.inventory.models import InventoryMovement
+        from app.modules.inventory.service import InventoryService
+        from app.modules.orders.models import Order, OrderItem, OrderPayment, Refund
+        from app.modules.orders.service import OrderService
+
+        pos_session = await PosService._get_session(session, tenant_id, session_id)
+        if pos_session.status != "OPEN":
+            raise ConflictError("this session is closed; exchanges ride the open drawer")
+        PosService._ensure_session_current(pos_session)
+        if not return_lines:
+            raise ValidationError("an exchange must return at least one line")
+        if not new_lines:
+            raise ValidationError("an exchange must replace with at least one line")
+
+        # ---------- the return half: identical rules to return_sale -----------
+        receipt = (
+            await session.execute(
+                select(PosReceipt).where(
+                    PosReceipt.tenant_id == tenant_id,
+                    PosReceipt.order_id == order_id,
+                    PosReceipt.kind == "sale",
+                )
+            )
+        ).scalar_one_or_none()
+        if receipt is None:
+            raise NotFoundError(f"no POS sale receipt for order {order_id}")
+        if receipt.session_id != pos_session.id:
+            raise ConflictError("this sale belongs to a different session")
+
+        requested: dict[UUID, int] = {}
+        for line in return_lines:
+            try:
+                variant_id = UUID(str(line["variant_id"]))
+                quantity = PosService._positive_qty(line.get("quantity"))
+            except (KeyError, TypeError, ValueError):
+                raise ValidationError(
+                    "each return line needs a variant_id and a positive quantity"
+                ) from None
+            requested[variant_id] = requested.get(variant_id, 0) + quantity
+
+        order = (
+            await session.execute(
+                select(Order).where(Order.tenant_id == tenant_id, Order.id == order_id)
+            )
+        ).scalar_one_or_none()
+        if order is None:
+            raise NotFoundError(f"order {order_id} not found")
+
+        sold: dict[UUID, dict] = {}
+        for item in (
+            (
+                await session.execute(
+                    select(OrderItem).where(
+                        OrderItem.tenant_id == tenant_id,
+                        OrderItem.order_id == order_id,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        ):
+            entry = sold.setdefault(item.variant_id, {"quantity": 0, "unit_price": None})
+            entry["quantity"] += item.quantity
+            if entry["unit_price"] is None:
+                entry["unit_price"] = to_money(item.unit_price, "unit_price")
+
+        unknown = set(requested) - set(sold)
+        if unknown:
+            raise ValidationError(
+                f"{len(unknown)} returned variant(s) were never sold on this order"
+            )
+        already_returned = dict(
+            (
+                await session.execute(
+                    select(
+                        PosReturnLine.variant_id,
+                        func.coalesce(func.sum(PosReturnLine.quantity), 0),
+                    )
+                    .where(
+                        PosReturnLine.tenant_id == tenant_id,
+                        PosReturnLine.order_id == order_id,
+                    )
+                    .group_by(PosReturnLine.variant_id)
+                )
+            ).all()
+        )
+        for variant_id, quantity in requested.items():
+            sold_qty = sold[variant_id]["quantity"]
+            money_cap = sold_qty - int(already_returned.get(variant_id, 0))
+            if quantity > money_cap:
+                raise ConflictError(
+                    f"variant {variant_id} was sold {sold_qty} and "
+                    f"{money_cap} unit(s) are already returned"
+                )
+        if restock:
+            restocked_already = dict(
+                (
+                    await session.execute(
+                        select(
+                            InventoryMovement.variant_id,
+                            func.coalesce(func.sum(InventoryMovement.quantity), 0),
+                        )
+                        .where(
+                            InventoryMovement.tenant_id == tenant_id,
+                            InventoryMovement.reason == "return",
+                            InventoryMovement.reference_type == "order",
+                            InventoryMovement.reference_id == order_id,
+                        )
+                        .group_by(InventoryMovement.variant_id)
+                    )
+                ).all()
+            )
+            for variant_id, quantity in requested.items():
+                goods_cap = sold[variant_id]["quantity"] - int(
+                    restocked_already.get(variant_id, 0)
+                )
+                if quantity > goods_cap:
+                    raise ConflictError(
+                        f"variant {variant_id}: only {goods_cap} unit(s) of this sale "
+                        "are still out of the shelf"
+                    )
+
+        priced = PosService._return_line_totals(
+            Decimal(str(order.subtotal)),
+            Decimal(str(order.discount_total)),
+            [(sold[v]["unit_price"], requested[v]) for v in requested],
+        )
+        return_entries = [
+            {
+                "variant_id": variant_id,
+                "quantity": requested[variant_id],
+                "unit_price": sold[variant_id]["unit_price"],
+                "refund_total": total,
+            }
+            for variant_id, total in zip(requested, priced, strict=True)
+        ]
+        return_total = to_money(
+            sum((e["refund_total"] for e in return_entries), Decimal("0")),
+            "return_total",
+        )
+
+        # ---------- the new half: the original order's own customer ----------
+        new_subtotal, _prepared = await PosService._price_lines(
+            session, tenant_id, new_lines
+        )
+        try:
+            totals = compute_totals(subtotal=new_subtotal, discount=None)
+        except ValueError as exc:
+            raise ValidationError(str(exc)) from exc
+        new_grand_total = to_money(totals["grand_total"], "new_grand_total")
+
+        # ---------- credit the return across the original tenders -----------
+        captured = (
+            (
+                await session.execute(
+                    select(OrderPayment)
+                    .where(
+                        OrderPayment.tenant_id == tenant_id,
+                        OrderPayment.order_id == order_id,
+                        OrderPayment.status.in_(("captured", "partially_refunded")),
+                    )
+                    .order_by(
+                        (OrderPayment.method == "cash").desc(),
+                        OrderPayment.created_at.asc(),
+                        OrderPayment.id.asc(),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        plan: list[tuple[OrderPayment, Decimal]] = []
+        remaining = return_total
+        for payment in captured:
+            if remaining <= 0:
+                break
+            already = Decimal(
+                str(
+                    (
+                        await session.execute(
+                            select(func.coalesce(func.sum(Refund.amount), 0))
+                            .select_from(Refund)
+                            .where(
+                                Refund.tenant_id == tenant_id,
+                                Refund.payment_id == payment.id,
+                                Refund.status != "rejected",
+                            )
+                        )
+                    ).scalar_one()
+                )
+            )
+            headroom = to_money(payment.amount, "captured") - already
+            if headroom <= 0:
+                continue
+            leg = remaining if remaining <= headroom else headroom
+            plan.append((payment, leg))
+            remaining -= leg
+        if remaining > 0:
+            raise ConflictError(
+                f"return exceeds what this sale captured; "
+                f"{remaining} could not be placed against its payments"
+            )
+
+        profile = await PosService.resolve_profile(session, tenant_id, pos_session)
+        allowed_return_methods = (
+            set(profile.returns_allowed_methods or []) if profile is not None else set()
+        )
+        refund_methods = {payment.method for payment, _leg in plan}
+        if allowed_return_methods and refund_methods - allowed_return_methods:
+            raise ValidationError(
+                f"refund methods {sorted(refund_methods - allowed_return_methods)} "
+                "are not enabled for returns on this profile"
+            )
+
+        # ---------- double-entry conversion of the credit --------------------
+        # The FULL return value is refunded across the original tenders
+        # (cash-first), and the replacement is paid FROM that credit — funding
+        # walks the legs in REVERSE (non-cash first) so physical cash never
+        # moves for a pure swap: the card sees its refund and re-charge, the
+        # drawer's two ledger legs cancel, and only the true net difference
+        # ever moves. The refund legs and the funding payments are the
+        # double-entry pair; recording only their net would leave the
+        # per-method reconciliation describing money that never flowed.
+        for payment, leg in plan:
+            await OrderService.register_refund(
+                session, tenant_id, order_id, payment.id,
+                amount=leg, reason="pos_exchange", by_user_id=actor_user_id,
+            )
+        cash_out = sum(
+            (leg for payment, leg in plan if payment.method == "cash"),
+            Decimal("0"),
+        )
+        if cash_out > 0:
+            await PosService._append_sale_cash(
+                session, tenant_id, pos_session.id,
+                reason="cash_refund", amount=to_money(cash_out, "cash_refund"),
+                created_by=actor_user_id, reference_id=order_id,
+            )
+        funding: list[tuple[str, Decimal]] = []
+        remaining_new = new_grand_total
+        for payment, leg in reversed(plan):  # non-cash first: keep cash physical
+            take = min(remaining_new, leg)
+            if take > 0:
+                funding.append((payment.method, take))
+                remaining_new -= take
+        remaining_new = to_money(remaining_new, "remaining_new")
+
+        # The difference the customer still owes: charged through the caller's
+        # tenders, which must total it exactly — the exchange's own variant of
+        # the settle-the-whole-order rule.
+        caller_tenders: list[dict] = []
+        if remaining_new > 0:
+            caller_tenders = PosService._normalise_tenders(
+                tenders, method, amount,
+                default_method=(
+                    profile.default_payment_method if profile is not None else None
+                ) or "cash",
+            )
+            if profile is not None:
+                PosService._ensure_methods_allowed(profile, caller_tenders)
+            named_all = all(t["amount"] is not None for t in caller_tenders)
+            if named_all:
+                tendered_total = to_money(
+                    sum(
+                        (t["amount"] for t in caller_tenders if t["amount"] is not None),
+                        Decimal("0"),
+                    ),
+                    "tenders",
+                )
+                if tendered_total != remaining_new:
+                    raise ValidationError(
+                        f"tenders total {tendered_total} but the exchange "
+                        f"difference is {remaining_new}"
+                    )
+
+        # ---------- commit: order, payments, receipts ------------------------
+        register = await PosService._get_register(
+            session, tenant_id, pos_session.register_id
+        )
+        new_order = await OrderService.create_order(
+            session,
+            tenant_id,
+            order.customer_id,  # the exchange keeps the original customer
+            new_lines,
+            channel="pos",
+            warehouse_id=register.warehouse_id,
+        )
+        resolved = [
+            {
+                "method": t["method"],
+                "amount": t["amount"] if t["amount"] is not None else remaining_new,
+            }
+            for t in caller_tenders
+        ]
+        for t_method, t_amount in funding:
+            await OrderService.add_payment(
+                session, tenant_id, new_order.id, method=t_method, amount=t_amount,
+            )
+        for t in resolved:
+            await OrderService.add_payment(
+                session, tenant_id, new_order.id, method=t["method"], amount=t["amount"],
+            )
+        funding_cash = sum((amt for m, amt in funding if m == "cash"), Decimal("0"))
+        caller_cash = sum(
+            (t["amount"] for t in resolved if t["method"] == "cash"), Decimal("0")
+        )
+        # The drawer books BOTH the funding echo and the caller's physical
+        # cash — but tendered/change describe the CUSTOMER's handover only:
+        # the funding leg is ledger conversion, never money the till counted.
+        cash_in = funding_cash + caller_cash
+        if cash_in > 0:
+            await PosService._append_sale_cash(
+                session, tenant_id, pos_session.id,
+                reason="cash_sale", amount=to_money(cash_in, "cash_in"),
+                created_by=actor_user_id, reference_id=new_order.id,
+            )
+        tendered, change = (
+            PosService._settle_change(caller_cash, tendered_cash)
+            if caller_cash > 0
+            else (None, None)
+        )
+
+        if restock:
+            for entry in return_entries:
+                await InventoryService.move(
+                    session, tenant_id, entry["variant_id"], register.warehouse_id,
+                    direction="in", quantity=entry["quantity"],
+                    reason="return", reference_type="order", reference_id=order_id,
+                )
+
+        return_receipt = await PosService._issue_receipt(
+            session, tenant_id, pos_session, order,
+            number_prefix="POS-RET", kind="return",
+        )
+        for entry in return_entries:
+            session.add(
+                PosReturnLine(
+                    tenant_id=tenant_id,
+                    receipt_id=return_receipt.id,
+                    order_id=order_id,
+                    variant_id=entry["variant_id"],
+                    quantity=entry["quantity"],
+                    unit_price=entry["unit_price"],
+                    refund_total=entry["refund_total"],
+                )
+            )
+        new_receipt = await PosService._issue_receipt(
+            session, tenant_id, pos_session, new_order,
+            tendered_amount=tendered, change_amount=change,
+        )
+        await session.flush()
+
+        net = to_money(new_grand_total - return_total, "net")
+        await add_outbox_event(
+            session,
+            aggregate_type="pos_session",
+            aggregate_id=pos_session.id,
+            event_type="pos.sale.exchanged",
+            tenant_id=tenant_id,
+            payload={
+                "pos.sale.exchanged": True,
+                "session_id": str(pos_session.id),
+                "order_id": str(order_id),
+                "new_order_id": str(new_order.id),
+                "return_receipt_id": str(return_receipt.id),
+                "new_receipt_id": str(new_receipt.id),
+                "return_total": str(return_total),
+                "new_total": str(new_grand_total),
+                "net": str(net),
+                "restocked": restock,
+            },
+            producer="pos",
+        )
+        return {
+            "return_receipt_id": return_receipt.id,
+            "return_receipt_number": return_receipt.number,
+            "new_receipt_id": new_receipt.id,
+            "new_receipt_number": new_receipt.number,
+            "return_total": str(return_total),
+            "new_total": str(new_grand_total),
+            "net": str(net),
+            "by_method": [
+                {"method": payment.method, "amount": str(leg)}
+                for payment, leg in plan
+            ] or [
+                {"method": t["method"], "amount": str(t["amount"])}
+                for t in resolved
+            ],
+            "restocked": restock,
+        }
+
     # --------------------------------------------------------- handovers ----
 
     @staticmethod

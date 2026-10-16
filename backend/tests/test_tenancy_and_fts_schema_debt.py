@@ -188,8 +188,12 @@ def test_the_three_new_revisions_exist_and_chain_from_the_head() -> None:
     # purpose: it is a fork nobody has decided about yet.
     pointed_to = {parent for _, parent in ids.values() if parent}
     tail = set(ids) - pointed_to
-    assert tail == {"fe2026101401"}, (
-        f"expected one linear head fe2026101401, found {sorted(tail)} — "
+    # The pin moved again with the POS expansion wave (profiles + held carts +
+    # handovers -> floats/guards -> return lines -> catalog scoping + the daily
+    # projection): fe2026101401 -> fe2026101501 -> ... -> fe2026101506, one
+    # linear chain.
+    assert tail == {"fe2026101506"}, (
+        f"expected one linear head fe2026101506, found {sorted(tail)} — "
         "two heads break `alembic upgrade head` for every environment"
     )
 
@@ -802,7 +806,9 @@ def test_alembic_still_reports_a_single_head() -> None:
     lines = [line for line in out.stdout.splitlines() if line.strip()]
     assert out.returncode == 0, out.stderr
     assert len(lines) == 1, f"multiple heads would break the build: {lines}"
-    assert lines[0].startswith("fe2026101401"), lines
+    # The pin moves with the chain (see the static guard above): the POS
+    # expansion wave carried fe2026101401 -> fe2026101506.
+    assert lines[0].startswith("fe2026101506"), lines
 
 
 # ------------------------------------------- DB-backed: CI-only, not watched

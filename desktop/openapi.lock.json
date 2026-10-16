@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 345,
-    "sha256": "1d0e2aceb1fd27dc0c5667e7b5b8830ed3adc7085e4c5766a9ec63fc7372c85e",
-    "typed_operations": 221
+    "operations": 374,
+    "sha256": "1a8c53c332d3b08ebe4219323e71af101bbd9eedb440f5aa467a84e6902613e6",
+    "typed_operations": 223
   },
   "spec": {
     "components": {
@@ -3345,6 +3345,20 @@
         },
         "CloseSessionRequest": {
           "properties": {
+            "counted_by_method": {
+              "anyOf": [
+                {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Counted By Method"
+            },
             "counted_cash": {
               "pattern": "^\\d+(\\.\\d{1,2})?$",
               "title": "Counted Cash",
@@ -3975,6 +3989,111 @@
           "title": "CreateProductRequest",
           "type": "object"
         },
+        "CreateProfileRequest": {
+          "properties": {
+            "allowed_payment_methods": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Allowed Payment Methods"
+            },
+            "code": {
+              "maxLength": 31,
+              "minLength": 1,
+              "title": "Code",
+              "type": "string"
+            },
+            "default_customer_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Default Customer Id"
+            },
+            "default_payment_method": {
+              "anyOf": [
+                {
+                  "pattern": "^(cash|card|wallet|bank_transfer)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Default Payment Method"
+            },
+            "discount_ceiling_pct": {
+              "default": "0",
+              "pattern": "^\\d+(\\.\\d{1,2})?$",
+              "title": "Discount Ceiling Pct",
+              "type": "string"
+            },
+            "item_group_ids": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Item Group Ids"
+            },
+            "name": {
+              "maxLength": 127,
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            },
+            "require_customer": {
+              "default": false,
+              "title": "Require Customer",
+              "type": "boolean"
+            },
+            "returns_allowed_methods": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Returns Allowed Methods"
+            },
+            "warehouse_id": {
+              "format": "uuid",
+              "title": "Warehouse Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "code",
+            "warehouse_id"
+          ],
+          "title": "CreateProfileRequest",
+          "type": "object"
+        },
         "CreateRegisterRequest": {
           "properties": {
             "code": {
@@ -3988,6 +4107,18 @@
               "minLength": 1,
               "title": "Name",
               "type": "string"
+            },
+            "profile_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Profile Id"
             },
             "warehouse_id": {
               "format": "uuid",
@@ -7061,6 +7192,114 @@
           "title": "EvidencePack",
           "type": "object"
         },
+        "ExchangeLine": {
+          "properties": {
+            "quantity": {
+              "minimum": 1.0,
+              "title": "Quantity",
+              "type": "integer"
+            },
+            "variant_id": {
+              "format": "uuid",
+              "title": "Variant Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "variant_id",
+            "quantity"
+          ],
+          "title": "ExchangeLine",
+          "type": "object"
+        },
+        "ExchangeRequest": {
+          "description": "The one-transaction exchange: return lines and their replacement sale\nsettle together, and only the net difference moves money.",
+          "properties": {
+            "amount": {
+              "anyOf": [
+                {
+                  "pattern": "^\\d+(\\.\\d{1,2})?$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Amount"
+            },
+            "method": {
+              "anyOf": [
+                {
+                  "pattern": "^(cash|card|wallet|bank_transfer)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Method"
+            },
+            "new_lines": {
+              "items": {
+                "$ref": "#/components/schemas/ExchangeLine"
+              },
+              "minItems": 1,
+              "title": "New Lines",
+              "type": "array"
+            },
+            "order_id": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            },
+            "restock": {
+              "default": true,
+              "title": "Restock",
+              "type": "boolean"
+            },
+            "return_lines": {
+              "items": {
+                "$ref": "#/components/schemas/ExchangeLine"
+              },
+              "minItems": 1,
+              "title": "Return Lines",
+              "type": "array"
+            },
+            "tendered_cash": {
+              "anyOf": [
+                {
+                  "pattern": "^\\d+(\\.\\d{1,2})?$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tendered Cash"
+            },
+            "tenders": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/TenderLine"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tenders"
+            }
+          },
+          "required": [
+            "order_id",
+            "return_lines",
+            "new_lines"
+          ],
+          "title": "ExchangeRequest",
+          "type": "object"
+        },
         "ExecuteCommandRequest": {
           "description": "Payload to execute an approved command via an Authority Lease.",
           "properties": {
@@ -7993,6 +8232,20 @@
           "title": "FullDiagnosticsOut",
           "type": "object"
         },
+        "GrantUserRequest": {
+          "properties": {
+            "user_id": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "user_id"
+          ],
+          "title": "GrantUserRequest",
+          "type": "object"
+        },
         "HTTPValidationError": {
           "properties": {
             "detail": {
@@ -8148,6 +8401,38 @@
           "title": "HandoverOut",
           "type": "object"
         },
+        "HandoverRequest": {
+          "properties": {
+            "counted_cash": {
+              "pattern": "^\\d+(\\.\\d{1,2})?$",
+              "title": "Counted Cash",
+              "type": "string"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "to_user_id": {
+              "format": "uuid",
+              "title": "To User Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "to_user_id",
+            "counted_cash"
+          ],
+          "title": "HandoverRequest",
+          "type": "object"
+        },
         "HandoverResolveRequest": {
           "properties": {
             "note": {
@@ -8227,6 +8512,60 @@
           "title": "HealthSubsystemOut",
           "type": "object"
         },
+        "HoldCartRequest": {
+          "properties": {
+            "customer_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Customer Id"
+            },
+            "discount_total": {
+              "anyOf": [
+                {
+                  "pattern": "^\\d+(\\.\\d{1,2})?$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Discount Total"
+            },
+            "items": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "minItems": 1,
+              "title": "Items",
+              "type": "array"
+            },
+            "label": {
+              "anyOf": [
+                {
+                  "maxLength": 127,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Label"
+            }
+          },
+          "required": [
+            "items"
+          ],
+          "title": "HoldCartRequest",
+          "type": "object"
+        },
         "IdentityOut": {
           "properties": {
             "channel": {
@@ -8304,11 +8643,12 @@
             },
             "provider": {
               "enum": [
-                "whatsapp",
+                "facebook",
                 "instagram",
                 "messenger",
                 "telegram",
-                "webchat"
+                "webchat",
+                "whatsapp"
               ],
               "title": "Provider",
               "type": "string"
@@ -11046,11 +11386,49 @@
         },
         "OpenSessionRequest": {
           "properties": {
+            "cashier_user_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cashier User Id"
+            },
+            "floats_by_method": {
+              "anyOf": [
+                {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Floats By Method"
+            },
             "opening_float": {
               "default": "0.00",
               "pattern": "^\\d+(\\.\\d{1,2})?$",
               "title": "Opening Float",
               "type": "string"
+            },
+            "profile_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Profile Id"
             }
           },
           "title": "OpenSessionRequest",
@@ -11726,6 +12104,56 @@
           "title": "ProviderPolicyUpsertRequest",
           "type": "object"
         },
+        "QuoteRequest": {
+          "properties": {
+            "approved": {
+              "default": false,
+              "title": "Approved",
+              "type": "boolean"
+            },
+            "discount_total": {
+              "anyOf": [
+                {
+                  "pattern": "^\\d+(\\.\\d{1,2})?$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Discount Total"
+            },
+            "items": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "minItems": 1,
+              "title": "Items",
+              "type": "array"
+            }
+          },
+          "required": [
+            "items"
+          ],
+          "title": "QuoteRequest",
+          "type": "object"
+        },
+        "ReceiptEmailRequest": {
+          "properties": {
+            "email": {
+              "maxLength": 254,
+              "minLength": 3,
+              "title": "Email",
+              "type": "string"
+            }
+          },
+          "required": [
+            "email"
+          ],
+          "title": "ReceiptEmailRequest",
+          "type": "object"
+        },
         "RefreshRequest": {
           "properties": {
             "refresh_token": {
@@ -11813,6 +12241,43 @@
             "amount"
           ],
           "title": "RefundCreateRequest",
+          "type": "object"
+        },
+        "RefundRequest": {
+          "properties": {
+            "amount": {
+              "pattern": "^\\d+(\\.\\d{1,2})?$",
+              "title": "Amount",
+              "type": "string"
+            },
+            "method": {
+              "default": "cash",
+              "pattern": "^(cash|card|wallet|bank_transfer)$",
+              "title": "Method",
+              "type": "string"
+            },
+            "order_id": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            },
+            "reason": {
+              "default": "customer_return",
+              "maxLength": 31,
+              "title": "Reason",
+              "type": "string"
+            },
+            "restock": {
+              "default": false,
+              "title": "Restock",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "order_id",
+            "amount"
+          ],
+          "title": "RefundRequest",
           "type": "object"
         },
         "RegisterRequest": {
@@ -11960,17 +12425,17 @@
           "type": "object"
         },
         "RetentionPolicyChoice": {
-          "description": "Body of ``PUT /analytics/retention/policies/{data_class}``.\n\nThe bounds mirror the migration's CHECK on ``retention_policies``\n(``f7a2c9d4e8b1``) so a client learns the limit from a 422 instead of from a\ndatabase error mid-request. They are NOT a duplicate of the module's own\nguard: ``choose_policy`` still refuses the same range, and a ValueError that\nescapes it is mapped below rather than returned as a 500.",
+          "description": "Body of ``PUT /analytics/retention/policies/{data_class}``.",
           "properties": {
             "retention_days": {
-              "description": "How long this tenant's rows in the store may live, in days. The month a shared partition may be dropped at is pinned by the LONGEST horizon any active tenant chose, so a short number here is honoured by the row-level worker and never by a DETACH. Below the legal floor for the store is refused by the database, not clamped.",
+              "description": "How long this tenant's rows in the store may live, in days.",
               "maximum": 3650.0,
               "minimum": 1.0,
               "title": "Retention Days",
               "type": "integer"
             },
             "status": {
-              "description": "'active' is the consent that lets a month go; 'paused' is an explicit withdrawal — it keeps the horizon on record but counts as NOT chosen, which pins the shared month for every tenant.",
+              "description": "'active' is the consent that lets a month go; 'paused' is an explicit withdrawal.",
               "enum": [
                 "active",
                 "paused"
@@ -12190,16 +12655,24 @@
           "title": "RetentionPositionOut",
           "type": "object"
         },
-        "ReturnRequest": {
+        "ReturnLine": {
           "properties": {
-            "reason": {
-              "default": "customer_return",
-              "maxLength": 31,
-              "title": "Reason",
+            "quantity": {
+              "minimum": 1.0,
+              "title": "Quantity",
+              "type": "integer"
+            },
+            "variant_id": {
+              "format": "uuid",
+              "title": "Variant Id",
               "type": "string"
             }
           },
-          "title": "ReturnRequest",
+          "required": [
+            "variant_id",
+            "quantity"
+          ],
+          "title": "ReturnLine",
           "type": "object"
         },
         "RevenueSummaryOut": {
@@ -12905,6 +13378,28 @@
           "title": "SavedViewUpdate",
           "type": "object"
         },
+        "ScanRequest": {
+          "properties": {
+            "identifier_type": {
+              "maxLength": 31,
+              "minLength": 1,
+              "title": "Identifier Type",
+              "type": "string"
+            },
+            "value": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Value",
+              "type": "string"
+            }
+          },
+          "required": [
+            "identifier_type",
+            "value"
+          ],
+          "title": "ScanRequest",
+          "type": "object"
+        },
         "ScheduledJobReschedule": {
           "properties": {
             "run_at": {
@@ -13452,30 +13947,100 @@
               "title": "Amount"
             },
             "customer_id": {
-              "format": "uuid",
-              "title": "Customer Id",
-              "type": "string"
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Customer Id"
+            },
+            "discount_approved": {
+              "default": false,
+              "title": "Discount Approved",
+              "type": "boolean"
+            },
+            "discount_total": {
+              "anyOf": [
+                {
+                  "pattern": "^\\d+(\\.\\d{1,2})?$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Discount Total"
+            },
+            "held_cart_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Held Cart Id"
             },
             "items": {
-              "items": {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              "minItems": 1,
-              "title": "Items",
-              "type": "array"
+              "anyOf": [
+                {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Items"
             },
             "method": {
-              "default": "cash",
-              "pattern": "^(cash|card|wallet|bank_transfer)$",
-              "title": "Method",
-              "type": "string"
+              "anyOf": [
+                {
+                  "pattern": "^(cash|card|wallet|bank_transfer)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Method"
+            },
+            "tendered_cash": {
+              "anyOf": [
+                {
+                  "pattern": "^\\d+(\\.\\d{1,2})?$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tendered Cash"
+            },
+            "tenders": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/TenderLine"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tenders"
             }
           },
-          "required": [
-            "customer_id",
-            "items"
-          ],
           "title": "SellRequest",
           "type": "object"
         },
@@ -14651,6 +15216,26 @@
             }
           },
           "title": "TenantTimezoneRequest",
+          "type": "object"
+        },
+        "TenderLine": {
+          "properties": {
+            "amount": {
+              "pattern": "^\\d+(\\.\\d{1,2})?$",
+              "title": "Amount",
+              "type": "string"
+            },
+            "method": {
+              "pattern": "^(cash|card|wallet|bank_transfer)$",
+              "title": "Method",
+              "type": "string"
+            }
+          },
+          "required": [
+            "method",
+            "amount"
+          ],
+          "title": "TenderLine",
           "type": "object"
         },
         "TextBlock": {
@@ -16099,6 +16684,137 @@
           "title": "UpdateProductRequest",
           "type": "object"
         },
+        "UpdateProfileRequest": {
+          "properties": {
+            "allowed_payment_methods": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Allowed Payment Methods"
+            },
+            "default_customer_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Default Customer Id"
+            },
+            "default_payment_method": {
+              "anyOf": [
+                {
+                  "pattern": "^(cash|card|wallet|bank_transfer)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Default Payment Method"
+            },
+            "discount_ceiling_pct": {
+              "anyOf": [
+                {
+                  "pattern": "^\\d+(\\.\\d{1,2})?$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Discount Ceiling Pct"
+            },
+            "is_active": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Active"
+            },
+            "item_group_ids": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Item Group Ids"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "maxLength": 127,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name"
+            },
+            "require_customer": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Require Customer"
+            },
+            "returns_allowed_methods": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Returns Allowed Methods"
+            },
+            "warehouse_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Warehouse Id"
+            }
+          },
+          "title": "UpdateProfileRequest",
+          "type": "object"
+        },
         "UpdateVariantRequest": {
           "properties": {
             "compare_at_price": {
@@ -16831,6 +17547,105 @@
           "title": "WebhookRetryOut",
           "type": "object"
         },
+        "WhatsAppSignupCompleteBody": {
+          "description": "What the JS SDK popup hands back, plus the two ids from its session.",
+          "properties": {
+            "code": {
+              "maxLength": 4096,
+              "minLength": 8,
+              "title": "Code",
+              "type": "string"
+            },
+            "phone_number_id": {
+              "maxLength": 64,
+              "minLength": 3,
+              "title": "Phone Number Id",
+              "type": "string"
+            },
+            "waba_id": {
+              "maxLength": 64,
+              "minLength": 3,
+              "title": "Waba Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "waba_id",
+            "phone_number_id"
+          ],
+          "title": "WhatsAppSignupCompleteBody",
+          "type": "object"
+        },
+        "WhatsAppSignupCompleteOut": {
+          "description": "Details of the newly configured WhatsApp channel integration.",
+          "properties": {
+            "display_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Display Name"
+            },
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "phone_number_id": {
+              "title": "Phone Number Id",
+              "type": "string"
+            },
+            "provider": {
+              "title": "Provider",
+              "type": "string"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            },
+            "waba_id": {
+              "title": "Waba Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "provider",
+            "status",
+            "phone_number_id",
+            "waba_id"
+          ],
+          "title": "WhatsAppSignupCompleteOut",
+          "type": "object"
+        },
+        "WhatsAppSignupStartOut": {
+          "description": "Public values the browser needs to open Meta's popup — nothing secret.",
+          "properties": {
+            "app_id": {
+              "title": "App Id",
+              "type": "string"
+            },
+            "config_id": {
+              "title": "Config Id",
+              "type": "string"
+            },
+            "graph_version": {
+              "title": "Graph Version",
+              "type": "string"
+            }
+          },
+          "required": [
+            "app_id",
+            "config_id",
+            "graph_version"
+          ],
+          "title": "WhatsAppSignupStartOut",
+          "type": "object"
+        },
         "WorkflowCreate": {
           "properties": {
             "definition": {
@@ -17000,6 +17815,47 @@
             }
           },
           "title": "WorkspaceUpdate",
+          "type": "object"
+        },
+        "app__modules__orders__routers__orders__ReturnRequest": {
+          "properties": {
+            "reason": {
+              "default": "customer_return",
+              "maxLength": 31,
+              "title": "Reason",
+              "type": "string"
+            }
+          },
+          "title": "ReturnRequest",
+          "type": "object"
+        },
+        "app__modules__pos__router__ReturnRequest": {
+          "description": "A line-level return of a POS sale (ERPNext's POS return document).",
+          "properties": {
+            "lines": {
+              "items": {
+                "$ref": "#/components/schemas/ReturnLine"
+              },
+              "minItems": 1,
+              "title": "Lines",
+              "type": "array"
+            },
+            "order_id": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            },
+            "restock": {
+              "default": false,
+              "title": "Restock",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "order_id",
+            "lines"
+          ],
+          "title": "ReturnRequest",
           "type": "object"
         }
       }
@@ -22012,7 +22868,7 @@
       },
       "/api/v1/analytics/daily-series": {
         "get": {
-          "description": "The merchant's daily revenue series — bucketed in the merchant's day.\n\nThe payload is the ONE list envelope (``items`` + ``next_cursor``, null on a\nbounded series) with its window metadata beside it: this used to answer a\ntop-level object with no cursor key at all, which was a fifth spelling of \"a\npage of things\" (gap P8). The metadata is not decoration — dropping\n``since``/``until``/``timezone``/``timezone_source`` would take back W5-T2's\nanswer to \"which window, whose day\".",
+          "description": "The merchant's daily revenue series — bucketed in the merchant's day.",
           "operationId": "daily_series_api_v1_analytics_daily_series_get",
           "parameters": [
             {
@@ -22287,17 +23143,17 @@
       },
       "/api/v1/analytics/inventory/stock-health": {
         "get": {
-          "description": "Replenishment signal with empty shelves split out of \"low stock\".",
+          "description": "Replenishment signal with empty shelves split out of 'low stock'.",
           "operationId": "stock_health_api_v1_analytics_inventory_stock_health_get",
           "parameters": [
             {
-              "description": "Available units at which a variant counts as low. Bound on both sides because it reaches SQL as `available <= :threshold`: a negative selects nothing and a million is not a reorder point, it is every balance the tenant holds (gap P7).",
+              "description": "Available units at which a variant counts as low. Bound on both sides because it reaches SQL as `available <= :threshold`.",
               "in": "query",
               "name": "low_stock_threshold",
               "required": false,
               "schema": {
                 "default": 2,
-                "description": "Available units at which a variant counts as low. Bound on both sides because it reaches SQL as `available <= :threshold`: a negative selects nothing and a million is not a reorder point, it is every balance the tenant holds (gap P7).",
+                "description": "Available units at which a variant counts as low. Bound on both sides because it reaches SQL as `available <= :threshold`.",
                 "maximum": 10000,
                 "minimum": 0,
                 "title": "Low Stock Threshold",
@@ -22399,7 +23255,7 @@
       },
       "/api/v1/analytics/metrics/definitions": {
         "get": {
-          "description": "§167: list every canonical metric definition.\n\nThe registry is finite and never paged, so it shares the list envelope with a\n``next_cursor`` of ``null`` rather than inventing a fifth shape for \"a list\nthat happens to stop\" (gap P8).",
+          "description": "§167: list every canonical metric definition.",
           "operationId": "list_metric_definitions_api_v1_analytics_metrics_definitions_get",
           "parameters": [
             {
@@ -22497,7 +23353,7 @@
       },
       "/api/v1/analytics/metrics/{metric_name}": {
         "get": {
-          "description": "Compute a single canonical metric for the tenant's window.\n\nThe response carries the definition the number was computed under\n(``refund_treatment`` says whether refunds were subtracted at all,\n``timezone_rule`` says how a calendar bucket is taken) so a bare figure can\nnever be read as the other family.\n\n``value`` is the one field here that answers with three wire types, and the\nsplit is ADR-001's, not an accident: an AMOUNT (revenue, net_revenue,\nrefunded_amount, aov) leaves as a Decimal STRING, a COUNT (orders_count) and\na RATIO (conversion_rate, roas, the two durations) leave as NUMBERS, and a\nmetric with no answer leaves as ``null``. ``_as_json`` applies that split and\n:data:`schemas.MetricValue` refuses a handler that breaks it — in both\ndirections, because stringifying a ratio would disagree with the same ratio as\n``marketing`` ships it.",
+          "description": "Compute a single canonical metric for the tenant's window.",
           "operationId": "compute_metric_api_v1_analytics_metrics__metric_name__get",
           "parameters": [
             {
@@ -22635,7 +23491,7 @@
       },
       "/api/v1/analytics/overview": {
         "get": {
-          "description": "One call for the analytics screen: money, orders, AOV, days, stock.\n\nThe screen used to fetch a path this server never published, so every visit\nlanded on its error state — and ``as any`` on the response kept the type\nchecker from noticing. What it returns is a composition, not a computation:\nevery figure comes from a reader in ``analytics/service.py``, the module\nthat owns metric SQL since Wave-4 M11. This route adds no query of its own.\n\nShape honesty, in the words the registry uses (§167/ADR-053):\n\n* ``gross_revenue`` is collected money, ``net_revenue`` is what survives the\n  refunds that LEFT in the same window, and ``refund_excess`` is the part\n  that could not be subtracted because net is floored at zero. No key is\n  ever named plain ``revenue``.\n* ``gross_aov``/``net_aov`` say which numerator they used.\n* ``daily_series`` buckets on the MERCHANT's day (gap M10) over the same\n  window as the summary, so the bars add up to the cards beside them.\n* ``currency`` is the tenant's (§47) and ``timezone`` is the zone the buckets\n  were labelled in; money crosses as strings, counts as integers.\n* ``stock`` separates an empty shelf from a nearly-empty one (gap M7).\n* ``since``/``until`` are the INSTANTS this window bound, in UTC. A window\n  given without an offset is refused with a 422 rather than read in whatever\n  timezone the connection happens to be in (W5-T2).\n\nThere is deliberately no top-products key: no canonical reader computes one,\nand an invented field is how a screen ends up trusting a number that does\nnot exist.\n\nEvery default in the signature above is a VALUE (``30`` days, no ``since``,\n``until`` resolved by ``_bind_window``, no zone, a threshold of\n``analytics_service.LOW_STOCK_THRESHOLD``) and not a ``Query(...)``\ndeclaration. This is the handler that showed why: it used to declare\n``low_stock_threshold: int = Query(default=2, ...)``, and the seeded case\n``tests/test_analytics_overview.py::test_overview_reports_seeded_money_in_its_named_families``\ncalls it in-process without that argument, so the unconverted ``Query(2)``\nrode into ``stock_health``'s ``:threshold`` bind. See the\nparameter-declaration rule above.",
+          "description": "One call for the analytics screen: money, orders, AOV, days, stock.",
           "operationId": "analytics_overview_api_v1_analytics_overview_get",
           "parameters": [
             {
@@ -22709,13 +23565,13 @@
               }
             },
             {
-              "description": "Available units at which a variant counts as low. The same bound the standalone stock-health route carries, because the same parameter reaches the same `available <= :threshold` bind here (gap P7).",
+              "description": "Available units at which a variant counts as low. The same bound the standalone stock-health route carries.",
               "in": "query",
               "name": "low_stock_threshold",
               "required": false,
               "schema": {
                 "default": 2,
-                "description": "Available units at which a variant counts as low. The same bound the standalone stock-health route carries, because the same parameter reaches the same `available <= :threshold` bind here (gap P7).",
+                "description": "Available units at which a variant counts as low. The same bound the standalone stock-health route carries.",
                 "maximum": 10000,
                 "minimum": 0,
                 "title": "Low Stock Threshold",
@@ -22817,7 +23673,7 @@
       },
       "/api/v1/analytics/retention": {
         "get": {
-          "description": "§55-57 read: this tenant's retention policy, the shared gate, and what\nwould unblock it.\n\n``policies`` is ``retention.policy_position`` verbatim, so the two ways of\nasking \"have I chosen\" cannot disagree: a row that does not exist and a row\nthat exists as ``paused`` both read back as ``chosen: false``, with the\nstatus and horizon that produced that answer beside them (``null`` for a\nquestion never answered — deliberately not 0, which would read as an\ninstant-delete policy). The horizon this door pre-fills is\n``offered_default_days`` (a store with no documented duration gets no\nsuggestion), and ``legal_floor_months`` is the 13 months no SHARED month may\nbe dropped under.\n\nEvery store a policy can govern is listed, month-purged or row-purged, and\n``purge_paths`` says which: ``[\"partition\"]`` data leaves as whole months,\n``[\"row\"]`` data leaves as one tenant's own rows. For the row stores\n``row_gate_reason`` is the answer that matters and ``shared_gate_reason`` is\n``null`` — another tenant's silence cannot block a purge of this tenant's\nrows, and reporting it would send the merchant to fix the wrong thing.\n\n``blocked_reason`` and ``gate`` are ``evaluate_gate``'s answer for the shared\nmonth, computed by ``read_drop_gate`` from the database's own SECURITY\nDEFINER aggregate. They are GLOBAL by construction — §56 partitions by time,\nso a month is shared — and they expose counts and the longest horizon only,\nnever another tenant's policy or existence by name.",
+          "description": "§55-57 read: this tenant's retention policy, the shared gate, and what\nwould unblock it.",
           "operationId": "retention_position_api_v1_analytics_retention_get",
           "parameters": [
             {
@@ -22915,7 +23771,7 @@
       },
       "/api/v1/analytics/retention/policies/{data_class}": {
         "put": {
-          "description": "§55-57 write: choose (or withdraw) this tenant's retention policy.\n\nThe door the gate was waiting for. It calls ``retention.choose_policy`` — the\nmodule's ONLY writer, an upsert on ``(tenant_id, data_class)`` so one tenant\ncannot hold two contradicting answers — and it writes nothing of its own.\n``ctx.tenant_id`` is the only tenancy in play; ``retention_policies`` is\nFORCE RLS with a ``WITH CHECK`` guard, so the row that lands is this tenant's.\n\nEvery refusal happens BEFORE the first query: an unknown store, a horizon\noutside 1..3650, or a status outside ``active``/``paused`` is a 4xx naming\nthe fix, and no policy row and no audit row are produced. Nothing is clamped\ninto range, because a silently-adjusted horizon is a delete the merchant did\nnot agree to.\n\nAudited through ``app.core.audit`` with the previous answer as the ``before``\nimage: this write is permission to DELETE — this tenant's own rows for a row\nstore, every tenant's shared month for a partitioned one — so \"who said what,\nwhen, replacing what\" is the record that has to exist afterwards (§66). The\ngate is re-read after the write and returned, so the caller sees immediately\nwhether the month is now droppable or still pinned by someone else's silence.",
+          "description": "§55-57 write: choose (or withdraw) this tenant's retention policy.",
           "operationId": "choose_retention_policy_api_v1_analytics_retention_policies__data_class__put",
           "parameters": [
             {
@@ -23032,7 +23888,7 @@
       },
       "/api/v1/analytics/revenue/summary": {
         "get": {
-          "description": "Gross and net money for one window, each figure named for its family.\n\n``net_revenue`` is ``gross_revenue - refunded_amount``, floored at zero;\nwhatever could not be subtracted in this window is reported as\n``refund_excess`` instead of disappearing.",
+          "description": "Gross and net money for one window, each figure named for its family.",
           "operationId": "revenue_summary_api_v1_analytics_revenue_summary_get",
           "parameters": [
             {
@@ -31769,7 +32625,7 @@
       },
       "/api/v1/fairness/check": {
         "get": {
-          "description": "§144: pre-flight check — does the tenant have `units` remaining?\n\n``units`` is bounded above: it multiplies the ask, and an unbounded one lets\nany caller ask the budget check \"may I spend 10^18 storage bytes?\" in a\nsingle request.",
+          "description": "§144: pre-flight check — does the tenant have `units` remaining?",
           "operationId": "fairness_check_api_v1_fairness_check_get",
           "parameters": [
             {
@@ -31890,7 +32746,7 @@
       },
       "/api/v1/fairness/usage": {
         "get": {
-          "description": "§144: current tenant's resource usage against fairness budgets.\n\nKeyed by resource name, so the value schema is the contract; the key set is\n``ResourceType``'s, which is why no per-resource field is declared here.",
+          "description": "§144: current tenant's resource usage against fairness budgets.",
           "operationId": "fairness_usage_api_v1_fairness_usage_get",
           "parameters": [
             {
@@ -34794,6 +35650,212 @@
             }
           },
           "summary": "Meta Oauth Start",
+          "tags": [
+            "platform"
+          ]
+        }
+      },
+      "/api/v1/integrations/whatsapp/embedded-signup/complete": {
+        "post": {
+          "description": "Finish the popup: exchange → subscribe → verify → store the channel.",
+          "operationId": "whatsapp_signup_complete_api_v1_integrations_whatsapp_embedded_signup_complete_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WhatsAppSignupCompleteBody"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/WhatsAppSignupCompleteOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Whatsapp Signup Complete",
+          "tags": [
+            "platform"
+          ]
+        }
+      },
+      "/api/v1/integrations/whatsapp/embedded-signup/start": {
+        "get": {
+          "description": "Hand the browser the PUBLIC popup parameters (app id + config id).\n\nOnly public values leave here: the popup is Meta's own page and the\nconsent happens with the store owner's Meta account. The app SECRET stays\non the server and is used only at completion time.",
+          "operationId": "whatsapp_signup_start_api_v1_integrations_whatsapp_embedded_signup_start_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/WhatsAppSignupStartOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Whatsapp Signup Start",
           "tags": [
             "platform"
           ]
@@ -40629,7 +41691,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ReturnRequest"
+                  "$ref": "#/components/schemas/app__modules__orders__routers__orders__ReturnRequest"
                 }
               }
             },
@@ -45197,6 +46259,1175 @@
           ]
         }
       },
+      "/api/v1/pos/held-carts/{held_cart_id}": {
+        "delete": {
+          "operationId": "release_held_cart_api_v1_pos_held_carts__held_cart_id__delete",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "held_cart_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Held Cart Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "204": {
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Release Held Cart",
+          "tags": [
+            "pos"
+          ]
+        },
+        "get": {
+          "operationId": "get_held_cart_api_v1_pos_held_carts__held_cart_id__get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "held_cart_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Held Cart Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get Held Cart",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
+      "/api/v1/pos/profiles": {
+        "get": {
+          "operationId": "list_profiles_api_v1_pos_profiles_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Profiles",
+          "tags": [
+            "pos"
+          ]
+        },
+        "post": {
+          "operationId": "create_profile_api_v1_pos_profiles_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateProfileRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Create Profile",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
+      "/api/v1/pos/profiles/{profile_id}": {
+        "get": {
+          "operationId": "get_profile_api_v1_pos_profiles__profile_id__get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "profile_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Profile Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get Profile",
+          "tags": [
+            "pos"
+          ]
+        },
+        "patch": {
+          "operationId": "update_profile_api_v1_pos_profiles__profile_id__patch",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "profile_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Profile Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateProfileRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Update Profile",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
+      "/api/v1/pos/profiles/{profile_id}/users": {
+        "get": {
+          "operationId": "list_profile_users_api_v1_pos_profiles__profile_id__users_get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "profile_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Profile Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Profile Users",
+          "tags": [
+            "pos"
+          ]
+        },
+        "post": {
+          "operationId": "grant_profile_user_api_v1_pos_profiles__profile_id__users_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "profile_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Profile Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GrantUserRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Grant Profile User",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
+      "/api/v1/pos/profiles/{profile_id}/users/{user_id}": {
+        "delete": {
+          "operationId": "revoke_profile_user_api_v1_pos_profiles__profile_id__users__user_id__delete",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "profile_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Profile Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "path",
+              "name": "user_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "User Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "204": {
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Revoke Profile User",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
+      "/api/v1/pos/receipts/{receipt_id}": {
+        "get": {
+          "description": "The printed artifact: receipt header + order lines + tenders.",
+          "operationId": "get_receipt_api_v1_pos_receipts__receipt_id__get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "receipt_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Receipt Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get Receipt",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
+      "/api/v1/pos/receipts/{receipt_id}/email": {
+        "post": {
+          "description": "Queue \"email me this receipt\" — sent by the pos worker pool, never\ninline. Refused up front when the deployment has no email delivery.",
+          "operationId": "email_receipt_api_v1_pos_receipts__receipt_id__email_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "receipt_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Receipt Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceiptEmailRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "202": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Email Receipt",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
       "/api/v1/pos/registers": {
         "get": {
           "operationId": "list_registers_api_v1_pos_registers_get",
@@ -45505,6 +47736,257 @@
             }
           },
           "summary": "Open Session",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
+      "/api/v1/pos/reports/daily": {
+        "get": {
+          "description": "The event-fed daily projection: one row per register for the date.",
+          "operationId": "daily_report_api_v1_pos_reports_daily_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "business_date",
+              "required": true,
+              "schema": {
+                "title": "Business Date",
+                "type": "string"
+              }
+            },
+            {
+              "in": "query",
+              "name": "register_id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Register Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Daily Report",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
+      "/api/v1/pos/sessions": {
+        "get": {
+          "description": "Resume the till: sessions behind this drawer, newest first.",
+          "operationId": "list_sessions_api_v1_pos_sessions_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "status",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Status"
+              }
+            },
+            {
+              "in": "query",
+              "name": "register_id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Register Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Sessions",
           "tags": [
             "pos"
           ]
@@ -45840,6 +48322,1591 @@
             }
           },
           "summary": "Close Session",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
+      "/api/v1/pos/sessions/{session_id}/close-preview": {
+        "get": {
+          "description": "The close screen's target: per-method expected + sales summary.",
+          "operationId": "get_close_preview_api_v1_pos_sessions__session_id__close_preview_get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "session_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Session Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get Close Preview",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
+      "/api/v1/pos/sessions/{session_id}/exchanges": {
+        "post": {
+          "description": "One-transaction exchange: the return funds its replacement, and only\nthe net difference moves money — two receipts, one commit.",
+          "operationId": "exchange_api_v1_pos_sessions__session_id__exchanges_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "session_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Session Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExchangeRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Exchange",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
+      "/api/v1/pos/sessions/{session_id}/handover": {
+        "post": {
+          "description": "Hand the open drawer to another cashier; the same session keeps running.",
+          "operationId": "handover_session_api_v1_pos_sessions__session_id__handover_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "session_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Session Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HandoverRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Handover Session",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
+      "/api/v1/pos/sessions/{session_id}/handovers": {
+        "get": {
+          "operationId": "list_handovers_api_v1_pos_sessions__session_id__handovers_get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "session_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Session Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Handovers",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
+      "/api/v1/pos/sessions/{session_id}/held-carts": {
+        "get": {
+          "operationId": "list_held_carts_api_v1_pos_sessions__session_id__held_carts_get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "session_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Session Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Held Carts",
+          "tags": [
+            "pos"
+          ]
+        },
+        "post": {
+          "description": "Park a basket on the open session; reserve nothing, book nothing.",
+          "operationId": "hold_cart_api_v1_pos_sessions__session_id__held_carts_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "session_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Session Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HoldCartRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Hold Cart",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
+      "/api/v1/pos/sessions/{session_id}/items": {
+        "get": {
+          "description": "The till's catalog grid: active variants, ladder price, bin stock.",
+          "operationId": "browse_items_api_v1_pos_sessions__session_id__items_get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "session_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Session Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "query",
+              "name": "q",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Q"
+              }
+            },
+            {
+              "in": "query",
+              "name": "limit",
+              "required": false,
+              "schema": {
+                "default": 20,
+                "title": "Limit",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "default": 0,
+                "title": "Offset",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Browse Items",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
+      "/api/v1/pos/sessions/{session_id}/quote": {
+        "post": {
+          "description": "Price a cart without writing anything — what the customer sees.",
+          "operationId": "quote_api_v1_pos_sessions__session_id__quote_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "session_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Session Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuoteRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Quote",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
+      "/api/v1/pos/sessions/{session_id}/receipts": {
+        "get": {
+          "description": "The shift's receipts with their return state — the refund picker.",
+          "operationId": "list_receipts_api_v1_pos_sessions__session_id__receipts_get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "session_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Session Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Receipts",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
+      "/api/v1/pos/sessions/{session_id}/reconciliation": {
+        "get": {
+          "operationId": "get_reconciliation_api_v1_pos_sessions__session_id__reconciliation_get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "session_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Session Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get Reconciliation",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
+      "/api/v1/pos/sessions/{session_id}/refunds": {
+        "post": {
+          "description": "Refund a POS sale by AMOUNT — the money-only path (goodwill, adjust).\n\nFor returning goods, use ``/returns``: it is line-aware, priced at the\noriginal sale, and allocates the money across the original tenders.",
+          "operationId": "refund_api_v1_pos_sessions__session_id__refunds_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "session_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Session Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefundRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Refund",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
+      "/api/v1/pos/sessions/{session_id}/report": {
+        "get": {
+          "description": "The shift's report — per method, cash trail, sales, returns, handovers.",
+          "operationId": "get_session_report_api_v1_pos_sessions__session_id__report_get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "session_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Session Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get Session Report",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
+      "/api/v1/pos/sessions/{session_id}/returns": {
+        "post": {
+          "description": "Line-level return of a POS sale, with its own POS-RET receipt.",
+          "operationId": "return_sale_api_v1_pos_sessions__session_id__returns_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "session_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Session Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/app__modules__pos__router__ReturnRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Return Sale",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
+      "/api/v1/pos/sessions/{session_id}/scan": {
+        "post": {
+          "description": "§179: a code resolves to one variant, priced — the till's entry point.",
+          "operationId": "scan_api_v1_pos_sessions__session_id__scan_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "session_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Session Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Scan",
           "tags": [
             "pos"
           ]
@@ -48432,7 +52499,7 @@
       },
       "/api/v1/search": {
         "get": {
-          "description": "§45: unified search through the SearchPort (engine-agnostic).\n\n``limit`` is bounded on both sides: an unbounded one is an amplification\nknob on the most-called endpoint an agent has, and a negative one reached\nthe backend as ``LIMIT -1``.",
+          "description": "§45: unified search through the SearchPort (engine-agnostic).",
           "operationId": "global_search_api_v1_search_get",
           "parameters": [
             {
@@ -49430,7 +53497,7 @@
           ]
         },
         "put": {
-          "description": "Configure opening hours. A malformed calendar is refused here rather\nthan silently degrading the SLA clock to wall-clock time at run time.",
+          "description": "Configure opening hours.",
           "operationId": "upsert_business_calendar_api_v1_sla_calendars_put",
           "parameters": [
             {
@@ -49633,7 +53700,7 @@
           ]
         },
         "put": {
-          "description": "Create or replace the tenant's SLA policy of the same name.\n\n`is_default` is exclusive: promoting a policy demotes the previous default,\notherwise `resolve_policy` could pick either one and the effective SLA would\ndepend on row order.",
+          "description": "Create or replace the tenant's SLA policy of the same name.",
           "operationId": "upsert_sla_policy_api_v1_sla_policies_put",
           "parameters": [
             {
@@ -49741,7 +53808,7 @@
       },
       "/api/v1/sla/risk": {
         "get": {
-          "description": "Conversations whose first-response SLA is running, breached or at risk.\n\nThis is the query behind the inbox \"SLA risk\" view: without it the clock\nticks but nobody can see it.",
+          "description": "Conversations whose first-response SLA is running, breached or at risk.",
           "operationId": "sla_risk_api_v1_sla_risk_get",
           "parameters": [
             {
@@ -50047,7 +54114,7 @@
       },
       "/api/v1/sla/slos/{slo_name}": {
         "get": {
-          "description": "§168: compute one SLO's compliance for the tenant.\n\nAn unknown name is the client's mistake: ``measure_slo`` refuses it as a\n``ValidationError`` (400 ``validation_error``, not retryable). It used to\nraise ``ValueError``, which the 500 handler answered as\n``internal_error``/``retryable: true`` — telling the caller to retry a\nrequest that will fail identically forever.",
+          "description": "§168: compute one SLO's compliance for the tenant.",
           "operationId": "measure_one_slo_api_v1_sla_slos__slo_name__get",
           "parameters": [
             {
@@ -50154,7 +54221,7 @@
       },
       "/api/v1/tasks": {
         "get": {
-          "description": "The tenant's tasks, newest first.\n\n``customer_id`` answers \"what is owed on this customer?\": tasks attach\npolymorphically, so a customer's tasks are the ones whose related entity\npoints at that customer.",
+          "description": "The tenant's tasks, newest first.",
           "operationId": "list_tasks_api_v1_tasks_get",
           "parameters": [
             {
@@ -50320,6 +54387,7 @@
           ]
         },
         "post": {
+          "description": "Create a task through TaskService.",
           "operationId": "create_task_api_v1_tasks_post",
           "parameters": [
             {
@@ -50427,7 +54495,7 @@
       },
       "/api/v1/tasks/{task_id}/status": {
         "post": {
-          "description": "Move a task: status, assignee, priority — any combination.\n\n§13-14 again. This route used to run its own ``select(Task)`` and apply\n``status``/``priority`` by hand, which cost it two things the service\nalready enforced: ``assignee_user_id`` was accepted and silently discarded,\nand ``priority`` had no bound on the write path (``create`` bounded it at\n1..3, ``update`` did not).",
+          "description": "Move a task: status, assignee, priority — any combination.",
           "operationId": "update_task_status_api_v1_tasks__task_id__status_post",
           "parameters": [
             {
