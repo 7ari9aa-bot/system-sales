@@ -460,6 +460,7 @@ export default {
   "inbox.noConversations": "لا توجد محادثات في هذه القناة بعد.",
   "inbox.loadMore": "تحميل محادثات أخرى",
   "inbox.selectConversation": "اختر محادثة لبدء الدردشة",
+  "inbox.backToChats": "العودة إلى المحادثات",
   "inbox.typeMessage": "اكتب رسالة…",
   "inbox.approve": "موافقة",
   "inbox.approval.sent": "تمت الموافقة — يكمل وكيل الذكاء المحادثة.",

@@ -9,6 +9,14 @@ import { cn } from "@/lib/utils";
 
 const INBOX_PAGE_SIZE = 50;
 const MESSAGE_PAGE_SIZE = 50;
+const WHATSAPP_AVATAR_COLORS = ["#7b8794", "#8b6f86", "#6f8580", "#9a795e", "#71859b", "#8a815f", "#7b7b91"];
+
+function whatsappAvatarColor(value) {
+  const key = String(value || "contact");
+  let hash = 0;
+  for (let index = 0; index < key.length; index += 1) hash = (hash * 31 + key.charCodeAt(index)) | 0;
+  return WHATSAPP_AVATAR_COLORS[(hash >>> 0) % WHATSAPP_AVATAR_COLORS.length];
+}
 
 function displayTime(value) {
   if (!value) return "";
@@ -46,7 +54,9 @@ function toConversation(row, channel) {
     id: row.id,
     customer,
     initials: String(customer).trim().slice(0, 2).toUpperCase() || "—",
-    color: channel?.accent || "hsl(var(--primary))",
+    color: channel?.id === "whatsapp"
+      ? whatsappAvatarColor(row.customer_id || customer)
+      : channel?.accent || "hsl(var(--primary))",
     channel: row.channel,
     preview: row.last_message_preview || "",
     status: viewStatus,
@@ -62,6 +72,7 @@ export default function Inbox() {
   const t = useT();
   const { lang } = useI18n();
   const [activeChannel, setActiveChannel] = useState("whatsapp");
+  const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const [activeId, setActiveId] = useState(null);
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
@@ -186,6 +197,7 @@ export default function Inbox() {
   }, [activeChannel, channels, integrationAccess]);
 
   const channel = getChannel(activeChannel);
+  const isWhatsApp = activeChannel === "whatsapp";
   const allConversations = convMap[activeChannel] || [];
   const approvalsByConversation = useMemo(() => {
     const map = new Map();
@@ -367,7 +379,7 @@ export default function Inbox() {
             channels={channels}
             active={activeChannel}
             unreadByChannel={unreadByChannel}
-            onSelect={(id) => { setActiveChannel(id); setActiveId(null); setFilter("all"); }}
+            onSelect={(id) => { setActiveChannel(id); setActiveId(null); setMobileChatOpen(false); setFilter("all"); }}
           />
         </div>
       </div>
@@ -381,7 +393,7 @@ export default function Inbox() {
             channels={channels}
             active={activeChannel}
             unreadByChannel={unreadByChannel}
-            onSelect={(id) => { setActiveChannel(id); setActiveId(null); setFilter("all"); }}
+            onSelect={(id) => { setActiveChannel(id); setActiveId(null); setMobileChatOpen(false); setFilter("all"); }}
           />
         </div>
       </div>
@@ -398,20 +410,32 @@ export default function Inbox() {
         </div>
       )}
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(180px,30dvh)_minmax(0,1fr)] gap-3 sm:grid-rows-[minmax(240px,32dvh)_minmax(0,1fr)] lg:grid-cols-[clamp(320px,28vw,440px)_minmax(0,1fr)] lg:grid-rows-1 lg:gap-3">
-        <div className="rounded-2xl bg-card border border-border flex flex-col min-h-0 overflow-hidden">
-          <div className="p-3 border-b border-border space-y-2.5">
+      <div dir="ltr" className={cn(
+        "grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[clamp(320px,28vw,440px)_minmax(0,1fr)] lg:grid-rows-1 lg:gap-3",
+        isWhatsApp ? "grid-rows-[minmax(0,1fr)]" : "grid-rows-[minmax(180px,30dvh)_minmax(0,1fr)] sm:grid-rows-[minmax(240px,32dvh)_minmax(0,1fr)]"
+      )}>
+        <div className={cn(
+          "bg-card border flex-col min-h-0 overflow-hidden",
+          isWhatsApp ? "rounded-xl border-[#d1d7db]" : "rounded-2xl border-border",
+          isWhatsApp && mobileChatOpen ? "hidden lg:flex" : "flex"
+        )}>
+          <div className={cn("p-3 space-y-2.5", isWhatsApp ? "border-b border-[#d1d7db]" : "border-b border-border")}>
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Search className={cn("absolute top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground", isWhatsApp && lang === "ar" ? "right-3" : "left-3")} />
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
+                dir={isWhatsApp ? (lang === "ar" ? "rtl" : "ltr") : undefined}
                 aria-label={t("inbox.search")}
                 placeholder={t("inbox.search")}
-                className="w-full h-9 pl-9 pr-3 rounded-lg bg-surface border border-border text-[13px] placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-ring/30"
+                className={cn(
+                  "w-full h-9 rounded-lg text-[13px] placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-ring/30",
+                  isWhatsApp && lang === "ar" ? "pr-9 pl-3 text-right" : "pl-9 pr-3",
+                  isWhatsApp ? "bg-[#f0f2f5] border border-[#f0f2f5]" : "bg-surface border border-border"
+                )}
               />
             </div>
-            <div className="flex gap-1">
+            <div className={cn("flex gap-1", isWhatsApp && "-mb-3 border-b border-[#d1d7db]")}>
               {FILTERS.map((item) => (
                 <button
                   key={item.id}
@@ -419,8 +443,10 @@ export default function Inbox() {
                   aria-pressed={filter === item.id}
                   onClick={() => setFilter(item.id)}
                   className={cn(
-                    "px-2.5 py-1 rounded-md text-[12px] font-medium whitespace-nowrap transition-colors",
-                    filter === item.id ? "bg-primary text-primary-foreground" : "bg-surface text-muted-foreground hover:text-foreground"
+                    "whitespace-nowrap transition-colors",
+                    isWhatsApp
+                      ? cn("px-2.5 py-2 text-[12px]", filter === item.id ? "border-b-2 border-[#00a884] font-semibold text-[#008f72]" : "border-b-2 border-transparent text-[#667781] hover:text-[#111b21]")
+                      : cn("px-2.5 py-1 rounded-md text-[12px] font-medium", filter === item.id ? "bg-primary text-primary-foreground" : "bg-surface text-muted-foreground hover:text-foreground")
                   )}
                 >
                   {item.label}
@@ -429,7 +455,7 @@ export default function Inbox() {
             </div>
           </div>
           <div
-            className="flex-1 overflow-y-auto scrollbar-thin"
+            className={cn("flex-1 overflow-y-auto scrollbar-thin", isWhatsApp && "bg-white")}
             onScroll={(event) => {
               const node = event.currentTarget;
               if (node.scrollHeight - node.scrollTop - node.clientHeight < 120) void loadMoreConversations();
@@ -453,29 +479,31 @@ export default function Inbox() {
                 key={conversation.id}
                 type="button"
                 aria-pressed={current?.id === conversation.id}
-                onClick={() => selectConversation(conversation)}
+                onClick={() => { selectConversation(conversation); if (isWhatsApp) setMobileChatOpen(true); }}
                 className={cn(
-                  "w-full flex gap-3 px-3 py-2.5 text-left border-b border-border/60 hover:bg-surface/60 transition-colors",
-                  current?.id === conversation.id && "bg-primary/5"
+                  "w-full flex gap-3 px-3 py-2.5 border-b transition-colors",
+                  isWhatsApp ? "border-[#e9edef] hover:bg-[#f5f6f6]" : "border-border/60 hover:bg-surface/60",
+                  isWhatsApp ? "text-start" : "text-left",
+                  current?.id === conversation.id && (isWhatsApp ? "bg-[#f0f2f5]" : "bg-primary/5")
                 )}
               >
                 <div className="relative shrink-0">
-                  <div className="h-11 w-11 rounded-full grid place-items-center text-[12px] font-semibold text-white" style={{ background: conversation.color }}>
+                  <div className={cn("rounded-full grid place-items-center text-[12px] font-semibold text-white", isWhatsApp ? "h-12 w-12" : "h-11 w-11")} style={{ background: conversation.color }}>
                     {conversation.initials}
                   </div>
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[13px] font-medium truncate">{conversation.customer}</span>
-                    <span className="text-[11px] text-muted-foreground shrink-0">{conversation.time}</span>
+                    <span dir={isWhatsApp ? "auto" : undefined} className={cn("truncate", isWhatsApp ? "text-[14px] font-medium text-[#111b21]" : "text-[13px] font-medium")}>{conversation.customer}</span>
+                    <span dir={isWhatsApp ? "ltr" : undefined} className={cn("shrink-0", isWhatsApp ? "text-[11px] text-[#667781]" : "text-[11px] text-muted-foreground")}>{conversation.time}</span>
                   </div>
-                  <p className="text-[12px] text-muted-foreground truncate mt-0.5">{conversation.preview}</p>
+                  <p dir={isWhatsApp ? "auto" : undefined} className={cn("truncate mt-0.5", isWhatsApp ? "text-[12px] text-[#667781]" : "text-[12px] text-muted-foreground")}>{conversation.preview}</p>
                   <div className="flex items-center gap-1.5 mt-1">
-                    <span className="rounded-md bg-surface px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                    <span className={cn("px-1.5 py-0.5 text-[10px]", isWhatsApp ? "rounded-full bg-[#f0f2f5] text-[#667781]" : "rounded-md bg-surface text-muted-foreground")}>
                       {t(`inbox.status.${conversation.status}`)}
                     </span>
                     {conversation.unread > 0 && (
-                      <span className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-primary text-primary-foreground tabular-nums">
+                      <span className={cn("ml-auto text-[10px] font-semibold px-1.5 py-0.5 tabular-nums", isWhatsApp ? "min-w-5 rounded-full bg-[#25d366] text-center text-white" : "rounded-md bg-primary text-primary-foreground")}>
                         {conversation.unread}
                       </span>
                     )}
@@ -502,6 +530,9 @@ export default function Inbox() {
 
         <ChannelChat
           channel={channel}
+          lang={lang}
+          className={isWhatsApp && !mobileChatOpen ? "hidden lg:flex" : ""}
+          onBack={isWhatsApp ? () => setMobileChatOpen(false) : undefined}
           conversation={current}
           approval={pendingApproval}
           loadingMessages={loadingMessages}

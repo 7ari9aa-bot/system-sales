@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
-import { ArrowUpRight, Sparkles, Check, CheckCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, ArrowUpRight, Sparkles, Check, CheckCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // A themed chat pane that renders in the selected channel's real look.
@@ -7,6 +7,9 @@ import { cn } from "@/lib/utils";
 // authentic light theme; the "app" theme channel follows the dashboard.
 export default function ChannelChat({
   channel,
+  className = "",
+  onBack,
+  lang = "en",
   conversation,
   approval,
   loadingMessages = false,
@@ -27,6 +30,7 @@ export default function ChannelChat({
   const preserveScrollRef = useRef(null);
   const messageViewportRef = useRef({ conversationId: null, latestMessageId: null });
   const isApp = channel.theme === "app";
+  const isWhatsApp = channel.id === "whatsapp";
   const th = isApp ? null : channel.theme;
 
   useLayoutEffect(() => {
@@ -82,7 +86,7 @@ export default function ChannelChat({
 
   if (!conversation) {
     return (
-      <div className="flex-1 grid place-items-center rounded-2xl border border-border bg-card text-center p-8">
+      <div className={cn("flex-1 grid place-items-center border bg-card text-center p-8", isWhatsApp ? "rounded-xl border-[#d1d7db]" : "rounded-2xl border-border", className)}>
         <div>
           <div className="h-12 w-12 rounded-full bg-surface grid place-items-center mx-auto mb-3">
             <Sparkles className="h-5 w-5 text-muted-foreground" />
@@ -95,28 +99,56 @@ export default function ChannelChat({
 
   return (
     <div
-      className="flex-1 flex flex-col min-h-0 overflow-hidden rounded-2xl border border-border"
+      className={cn("flex-1 flex flex-col min-h-0 overflow-hidden border", isWhatsApp ? "rounded-xl border-[#d1d7db]" : "rounded-2xl border-border", className)}
       style={isApp ? undefined : { background: th.chatBg }}>
       
       {/* Header */}
       <div
-        className="flex items-center gap-3 px-4 h-14 shrink-0"
-        style={isApp ? { background: "hsl(var(--card))", borderBottom: "1px solid hsl(var(--border))" } : { background: th.headerBg, color: th.headerText }}>
+        dir={isWhatsApp ? (lang === "ar" ? "rtl" : "ltr") : undefined}
+        className={cn("flex items-center gap-3 px-4 shrink-0", isWhatsApp ? "h-[60px]" : "h-14")}
+        style={isApp ? { background: "hsl(var(--card))", borderBottom: "1px solid hsl(var(--border))" } : { background: th.headerBg, color: th.headerText, borderBottom: isWhatsApp ? `1px solid ${th.divider}` : undefined }}>
+
+        {isWhatsApp && onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            aria-label={t("inbox.backToChats", "Back to chats")}
+            title={t("inbox.backToChats", "Back to chats")}
+            className="-mx-1 grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#54656f] transition-colors hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884] lg:hidden"
+          >
+            {lang === "ar" ? <ArrowRight className="h-5 w-5" /> : <ArrowLeft className="h-5 w-5" />}
+          </button>
+        )}
         
         <div
-          className="h-9 w-9 rounded-full grid place-items-center text-[13px] font-semibold shrink-0"
+          className={cn("rounded-full grid place-items-center text-[13px] font-semibold shrink-0", isWhatsApp ? "h-10 w-10" : "h-9 w-9")}
           style={{ background: conversation.color, color: "#fff" }}>
           
           {conversation.initials}
         </div>
         <div className="flex-1 min-w-0">
-          <div className={cn("text-[14px] font-semibold truncate", isApp ? "text-foreground" : "")}>{conversation.customer}</div>
-          <div className={cn("text-[11.5px] truncate", isApp ? "text-muted-foreground" : "opacity-80")}>{channel.name}</div>
+          <div dir={isWhatsApp ? "auto" : undefined} className={cn("truncate", isWhatsApp ? "text-[15px] font-medium text-[#111b21]" : "text-[14px] font-semibold", isApp && "text-foreground")}>{conversation.customer}</div>
+          <div className={cn("truncate", isWhatsApp ? "text-[12px] text-[#667781]" : "text-[11.5px]", isApp && "text-muted-foreground", !isApp && !isWhatsApp && "opacity-80")}>{channel.name}</div>
         </div>
       </div>
 
       {/* Messages */}
-      <div ref={scrollRef} onScroll={handleMessagesScroll} className="flex-1 min-h-0 overflow-y-auto scrollbar-thin px-4 py-3 space-y-2">
+      <div
+        ref={scrollRef}
+        onScroll={handleMessagesScroll}
+        className={cn("flex-1 min-h-0 overflow-y-auto scrollbar-thin px-4 py-3 space-y-2", isWhatsApp && "px-4 py-4")}
+        style={isWhatsApp ? {
+          backgroundColor: th.chatBg,
+          backgroundImage: [
+            "radial-gradient(ellipse 13px 9px at 28px 29px, transparent 91%, rgba(84, 101, 111, 0.035) 94%, transparent 100%)",
+            "radial-gradient(ellipse 7px 13px at 112px 82px, transparent 90%, rgba(84, 101, 111, 0.03) 94%, transparent 100%)",
+            "linear-gradient(34deg, transparent 49.6%, rgba(84, 101, 111, 0.022) 50%, transparent 50.5%)",
+            "linear-gradient(145deg, transparent 49.6%, rgba(84, 101, 111, 0.02) 50%, transparent 50.5%)",
+          ].join(", "),
+          backgroundSize: "197px 173px, 263px 221px, 179px 157px, 241px 203px",
+          backgroundPosition: "0 0, 51px 37px, 17px 26px, 83px 11px",
+        } : undefined}
+      >
         {loadingOlderMessages && <div role="status" className="py-2 text-center text-[11.5px] text-muted-foreground">{t("common.loading")}</div>}
         {loadingMessages && (conversation.messages || []).length === 0 && (
           <div className="py-10 text-center text-[12.5px] text-muted-foreground">{t("common.loading")}</div>
@@ -135,7 +167,7 @@ export default function ChannelChat({
           </div>
         )}
         {(conversation.messages || []).map((m) =>
-        <Bubble key={m.id} m={m} isApp={isApp} th={th} />
+        <Bubble key={m.id} m={m} isApp={isApp} isWhatsApp={isWhatsApp} th={th} />
         )}
         {approval &&
         <div
@@ -174,9 +206,10 @@ export default function ChannelChat({
       </div>
 
       {/* Input */}
-      <div className="shrink-0 p-2" style={isApp ? { background: "hsl(var(--card))", borderTop: "1px solid hsl(var(--border))" } : { background: th.inputBg, borderTop: `1px solid ${th.inputBorder}` }}>
+      <div className={cn("shrink-0 p-2", isWhatsApp && "px-3 py-2.5")} style={isApp ? { background: "hsl(var(--card))", borderTop: "1px solid hsl(var(--border))" } : { background: th.inputBg, borderTop: `1px solid ${th.inputBorder}` }}>
         <div
-          className="flex items-center gap-2 rounded-full px-3 py-1.5"
+          dir={isWhatsApp ? (lang === "ar" ? "rtl" : "ltr") : undefined}
+          className={cn("flex items-center gap-2 rounded-full px-3 py-1.5", isWhatsApp && "min-h-11")}
           style={isApp ?
           { background: "hsl(var(--surface))", border: "1px solid hsl(var(--border))" } :
           { background: "#fff", border: `1px solid ${th.inputBorder}` }}>
@@ -184,11 +217,12 @@ export default function ChannelChat({
           <input
             value={text}
             onChange={(e) => setText(e.target.value)}
+            dir={isWhatsApp ? (lang === "ar" ? "rtl" : "ltr") : undefined}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void submitMessage(); } }}
             placeholder={t("inbox.typeMessage")}
             aria-label={t("inbox.typeMessage")}
             disabled={sending}
-            className="flex-1 bg-transparent text-[13px] focus:outline-hidden"
+            className={cn("flex-1 bg-transparent text-[13px] focus:outline-hidden", isWhatsApp && (lang === "ar" ? "text-right" : "text-left"))}
             style={isApp ? undefined : { color: "#111" }} />
           <button
             type="button"
@@ -207,9 +241,36 @@ export default function ChannelChat({
 
 }
 
-function Bubble({ m, isApp, th }) {
+function Bubble({ m, isApp, isWhatsApp, th }) {
   const out = m.side === "out";
   const showTail = !isApp && th?.tail;
+
+  if (isWhatsApp) {
+    return (
+      <div className={cn("flex", out ? "justify-end" : "justify-start")}>
+        <div
+          className={cn(
+            "relative max-w-[82%] rounded-lg px-2.5 py-1.5 text-[13px] leading-[1.45] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] sm:max-w-[72%]",
+            showTail && (out ? "rounded-br-sm" : "rounded-bl-sm")
+          )}
+          style={{ background: out ? th.out : th.in, color: out ? th.outText : th.inText }}
+        >
+          <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]" dir="auto">
+            {m.text}{" "}
+            <span className="inline-flex items-center gap-0.5 whitespace-nowrap align-baseline text-[10px] leading-none text-[#667781]" dir="ltr">
+              <span>{m.time}</span>
+            {out && th.checkmarks && (m.status === "read"
+              ? <CheckCheck className="h-3.5 w-3.5 text-[#53bdeb]" />
+              : m.status === "delivered"
+                ? <CheckCheck className="h-3.5 w-3.5" />
+                : <Check className="h-3.5 w-3.5" />)}
+            {m.ai && <Sparkles className="h-3 w-3" />}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (isApp) {
     return (

@@ -460,6 +460,7 @@ export default {
   "inbox.noConversations": "No conversations in this channel yet.",
   "inbox.loadMore": "Load more conversations",
   "inbox.selectConversation": "Select a conversation to start chatting",
+  "inbox.backToChats": "Back to chats",
   "inbox.typeMessage": "Type a message…",
   "inbox.approve": "Approve",
   "inbox.approval.sent": "Approved — the AI agent is continuing the conversation.",
