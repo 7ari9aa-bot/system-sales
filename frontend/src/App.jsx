@@ -2,7 +2,7 @@ import { Suspense, lazy } from 'react';
 import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
-import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Route, Routes, Navigate, useLocation } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import { LanguageProvider } from '@/lib/marketing-i18n';
@@ -82,6 +82,11 @@ const DashboardRoutes = () => (
         <Route path="/products/new" element={<AddProduct />} />
         <Route path="/inventory" element={<Inventory />} />
         <Route path="/pos" element={<POS />} />
+        {/* The manual sales workspace is gone; the cashier took its place. Old
+            links (bookmarks, cached ?s=new|returns|exchanges) redirect there
+            instead of landing on the 404 screen. */}
+        <Route path="/orders" element={<Navigate to="/pos" replace />} />
+        <Route path="/orders/:rest" element={<Navigate to="/pos" replace />} />
         <Route path="/marketing" element={<Marketing />}>
           <Route index element={<MarketingCampaigns />} />
           <Route path="audience" element={<MarketingAudience />} />
@@ -139,8 +144,13 @@ function PathRouter() {
   const location = useLocation();
   const path = location.pathname;
   const under = (base) => path === base || path.startsWith(`${base}/`);
-  if (['/dashboard', '/inbox', '/customers', '/orders', '/products', '/inventory', '/pos', '/sales',
+  if (['/dashboard', '/inbox', '/customers', '/products', '/inventory', '/pos', '/sales',
     '/sales-assistant', '/marketing', '/ai', '/analytics', '/usage', '/website', '/settings'].some(under)) {
+    return <DashboardRoutes />;
+  }
+  // retired paths fall through to DashboardRoutes on purpose, so the
+  // <Navigate to="/pos"> redirect inside it still runs instead of the 404.
+  if (path === '/orders' || path.startsWith('/orders/')) {
     return <DashboardRoutes />;
   }
   if (['/login', '/register', '/forgot-password', '/reset-password', '/verify-email', '/accept-invitation'].some(under)) {
