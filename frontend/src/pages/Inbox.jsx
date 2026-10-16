@@ -9,7 +9,16 @@ import { cn } from "@/lib/utils";
 
 const INBOX_PAGE_SIZE = 50;
 const MESSAGE_PAGE_SIZE = 50;
+const CHAT_LIST_MIN_WIDTH = 280;
+const CHAT_LIST_MAX_WIDTH = 560;
+const CHAT_PANE_MIN_WIDTH = 360;
+const CHAT_LIST_DEFAULT_WIDTH = 330;
+const CHAT_LIST_WIDTH_STORAGE_KEY = "fihrist:inboxChatListWidth";
 const WHATSAPP_AVATAR_COLORS = ["#7b8794", "#8b6f86", "#6f8580", "#9a795e", "#71859b", "#8a815f", "#7b7b91"];
+
+function clampChatListWidth(value, max = CHAT_LIST_MAX_WIDTH) {
+  return Math.min(max, Math.max(CHAT_LIST_MIN_WIDTH, Math.round(value)));
+}
 
 function whatsappAvatarColor(value) {
   const key = String(value || "contact");
@@ -74,6 +83,20 @@ export default function Inbox() {
   const t = useT();
   const { lang } = useI18n();
   const [activeChannel, setActiveChannel] = useState("whatsapp");
+  const [chatListWidth, setChatListWidth] = useState(() => {
+    if (typeof window === "undefined") return CHAT_LIST_DEFAULT_WIDTH;
+    try {
+      const saved = Number(window.localStorage.getItem(CHAT_LIST_WIDTH_STORAGE_KEY));
+      return Number.isFinite(saved) && saved >= CHAT_LIST_MIN_WIDTH
+        ? clampChatListWidth(saved)
+        : CHAT_LIST_DEFAULT_WIDTH;
+    } catch {
+      return CHAT_LIST_DEFAULT_WIDTH;
+    }
+  });
+  const [isResizingChatList, setIsResizingChatList] = useState(false);
+  const inboxSplitRef = useRef(null);
+  const resizePointerRef = useRef(null);
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const [activeId, setActiveId] = useState(null);
   const [filter, setFilter] = useState("all");
@@ -100,6 +123,51 @@ export default function Inbox() {
   const [pendingDecision, setPendingDecision] = useState(false);
   const [error, setError] = useState(null);
   const activeMessageRequestRef = useRef({ conversationId: null, channelId: null });
+
+  const updateChatListWidth = (nextWidth) => {
+    const containerWidth = inboxSplitRef.current?.getBoundingClientRect().width || window.innerWidth;
+    const maxWidth = Math.max(CHAT_LIST_MIN_WIDTH, Math.min(CHAT_LIST_MAX_WIDTH, containerWidth - CHAT_PANE_MIN_WIDTH - 5));
+    const next = clampChatListWidth(nextWidth, maxWidth);
+    setChatListWidth(next);
+    try { window.localStorage.setItem(CHAT_LIST_WIDTH_STORAGE_KEY, String(next)); } catch {}
+  };
+
+  const handleResizePointerDown = (event) => {
+    if (event.button !== 0 || window.innerWidth < 1024) return;
+    event.preventDefault();
+    resizePointerRef.current = event.pointerId;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setIsResizingChatList(true);
+  };
+
+  const handleResizePointerMove = (event) => {
+    if (resizePointerRef.current !== event.pointerId || !inboxSplitRef.current) return;
+    const bounds = inboxSplitRef.current.getBoundingClientRect();
+    updateChatListWidth(event.clientX - bounds.left);
+  };
+
+  const finishChatListResize = (event) => {
+    if (event && resizePointerRef.current !== event.pointerId) return;
+    resizePointerRef.current = null;
+    setIsResizingChatList(false);
+  };
+
+  const handleResizeKeyDown = (event) => {
+    const step = event.shiftKey ? 40 : 16;
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      updateChatListWidth(chatListWidth + step);
+    } else if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      updateChatListWidth(chatListWidth - step);
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      updateChatListWidth(CHAT_LIST_MIN_WIDTH);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      updateChatListWidth(CHAT_LIST_MAX_WIDTH);
+    }
+  };
 
   const loadInboxPage = useCallback(async ({ cursor = null, replace = false } = {}) => {
     const params = new URLSearchParams({ limit: String(INBOX_PAGE_SIZE) });
@@ -372,7 +440,7 @@ export default function Inbox() {
   }
 
   return (
-    <div className="flex h-[calc(100dvh-88px)] flex-col lg:h-[calc(100dvh-48px)]">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <div className={cn("mb-2 flex min-w-0 items-start justify-between gap-2 sm:hidden", lang === "ar" ? "flex-row-reverse" : "flex-row")}>
         <div className={cn("min-w-0 flex-1", lang === "ar" && "text-right")}>
           <h1 className="truncate whitespace-nowrap font-display text-[22px] font-semibold tracking-tight">{t("inbox.title")}</h1>
@@ -414,13 +482,20 @@ export default function Inbox() {
         </div>
       )}
 
-      <div dir="ltr" className={cn(
-        "grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[clamp(320px,28vw,440px)_minmax(0,1fr)] lg:grid-rows-1 lg:gap-3",
-        isWhatsApp ? "grid-rows-[minmax(0,1fr)]" : "grid-rows-[minmax(180px,30dvh)_minmax(0,1fr)] sm:grid-rows-[minmax(240px,32dvh)_minmax(0,1fr)]"
-      )}>
+      <div
+        ref={inboxSplitRef}
+        dir="ltr"
+        style={isWhatsApp ? { "--inbox-chat-list-width": `${chatListWidth}px` } : undefined}
+        className={cn(
+          "grid min-h-0 flex-1 grid-cols-1",
+          isWhatsApp
+            ? "grid-rows-[minmax(0,1fr)] lg:grid-cols-[var(--inbox-chat-list-width)_5px_minmax(0,1fr)] lg:gap-0"
+            : "gap-3 lg:grid-cols-[clamp(320px,28vw,440px)_minmax(0,1fr)] lg:grid-rows-1 lg:gap-3 grid-rows-[minmax(180px,30dvh)_minmax(0,1fr)] sm:grid-rows-[minmax(240px,32dvh)_minmax(0,1fr)]"
+        )}
+      >
         <div className={cn(
           "bg-card border flex-col min-h-0 overflow-hidden",
-          isWhatsApp ? "rounded-xl border-[#d1d7db]" : "rounded-2xl border-border",
+          isWhatsApp ? "rounded-none border-0 bg-white" : "rounded-2xl border-border",
           isWhatsApp && mobileChatOpen ? "hidden lg:flex" : "flex"
         )}>
           <div className={cn("p-3 space-y-2.5", isWhatsApp ? "border-b border-[#d1d7db]" : "border-b border-border")}>
@@ -531,6 +606,30 @@ export default function Inbox() {
             </p>
           )}
         </div>
+
+        {isWhatsApp && (
+          <div
+            role="separator"
+            aria-label={lang === "ar" ? "تغيير عرض قائمة المحادثات" : "Resize conversation list"}
+            aria-orientation="vertical"
+            aria-valuemin={CHAT_LIST_MIN_WIDTH}
+            aria-valuemax={CHAT_LIST_MAX_WIDTH}
+            aria-valuenow={chatListWidth}
+            tabIndex={0}
+            className={cn(
+              "group relative hidden cursor-col-resize touch-none select-none border-x border-[#d1d7db] bg-[#f7f5f3] outline-none transition-colors hover:bg-[#e8f5ef] focus-visible:bg-[#e8f5ef] lg:block",
+              isResizingChatList && "bg-[#e8f5ef]"
+            )}
+            onPointerDown={handleResizePointerDown}
+            onPointerMove={handleResizePointerMove}
+            onPointerUp={finishChatListResize}
+            onPointerCancel={finishChatListResize}
+            onLostPointerCapture={() => finishChatListResize()}
+            onKeyDown={handleResizeKeyDown}
+          >
+            <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-[#d1d7db] transition-colors group-hover:bg-[#00a884] group-focus-visible:bg-[#00a884]" />
+          </div>
+        )}
 
         <ChannelChat
           channel={channel}

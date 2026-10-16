@@ -10,6 +10,7 @@ export default function DashboardLayout() {
   const { pathname } = useLocation();
   const { lang } = useI18n();
   const isDashboardHome = pathname === "/dashboard";
+  const isInbox = pathname === "/inbox";
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -42,7 +43,10 @@ export default function DashboardLayout() {
             </button>
           </div>
         )}
-        <main className="w-full min-w-0 px-4 py-5 sm:px-6 lg:px-8 lg:py-6">
+        <main className={cn(
+          "w-full min-w-0",
+          isInbox ? "h-[calc(100dvh-48px)] overflow-hidden p-0 lg:h-dvh" : "px-4 py-5 sm:px-6 lg:px-8 lg:py-6"
+        )}>
           <Outlet />
         </main>
       </div>
