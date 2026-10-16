@@ -5,6 +5,8 @@ import ChannelChat from "@/components/inbox/ChannelChat";
 import { CHANNELS, getChannel } from "@/lib/channels";
 import { api } from "@/lib/api";
 import { useI18n, useT } from "@/lib/i18n";
+import { useAuth } from "@/lib/AuthContext";
+import { isDemoConversation, loadDemoInbox, saveDemoInbox } from "@/lib/inboxDemoData";
 import { cn } from "@/lib/utils";
 
 const INBOX_PAGE_SIZE = 50;
@@ -18,6 +20,10 @@ const WHATSAPP_AVATAR_COLORS = ["#f3d7c5", "#ddd9f2", "#d4e9dd", "#f2dce0", "#d6
 
 function clampChatListWidth(value, max = CHAT_LIST_MAX_WIDTH) {
   return Math.min(max, Math.max(CHAT_LIST_MIN_WIDTH, Math.round(value)));
+}
+
+function isDemoConversationRow(row) {
+  return isDemoConversation(row?.id);
 }
 
 function whatsappAvatarColor(value) {
@@ -82,6 +88,8 @@ function toConversation(row, channel) {
 export default function Inbox() {
   const t = useT();
   const { lang } = useI18n();
+  const { user } = useAuth();
+  const demoAccount = String(user?.email || "").toLowerCase() === "dmin@revenueosapp.com";
   const [activeChannel, setActiveChannel] = useState("whatsapp");
   const [chatListWidth, setChatListWidth] = useState(() => {
     if (typeof window === "undefined") return CHAT_LIST_DEFAULT_WIDTH;
@@ -180,16 +188,22 @@ export default function Inbox() {
       page[channel].push(toConversation(row, getChannel(channel)));
     }
     setConvMap((previous) => Object.fromEntries(CHANNELS.map((channel) => {
-      const existing = replace ? [] : previous[channel.id] || [];
+      const existing = replace
+        ? (demoAccount ? loadDemoInbox()[channel.id] || [] : [])
+        : previous[channel.id] || [];
       const seen = new Set(existing.map((conversation) => conversation.id));
       return [channel.id, [...existing, ...(page[channel.id] || []).filter((conversation) => !seen.has(conversation.id))]];
     })));
     const nextCursor = response?.next_cursor ?? null;
     setInboxCursor(nextCursor);
     return nextCursor;
-  }, []);
+  }, [demoAccount]);
 
   const reloadInbox = useCallback(async () => loadInboxPage({ replace: true }), [loadInboxPage]);
+
+  useEffect(() => {
+    if (demoAccount) setConvMap(loadDemoInbox());
+  }, [demoAccount]);
 
   const loadMoreConversations = useCallback(async () => {
     if (!inboxCursor || loadingMoreInboxRef.current) return;
@@ -247,13 +261,14 @@ export default function Inbox() {
   }, [inboxRetryAttempt, loadInboxPage]);
 
   const channels = useMemo(() => {
+    if (demoAccount) return CHANNELS.map((channel) => ({ ...channel, connected: true }));
     const connected = integrationAccess
       ? new Set((integrations || [])
         .filter((row) => ["connected", "active"].includes(String(row.status || "").toLowerCase()))
         .map((row) => row.provider))
       : new Set(Object.entries(convMap).filter(([, rows]) => rows.length > 0).map(([channelId]) => channelId));
     return CHANNELS.map((channel) => ({ ...channel, connected: connected.has(channel.id) }));
-  }, [convMap, integrationAccess, integrations]);
+  }, [convMap, demoAccount, integrationAccess, integrations]);
 
   useEffect(() => {
     if (integrationAccess === null) return;
@@ -303,6 +318,9 @@ export default function Inbox() {
   activeMessageRequestRef.current = { conversationId: current?.id ?? null, channelId: activeChannel };
   const pendingApproval = current?.approval || null;
   const connectedCount = channels.filter((item) => item.connected).length;
+  const channelCountLabel = demoAccount
+    ? (lang === "ar" ? `${connectedCount} قنوات تجريبية` : `${connectedCount} demo channels`)
+    : t("inbox.channelsConnected", { n: connectedCount });
   const unreadByChannel = Object.fromEntries(
     Object.entries(convMap).map(([id, rows]) => [id, rows.reduce((count, row) => count + row.unread, 0)])
   );
@@ -316,6 +334,16 @@ export default function Inbox() {
     let alive = true;
     const conversationId = current.id;
     const channelId = activeChannel;
+    if (isDemoConversation(conversationId)) {
+      setLoadingMessages(false);
+      setConvMap((previous) => ({
+        ...previous,
+        [channelId]: (previous[channelId] || []).map((row) =>
+          row.id === conversationId ? { ...row, messages: row.messages || [] } : row
+        ),
+      }));
+      return () => { alive = false; };
+    }
     setLoadingMessages(true);
     setLoadingOlderMessages(false);
     loadingOlderMessagesRef.current = false;
@@ -344,6 +372,7 @@ export default function Inbox() {
 
   const loadOlderMessages = useCallback(async () => {
     if (!current?.id || !messageCursor || loadingOlderMessagesRef.current) return false;
+    if (isDemoConversation(current.id)) return false;
     const conversationId = current.id;
     const channelId = activeChannel;
     loadingOlderMessagesRef.current = true;
@@ -375,6 +404,22 @@ export default function Inbox() {
   function selectConversation(conversation) {
     setActiveId(conversation.id);
     if (conversation.unread <= 0) return;
+    if (isDemoConversation(conversation.id)) {
+      setConvMap((previous) => {
+        const next = {
+          ...previous,
+          [activeChannel]: (previous[activeChannel] || []).map((row) =>
+            row.id === conversation.id ? { ...row, unread: 0 } : row
+          ),
+        };
+        saveDemoInbox(Object.fromEntries(CHANNELS.map((channel) => [
+          channel.id,
+          (next[channel.id] || []).filter(isDemoConversationRow),
+        ])));
+        return next;
+      });
+      return;
+    }
     api(`/conversations/${conversation.id}/read`, { method: "POST" })
       .then(() => {
         setConvMap((previous) => ({
@@ -388,6 +433,32 @@ export default function Inbox() {
   }
 
   async function handleSend(conversationId, text) {
+    if (isDemoConversation(conversationId)) {
+      const createdAt = new Date().toISOString();
+      const localMessage = {
+        id: `${conversationId}:m${Date.now()}`,
+        side: "out",
+        text,
+        time: displayTime(createdAt),
+        createdAt,
+        status: "sent",
+        senderType: "agent",
+      };
+      setConvMap((previous) => {
+        const next = {
+          ...previous,
+          [activeChannel]: (previous[activeChannel] || []).map((row) => row.id === conversationId
+            ? { ...row, preview: text, time: displayTime(createdAt), createdAt, messages: [...(row.messages || []), localMessage] }
+            : row),
+        };
+        saveDemoInbox(Object.fromEntries(CHANNELS.map((channel) => [
+          channel.id,
+          (next[channel.id] || []).filter(isDemoConversationRow),
+        ])));
+        return next;
+      });
+      return true;
+    }
     setSending(true);
     setError(null);
     try {
@@ -444,7 +515,7 @@ export default function Inbox() {
       <div className={cn("mb-2 flex min-w-0 items-start justify-between gap-2 sm:hidden", lang === "ar" ? "flex-row-reverse" : "flex-row")}>
         <div className={cn("min-w-0 flex-1", lang === "ar" && "text-right")}>
           <h1 className="truncate whitespace-nowrap font-display text-[22px] font-semibold tracking-tight">{t("inbox.title")}</h1>
-          <p className="mt-1 truncate text-[12px] text-muted-foreground">{t("inbox.channelsConnected", { n: connectedCount })}</p>
+          <p className="mt-1 truncate text-[12px] text-muted-foreground">{channelCountLabel}</p>
         </div>
         <div className="w-[48%] min-w-0 max-w-[48%] overflow-hidden pt-1">
           <ChannelSwitcher
@@ -458,7 +529,7 @@ export default function Inbox() {
       <div className={cn("mb-2 hidden min-w-0 sm:flex sm:flex-col sm:items-stretch sm:gap-2 lg:flex-row lg:items-center lg:justify-between lg:gap-4", lang === "ar" && "lg:flex-row-reverse")}>
         <div className={cn("min-w-0", lang === "ar" && "text-right")}>
           <h1 className="truncate whitespace-nowrap font-display text-[22px] font-semibold tracking-tight">{t("inbox.title")}</h1>
-          <p className="mt-0.5 truncate text-[12px] text-muted-foreground">{t("inbox.channelsConnected", { n: connectedCount })}</p>
+          <p className="mt-0.5 truncate text-[12px] text-muted-foreground">{channelCountLabel}</p>
         </div>
         <div className="min-w-0 overflow-x-auto scrollbar-thin">
           <ChannelSwitcher
