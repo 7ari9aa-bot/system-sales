@@ -699,45 +699,77 @@ export default function POS() {
                   {t("pos.emptyCart", "Scan an item to start the sale.")}
                 </div>
               ) : (
-                <ul className="divide-y divide-border">
-                  {lines.map((l) => (
-                    <li key={l.variant_id} className="flex items-center gap-3 px-4 py-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="text-[13px] font-medium truncate" dir="auto">
-                          {l.title || l.sku || `${l.variant_id.slice(0, 8)}…`}
-                        </div>
-                        <div className="text-[12px] text-muted-foreground tabular-nums" dir="ltr">
-                          {l.unit_price == null
-                            ? t("pos.pricing", "pricing…")
-                            : `${money(l.unit_price)} × ${l.quantity} = ${mul(l.unit_price, l.quantity)}`}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <button type="button" aria-label="Decrease" onClick={() => step(l.variant_id, -1)} className="h-8 w-8 grid place-items-center rounded-lg border border-border hover:bg-surface">
-                          <Minus className="h-3.5 w-3.5" />
-                        </button>
-                        <span className="w-8 text-center text-[13px] tabular-nums">{l.quantity}</span>
-                        <button type="button" aria-label="Increase" onClick={() => step(l.variant_id, 1)} className="h-8 w-8 grid place-items-center rounded-lg border border-border hover:bg-surface">
-                          <Plus className="h-3.5 w-3.5" />
-                        </button>
-                        {/* خصم القطعة: الموظف يكتب النسبة وبتتنفذ في السطر */}
-                        <input
-                          value={l.discount_pct ?? ""}
-                          onChange={(e) => setLineDiscount(l.variant_id, e.target.value)}
-                          placeholder="%"
-                          title={t("pos.lineDiscount", "Line discount %")}
-                          aria-label={t("pos.lineDiscount", "Line discount %")}
-                          dir="ltr"
-                          inputMode="decimal"
-                          className="h-8 w-14 rounded-lg border border-border bg-surface px-1.5 text-[12px] tabular-nums text-center"
-                        />
-                        <button type="button" aria-label="Remove" onClick={() => removeLine(l.variant_id)} className="h-8 w-8 grid place-items-center rounded-lg border border-border text-destructive hover:bg-destructive/10">
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-[13px]">
+                    <thead>
+                      <tr className="text-muted-foreground text-[11px] uppercase tracking-wide border-b border-border">
+                        <th className="text-start font-medium py-2 ps-4">{t("pos.col.item", "Item")}</th>
+                        <th className="text-end font-medium py-2 px-2">{t("pos.col.price", "Price")}</th>
+                        <th className="text-center font-medium py-2 px-2">{t("pos.col.qty", "Qty")}</th>
+                        <th className="text-center font-medium py-2 px-2">{t("pos.col.discount", "Discount %")}</th>
+                        <th className="text-end font-medium py-2 px-2">{t("pos.col.lineTotal", "Line total")}</th>
+                        <th className="py-2 pe-3" />
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {lines.map((l) => {
+                        const net = (Number(l.unit_price || 0) * l.quantity * (1 - Number(l.discount_pct || 0) / 100)).toFixed(2);
+                        return (
+                          <tr key={l.variant_id} className="hover:bg-surface/60">
+                            <td className="py-2 ps-4 max-w-[220px]">
+                              <div className="font-medium truncate" dir="auto">
+                                {l.title || l.sku || `${l.variant_id.slice(0, 8)}…`}
+                              </div>
+                              <div className="text-[11px] text-muted-foreground tabular-nums" dir="ltr">
+                                {l.sku || l.variant_id.slice(0, 8)}
+                              </div>
+                            </td>
+                            <td className="text-end tabular-nums px-2" dir="ltr">{money(l.unit_price)}</td>
+                            <td className="px-2">
+                              <div className="flex items-center justify-center gap-1">
+                                <button type="button" aria-label="Decrease" onClick={() => step(l.variant_id, -1)} className="h-7 w-7 grid place-items-center rounded-lg border border-border hover:bg-surface">
+                                  <Minus className="h-3 w-3" />
+                                </button>
+                                <span className="w-7 text-center tabular-nums">{l.quantity}</span>
+                                <button type="button" aria-label="Increase" onClick={() => step(l.variant_id, 1)} className="h-7 w-7 grid place-items-center rounded-lg border border-border hover:bg-surface">
+                                  <Plus className="h-3 w-3" />
+                                </button>
+                              </div>
+                            </td>
+                            <td className="px-2 text-center">
+                              <input
+                                value={l.discount_pct ?? ""}
+                                onChange={(e) => setLineDiscount(l.variant_id, e.target.value)}
+                                placeholder="0"
+                                title={t("pos.lineDiscount", "Line discount %")}
+                                aria-label={t("pos.lineDiscount", "Line discount %")}
+                                dir="ltr"
+                                inputMode="decimal"
+                                className="h-8 w-14 rounded-lg border border-border bg-surface px-1.5 text-[12px] tabular-nums text-center"
+                              />
+                            </td>
+                            <td className="text-end tabular-nums px-2 font-medium" dir="ltr">{net}</td>
+                            <td className="text-center pe-3">
+                              <button type="button" aria-label="Remove" onClick={() => removeLine(l.variant_id)} className="h-7 w-7 grid place-items-center rounded-lg text-destructive hover:bg-destructive/10">
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot className="border-t-2 border-border bg-surface/50">
+                      <tr>
+                        <td colSpan={3} className="py-2.5 ps-4 text-[12.5px] text-muted-foreground">
+                          {t("pos.col.pieces", "{n} pieces", { n: lines.reduce((a, l) => a + l.quantity, 0) })}
+                        </td>
+                        <td colSpan={3} className="text-end py-2.5 pe-3 font-semibold tabular-nums" dir="ltr">
+                          {money(lines.reduce((a, l) => a + Number(l.unit_price || 0) * l.quantity, 0).toFixed(2))}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
               )}
             </div>
 
