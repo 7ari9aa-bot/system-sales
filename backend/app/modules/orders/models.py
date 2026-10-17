@@ -9,6 +9,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -81,6 +82,12 @@ class OrderItem(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base
     sku: Mapped[str | None] = mapped_column(String(63))  # snapshot
     quantity: Mapped[int] = mapped_column()
     unit_price: Mapped[float] = mapped_column(MONEY)
+    # The cashier's per-line discount, percent of the ladder price (§189: a
+    # ground-shop discount is typed on the till and charged as the net — no
+    # approval gate). ``total`` carries the line's NET.
+    discount_pct: Mapped[float] = mapped_column(
+        Numeric(5, 2), server_default="0"
+    )
     total: Mapped[float] = mapped_column(MONEY)
 
     __table_args__ = (Index("ix_order_items_tenant_order", "tenant_id", "order_id"),)

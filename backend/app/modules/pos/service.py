@@ -589,14 +589,14 @@ class PosService:
         *,
         items: list[dict],
         discount_total: object = None,
-        approved: bool = False,
     ) -> dict:
         """Price a cart WITHOUT writing anything — what the till shows the customer.
 
         The same ``compute_totals`` the order will use, so the number on screen
-        is the number charged. The profile's discount ceiling is enforced here
-        too, so an over-ceiling discount is refused at the display step rather
-        than only at checkout.
+        is the number charged. Line discounts (§189: the cashier types a
+        percentage on a piece) compose with the caller's invoice-level
+        discount into one discount_total — no approval gate: a ground-shop
+        discount is the cashier's call.
         """
 
         pos_session = await PosService._get_session(session, tenant_id, session_id)
@@ -606,40 +606,52 @@ class PosService:
         if not items:
             raise ValidationError("a quote must contain at least one item")
 
-        subtotal, _lines = await PosService._price_lines(session, tenant_id, items)
+        subtotal, _lines, line_discounts = await PosService._price_lines(
+            session, tenant_id, items
+        )
+        composed = (
+            None
+            if discount_total is None and line_discounts == 0
+            else to_money(
+                to_money(discount_total or 0, "discount_total") + line_discounts,
+                "discount_total",
+            )
+        )
         try:
-            totals = compute_totals(subtotal=subtotal, discount=discount_total)
+            totals = compute_totals(subtotal=subtotal, discount=composed)
         except ValueError as exc:
             raise ValidationError(str(exc)) from exc
 
-        profile = await PosService.resolve_profile(session, tenant_id, pos_session)
-        needs_approval = False
-        if profile is not None:
-            needs_approval = PosProfileService.discount_needs_approval(
-                profile, totals["discount_total"], totals["subtotal"]
-            )
-            PosProfileService.ensure_discount_allowed(
-                profile,
-                totals["discount_total"],
-                totals["subtotal"],
-                approved=approved,
-            )
         return {
             "subtotal": str(totals["subtotal"]),
             "discount_total": str(totals["discount_total"]),
             "grand_total": str(totals["grand_total"]),
-            "discount_needs_approval": needs_approval,
         }
+
+    @staticmethod
+    def _line_discount_pct(item: dict) -> Decimal:
+        """The item's optional per-line discount, percent in [0, 100]."""
+        raw = item.get("discount_pct")
+        if raw is None:
+            return Decimal("0.00")
+        try:
+            pct = to_money(raw, "discount_pct")
+        except ValueError as exc:
+            raise ValidationError(str(exc)) from exc
+        if pct < 0 or pct > 100:
+            raise ValidationError("discount_pct must be between 0 and 100")
+        return pct
 
     @staticmethod
     async def _price_lines(
         session: AsyncSession, tenant_id: UUID, items: list[dict]
-    ) -> tuple[Decimal, list[tuple[UUID, int, Decimal]]]:
+    ) -> tuple[Decimal, list[tuple[UUID, int, Decimal, Decimal]], Decimal]:
         """Batch-price a cart identically to ``create_order`` (§179/§180).
 
-        Returns the subtotal and the (variant_id, quantity, unit_price) tuples,
-        using the same per-quantity tier ladder the order will read — so a quote
-        and the order it precedes can never disagree on price.
+        Returns the GROSS subtotal, the (variant_id, quantity, unit_price,
+        discount_pct) tuples, and the lines' total discount — the same
+        per-quantity tier ladder and the same discount math the order will
+        read, so a quote and the order it precedes can never disagree.
         """
         from app.modules.catalog.service import CatalogService
 
@@ -662,7 +674,7 @@ class PosService:
             session, tenant_id, fetch_ids, currency=currency
         )
 
-        prepared: list[tuple[UUID, int, Decimal]] = []
+        prepared: list[tuple[UUID, int, Decimal, Decimal]] = []
         for item, variant_id, parse_error in zip(items, line_ids, parse_errors, strict=True):
             if parse_error is not None:
                 raise ValidationError("each item needs a valid variant_id")
@@ -673,13 +685,34 @@ class PosService:
             unit_price = CatalogService.tiered_unit_price(
                 variant.price, ladders.get(variant.id, []), quantity
             )
-            prepared.append((variant.id, quantity, to_money(unit_price, "unit_price")))
+            prepared.append(
+                (
+                    variant.id,
+                    quantity,
+                    to_money(unit_price, "unit_price"),
+                    PosService._line_discount_pct(item),
+                )
+            )
 
         subtotal = to_money(
-            sum((price * quantity for _v, quantity, price in prepared), Decimal("0")),
+            sum(
+                (price * quantity for _v, quantity, price, _pct in prepared),
+                Decimal("0"),
+            ),
             "subtotal",
         )
-        return subtotal, prepared
+        line_discounts = to_money(
+            sum(
+                (
+                    price * quantity * pct / Decimal("100")
+                    for _v, quantity, price, pct in prepared
+                    if pct
+                ),
+                Decimal("0"),
+            ),
+            "line discounts",
+        )
+        return subtotal, prepared, line_discounts
 
     @staticmethod
     def _positive_qty(value: object) -> int:
@@ -705,7 +738,6 @@ class PosService:
         method: str | None = None,
         amount: object | None = None,
         discount_total: object = None,
-        discount_approved: bool = False,
         tendered_cash: object | None = None,
         held_cart_id: UUID | None = None,
         actor_user_id: UUID | None = None,
@@ -770,14 +802,6 @@ class PosService:
         resolved_customer_id = await PosService._resolve_customer(
             session, tenant_id, profile, customer_id
         )
-
-        # Enforce the ceiling BEFORE any write, so a refused discount holds
-        # nobody's stock (create_order reserves only after it is called).
-        if profile is not None and discount_total is not None:
-            subtotal, _prepared = await PosService._price_lines(session, tenant_id, items)
-            PosProfileService.ensure_discount_allowed(
-                profile, discount_total, subtotal, approved=discount_approved
-            )
 
         if held_cart_id is not None:
             # Claim the cart inside THIS transaction: DELETE .. RETURNING takes
@@ -1704,7 +1728,15 @@ class PosService:
                     select(PosSession).where(
                         PosSession.tenant_id == tenant_id,
                         PosSession.status == "CLOSED",
-                        func.date(PosSession.closed_at) == business_date,
+                        # The business date is the UTC calendar date — spelled
+                        # out explicitly, because a bare func.date() would use
+                        # the SESSION's timezone (a Cairo-zone database then
+                        # disagrees with the UTC date by one day after 22:00
+                        # and the projection silently projects nothing).
+                        func.date(
+                            func.timezone("UTC", PosSession.closed_at)
+                        )
+                        == business_date,
                     )
                 )
             )
@@ -1987,7 +2019,15 @@ class PosService:
             except (KeyError, ValueError):
                 raise ValidationError("each held item needs a valid variant_id") from None
             quantity = PosService._positive_qty(item.get("quantity"))
-            clean.append({"variant_id": str(variant_id), "quantity": quantity})
+            clean_item: dict = {"variant_id": str(variant_id), "quantity": quantity}
+            # A held cart keeps the cashier's per-line discount exactly as
+            # typed, so the resume reprices the same basket.
+            pct = item.get("discount_pct")
+            if pct is not None:
+                # JSONB storage: the discount rides as a string, like every
+                # other money figure in the tree.
+                clean_item["discount_pct"] = str(PosService._line_discount_pct(item))
+            clean.append(clean_item)
         return clean
 
     # ------------------------------------------------------------ refunds ----
@@ -2770,11 +2810,14 @@ class PosService:
         )
 
         # ---------- the new half: the original order's own customer ----------
-        new_subtotal, _prepared = await PosService._price_lines(
+        new_subtotal, _prepared, new_line_discounts = await PosService._price_lines(
             session, tenant_id, new_lines
         )
         try:
-            totals = compute_totals(subtotal=new_subtotal, discount=None)
+            totals = compute_totals(
+                subtotal=new_subtotal,
+                discount=new_line_discounts if new_line_discounts else None,
+            )
         except ValueError as exc:
             raise ValidationError(str(exc)) from exc
         new_grand_total = to_money(totals["grand_total"], "new_grand_total")

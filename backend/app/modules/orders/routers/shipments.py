@@ -4,18 +4,17 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import Depends, Response
+from fastapi import Response
 from pydantic import BaseModel, Field
 
 from ._deps import (
     IfMatch,
     OrderService,
-    TenantContext,
+    OrdersWriteCtx,
     TenantCtxDep,
     _redact_order_pii,
     _shipment_out,
     apply_etag,
-    require_permission,
     router,
 )
 
@@ -48,7 +47,7 @@ async def update_shipping(
     order_id: uuid.UUID,
     body: ShippingUpdateRequest,
     response: Response,
-    ctx: TenantContext = Depends(require_permission("orders:write")),
+    ctx: OrdersWriteCtx,
     if_match: IfMatch = None,  # §17 — the row has a version, so it can be lost
 ):
     """Correct where an open order is going. Not a status move: the order has
@@ -80,7 +79,7 @@ async def update_shipping(
 async def create_shipment(
     order_id: uuid.UUID,
     body: ShipmentCreateRequest,
-    ctx: TenantContext = Depends(require_permission("orders:write")),
+    ctx: OrdersWriteCtx,
 ):
     """Record the carrier + tracking number, and move the order to `shipped`."""
     shipment = await OrderService.create_shipment(
@@ -100,7 +99,7 @@ async def create_shipment(
 async def set_shipment_status(
     shipment_id: uuid.UUID,
     body: ShipmentStatusRequest,
-    ctx: TenantContext = Depends(require_permission("orders:write")),
+    ctx: OrdersWriteCtx,
 ):
     """A carrier scan. `delivered` also moves the order shipped -> delivered."""
     shipment = await OrderService.set_shipment_status(

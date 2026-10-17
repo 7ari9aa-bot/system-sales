@@ -188,12 +188,13 @@ def test_the_three_new_revisions_exist_and_chain_from_the_head() -> None:
     # purpose: it is a fork nobody has decided about yet.
     pointed_to = {parent for _, parent in ids.values() if parent}
     tail = set(ids) - pointed_to
-    # The pin moved again with the POS expansion wave (profiles + held carts +
-    # handovers -> floats/guards -> return lines -> catalog scoping + the daily
-    # projection): fe2026101401 -> fe2026101501 -> ... -> fe2026101506, one
-    # linear chain.
-    assert tail == {"fe2026101506"}, (
-        f"expected one linear head fe2026101506, found {sorted(tail)} — "
+    # The INVARIANT is "exactly one head" — not a pinned revision id. The pin
+    # moved with every wave (fe2026101401 -> ... -> fe2026101507 -> 1710 ->
+    # 1711), and with agents extending the chain concurrently the pin only
+    # chased. A fork still fails this the day it lands; a longer chain
+    # never does.
+    assert len(tail) == 1, (
+        f"expected exactly one linear head, found {sorted(tail)} — "
         "two heads break `alembic upgrade head` for every environment"
     )
 
@@ -805,10 +806,9 @@ def test_alembic_still_reports_a_single_head() -> None:
     )
     lines = [line for line in out.stdout.splitlines() if line.strip()]
     assert out.returncode == 0, out.stderr
+    # The invariant is "exactly one head" — the id moves with every wave; the
+    # fork is what this guard exists to catch.
     assert len(lines) == 1, f"multiple heads would break the build: {lines}"
-    # The pin moves with the chain (see the static guard above): the POS
-    # expansion wave carried fe2026101401 -> fe2026101506.
-    assert lines[0].startswith("fe2026101506"), lines
 
 
 # ------------------------------------------- DB-backed: CI-only, not watched

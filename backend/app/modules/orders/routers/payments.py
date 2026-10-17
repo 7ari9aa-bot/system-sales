@@ -5,16 +5,14 @@ from __future__ import annotations
 import uuid
 from decimal import Decimal
 
-from fastapi import Depends
 from pydantic import BaseModel, Field
 
 from ._deps import (
     OrderService,
-    TenantContext,
+    OrdersWriteCtx,
     TenantCtxDep,
     _history_out,
     _payment_out,
-    require_permission,
     router,
 )
 
@@ -44,7 +42,7 @@ async def reconcile_payment(
     order_id: uuid.UUID,
     payment_id: uuid.UUID,
     body: PaymentReconciliationRequest,
-    ctx: TenantContext = Depends(require_permission("orders:write")),
+    ctx: OrdersWriteCtx,
 ):
     payment = await OrderService.reconcile_payment(
         ctx.session,
@@ -79,7 +77,7 @@ async def list_order_status_history(ctx: TenantCtxDep, order_id: uuid.UUID):
 async def create_payment(
     order_id: uuid.UUID,
     body: PaymentCreateRequest,
-    ctx: TenantContext = Depends(require_permission("orders:write")),
+    ctx: OrdersWriteCtx,
 ):
     """Record a captured payment (cash/POS/manual). A paid pending order is
     confirmed and its stock reservations convert into a sale."""
@@ -105,7 +103,7 @@ async def create_refund(
     order_id: uuid.UUID,
     payment_id: uuid.UUID,
     body: RefundCreateRequest,
-    ctx: TenantContext = Depends(require_permission("orders:write")),
+    ctx: OrdersWriteCtx,
 ):
     """Refund a captured payment (validated against the captured amount)."""
     refund = await OrderService.register_refund(

@@ -496,15 +496,27 @@ class OrderService:
             unit_price = CatalogService.tiered_unit_price(
                 variant.price, ladders.get(variant.id, []), quantity
             )
-            prepared.append((variant, quantity, to_money(unit_price, "unit_price")))
+            # §189: an optional per-line cashier discount, percent of the
+            # ladder price. The ladder price stays on the line; the discount
+            # lives beside it and the line's total carries the net.
+            raw_pct = item.get("discount_pct")
+            if raw_pct is None:
+                discount_pct = Decimal("0.00")
+            else:
+                discount_pct = to_money(raw_pct, "discount_pct")
+                if discount_pct < 0 or discount_pct > 100:
+                    raise ValidationError("discount_pct must be between 0 and 100")
+            prepared.append(
+                (variant, quantity, to_money(unit_price, "unit_price"), discount_pct)
+            )
 
         # A variant being active is not the whole question: the product above
         # it decides whether anything is being offered at all (§M4). Checked on
         # the batch this function already needs for the line snapshots, and
         # BEFORE the reserve loop, so a refused cart holds nobody's stock.
-        product_ids = {variant.product_id for variant, _q, _p in prepared}
+        product_ids = {variant.product_id for variant, _q, _p, _pct in prepared}
         products = await CatalogService.get_products_by_ids(session, tenant_id, list(product_ids))
-        for variant, _quantity, _price in prepared:
+        for variant, _quantity, _price, _pct in prepared:
             product = products.get(variant.product_id)
             refusal = sellable_refusal(None if product is None else product.status)
             if refusal is not None:
@@ -515,12 +527,35 @@ class OrderService:
         # two concurrent orders holding the same variants in opposite orders
         # otherwise deadlock on the FOR UPDATE row locks. The customer's line
         # order is data; the lock order must be a global rule.
-        for variant, quantity, _price in sorted(prepared, key=lambda item: item[0].id):
+        for variant, quantity, _price, _pct in sorted(prepared, key=lambda item: item[0].id):
             await InventoryService.reserve(session, tenant_id, variant.id, warehouse.id, quantity)
 
+        # Subtotal stays the GROSS of the ladder prices; the per-line
+        # discounts compose with the caller's order-level discount into one
+        # discount_total, so grand = gross - discounts + shipping stays the
+        # sum of what the columns hold.
         subtotal = to_money(
-            sum((price * quantity for _v, quantity, price in prepared), Decimal("0")),
+            sum((price * quantity for _v, quantity, price, _pct in prepared), Decimal("0")),
             "subtotal",
+        )
+        line_discounts = to_money(
+            sum(
+                (
+                    price * quantity * pct / Decimal("100")
+                    for _v, quantity, price, pct in prepared
+                    if pct
+                ),
+                Decimal("0"),
+            ),
+            "line discounts",
+        )
+        discount_total = (
+            None
+            if discount_total is None and line_discounts == 0
+            else to_money(
+                (to_money(discount_total or 0, "discount") + line_discounts),
+                "discount_total",
+            )
         )
         # §47/the money gap: checkout used to write `grand_total = subtotal` and
         # leave the three components at zero, so a discount or a shipping charge
@@ -556,7 +591,7 @@ class OrderService:
         # §140: durable reservation rows next to the balance hold — one per
         # line, expiring in 15 minutes unless the order completes.
         expires_at = _now() + _RESERVATION_TTL
-        for variant, quantity, _price in prepared:
+        for variant, quantity, _price, _pct in prepared:
             await InventoryService.create_reservation(
                 session,
                 tenant_id,
@@ -568,8 +603,10 @@ class OrderService:
             )
 
         # Line snapshots (title/sku frozen at purchase time).
-        for variant, quantity, price in prepared:
+        for variant, quantity, price, pct in prepared:
             product = products.get(variant.product_id)
+            line_gross = to_money(price * quantity, "line gross")
+            line_discount = to_money(line_gross * pct / Decimal("100"), "line discount")
             session.add(
                 OrderItem(
                     tenant_id=tenant_id,
@@ -579,7 +616,8 @@ class OrderService:
                     sku=variant.sku,
                     quantity=quantity,
                     unit_price=price,
-                    total=to_money(price * quantity, "line total"),
+                    discount_pct=pct,
+                    total=to_money(line_gross - line_discount, "line total"),
                 )
             )
 
@@ -611,7 +649,7 @@ class OrderService:
                 # envelope's value codec tags it so the consumer gets a Decimal
                 # back, not a string or a float.
                 "grand_total": order.grand_total,
-                "item_count": sum(q for _v, q, _p in prepared),
+                "item_count": sum(q for _v, q, _p, _pct in prepared),
             },
             # §153: the row's real version (VersionMixin) — never a literal.
             aggregate_version=order.version,

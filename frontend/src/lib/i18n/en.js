@@ -155,6 +155,8 @@ export default {
   "pos.exchanged": "Exchange done. Receipts {n} and {m}.",
   "pos.err.exchange": "Could not process the exchange.",
   "pos.err.noReplacement": "Add the replacement items first.",
+  "pos.lineDiscount": "Line discount %",
+  "pos.receiptLineDiscount": "{p}% off this line",
 
   // Sales module (structure only until wired to /api/v1)
 

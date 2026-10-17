@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 374,
-    "sha256": "1a8c53c332d3b08ebe4219323e71af101bbd9eedb440f5aa467a84e6902613e6",
+    "sha256": "f47ff3f20b85610f405f9ffa14becfc5e2aa27f4b5ea798f72e842f6b7d2780f",
     "typed_operations": 223
   },
   "spec": {
@@ -441,6 +441,17 @@
               "title": "Name",
               "type": "string"
             },
+            "persona_prompt": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Persona Prompt"
+            },
             "system_prompt": {
               "anyOf": [
                 {
@@ -460,7 +471,7 @@
           "type": "object"
         },
         "AgentDetailOut": {
-          "description": "The settings:write view of one agent — the only contract that may carry\nthe system_prompt (a business secret; AgentOut omits it on purpose because\nGET /ai/agents is tenant-readable by every member). ``version`` is the\noptimistic-concurrency token the PATCH round-trips.",
+          "description": "The settings:write view of one agent — the only contract that may carry\nthe prompts (a business secret; AgentOut omits them on purpose because\nGET /ai/agents is tenant-readable by every member). ``version`` is the\noptimistic-concurrency token the PATCH round-trips.",
           "properties": {
             "description": {
               "anyOf": [
@@ -500,6 +511,17 @@
             "name": {
               "title": "Name",
               "type": "string"
+            },
+            "persona_prompt": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Persona Prompt"
             },
             "system_prompt": {
               "anyOf": [
@@ -708,7 +730,7 @@
           "type": "object"
         },
         "AgentUpdateRequest": {
-          "description": "PATCH /ai/agents/{id} — the tenant edits ITS OWN agent (ADR-060).\n\nThe prompt is the tenant's business secret and their lever on the agent's\nbehavior: editing is settings:write gated, tenant-scoped by the same WHERE\nthe read uses, versioned, and audited.",
+          "description": "PATCH /ai/agents/{id} — the tenant edits ITS OWN agent (ADR-060).\n\nThe prompt is the tenant's business secret and their lever on the agent's\nbehavior: editing is settings:write gated, tenant-scoped by the same WHERE\nthe read uses, versioned, and audited. Two prompt halves, two fields:\n``system_prompt`` is the base (canonical instructions and prohibitions),\n``persona_prompt`` is the store's voice (agent name, tone, store name) —\nthe runtime composes base first, persona last.",
           "properties": {
             "description": {
               "anyOf": [
@@ -756,6 +778,18 @@
                 }
               ],
               "title": "Name"
+            },
+            "persona_prompt": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Persona Prompt"
             },
             "system_prompt": {
               "anyOf": [
@@ -807,6 +841,17 @@
                 }
               ],
               "title": "Model"
+            },
+            "persona_prompt": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Persona Prompt"
             },
             "published_at": {
               "anyOf": [
@@ -12106,11 +12151,6 @@
         },
         "QuoteRequest": {
           "properties": {
-            "approved": {
-              "default": false,
-              "title": "Approved",
-              "type": "boolean"
-            },
             "discount_total": {
               "anyOf": [
                 {
@@ -13957,11 +13997,6 @@
                 }
               ],
               "title": "Customer Id"
-            },
-            "discount_approved": {
-              "default": false,
-              "title": "Discount Approved",
-              "type": "boolean"
             },
             "discount_total": {
               "anyOf": [

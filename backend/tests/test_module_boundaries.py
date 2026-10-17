@@ -183,7 +183,10 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # tool computes are registered through `EvidenceStore.register_numbers`, the
 # analytics module's own door, so the SI adapter gained no new import site and
 # the skip rules live beside the pack contract that enforces them.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 192
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 198
+# 192 -> 198 on 2026-10-16: the orders routers decomposition wave added six
+# function-scope edges (orders/routers/* reading the owning services and
+# models — the same shape every sub-router decomposition carries).
 # 188 -> 192 on 2026-10-16: POS exchange sale addition in pos/service.py
 # (OrderService + InventoryService function-scope calls)
 # 167 -> 177 on 2026-10-15: POS receipt returns, refund lines & orders

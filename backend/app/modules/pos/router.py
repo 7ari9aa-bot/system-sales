@@ -207,7 +207,6 @@ class ScanRequest(BaseModel):
 class QuoteRequest(BaseModel):
     items: list[dict] = Field(min_length=1)
     discount_total: str | None = Field(default=None, pattern=_MONEY)
-    approved: bool = False
 
 
 class TenderLine(BaseModel):
@@ -224,7 +223,6 @@ class SellRequest(BaseModel):
     amount: str | None = Field(default=None, pattern=_MONEY)
     tenders: list[TenderLine] | None = None
     discount_total: str | None = Field(default=None, pattern=_MONEY)
-    discount_approved: bool = False
     tendered_cash: str | None = Field(default=None, pattern=_MONEY)
     # Atomic resume: the cart's lines become this sale inside one transaction.
     held_cart_id: UUID | None = None
@@ -415,7 +413,6 @@ async def quote(session_id: UUID, body: QuoteRequest, ctx: PosWriteCtx):
         session_id,
         items=body.items,
         discount_total=body.discount_total,
-        approved=body.approved,
     )
 
 
@@ -464,7 +461,6 @@ async def sell(session_id: UUID, body: SellRequest, ctx: PosWriteCtx):
         method=body.method,
         amount=body.amount,
         discount_total=body.discount_total,
-        discount_approved=body.discount_approved,
         tendered_cash=body.tendered_cash,
         held_cart_id=body.held_cart_id,
         actor_user_id=ctx.user.id,

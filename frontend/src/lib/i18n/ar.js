@@ -155,6 +155,8 @@ export default {
   "pos.exchanged": "الاستبدال تم. إيصال {n} و {m}.",
   "pos.err.exchange": "تعذّر تنفيذ الاستبدال.",
   "pos.err.noReplacement": "ضيف البدائل الأول.",
+  "pos.lineDiscount": "خصم القطعة %",
+  "pos.receiptLineDiscount": "خصم {p}% على القطعة",
 
   // Sales module (structure only until wired to /api/v1)
 

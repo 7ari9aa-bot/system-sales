@@ -68,7 +68,6 @@ export default function POS() {
   const [heldCartId, setHeldCartId] = useState(null);
   const [held, setHeld] = useState([]);
   const [discount, setDiscount] = useState("");
-  const [discountApproved, setDiscountApproved] = useState(false);
   const [tenders, setTenders] = useState([]);
   const [quote, setQuote] = useState(null);
   const [lastReceiptId, setLastReceiptId] = useState(null);
@@ -210,6 +209,28 @@ export default function POS() {
     });
   }
 
+  function setLineDiscount(variantId, raw) {
+    // خصم القطعة: نسبة 0-100 — بتتنفذ في السطر وبتتخزن مع الأوردر.
+    let v = String(raw).trim();
+    if (v === "") {
+      setLines((prev) =>
+        prev.map((l) =>
+          l.variant_id === variantId ? { ...l, discount_pct: "" } : l
+        )
+      );
+      return;
+    }
+    let n = Number(v);
+    if (!Number.isFinite(n)) n = 0;
+    n = Math.min(100, Math.max(0, n));
+    const pct = n.toFixed(2);
+    setLines((prev) =>
+      prev.map((l) =>
+        l.variant_id === variantId ? { ...l, discount_pct: pct } : l
+      )
+    );
+  }
+
   function step(variantId, delta) {
     setLines((prev) =>
       prev
@@ -257,7 +278,14 @@ export default function POS() {
       return;
     }
     try {
-      const body = { items };
+      const body = {
+        items: items.map((it) => {
+          const line = lines.find((l) => l.variant_id === it.variant_id);
+          return line?.discount_pct
+            ? { ...it, discount_pct: line.discount_pct }
+            : it;
+        }),
+      };
       if (discount) body.discount_total = discount;
       const q = await api(`${POS_API}/sessions/${session.id}/quote`, { method: "POST", body });
       setQuote(q);
@@ -281,12 +309,16 @@ export default function POS() {
     setNotice(null);
     try {
       const body = {
-        items,
+        items: items.map((it) => {
+          const line = lines.find((l) => l.variant_id === it.variant_id);
+          return line?.discount_pct
+            ? { ...it, discount_pct: line.discount_pct }
+            : it;
+        }),
         tenders: tenders.map((td) => ({ method: td.method, amount: td.amount })),
       };
       if (discount) {
         body.discount_total = discount;
-        body.discount_approved = discountApproved;
       }
       if (heldCartId) body.held_cart_id = heldCartId;
       const result = await api(`${POS_API}/sessions/${session.id}/sell`, {
@@ -299,7 +331,6 @@ export default function POS() {
       setQuote(null);
       setTenders([]);
       setDiscount("");
-      setDiscountApproved(false);
       setHeldCartId(null);
       void loadHeld();
       scanRef.current?.focus();
@@ -444,9 +475,8 @@ export default function POS() {
 
   // --------------------------------------------------------------- render -
 
-  const overdrawn = quote?.discount_needs_approval && !discountApproved;
   const isOpen = session?.status === "OPEN";
-  const canSellNow = isOpen && lines.length > 0 && !overdrawn && !busy && !stale;
+  const canSellNow = isOpen && lines.length > 0 && !busy && !stale;
 
   // اختصارات الكاشير — نفس مجموعة ERPNext: Ctrl+I مسح، Ctrl+D خصم،
   // Ctrl+Enter تحصيل، Escape يقفل اللوحات المفتوحة.
@@ -689,6 +719,17 @@ export default function POS() {
                         <button type="button" aria-label="Increase" onClick={() => step(l.variant_id, 1)} className="h-8 w-8 grid place-items-center rounded-lg border border-border hover:bg-surface">
                           <Plus className="h-3.5 w-3.5" />
                         </button>
+                        {/* خصم القطعة: الموظف يكتب النسبة وبتتنفذ في السطر */}
+                        <input
+                          value={l.discount_pct ?? ""}
+                          onChange={(e) => setLineDiscount(l.variant_id, e.target.value)}
+                          placeholder="%"
+                          title={t("pos.lineDiscount", "Line discount %")}
+                          aria-label={t("pos.lineDiscount", "Line discount %")}
+                          dir="ltr"
+                          inputMode="decimal"
+                          className="h-8 w-14 rounded-lg border border-border bg-surface px-1.5 text-[12px] tabular-nums text-center"
+                        />
                         <button type="button" aria-label="Remove" onClick={() => removeLine(l.variant_id)} className="h-8 w-8 grid place-items-center rounded-lg border border-border text-destructive hover:bg-destructive/10">
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
@@ -790,17 +831,6 @@ export default function POS() {
                 dir="ltr"
                 className="h-10 w-full rounded-xl border border-border bg-surface px-3 text-[13px] tabular-nums mb-3"
               />
-              {quote?.discount_needs_approval && (
-                <label className="mb-3 flex items-center gap-2 text-[12.5px] text-warning">
-                  <input
-                    type="checkbox"
-                    checked={discountApproved}
-                    onChange={(e) => setDiscountApproved(e.target.checked)}
-                  />
-                  {t("pos.discountApproval", "Discount needs manager approval")}
-                </label>
-              )}
-
               <dl className="space-y-1.5 mb-3 text-[13px]">
                 <div className="flex items-center justify-between">
                   <dt className="text-muted-foreground">{t("pos.subtotal", "Subtotal")}</dt>
@@ -825,13 +855,8 @@ export default function POS() {
                 onTendersChange={setTenders}
                 onSell={() => void sell()}
                 busy={busy}
-                discountBlocked={overdrawn || stale}
+                discountBlocked={stale}
               />
-              {overdrawn && (
-                <p className="mt-2 text-[12px] text-warning text-center">
-                  {t("pos.approvalNeeded", "Approve the discount before charging.")}
-                </p>
-              )}
             </div>
 
             {lastReceiptId && (

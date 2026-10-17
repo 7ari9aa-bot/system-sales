@@ -95,6 +95,9 @@ export default function ReceiptView({ receiptId, onNotice }) {
                   {l.title || l.sku} ×{l.quantity}
                   <span className="block text-[10px] text-muted-foreground tabular-nums" dir="ltr">
                     {money(l.unit_price)} = {mul(l.unit_price, l.quantity)}
+                    {l.discount_pct && l.discount_pct !== "0.00"
+                      ? ` − ${l.discount_pct}%`
+                      : ""}
                   </span>
                 </td>
                 <td className="py-0.5 text-end tabular-nums" dir="ltr">

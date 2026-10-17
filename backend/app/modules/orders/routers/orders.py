@@ -7,20 +7,19 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import Depends, Query, Response
+from fastapi import Query, Response
 from pydantic import BaseModel, Field
 
 from ._deps import (
     IfMatch,
     OrderService,
+    OrdersWriteCtx,
     ReturnsService,
-    TenantContext,
     TenantCtxDep,
     _order_detail_out,
     apply_etag,
     decode_cursor,
     page_slice,
-    require_permission,
     router,
 )
 
@@ -113,7 +112,7 @@ async def get_order(ctx: TenantCtxDep, order_id: uuid.UUID, response: Response):
 async def change_status(
     order_id: uuid.UUID,
     body: StatusChangeRequest,
-    ctx: TenantContext = Depends(require_permission("orders:write")),
+    ctx: OrdersWriteCtx,
     if_match: IfMatch = None,  # §17 optimistic-concurrency; absent = unconditional
 ):
     await OrderService.change_status(
@@ -131,7 +130,7 @@ async def change_status(
 @router.post("/orders/{order_id}/cancel")
 async def cancel_order(
     order_id: uuid.UUID,
-    ctx: TenantContext = Depends(require_permission("orders:write")),
+    ctx: OrdersWriteCtx,
 ):
     """Cancel an open order and release its reserved stock (idempotent via
     the row lock: two concurrent cancels cannot double-release)."""
@@ -143,7 +142,7 @@ async def cancel_order(
 async def return_order(
     order_id: uuid.UUID,
     body: ReturnRequest,
-    ctx: TenantContext = Depends(require_permission("orders:write")),
+    ctx: OrdersWriteCtx,
 ):
     """Return a parcel: restock what left the warehouse, then close the order.
 
@@ -167,7 +166,7 @@ async def return_order(
 @router.post("/orders", status_code=201)
 async def create_order(
     body: CreateOrderRequest,
-    ctx: TenantContext = Depends(require_permission("orders:write")),
+    ctx: OrdersWriteCtx,
 ):
     """Transactional order creation: stock reservation + snapshot + outbox."""
     order = await OrderService.create_order(
