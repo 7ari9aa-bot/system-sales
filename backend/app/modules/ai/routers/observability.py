@@ -11,7 +11,7 @@ from sqlalchemy import func, select
 
 from app.core.errors import NotFoundError
 from app.modules.ai.models import AIUsage
-from app.modules.ai.routers._deps import ApproveCtx, SettingsCtx, TenantCtxDep
+from app.modules.ai.routers._deps import ApproveCtx, SettingsCtx, SettingsReadCtx, TenantCtxDep
 from app.modules.ai.schemas import (
     EvaluationList,
     EvaluationOut,
@@ -80,23 +80,24 @@ async def usage_summary(ctx: TenantCtxDep, days: Annotated[int, Query(ge=1, le=3
 # ---------- trace (§44) ----------
 #
 # "What did the AI actually do, and why?" — assembled from agent_runs and its
-# model_calls / tool_calls children. Reads only need an authenticated tenant
-# context: a trace is operational evidence, not a settings mutation.
+# model_calls / tool_calls children. Traces carry tool arguments, results and
+# error strings (which can include provider response detail), so reads are
+# gated on settings:read — the operator surface, not every tenant member.
 
 
 @router.get("/trace/runs/{run_id}", response_model=TraceRunOut)
-async def trace_run(run_id: uuid.UUID, ctx: TenantCtxDep):
+async def trace_run(run_id: uuid.UUID, ctx: SettingsReadCtx):
     return await AITraceService.for_run(ctx.session, ctx.tenant_id, run_id)
 
 
 @router.get("/trace/correlation/{correlation_id}", response_model=TraceCorrelationOut)
-async def trace_correlation(correlation_id: str, ctx: TenantCtxDep):
+async def trace_correlation(correlation_id: str, ctx: SettingsReadCtx):
     runs = await AITraceService.by_correlation(ctx.session, ctx.tenant_id, correlation_id)
     return {"correlation_id": correlation_id, "runs": runs}
 
 
 @router.get("/trace/summary", response_model=TraceSummaryOut)
-async def trace_summary(ctx: TenantCtxDep, days: Annotated[int, Query(ge=1, le=365)] = 7):
+async def trace_summary(ctx: SettingsReadCtx, days: Annotated[int, Query(ge=1, le=365)] = 7):
     return await AITraceService.summary(ctx.session, ctx.tenant_id, days=days)
 
 

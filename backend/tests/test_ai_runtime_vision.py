@@ -450,3 +450,67 @@ async def test_media_collected_server_side_with_cap_and_shown_ids(db, tenant_ctx
     assert [m["image_url"] for m in result.media] == [f"https://cdn.test/{p}.png" for p in range(4)]
     assert all(set(m) == {"image_id", "image_url", "alt"} for m in result.media)
     assert result.shown_product_ids == [str(product.id)]
+
+
+async def test_media_binds_to_the_answered_message_not_the_newest(
+    db, tenant_ctx, monkeypatch,
+):
+    """Delayed-event scenario: photo A lands, photo B is answered, then A's
+    event is processed late. The reply to A must ride A's photo — the old
+    code scanned history for the NEWEST inbound row and attached B to A's
+    answer (the reviewer's cross-wiring finding, 2026-10-17)."""
+    tenant_id = tenant_ctx.tenant_id
+    agent = await _agent_with(db, tenant_id, "search_products")
+    now = datetime.now(UTC)
+    conversation, old_message = await _conversation_with_inbound_image(
+        db, tenant_id, storage_key="photos/old.png", created_at=now - timedelta(minutes=10)
+    )
+    newer = conv_models.Message(
+        tenant_id=tenant_id,
+        conversation_id=conversation.id,
+        direction="inbound",
+        sender_type="customer",
+        body=None,
+        content_type="image",
+        media_type="image",
+        created_at=now,
+    )
+    db.add(newer)
+    await db.flush()
+    db.add(
+        conv_models.Attachment(
+            tenant_id=tenant_id,
+            conversation_id=conversation.id,
+            message_id=newer.id,
+            storage_key="photos/new.png",
+            mime_type="image/png",
+            scan_status="scanned",
+        )
+    )
+    await db.flush()
+
+    _patch_signed_urls(monkeypatch)
+    calls = _patch_gateway(
+        monkeypatch,
+        [
+            ChatCompletionResult(
+                content="ok", tool_calls=[], tokens_in=1, tokens_out=1, raw_model="m"
+            )
+        ],
+    )
+
+    await AgentRunner(gateway=AIGateway()).run(
+        db,
+        tenant_id,
+        agent_id=agent.id,
+        conversation_id=conversation.id,
+        inbound_message_id=old_message.id,
+        user_message="؟",
+    )
+
+    parts = _content_parts(calls["list"][0]["messages"])
+    image_parts = [p for p in parts if p.get("type") == "image_url"]
+    assert len(image_parts) == 1, "exactly one photo rides the answered message"
+    assert image_parts[0]["image_url"]["url"].endswith("photos/old.png"), (
+        "the ANSWERED message's photo rides — not the newest one"
+    )

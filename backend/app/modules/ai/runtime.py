@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import set_committed_value
 
 from app.core.config import get_settings
-from app.core.errors import DomainError, NotFoundError
+from app.core.errors import DomainError, ExternalProviderError, NotFoundError
 from app.modules.ai.gateway import (
     AIBudgetFallbackRequested,
     AIGateway,
@@ -215,6 +215,11 @@ class AgentRunner:
         # Narrative context only — never numeric authority; facts are
         # re-queried per turn by the deterministic tools.
         history: list[dict[str, str]] | None = None,
+        # The coordinator's server-side photo verdict for this turn: the
+        # classified kind gates find_product_by_image (the model cannot
+        # re-propose a kind the server already refused) and a precomputed
+        # MatchResult is REUSED instead of re-running the paid pipeline.
+        vision_state: dict | None = None,
     ) -> AgentRunResult:
         agent = await self._load_agent(session, tenant_id, agent_id)
         agent_tools = await self._load_agent_tools(
@@ -307,10 +312,16 @@ class AgentRunner:
                 knowledge_context=knowledge_context,  # §132
                 confirmed_quote_id=confirmed_quote_id,
                 history=history,
+                vision_state=vision_state,
             )
         except Exception as exc:
             run.status = "failed"
-            run.error = str(exc)
+            if isinstance(exc, ExternalProviderError):
+                # The provider body can echo request content — the durable run
+                # row carries the category, the traceback carries the detail.
+                run.error = f"{type(exc).__name__}: model provider call failed"
+            else:
+                run.error = str(exc)
             run.finished_at = _now()
             await session.flush()
             if isinstance(exc, DomainError):
@@ -558,6 +569,7 @@ class AgentRunner:
         knowledge_context: str | None = None,  # §132
         confirmed_quote_id: uuid.UUID | str | None = None,  # P1-10
         history: list[dict[str, str]] | None = None,
+        vision_state: dict | None = None,
     ) -> AgentRunResult:
         # §41 input side: what the model is ABOUT to be shown is judged before
         # it is shown. The output chain cannot cover this — it only ever sees
@@ -607,6 +619,7 @@ class AgentRunner:
                 tenant_id,
                 conversation_id,
                 current_message=user_message,
+                inbound_message_id=inbound_message_id,
             )
             messages.extend(turns)
             if image_key:
@@ -751,19 +764,29 @@ class AgentRunner:
                 # §42: cap exhausted, policy says downgrade — retry this step
                 # on the "fallback" alias (the cheap model). If the fallback
                 # alias is what just failed, stop and hand over instead of
-                # looping the same exhausted budget.
+                # looping the same exhausted budget. The retry is bounded by
+                # the SAME remaining wall clock as the primary call — an
+                # unbounded fallback was a way for the run to outlive the
+                # budget the limits claim to enforce.
                 if self._alias_for(agent) != "fallback":
-                    chat_result = await self.gateway.chat(
-                        session,
-                        tenant_id,
-                        alias="fallback",
-                        messages=messages,
-                        tools=tools_schema,
-                        temperature=float(agent.temperature),
-                        max_tokens=agent.max_output_tokens,
-                        agent_id=agent.id,
-                        run_id=run.id,
-                    )
+                    try:
+                        chat_result = await asyncio.wait_for(
+                            self.gateway.chat(
+                                session,
+                                tenant_id,
+                                alias="fallback",
+                                messages=messages,
+                                tools=tools_schema,
+                                temperature=float(agent.temperature),
+                                max_tokens=agent.max_output_tokens,
+                                agent_id=agent.id,
+                                run_id=run.id,
+                            ),
+                            timeout=remaining,
+                        )
+                    except TimeoutError:
+                        hit_limit = "max_wall_time"
+                        break
                 else:
                     hit_limit = "budget_fallback_exhausted"
                     break
@@ -800,6 +823,7 @@ class AgentRunner:
                     inbound_message_id=inbound_message_id,
                     customer_image_url=customer_image_url,
                     confirmed_quote_id=confirmed_quote_id,
+                    vision_state=vision_state,
                 )
                 tool_calls_made.append(outcome)
                 answered_ids.add(tc.id)
@@ -1116,12 +1140,16 @@ class AgentRunner:
         conversation_id: uuid.UUID,
         *,
         current_message: str | None = None,
+        inbound_message_id: uuid.UUID | str | None = None,
     ) -> tuple[list[dict], str | None, tuple[str, str] | None]:
-        """History plus the newest scanner-cleared photo and direct-Omni audio.
+        """History plus the answered message's scanner-cleared photo and audio.
 
-        Audio is eligible only when its attachment was scanned clean, its MIME
-        format is explicitly supported by Qwen Omni, and the deployment opted
-        in. Older audio stays a text-only transcript marker.
+        Media is selected from the message THIS turn answers
+        (``inbound_message_id``) — never "whatever is newest": a delayed event
+        for photo A arriving after photo B was processed must not attach B's
+        photo to A's answer. Audio is eligible only when its attachment was
+        scanned clean, its MIME format is explicitly supported by Qwen Omni,
+        and the deployment opted in. Older media stays a text marker.
         """
         # Lazy import: conversations module owns the message table.
         from app.modules.conversations.service import ConversationService
@@ -1138,6 +1166,14 @@ class AgentRunner:
         audio_media: tuple[str, str] | None = None
         for message in reversed(history):
             if message.direction != "inbound":
+                continue
+            # Bind to the message the event carried. Without a carried id
+            # (approval resume / legacy event) the newest inbound row is the
+            # best available answer target — the historical behaviour.
+            if (
+                inbound_message_id is not None
+                and message.id != uuid.UUID(str(inbound_message_id))
+            ):
                 continue
             row = (
                 await session.execute(
@@ -1178,7 +1214,7 @@ class AgentRunner:
                 ).first()
                 if audio_row is not None and omni_audio_format(audio_row.mime_type):
                     audio_media = (audio_row.mime_type, audio_row.storage_key)
-            break  # only the NEWEST inbound message's media rides the turn
+            break  # only the answered message's media rides the turn
         # When the newest message's own media rides this turn, its history
         # marker ("its contents are not available to me") is a lie the model
         # reads immediately before the real content — drop that one marker;
@@ -1245,6 +1281,7 @@ class AgentRunner:
         inbound_message_id: uuid.UUID | str | None = None,
         customer_image_url: str | None = None,
         confirmed_quote_id: uuid.UUID | str | None = None,  # P1-10
+        vision_state: dict | None = None,
     ) -> dict[str, Any]:
         """Run one requested tool call under the agent's policy; record the row.
 
@@ -1343,6 +1380,18 @@ class AgentRunner:
                             # §12/§132: the customer's photo is server-bound —
                             # the tool reads it from here, never from args.
                             tool_context["customer_image"] = customer_image_url
+                        if vision_state:
+                            # The coordinator's server-side photo verdict: the
+                            # classified kind gates find_product_by_image (the
+                            # model cannot re-propose a kind the server
+                            # refused), and a precomputed MatchResult is
+                            # reused so the paid pipeline runs once per photo.
+                            if vision_state.get("classified_kind") is not None:
+                                tool_context["image_kind_classified"] = str(
+                                    vision_state["classified_kind"]
+                                )
+                            if vision_state.get("match") is not None:
+                                tool_context["vision_match"] = vision_state["match"]
                         if confirmed_quote_id:
                             # P1-10: the conversation's confirmed quote — bound
                             # by the turn coordinator from the customer's own
@@ -1436,6 +1485,19 @@ class AgentRunner:
                 except PydanticValidationError as exc:
                     status = "error"
                     error = f"invalid tool arguments: {exc.errors()[0].get('msg', str(exc))}"
+                except ExternalProviderError as exc:
+                    # Provider failures are NOT designed outcomes: the
+                    # exception text can carry the provider's response body
+                    # (which may echo request content). The model gets a
+                    # fixed category, the full text goes to the logs, and the
+                    # trace row stays inspectable without leaking bodies.
+                    status = "error"
+                    error = f"model provider rejected the call ({exc.code})"
+                    logger.warning(
+                        "ai.tool_provider_error tool=%s detail=%s",
+                        request.name,
+                        str(exc)[:500],
+                    )
                 except DomainError as exc:
                     # Designed outcome: a tool MEANT to say this (insufficient
                     # stock, unknown id, duplicate SKU). The message is data

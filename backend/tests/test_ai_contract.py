@@ -99,7 +99,9 @@ def _app(session: Any = None) -> FastAPI:
         user=AuthedUser(id=USER, tenant_id=TENANT, role_code="owner"),
         tenant_id=TENANT,
         role_code="owner",
-        permission_codes={"settings:write"},
+        # settings:write + settings:read: the trace routes are operator-gated
+        # (P1-3) and the owner role carries both.
+        permission_codes={"settings:write", "settings:read"},
     )
 
     app = FastAPI()

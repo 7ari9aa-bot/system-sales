@@ -152,3 +152,44 @@ async def test_resolve_product_media_unknown_product_fails_loudly(db, tenant_ctx
         await _resolve_product_media(
             db, tenant_ctx.tenant_id, product_id=uuid.uuid4(), selection="all"
         )
+
+
+async def test_server_side_classification_overrides_the_model_proposal(db, tenant_ctx):
+    """The coordinator's pre-egress classification is the AUTHORITY: a model
+    proposing "product" for a photo the server classified as a payment proof
+    is refused — retrieval never runs on sensitive content, no matter what
+    the model asks for."""
+    match = await _find_product_by_image(
+        db,
+        tenant_ctx.tenant_id,
+        image_kind="product",
+        context={
+            "customer_image": "https://cdn.test/receipt.png",
+            "image_kind_classified": "payment_proof",
+        },
+    )
+    assert match == {}
+
+
+async def test_precomputed_match_is_reused_not_reanalyzed(db, tenant_ctx):
+    """The coordinator's pipeline result is served from the tool context —
+    the paid embedding+rerank runs ONCE per photo, not again per tool call."""
+    from app.modules.ai.agents.customer.vision.schemas import Confidence, MatchResult
+
+    cached = MatchResult(
+        confidence=Confidence.HIGH,
+        candidates=[{"product_id": "p1", "title": "x", "verified": True}],
+        reason="clear_match",
+    )
+    result = await _find_product_by_image(
+        db,
+        tenant_ctx.tenant_id,
+        image_kind="product",
+        context={
+            "customer_image": "https://cdn.test/photo.png",
+            "image_kind_classified": "product",
+            "vision_match": cached,
+        },
+    )
+    assert result["confidence"] == "high"
+    assert result["candidates"][0]["product_id"] == "p1"

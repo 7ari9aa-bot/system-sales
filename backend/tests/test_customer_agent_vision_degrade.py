@@ -41,6 +41,11 @@ class _ReplyRunner:
         )
 
 
+async def _product_classifier(session, tid, url):
+    from app.modules.ai.agents.customer.vision.schemas import ImageKind
+    return ImageKind.PRODUCT
+
+
 async def test_a_failing_vision_provider_degrades_instead_of_dying(db, tenant_ctx, monkeypatch):
     import app.modules.ai.agents.customer.turn as turn_module
 
@@ -95,6 +100,7 @@ async def test_a_failing_vision_provider_degrades_instead_of_dying(db, tenant_ct
             image_urls={"photo-key": "https://storage.example/photo.png"},
         ),
         runner=runner,  # type: ignore[arg-type]
+        image_classifier=_product_classifier,
     )
 
     # The turn COMPLETED: a reply exists, nothing raised, no blocked reason.

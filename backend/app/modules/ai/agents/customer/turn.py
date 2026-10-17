@@ -46,8 +46,74 @@ from app.modules.ai.agents.customer.state import (
     load_state,
 )
 from app.modules.ai.agents.customer.vision.pipeline import run_vision_match
-from app.modules.ai.agents.customer.vision.schemas import MatchResult
+from app.modules.ai.agents.customer.vision.schemas import ImageKind, MatchResult
 from app.modules.ai.runtime import AgentRunner, AgentRunResult
+
+#: The server-side classifier: (session, tenant_id, image_url) → kind. The
+#: default resolves the conversation model and asks it one closed-vocabulary
+#: question BEFORE any embedding/rerank egress — a payment proof must never
+#: reach the vision pipeline just because the model never proposed the tool.
+ImageClassifier = __import__("typing").Callable
+
+
+_IMAGE_CLASSIFY_PROMPT = (
+    "صنّف الصورة دي بكلمة واحدة من القائمة دي بس: "
+    "product أو payment_proof أو complaint أو size_chart أو other. "
+    "اكتب الكلمة الإنجليزي بس من غير أي كلام تاني."
+)
+
+#: Kinds that mean a human handles the image — §12.5's fail-closed rule, now
+#: enforced server-side BEFORE any embedding/rerank egress.
+_SENSITIVE_IMAGE_KINDS = frozenset({ImageKind.PAYMENT_PROOF, ImageKind.COMPLAINT})
+
+_SENSITIVE_IMAGE_ACK = (
+    "وصلتني الصورة، وحوّلتها لفريق العمل يتابعوا معاك فيها في أقرب وقت."
+)
+
+
+async def _default_classify_image_kind(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    image_url: str,
+    *,
+    gateway,
+    alias: str,
+) -> ImageKind:
+    """One closed-vocabulary classification call through the governed gateway.
+
+    Failure degrades to OTHER (no retrieval; the model still sees the image
+    and answers) — never to PRODUCT, which would egress an unclassified photo
+    to the embedding provider."""
+
+    try:
+        result = await gateway.chat(
+            session,
+            tenant_id,
+            alias=alias,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": _IMAGE_CLASSIFY_PROMPT},
+                        {"type": "image_url", "image_url": {"url": image_url}},
+                    ],
+                }
+            ],
+            temperature=0.0,
+            max_tokens=16,
+        )
+        raw = (result.content or "").strip().lower()
+        for kind in ImageKind:
+            if kind.value in raw:
+                return kind
+        return ImageKind.OTHER
+    except Exception:  # noqa: BLE001 — the classify call must never fail the turn
+        logger.warning(
+            "ai.image_classify_failed — degrading to unclassified (no retrieval)",
+            exc_info=True,
+        )
+        return ImageKind.OTHER
+
 
 logger = logging.getLogger(__name__)
 
@@ -359,6 +425,7 @@ async def run_customer_turn(
     *,
     runner: AgentRunner | None = None,
     deadline_seconds: float = TURN_DEADLINE_SECONDS,
+    image_classifier: ImageClassifier | None = None,
 ) -> TurnOutcome:
     """One customer turn through the whole M2 stack."""
     started = time.monotonic()
@@ -401,11 +468,67 @@ async def run_customer_turn(
     vision_results: list[MatchResult] = []
     processed = 0
     vision_failures = 0
+    classified_kind: ImageKind | None = None
+    precomputed_match: MatchResult | None = None
     for key in turn.image_keys[:MAX_PHOTOS_PER_TURN]:
         url = params.image_urls.get(key)
         if not url:
             continue
         processed += 1
+        if classified_kind is None:
+            if image_classifier is not None:
+                classified_kind = await image_classifier(session, params.tenant_id, url)
+            else:
+                from app.modules.ai.core.resolver import resolve_agent_by_kind_optional
+
+                agent_row = await resolve_agent_by_kind_optional(
+                    session, params.tenant_id, "customer"
+                )
+                alias = (
+                    AgentRunner._alias_for(agent_row)
+                    if agent_row is not None
+                    else "fast"
+                )
+                gateway = getattr(_runner, "gateway", None)
+                if gateway is None:
+                    from app.modules.ai.gateway import AIGateway
+
+                    gateway = AIGateway()
+                classified_kind = await _default_classify_image_kind(
+                    session, params.tenant_id, url, gateway=gateway, alias=alias
+                )
+        if classified_kind in _SENSITIVE_IMAGE_KINDS:
+            # §12.5 enforced SERVER-SIDE, before any embedding/rerank egress:
+            # a payment proof or complaint photo goes to a human, no matter
+            # what the model would have proposed. No model call runs — the
+            # fixed ack states receipt and handover without confirming money
+            # details nobody has verified.
+            reason = (
+                "payment_proof_requires_human"
+                if classified_kind is ImageKind.PAYMENT_PROOF
+                else "complaint_requires_human"
+            )
+            logger.info(
+                "ai.image_handover_preclass storage_key=%s kind=%s",
+                key,
+                classified_kind.value,
+            )
+            return TurnOutcome(
+                reply=_SENSITIVE_IMAGE_ACK,
+                handover_reason="policy",
+                handover_note=f"image:{reason}",
+                vision=[
+                    {
+                        "confidence": "high",
+                        "reason": f"classified_{classified_kind.value}_pre_egress",
+                    }
+                ],
+                state_version=state_version,
+            )
+        if classified_kind is not ImageKind.PRODUCT:
+            # Not a product photo: no retrieval egress; the model answers from
+            # the image itself (which still rides the turn).
+            continue
         try:
             # begin_nested: a SQL failure inside the vision pipeline (not just
             # a provider error) would otherwise leave the caller's transaction
@@ -414,16 +537,16 @@ async def run_customer_turn(
             # bounds the damage to the vision pass; the except below handles
             # whatever escapes it and the transaction stays usable.
             async with session.begin_nested():
-                vision_results.append(
-                    await run_vision_match(
-                        session,
-                        params.tenant_id,
-                        image_url=url,
-                        text_hint=turn.text_hint(),
-                    )
+                precomputed_match = await run_vision_match(
+                    session,
+                    params.tenant_id,
+                    image_url=url,
+                    text_hint=turn.text_hint(),
                 )
+                vision_results.append(precomputed_match)
         except Exception:  # noqa: BLE001 — a broken photo pipeline is not the customer's problem
             vision_failures += 1
+            precomputed_match = None
             logger.warning(
                 "ai.vision_failed storage_key=%s — the turn answers WITHOUT this photo",
                 key,
@@ -463,6 +586,12 @@ async def run_customer_turn(
         user_message=user_message,
         customer_id=params.customer_id,
         knowledge_context=merged_context,
+        vision_state={
+            "classified_kind": (
+                classified_kind.value if classified_kind is not None else None
+            ),
+            "match": precomputed_match,
+        },
     )
 
     deadline_exceeded = (time.monotonic() - started) > deadline_seconds

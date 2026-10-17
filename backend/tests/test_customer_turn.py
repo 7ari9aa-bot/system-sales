@@ -96,6 +96,11 @@ async def test_empty_turn_short_circuits_without_calling_the_runner(db, tenant_c
     assert runner.calls == []
 
 
+async def _photo_classifier(session, tid, url):
+    from app.modules.ai.agents.customer.vision.schemas import ImageKind
+    return ImageKind.PRODUCT
+
+
 async def test_photo_turn_runs_vision_and_shows_verified_products(db, tenant_ctx, monkeypatch):
     captured: dict = {}
 
@@ -127,6 +132,7 @@ async def test_photo_turn_runs_vision_and_shows_verified_products(db, tenant_ctx
             image_urls={"uploads/photo-1.png": "https://cdn.test/photo-1.png"},
         ),
         runner=runner,
+        image_classifier=_photo_classifier,
     )
 
     assert captured["image_url"] == "https://cdn.test/photo-1.png"

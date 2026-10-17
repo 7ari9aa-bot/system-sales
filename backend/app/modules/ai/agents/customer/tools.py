@@ -479,12 +479,37 @@ async def _find_product_by_image(
     from app.modules.ai.agents.customer.vision.classifier import classify
     from app.modules.ai.agents.customer.vision.pipeline import run_vision_match
 
+    # The server-side pre-classification (when the coordinator ran it) is the
+    # AUTHORITY on what this photo is: the model cannot re-propose "product"
+    # for a photo the server classified as something else, and sensitive kinds
+    # are refused outright (§12.5 — deterministic, not model-dependent).
+    server_kind = (context or {}).get("image_kind_classified")
+    if server_kind is not None and server_kind != ImageKind.PRODUCT.value:
+        if server_kind in ("payment_proof", "complaint"):
+            raise DomainError(
+                f"image requires handover: {server_kind}_requires_human"
+            )
+        raise DomainError(
+            f"the photo was classified server-side as {server_kind} — "
+            "it is not a product photo"
+        )
+
     allowed, handoff_reason = classify(image_kind)
     if not allowed:
         raise DomainError(f"image requires handover: {handoff_reason}")
     image_url = (context or {}).get("customer_image")
     if not image_url:
         raise DomainError("no customer image in this turn")
+
+    # The coordinator's pipeline result is reused when present: the paid
+    # embedding+rerank runs ONCE per photo, not again per tool call.
+    precomputed = (context or {}).get("vision_match")
+    if precomputed is not None:
+        return {
+            "confidence": precomputed.confidence.value,
+            "candidates": precomputed.candidates,
+            "reason": precomputed.reason,
+        }
 
     result = await run_vision_match(session, tenant_id, image_url=image_url, text_hint=hints)
     return {
