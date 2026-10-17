@@ -981,11 +981,33 @@ class PosService:
     ) -> UUID:
         if customer_id is not None:
             return customer_id
-        if profile is None or profile.default_customer_id is None:
-            raise ValidationError(
-                "a customer is required — this profile has no walk-in customer"
+        if profile is not None and profile.default_customer_id is not None:
+            return profile.default_customer_id
+        # No profile (or one without a walk-in): a ground-shop till still
+        # needs somewhere to book the sale — the tenant's shared walk-in
+        # customer, bootstrapped once and reused (the get_default_warehouse
+        # pattern). Profile-scoped tills keep their own default.
+        from app.modules.customers.models import Customer
+        from app.modules.customers.service import CustomerService
+
+        walk_in = (
+            await session.execute(
+                select(Customer.id)
+                .where(
+                    Customer.tenant_id == tenant_id,
+                    Customer.name == "زبون نقدي",
+                    Customer.is_blocked.is_(False),
+                )
+                .order_by(Customer.created_at.asc())
+                .limit(1)
             )
-        return profile.default_customer_id
+        ).scalar_one_or_none()
+        if walk_in is not None:
+            return walk_in
+        created = await CustomerService.create_from_import(
+            session, tenant_id, name="زبون نقدي", source="pos"
+        )
+        return created.id
 
     @staticmethod
     async def _issue_receipt(

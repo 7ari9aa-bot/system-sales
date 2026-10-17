@@ -542,18 +542,19 @@ export default function POS() {
         </div>
       )}
 
-      {/* فتح الوردية */}
+      {/* فتح الوردية — شريط فوق الشاشة لما مفيش جلسة، مش حاجز بيقفلها */}
       {!session && (
-        <OpenShiftPanel
-          registers={registers}
-          profiles={profiles}
-          busy={busy}
-          onOpen={(payload) => void openShift(payload)}
-        />
+        <div className="mb-4">
+          <OpenShiftPanel
+            registers={registers}
+            profiles={profiles}
+            busy={busy}
+            onOpen={(payload) => void openShift(payload)}
+          />
+        </div>
       )}
 
-      {session && (
-        <div className="grid grid-cols-1 xl:grid-cols-[1fr_380px] gap-4">
+      <div className="grid grid-cols-1 xl:grid-cols-[1fr_380px] gap-4">
           {/* يسار: مسح/تصفح + السلة */}
           <div className="space-y-4">
             <div className="rounded-2xl bg-card border border-border overflow-hidden">
@@ -809,8 +810,18 @@ export default function POS() {
             )}
           </div>
 
-          {/* يمين: الإجمالي + الدفع + القفل */}
+          {/* يمين: فتح الوردية (بدون جلسة) + الإجمالي + الدفع + القفل */}
           <div className="space-y-4">
+            {!session && (
+              <OpenShiftPanel
+                registers={registers}
+                profiles={profiles}
+                busy={busy}
+                onOpen={(payload) => void openShift(payload)}
+              />
+            )}
+            {session && (
+            <>
             <div className="rounded-2xl bg-card border border-border p-4">
               <div className="text-[13px] font-medium mb-3">{t("pos.total", "Total")}</div>
 
@@ -1004,9 +1015,10 @@ export default function POS() {
                 </button>
               </div>
             )}
+            </>
+            )}
           </div>
         </div>
-      )}
     </div>
   );
 }
