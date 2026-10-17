@@ -9,7 +9,7 @@ const ICONS = { MessageCircle, Instagram, MessagesSquare, MessageSquare, Send, F
 export default function ChannelSwitcher({ active, onSelect, channels = CHANNELS, unreadByChannel = {} }) {
   const t = useT();
   return (
-    <div className="flex items-center gap-1 overflow-x-auto scrollbar-thin">
+    <nav aria-label={t("inbox.title")} className="flex w-full flex-col items-center gap-1.5 overflow-y-auto overflow-x-hidden py-2">
       {channels.map((ch) => {
         const Icon = ICONS[ch.icon] || MessageCircle;
         const isActive = active === ch.id;
@@ -22,28 +22,28 @@ export default function ChannelSwitcher({ active, onSelect, channels = CHANNELS,
             onClick={() => !locked && onSelect(ch.id)}
             disabled={locked}
             aria-pressed={isActive}
+            aria-label={locked ? t("inbox.lockedChannel", { name: ch.name }) : ch.name}
             title={locked ? t("inbox.lockedChannel", { name: ch.name }) : ch.name}
             className={cn(
-              "group relative shrink-0 flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[12px] font-medium transition-all",
+              "group relative grid h-10 w-10 shrink-0 place-items-center rounded-xl transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
               locked
                 ? "text-muted-foreground/60 cursor-not-allowed"
                 : isActive
                   ? "text-white shadow-sm"
-                  : "text-muted-foreground hover:text-foreground hover:bg-surface"
+                  : "text-muted-foreground hover:bg-surface hover:text-foreground"
             )}
             style={isActive && !locked ? { background: ch.accent } : undefined}
           >
-            <Icon className={cn("h-3.5 w-3.5 shrink-0", locked && "opacity-50")} />
-            <span className={cn(locked && "hidden sm:inline")}>{ch.name}</span>
-            {locked && <Lock className="h-2.5 w-2.5 opacity-50" />}
-            {isActive && !locked && unread > 0 && (
-              <span className="ml-0.5 text-[10px] font-semibold px-1 py-0 rounded bg-white/25 tabular-nums text-white leading-4">
+            <Icon className={cn("h-[18px] w-[18px]", locked && "opacity-50")} />
+            {locked && <Lock aria-hidden="true" className="absolute bottom-1 right-1 h-2.5 w-2.5 rounded-full bg-background p-px opacity-75" />}
+            {unread > 0 && (
+              <span aria-label={`${unread} unread`} className="absolute -right-0.5 -top-0.5 min-w-[17px] rounded-full bg-[#2aabee] px-1 text-center text-[9px] font-semibold leading-[17px] tabular-nums text-white shadow-sm">
                 {unread}
               </span>
             )}
           </button>
         );
       })}
-    </div>
+    </nav>
   );
 }

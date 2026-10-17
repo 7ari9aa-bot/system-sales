@@ -318,10 +318,6 @@ export default function Inbox() {
   const current = filtered.find((conversation) => conversation.id === activeId) || filtered[0] || null;
   activeMessageRequestRef.current = { conversationId: current?.id ?? null, channelId: activeChannel };
   const pendingApproval = current?.approval || null;
-  const connectedCount = channels.filter((item) => item.connected).length;
-  const channelCountLabel = demoAccount
-    ? (lang === "ar" ? `${connectedCount} قنوات تجريبية` : `${connectedCount} demo channels`)
-    : t("inbox.channelsConnected", { n: connectedCount });
   const unreadByChannel = Object.fromEntries(
     Object.entries(convMap).map(([id, rows]) => [id, rows.reduce((count, row) => count + row.unread, 0)])
   );
@@ -513,35 +509,6 @@ export default function Inbox() {
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      <div className={cn("mb-2 flex min-w-0 items-start justify-between gap-2 sm:hidden", lang === "ar" ? "flex-row-reverse" : "flex-row")}>
-        <div className={cn("min-w-0 flex-1", lang === "ar" && "text-right")}>
-          <h1 className="truncate whitespace-nowrap font-display text-[22px] font-semibold tracking-tight">{t("inbox.title")}</h1>
-          <p className="mt-1 truncate text-[12px] text-muted-foreground">{channelCountLabel}</p>
-        </div>
-        <div className="w-[48%] min-w-0 max-w-[48%] overflow-hidden pt-1">
-          <ChannelSwitcher
-            channels={channels}
-            active={activeChannel}
-            unreadByChannel={unreadByChannel}
-            onSelect={(id) => { setActiveChannel(id); setActiveId(null); setMobileChatOpen(false); setFilter("all"); }}
-          />
-        </div>
-      </div>
-      <div className={cn("mb-2 hidden min-w-0 sm:flex sm:flex-col sm:items-stretch sm:gap-2 lg:flex-row lg:items-center lg:justify-between lg:gap-4", lang === "ar" && "lg:flex-row-reverse")}>
-        <div className={cn("min-w-0", lang === "ar" && "text-right")}>
-          <h1 className="truncate whitespace-nowrap font-display text-[22px] font-semibold tracking-tight">{t("inbox.title")}</h1>
-          <p className="mt-0.5 truncate text-[12px] text-muted-foreground">{channelCountLabel}</p>
-        </div>
-        <div className="min-w-0 overflow-x-auto scrollbar-thin">
-          <ChannelSwitcher
-            channels={channels}
-            active={activeChannel}
-            unreadByChannel={unreadByChannel}
-            onSelect={(id) => { setActiveChannel(id); setActiveId(null); setMobileChatOpen(false); setFilter("all"); }}
-          />
-        </div>
-      </div>
-
       {error && (
         <div role="alert" className="mb-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error}
@@ -554,6 +521,8 @@ export default function Inbox() {
         </div>
       )}
 
+      <div dir="ltr" className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_52px] overflow-hidden">
+      <div className="min-h-0 min-w-0">
       <div
         ref={inboxSplitRef}
         dir="ltr"
@@ -733,6 +702,16 @@ export default function Inbox() {
           onApprove={() => decideApproval(pendingApproval, "APPROVED")}
           onDecline={() => decideApproval(pendingApproval, "REJECTED")}
         />
+      </div>
+      </div>
+      <aside className="z-10 flex min-h-0 min-w-0 flex-col items-center border-l border-border/80 bg-card" aria-label={t("inbox.title")}>
+        <ChannelSwitcher
+          channels={channels}
+          active={activeChannel}
+          unreadByChannel={unreadByChannel}
+          onSelect={(id) => { setActiveChannel(id); setActiveId(null); setMobileChatOpen(false); setFilter("all"); }}
+        />
+      </aside>
       </div>
     </div>
   );
