@@ -3,7 +3,7 @@ import { ArrowLeft, ArrowRight, ArrowUpRight, Search, Sparkles, X, Check, CheckC
 import { cn } from "@/lib/utils";
 
 const TELEGRAM_DOODLE_PATTERN = "data:image/svg+xml," + encodeURIComponent(`
-  <svg xmlns="http://www.w3.org/2000/svg" width="360" height="320" viewBox="0 0 360 320" fill="none" stroke="#547a65" stroke-opacity=".18" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
+  <svg xmlns="http://www.w3.org/2000/svg" width="360" height="320" viewBox="0 0 360 320" fill="none" stroke="#547a65" stroke-opacity=".24" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
     <!-- Telegram-style scattered line-art icons; the background color remains dominant. -->
     <g>
       <path d="M31 29l4-11 4 11 11 4-11 4-4 11-4-11-11-4 11-4Zm220 39 3-8 3 8 8 3-8 3-3 8-3-8-8-3 8-3Z"/>
@@ -66,9 +66,9 @@ export default function ChannelChat({
     backgroundSize: "100% 100%, 320px 570px",
   } : isTelegram ? {
     backgroundColor: "#a9cf9a",
-    backgroundImage: "linear-gradient(118deg, rgba(232,235,157,.82) 0%, rgba(148,199,147,.84) 52%, rgba(226,235,160,.82) 100%), url(\"" + TELEGRAM_DOODLE_PATTERN + "\")",
+    backgroundImage: "linear-gradient(118deg, rgba(232,235,157,.48) 0%, rgba(148,199,147,.52) 52%, rgba(226,235,160,.48) 100%), url(\"" + TELEGRAM_DOODLE_PATTERN + "\")",
     backgroundRepeat: "no-repeat, repeat",
-    backgroundSize: "100% 100%, 310px 270px",
+    backgroundSize: "100% 100%, 360px 320px",
   } : undefined;
   const visibleMessages = (isWhatsApp || isTelegram) && searchQuery.trim()
     ? allMessages.filter((message) => String(message.text || "").toLocaleLowerCase().includes(searchQuery.trim().toLocaleLowerCase()))
