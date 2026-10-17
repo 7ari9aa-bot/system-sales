@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 374,
-    "sha256": "f47ff3f20b85610f405f9ffa14becfc5e2aa27f4b5ea798f72e842f6b7d2780f",
+    "operations": 375,
+    "sha256": "6fbb0e307a6e803f10303898489c4277eb5e7517e709d925c36a5ddbace6ef33",
     "typed_operations": 223
   },
   "spec": {
@@ -55746,6 +55746,102 @@
           "summary": "Set Tenant Timezone",
           "tags": [
             "tenants"
+          ]
+        }
+      },
+      "/api/v1/users": {
+        "get": {
+          "description": "The tenant's members — the POS profile-grant picker's source.\n\nRead-only and tenant-scoped: only the members of the caller's own\ntenant, with the role each membership carries.",
+          "operationId": "list_tenant_members_api_v1_users_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Tenant Members",
+          "tags": [
+            "users"
           ]
         }
       },
