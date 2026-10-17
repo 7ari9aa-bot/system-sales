@@ -44,9 +44,14 @@ from app.modules.ai.providers import (
 logger = logging.getLogger(__name__)
 
 # Budget management & financial guardrails (§42) — re-exported from budget.py
-from app.modules.ai.budget import (
+# AIBudgetFallbackRequested is a PURE re-export: gateway never raises it, but
+# runtime.py and workers/message_worker.py import it FROM HERE. Removing it (an
+# earlier ruff F401 sweep read the re-export as dead) crashed the workers
+# service at import — the noqa pins it against the next sweep.
+from app.modules.ai.budget import (  # noqa: E402
     _IMAGE_TOKEN_FLOOR,
     AIBudgetExhaustedError,
+    AIBudgetFallbackRequested,  # noqa: F401  — re-exported for runtime + message_worker
     estimate_cost,
     reserve_budget,
     settle_reservation,
