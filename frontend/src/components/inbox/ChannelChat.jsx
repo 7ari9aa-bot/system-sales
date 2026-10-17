@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
 import { ArrowLeft, ArrowRight, ArrowUpRight, Search, Sparkles, X, Check, CheckCheck, Paperclip, Smile, Mic, MoreVertical } from "lucide-react";
 import { cn } from "@/lib/utils";
+import ConversationAvatar from "@/components/inbox/ConversationAvatar";
 
 // A themed chat pane that renders in the selected channel's real look.
 // Brand channels (WhatsApp/Instagram/Messenger/Telegram/Facebook) keep their
@@ -28,7 +29,9 @@ export default function ChannelChat({
   const [text, setText] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [telegramMessagesScrolling, setTelegramMessagesScrolling] = useState(false);
   const scrollRef = useRef(null);
+  const telegramScrollTimerRef = useRef(null);
   const preserveScrollRef = useRef(null);
   const messageViewportRef = useRef({ conversationId: null, latestMessageId: null });
   const isApp = channel.theme === "app";
@@ -75,6 +78,8 @@ export default function ChannelChat({
     setSearchOpen(false);
   }, [conversation?.id]);
 
+  useEffect(() => () => clearTimeout(telegramScrollTimerRef.current), []);
+
   async function submitMessage() {
     const body = text.trim();
     if (!body || sending || !conversation) return;
@@ -94,8 +99,13 @@ export default function ChannelChat({
   }, [conversation?.id, hasOlderMessages, loadingMessages, loadingOlderMessages, onLoadOlderMessages]);
 
   const handleMessagesScroll = useCallback((event) => {
+    if (isTelegram) {
+      setTelegramMessagesScrolling(true);
+      clearTimeout(telegramScrollTimerRef.current);
+      telegramScrollTimerRef.current = setTimeout(() => setTelegramMessagesScrolling(false), 800);
+    }
     void loadOlderAtTop(event.currentTarget);
-  }, [loadOlderAtTop]);
+  }, [isTelegram, loadOlderAtTop]);
 
   useEffect(() => {
     const element = scrollRef.current;
@@ -141,12 +151,15 @@ export default function ChannelChat({
           </button>
         )}
         
-        <div
-          className={cn("rounded-full grid place-items-center font-semibold shrink-0", isWhatsApp ? "h-10 w-10 text-[12px]" : isTelegram ? "h-10 w-10 text-[14px]" : "h-9 w-9 text-[13px]")}
-          style={{ background: conversation.color, color: isWhatsApp ? "#54656f" : "#fff" }}>
-          
-          {conversation.initials}
-        </div>
+        {isTelegram ? (
+          <ConversationAvatar conversation={conversation} className="h-10 w-10 text-[14px]" />
+        ) : (
+          <div
+            className={cn("rounded-full grid place-items-center font-semibold shrink-0", isWhatsApp ? "h-10 w-10 text-[12px]" : "h-9 w-9 text-[13px]")}
+            style={{ background: conversation.color, color: isWhatsApp ? "#54656f" : "#fff" }}>
+            {conversation.initials}
+          </div>
+        )}
         <div className="flex-1 min-w-0">
           <div dir={isWhatsApp || isTelegram ? "auto" : undefined} className={cn("truncate", isWhatsApp ? "text-left text-[15px] font-medium text-[#111b21]" : isTelegram ? "text-left text-[15px] font-medium text-[#222]" : "text-[14px] font-semibold", isApp && "text-foreground")}>{conversation.customer}</div>
           <div className={cn("truncate", isWhatsApp ? "text-left text-[12px] text-[#667781]" : isTelegram ? "text-[12px] text-[#7f9db8]" : "text-[11.5px]", isApp && "text-muted-foreground", !isApp && !isWhatsApp && !isTelegram && "opacity-80")}>{isTelegram ? "bot" : channel.name}</div>
@@ -196,7 +209,12 @@ export default function ChannelChat({
       <div
         ref={scrollRef}
         onScroll={handleMessagesScroll}
-        className={cn("flex-1 min-h-0 overflow-y-auto scrollbar-thin px-4 py-3 space-y-2", isWhatsApp && "px-5 py-4 space-y-2", isTelegram && "px-4 py-3 space-y-1.5 sm:px-6 sm:py-4")}
+        className={cn(
+          "flex-1 min-h-0 overflow-y-auto scrollbar-thin px-4 py-3 space-y-2",
+          isWhatsApp && "px-5 py-4 space-y-2",
+          isTelegram && "px-4 py-3 space-y-1.5 sm:px-6 sm:py-4 telegram-transient-scrollbar",
+          isTelegram && telegramMessagesScrolling && "is-scrolling"
+        )}
         style={messageBackgroundStyle}
       >
         {loadingOlderMessages && <div role="status" className="py-2 text-center text-[11.5px] text-muted-foreground">{t("common.loading")}</div>}

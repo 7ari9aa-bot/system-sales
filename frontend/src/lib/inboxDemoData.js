@@ -5,20 +5,20 @@ import { CHANNELS } from "@/lib/channels";
 const STORAGE_KEY = "fihrist:inbox-demo:dmin@revenueosapp.com:v1";
 
 const CONTACTS = [
-  { name: "ملك أحمد", initials: "مل", messages: ["هل المقاس متاح؟", "ممكن أعرف تفاصيل التوصيل؟", "تمام، هأكد الطلب النهارده"] },
-  { name: "نور محمد", initials: "نو", messages: ["وصلتني الصور، شكرًا جدًا", "هل اللون البيج متوفر؟", "ممتاز، احجزيلي واحدة"] },
-  { name: "سارة محمود", initials: "سا", messages: ["ممكن استبدال المنتج؟", "الطلب وصل امبارح", "شكرًا على سرعة الرد"] },
+  { name: "ملك أحمد", initials: "مل", telegramAvatar: "malak-ahmed", messages: ["هل المقاس متاح؟", "ممكن أعرف تفاصيل التوصيل؟", "تمام، هأكد الطلب النهارده"] },
+  { name: "نور محمد", initials: "نو", telegramAvatar: "noor-mohamed", messages: ["وصلتني الصور، شكرًا جدًا", "هل اللون البيج متوفر؟", "ممتاز، احجزيلي واحدة"] },
+  { name: "سارة محمود", initials: "سا", telegramAvatar: "sara-mahmoud", messages: ["ممكن استبدال المنتج؟", "الطلب وصل امبارح", "شكرًا على سرعة الرد"] },
 ];
 
 const TELEGRAM_CONTACTS = [
-  { name: "هند سامي", initials: "هن", messages: ["مساء الخير، الطلب وصل", "مبسوطة جدًا بالخامة"] },
-  { name: "مريم حسن", initials: "مر", messages: ["ممكن أعرف الألوان المتاحة؟", "تمام، شكرًا ليكم"] },
-  { name: "أحمد خالد", initials: "أح", messages: ["هل في مقاس أكبر؟", "مستني ردكم"] },
-  { name: "مي مصطفى", initials: "مي", messages: ["عايزة أتابع حالة الشحن", "وصلت، تسلموا"] },
-  { name: "عمر محمود", initials: "عم", messages: ["السعر شامل التوصيل؟", "تمام"] },
-  { name: "سلمى علي", initials: "سل", messages: ["ممكن صورة للون الكحلي؟", "حلو جدًا"] },
-  { name: "كريم يوسف", initials: "كر", messages: ["هل المنتج متوفر؟", "احجزوا لي واحدة"] },
-  { name: "ياسمين فتحي", initials: "يا", messages: ["شكرًا على سرعة الرد", "هأكد الطلب النهارده"] },
+  { name: "هند سامي", initials: "هن", telegramAvatar: "hind-sami", messages: ["مساء الخير، الطلب وصل", "مبسوطة جدًا بالخامة"] },
+  { name: "مريم حسن", initials: "مر", telegramAvatar: "maryam-hassan", messages: ["ممكن أعرف الألوان المتاحة؟", "تمام، شكرًا ليكم"] },
+  { name: "أحمد خالد", initials: "أح", telegramAvatar: "ahmed-khaled", messages: ["هل في مقاس أكبر؟", "مستني ردكم"] },
+  { name: "مي مصطفى", initials: "مي", telegramAvatar: "mai-mostafa", messages: ["عايزة أتابع حالة الشحن", "وصلت، تسلموا"] },
+  { name: "عمر محمود", initials: "عم", telegramAvatar: "omar-mahmoud", messages: ["السعر شامل التوصيل؟", "تمام"] },
+  { name: "سلمى علي", initials: "سل", telegramAvatar: "salma-ali", messages: ["ممكن صورة للون الكحلي؟", "حلو جدًا"] },
+  { name: "كريم يوسف", initials: "كر", telegramAvatar: "karim-youssef", messages: ["هل المنتج متوفر؟", "احجزوا لي واحدة"] },
+  { name: "ياسمين فتحي", initials: "يا", telegramAvatar: "yasmin-fathy", messages: ["شكرًا على سرعة الرد", "هأكد الطلب النهارده"] },
 ];
 
 const TELEGRAM_SAMPLE_MESSAGES = [
@@ -63,6 +63,7 @@ function createInitialData() {
       id: conversationId,
       customer: contact.name,
       initials: contact.initials,
+      ...(channel.id === "telegram" && { avatarUrl: `/telegram-avatars/${contact.telegramAvatar}.png` }),
       color: channel.id === "whatsapp" ? whatsappAvatarColor(contact.name) : channel.id === "telegram" ? telegramAvatarColor(contact.name) : channel.accent,
       channel: channel.id,
       preview: messages.at(-1)?.text || "",
@@ -113,13 +114,25 @@ export function loadDemoInbox() {
           ? initialFirst.messages.filter((message) => !(savedFirst.messages || []).some((savedMessage) => savedMessage.id === message.id))
           : [];
         const recolorTelegram = parsed.telegram.some((conversation) => conversation.color !== telegramAvatarColor(conversation.customer));
-        if (!missingTelegram.length && !extraFirstMessages.length && !recolorTelegram) return parsed;
+        const initialTelegramById = new Map(initialTelegram.map((conversation) => [conversation.id, conversation]));
+        const addTelegramAvatars = parsed.telegram.some((conversation) => initialTelegramById.has(conversation.id) && !conversation.avatarUrl);
+        if (!missingTelegram.length && !extraFirstMessages.length && !recolorTelegram && !addTelegramAvatars) return parsed;
         const migrated = {
           ...parsed,
           telegram: [
-            ...parsed.telegram.map((conversation) => conversation.id === initialFirst.id && extraFirstMessages.length
-              ? { ...conversation, color: telegramAvatarColor(conversation.customer), messages: [...(conversation.messages || []), ...extraFirstMessages], preview: initialFirst.preview, time: initialFirst.time }
-              : { ...conversation, color: telegramAvatarColor(conversation.customer) }),
+            ...parsed.telegram.map((conversation) => {
+              const initialConversation = initialTelegramById.get(conversation.id);
+              return {
+                ...conversation,
+                color: telegramAvatarColor(conversation.customer),
+                avatarUrl: conversation.avatarUrl || initialConversation?.avatarUrl,
+                ...(conversation.id === initialFirst.id && extraFirstMessages.length ? {
+                  messages: [...(conversation.messages || []), ...extraFirstMessages],
+                  preview: initialFirst.preview,
+                  time: initialFirst.time,
+                } : {}),
+              };
+            }),
             ...missingTelegram,
           ],
         };

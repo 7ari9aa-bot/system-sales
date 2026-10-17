@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Search } from "lucide-react";
 import ChannelSwitcher from "@/components/inbox/ChannelSwitcher";
 import ChannelChat from "@/components/inbox/ChannelChat";
+import ConversationAvatar from "@/components/inbox/ConversationAvatar";
 import { CHANNELS, getChannel } from "@/lib/channels";
 import { api } from "@/lib/api";
 import { useI18n, useT } from "@/lib/i18n";
@@ -81,6 +82,7 @@ function toConversation(row, channel) {
     assigneeUserId: row.assignee_user_id || null,
     unread: Number(row.unread_count) || 0,
     time: displayTime(row.last_message_at),
+    avatarUrl: row.customer_avatar_url || row.profile_photo_url || row.avatar_url || null,
     messages: [],
   };
 }
@@ -109,6 +111,8 @@ export default function Inbox() {
   const [activeId, setActiveId] = useState(null);
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
+  const [telegramListScrolling, setTelegramListScrolling] = useState(false);
+  const telegramListScrollTimerRef = useRef(null);
   const [convMap, setConvMap] = useState(() => Object.fromEntries(CHANNELS.map((ch) => [ch.id, []])));
   const [integrations, setIntegrations] = useState(null);
   const [integrationAccess, setIntegrationAccess] = useState(null);
@@ -204,6 +208,8 @@ export default function Inbox() {
   useEffect(() => {
     if (demoAccount) setConvMap(loadDemoInbox());
   }, [demoAccount]);
+
+  useEffect(() => () => clearTimeout(telegramListScrollTimerRef.current), []);
 
   const loadMoreConversations = useCallback(async () => {
     if (!inboxCursor || loadingMoreInboxRef.current) return;
@@ -579,9 +585,19 @@ export default function Inbox() {
             </div>}
           </div>
           <div
-            className={cn("flex-1 overflow-y-auto scrollbar-thin", isWhatsApp && "bg-white")}
+            className={cn(
+              "flex-1 overflow-y-auto scrollbar-thin",
+              isWhatsApp && "bg-white",
+              isTelegram && "telegram-transient-scrollbar",
+              isTelegram && telegramListScrolling && "is-scrolling"
+            )}
             onScroll={(event) => {
               const node = event.currentTarget;
+              if (isTelegram) {
+                setTelegramListScrolling(true);
+                clearTimeout(telegramListScrollTimerRef.current);
+                telegramListScrollTimerRef.current = setTimeout(() => setTelegramListScrolling(false), 800);
+              }
               if (node.scrollHeight - node.scrollTop - node.clientHeight < 120) void loadMoreConversations();
             }}
           >
@@ -613,9 +629,13 @@ export default function Inbox() {
                 )}
               >
                 <div className="relative shrink-0">
-                  <div className={cn("rounded-full grid place-items-center text-[12px] font-semibold text-white", isWhatsApp ? "h-12 w-12 text-[#54656f]" : isTelegram ? "h-10 w-10" : "h-11 w-11")} style={{ background: conversation.color, color: isWhatsApp ? "#54656f" : "#fff" }}>
-                    {conversation.initials}
-                  </div>
+                  {isTelegram ? (
+                    <ConversationAvatar conversation={conversation} className="h-10 w-10 text-[12px]" />
+                  ) : (
+                    <div className={cn("rounded-full grid place-items-center text-[12px] font-semibold text-white", isWhatsApp ? "h-12 w-12 text-[#54656f]" : "h-11 w-11")} style={{ background: conversation.color, color: isWhatsApp ? "#54656f" : "#fff" }}>
+                      {conversation.initials}
+                    </div>
+                  )}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">

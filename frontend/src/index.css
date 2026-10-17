@@ -999,10 +999,47 @@ html[lang="en"] .app :where(h1,h2,h3,h4,p,li,small,b,strong,label,option,.kicker
   letter-spacing: -0.011em;
 }
 
+.telegram-transient-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.telegram-transient-scrollbar.is-scrolling {
+  scrollbar-color: #84919b transparent;
+}
+
+.telegram-transient-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.telegram-transient-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.telegram-transient-scrollbar::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: transparent;
+  transition: background-color 180ms ease;
+}
+
+.telegram-transient-scrollbar.is-scrolling::-webkit-scrollbar-thumb {
+  background: #84919b;
+}
+
 [data-dashboard-theme-scope],
 [data-dashboard-theme-scope] * {
   scrollbar-width: thin;
   scrollbar-color: hsl(var(--border)) transparent;
+}
+
+[data-dashboard-theme-scope] .telegram-transient-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+[data-dashboard-theme-scope] .telegram-transient-scrollbar.is-scrolling {
+  scrollbar-color: #84919b transparent;
 }
 
 /*
