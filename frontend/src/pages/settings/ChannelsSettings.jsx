@@ -277,12 +277,12 @@ export default function ChannelsSettings() {
         }, 10 * 60 * 1000);
 
         function onMessage(event) {
-          if (event.origin !== "https://www.facebook.com" && event.origin !== "https://web.facebook.com") {
+          if (!event.origin || (!event.origin.endsWith("facebook.com") && !event.origin.endsWith("fb.com"))) {
             return;
           }
           let payload;
           try {
-            payload = JSON.parse(event.data);
+            payload = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
           } catch {
             return;
           }
@@ -317,8 +317,8 @@ export default function ChannelsSettings() {
       });
 
       const [authCode, session] = await Promise.all([codePromise, sessionPromise]);
-      const wabaId = String(session.waba_id || "");
-      const phoneNumberId = String(session.phone_number_id || "");
+      const wabaId = String(session.waba_id || session.wabaId || "");
+      const phoneNumberId = String(session.phone_number_id || session.phoneNumberId || "");
       if (!wabaId || !phoneNumberId) {
         throw new Error(
           isAr
