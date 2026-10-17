@@ -308,7 +308,7 @@ export default function Inbox() {
   ];
 
   const filtered = conversations.filter((conversation) => {
-    const matchesFilter = filter === "all"
+    const matchesFilter = isTelegram || filter === "all"
       || (filter === "waiting" && conversation.status !== "resolved" && conversation.status !== "approval")
       || (filter === "approvals" && (Boolean(conversation.approval) || conversation.status === "approval"));
     const needle = query.trim().toLowerCase();
@@ -563,7 +563,7 @@ export default function Inbox() {
           isWhatsApp
             ? "grid-rows-[minmax(0,1fr)] lg:grid-cols-[var(--inbox-chat-list-width)_5px_minmax(0,1fr)] lg:gap-0"
             : isTelegram
-              ? "gap-0 lg:grid-cols-[clamp(300px,20vw,370px)_minmax(0,1fr)] lg:grid-rows-1 grid-rows-[minmax(180px,30dvh)_minmax(0,1fr)] sm:grid-rows-[minmax(240px,32dvh)_minmax(0,1fr)]"
+              ? "gap-0 lg:grid-cols-[clamp(285px,17vw,330px)_minmax(0,1fr)] lg:grid-rows-1 grid-rows-[minmax(180px,30dvh)_minmax(0,1fr)] sm:grid-rows-[minmax(240px,32dvh)_minmax(0,1fr)]"
             : "gap-3 lg:grid-cols-[clamp(320px,28vw,440px)_minmax(0,1fr)] lg:grid-rows-1 lg:gap-3 grid-rows-[minmax(180px,30dvh)_minmax(0,1fr)] sm:grid-rows-[minmax(240px,32dvh)_minmax(0,1fr)]"
         )}
       >
@@ -572,7 +572,7 @@ export default function Inbox() {
           isWhatsApp ? "rounded-none border-0 bg-white" : isTelegram ? "rounded-none border-0 border-r border-[#e4e9ec] bg-white" : "rounded-2xl border-border",
           isWhatsApp && mobileChatOpen ? "hidden lg:flex" : "flex"
         )}>
-          <div className={cn("p-3 space-y-2.5", isWhatsApp ? "border-b border-[#d1d7db]" : "border-b border-border")}>
+          <div className={cn(isTelegram ? "space-y-0 p-2.5" : "space-y-2.5 p-3", isWhatsApp ? "border-b border-[#d1d7db]" : isTelegram ? "border-b border-[#e4e9ec]" : "border-b border-border")}>
             <div className="relative">
               <Search className={cn("absolute top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground", isWhatsApp && lang === "ar" ? "right-3" : "left-3")} />
               <input
@@ -582,13 +582,14 @@ export default function Inbox() {
                 aria-label={t("inbox.search")}
                 placeholder={t("inbox.search")}
                 className={cn(
-                  "w-full h-9 rounded-lg text-[13px] placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-ring/30",
+                  "w-full h-9 text-[13px] placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-ring/30",
+                  isTelegram ? "h-10 rounded-full border border-transparent bg-[#f1f1f1]" : "rounded-lg",
                   isWhatsApp && lang === "ar" ? "pr-9 pl-3 text-right" : "pl-9 pr-3",
-                  isWhatsApp ? "bg-[#f0f2f5] border border-[#f0f2f5]" : "bg-surface border border-border"
+                  isWhatsApp ? "bg-[#f0f2f5] border border-[#f0f2f5]" : !isTelegram && "bg-surface border border-border"
                 )}
               />
             </div>
-            <div className={cn("flex gap-1", isWhatsApp && "-mb-3 border-b border-[#d1d7db]")}>
+            {!isTelegram && <div className={cn("flex gap-1", isWhatsApp && "-mb-3 border-b border-[#d1d7db]")}>
               {FILTERS.map((item) => (
                 <button
                   key={item.id}
@@ -605,7 +606,7 @@ export default function Inbox() {
                   {item.label}
                 </button>
               ))}
-            </div>
+            </div>}
           </div>
           <div
             className={cn("flex-1 overflow-y-auto scrollbar-thin", isWhatsApp && "bg-white")}
@@ -634,35 +635,39 @@ export default function Inbox() {
                 aria-pressed={current?.id === conversation.id}
                 onClick={() => { selectConversation(conversation); if (isWhatsApp) setMobileChatOpen(true); }}
                 className={cn(
-                  "w-full flex gap-3 px-3 py-2.5 border-b transition-colors",
+                  "w-full flex border-b transition-colors",
+                  isTelegram ? "min-h-[62px] gap-2.5 px-2.5 py-2" : "gap-3 px-3 py-2.5",
                   isWhatsApp ? "border-[#e9edef] hover:bg-[#f5f6f6]" : isTelegram ? "border-[#edf0f2] hover:bg-[#f4f7f9]" : "border-border/60 hover:bg-surface/60",
                   isWhatsApp || isTelegram ? (lang === "ar" ? "text-right" : "text-left") : "text-left",
                   current?.id === conversation.id && (isWhatsApp ? "bg-[#f0f2f5]" : isTelegram ? "bg-[#419fd9] text-white hover:bg-[#419fd9]" : "bg-primary/5")
                 )}
               >
                 <div className="relative shrink-0">
-                  <div className={cn("rounded-full grid place-items-center text-[12px] font-semibold text-white", isWhatsApp ? "h-12 w-12 text-[#54656f]" : isTelegram ? "h-12 w-12" : "h-11 w-11")} style={{ background: conversation.color, color: isWhatsApp ? "#54656f" : "#fff" }}>
+                  <div className={cn("rounded-full grid place-items-center text-[12px] font-semibold text-white", isWhatsApp ? "h-12 w-12 text-[#54656f]" : isTelegram ? "h-11 w-11" : "h-11 w-11")} style={{ background: conversation.color, color: isWhatsApp ? "#54656f" : "#fff" }}>
                     {conversation.initials}
                   </div>
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
-                    <span dir={isWhatsApp || isTelegram ? "auto" : undefined} className={cn("truncate", isWhatsApp ? "text-[14px] font-medium text-[#111b21]" : isTelegram ? "text-[15px] font-medium" : "text-[13px] font-medium")}>{conversation.customer}</span>
+                    <span dir={isWhatsApp || isTelegram ? "auto" : undefined} className={cn("truncate", isWhatsApp ? "text-[14px] font-medium text-[#111b21]" : isTelegram ? "text-[14px] font-medium" : "text-[13px] font-medium")}>{conversation.customer}</span>
                     <span dir={isWhatsApp || isTelegram ? "ltr" : undefined} className={cn("shrink-0", isWhatsApp ? "text-[11px] text-[#667781]" : isTelegram ? current?.id === conversation.id ? "text-[11px] text-white/85" : "text-[11px] text-[#7f9db8]" : "text-[11px] text-muted-foreground")}>{conversation.time}</span>
                   </div>
-                  <p dir={isWhatsApp || isTelegram ? "auto" : undefined} className={cn("truncate mt-0.5", isWhatsApp ? "text-[12px] text-[#667781]" : isTelegram ? current?.id === conversation.id ? "text-[13px] text-white/90" : "text-[13px] text-[#7b8d9b]" : "text-[12px] text-muted-foreground")}>{conversation.preview}</p>
-                  <div className="mt-1 flex items-center gap-1.5">
-                    {!isTelegram && (
-                      <span className={cn("px-1.5 py-0.5 text-[10px]", isWhatsApp ? "rounded-full bg-[#f0f2f5] text-[#667781]" : "rounded-md bg-surface text-muted-foreground")}>
-                        {t(`inbox.status.${conversation.status}`)}
-                      </span>
-                    )}
+                  {isTelegram ? (
+                    <div className="mt-0.5 flex min-w-0 items-center gap-1.5">
+                      <p dir="auto" className={cn("min-w-0 flex-1 truncate text-[12px]", current?.id === conversation.id ? "text-white/90" : "text-[#7b8d9b]")}>{conversation.preview}</p>
+                      {conversation.unread > 0 && <span className="min-w-5 rounded-full bg-[#2aabee] px-1.5 py-0.5 text-center text-[10px] font-semibold tabular-nums text-white">{conversation.unread}</span>}
+                    </div>
+                  ) : <p dir={isWhatsApp ? "auto" : undefined} className={cn("truncate mt-0.5", isWhatsApp ? "text-[12px] text-[#667781]" : "text-[12px] text-muted-foreground")}>{conversation.preview}</p>}
+                  {!isTelegram && <div className="mt-1 flex items-center gap-1.5">
+                    <span className={cn("px-1.5 py-0.5 text-[10px]", isWhatsApp ? "rounded-full bg-[#f0f2f5] text-[#667781]" : "rounded-md bg-surface text-muted-foreground")}>
+                      {t(`inbox.status.${conversation.status}`)}
+                    </span>
                     {conversation.unread > 0 && (
                       <span className={cn("ml-auto text-[10px] font-semibold px-1.5 py-0.5 tabular-nums", isWhatsApp ? "min-w-5 rounded-full bg-[#25d366] text-center text-white" : isTelegram ? "min-w-5 rounded-full bg-[#2aabee] text-center text-white" : "rounded-md bg-primary text-primary-foreground")}>
                         {conversation.unread}
                       </span>
                     )}
-                  </div>
+                  </div>}
                 </div>
               </button>
             ))}

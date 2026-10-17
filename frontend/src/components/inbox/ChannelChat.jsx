@@ -297,7 +297,7 @@ export default function ChannelChat({
       </div>
 
       {/* Input */}
-      <div className={cn("shrink-0 p-2", isWhatsApp && "px-3 py-1 sm:px-4", isTelegram && "px-3 py-2 sm:px-4 sm:py-2.5")} style={isApp ? { background: "hsl(var(--card))", borderTop: "1px solid hsl(var(--border))" } : { background: isWhatsApp ? "#f0f2f5" : isTelegram ? "#f5f6f7" : th.inputBg, borderTop: "1px solid " + th.inputBorder }}>
+      <div className={cn("shrink-0 p-2", isWhatsApp && "px-3 py-1 sm:px-4", isTelegram && "px-2 py-1 sm:px-3 sm:py-1.5")} style={isApp ? { background: "hsl(var(--card))", borderTop: "1px solid hsl(var(--border))" } : { background: isWhatsApp ? "#f0f2f5" : isTelegram ? "#f5f6f7" : th.inputBg, borderTop: "1px solid " + th.inputBorder }}>
         {isWhatsApp ? (
           <div dir="ltr" className="flex h-11 items-center gap-1.5 overflow-hidden rounded-full bg-white px-2 shadow-[0_1px_2px_rgba(0,0,0,0.12)] sm:h-14 sm:gap-2 sm:px-3" style={{ borderRadius: 9999 }}>
             <button
@@ -357,7 +357,7 @@ export default function ChannelChat({
             )}
           </div>
         ) : isTelegram ? (
-          <div dir="ltr" className="flex h-11 items-center gap-1 rounded-md bg-white px-2 sm:h-12 sm:gap-2 sm:px-3" style={{ boxShadow: "0 1px 2px rgba(0,0,0,.08)" }}>
+          <div dir="ltr" className="flex h-10 items-center gap-1 rounded-md bg-white px-2 sm:h-11 sm:gap-2 sm:px-3" style={{ boxShadow: "0 1px 2px rgba(0,0,0,.08)" }}>
             <button type="button" disabled aria-label={lang === "ar" ? "المرفقات غير متاحة" : "Attachments unavailable"} title={lang === "ar" ? "المرفقات غير متاحة" : "Attachments unavailable"} className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#8a9aa8] disabled:cursor-default">
               <Paperclip className="h-[21px] w-[21px]" />
             </button>
