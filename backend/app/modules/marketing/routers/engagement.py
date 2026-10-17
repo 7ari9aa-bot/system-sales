@@ -26,6 +26,7 @@ from app.modules.marketing.schemas import (
     TouchpointRequest,
 )
 from app.modules.marketing.service import MarketingService
+
 from ._deps import (
     MAX_PAGE_SIZE,
     TenantCtxDep,

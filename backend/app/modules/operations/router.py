@@ -72,7 +72,7 @@ async def update_task_status(
     )
     return TaskMutationResult(id=task.id, status=task.status)
 
-# Preserve module qualification for introspection and test sweeps (§168 / test_operations_contracts.py)
+# Preserve module qualification for introspection and test sweeps (§168 / test_operations_contracts.py)  # noqa: E501
 for _endpoint in (
     list_tasks,
     create_task,

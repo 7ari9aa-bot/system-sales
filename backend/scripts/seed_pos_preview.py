@@ -49,7 +49,7 @@ async def main() -> None:
     async with get_sessionmaker()() as session:
         # ---- owner + tenant -------------------------------------------------
         user = (await session.execute(select(User).where(User.email == EMAIL))).scalar_one_or_none()
-        tenant = (await session.execute(select(Tenant).where(Tenant.slug == SLUG))).scalar_one_or_none()
+        tenant = (await session.execute(select(Tenant).where(Tenant.slug == SLUG))).scalar_one_or_none()  # noqa: E501
 
         if user is None or tenant is None:
             user, tenant = await auth_service.AuthService.register(

@@ -13,9 +13,9 @@ from app.modules.operations.schemas import (
     TaskCreate,
     TaskMutationResult,
     TaskSummary,
-    TaskUpdate,
 )
 from app.modules.operations.task_service import TaskService
+
 from ._deps import TenantCtxDep, router
 
 

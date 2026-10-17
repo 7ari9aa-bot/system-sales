@@ -4,8 +4,8 @@ Re-exports all identity sub-services and helpers for easy access.
 """
 
 from app.modules.identity.services._common import (
-    EmailAlreadyRegistered,
     _REFRESH_REUSE_GRACE_SECONDS,
+    EmailAlreadyRegistered,
     _dummy_password_hash,
     _hash_token,
     _lockout_op,

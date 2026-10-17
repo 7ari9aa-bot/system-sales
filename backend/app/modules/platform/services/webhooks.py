@@ -17,6 +17,7 @@ from app.core.errors import NotFoundError, ValidationError
 from app.core.events.writer import add_outbox_event
 from app.core.net_guard import assert_public_url
 from app.modules.platform.models import WebhookDelivery, WebhookEndpoint
+
 from .audit import AuditService
 
 WEBHOOK_STREAM = "platform.events"

@@ -10,6 +10,12 @@ from app.core.tenancy import resolve_tenant_currency
 from app.modules.analytics import service as analytics_service
 from app.modules.analytics.routers import router
 from app.modules.analytics.routers._deps import (
+    _METRIC_BASIS,
+    _MONEY_FIELDS,
+    _MONEY_METRICS,
+    _SINCE_DOC,
+    _UNTIL_DOC,
+    _WINDOW_POLICY,
     MAX_LOW_STOCK_THRESHOLD,
     MAX_WINDOW_DAYS,
     AnalyticsReadCtx,
@@ -18,12 +24,6 @@ from app.modules.analytics.routers._deps import (
     SettingsCtx,
     TenantContext,
     TenantCtxDep,
-    _METRIC_BASIS,
-    _MONEY_FIELDS,
-    _MONEY_METRICS,
-    _SINCE_DOC,
-    _UNTIL_DOC,
-    _WINDOW_POLICY,
     _as_json,
     _bind_edge,
     _bind_window,

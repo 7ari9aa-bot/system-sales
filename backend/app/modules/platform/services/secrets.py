@@ -11,6 +11,7 @@ from sqlalchemy import select
 from app.core.context import credentials_audit_contextvar
 from app.core.errors import NotFoundError
 from app.modules.platform.models import SecretReference, SecurityEvent
+
 from .audit import AuditService
 
 

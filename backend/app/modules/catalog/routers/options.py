@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter
 
 from app.modules.catalog.service import CatalogService
+
 from ._deps import (
     AddOptionRequest,
     AddOptionValueRequest,

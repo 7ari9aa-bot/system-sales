@@ -1,13 +1,15 @@
 """Analytics services package."""
 
+from app.core.tenancy import resolve_tenant_currency
+
 from ._common import (
-    LOW_STOCK_THRESHOLD,
-    MONEY_SCALE,
-    ZERO,
     _GROSS_PAYMENT_STATUSES,
     _REFUND_STATUSES,
     _STATUS_WORD,
     _UNPLACED_ORDER_STATUSES,
+    LOW_STOCK_THRESHOLD,
+    MONEY_SCALE,
+    ZERO,
     _aov,
     _count_by_bucket,
     _money,
@@ -30,7 +32,6 @@ from .metrics import (
     roas,
     stock_health,
 )
-from app.core.tenancy import resolve_tenant_currency
 from .revenue import (
     aov,
     daily_revenue_series,

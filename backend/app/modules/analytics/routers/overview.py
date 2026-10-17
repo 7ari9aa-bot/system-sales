@@ -15,11 +15,11 @@ from app.modules.analytics.timekit import resolve_timezone
 async def _resolve_tenant_currency(session, tenant_id):
     from app.modules.analytics import router as analytics_router
     return await analytics_router.resolve_tenant_currency(session, tenant_id)
-from ._deps import (
-    MAX_LOW_STOCK_THRESHOLD,
-    TenantCtxDep,
+from ._deps import (  # noqa: E402
     _SINCE_DOC,
     _UNTIL_DOC,
+    MAX_LOW_STOCK_THRESHOLD,
+    TenantCtxDep,
     _bind_window,
     _money_json,
     _window,

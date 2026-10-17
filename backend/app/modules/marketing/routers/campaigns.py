@@ -24,9 +24,10 @@ from app.modules.marketing.schemas import (
     ConversionListOut,
 )
 from app.modules.marketing.service import MarketingService
+
 from ._deps import (
-    EntitlementService,
     MAX_PAGE_SIZE,
+    EntitlementService,
     TenantCtxDep,
     WriteCtx,
     _wire_money,

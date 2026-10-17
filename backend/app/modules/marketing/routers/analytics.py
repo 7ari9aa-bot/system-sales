@@ -16,6 +16,7 @@ from app.modules.marketing.schemas import (
     DashboardOut,
     MarketingSummaryOut,
 )
+
 from ._deps import (
     MAX_WINDOW_DAYS,
     TenantCtxDep,

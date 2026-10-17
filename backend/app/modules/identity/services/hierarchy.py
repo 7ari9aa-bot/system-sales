@@ -8,7 +8,6 @@ from __future__ import annotations
 import uuid
 
 import sqlalchemy as sa
-from sqlalchemy import select
 
 from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.modules.identity.models import (

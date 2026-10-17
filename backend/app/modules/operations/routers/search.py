@@ -8,6 +8,7 @@ from fastapi import Query
 
 from app.core.search import get_search
 from app.modules.operations.schemas import SearchHit
+
 from ._deps import TenantCtxDep, search_router
 
 

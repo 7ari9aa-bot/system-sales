@@ -8,6 +8,7 @@ from fastapi import APIRouter
 
 from app.core.errors import NotFoundError
 from app.modules.catalog.service import CatalogService
+
 from ._deps import (
     AddIdentifierRequest,
     TenantCtxDep,

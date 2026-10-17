@@ -11,6 +11,7 @@ from sqlalchemy import select
 from app.core.errors import StorageUnavailableError, ValidationError
 from app.core.storage import FetchedMedia, get_storage
 from app.modules.catalog.service import CatalogService
+
 from ._deps import (
     AddImageRequest,
     CreateBrandRequest,

@@ -88,7 +88,7 @@ async def _record_security_event(
     """Persist a security event on its OWN transaction (§67)."""
     import sys
     svc = sys.modules.get("app.modules.identity.service")
-    if svc and hasattr(svc, "_record_security_event") and svc._record_security_event is not _record_security_event:
+    if svc and hasattr(svc, "_record_security_event") and svc._record_security_event is not _record_security_event:  # noqa: E501
         return await svc._record_security_event(
             event_type,
             details=details,
@@ -112,7 +112,7 @@ async def _revoke_family_on_reuse(user_id: uuid.UUID) -> None:
     """Revoke every live refresh token for `user_id`, on its OWN transaction."""
     import sys
     svc = sys.modules.get("app.modules.identity.service")
-    if svc and hasattr(svc, "_revoke_family_on_reuse") and svc._revoke_family_on_reuse is not _revoke_family_on_reuse:
+    if svc and hasattr(svc, "_revoke_family_on_reuse") and svc._revoke_family_on_reuse is not _revoke_family_on_reuse:  # noqa: E501
         return await svc._revoke_family_on_reuse(user_id)
 
     from app.core.db import get_sessionmaker

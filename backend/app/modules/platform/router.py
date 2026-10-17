@@ -58,10 +58,47 @@ for _r in router.routes:
 # ── Re-exports: backward compatibility for every external importer ───────
 
 # Dependency helpers & paging knobs
+# The DR health indicator module — test_dead_module_wiring.py pins this import
+# edge because DRService's only caller is the health route.
+from app.modules.platform import dr  # noqa: E402, F401
+from app.modules.platform.dr import DRService  # noqa: E402, F401
 from app.modules.platform.routers._deps import (  # noqa: E402
     PageLimit,
     PageOffset,
     _require_platform_admin,
+)
+
+# Admin plane (§160, §147)
+from app.modules.platform.routers.admin import (  # noqa: E402
+    BreakGlassRequest,
+    BreakGlassValidateRequest,
+    admin_break_glass,
+    admin_get_tenant,
+    admin_list_tenants,
+    admin_update_tenant_status,
+    admin_validate_break_glass,
+)
+
+# Security events (§67), Outbox ledger (§19), Audit logs (§66)
+from app.modules.platform.routers.audit import (  # noqa: E402
+    _AUDIT_SOURCES,
+    _OUTBOX_STATUSES,
+    _outbox_event_summary,
+    inspect_outbox_event,
+    list_audit_logs,
+    list_outbox_events,
+    list_security_events,
+)
+
+# Disaster recovery (§164)
+from app.modules.platform.routers.dr import (  # noqa: E402
+    TenantRestoreJobCreate,
+    _restore_job_payload,
+    create_tenant_restore_job,
+    execute_tenant_restore_job,
+    extract_tenant_restore_job,
+    get_tenant_restore_job,
+    validate_tenant_restore_job,
 )
 
 # Feature flags (§76)
@@ -72,31 +109,6 @@ from app.modules.platform.routers.flags import (  # noqa: E402
     check_flag,
     list_flags,
     upsert_flag,
-)
-
-# Metrics registry (§167)
-from app.modules.platform.routers.metrics import (  # noqa: E402
-    _DEFINITION_FIELDS,
-    list_metric_definitions,
-    list_tenant_metric_definitions,
-)
-
-# Saved views (§95)
-from app.modules.platform.routers.views import (  # noqa: E402
-    SAVED_VIEW_ENTITY_MAX,
-    SAVED_VIEW_NAME_MAX,
-    SAVED_VIEW_VISIBILITIES,
-    SavedViewCreate,
-    SavedViewUpdate,
-    _load_view,
-    _view_out,
-    can_modify_saved_view,
-    can_read_saved_view,
-    create_saved_view,
-    delete_saved_view,
-    get_saved_view,
-    list_saved_views,
-    update_saved_view,
 )
 
 # Health & Diagnostics (§103)
@@ -123,15 +135,37 @@ from app.modules.platform.routers.health import (  # noqa: E402
     system_diagnostics,
 )
 
-# Admin plane (§160, §147)
-from app.modules.platform.routers.admin import (  # noqa: E402
-    BreakGlassRequest,
-    BreakGlassValidateRequest,
-    admin_break_glass,
-    admin_get_tenant,
-    admin_list_tenants,
-    admin_update_tenant_status,
-    admin_validate_break_glass,
+# Metrics registry (§167)
+from app.modules.platform.routers.metrics import (  # noqa: E402
+    _DEFINITION_FIELDS,
+    list_metric_definitions,
+    list_tenant_metric_definitions,
+)
+
+# Secrets (§68, §69)
+from app.modules.platform.routers.secrets import (  # noqa: E402
+    SecretRefCreate,
+    SecretRotateRequest,
+    create_secret_reference,
+    rotate_secret,
+)
+
+# Saved views (§95)
+from app.modules.platform.routers.views import (  # noqa: E402
+    SAVED_VIEW_ENTITY_MAX,
+    SAVED_VIEW_NAME_MAX,
+    SAVED_VIEW_VISIBILITIES,
+    SavedViewCreate,
+    SavedViewUpdate,
+    _load_view,
+    _view_out,
+    can_modify_saved_view,
+    can_read_saved_view,
+    create_saved_view,
+    delete_saved_view,
+    get_saved_view,
+    list_saved_views,
+    update_saved_view,
 )
 
 # Webhook DLQ surface (§24)
@@ -146,41 +180,6 @@ from app.modules.platform.routers.webhooks import (  # noqa: E402
     admin_list_webhook_events,
     admin_resolve_webhook_event,
     admin_retry_webhook_event,
-)
-
-# Secrets (§68, §69)
-from app.modules.platform.routers.secrets import (  # noqa: E402
-    SecretRefCreate,
-    SecretRotateRequest,
-    create_secret_reference,
-    rotate_secret,
-)
-
-# Disaster recovery (§164)
-from app.modules.platform.routers.dr import (  # noqa: E402
-    TenantRestoreJobCreate,
-    _restore_job_payload,
-    create_tenant_restore_job,
-    execute_tenant_restore_job,
-    extract_tenant_restore_job,
-    get_tenant_restore_job,
-    validate_tenant_restore_job,
-)
-
-# The DR health indicator module — test_dead_module_wiring.py pins this import
-# edge because DRService's only caller is the health route.
-from app.modules.platform import dr  # noqa: E402, F401
-from app.modules.platform.dr import DRService  # noqa: E402, F401
-
-# Security events (§67), Outbox ledger (§19), Audit logs (§66)
-from app.modules.platform.routers.audit import (  # noqa: E402
-    _AUDIT_SOURCES,
-    _OUTBOX_STATUSES,
-    _outbox_event_summary,
-    inspect_outbox_event,
-    list_audit_logs,
-    list_outbox_events,
-    list_security_events,
 )
 
 __all__ = [

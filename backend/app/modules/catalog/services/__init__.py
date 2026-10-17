@@ -1,8 +1,8 @@
 """Catalog services package — products, variants, brands, categories, options."""
 
 from app.modules.catalog.services._common import (
-    IDENTIFIER_TYPES,
     _PRODUCT_STATUSES,
+    IDENTIFIER_TYPES,
     _positive_decimal,
     _to_decimal,
 )

@@ -25,6 +25,7 @@ from app.modules.operations.schemas import (
     SLOMeasurement,
     SLOMeasurementList,
 )
+
 from ._deps import (
     SettingsCtx,
     TenantCtxDep,

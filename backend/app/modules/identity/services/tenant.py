@@ -9,6 +9,7 @@ import secrets
 import uuid
 from datetime import timedelta
 
+import sqlalchemy as sa
 from sqlalchemy import select
 
 from app.core.errors import ConflictError, NotFoundError, PermissionDeniedError, ValidationError
@@ -24,8 +25,6 @@ from app.modules.identity.services._common import (
     _now,
     _record_security_event,
 )
-
-import sqlalchemy as sa
 
 
 class TenantService:

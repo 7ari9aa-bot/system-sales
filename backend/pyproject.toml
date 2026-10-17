@@ -67,6 +67,13 @@ extend-immutable-calls = [
     "fastapi.Body",
     "fastapi.Request",
     "app.modules.identity.deps.require_permission",
+    # The per-module _deps shims re-export the gate; ruff matches the binding
+    # by its import path, so each shim's path needs its own exemption.
+    "app.modules.conversations.routers._deps.require_permission",
+    "app.modules.customers.routers._deps.require_permission",
+    "app.modules.platform.routers._deps.require_permission",
+    "app.modules.analytics.routers._deps.require_permission",
+    "app.modules.orders.routers._deps.require_permission",
 ]
 
 [tool.pytest.ini_options]

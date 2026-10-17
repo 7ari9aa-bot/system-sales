@@ -57,7 +57,7 @@ from app.modules.conversations.routers import (
     webhook_router,
 )
 
-# Preserve endpoint __module__ for test parameter declaration inspection (§test_route_parameter_declarations)
+# Preserve endpoint __module__ for test parameter declaration inspection (§test_route_parameter_declarations)  # noqa: E501
 for _r in (
     *router.routes,
     *public_router.routes,

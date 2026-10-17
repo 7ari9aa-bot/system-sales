@@ -5,9 +5,11 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+
 from app.core.errors import ValidationError
 from app.modules.analytics import retention, schemas
-from ._deps import AnalyticsReadCtx, AnalyticsWriteCtx, TenantContext, router
+
+from ._deps import AnalyticsReadCtx, AnalyticsWriteCtx, router
 
 
 async def _write_audit_row(*args, **kwargs):

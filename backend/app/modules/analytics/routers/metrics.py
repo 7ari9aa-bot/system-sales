@@ -14,13 +14,13 @@ from app.modules.analytics import service as analytics_service
 async def _resolve_tenant_currency(session, tenant_id):
     from app.modules.analytics import router as analytics_router
     return await analytics_router.resolve_tenant_currency(session, tenant_id)
-from ._deps import (
-    MetricRegistry,
-    TenantCtxDep,
+from ._deps import (  # noqa: E402
     _METRIC_BASIS,
     _MONEY_METRICS,
     _SINCE_DOC,
     _UNTIL_DOC,
+    MetricRegistry,
+    TenantCtxDep,
     _as_json,
     _bind_window,
     router,

@@ -17,7 +17,6 @@ from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.modules.identity.models import Tenant
 from app.modules.identity.services._common import _record_audit
 
-
 #: ``tenants.timezone`` is ``VARCHAR(64)`` with a shape CHECK (migration
 #: e3b7d2a9c4f1). Bound the same way here, so an owner gets a 400 that explains
 #: itself rather than a 500 from the constraint.

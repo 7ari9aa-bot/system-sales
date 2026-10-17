@@ -1,4 +1,4 @@
-"""Conversations routers package — aggregator for inbox, webchat, webhooks, stream, and templates."""
+"""Conversations routers package — aggregator for inbox, webchat, webhooks, stream, and templates."""  # noqa: E501
 
 from __future__ import annotations
 

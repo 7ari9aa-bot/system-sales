@@ -9,7 +9,6 @@ import uuid
 from dataclasses import dataclass
 from datetime import timedelta
 
-import sqlalchemy as sa
 from sqlalchemy import select
 
 from app.core.errors import ConflictError, NotFoundError, ValidationError
@@ -19,7 +18,6 @@ from app.modules.identity.services._common import (
     _record_audit,
     _record_security_event,
 )
-
 
 # --- tenant lifecycle (spec §48) -------------------------------------------
 #

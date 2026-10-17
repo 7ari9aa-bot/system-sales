@@ -25,7 +25,7 @@ CUSTOMER_TOOLS = [
 ]
 
 # Canonical system prompt defined in dedicated prompts.py module
-from app.modules.ai.agents.customer.prompts import CUSTOMER_SYSTEM_PROMPT
+from app.modules.ai.agents.customer.prompts import CUSTOMER_SYSTEM_PROMPT  # noqa: E402
 
 _DEFINITION = AgentDefinition(
     kind="customer",

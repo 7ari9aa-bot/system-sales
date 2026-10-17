@@ -14,10 +14,11 @@ from app.modules.inventory.models import (
     InventoryMovement,
     InventoryReservation,
 )
+
 from ._common import (
+    _AVAILABILITY_DIRECTIONS,
     MOVEMENT_REASONS,
     RESERVATION_REFERENCE,
-    _AVAILABILITY_DIRECTIONS,
     InsufficientStockError,
     _positive_int,
     check_movement_shape,

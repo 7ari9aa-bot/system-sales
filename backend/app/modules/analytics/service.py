@@ -6,14 +6,14 @@ Aggregator re-exporting the decomposed analytics services.
 from __future__ import annotations
 
 from app.modules.analytics.services import (
-    LOW_STOCK_THRESHOLD,
-    METRIC_HANDLERS,
-    MONEY_SCALE,
-    ZERO,
     _GROSS_PAYMENT_STATUSES,
     _REFUND_STATUSES,
     _STATUS_WORD,
     _UNPLACED_ORDER_STATUSES,
+    LOW_STOCK_THRESHOLD,
+    METRIC_HANDLERS,
+    MONEY_SCALE,
+    ZERO,
     _aov,
     _count_by_bucket,
     _money,

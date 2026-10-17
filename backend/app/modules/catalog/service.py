@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 from app.modules.catalog.services import (
+    _PRODUCT_STATUSES,
     IDENTIFIER_TYPES,
     CatalogService,
     IdentifierServiceMixin,
@@ -16,7 +17,6 @@ from app.modules.catalog.services import (
     ProductServiceMixin,
     TaxonomyServiceMixin,
     VariantServiceMixin,
-    _PRODUCT_STATUSES,
     _positive_decimal,
     _to_decimal,
 )

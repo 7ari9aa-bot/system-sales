@@ -11,6 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import NotFoundError
+
 from ._common import (
     LOW_STOCK_THRESHOLD,
     ZERO,

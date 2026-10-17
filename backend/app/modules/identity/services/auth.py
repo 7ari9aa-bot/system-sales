@@ -34,6 +34,7 @@ from app.modules.identity.models import (
 )
 from app.modules.identity.schemas import TokenPair
 from app.modules.identity.services._common import (
+    _REFRESH_REUSE_GRACE_SECONDS,
     EmailAlreadyRegistered,
     _dummy_password_hash,
     _hash_token,
@@ -42,7 +43,6 @@ from app.modules.identity.services._common import (
     _record_audit,
     _record_security_event,
     _revoke_family_on_reuse,
-    _REFRESH_REUSE_GRACE_SECONDS,
 )
 
 # Late import to avoid circular: lifecycle uses AuthService indirectly via

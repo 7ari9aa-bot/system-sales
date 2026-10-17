@@ -6,9 +6,10 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from app.modules.catalog.external.csv_import import CSVImportService
+
 from ._deps import (
-    CustomerWriteCtx,
     CsvImportRequest,
+    CustomerWriteCtx,
     WriteCtx,
     _audit_import,
     _report_out,
