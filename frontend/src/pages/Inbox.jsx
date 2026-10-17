@@ -318,6 +318,7 @@ export default function Inbox() {
   const current = filtered.find((conversation) => conversation.id === activeId) || filtered[0] || null;
   activeMessageRequestRef.current = { conversationId: current?.id ?? null, channelId: activeChannel };
   const pendingApproval = current?.approval || null;
+  const connectedCount = channels.filter((item) => item.connected).length;
   const unreadByChannel = Object.fromEntries(
     Object.entries(convMap).map(([id, rows]) => [id, rows.reduce((count, row) => count + row.unread, 0)])
   );
