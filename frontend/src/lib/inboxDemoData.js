@@ -161,7 +161,7 @@ export function saveDemoFacebookPosts(posts) {
 function createInitialData() {
   const now = Date.now();
   const formatTime = (value) => new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  return Object.fromEntries(CHANNELS.map((channel, channelIndex) => [channel.id, (channel.id === "telegram" ? [...CONTACTS, ...TELEGRAM_CONTACTS] : CONTACTS).map((contact, contactIndex) => {
+  return Object.fromEntries(CHANNELS.map((channel, channelIndex) => [channel.id, (channel.id === "telegram" ? [...CONTACTS, ...TELEGRAM_CONTACTS] : channel.id === "facebook" ? [] : CONTACTS).map((contact, contactIndex) => {
     const conversationId = `demo:${channel.id}:${contactIndex + 1}`;
     const createdAt = new Date(now - (channelIndex * 3 + contactIndex) * 7 * 60_000).toISOString();
     const samples = channel.id === "telegram" && contactIndex === 0
@@ -236,9 +236,11 @@ export function loadDemoInbox() {
         const recolorTelegram = parsed.telegram.some((conversation) => conversation.color !== telegramAvatarColor(conversation.customer));
         const initialTelegramById = new Map(initialTelegram.map((conversation) => [conversation.id, conversation]));
         const addTelegramAvatars = parsed.telegram.some((conversation) => initialTelegramById.has(conversation.id) && !conversation.avatarUrl);
-        if (!missingTelegram.length && !extraFirstMessages.length && !recolorTelegram && !addTelegramAvatars) return parsed;
+        const removeSeedFacebookDms = parsed.facebook.length > 0;
+        if (!missingTelegram.length && !extraFirstMessages.length && !recolorTelegram && !addTelegramAvatars && !removeSeedFacebookDms) return parsed;
         const migrated = {
           ...parsed,
+          facebook: [],
           telegram: [
             ...parsed.telegram.map((conversation) => {
               const initialConversation = initialTelegramById.get(conversation.id);
