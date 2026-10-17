@@ -170,7 +170,7 @@ export default function ChannelChat({
           {conversation.initials}
         </div>
         <div className="flex-1 min-w-0">
-          <div dir={isWhatsApp || isTelegram ? "auto" : undefined} className={cn("truncate", isWhatsApp ? "text-left text-[15px] font-medium text-[#111b21]" : isTelegram ? "text-[15px] font-medium text-[#222]" : "text-[14px] font-semibold", isApp && "text-foreground")}>{conversation.customer}</div>
+          <div dir={isWhatsApp || isTelegram ? "auto" : undefined} className={cn("truncate", isWhatsApp ? "text-left text-[15px] font-medium text-[#111b21]" : isTelegram ? "text-left text-[15px] font-medium text-[#222]" : "text-[14px] font-semibold", isApp && "text-foreground")}>{conversation.customer}</div>
           <div className={cn("truncate", isWhatsApp ? "text-left text-[12px] text-[#667781]" : isTelegram ? "text-[12px] text-[#7f9db8]" : "text-[11.5px]", isApp && "text-muted-foreground", !isApp && !isWhatsApp && !isTelegram && "opacity-80")}>{isTelegram ? "bot" : channel.name}</div>
         </div>
         {(isWhatsApp || isTelegram) && (
