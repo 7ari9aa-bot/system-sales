@@ -14,8 +14,10 @@ changes only the registry key, so:
 * sending goes through the same `provider.messenger` breaker (same endpoint).
 """
 
-from __future__ import annotations
+import hashlib
+import hmac
 
+from app.core.config import get_settings
 from app.modules.conversations.gateway.messenger import MessengerAdapter
 
 
@@ -24,6 +26,31 @@ class FacebookPageAdapter(MessengerAdapter):
 
     name = "facebook"
     channel = "facebook"
+
+    def verify_request(self, query_params: dict[str, str]) -> str | None:
+        """Meta webhook handshake — supports messenger_verify_token or meta app token."""
+        settings = get_settings()
+        expected = settings.messenger_verify_token or getattr(settings, "whatsapp_verify_token", "")
+        if not expected:
+            return None
+        if (
+            query_params.get("hub.mode") == "subscribe"
+            and query_params.get("hub.verify_token") == expected
+        ):
+            return query_params.get("hub.challenge", "")
+        return None
+
+    def check_signature(self, headers: dict[str, str], raw_body: bytes) -> bool:
+        """X-Hub-Signature-256 — uses messenger_app_secret or meta_app_secret."""
+        settings = get_settings()
+        secret = settings.messenger_app_secret or getattr(settings, "meta_app_secret", "")
+        if not secret:
+            return False
+        signature = headers.get("x-hub-signature-256", "")
+        if not signature.startswith("sha256="):
+            return False
+        expected = hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
+        return hmac.compare_digest(signature[7:].encode(), expected.encode())
 
 
 facebook_adapter = FacebookPageAdapter()

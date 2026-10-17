@@ -1,10 +1,8 @@
 """Shared dependencies, routers, models, and helpers for orders routers."""
 
-from __future__ import annotations
-
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, Response
 
 from app.core.field_auth import PII_FIELDS, redact_fields
 from app.core.idempotency import IfMatch, apply_etag  # §17
@@ -17,6 +15,10 @@ from app.modules.orders.service import OrderService
 router = APIRouter(tags=["orders"])
 
 _ORDER_PII_FIELDS = PII_FIELDS | {"shipping_address"}
+
+# B008-safe: the permission gate lives in one annotated alias (the same
+# shape pos/router.py uses) instead of a call in every default.
+OrdersWriteCtx = Annotated[TenantContext, Depends(require_permission("orders:write"))]
 
 
 def _redact_order_pii(payload: dict, permission_codes: set[str]) -> dict:

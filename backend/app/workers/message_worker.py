@@ -538,7 +538,9 @@ class MessageWorker(StreamWorker):
         if integration is not None:
             from app.modules.platform.service import IntegrationCredentialsService
 
-            credentials_config = await IntegrationCredentialsService.decrypt(session, integration)
+            credentials_config = dict(integration.config or {})
+            decrypted = await IntegrationCredentialsService.decrypt(session, integration)
+            credentials_config.update(decrypted)
         return _SendPlan(
             adapter=adapter,
             credentials=ProviderCredentials(config=credentials_config),
