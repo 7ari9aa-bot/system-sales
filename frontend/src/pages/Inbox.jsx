@@ -523,7 +523,7 @@ export default function Inbox() {
       )}
 
       <div dir="ltr" className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_52px] overflow-hidden">
-      <div className="min-h-0 min-w-0">
+      <div className="flex h-full min-h-0 min-w-0 flex-col">
       <div
         ref={inboxSplitRef}
         dir="ltr"
