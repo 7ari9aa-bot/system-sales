@@ -22,9 +22,15 @@ from app.modules.customers.routers._deps import (  # noqa: F401
     _customer_summary,
     _redact_issue_item,
 )
+from app.modules.customers.routers.customers import (
+    list_contact_data_issues as list_contact_data_issues,
+)
 
 # Re-export from the routers sub-package.
 from app.modules.customers.routers.customers import router  # noqa: F401
+from app.modules.customers.routers.customers import (
+    update_customer as update_customer,
+)
 
 # Re-export integration symbols that tests monkeypatch via this module path.
 from app.modules.customers.routers.integrations import (  # noqa: F401
@@ -34,7 +40,19 @@ from app.modules.customers.routers.integrations import (  # noqa: F401
     platform_router,  # noqa: F401
 )
 from app.modules.customers.routers.integrations import (
+    _activate_verified_channel as _activate_verified_channel,
+)
+from app.modules.customers.routers.integrations import (
     _integration_output as _integration_output,
+)
+from app.modules.customers.routers.integrations import (
+    connect_integration as connect_integration,
+)
+from app.modules.customers.routers.integrations import (
+    disconnect_integration as disconnect_integration,
+)
+from app.modules.customers.routers.integrations import (
+    verify_integration as verify_integration,
 )
 from app.modules.customers.schemas import (  # noqa: F401
     ArchiveBody,

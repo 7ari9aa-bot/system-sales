@@ -15,10 +15,19 @@ from sqlalchemy import select
 from app.core.config import get_settings
 from app.core.errors import NotFoundError, ValidationError
 from app.core.events.writer import add_outbox_event
-from app.core.net_guard import assert_public_url
 from app.modules.platform.models import WebhookDelivery, WebhookEndpoint
 
 from .audit import AuditService
+
+
+def _ssrf_guard(url: str) -> None:
+    """Late-bound SSRF guard: resolves THROUGH the aggregator
+    (platform.service) because the delivery tests patch it there. This module
+    is imported BY that aggregator, so a module-level binding would dodge the
+    patch after the modular split — the lazy import is the late binding."""
+    from app.modules.platform import service as _platform_service
+
+    _platform_service.assert_public_url(url)
 
 WEBHOOK_STREAM = "platform.events"
 
@@ -54,7 +63,7 @@ class WebhookService:
         # S6: reject internal/metadata targets at registration time so a tenant
         # cannot turn our delivery worker into an SSRF proxy. Re-validated at
         # send time in WebhookDispatcher.deliver (DNS rebinding).
-        assert_public_url(url)
+        _ssrf_guard(url)
         endpoint = WebhookEndpoint(
             tenant_id=tenant_id,
             url=url,
@@ -289,7 +298,7 @@ class WebhookDispatcher:
         # (DNS rebinding) — the check has to happen on the request that
         # actually goes out, not only on the one that stored the URL.
         try:
-            assert_public_url(endpoint.url)
+            _ssrf_guard(endpoint.url)
         except ValidationError as exc:
             delivery.status = "dead"
             delivery.last_error = f"endpoint url rejected: {exc.message}"

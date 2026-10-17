@@ -184,6 +184,7 @@ function createInitialData() {
       customer: contact.name,
       initials: contact.initials,
       ...(channel.id === "telegram" && { avatarUrl: `/telegram-avatars/${contact.telegramAvatar}.png` }),
+      ...(channel.id === "instagram" && { avatarUrl: `/telegram-avatars/${contact.telegramAvatar}.png`, folder: ["primary", "general", "requests"][contactIndex % 3] }),
       color: channel.id === "whatsapp" ? whatsappAvatarColor(contact.name) : channel.id === "telegram" ? telegramAvatarColor(contact.name) : channel.accent,
       channel: channel.id,
       preview: messages.at(-1)?.text || "",
@@ -236,11 +237,17 @@ export function loadDemoInbox() {
         const recolorTelegram = parsed.telegram.some((conversation) => conversation.color !== telegramAvatarColor(conversation.customer));
         const initialTelegramById = new Map(initialTelegram.map((conversation) => [conversation.id, conversation]));
         const addTelegramAvatars = parsed.telegram.some((conversation) => initialTelegramById.has(conversation.id) && !conversation.avatarUrl);
+        const initialInstagramById = new Map(createInitialData().instagram.map((conversation) => [conversation.id, conversation]));
+        const updateInstagramProfiles = parsed.instagram.some((conversation) => initialInstagramById.has(conversation.id) && (!conversation.avatarUrl || !conversation.folder));
         const removeSeedFacebookDms = parsed.facebook.length > 0;
-        if (!missingTelegram.length && !extraFirstMessages.length && !recolorTelegram && !addTelegramAvatars && !removeSeedFacebookDms) return parsed;
+        if (!missingTelegram.length && !extraFirstMessages.length && !recolorTelegram && !addTelegramAvatars && !updateInstagramProfiles && !removeSeedFacebookDms) return parsed;
         const migrated = {
           ...parsed,
           facebook: [],
+          instagram: parsed.instagram.map((conversation) => {
+            const initial = initialInstagramById.get(conversation.id);
+            return initial ? { ...conversation, avatarUrl: conversation.avatarUrl || initial.avatarUrl, folder: conversation.folder || initial.folder } : conversation;
+          }),
           telegram: [
             ...parsed.telegram.map((conversation) => {
               const initialConversation = initialTelegramById.get(conversation.id);
