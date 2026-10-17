@@ -407,14 +407,21 @@ async def run_customer_turn(
             continue
         processed += 1
         try:
-            vision_results.append(
-                await run_vision_match(
-                    session,
-                    params.tenant_id,
-                    image_url=url,
-                    text_hint=turn.text_hint(),
+            # begin_nested: a SQL failure inside the vision pipeline (not just
+            # a provider error) would otherwise leave the caller's transaction
+            # aborted — the reply write and the state patch after it would die
+            # too, and a healthy message would dead-letter. The savepoint
+            # bounds the damage to the vision pass; the except below handles
+            # whatever escapes it and the transaction stays usable.
+            async with session.begin_nested():
+                vision_results.append(
+                    await run_vision_match(
+                        session,
+                        params.tenant_id,
+                        image_url=url,
+                        text_hint=turn.text_hint(),
+                    )
                 )
-            )
         except Exception:  # noqa: BLE001 — a broken photo pipeline is not the customer's problem
             vision_failures += 1
             logger.warning(
