@@ -66,9 +66,9 @@ export default function ChannelChat({
     backgroundSize: "100% 100%, 320px 570px",
   } : isTelegram ? {
     backgroundColor: "#a9cf9a",
-    backgroundImage: "linear-gradient(118deg, rgba(232,235,157,.48) 0%, rgba(148,199,147,.52) 52%, rgba(226,235,160,.48) 100%), url(\"" + TELEGRAM_DOODLE_PATTERN + "\")",
-    backgroundRepeat: "no-repeat, repeat",
-    backgroundSize: "100% 100%, 360px 320px",
+    backgroundImage: "url(\"" + TELEGRAM_DOODLE_PATTERN + "\"), linear-gradient(118deg, #e6e28d 0%, #80b78f 50%, #e2df8a 100%)",
+    backgroundRepeat: "repeat, no-repeat",
+    backgroundSize: "260px 230px, 100% 100%",
   } : undefined;
   const visibleMessages = (isWhatsApp || isTelegram) && searchQuery.trim()
     ? allMessages.filter((message) => String(message.text || "").toLocaleLowerCase().includes(searchQuery.trim().toLocaleLowerCase()))
@@ -147,7 +147,7 @@ export default function ChannelChat({
       
       {/* Header */}
       <div
-        dir={isWhatsApp ? "ltr" : undefined}
+        dir={isWhatsApp || isTelegram ? "ltr" : undefined}
         className={cn("flex items-center gap-3 px-4 shrink-0", isWhatsApp ? "h-[60px] px-4" : isTelegram ? "h-[66px] px-5" : "h-14")}
         style={isApp ? { background: "hsl(var(--card))", borderBottom: "1px solid hsl(var(--border))" } : { background: th.headerBg, color: th.headerText, borderBottom: (isWhatsApp || isTelegram) ? "1px solid " + th.divider : undefined }}>
 
