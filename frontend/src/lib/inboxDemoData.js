@@ -3,6 +3,7 @@ import { CHANNELS } from "@/lib/channels";
 // The demo inbox is intentionally local to this browser and this test account.
 // It never creates provider integrations or sends messages to external services.
 const STORAGE_KEY = "fihrist:inbox-demo:dmin@revenueosapp.com:v1";
+const FACEBOOK_POSTS_STORAGE_KEY = "fihrist:facebook-page-posts-demo:dmin@revenueosapp.com:v1";
 
 const CONTACTS = [
   { name: "ملك أحمد", initials: "مل", telegramAvatar: "malak-ahmed", messages: ["هل المقاس متاح؟", "ممكن أعرف تفاصيل التوصيل؟", "تمام، هأكد الطلب النهارده"] },
@@ -37,6 +38,125 @@ const REPLIES = [
   "متوفر، والتوصيل خلال يومين إلى ثلاثة أيام.",
   "سعداء بخدمتك، لو احتجتِ أي حاجة إحنا موجودين.",
 ];
+
+function createDemoFacebookPosts() {
+  return [
+    {
+      id: "demo:facebook-post:collection",
+      pageName: "فهرست | FIHRIST",
+      pageAvatarUrl: "/fihrist-mark.svg",
+      timeLabel: "منذ ساعتين",
+      text: "وصلت تشكيلة الموسم الجديدة 🌿 خامات مريحة وألوان هادئة تناسب كل يوم. شوفي المجموعة واختاري القطعة الأقرب لذوقك.",
+      mediaUrl: "/facebook-posts/spring-collection.png",
+      reactionCount: 28,
+      shareCount: 3,
+      comments: [
+        {
+          id: "demo:facebook-comment:collection-1",
+          author: "ملك أحمد",
+          avatarUrl: "/telegram-avatars/malak-ahmed.png",
+          timeLabel: "منذ ٤٥ دقيقة",
+          text: "البلوزة الكحلي متاحة بمقاس M؟",
+          likes: 2,
+          replies: [
+            { id: "demo:facebook-reply:collection-1-customer", author: "ملك أحمد", avatarUrl: "/telegram-avatars/malak-ahmed.png", timeLabel: "منذ ٣٥ دقيقة", text: "ممتاز، هبعتلكم رسالة بالتفاصيل." },
+            { id: "demo:facebook-reply:collection-1-page", author: "فهرست | FIHRIST", avatarUrl: "/fihrist-mark.svg", timeLabel: "منذ ٣٠ دقيقة", text: "أهلًا يا ملك، متاحة بمقاس M 💙 ابعتي لنا رسالة ونبعت لك صورها." , isPage: true },
+          ],
+        },
+        {
+          id: "demo:facebook-comment:collection-2",
+          author: "نور محمد",
+          avatarUrl: "/telegram-avatars/noor-mohamed.png",
+          timeLabel: "منذ ٣٠ دقيقة",
+          text: "الألوان كلها جميلة، بالتوفيق دايمًا 😍",
+          likes: 1,
+          replies: [{ id: "demo:facebook-reply:collection-2-page", author: "فهرست | FIHRIST", avatarUrl: "/fihrist-mark.svg", timeLabel: "منذ ٢٥ دقيقة", text: "شكرًا لذوقك يا نور، رأيك يسعدنا جدًا 🌷", isPage: true }],
+        },
+      ],
+    },
+    {
+      id: "demo:facebook-post:delivery",
+      pageName: "فهرست | FIHRIST",
+      pageAvatarUrl: "/fihrist-mark.svg",
+      timeLabel: "أمس · ٦:٢٠ م",
+      text: "طلبك لحد باب البيت 📦 بنجهز كل طلب بعناية، والتوصيل متاح لكل المحافظات خلال يومين إلى ثلاثة أيام.",
+      mediaUrl: "/facebook-posts/careful-packing.png",
+      reactionCount: 16,
+      shareCount: 1,
+      comments: [
+        {
+          id: "demo:facebook-comment:delivery-1",
+          author: "سارة محمود",
+          avatarUrl: "/telegram-avatars/sara-mahmoud.png",
+          timeLabel: "منذ ٤ ساعات",
+          text: "التوصيل لأسيوط بياخد كام يوم؟",
+          likes: 0,
+          replies: [],
+        },
+        {
+          id: "demo:facebook-comment:delivery-2",
+          author: "عمر محمود",
+          avatarUrl: "/telegram-avatars/omar-mahmoud.png",
+          timeLabel: "منذ ٥ ساعات",
+          text: "وصلني الطلب والتغليف ممتاز، شكرًا لكم!",
+          likes: 3,
+          replies: [{ id: "demo:facebook-reply:delivery-2-page", author: "فهرست | FIHRIST", avatarUrl: "/fihrist-mark.svg", timeLabel: "منذ ٤ ساعات", text: "بالهناء يا عمر، شكرًا إنك شاركتنا رأيك 🤍", isPage: true }],
+        },
+      ],
+    },
+    {
+      id: "demo:facebook-post:colors",
+      pageName: "فهرست | FIHRIST",
+      pageAvatarUrl: "/fihrist-mark.svg",
+      timeLabel: "١٥ أكتوبر · ١١:٠٥ ص",
+      text: "محتارين نضيف أنهي لون للمجموعة الجاية؟ اكتبوا اختياركم في التعليقات: زيتي، رملي، ولا أزرق هادي 💬",
+      mediaUrl: null,
+      reactionCount: 34,
+      shareCount: 5,
+      comments: [
+        {
+          id: "demo:facebook-comment:colors-1",
+          author: "هند سامي",
+          avatarUrl: "/telegram-avatars/hind-sami.png",
+          timeLabel: "١٥ أكتوبر · ١٢:١٠ م",
+          text: "الزيتي هيكون تحفة!",
+          likes: 4,
+          replies: [{ id: "demo:facebook-reply:colors-1-page", author: "فهرست | FIHRIST", avatarUrl: "/fihrist-mark.svg", timeLabel: "١٥ أكتوبر · ١٢:٣٠ م", text: "وصل صوتك يا هند 💚 هنخليه ضمن الاختيارات.", isPage: true }],
+        },
+        {
+          id: "demo:facebook-comment:colors-2",
+          author: "كريم يوسف",
+          avatarUrl: "/telegram-avatars/karim-youssef.png",
+          timeLabel: "١٥ أكتوبر · ١:٠٠ م",
+          text: "الأزرق الهادي، هيليق على حاجات كتير.",
+          likes: 2,
+          replies: [],
+        },
+      ],
+    },
+  ];
+}
+
+export function loadDemoFacebookPosts() {
+  if (typeof window === "undefined") return createDemoFacebookPosts();
+  try {
+    const saved = window.localStorage.getItem(FACEBOOK_POSTS_STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {
+    // Use the bundled sample page when local demo storage is unavailable.
+  }
+  const posts = createDemoFacebookPosts();
+  saveDemoFacebookPosts(posts);
+  return posts;
+}
+
+export function saveDemoFacebookPosts(posts) {
+  if (typeof window === "undefined") return;
+  try { window.localStorage.setItem(FACEBOOK_POSTS_STORAGE_KEY, JSON.stringify(posts)); } catch { /* local page demo is optional */ }
+}
 
 function createInitialData() {
   const now = Date.now();

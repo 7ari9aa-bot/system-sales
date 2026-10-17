@@ -1,13 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Search } from "lucide-react";
+import { MessageSquare, Search, Text } from "lucide-react";
 import ChannelSwitcher from "@/components/inbox/ChannelSwitcher";
 import ChannelChat from "@/components/inbox/ChannelChat";
 import ConversationAvatar from "@/components/inbox/ConversationAvatar";
+import FacebookPostsWorkspace from "@/components/inbox/FacebookPostsWorkspace";
 import { CHANNELS, getChannel } from "@/lib/channels";
 import { api } from "@/lib/api";
 import { useI18n, useT } from "@/lib/i18n";
 import { useAuth } from "@/lib/AuthContext";
-import { isDemoConversation, loadDemoInbox, saveDemoInbox } from "@/lib/inboxDemoData";
+import { isDemoConversation, loadDemoFacebookPosts, loadDemoInbox, saveDemoFacebookPosts, saveDemoInbox } from "@/lib/inboxDemoData";
 import { cn } from "@/lib/utils";
 
 const INBOX_PAGE_SIZE = 50;
@@ -93,6 +94,8 @@ export default function Inbox() {
   const { user } = useAuth();
   const demoAccount = String(user?.email || "").toLowerCase() === "dmin@revenueosapp.com";
   const [activeChannel, setActiveChannel] = useState("whatsapp");
+  const [facebookView, setFacebookView] = useState("posts");
+  const [facebookPosts, setFacebookPosts] = useState([]);
   const [chatListWidth, setChatListWidth] = useState(() => {
     if (typeof window === "undefined") return CHAT_LIST_DEFAULT_WIDTH;
     try {
@@ -209,6 +212,10 @@ export default function Inbox() {
     if (demoAccount) setConvMap(loadDemoInbox());
   }, [demoAccount]);
 
+  useEffect(() => {
+    setFacebookPosts(demoAccount ? loadDemoFacebookPosts() : []);
+  }, [demoAccount]);
+
   useEffect(() => () => clearTimeout(telegramListScrollTimerRef.current), []);
 
   const loadMoreConversations = useCallback(async () => {
@@ -290,6 +297,7 @@ export default function Inbox() {
   const channel = getChannel(activeChannel);
   const isWhatsApp = activeChannel === "whatsapp";
   const isTelegram = activeChannel === "telegram";
+  const isFacebook = activeChannel === "facebook";
   const allConversations = convMap[activeChannel] || [];
   const approvalsByConversation = useMemo(() => {
     const map = new Map();
@@ -330,6 +338,10 @@ export default function Inbox() {
   );
 
   useEffect(() => {
+    if (activeChannel === "facebook" && facebookView === "posts") {
+      setLoadingMessages(false);
+      return undefined;
+    }
     if (!current?.id) {
       setLoadingMessages(false);
       setMessagesError(null);
@@ -372,7 +384,7 @@ export default function Inbox() {
       }))
       .finally(() => alive && setLoadingMessages(false));
     return () => { alive = false; };
-  }, [activeChannel, current?.id, messageRetryAttempt]);
+  }, [activeChannel, current?.id, facebookView, messageRetryAttempt]);
 
   const loadOlderMessages = useCallback(async () => {
     if (!current?.id || !messageCursor || loadingOlderMessagesRef.current) return false;
@@ -514,6 +526,51 @@ export default function Inbox() {
     }
   }
 
+  function addFacebookPageReply(commentId, text) {
+    if (!demoAccount) return;
+    setFacebookPosts((previous) => {
+      const createdAt = new Date();
+      const timeLabel = lang === "ar" ? "الآن" : "Just now";
+      const updated = previous.map((post) => ({
+        ...post,
+        comments: (post.comments || []).map((comment) => comment.id === commentId
+          ? { ...comment, replies: [...(comment.replies || []), {
+            id: `demo:facebook-reply:${createdAt.getTime()}`,
+            author: post.pageName,
+            avatarUrl: post.pageAvatarUrl || "/fihrist-mark.svg",
+            timeLabel,
+            text,
+            isPage: true,
+          }] }
+          : comment),
+      }));
+      saveDemoFacebookPosts(updated);
+      return updated;
+    });
+  }
+
+  function addFacebookPageComment(postId, text) {
+    if (!demoAccount) return;
+    setFacebookPosts((previous) => {
+      const createdAt = new Date();
+      const updated = previous.map((post) => post.id === postId ? {
+        ...post,
+        comments: [...(post.comments || []), {
+          id: `demo:facebook-comment:${createdAt.getTime()}`,
+          author: post.pageName,
+          avatarUrl: post.pageAvatarUrl || "/fihrist-mark.svg",
+          timeLabel: lang === "ar" ? "الآن" : "Just now",
+          text,
+          likes: 0,
+          replies: [],
+          isPage: true,
+        }],
+      } : post);
+      saveDemoFacebookPosts(updated);
+      return updated;
+    });
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       {error && (
@@ -530,6 +587,15 @@ export default function Inbox() {
 
       <div dir="ltr" className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_52px] overflow-hidden">
       <div className="flex h-full min-h-0 min-w-0 flex-col">
+      {isFacebook && (
+        <div role="tablist" aria-label={lang === "ar" ? "عرض فيسبوك" : "Facebook views"} dir={lang === "ar" ? "rtl" : "ltr"} className="flex h-11 shrink-0 items-center gap-1 border-b border-[#d8dadf] bg-white px-3 sm:px-5">
+          <button type="button" role="tab" aria-selected={facebookView === "posts"} onClick={() => setFacebookView("posts")} className={cn("flex h-full items-center gap-2 border-b-[3px] px-3 text-[12px] font-semibold transition-colors", facebookView === "posts" ? "border-[#0866ff] text-[#0866ff]" : "border-transparent text-[#65676b] hover:bg-[#f7f8fa]")}><Text className="h-4 w-4" />{lang === "ar" ? "منشورات الصفحة" : "Page posts"}</button>
+          <button type="button" role="tab" aria-selected={facebookView === "messages"} onClick={() => setFacebookView("messages")} className={cn("flex h-full items-center gap-2 border-b-[3px] px-3 text-[12px] font-semibold transition-colors", facebookView === "messages" ? "border-[#0866ff] text-[#0866ff]" : "border-transparent text-[#65676b] hover:bg-[#f7f8fa]")}><MessageSquare className="h-4 w-4" />{lang === "ar" ? "الرسائل الخاصة" : "Private messages"}</button>
+        </div>
+      )}
+      {isFacebook && facebookView === "posts" ? (
+        <FacebookPostsWorkspace posts={facebookPosts} lang={lang} onReply={addFacebookPageReply} onComment={addFacebookPageComment} />
+      ) : (
       <div
         ref={inboxSplitRef}
         dir="ltr"
@@ -724,13 +790,14 @@ export default function Inbox() {
           onDecline={() => decideApproval(pendingApproval, "REJECTED")}
         />
       </div>
+      )}
       </div>
       <aside className="z-10 flex min-h-0 min-w-0 flex-col items-center border-l border-border/80 bg-card" aria-label={t("inbox.title")}>
         <ChannelSwitcher
           channels={channels}
           active={activeChannel}
           unreadByChannel={unreadByChannel}
-          onSelect={(id) => { setActiveChannel(id); setActiveId(null); setMobileChatOpen(false); setFilter("all"); }}
+          onSelect={(id) => { setActiveChannel(id); setFacebookView(id === "facebook" ? "posts" : "messages"); setActiveId(null); setMobileChatOpen(false); setFilter("all"); }}
         />
       </aside>
       </div>
