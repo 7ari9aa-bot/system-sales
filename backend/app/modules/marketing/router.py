@@ -11,7 +11,6 @@ from app.modules.marketing.campaign import CampaignExecutionService
 from app.modules.marketing.journey import JourneyExecutionService
 from app.modules.marketing.routers import analytics_router, router
 from app.modules.marketing.routers._deps import (
-    EntitlementService,
     MAX_PAGE_SIZE,
     MAX_WINDOW_DAYS,
     WriteCtx,
@@ -71,6 +70,18 @@ from app.modules.marketing.schemas import (
     TouchpointRequest,
 )
 from app.modules.marketing.service import MarketingService
+
+
+def __getattr__(name: str):
+    """PEP 562 lazy re-export: the contracts test monkeypatches
+    ``marketing_router.EntitlementService`` — resolved on first access so the
+    billing import stays function-scoped (module-scope cross-module service
+    imports are boundary-counted) while the attribute remains addressable."""
+    if name == "EntitlementService":
+        from app.modules.billing.service import EntitlementService
+
+        return EntitlementService
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 # Preserve module qualification for introspection and test sweeps
 for _endpoint in (

@@ -5,8 +5,15 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-from app.modules.errors import ConflictError, NotFoundError, ValidationError
-from app.modules.orders.errors import InsufficientStockError
+# These four are pure re-exports: services/__init__.py pulls them from this
+# module — removing them (a ruff F401 sweep read them as dead) broke the
+# package import chain for every inventory consumer.
+from app.modules.errors import (  # noqa: F401
+    ConflictError,
+    NotFoundError,
+    ValidationError,
+)
+from app.modules.orders.errors import InsufficientStockError  # noqa: F401
 
 _DIRECTIONS = {"in", "out", "adjust"}
 # Availability directions: they change `reserved`, never `on_hand`, and are

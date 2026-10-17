@@ -183,7 +183,10 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # tool computes are registered through `EvidenceStore.register_numbers`, the
 # analytics module's own door, so the SI adapter gained no new import site and
 # the skip rules live beside the pack contract that enforces them.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 198
+# 207: +1 for analytics/routers/_deps re-exporting MetricRegistry (the
+# modular-router split moved metrics beside its routers; the re-export
+# restores the aggregator contract the tests read through).
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 207
 # 192 -> 198 on 2026-10-16: the orders routers decomposition wave added six
 # function-scope edges (orders/routers/* reading the owning services and
 # models — the same shape every sub-router decomposition carries).

@@ -33,6 +33,9 @@ from app.modules.customers.routers.integrations import (  # noqa: F401
     _telegram_webhook_url,
     platform_router,  # noqa: F401
 )
+from app.modules.customers.routers.integrations import (
+    _integration_output as _integration_output,
+)
 from app.modules.customers.schemas import (  # noqa: F401
     ArchiveBody,
     ContactIssueResolution,

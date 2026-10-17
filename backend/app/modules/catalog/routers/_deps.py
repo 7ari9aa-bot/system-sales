@@ -11,8 +11,13 @@ from pydantic import BaseModel, Field
 
 from app.core.middleware import MAX_BODY_BYTES
 from app.core.storage import get_storage
-from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
-from app.modules.inventory.models import Warehouse
+from app.modules.identity.deps import TenantContext, require_permission
+from app.modules.identity.deps import (
+    TenantCtxDep as TenantCtxDep,  # noqa: F401  — re-exported for the routers
+)
+from app.modules.inventory.models import (
+    Warehouse as Warehouse,  # noqa: F401  — re-exported for taxonomy.py
+)
 
 WriteCtx = Annotated[TenantContext, Depends(require_permission("products:write"))]
 CustomerWriteCtx = Annotated[TenantContext, Depends(require_permission("customers:write"))]

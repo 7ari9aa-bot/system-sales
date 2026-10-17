@@ -28,9 +28,11 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import errors as _errors
 from app.core.circuit_breaker import PROVIDER_AI, get_breaker
 from app.core.config import get_settings
 from app.core.errors import ValidationError
+from app.modules.ai import budget as _budget
 from app.modules.ai.models import ModelCall, ModelConfig
 from app.modules.ai.providers import (
     AIProvider,
@@ -41,21 +43,37 @@ from app.modules.ai.providers import (
     RerankerProvider,
 )
 
-logger = logging.getLogger(__name__)
+# Budget management & financial guardrails (Section 42): the implementation
+# lives in budget.py; the gateway is the surface runtime, the message worker
+# and the test suite import these names FROM. Plain assignments, not aliased
+# imports: a lint sweep that read aliased re-exports as dead imports crashed
+# the workers service at import time (2026-10-17) - assignments survive it.
+BUDGET_ALERT_THRESHOLDS = _budget.BUDGET_ALERT_THRESHOLDS
+BUDGET_LOCK_WAIT_SECONDS = _budget.BUDGET_LOCK_WAIT_SECONDS
+MONTHLY_BUDGET_CAP = _budget.MONTHLY_BUDGET_CAP
+RESERVATION_TTL_MINUTES = _budget.RESERVATION_TTL_MINUTES
+_COST_PER_INPUT_TOKEN = _budget._COST_PER_INPUT_TOKEN
+_COST_PER_OUTPUT_TOKEN = _budget._COST_PER_OUTPUT_TOKEN
+_IMAGE_TOKEN_FLOOR = _budget._IMAGE_TOKEN_FLOOR
+_daily_cap = _budget._daily_cap
+_day_spend = _budget._day_spend
+_default_cap = _budget._default_cap
+_month_spend = _budget._month_spend
+_on_budget_exceeded = _budget._on_budget_exceeded
+_raise_budget_alerts = _budget._raise_budget_alerts
+_reserved_spend = _budget._reserved_spend
+_resolve_cap = _budget._resolve_cap
+_tenant_budget_lock_id = _budget._tenant_budget_lock_id
+AIBudgetExhaustedError = _budget.AIBudgetExhaustedError
+AIBudgetFallbackRequested = _budget.AIBudgetFallbackRequested
+RateLimitExceededError = _errors.RateLimitExceededError
+enforce_budget = _budget.enforce_budget
+estimate_cost = _budget.estimate_cost
+expire_stale_reservations = _budget.expire_stale_reservations
+reserve_budget = _budget.reserve_budget
+settle_reservation = _budget.settle_reservation
 
-# Budget management & financial guardrails (§42) — re-exported from budget.py
-# AIBudgetFallbackRequested is a PURE re-export: gateway never raises it, but
-# runtime.py and workers/message_worker.py import it FROM HERE. Removing it (an
-# earlier ruff F401 sweep read the re-export as dead) crashed the workers
-# service at import — the noqa pins it against the next sweep.
-from app.modules.ai.budget import (  # noqa: E402
-    _IMAGE_TOKEN_FLOOR,
-    AIBudgetExhaustedError,
-    AIBudgetFallbackRequested,  # noqa: F401  — re-exported for runtime + message_worker
-    estimate_cost,
-    reserve_budget,
-    settle_reservation,
-)
+logger = logging.getLogger(__name__)
 
 ALIASES = frozenset({"fast", "strong", "cheap", "embedding", "fallback", "omni"})
 

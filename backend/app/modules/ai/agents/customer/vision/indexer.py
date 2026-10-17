@@ -21,6 +21,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.core.errors import ExternalProviderError
 from app.core.storage import get_storage
 from app.modules.ai.agents.customer.vision.retrieval import MODEL_VERSION
 from app.modules.ai.models import ProductEmbedding
@@ -113,23 +114,50 @@ async def index_product_images(
                 contents.append(MultimodalContent(image=image_url, text=row.alt))
             else:
                 contents.append(MultimodalContent(image=image_url))
-        if _provider is not None:
-            vectors = await _provider.embed(
-                base_url=settings.ai_embedding_vision_base_url,
-                api_key=settings.ai_embedding_vision_api_key,
-                model=settings.ai_embedding_vision_model,
-                contents=contents,
-                expected_dimensions=settings.ai_embedding_vision_dimensions,
-                _client=_client,
-            )
-        else:
+
+        async def _embed(subset: list[MultimodalContent]) -> list[list[float]]:
+            if _provider is not None:
+                return await _provider.embed(
+                    base_url=settings.ai_embedding_vision_base_url,
+                    api_key=settings.ai_embedding_vision_api_key,
+                    model=settings.ai_embedding_vision_model,
+                    contents=subset,
+                    expected_dimensions=settings.ai_embedding_vision_dimensions,
+                    _client=_client,
+                )
             # Governed default (see retrieval): budget, egress, breaker, record.
             from app.modules.ai.gateway import AIGateway
 
-            vectors = await AIGateway().embed_vision(
-                session, tenant_id, contents=contents, _client=_client
+            return await AIGateway().embed_vision(
+                session, tenant_id, contents=subset, _client=_client
             )
-        for row, vector in zip(chunk, vectors, strict=True):
+
+        try:
+            vectors = await _embed(contents)
+            embedded = list(zip(chunk, vectors, strict=True))
+        except ExternalProviderError:
+            if len(contents) == 1:
+                raise
+            # One dead image URL (a demo seed pointing at a deleted photo, a
+            # moved asset) used to fail the WHOLE chunk — every sweep retried
+            # the same batch, the tenant's healthy images never indexed, and
+            # the vision feature stayed blind to the entire catalog. Isolate:
+            # embed one by one, so a dead URL costs only itself.
+            embedded = []
+            for row, content in zip(chunk, contents, strict=True):
+                try:
+                    (vector,) = await _embed([content])
+                    embedded.append((row, vector))
+                except ExternalProviderError as exc:
+                    logger.warning(
+                        "vision.indexing_image_unreachable image=%s product=%s (%s)",
+                        row.image_id,
+                        row.product_id,
+                        str(exc)[:120],
+                    )
+            if not embedded:
+                raise
+        for row, vector in embedded:
             content_kind = "image+text" if row.alt else "image"
             stmt = (
                 pg_insert(ProductEmbedding)

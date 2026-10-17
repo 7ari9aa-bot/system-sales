@@ -220,6 +220,72 @@ class MessageWorker(StreamWorker):
         else:
             logger.debug("message.event_ignored type=%s", envelope.type)
 
+    async def _on_dead_letter(self, event: Event, exc: Exception) -> None:
+        """The customer-facing last will when a message event exhausts retries.
+
+        The production incident this closes (telegram, 2026-10-16): a turn
+        raised on every attempt, every write it made rolled back with the
+        failed transaction, and after the final attempt the event went to the
+        DLQ leaving NOTHING — no run row, no handover, no trace. The customer
+        stared at silence and nobody was told. Everything this method writes
+        rides a FRESH transaction that commits, because the handler's
+        transaction is already dead when this runs. Total containment: a
+        failure here is logged and swallowed — it must never break the ack or
+        the DLQ routing that follows.
+        """
+        try:
+            envelope = deserialize_event(event)
+        except (ValidationError, KeyError, TypeError, ValueError):
+            return  # no envelope → no tenant, no conversation to be honest to
+        if envelope.type not in ("message.received", "message.outbound"):
+            return
+        conversation_id = envelope.payload.get("conversation_id")
+        message_id = envelope.payload.get("message_id")
+        if not conversation_id:
+            return
+        from app.core.db import bind_tenant
+
+        note = f"event dead-lettered after retries: {exc}"
+        try:
+            conversation_uuid = uuid.UUID(str(conversation_id))
+        except (TypeError, ValueError):
+            return
+        try:
+            async with SessionLocal() as session:
+                async with session.begin():
+                    await bind_tenant(session, envelope.tenant_id)
+                    if envelope.type == "message.outbound" and message_id:
+                        # The queued/sending row would sit in limbo forever —
+                        # the retry budget is spent; say so on the row itself.
+                        from sqlalchemy import update as sa_update
+
+                        from app.modules.conversations.models import Message
+
+                        await session.execute(
+                            sa_update(Message)
+                            .where(
+                                Message.tenant_id == envelope.tenant_id,
+                                Message.id == uuid.UUID(str(message_id)),
+                                Message.direction == "outbound",
+                                Message.status.in_(("queued", "sending")),
+                            )
+                            .values(status="failed", error=note[:500])
+                        )
+                    from app.modules.ai.handover import request_human_takeover
+
+                    await request_human_takeover(
+                        session,
+                        envelope.tenant_id,
+                        conversation_id=conversation_uuid,
+                        reason="failure",
+                        note=note,
+                        run_id=None,
+                    )
+        except Exception:  # noqa: BLE001 — the last will must never break the DLQ flow
+            logger.exception(
+                "message.dead_letter_trace_failed conversation=%s", conversation_id
+            )
+
     def _dedupe_id(self, envelope: EventEnvelope) -> str:
         """Stable consumer-inbox key: the outbox row id survives crash-reclaim
         re-publishes; the per-XADD bus uuid would make replays look new."""

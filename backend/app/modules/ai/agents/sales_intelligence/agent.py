@@ -28,6 +28,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.ai.agents.sales_intelligence import (
     tools as _si_tools,  # noqa: F401 — registers the SI tools at import
 )
+
+# Re-export: the provisioning single-source test imports the canonical prompt
+# FROM this module (the agent module is the prompt's public face) — the alias
+# form keeps it alive under any lint sweep.
+from app.modules.ai.agents.sales_intelligence.prompts import (  # noqa: F401,E402
+    SI_SYSTEM_PROMPT as SI_SYSTEM_PROMPT,
+)
 from app.modules.ai.agents.sales_intelligence.response import (
     allowed_numbers_from_facts,
     safe_response,

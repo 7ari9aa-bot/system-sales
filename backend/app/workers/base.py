@@ -161,6 +161,18 @@ class StreamWorker:
     async def handle(self, event: Event) -> None:  # pragma: no cover - abstract by design
         raise NotImplementedError
 
+    async def _on_dead_letter(self, event: Event, exc: Exception) -> None:
+        """Durable last-will for an event that just exhausted every retry.
+
+        Called BEFORE the event is routed to the DLQ, in the failure path —
+        the handler's transaction is already rolled back at this point, so
+        anything written here MUST open its own transaction and commit, or it
+        dies with the same rollback that erased the handler's work. The base
+        implementation is a no-op: only pools whose events carry customer
+        consequences (a message nobody will ever answer) override it.
+        """
+        return None
+
     async def run(self) -> None:
         consumer = f"{socket.gethostname()}:{os.getpid()}"
         self._running = True
@@ -512,11 +524,13 @@ class StreamWorker:
                     attempts,
                 )
                 await self._count("dead_lettered")
+                await self._on_dead_letter(event, exc)
                 await self._bus.send_to_dlq(self.stream, event, "permanent failure")
                 await self._bus.ack(self.stream, self.group, event)
                 return False
             if attempts >= settings.worker_max_attempts:
                 await self._count("dead_lettered")
+                await self._on_dead_letter(event, exc)
                 await self._bus.send_to_dlq(self.stream, event, "max attempts exceeded")
                 await self._bus.ack(self.stream, self.group, event)
                 return False

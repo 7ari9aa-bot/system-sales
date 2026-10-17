@@ -13,18 +13,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 async def _resolve_tenant_currency(session, tenant_id):
     from app.modules.analytics import service as analytics_service
     return await analytics_service.resolve_tenant_currency(session, tenant_id)
-from ._common import (
+from ._common import (  # noqa: E402
     _GROSS_PAYMENT_STATUSES,
     _REFUND_STATUSES,
     _UNPLACED_ORDER_STATUSES,
     ZERO,
     _aov,
-    _count_by_bucket,
     _money,
-    _sum_by_bucket,
     bind_window,
     net_of,
-    resolve_report_timezone,
 )
 
 
@@ -178,7 +175,7 @@ async def daily_revenue_series(
     zone = str(await analytics_service.resolve_report_timezone(session, tenant_id, timezone))
     common = {"tenant_id": str(tenant_id), "since": since, "until": until, "tz": zone}
 
-    gross = await _sum_by_bucket(
+    gross = await analytics_service._sum_by_bucket(
         session,
         f"""
         SELECT date_trunc('day', paid_at AT TIME ZONE CAST(:tz AS text)) AS day,
@@ -192,7 +189,7 @@ async def daily_revenue_series(
         """,
         common,
     )
-    refunded = await _sum_by_bucket(
+    refunded = await analytics_service._sum_by_bucket(
         session,
         f"""
         SELECT date_trunc('day',
@@ -208,7 +205,7 @@ async def daily_revenue_series(
         """,
         common,
     )
-    counts = await _count_by_bucket(
+    counts = await analytics_service._count_by_bucket(
         session,
         f"""
         SELECT date_trunc('day', placed_at AT TIME ZONE CAST(:tz AS text)) AS day,

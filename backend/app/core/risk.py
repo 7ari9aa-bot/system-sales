@@ -103,6 +103,12 @@ _REGISTRY: dict[str, RiskLevel] = {
     "si_analyze_seasonality": RiskLevel.LOW,
     "si_analyze_customers": RiskLevel.LOW,
     "si_analyze_fulfillment": RiskLevel.LOW,
+    # Read-only merchant-facing reads (sales detail, contact activity,
+    # platform interactions, public comments) — no mutation surface.
+    "si_top_products": RiskLevel.LOW,
+    "si_customer_activity": RiskLevel.LOW,
+    "si_channel_activity": RiskLevel.LOW,
+    "si_social_comments": RiskLevel.LOW,
     "add_to_cart": RiskLevel.MEDIUM,
     "create_order": RiskLevel.HIGH,
     "send_campaign": RiskLevel.HIGH,

@@ -6,14 +6,18 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.errors import ValidationError
 from app.modules.analytics import service as analytics_service
-from app.modules.analytics import schemas
-from app.modules.analytics.timekit import ResolvedTimezone, resolve_timezone
-from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
-from app.modules.platform.metrics import MetricRegistry
+from app.modules.analytics.timekit import ResolvedTimezone
+from app.modules.identity.deps import TenantContext, require_permission
+from app.modules.identity.deps import (
+    TenantCtxDep as TenantCtxDep,  # noqa: F401  — re-exported for metrics.py
+)
+from app.modules.platform.metrics import (
+    MetricRegistry as MetricRegistry,  # noqa: F401  — re-exported for metrics.py
+)
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 

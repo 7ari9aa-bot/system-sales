@@ -1,12 +1,14 @@
 """Identity routers aggregator — preserves 100% backward compatibility.
 
 All router implementations have been modularized into `app.modules.identity.routers/`.
-This file re-exports everything so existing imports, tests, and FastAPI mount points remain 100% compatible.
+This file re-exports everything so existing imports, tests, and FastAPI mount
+points remain 100% compatible.
 """
 
 from __future__ import annotations
 
 from app.modules.identity.routers import (
+    _CLIENT_TTL,
     LifecycleTransitionRequest,
     MfaCodeRequest,
     MfaDisableRequest,
@@ -17,7 +19,6 @@ from app.modules.identity.routers import (
     TenantCurrencyRequest,
     TenantLifecycleOut,
     TenantTimezoneRequest,
-    _CLIENT_TTL,
     _client_meta,
     accept_invitation,
     bind_tenant_user,

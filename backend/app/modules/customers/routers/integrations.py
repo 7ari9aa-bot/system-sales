@@ -535,9 +535,11 @@ async def disconnect_integration(
         return _integration_output(integration)
     if current == "disabled":
         raise ValidationError("This channel was permanently disabled.")
-    if current not in ("active", "restricted", "reauth_required", "connecting", "pending"):
+    if current not in ("active", "restricted"):
         raise ValidationError(
-            "this channel cannot be disconnected in its current status",
+            "this channel cannot be disconnected in its current status — only an "
+            "active or restricted channel receives provider traffic; the legal "
+            "sources to disconnect from are: active, restricted",
             details={
                 "integration_id": str(integration_id),
                 "status": integration.status,

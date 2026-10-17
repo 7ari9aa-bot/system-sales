@@ -11,6 +11,7 @@ import uuid
 
 from sqlalchemy import func, select
 
+from app.core.errors import ExternalProviderError
 from app.modules.ai.agents.customer.vision.indexer import index_product_images
 from app.modules.ai.models import ProductEmbedding
 from app.modules.catalog.models import Product, ProductImage
@@ -124,3 +125,37 @@ async def test_batching_one_provider_call_per_chunk(db, tenant_ctx):
 
     assert stats == {"indexed": 3, "batches": 2}
     assert provider.calls == [2, 1]
+
+async def test_one_dead_image_url_no_longer_blinds_the_whole_batch(db, tenant_ctx):
+    """Production (2026-10-16): demo images pointing at a deleted unsplash
+    photo failed the provider's BATCH download — the entire chunk failed on
+    every sweep, the tenant's healthy images never indexed, and the vision
+    feature stayed blind to the whole catalog. A batch failure now isolates
+    per image: the dead URL costs only itself."""
+    tenant_id = tenant_ctx.tenant_id
+    product = await _seed_product(db, tenant_id, title="Catalog Batch")
+    dead = await _seed_image(db, tenant_id, product, "https://images.unsplash.com/dead.png")
+    await _seed_image(db, tenant_id, product, "https://cdn.test/live-a.png")
+    await _seed_image(db, tenant_id, product, "https://cdn.test/live-b.png")
+
+    class _BatchFailPerItemOk(_ScriptedEmbedding):
+        """The provider download path fails any BATCH, and 404s the dead URL."""
+
+        async def embed(self, *, contents, **kwargs):
+            self.calls.append(len(contents))
+            if len(contents) > 1:
+                raise ExternalProviderError(
+                    "vision embedding failed with HTTP 400: "
+                    "Failed to download images: 404"
+                )
+            if "dead" in str(contents[0].image):
+                raise ExternalProviderError(
+                    "vision embedding failed with HTTP 400: "
+                    "Failed to download images: 404"
+                )
+            return [[0.0] * 768]
+
+    stats = await index_product_images(db, tenant_id, batch_size=3, _provider=_BatchFailPerItemOk())
+    assert stats["indexed"] == 2  # the two live images land
+    assert (await _count(db, tenant_id)) == 2
+    assert dead.id is not None  # the dead URL was skipped, not fatal

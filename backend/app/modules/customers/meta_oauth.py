@@ -251,7 +251,7 @@ async def _meta_exchange_and_connect(
         all_pages = accounts.get("data", [])
         if not all_pages:
             raise ValidationError(
-                "لم يتم العثور على أي صفحة فيسبوك في حسابك — يجب إنشاء صفحة فيسبوك وتحديدها عند منح الصلاحيات."
+                "لم يتم العثور على أي صفحة فيسبوك في حسابك — يجب إنشاء صفحة فيسبوك وتحديدها عند منح الصلاحيات."  # noqa: E501
             )
 
         pages = [
@@ -286,7 +286,7 @@ async def _meta_exchange_and_connect(
             if not ig_id:
                 page_title = page.get("name") or str(page.get("id") or "المحددة")
                 raise ValidationError(
-                    f"صفحة فيسبوك '{page_title}' غير مرتبطة بحساب إنستجرام احترافي — اربط الحساب في Meta Business Suite أولاً."
+                    f"صفحة فيسبوك '{page_title}' غير مرتبطة بحساب إنستجرام احترافي — اربط الحساب في Meta Business Suite أولاً."  # noqa: E501
                 )
             config["account_id"] = ig_id
             credentials["account_id"] = ig_id
@@ -377,22 +377,22 @@ def _popup_html(result: dict, frontend_origin: str) -> str:
         title_text = "تم الربط بنجاح"
         subtitle_text = f"صفحة: {page_name}"
         card_class = "success"
-        icon_html = '<svg class="icon success-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>'
+        icon_html = '<svg class="icon success-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>'  # noqa: E501
         action_html = '<p class="hint">سيتم إغلاق هذه النافذة تلقائيًا والعودة للإعدادات...</p>'
     else:
         title_text = "تعذر إتمام الربط"
         card_class = "error"
-        icon_html = '<svg class="icon error-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>'
+        icon_html = '<svg class="icon error-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>'  # noqa: E501
 
         s = str(error_val)
         if "Invalid Scopes" in s or "instagram_basic" in s:
-            subtitle_text = "تطبيق Meta ينقصه صلاحيات إنستجرام: يرجى إضافة منتج Instagram Graph API وصلاحيات instagram_basic وinstagram_manage_messages في لوحة مطوري Meta."
+            subtitle_text = "تطبيق Meta ينقصه صلاحيات إنستجرام: يرجى إضافة منتج Instagram Graph API وصلاحيات instagram_basic وinstagram_manage_messages في لوحة مطوري Meta."  # noqa: E501
         elif "access_denied" in s:
             subtitle_text = "أُلغيت الموافقة أو أن حسابك ليس مطوراً/مسؤولاً في تطبيق فيسبوك."
         elif "No messaging-capable page" in s or "لم يتم العثور على أي صفحة" in s:
-            subtitle_text = "لم يتم العثور على أي صفحة فيسبوك في حسابك، أو لم يتم تحديد صفحة عند منح الصلاحيات."
+            subtitle_text = "لم يتم العثور على أي صفحة فيسبوك في حسابك، أو لم يتم تحديد صفحة عند منح الصلاحيات."  # noqa: E501
         elif "غير مرتبطة بحساب إنستجرام" in s or "No Instagram professional account" in s:
-            subtitle_text = "صفحة فيسبوك المحددة غير مرتبطة بحساب إنستجرام احترافي (Business/Creator)."
+            subtitle_text = "صفحة فيسبوك المحددة غير مرتبطة بحساب إنستجرام احترافي (Business/Creator)."  # noqa: E501
         elif "missing_code_or_state" in s:
             subtitle_text = "أُلغيت العملية أو لم يُرجع فيسبوك رمز التفويض."
         elif "invalid_state" in s:
@@ -420,7 +420,8 @@ def _popup_html(result: dict, frontend_origin: str) -> str:
     align-items: center;
     justify-content: center;
     min-height: 100vh;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "IBM Plex Sans Arabic", sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "IBM Plex Sans Arabic", sans-serif;
     background-color: #0c0d0e;
     color: #f3f4f6;
     padding: 20px;

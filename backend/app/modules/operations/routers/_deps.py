@@ -8,7 +8,10 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 
 from app.core.errors import NotFoundError
-from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
+from app.modules.identity.deps import TenantContext, require_permission
+from app.modules.identity.deps import (
+    TenantCtxDep as TenantCtxDep,  # noqa: F401  — re-exported for the routers
+)
 from app.modules.operations.schemas import (
     BusinessCalendarOut,
     JobOut,

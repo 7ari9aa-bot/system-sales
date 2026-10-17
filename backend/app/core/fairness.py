@@ -115,6 +115,9 @@ DOMAIN_PRIORITIES: dict[str, EventPriority] = {
     "pos.session.closed": EventPriority.CRITICAL_SYSTEM,
     # POS return is a refund event — money tier (§189).
     "pos.sale.returned": EventPriority.CRITICAL_SYSTEM,
+    # The one-transaction exchange settles a return and its replacement sale
+    # together (§189) — the net difference is money movement, same tier.
+    "pos.sale.exchanged": EventPriority.CRITICAL_SYSTEM,
     # Receipt email is a fire-and-forget delivery — automation tier.
     "pos.receipt.email_requested": EventPriority.NORMAL_AUTOMATION,
     "privacy.customer_deleted": EventPriority.CRITICAL_SYSTEM,
