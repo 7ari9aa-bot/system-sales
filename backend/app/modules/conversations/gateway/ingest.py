@@ -250,6 +250,20 @@ class IngestService:
             await IngestService.apply_status_updates(
                 session, tenant_id, adapter.parse_status_updates(payload)
             )
+            # Public comments ride the same signed envelope (field "feed" /
+            # "comments"). They are interaction data, not conversation turns:
+            # persisted for the analyst, never fanned out to the AI. Adapters
+            # without a comment parser (whatsapp, telegram, webchat) simply
+            # contribute none.
+            parse_comments = getattr(adapter, "parse_comments", None)
+            if callable(parse_comments):
+                from app.modules.conversations.social_comments import SocialCommentService
+
+                for comment in parse_comments(payload):
+                    await SocialCommentService.ingest(
+                        session, tenant_id, platform=channel, comment=comment
+                    )
+                    accepted += 1
             await session.execute(
                 sa_update(WebhookEvent)
                 .where(WebhookEvent.id == event_id)

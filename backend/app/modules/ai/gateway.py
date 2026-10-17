@@ -20,19 +20,18 @@ import asyncio
 import logging
 import re
 import time
-from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 from urllib.parse import urlsplit
 from uuid import UUID
 
-from sqlalchemy import func, select, text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.circuit_breaker import PROVIDER_AI, get_breaker
 from app.core.config import get_settings
-from app.core.errors import RateLimitExceededError, ValidationError
-from app.modules.ai.models import AIUsage, ModelCall, ModelConfig
+from app.core.errors import ValidationError
+from app.modules.ai.models import ModelCall, ModelConfig
 from app.modules.ai.providers import (
     AIProvider,
     ChatCompletionResult,
@@ -46,27 +45,9 @@ logger = logging.getLogger(__name__)
 
 # Budget management & financial guardrails (§42) — re-exported from budget.py
 from app.modules.ai.budget import (
-    BUDGET_ALERT_THRESHOLDS,
-    BUDGET_LOCK_WAIT_SECONDS,
-    MONTHLY_BUDGET_CAP,
-    RESERVATION_TTL_MINUTES,
-    AIBudgetExhaustedError,
-    AIBudgetFallbackRequested,
-    _COST_PER_INPUT_TOKEN,
-    _COST_PER_OUTPUT_TOKEN,
     _IMAGE_TOKEN_FLOOR,
-    _daily_cap,
-    _day_spend,
-    _default_cap,
-    _month_spend,
-    _on_budget_exceeded,
-    _raise_budget_alerts,
-    _reserved_spend,
-    _resolve_cap,
-    _tenant_budget_lock_id,
-    enforce_budget,
+    AIBudgetExhaustedError,
     estimate_cost,
-    expire_stale_reservations,
     reserve_budget,
     settle_reservation,
 )

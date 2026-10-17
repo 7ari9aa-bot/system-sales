@@ -30,12 +30,11 @@ from app.modules.customers.models import (
 from app.modules.errors import ConflictError, NotFoundError, ValidationError
 
 from ._common import (
-    ISSUE_CANONICAL_COLLISION,
-    ISSUE_LEGACY_DEFAULT,
     _BACKFILL_KEY,
     _ISSUE_MARK_KEYS,
     _ISSUE_RESOLUTIONS,
     _RESOLVE_ATTEMPTS,
+    ISSUE_CANONICAL_COLLISION,
     _canonical_or_raw,
     _contact_flag,
     _now,

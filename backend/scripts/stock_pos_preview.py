@@ -12,7 +12,7 @@ from sqlalchemy import select
 
 from app.core import model_registry  # noqa: F401  (completes Base.metadata)
 from app.core.db import bind_tenant, get_sessionmaker
-from app.modules.catalog.models import ProductIdentifier, ProductVariant
+from app.modules.catalog.models import ProductVariant
 from app.modules.inventory.service import InventoryService
 from app.modules.pos.models import PosProfile
 

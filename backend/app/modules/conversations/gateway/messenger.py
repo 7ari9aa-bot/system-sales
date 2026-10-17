@@ -18,10 +18,12 @@ from app.core.config import get_settings
 from app.core.errors import ExternalProviderError
 from app.modules.conversations.gateway.base import (
     ChannelAdapter,
+    InboundComment,
     InboundMessage,
     OutboundMessage,
     ProviderCredentials,
     StatusUpdate,
+    parse_meta_comment_changes,
     parse_provider_body,
 )
 
@@ -48,10 +50,6 @@ class MessengerAdapter(ChannelAdapter):
         """Meta webhook subscription handshake (GET hub.challenge)."""
         settings = get_settings()
         if not settings.messenger_verify_token:
-            # Not configured -> cannot verify -> reject (fail closed). Same
-            # hole the WhatsApp adapter closed: an empty `hub.verify_token`
-            # compared equal to the empty default and answered the caller's
-            # own challenge (see test_whatsapp_verify_fail_closed.py).
             return None
         if (
             query_params.get("hub.mode") == "subscribe"
@@ -84,6 +82,11 @@ class MessengerAdapter(ChannelAdapter):
         # Meta delivery/read receipts arrive as messaging[0].delivery|read —
         # inbound-only for now; the generic status path handles the rest.
         return []
+
+    def parse_comments(self, payload: dict) -> list[InboundComment]:
+        """Public page/post comments ride the SAME signed webhook envelope —
+        field "feed" (item=comment). Facebook Page inherits this verbatim."""
+        return parse_meta_comment_changes(payload)
 
     def parse_inbound(self, payload: dict) -> list[InboundMessage]:
         """Parse a Meta Messenger webhook payload into 0..1 messages.

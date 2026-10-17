@@ -18,7 +18,6 @@ backward compatibility.
 
 from __future__ import annotations
 
-import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
@@ -109,8 +108,8 @@ _bootstrap()
 # with existing callers and tests.
 
 from app.modules.ai.agents.customer.tools import (  # noqa: E402, F401
-    AddTaskArgs,
     AddTagArgs,
+    AddTaskArgs,
     CheckStockArgs,
     CreateOrderArgs,
     CreateOrderItemArgs,

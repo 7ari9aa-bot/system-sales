@@ -249,6 +249,11 @@ class ConversationService:
             media_url=media_url,
             media_type=media_type,
             channel_message_id=channel_message_id,
+            # Source of truth for "which platform sent this message" — stamped
+            # SERVER-SIDE from the conversation, so no caller can claim a
+            # channel the message did not arrive on. Per-message channel
+            # analytics (which platform is most interactive) read this column.
+            channel=conversation.channel,
             payload=payload or {},
             # §155 canonical columns.
             content_type=content_type,

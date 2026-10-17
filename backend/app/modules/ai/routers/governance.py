@@ -10,7 +10,7 @@ from sqlalchemy import select, update
 
 from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.modules.ai.approvals import ApprovalService
-from app.modules.ai.models import AIHandover, ApprovalRequest
+from app.modules.ai.models import AIHandover
 from app.modules.ai.policy import AIProviderPolicyService
 from app.modules.ai.routers._deps import (
     ApproveCtx,

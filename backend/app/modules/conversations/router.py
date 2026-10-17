@@ -16,13 +16,13 @@ from __future__ import annotations
 
 from app.modules.conversations.gateway.registry import get_adapter
 from app.modules.conversations.routers import (
+    _WEBHOOK_CHANNELS,
     AssignRequest,
     SendMessageRequest,
     TemplateApproveRequest,
     TemplateRejectRequest,
     TemplateUpsertRequest,
     WebchatInbound,
-    _WEBHOOK_CHANNELS,
     _inbox_page,
     _redact_inbox_item,
     _stream_auth,

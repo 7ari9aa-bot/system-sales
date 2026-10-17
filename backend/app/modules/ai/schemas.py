@@ -102,6 +102,7 @@ class AgentCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     model: str | None = Field(default=None, max_length=127)
     system_prompt: str | None = None
+    persona_prompt: str | None = None
     description: str | None = None
 
 
@@ -110,11 +111,15 @@ class AgentUpdateRequest(BaseModel):
 
     The prompt is the tenant's business secret and their lever on the agent's
     behavior: editing is settings:write gated, tenant-scoped by the same WHERE
-    the read uses, versioned, and audited."""
+    the read uses, versioned, and audited. Two prompt halves, two fields:
+    ``system_prompt`` is the base (canonical instructions and prohibitions),
+    ``persona_prompt`` is the store's voice (agent name, tone, store name) —
+    the runtime composes base first, persona last."""
 
     name: str | None = Field(default=None, min_length=1, max_length=255)
     model: str | None = Field(default=None, max_length=127)
     system_prompt: str | None = Field(default=None, min_length=1)
+    persona_prompt: str | None = Field(default=None, min_length=1)
     description: str | None = None
     is_active: bool | None = None
     # NOTE: kind is intentionally excluded - immutable architectural property
@@ -123,7 +128,7 @@ class AgentUpdateRequest(BaseModel):
 
 class AgentDetailOut(BaseModel):
     """The settings:write view of one agent — the only contract that may carry
-    the system_prompt (a business secret; AgentOut omits it on purpose because
+    the prompts (a business secret; AgentOut omits them on purpose because
     GET /ai/agents is tenant-readable by every member). ``version`` is the
     optimistic-concurrency token the PATCH round-trips."""
 
@@ -135,6 +140,7 @@ class AgentDetailOut(BaseModel):
     description: str | None = None
     model: str | None = None
     system_prompt: str | None = None
+    persona_prompt: str | None = None
     is_active: bool
     version: int
 
@@ -163,6 +169,7 @@ class AgentVersionOut(BaseModel):
     version: int
     status: str
     system_prompt: str | None = None
+    persona_prompt: str | None = None
     model: str | None = None
     temperature: float | None = None
     max_output_tokens: int | None = None

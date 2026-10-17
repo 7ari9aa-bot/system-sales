@@ -51,7 +51,12 @@ class Agent(TenantMixin, TimestampMixin, WorkspaceScopeMixin, VersionMixin, Base
     name: Mapped[str] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text)
     model: Mapped[str | None] = mapped_column(String(127))
+    # The BASE prompt: canonical instructions and prohibitions the agent must
+    # follow. The persona (identity, tone, store name) lives beside it in
+    # persona_prompt — the runtime composes base first, persona last, so the
+    # merchant edits their store's voice without ever touching the rules.
     system_prompt: Mapped[str | None] = mapped_column(Text)
+    persona_prompt: Mapped[str | None] = mapped_column(Text)
     temperature: Mapped[float] = mapped_column(Numeric(3, 2), default=0.7, server_default="0.7")
     max_output_tokens: Mapped[int | None] = mapped_column()
     # Per-agent execution guardrails; omitted keys use runtime defaults.
@@ -129,6 +134,7 @@ class AgentVersion(TenantMixin, TimestampMixin, Base):
     )
     version: Mapped[int] = mapped_column(default=1, server_default="1")
     system_prompt: Mapped[str | None] = mapped_column(Text)
+    persona_prompt: Mapped[str | None] = mapped_column(Text)
     model: Mapped[str | None] = mapped_column(String(127))
     temperature: Mapped[float] = mapped_column(Numeric(3, 2), default=0.7, server_default="0.7")
     max_output_tokens: Mapped[int | None] = mapped_column()

@@ -316,6 +316,443 @@ async def _si_data_status(
     }
 
 
+class SITopProductsArgs(BaseModel):
+    days: int = Field(default=30, ge=1, le=90)
+    limit: int = Field(default=5, ge=1, le=20)
+
+
+async def _si_top_products(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    days: int = 30,
+    limit: int = 5,
+    context: dict | None = None,
+) -> dict:
+    """What actually sold: units and revenue per variant, with the size/color
+    the buyer chose — read from the store's own order-item snapshots."""
+    from app.modules.analytics.capabilities import EvidenceStore
+
+    current = await _resolve_window(session, tenant_id, days)
+    rows = (
+        await session.execute(
+            _sql(
+                "SELECT oi.variant_id::text AS variant_id, "
+                "MAX(oi.title) AS title, MAX(oi.sku) AS sku, "
+                "SUM(oi.quantity) AS units, SUM(oi.total) AS revenue, "
+                "MAX(v.option_values) AS option_values "
+                "FROM order_items oi "
+                "JOIN orders o ON o.id = oi.order_id AND o.tenant_id = oi.tenant_id "
+                "LEFT JOIN product_variants v "
+                "ON v.id = oi.variant_id AND v.tenant_id = oi.tenant_id "
+                "WHERE oi.tenant_id = :tenant_id "
+                "AND o.deleted_at IS NULL "
+                "AND COALESCE(o.placed_at, o.created_at) >= :start "
+                "AND COALESCE(o.placed_at, o.created_at) < :end "
+                "GROUP BY oi.variant_id, v.option_values "
+                "ORDER BY units DESC "
+                "LIMIT :limit"
+            ),
+            {
+                "tenant_id": str(tenant_id),
+                "start": current.start,
+                "end": current.end,
+                "limit": limit,
+            },
+        )
+    ).all()
+    products: list[dict] = []
+    for row in rows:
+        options = dict(row.option_values or {})
+        products.append(
+            {
+                "variant_id": row.variant_id,
+                "title": row.title,
+                "sku": row.sku,
+                "size": options.get("size"),
+                "color": options.get("color"),
+                "option_values": options,
+                "units": int(row.units),
+                "revenue": str(row.revenue),
+            }
+        )
+    store = EvidenceStore()
+    facts = _typed_facts(
+        store,
+        current,
+        "top_products",
+        [
+            ("products_sold_variants", len(products), "count", {}),
+            *(
+                (
+                    "units_sold",
+                    p["units"],
+                    "count",
+                    {"sku": p["sku"] or "", "title": p["title"] or ""},
+                )
+                for p in products
+            ),
+            *(
+                (
+                    "revenue",
+                    p["revenue"],
+                    "money",
+                    {"sku": p["sku"] or "", "title": p["title"] or ""},
+                )
+                for p in products
+            ),
+        ],
+    )
+    return {
+        "capability": "top_products",
+        "status": "ok",
+        "summary": {"entries": products},
+        "limitations": [f"showing at most {limit} variants in this window"],
+        "facts": facts,
+    }
+
+
+class SICustomerActivityArgs(BaseModel):
+    days: int = Field(default=30, ge=1, le=90)
+    limit: int = Field(default=10, ge=1, le=50)
+
+
+async def _si_customer_activity(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    days: int = 30,
+    limit: int = 10,
+    context: dict | None = None,
+) -> dict:
+    """The customers who actually contacted the store — through the customer
+    agent or any channel — from the platform's own conversations."""
+    from app.modules.analytics.capabilities import EvidenceStore
+
+    current = await _resolve_window(session, tenant_id, days)
+    window = {
+        "tenant_id": str(tenant_id),
+        "start": current.start,
+        "end": current.end,
+    }
+    rows = (
+        await session.execute(
+            _sql(
+                "SELECT c.id::text AS customer_id, "
+                "COALESCE(c.name, '') AS name, "
+                "COUNT(DISTINCT conv.id) AS conversations, "
+                "COUNT(m.id) FILTER (WHERE m.direction = 'inbound') AS inbound, "
+                "MAX(m.created_at) AS last_message_at "
+                "FROM conversations conv "
+                "JOIN customers c ON c.id = conv.customer_id AND c.tenant_id = conv.tenant_id "
+                "LEFT JOIN messages m "
+                "ON m.conversation_id = conv.id AND m.tenant_id = conv.tenant_id "
+                "AND m.deleted_at IS NULL "
+                "WHERE conv.tenant_id = :tenant_id "
+                "AND conv.created_at >= :start "
+                "AND conv.created_at < :end "
+                "GROUP BY c.id, c.name "
+                "ORDER BY inbound DESC, conversations DESC "
+                "LIMIT :limit"
+            ),
+            {**window, "limit": limit},
+        )
+    ).all()
+    entries = [
+        {
+            "customer_id": r.customer_id,
+            "name": r.name,
+            "conversations": int(r.conversations),
+            "inbound_messages": int(r.inbound),
+            "last_message_at": r.last_message_at.isoformat() if r.last_message_at else None,
+        }
+        for r in rows
+    ]
+    totals = (
+        await session.execute(
+            _sql(
+                "SELECT COUNT(DISTINCT conv.customer_id) AS customers, "
+                "COUNT(DISTINCT conv.id) AS conversations, "
+                "COUNT(m.id) FILTER (WHERE m.direction = 'inbound') AS inbound "
+                "FROM conversations conv "
+                "LEFT JOIN messages m "
+                "ON m.conversation_id = conv.id AND m.tenant_id = conv.tenant_id "
+                "AND m.deleted_at IS NULL "
+                "WHERE conv.tenant_id = :tenant_id "
+                "AND conv.created_at >= :start "
+                "AND conv.created_at < :end"
+            ),
+            window,
+        )
+    ).first()
+    store = EvidenceStore()
+    facts = _typed_facts(
+        store,
+        current,
+        "customer_activity",
+        [
+            ("customers_contacted", totals.customers, "count", {}),
+            ("conversations_total", totals.conversations, "count", {}),
+            ("inbound_messages_total", totals.inbound, "count", {}),
+        ],
+    )
+    return {
+        "capability": "customer_activity",
+        "status": "ok",
+        "summary": {"entries": entries[:limit]},
+        "limitations": [f"showing at most {limit} customers in this window"],
+        "facts": facts,
+    }
+
+
+class SIChannelActivityArgs(BaseModel):
+    days: int = Field(default=30, ge=1, le=90)
+
+
+async def _si_channel_activity(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    days: int = 30,
+    context: dict | None = None,
+) -> dict:
+    """Interactions per connected platform: DM conversations and message
+    volume per channel (whatsapp/instagram/messenger/telegram/webchat).
+
+    Message counts group by the MESSAGE's own channel column — the server-
+    stamped source of each message — falling back to the conversation's
+    channel for rows written before the column existed."""
+    from app.modules.analytics.capabilities import EvidenceStore
+
+    current = await _resolve_window(session, tenant_id, days)
+    window = {
+        "tenant_id": str(tenant_id),
+        "start": current.start,
+        "end": current.end,
+    }
+    conv_rows = (
+        await session.execute(
+            _sql(
+                "SELECT conv.channel AS channel, "
+                "COUNT(DISTINCT conv.id) AS conversations, "
+                "COUNT(DISTINCT conv.customer_id) AS customers "
+                "FROM conversations conv "
+                "WHERE conv.tenant_id = :tenant_id "
+                "AND conv.created_at >= :start "
+                "AND conv.created_at < :end "
+                "GROUP BY conv.channel"
+            ),
+            window,
+        )
+    ).all()
+    msg_rows = (
+        await session.execute(
+            _sql(
+                "SELECT COALESCE(m.channel, conv.channel) AS channel, "
+                "COUNT(*) FILTER (WHERE m.direction = 'inbound') AS inbound, "
+                "COUNT(*) FILTER (WHERE m.direction = 'outbound') AS outbound, "
+                "MAX(m.created_at) AS last_message_at "
+                "FROM messages m "
+                "JOIN conversations conv "
+                "ON conv.id = m.conversation_id AND conv.tenant_id = m.tenant_id "
+                "WHERE m.tenant_id = :tenant_id "
+                "AND m.deleted_at IS NULL "
+                "AND m.created_at >= :start "
+                "AND m.created_at < :end "
+                "GROUP BY 1"
+            ),
+            window,
+        )
+    ).all()
+    message_stats = {r.channel: r for r in msg_rows}
+    channels: list[dict] = []
+    seen: set[str] = set()
+    for row in conv_rows:
+        seen.add(row.channel)
+        stats = message_stats.get(row.channel)
+        channels.append(
+            {
+                "channel": row.channel,
+                "conversations": int(row.conversations),
+                "customers": int(row.customers),
+                "inbound": int(stats.inbound) if stats is not None else 0,
+                "outbound": int(stats.outbound) if stats is not None else 0,
+                "last_message_at": (
+                    stats.last_message_at.isoformat()
+                    if stats is not None and stats.last_message_at
+                    else None
+                ),
+            }
+        )
+    for channel, stats in message_stats.items():
+        if channel in seen:
+            continue
+        # A channel carrying messages but no NEW conversation in the window —
+        # the interaction still happened, so it reports with zero conversations.
+        channels.append(
+            {
+                "channel": channel,
+                "conversations": 0,
+                "customers": 0,
+                "inbound": int(stats.inbound),
+                "outbound": int(stats.outbound),
+                "last_message_at": (
+                    stats.last_message_at.isoformat() if stats.last_message_at else None
+                ),
+            }
+        )
+    channels.sort(key=lambda entry: (-entry["conversations"], -entry["inbound"]))
+    store = EvidenceStore()
+    numbers: list = []
+    for entry in channels:
+        scope = {"channel": entry["channel"]}
+        numbers.extend(
+            [
+                ("conversations", entry["conversations"], "count", scope),
+                ("inbound_messages", entry["inbound"], "count", scope),
+                ("outbound_messages", entry["outbound"], "count", scope),
+            ]
+        )
+    facts = _typed_facts(store, current, "channel_activity", numbers)
+    return {
+        "capability": "channel_activity",
+        "status": "ok",
+        "summary": {"entries": channels},
+        "limitations": [
+            "message-level analysis covers direct conversations; public post "
+            "comments are read through si_social_comments"
+        ],
+        "facts": facts,
+    }
+
+
+class SISocialCommentsArgs(BaseModel):
+    days: int = Field(default=30, ge=1, le=90)
+    limit: int = Field(default=5, ge=1, le=20)
+
+
+async def _si_social_comments(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    days: int = 30,
+    limit: int = 5,
+    context: dict | None = None,
+) -> dict:
+    """What the public says about the store: comment volume per platform, the
+    posts that drew the most, and the latest comment texts — from the store's
+    ingested social comments only (hidden/removed excluded)."""
+    from app.modules.analytics.capabilities import EvidenceStore
+
+    current = await _resolve_window(session, tenant_id, days)
+    window = {
+        "tenant_id": str(tenant_id),
+        "start": current.start,
+        "end": current.end,
+    }
+    per_platform = (
+        await session.execute(
+            _sql(
+                "SELECT platform, COUNT(*) AS comments, "
+                "COUNT(DISTINCT post_id) AS posts, "
+                "COUNT(DISTINCT author_ref) AS commenters "
+                "FROM social_comments WHERE tenant_id = :tenant_id "
+                "AND commented_at >= :start "
+                "AND commented_at < :end "
+                "AND status = 'visible' "
+                "GROUP BY platform ORDER BY comments DESC"
+            ),
+            window,
+        )
+    ).all()
+    top_posts = (
+        await session.execute(
+            _sql(
+                "SELECT platform, post_id, COUNT(*) AS comments "
+                "FROM social_comments WHERE tenant_id = :tenant_id "
+                "AND commented_at >= :start "
+                "AND commented_at < :end "
+                "AND status = 'visible' "
+                "GROUP BY platform, post_id ORDER BY comments DESC "
+                "LIMIT :limit"
+            ),
+            {**window, "limit": limit},
+        )
+    ).all()
+    recent = (
+        await session.execute(
+            _sql(
+                "SELECT platform, post_id, author_name, body, commented_at, permalink "
+                "FROM social_comments WHERE tenant_id = :tenant_id "
+                "AND commented_at >= :start "
+                "AND commented_at < :end "
+                "AND status = 'visible' "
+                "ORDER BY commented_at DESC "
+                "LIMIT :limit"
+            ),
+            {**window, "limit": limit},
+        )
+    ).all()
+    platforms = [
+        {
+            "platform": r.platform,
+            "comments": int(r.comments),
+            "posts_with_comments": int(r.posts),
+            "commenters": int(r.commenters),
+        }
+        for r in per_platform
+    ]
+    posts = [
+        {
+            "platform": r.platform,
+            "post_id": r.post_id,
+            "comments": int(r.comments),
+        }
+        for r in top_posts
+    ]
+    latest = [
+        {
+            "platform": r.platform,
+            "post_id": r.post_id,
+            "author_name": r.author_name,
+            "body": r.body,
+            "commented_at": r.commented_at.isoformat() if r.commented_at else None,
+            "permalink": r.permalink,
+        }
+        for r in recent
+    ]
+    store = EvidenceStore()
+    numbers: list = []
+    for entry in platforms:
+        scope = {"platform": entry["platform"]}
+        numbers.extend(
+            [
+                ("comments_total", entry["comments"], "count", scope),
+                ("social_commenters", entry["commenters"], "count", scope),
+            ]
+        )
+    for post in posts:
+        numbers.append(
+            (
+                "comments_per_post",
+                post["comments"],
+                "count",
+                {"platform": post["platform"], "post_id": post["post_id"] or ""},
+            )
+        )
+    facts = _typed_facts(store, current, "social_comments", numbers)
+    return {
+        "capability": "social_comments",
+        "status": "ok",
+        "summary": {"per_platform": platforms, "top_posts": posts, "recent": latest},
+        "limitations": [
+            f"showing at most {limit} posts and {limit} recent comments; "
+            "hidden and removed comments are excluded"
+        ],
+        "facts": facts,
+    }
+
+
 #: The SI tool names in one place — the configure script and the orchestrator
 #: read this tuple instead of re-listing them.
 SI_TOOLS: tuple[str, ...] = (
@@ -328,6 +765,10 @@ SI_TOOLS: tuple[str, ...] = (
     "si_analyze_seasonality",
     "si_analyze_customers",
     "si_analyze_fulfillment",
+    "si_top_products",
+    "si_customer_activity",
+    "si_channel_activity",
+    "si_social_comments",
 )
 
 
@@ -395,6 +836,47 @@ def register_si_tools() -> None:
             description="Carrier delivery/rejection rates (minimum volume applies).",
             args_schema=SIFulfillmentArgs,
             handler=_si_analyze_fulfillment,
+            tags=["sales-intelligence"],
+        ),
+        ToolSpec(
+            name="si_top_products",
+            description=(
+                "Best-selling variants in the window: units, revenue, and the "
+                "size/color options buyers chose."
+            ),
+            args_schema=SITopProductsArgs,
+            handler=_si_top_products,
+            tags=["sales-intelligence"],
+        ),
+        ToolSpec(
+            name="si_customer_activity",
+            description=(
+                "The customers who contacted the store in the window (via any "
+                "channel or the customer agent), with conversation and message "
+                "counts."
+            ),
+            args_schema=SICustomerActivityArgs,
+            handler=_si_customer_activity,
+            tags=["sales-intelligence"],
+        ),
+        ToolSpec(
+            name="si_channel_activity",
+            description=(
+                "Interaction volume per connected platform (whatsapp, "
+                "instagram, messenger, telegram, webchat) in the window."
+            ),
+            args_schema=SIChannelActivityArgs,
+            handler=_si_channel_activity,
+            tags=["sales-intelligence"],
+        ),
+        ToolSpec(
+            name="si_social_comments",
+            description=(
+                "What the public says on the store's social posts: comment "
+                "volume per platform, top posts, and the latest comments."
+            ),
+            args_schema=SISocialCommentsArgs,
+            handler=_si_social_comments,
             tags=["sales-intelligence"],
         ),
     ]

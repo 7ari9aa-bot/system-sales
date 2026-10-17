@@ -311,16 +311,40 @@ def test_agents_surface_declares_its_guardrails_and_withholds_its_prompt() -> No
 def test_agent_detail_and_patch_surface_includes_prompt_and_version() -> None:
     """ADR-060: GET /ai/agents/{agent_id}/prompt and PATCH /ai/agents/{agent_id}
     expose the system_prompt and concurrency version for tenant agent configuration.
+
+    The TWO-PROMPT contract: the base rules (system_prompt) and the merchant's
+    store voice (persona_prompt) are separate fields end to end — the owner
+    console edits each through its own control and the runtime composes them.
     """
     prompt_props = _properties("/api/v1/ai/agents/{agent_id}/prompt", "get")
     assert "system_prompt" in prompt_props
+    assert "persona_prompt" in prompt_props
     assert "version" in prompt_props
     assert "id" in prompt_props
     assert "name" in prompt_props
 
     patch_props = _properties("/api/v1/ai/agents/{agent_id}", "patch")
     assert "system_prompt" in patch_props
+    assert "persona_prompt" in patch_props
     assert "version" in patch_props
+
+    version_props = _properties("/api/v1/ai/agents/{agent_id}/publish", "post")
+    assert "persona_prompt" in version_props
+
+    def _request_properties(path: str, method: str) -> dict:
+        document = _app().openapi()
+        entry = document["paths"][path][method.lower()]
+        schema = (entry.get("requestBody") or {})["content"]["application/json"]["schema"]
+        return _resolve(document, schema).get("properties") or {}
+
+    assert "persona_prompt" in _request_properties("/api/v1/ai/agents", "post")
+    assert "persona_prompt" in _request_properties("/api/v1/ai/agents/{agent_id}", "patch")
+
+    # The member-readable listing stays prompt-free (business secret).
+    list_props = _properties("/api/v1/ai/agents", "get")
+    assert list_props, "the listing must stay a typed contract"
+    assert "system_prompt" not in list_props
+    assert "persona_prompt" not in list_props
 
 
 def test_memory_review_state_is_typed_end_to_end() -> None:

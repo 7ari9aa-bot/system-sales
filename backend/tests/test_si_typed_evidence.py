@@ -21,6 +21,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.ai.agents.sales_intelligence.agent import (
@@ -447,3 +448,314 @@ async def test_fulfillment_excludes_soft_deleted_orders(db, tenant_ctx) -> None:
     carriers = {row.get("carrier") for row in result["summary"].get("carriers") or []}
     assert "LiveExpress" in carriers
     assert "GhostExpress" not in carriers
+
+
+async def test_top_products_reports_units_revenue_and_options(db, tenant_ctx) -> None:
+    """The analyst knows WHAT sold, in WHICH size and color, for HOW much —
+    from the store's order-item snapshots, never from its own invention."""
+    from app.modules.ai.agents.sales_intelligence.tools import _si_top_products
+    from app.modules.catalog.models import Product, ProductVariant
+    from app.modules.orders.models import OrderItem
+
+    tenant_id = tenant_ctx.tenant_id
+    customer = Customer(tenant_id=tenant_id, name="Buyer")
+    db.add(customer)
+    await db.flush()
+    product = Product(
+        tenant_id=tenant_id,
+        title="تيشيرت صيفي",
+        slug=f"summer-tee-{uuid.uuid4().hex[:6]}",
+        status="active",
+    )
+    db.add(product)
+    await db.flush()
+    large = ProductVariant(
+        tenant_id=tenant_id,
+        product_id=product.id,
+        sku=f"TEE-L-{uuid.uuid4().hex[:6]}",
+        title="تيشيرت صيفي — L",
+        option_values={"size": "L", "color": "أحمر"},
+        price=250.0,
+    )
+    medium = ProductVariant(
+        tenant_id=tenant_id,
+        product_id=product.id,
+        sku=f"TEE-M-{uuid.uuid4().hex[:6]}",
+        title="تيشيرت صيفي — M",
+        option_values={"size": "M", "color": "أزرق"},
+        price=250.0,
+    )
+    db.add_all([large, medium])
+    await db.flush()
+    day = NOW.replace(hour=0, minute=0, second=0, microsecond=0)
+    order = Order(
+        tenant_id=tenant_id,
+        number=f"TOP-{uuid.uuid4().hex[:6]}",
+        customer_id=customer.id,
+        status="fulfilled",
+        grand_total=1000.0,
+        channel="web",
+        placed_at=day - timedelta(days=3),
+    )
+    db.add(order)
+    await db.flush()
+    db.add_all(
+        [
+            OrderItem(
+                tenant_id=tenant_id,
+                order_id=order.id,
+                variant_id=large.id,
+                title="تيشيرت صيفي — L",
+                sku=large.sku,
+                quantity=3,
+                unit_price=250.0,
+                total=750.0,
+            ),
+            OrderItem(
+                tenant_id=tenant_id,
+                order_id=order.id,
+                variant_id=medium.id,
+                title="تيشيرت صيفي — M",
+                sku=medium.sku,
+                quantity=1,
+                unit_price=250.0,
+                total=250.0,
+            ),
+        ]
+    )
+    await db.flush()
+
+    result = await _si_top_products(db, tenant_id, days=30, limit=5)
+    entries = result["summary"]["entries"]
+    assert entries[0]["sku"] == large.sku  # 3 units outrank 1
+    assert entries[0]["units"] == 3
+    assert entries[0]["size"] == "L"
+    assert entries[0]["color"] == "أحمر"
+    assert Decimal(entries[0]["revenue"]) == Decimal("750")
+    metrics = {f["metric"] for f in result["facts"]}
+    assert {"products_sold_variants", "units_sold", "revenue"} <= metrics
+    units_by_sku = {
+        f["filters"].get("sku"): f["value"] for f in result["facts"] if f["metric"] == "units_sold"
+    }
+    assert units_by_sku[large.sku] == "3"
+    assert units_by_sku[medium.sku] == "1"
+
+
+async def test_customer_activity_lists_contacted_customers(db, tenant_ctx) -> None:
+    """Customers who reached the store — through any channel or the customer
+    agent — surface with their conversation volume, as typed facts."""
+    from app.modules.ai.agents.sales_intelligence.tools import _si_customer_activity
+    from app.modules.conversations.models import Conversation, Message
+
+    tenant_id = tenant_ctx.tenant_id
+    talker = Customer(tenant_id=tenant_id, name="عميل بتكلم")
+    quiet = Customer(tenant_id=tenant_id, name="عميل فتح بس")
+    db.add_all([talker, quiet])
+    await db.flush()
+    conv = Conversation(
+        tenant_id=tenant_id, customer_id=talker.id, channel="whatsapp", status="open"
+    )
+    db.add(conv)
+    await db.flush()
+    db.add_all(
+        [
+            Message(
+                tenant_id=tenant_id,
+                conversation_id=conv.id,
+                direction="inbound",
+                sender_type="customer",
+                body="عايز أعرف السعر",
+            ),
+            Message(
+                tenant_id=tenant_id,
+                conversation_id=conv.id,
+                direction="inbound",
+                sender_type="customer",
+                body="والمقاسات؟",
+            ),
+            Message(
+                tenant_id=tenant_id,
+                conversation_id=conv.id,
+                direction="outbound",
+                sender_type="ai",
+                body="أهلاً بيك",
+            ),
+        ]
+    )
+    # A contact with no messages yet still counts as a conversation.
+    db.add(
+        Conversation(
+            tenant_id=tenant_id, customer_id=quiet.id, channel="instagram", status="open"
+        )
+    )
+    await db.flush()
+
+    result = await _si_customer_activity(db, tenant_id, days=30, limit=10)
+    entries = {e["customer_id"]: e for e in result["summary"]["entries"]}
+    assert entries[str(talker.id)]["inbound_messages"] == 2
+    assert entries[str(talker.id)]["conversations"] == 1
+    assert str(quiet.id) in entries
+    totals = {f["metric"]: f["value"] for f in result["facts"]}
+    assert totals["customers_contacted"] == "2"
+    assert totals["conversations_total"] == "2"
+    assert totals["inbound_messages_total"] == "2"
+
+
+async def test_channel_activity_breaks_down_by_platform(db, tenant_ctx) -> None:
+    """Interaction volume per connected platform, with the numbers registered
+    as facts per channel so the answer can quote them. Message counts group by
+    the MESSAGE's own channel column; rows without one (legacy, or direct
+    inserts) fall back to the conversation's channel."""
+    from app.modules.ai.agents.sales_intelligence.tools import _si_channel_activity
+    from app.modules.conversations.models import Conversation, Message
+    from app.modules.conversations.service import ConversationService
+
+    tenant_id = tenant_ctx.tenant_id
+    customer = Customer(tenant_id=tenant_id, name="Multi Channel")
+    db.add(customer)
+    await db.flush()
+    # One OPEN conversation per (customer, channel) — the platform's own rule.
+    plan = [("whatsapp", "open"), ("whatsapp", "closed"), ("instagram", "open")]
+    for channel, status in plan:
+        conv = Conversation(
+            tenant_id=tenant_id, customer_id=customer.id, channel=channel, status=status
+        )
+        db.add(conv)
+        await db.flush()
+        db.add(
+            Message(
+                tenant_id=tenant_id,
+                conversation_id=conv.id,
+                direction="inbound",
+                sender_type="customer",
+                body="hello",
+            )
+        )
+    # A message stamped with its OWN source (facebook) on a whatsapp
+    # conversation: per-message analytics read the message, not the thread.
+    whatsapp_conv = (
+        (
+            await db.execute(
+                select(Conversation).where(
+                    Conversation.tenant_id == tenant_id,
+                    Conversation.customer_id == customer.id,
+                    Conversation.channel == "whatsapp",
+                )
+            )
+        )
+        .scalars()
+        .first()
+    )
+    db.add(
+        Message(
+            tenant_id=tenant_id,
+            conversation_id=whatsapp_conv.id,
+            direction="inbound",
+            sender_type="customer",
+            body="من فيسبوك",
+            channel="facebook",
+        )
+    )
+    await db.flush()
+    # A service-written message is stamped server-side (webchat here).
+    webchat_conv = await ConversationService.get_or_create(
+        db, tenant_id, customer_id=customer.id, channel="webchat"
+    )
+    await ConversationService.add_message(
+        db,
+        tenant_id,
+        conversation_id=webchat_conv.id,
+        direction="inbound",
+        sender_type="customer",
+        body="عبر الويب شات",
+    )
+
+    result = await _si_channel_activity(db, tenant_id, days=30)
+    by_channel = {e["channel"]: e for e in result["summary"]["entries"]}
+    assert by_channel["whatsapp"]["conversations"] == 2
+    assert by_channel["whatsapp"]["inbound"] == 2  # legacy rows fall back
+    assert by_channel["instagram"]["conversations"] == 1
+    assert by_channel["facebook"]["inbound"] == 1  # the message's own source
+    assert by_channel["webchat"]["inbound"] == 1  # the service stamped it
+    facts = {
+        (f["metric"], f["filters"].get("channel")): f["value"] for f in result["facts"]
+    }
+    assert facts[("conversations", "whatsapp")] == "2"
+    assert facts[("inbound_messages", "instagram")] == "1"
+    assert facts[("inbound_messages", "facebook")] == "1"
+
+
+async def test_si_social_comments_reads_ingested_comments(db, tenant_ctx) -> None:
+    """The analyst reads the store's PUBLIC comments per platform and per post
+    — hidden/removed excluded, and every volume registered as a fact."""
+    from app.modules.ai.agents.sales_intelligence.tools import _si_social_comments
+    from app.modules.conversations.models import SocialComment
+
+    tenant_id = tenant_ctx.tenant_id
+    now = datetime.now(UTC)
+    db.add_all(
+        [
+            SocialComment(
+                tenant_id=tenant_id,
+                platform="facebook",
+                comment_id=f"fb-{i}",
+                post_id="post-A",
+                author_name=f"معلق {i}",
+                body=f"تعليق {i}",
+                commented_at=now - timedelta(hours=i + 1),
+                status="visible",
+            )
+            for i in range(3)
+        ]
+    )
+    db.add_all(
+        [
+            # Moderation must hold: a hidden comment is never measured.
+            SocialComment(
+                tenant_id=tenant_id,
+                platform="facebook",
+                comment_id="fb-hidden",
+                post_id="post-A",
+                body="مخفي",
+                commented_at=now - timedelta(minutes=30),
+                status="hidden",
+            ),
+            SocialComment(
+                tenant_id=tenant_id,
+                platform="instagram",
+                comment_id="ig-1",
+                post_id="post-B",
+                body="متوفر؟",
+                commented_at=now - timedelta(minutes=15),
+                status="visible",
+            ),
+        ]
+    )
+    await db.flush()
+
+    result = await _si_social_comments(db, tenant_id, days=30, limit=5)
+    per_platform = {e["platform"]: e for e in result["summary"]["per_platform"]}
+    assert per_platform["facebook"]["comments"] == 3
+    assert per_platform["facebook"]["posts_with_comments"] == 1
+    assert per_platform["instagram"]["comments"] == 1
+    posts = {
+        (p["platform"], p["post_id"]): p["comments"]
+        for p in result["summary"]["top_posts"]
+    }
+    assert posts[("facebook", "post-A")] == 3
+    recent_bodies = [e["body"] for e in result["summary"]["recent"]]
+    assert "مخفي" not in recent_bodies
+    assert "متوفر؟" in recent_bodies
+    post_facts = {
+        (f["filters"].get("platform"), f["filters"].get("post_id")): f["value"]
+        for f in result["facts"]
+        if f["metric"] == "comments_per_post"
+    }
+    assert post_facts[("facebook", "post-A")] == "3"
+    totals = {
+        (f["metric"], f["filters"].get("platform")): f["value"]
+        for f in result["facts"]
+        if f["metric"] == "comments_total"
+    }
+    assert totals[("comments_total", "facebook")] == "3"
+    assert totals[("comments_total", "instagram")] == "1"

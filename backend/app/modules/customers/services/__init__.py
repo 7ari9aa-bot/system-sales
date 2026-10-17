@@ -1,12 +1,12 @@
 """Customer services package — re-exports every public symbol."""
 
 from app.modules.customers.services._common import (
-    ISSUE_CANONICAL_COLLISION,
-    ISSUE_LEGACY_DEFAULT,
     _BACKFILL_KEY,
     _ISSUE_MARK_KEYS,
     _ISSUE_RESOLUTIONS,
     _RESOLVE_ATTEMPTS,
+    ISSUE_CANONICAL_COLLISION,
+    ISSUE_LEGACY_DEFAULT,
     _canonical_or_raw,
     _contact_flag,
     _now,

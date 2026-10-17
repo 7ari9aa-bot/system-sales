@@ -480,6 +480,8 @@ class AgentRunner:
         # reverting every merchant edit while a deployment is active.
         if version.system_prompt is not None:
             set_committed_value(agent, "system_prompt", version.system_prompt)
+        if version.persona_prompt is not None:
+            set_committed_value(agent, "persona_prompt", version.persona_prompt)
         if version.model is not None:
             set_committed_value(agent, "model", version.model)
         if version.temperature is not None:
@@ -523,6 +525,23 @@ class AgentRunner:
             pass
         return DEFAULT_SYSTEM_PROMPT
 
+    @staticmethod
+    def _compose_system_content(agent: Agent, override: str | None = None) -> str:
+        """Base rules first, store persona last.
+
+        ``system_prompt`` carries the canonical instructions and prohibitions;
+        ``persona_prompt`` is the merchant-owned voice (agent name, tone, store
+        name). Persona rides LAST so it colors the reply without diluting the
+        rules, and either half may be empty on its own. This composition is
+        the ONLY place the two prompts meet — the owner console edits each
+        through its own field and never needs to know about the other.
+        """
+        base = AgentRunner._resolve_system_prompt(agent, override).strip()
+        persona = (getattr(agent, "persona_prompt", None) or "").strip()
+        if persona:
+            return f"{base}\n\n{persona}"
+        return base
+
     async def _loop(
         self,
         session: AsyncSession,
@@ -561,7 +580,7 @@ class AgentRunner:
         messages: list[dict] = [
             {
                 "role": "system",
-                "content": self._resolve_system_prompt(agent, system_prompt),
+                "content": self._compose_system_content(agent, system_prompt),
             }
         ]
         # §132: knowledge context is injected as a SEPARATE user message,

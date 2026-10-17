@@ -301,6 +301,7 @@ class TestRuntimeResolution:
             version=1,
             status="published",
             system_prompt="snapshot prompt",
+            persona_prompt="snapshot persona",
             model="strong",
         )
         db.add(version)
@@ -321,10 +322,12 @@ class TestRuntimeResolution:
         assert source == "deployment"
         assert version_id == version.id
         assert agent.system_prompt == "snapshot prompt"  # served in-memory
+        assert agent.persona_prompt == "snapshot persona"
 
         await db.flush()
         agent_id = agent.id
         db.expire_all()
         row = (await db.execute(sa.select(Agent).where(Agent.id == agent_id))).scalar_one()
         assert row.system_prompt == "row prompt"  # the mutable row never moved
+        assert row.persona_prompt is None  # the persona never leaked either
         assert row.model == "fast"

@@ -111,6 +111,9 @@ async def create_agent(ctx: SettingsCtx, body: AgentCreateRequest) -> AgentOut:
         name=body.name,
         model=model,
         system_prompt=system_prompt,
+        # Merchant-owned store voice: stored verbatim, no base merge — the
+        # runtime composes base first, persona last.
+        persona_prompt=(body.persona_prompt or "").strip() or None,
         description=body.description or defn.description,
     )
     ctx.session.add(agent)

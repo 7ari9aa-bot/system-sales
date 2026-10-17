@@ -14,7 +14,6 @@ open session exists.
 from __future__ import annotations
 
 import asyncio
-import datetime as dt
 import sys
 from decimal import Decimal
 from pathlib import Path
@@ -23,8 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from sqlalchemy import select
 
-from app.core.db import get_sessionmaker
-from app.core.db import bind_tenant
+from app.core.db import bind_tenant, get_sessionmaker
 from app.modules.catalog.models import Product, ProductIdentifier, ProductVariant
 from app.modules.identity.models import Tenant, User
 from app.modules.identity.services import auth as auth_service

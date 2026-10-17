@@ -170,7 +170,13 @@ class AIAgentVersionService:
             published is not None
             and all(
                 getattr(published, field) == getattr(agent, field)
-                for field in ("system_prompt", "model", "temperature", "max_output_tokens")
+                for field in (
+                    "system_prompt",
+                    "persona_prompt",
+                    "model",
+                    "temperature",
+                    "max_output_tokens",
+                )
             )
             and dict(published.run_limits or {}) == dict(agent.run_limits or {})
             and dict(published.tool_policy or {}) == dict(tool_policy or {})
@@ -184,6 +190,7 @@ class AIAgentVersionService:
             agent_id=agent_id,
             version=(published.version + 1) if published is not None else 1,
             system_prompt=agent.system_prompt,
+            persona_prompt=agent.persona_prompt,
             model=agent.model,
             temperature=agent.temperature,
             max_output_tokens=agent.max_output_tokens,

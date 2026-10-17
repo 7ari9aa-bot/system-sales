@@ -33,7 +33,7 @@ def _get_adapter(channel: str):
     """Resolve adapter with transparent support for monkeypatched router.get_adapter."""
     cr = sys.modules.get("app.modules.conversations.router")
     if cr and hasattr(cr, "get_adapter"):
-        fn = getattr(cr, "get_adapter")
+        fn = cr.get_adapter
         return fn(channel)
     return default_get_adapter(channel)
 

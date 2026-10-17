@@ -59,7 +59,7 @@ def main() -> None:
     print(f"  registers: {[r['code'] for r in regs]}")
 
     print("\n=== READY ===")
-    print(f"web:  http://localhost:3000/pos")
+    print("web:  http://localhost:3000/pos")
     print(f"api:  {BASE}")
 
 

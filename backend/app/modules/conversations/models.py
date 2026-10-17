@@ -128,6 +128,12 @@ class Message(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     conversation_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False
     )
+    # The SOURCE of this message — whatsapp | instagram | messenger | telegram
+    # | webchat — stamped server-side from the conversation by add_message so
+    # callers cannot lie. Denormalized from conversations.channel: per-message
+    # channel analytics (which platform is most interactive) must not need a
+    # join, and a customer may move channels between messages.
+    channel: Mapped[str | None] = mapped_column(String(31))
     # direction: inbound | outbound
     direction: Mapped[str] = mapped_column(String(15), nullable=False)
     # sender_type: customer | agent | ai | system
@@ -414,3 +420,48 @@ class CallLeg(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     provider_leg_id: Mapped[str | None] = mapped_column(String(255))
 
     __table_args__ = (Index("ix_call_legs_tenant_call", "tenant_id", "call_id"),)
+
+
+class SocialComment(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
+    """A public comment on the store's social posts (facebook/instagram).
+
+    Deliberately NOT a Message: a comment is public interaction data, not a
+    conversation turn — it pages nobody and never triggers an AI reply. It
+    exists so the merchant's analyst can read what the public says about the
+    store, per platform and per post. `customer_id` stays NULL until the
+    commenter resolves to a known customer identity.
+    """
+
+    __tablename__ = "social_comments"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # platform: facebook | instagram | messenger — the integration the comment
+    # arrived through (the same signed webhook envelope carries them all).
+    platform: Mapped[str] = mapped_column(String(31), nullable=False)
+    comment_id: Mapped[str] = mapped_column(String(127), nullable=False)
+    post_id: Mapped[str | None] = mapped_column(String(127))
+    parent_comment_id: Mapped[str | None] = mapped_column(String(127))
+    author_ref: Mapped[str | None] = mapped_column(String(127))
+    author_name: Mapped[str | None] = mapped_column(String(255))
+    body: Mapped[str | None] = mapped_column(Text)
+    permalink: Mapped[str | None] = mapped_column(Text)
+    like_count: Mapped[int] = mapped_column(default=0, server_default="0")
+    # Platform time (when the comment was written), not our receipt time —
+    # backfilled deliveries must land in the window they belong to.
+    commented_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # allowed: visible | hidden | removed
+    status: Mapped[str] = mapped_column(String(15), server_default="visible")
+    customer_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("customers.id", ondelete="SET NULL"), nullable=True
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "platform",
+            "comment_id",
+            name="uq_social_comments_tenant_platform_comment",
+        ),
+        Index("ix_social_comments_tenant_platform_time", "tenant_id", "platform", "commented_at"),
+        Index("ix_social_comments_tenant_post", "tenant_id", "post_id"),
+    )

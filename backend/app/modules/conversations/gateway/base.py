@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any, Protocol
 
 import httpx
@@ -84,6 +85,107 @@ class StatusUpdate:
     status: str  # sent | delivered | read | failed
     error: str | None = None
     timestamp: Any = None
+
+
+@dataclass
+class InboundComment:
+    """Normalized public comment — one social post's comment or reply.
+
+    Deliberately NOT an InboundMessage: a comment is not a conversation turn.
+    It does not page anyone, does not start an AI run, and does not open a
+    conversation — it is public interaction data the merchant's analyst reads.
+    """
+
+    platform_comment_id: str  # idempotency key
+    post_id: str | None = None  # the post/media the comment sits on
+    parent_comment_id: str | None = None  # a reply thread when present
+    author_ref: str | None = None  # platform-side user id
+    author_name: str | None = None
+    body: str | None = None
+    permalink: str | None = None
+    like_count: int = 0
+    commented_at: datetime | None = None  # platform time, not our receipt time
+    verb: str = "add"  # add | edited | remove
+    raw: dict = field(default_factory=dict)
+
+
+#: Field names Meta uses for public comments across its webhook families:
+#: page "feed" changes carry item=comment; Instagram uses field "comments".
+_COMMENT_FIELDS = ("feed", "comments")
+
+
+def parse_meta_comment_changes(payload: dict) -> list[InboundComment]:
+    """Normalize Meta comment webhook changes — both envelope families.
+
+    Page/web (field ``feed``): value carries ``item: "comment"``, ``verb``
+    (add | edited | remove), ``comment_id``, ``post_id``, ``parent_id``,
+    ``from``, ``message``, ``created_time`` (epoch seconds).
+    Instagram Graph (field ``comments``): value carries ``id``, ``text``,
+    ``from``, ``media.id``, ``parent_id``, ``timestamp`` (ISO string).
+
+    A change that is not a comment (a like, a reaction, a post edit) yields
+    nothing; an unparseable entry yields nothing — comments are analytics
+    input, and a malformed delivery must never fail a webhook that may also
+    carry real messages. Returns a list, always.
+    """
+    out: list[InboundComment] = []
+    for entry in payload.get("entry", []) or []:
+        for change in entry.get("changes", []) or []:
+            if change.get("field") not in _COMMENT_FIELDS:
+                continue
+            value = change.get("value") or {}
+            if change.get("field") == "feed" and value.get("item") != "comment":
+                continue
+            verb = str(value.get("verb") or "add").lower()
+            comment_id = str(
+                value.get("comment_id") or value.get("id") or ""
+            ).strip()
+            if not comment_id:
+                continue
+            body = value.get("message") if value.get("message") is not None else value.get("text")
+            if verb == "remove":
+                body = None
+            author = value.get("from") or {}
+            commented_at = _meta_timestamp(value.get("created_time") or value.get("timestamp"))
+            out.append(
+                InboundComment(
+                    platform_comment_id=comment_id,
+                    post_id=str(
+                        value.get("post_id")
+                        or (value.get("media") or {}).get("id")
+                        or ""
+                    )
+                    or None,
+                    parent_comment_id=str(value.get("parent_id") or "") or None,
+                    author_ref=str(author.get("id") or "") or None,
+                    author_name=author.get("name") or author.get("username"),
+                    body=(str(body).strip() or None) if body is not None else None,
+                    permalink=value.get("permalink_url") or value.get("permalink"),
+                    like_count=int(value.get("like_count") or 0),
+                    commented_at=commented_at,
+                    verb=verb,
+                    raw=value,
+                )
+            )
+    return out
+
+
+def _meta_timestamp(raw: Any) -> datetime | None:
+    """Meta's two timestamp shapes: epoch seconds (page) and ISO (Instagram)."""
+    if raw is None:
+        return None
+    if isinstance(raw, (int, float)):
+        try:
+            return datetime.fromtimestamp(float(raw), tz=UTC)
+        except (OverflowError, OSError, ValueError):
+            return None
+    try:
+        parsed = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed
 
 
 @dataclass

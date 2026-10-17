@@ -3,6 +3,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Query
+from sqlalchemy import select
 
 from app.core.pagination import paginate
 from app.modules.ai import knowledge
@@ -14,7 +15,6 @@ from app.modules.ai.schemas import (
     KnowledgeList,
     KnowledgeSearchHit,
 )
-from sqlalchemy import select
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 

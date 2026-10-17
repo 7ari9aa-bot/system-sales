@@ -283,6 +283,7 @@ export default function Inbox() {
 
   const channel = getChannel(activeChannel);
   const isWhatsApp = activeChannel === "whatsapp";
+  const isTelegram = activeChannel === "telegram";
   const allConversations = convMap[activeChannel] || [];
   const approvalsByConversation = useMemo(() => {
     const map = new Map();
@@ -561,12 +562,14 @@ export default function Inbox() {
           "grid min-h-0 flex-1 grid-cols-1",
           isWhatsApp
             ? "grid-rows-[minmax(0,1fr)] lg:grid-cols-[var(--inbox-chat-list-width)_5px_minmax(0,1fr)] lg:gap-0"
+            : isTelegram
+              ? "gap-0 lg:grid-cols-[clamp(300px,20vw,370px)_minmax(0,1fr)] lg:grid-rows-1 grid-rows-[minmax(180px,30dvh)_minmax(0,1fr)] sm:grid-rows-[minmax(240px,32dvh)_minmax(0,1fr)]"
             : "gap-3 lg:grid-cols-[clamp(320px,28vw,440px)_minmax(0,1fr)] lg:grid-rows-1 lg:gap-3 grid-rows-[minmax(180px,30dvh)_minmax(0,1fr)] sm:grid-rows-[minmax(240px,32dvh)_minmax(0,1fr)]"
         )}
       >
         <div className={cn(
           "bg-card border flex-col min-h-0 overflow-hidden",
-          isWhatsApp ? "rounded-none border-0 bg-white" : "rounded-2xl border-border",
+          isWhatsApp ? "rounded-none border-0 bg-white" : isTelegram ? "rounded-none border-0 border-r border-[#e4e9ec] bg-white" : "rounded-2xl border-border",
           isWhatsApp && mobileChatOpen ? "hidden lg:flex" : "flex"
         )}>
           <div className={cn("p-3 space-y-2.5", isWhatsApp ? "border-b border-[#d1d7db]" : "border-b border-border")}>
@@ -632,28 +635,30 @@ export default function Inbox() {
                 onClick={() => { selectConversation(conversation); if (isWhatsApp) setMobileChatOpen(true); }}
                 className={cn(
                   "w-full flex gap-3 px-3 py-2.5 border-b transition-colors",
-                  isWhatsApp ? "border-[#e9edef] hover:bg-[#f5f6f6]" : "border-border/60 hover:bg-surface/60",
-                  isWhatsApp ? "text-start" : "text-left",
-                  current?.id === conversation.id && (isWhatsApp ? "bg-[#f0f2f5]" : "bg-primary/5")
+                  isWhatsApp ? "border-[#e9edef] hover:bg-[#f5f6f6]" : isTelegram ? "border-[#edf0f2] hover:bg-[#f4f7f9]" : "border-border/60 hover:bg-surface/60",
+                  isWhatsApp || isTelegram ? (lang === "ar" ? "text-right" : "text-left") : "text-left",
+                  current?.id === conversation.id && (isWhatsApp ? "bg-[#f0f2f5]" : isTelegram ? "bg-[#419fd9] text-white hover:bg-[#419fd9]" : "bg-primary/5")
                 )}
               >
                 <div className="relative shrink-0">
-                  <div className={cn("rounded-full grid place-items-center text-[12px] font-semibold text-white", isWhatsApp ? "h-12 w-12 text-[#54656f]" : "h-11 w-11")} style={{ background: conversation.color, color: isWhatsApp ? "#54656f" : "#fff" }}>
+                  <div className={cn("rounded-full grid place-items-center text-[12px] font-semibold text-white", isWhatsApp ? "h-12 w-12 text-[#54656f]" : isTelegram ? "h-12 w-12" : "h-11 w-11")} style={{ background: conversation.color, color: isWhatsApp ? "#54656f" : "#fff" }}>
                     {conversation.initials}
                   </div>
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
-                    <span dir={isWhatsApp ? "auto" : undefined} className={cn("truncate", isWhatsApp ? "text-[14px] font-medium text-[#111b21]" : "text-[13px] font-medium")}>{conversation.customer}</span>
-                    <span dir={isWhatsApp ? "ltr" : undefined} className={cn("shrink-0", isWhatsApp ? "text-[11px] text-[#667781]" : "text-[11px] text-muted-foreground")}>{conversation.time}</span>
+                    <span dir={isWhatsApp || isTelegram ? "auto" : undefined} className={cn("truncate", isWhatsApp ? "text-[14px] font-medium text-[#111b21]" : isTelegram ? "text-[15px] font-medium" : "text-[13px] font-medium")}>{conversation.customer}</span>
+                    <span dir={isWhatsApp || isTelegram ? "ltr" : undefined} className={cn("shrink-0", isWhatsApp ? "text-[11px] text-[#667781]" : isTelegram ? current?.id === conversation.id ? "text-[11px] text-white/85" : "text-[11px] text-[#7f9db8]" : "text-[11px] text-muted-foreground")}>{conversation.time}</span>
                   </div>
-                  <p dir={isWhatsApp ? "auto" : undefined} className={cn("truncate mt-0.5", isWhatsApp ? "text-[12px] text-[#667781]" : "text-[12px] text-muted-foreground")}>{conversation.preview}</p>
-                  <div className="flex items-center gap-1.5 mt-1">
-                    <span className={cn("px-1.5 py-0.5 text-[10px]", isWhatsApp ? "rounded-full bg-[#f0f2f5] text-[#667781]" : "rounded-md bg-surface text-muted-foreground")}>
-                      {t(`inbox.status.${conversation.status}`)}
-                    </span>
+                  <p dir={isWhatsApp || isTelegram ? "auto" : undefined} className={cn("truncate mt-0.5", isWhatsApp ? "text-[12px] text-[#667781]" : isTelegram ? current?.id === conversation.id ? "text-[13px] text-white/90" : "text-[13px] text-[#7b8d9b]" : "text-[12px] text-muted-foreground")}>{conversation.preview}</p>
+                  <div className="mt-1 flex items-center gap-1.5">
+                    {!isTelegram && (
+                      <span className={cn("px-1.5 py-0.5 text-[10px]", isWhatsApp ? "rounded-full bg-[#f0f2f5] text-[#667781]" : "rounded-md bg-surface text-muted-foreground")}>
+                        {t(`inbox.status.${conversation.status}`)}
+                      </span>
+                    )}
                     {conversation.unread > 0 && (
-                      <span className={cn("ml-auto text-[10px] font-semibold px-1.5 py-0.5 tabular-nums", isWhatsApp ? "min-w-5 rounded-full bg-[#25d366] text-center text-white" : "rounded-md bg-primary text-primary-foreground")}>
+                      <span className={cn("ml-auto text-[10px] font-semibold px-1.5 py-0.5 tabular-nums", isWhatsApp ? "min-w-5 rounded-full bg-[#25d366] text-center text-white" : isTelegram ? "min-w-5 rounded-full bg-[#2aabee] text-center text-white" : "rounded-md bg-primary text-primary-foreground")}>
                         {conversation.unread}
                       </span>
                     )}

@@ -49,7 +49,7 @@ def main() -> None:
     profile = items[0]
 
     _, sessions = call(
-        "GET", f"/pos/registers", token=token
+        "GET", "/pos/registers", token=token
     )
     regs = sessions if isinstance(sessions, list) else sessions.get("items", [])
     register = regs[0]

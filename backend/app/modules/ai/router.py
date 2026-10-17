@@ -69,12 +69,15 @@ from app.modules.ai.routers._deps import (  # noqa: E402, F401
 )
 
 # Helper serialisers (imported by test_ai_contract.py)
-from app.modules.ai.routers.governance import _approval_out  # noqa: E402, F401
-from app.modules.ai.routers.governance import _policy_out  # noqa: E402, F401
-from app.modules.ai.routers.memories import _memory_out  # noqa: E402, F401
-from app.modules.ai.routers.observability import _evaluation_out  # noqa: E402, F401
-
 # Endpoint functions (imported by test files)
-from app.modules.ai.routers.governance import claim_handover  # noqa: E402, F401
-from app.modules.ai.routers.governance import resolve_handover  # noqa: E402, F401
-from app.modules.ai.routers.observability import usage_summary  # noqa: E402, F401
+from app.modules.ai.routers.governance import (
+    _approval_out,  # noqa: E402, F401
+    _policy_out,  # noqa: E402, F401
+    claim_handover,  # noqa: E402, F401
+    resolve_handover,  # noqa: E402, F401
+)
+from app.modules.ai.routers.memories import _memory_out  # noqa: E402, F401
+from app.modules.ai.routers.observability import (
+    _evaluation_out,  # noqa: E402, F401
+    usage_summary,  # noqa: E402, F401
+)

@@ -18,13 +18,17 @@ from app.modules.conversations.routers.inbox import (
     list_messages,
     mark_read,
     reconcile_messages,
-    router as _inbox_router,
     send_message,
+)
+from app.modules.conversations.routers.inbox import (
+    router as _inbox_router,
 )
 from app.modules.conversations.routers.stream import (
     _stream_auth,
-    router as _stream_router,
     stream_conversations,
+)
+from app.modules.conversations.routers.stream import (
+    router as _stream_router,
 )
 from app.modules.conversations.routers.templates import (
     TemplateApproveRequest,

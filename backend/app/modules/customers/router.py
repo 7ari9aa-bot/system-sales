@@ -11,9 +11,7 @@
 
 from __future__ import annotations
 
-# Re-export from the routers sub-package.
-from app.modules.customers.routers.customers import router  # noqa: F401
-from app.modules.customers.routers.integrations import platform_router  # noqa: F401
+from app.modules.billing.service import EntitlementService  # noqa: F401
 
 # Also re-export shared helpers that other modules may import from here.
 from app.modules.customers.routers._deps import (  # noqa: F401
@@ -24,17 +22,17 @@ from app.modules.customers.routers._deps import (  # noqa: F401
     _customer_summary,
     _redact_issue_item,
 )
+
+# Re-export from the routers sub-package.
+from app.modules.customers.routers.customers import router  # noqa: F401
+
 # Re-export integration symbols that tests monkeypatch via this module path.
 from app.modules.customers.routers.integrations import (  # noqa: F401
     _CHANNEL_CONFIG_FIELDS,
     _CHANNEL_CREDENTIAL_FIELDS,
     _telegram_webhook_url,
+    platform_router,  # noqa: F401
 )
-from app.modules.platform.integration_verifier import (  # noqa: F401
-    configure_telegram_webhook,
-    verify_channel_credentials,
-)
-from app.modules.billing.service import EntitlementService  # noqa: F401
 from app.modules.customers.schemas import (  # noqa: F401
     ArchiveBody,
     ContactIssueResolution,
@@ -42,6 +40,10 @@ from app.modules.customers.schemas import (  # noqa: F401
     MergeBody,
     NoteBody,
     TagBody,
+)
+from app.modules.platform.integration_verifier import (  # noqa: F401
+    configure_telegram_webhook,
+    verify_channel_credentials,
 )
 
 # Preserve endpoint.__module__ so test_route_parameter_declarations.py and

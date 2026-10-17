@@ -55,6 +55,26 @@ _DEFINITION = AgentDefinition(
             description="Carrier delivery and rejection rates",
             required=False,
         ),
+        AgentCapability(
+            name="si_top_products",
+            description="Best-selling variants with units, revenue, sizes and colors",
+            required=False,
+        ),
+        AgentCapability(
+            name="si_customer_activity",
+            description="Customers who contacted the store, with conversation volume",
+            required=False,
+        ),
+        AgentCapability(
+            name="si_channel_activity",
+            description="Interaction volume per connected platform",
+            required=False,
+        ),
+        AgentCapability(
+            name="si_social_comments",
+            description="Public comments on the store's social posts",
+            required=False,
+        ),
     ],
     system_prompt_template=SI_SYSTEM_PROMPT,
     default_model="strong",
