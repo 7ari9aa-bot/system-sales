@@ -1,6 +1,15 @@
 // Static channel presentation metadata only. Connection status and all
 // conversations/messages are loaded from the authenticated backend API.
 
+export const MESSENGER_CHAT_THEMES = [
+  { id: "blue", name: { ar: "أزرق", en: "Blue" }, accent: "#0084FF" },
+  { id: "purple", name: { ar: "بنفسجي", en: "Purple" }, accent: "#8B5CF6" },
+  { id: "pink", name: { ar: "وردي", en: "Pink" }, accent: "#E64980" },
+  { id: "teal", name: { ar: "تركواز", en: "Teal" }, accent: "#0F9D8A" },
+  { id: "orange", name: { ar: "برتقالي", en: "Orange" }, accent: "#F47B20" },
+  { id: "indigo", name: { ar: "نيلي", en: "Indigo" }, accent: "#5B65D8" },
+];
+
 export const CHANNELS = [
   {
     id: "whatsapp",

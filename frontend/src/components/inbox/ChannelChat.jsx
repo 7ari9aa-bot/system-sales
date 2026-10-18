@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
-import { ArrowLeft, ArrowRight, ArrowUpRight, Search, Sparkles, X, Check, CheckCheck, Paperclip, Smile, Mic, MoreVertical, Send } from "lucide-react";
+import { ArrowLeft, ArrowRight, ArrowUpRight, Search, Sparkles, X, Check, CheckCheck, Paperclip, Smile, Mic, MoreVertical, Send, Palette } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ConversationAvatar from "@/components/inbox/ConversationAvatar";
+import { MESSENGER_CHAT_THEMES } from "@/lib/channels";
 
 // A themed chat pane that renders in the selected channel's real look.
 // Brand channels (WhatsApp/Instagram/Messenger/Telegram/Facebook) keep their
@@ -10,6 +11,8 @@ export default function ChannelChat({
   channel,
   className = "",
   onBack,
+  messengerThemeId,
+  onMessengerThemeChange,
   lang = "en",
   conversation,
   approval,
@@ -29,6 +32,7 @@ export default function ChannelChat({
   const [text, setText] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [themePickerOpen, setThemePickerOpen] = useState(false);
   const [telegramMessagesScrolling, setTelegramMessagesScrolling] = useState(false);
   const scrollRef = useRef(null);
   const telegramScrollTimerRef = useRef(null);
@@ -39,7 +43,8 @@ export default function ChannelChat({
   const isInstagram = channel.id === "instagram";
   const isMessenger = channel.id === "messenger";
   const isTelegram = channel.id === "telegram";
-  const th = isApp ? null : channel.theme;
+  const messengerTheme = MESSENGER_CHAT_THEMES.find((theme) => theme.id === messengerThemeId) || MESSENGER_CHAT_THEMES[0];
+  const th = isApp ? null : isMessenger ? { ...channel.theme, out: messengerTheme.accent } : channel.theme;
   const allMessages = conversation?.messages || [];
   const messageBackgroundStyle = isWhatsApp ? {
     backgroundColor: "#efeae2",
@@ -78,6 +83,7 @@ export default function ChannelChat({
     setText("");
     setSearchQuery("");
     setSearchOpen(false);
+    setThemePickerOpen(false);
   }, [conversation?.id]);
 
   useEffect(() => () => clearTimeout(telegramScrollTimerRef.current), []);
@@ -132,13 +138,13 @@ export default function ChannelChat({
 
   return (
     <div
-      className={cn("flex-1 flex flex-col min-h-0 overflow-hidden border", isWhatsApp ? "rounded-xl border-[#d1d7db] lg:rounded-none lg:border-y lg:border-r lg:border-l-0" : isInstagram ? "rounded-none border-0 border-s border-[#dbdbdb] bg-white" : isMessenger ? "rounded-none border-0 border-s border-[#e4e6eb] bg-white" : "rounded-2xl border-border", className)}
+      className={cn("relative flex-1 flex flex-col min-h-0 overflow-hidden border", isWhatsApp ? "rounded-xl border-[#d1d7db] lg:rounded-none lg:border-y lg:border-r lg:border-l-0" : isInstagram ? "rounded-none border-0 border-s border-[#dbdbdb] bg-white" : isMessenger ? "rounded-none border-0 border-s border-[#e4e6eb] bg-white" : "rounded-2xl border-border", className)}
       style={isApp ? undefined : { background: th.chatBg }}>
       
       {/* Header */}
       <div
         dir={isWhatsApp || isTelegram ? "ltr" : isInstagram || isMessenger ? (lang === "ar" ? "rtl" : "ltr") : undefined}
-        className={cn("flex items-center gap-3 px-4 shrink-0", isWhatsApp ? "h-[60px] px-4" : isTelegram ? "h-[66px] px-5" : isInstagram ? "h-[64px] px-4" : isMessenger ? "h-16 px-5" : "h-14")}
+        className={cn("relative flex items-center gap-3 px-4 shrink-0", isWhatsApp ? "h-[60px] px-4" : isTelegram ? "h-[66px] px-5" : isInstagram ? "h-[64px] px-4" : isMessenger ? "h-16 px-5" : "h-14")}
         style={isApp ? { background: "hsl(var(--card))", borderBottom: "1px solid hsl(var(--border))" } : { background: th.headerBg, color: th.headerText, borderBottom: (isWhatsApp || isTelegram || isInstagram || isMessenger) ? "1px solid " + th.divider : undefined }}>
 
         {(isWhatsApp || isMessenger) && onBack && (
@@ -166,13 +172,27 @@ export default function ChannelChat({
           <div dir={isWhatsApp || isTelegram || isInstagram || isMessenger ? "auto" : undefined} className={cn("truncate", isWhatsApp ? "text-left text-[15px] font-medium text-[#111b21]" : isTelegram ? "text-left text-[15px] font-medium text-[#222]" : isInstagram ? "text-[14px] font-semibold text-[#262626]" : isMessenger ? "text-[15px] font-semibold text-[#050505]" : "text-[14px] font-semibold", isApp && "text-foreground")}>{conversation.customer}</div>
           {!isMessenger && <div className={cn("truncate", isWhatsApp ? "text-left text-[12px] text-[#667781]" : isTelegram ? "text-[12px] text-[#7f9db8]" : isInstagram ? "text-[11.5px] text-[#8e8e8e]" : "text-[11.5px]", isApp && "text-muted-foreground", !isApp && !isWhatsApp && !isTelegram && !isInstagram && "opacity-80")}>{isTelegram ? "bot" : channel.name}</div>}
         </div>
+        {isMessenger && (
+          <button
+            type="button"
+            aria-label={lang === "ar" ? "تغيير ثيم المحادثة" : "Change chat theme"}
+            aria-expanded={themePickerOpen}
+            aria-haspopup="dialog"
+            onClick={() => setThemePickerOpen((open) => !open)}
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#65676b] transition-colors hover:bg-[#f0f2f5] focus-visible:outline-none focus-visible:ring-2"
+            style={{ color: messengerTheme.accent, "--tw-ring-color": messengerTheme.accent }}
+          >
+            <Palette className="h-[18px] w-[18px]" />
+          </button>
+        )}
         {(isWhatsApp || isInstagram || isMessenger || isTelegram) && (
           <button
             type="button"
             aria-label={t("inbox.searchMessages", "Search messages")}
             aria-expanded={searchOpen}
             onClick={() => { setSearchOpen((open) => !open); setSearchQuery(""); }}
-            className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2", isWhatsApp ? "text-[#54656f] hover:bg-[#f5f6f6] focus-visible:ring-[#00a884]" : isInstagram ? "text-[#262626] hover:bg-[#f5f5f5] focus-visible:ring-[#3797f0]" : isMessenger ? "text-[#0084ff] hover:bg-[#f0f2f5] focus-visible:ring-[#0084ff]" : "text-[#707e8b] hover:bg-[#f2f5f7] focus-visible:ring-[#3390ec]")}
+            className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2", isWhatsApp ? "text-[#54656f] hover:bg-[#f5f6f6] focus-visible:ring-[#00a884]" : isInstagram ? "text-[#262626] hover:bg-[#f5f5f5] focus-visible:ring-[#3797f0]" : isMessenger ? "hover:bg-[#f0f2f5] focus-visible:ring-[#0084ff]" : "text-[#707e8b] hover:bg-[#f2f5f7] focus-visible:ring-[#3390ec]")}
+            style={isMessenger ? { color: messengerTheme.accent } : undefined}
           >
             <Search className="h-[18px] w-[18px]" />
           </button>
@@ -186,6 +206,32 @@ export default function ChannelChat({
         )}
         {isInstagram && <button type="button" disabled aria-label={lang === "ar" ? "المزيد من خيارات إنستغرام غير متاحة في العرض التجريبي" : "Instagram more options unavailable in this demo"} title={lang === "ar" ? "الخيارات الإضافية غير متاحة" : "More options unavailable"} className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#262626] disabled:cursor-not-allowed disabled:opacity-60"><MoreVertical className="h-[18px] w-[18px]" /></button>}
       </div>
+
+      {isMessenger && themePickerOpen && (
+        <div role="dialog" aria-label={lang === "ar" ? "ثيم المحادثة" : "Chat theme"} className="absolute left-3 top-[60px] z-30 w-[280px] rounded-xl border border-[#e4e6eb] bg-white p-3 shadow-[0_8px_28px_rgba(0,0,0,0.16)]">
+          <div className="mb-1 text-[13px] font-semibold text-[#050505]">{lang === "ar" ? "لون المحادثة" : "Chat color"}</div>
+          <p className="mb-2.5 text-[11px] text-[#65676b]">{lang === "ar" ? "يتغير الشكل في واجهة الانبوكس." : "Changes the appearance in this inbox."}</p>
+          <div className="grid grid-cols-2 gap-1">
+            {MESSENGER_CHAT_THEMES.map((theme) => (
+              <button
+                key={theme.id}
+                type="button"
+                aria-label={theme.name[lang === "ar" ? "ar" : "en"]}
+                aria-pressed={messengerTheme.id === theme.id}
+                title={theme.name[lang === "ar" ? "ar" : "en"]}
+                onClick={() => { onMessengerThemeChange?.(theme.id); setThemePickerOpen(false); }}
+                className={cn("flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-[11px] text-[#65676b] hover:bg-[#f0f2f5] focus-visible:outline-none focus-visible:ring-2", messengerTheme.id === theme.id && "bg-[#f0f2f5]")}
+                style={{ "--tw-ring-color": theme.accent }}
+              >
+                <span className={cn("grid h-8 w-8 shrink-0 place-items-center rounded-full border-2 border-white shadow-[0_0_0_1px_rgba(0,0,0,0.08)]", messengerTheme.id === theme.id && "ring-2 ring-offset-1")} style={{ background: theme.accent, "--tw-ring-color": theme.accent }}>
+                  {messengerTheme.id === theme.id && <Check className="h-4 w-4 text-white" />}
+                </span>
+                <span className="truncate">{theme.name[lang === "ar" ? "ar" : "en"]}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {(isWhatsApp || isInstagram || isMessenger || isTelegram) && searchOpen && (
         <div className={cn("flex h-12 shrink-0 items-center gap-2 border-b bg-white px-3", isWhatsApp ? "border-[#d1d7db]" : isInstagram ? "border-[#dbdbdb]" : isMessenger ? "border-[#e4e6eb]" : "border-[#e4e9ec]")}>
@@ -405,7 +451,7 @@ export default function ChannelChat({
               aria-label={t("inbox.send")}
               title={t("inbox.send")}
               className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
-              style={{ background: "#0084ff" }}
+              style={{ background: th.out }}
             >
               <Send className="h-4 w-4" />
             </button>

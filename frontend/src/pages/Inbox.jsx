@@ -18,8 +18,9 @@ const MESSAGE_PAGE_SIZE = 50;
 const CHAT_LIST_MIN_WIDTH = 280;
 const CHAT_LIST_MAX_WIDTH = 560;
 const CHAT_PANE_MIN_WIDTH = 360;
-const CHAT_LIST_DEFAULT_WIDTH = 330;
+const CHAT_LIST_DEFAULT_WIDTH = 350;
 const CHAT_LIST_WIDTH_STORAGE_KEY = "fihrist:inboxChatListWidth";
+const MESSENGER_THEME_STORAGE_KEY = "fihrist:messengerChatThemes";
 const WHATSAPP_AVATAR_COLORS = ["#f3d7c5", "#ddd9f2", "#d4e9dd", "#f2dce0", "#d6e6f4", "#efe8c9", "#dce2ef"];
 
 function clampChatListWidth(value, max = CHAT_LIST_MAX_WIDTH) {
@@ -113,6 +114,15 @@ export default function Inbox() {
     }
   });
   const [isResizingChatList, setIsResizingChatList] = useState(false);
+  const [messengerThemes, setMessengerThemes] = useState(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(MESSENGER_THEME_STORAGE_KEY) || "{}");
+      return saved && typeof saved === "object" && !Array.isArray(saved) ? saved : {};
+    } catch {
+      return {};
+    }
+  });
   const inboxSplitRef = useRef(null);
   const resizePointerRef = useRef(null);
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
@@ -189,6 +199,10 @@ export default function Inbox() {
       updateChatListWidth(CHAT_LIST_MAX_WIDTH);
     }
   };
+
+  useEffect(() => {
+    try { window.localStorage.setItem(MESSENGER_THEME_STORAGE_KEY, JSON.stringify(messengerThemes)); } catch {}
+  }, [messengerThemes]);
 
   const loadInboxPage = useCallback(async ({ cursor = null, replace = false } = {}) => {
     const params = new URLSearchParams({ limit: String(INBOX_PAGE_SIZE) });
@@ -649,7 +663,7 @@ export default function Inbox() {
       <div
         ref={inboxSplitRef}
         dir="ltr"
-        style={isWhatsApp ? { "--inbox-chat-list-width": `${chatListWidth}px` } : undefined}
+        style={isWhatsApp || isMessenger ? { "--inbox-chat-list-width": `${chatListWidth}px` } : undefined}
         className={cn(
           "grid min-h-0 flex-1 grid-cols-1",
           isWhatsApp
@@ -659,7 +673,7 @@ export default function Inbox() {
               : isInstagram
                 ? "gap-0 lg:grid-cols-[350px_minmax(0,1fr)] lg:grid-rows-1 grid-rows-[minmax(180px,30dvh)_minmax(0,1fr)] sm:grid-rows-[minmax(240px,32dvh)_minmax(0,1fr)]"
                 : isMessenger
-                  ? "gap-0 grid-rows-[minmax(0,1fr)] lg:grid-cols-[clamp(320px,23vw,380px)_minmax(0,1fr)] lg:grid-rows-1"
+                  ? "gap-0 grid-rows-[minmax(0,1fr)] lg:grid-cols-[var(--inbox-chat-list-width)_5px_minmax(0,1fr)] lg:grid-rows-1"
                   : "gap-3 lg:grid-cols-[clamp(320px,28vw,440px)_minmax(0,1fr)] lg:grid-rows-1 lg:gap-3 grid-rows-[minmax(180px,30dvh)_minmax(0,1fr)] sm:grid-rows-[minmax(240px,32dvh)_minmax(0,1fr)]"
         )}
       >
@@ -812,7 +826,7 @@ export default function Inbox() {
           )}
         </div>
 
-        {isWhatsApp && (
+        {(isWhatsApp || isMessenger) && (
           <div
             role="separator"
             aria-label={lang === "ar" ? "تغيير عرض قائمة المحادثات" : "Resize conversation list"}
@@ -822,8 +836,9 @@ export default function Inbox() {
             aria-valuenow={chatListWidth}
             tabIndex={0}
             className={cn(
-              "group relative hidden cursor-col-resize touch-none select-none border-x border-[#d1d7db] bg-[#f7f5f3] outline-none transition-colors hover:bg-[#e8f5ef] focus-visible:bg-[#e8f5ef] lg:block",
-              isResizingChatList && "bg-[#e8f5ef]"
+              "group relative hidden cursor-col-resize touch-none select-none border-x outline-none transition-colors lg:block",
+              isMessenger ? "border-[#e4e6eb] bg-white hover:bg-[#e7f3ff] focus-visible:bg-[#e7f3ff]" : "border-[#d1d7db] bg-[#f7f5f3] hover:bg-[#e8f5ef] focus-visible:bg-[#e8f5ef]",
+              isResizingChatList && (isMessenger ? "bg-[#e7f3ff]" : "bg-[#e8f5ef]")
             )}
             onPointerDown={handleResizePointerDown}
             onPointerMove={handleResizePointerMove}
@@ -832,7 +847,8 @@ export default function Inbox() {
             onLostPointerCapture={() => finishChatListResize()}
             onKeyDown={handleResizeKeyDown}
           >
-            <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-[#d1d7db] transition-colors group-hover:bg-[#00a884] group-focus-visible:bg-[#00a884]" />
+            <span className={cn("absolute inset-y-0 left-1/2 w-px -translate-x-1/2 transition-colors", isMessenger ? "bg-[#e4e6eb] group-hover:bg-[#0084ff] group-focus-visible:bg-[#0084ff]" : "bg-[#d1d7db] group-hover:bg-[#00a884] group-focus-visible:bg-[#00a884]")} />
+            <span className={cn("absolute left-1/2 top-1/2 h-9 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full transition-colors", isMessenger ? "bg-[#c4c8ce] group-hover:bg-[#0084ff] group-focus-visible:bg-[#0084ff]" : "bg-[#c1c9ce] group-hover:bg-[#00a884] group-focus-visible:bg-[#00a884]")} />
           </div>
         )}
 
@@ -841,6 +857,11 @@ export default function Inbox() {
           lang={lang}
           className={(isWhatsApp || isMessenger) && !mobileChatOpen ? "hidden lg:flex" : ""}
           onBack={isWhatsApp || isMessenger ? () => setMobileChatOpen(false) : undefined}
+          messengerThemeId={current ? messengerThemes[current.id] : undefined}
+          onMessengerThemeChange={(themeId) => {
+            if (!current) return;
+            setMessengerThemes((previous) => ({ ...previous, [current.id]: themeId }));
+          }}
           conversation={current}
           approval={pendingApproval}
           loadingMessages={loadingMessages}
