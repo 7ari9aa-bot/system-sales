@@ -336,6 +336,7 @@ function createInitialData() {
       customer: contact.name,
       initials: contact.initials,
       ...(channel.id === "telegram" && { avatarUrl: `/telegram-avatars/${contact.telegramAvatar}.png` }),
+      ...(channel.id === "messenger" && { avatarUrl: `/telegram-avatars/${contact.telegramAvatar}.png` }),
       ...(channel.id === "instagram" && { avatarUrl: `/telegram-avatars/${contact.telegramAvatar}.png`, folder: ["primary", "general", "requests"][contactIndex % 3] }),
       color: channel.id === "whatsapp" ? whatsappAvatarColor(contact.name) : channel.id === "telegram" ? telegramAvatarColor(contact.name) : channel.accent,
       channel: channel.id,
@@ -389,10 +390,12 @@ export function loadDemoInbox() {
         const recolorTelegram = parsed.telegram.some((conversation) => conversation.color !== telegramAvatarColor(conversation.customer));
         const initialTelegramById = new Map(initialTelegram.map((conversation) => [conversation.id, conversation]));
         const addTelegramAvatars = parsed.telegram.some((conversation) => initialTelegramById.has(conversation.id) && !conversation.avatarUrl);
+        const initialMessengerById = new Map(createInitialData().messenger.map((conversation) => [conversation.id, conversation]));
+        const addMessengerAvatars = parsed.messenger.some((conversation) => initialMessengerById.has(conversation.id) && !conversation.avatarUrl);
         const initialInstagramById = new Map(createInitialData().instagram.map((conversation) => [conversation.id, conversation]));
         const updateInstagramProfiles = parsed.instagram.some((conversation) => initialInstagramById.has(conversation.id) && (!conversation.avatarUrl || !conversation.folder));
         const removeSeedFacebookDms = parsed.facebook.length > 0;
-        if (!missingTelegram.length && !extraFirstMessages.length && !recolorTelegram && !addTelegramAvatars && !updateInstagramProfiles && !removeSeedFacebookDms) return parsed;
+        if (!missingTelegram.length && !extraFirstMessages.length && !recolorTelegram && !addTelegramAvatars && !addMessengerAvatars && !updateInstagramProfiles && !removeSeedFacebookDms) return parsed;
         const migrated = {
           ...parsed,
           facebook: [],
@@ -416,6 +419,10 @@ export function loadDemoInbox() {
             }),
             ...missingTelegram,
           ],
+          messenger: parsed.messenger.map((conversation) => {
+            const initial = initialMessengerById.get(conversation.id);
+            return initial ? { ...conversation, avatarUrl: conversation.avatarUrl || initial.avatarUrl } : conversation;
+          }),
         };
         saveDemoInbox(migrated);
         return migrated;

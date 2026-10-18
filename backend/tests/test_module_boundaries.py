@@ -190,6 +190,11 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # dependencies (operations/catalog) — the shims are the aggregator
 # contract the sibling routers import through.
 BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 209
+# 209 -> 209 on 2026-10-17: the POS exchange + per-line discount
+# functions in pos/service.py and orders/service.py added function-scope
+# reads of the owning modules (orders.models, InventoryService) — measured
+# by CI's ratchet run at 209. No new cycles (SCCs unchanged).
+
 # 192 -> 198 on 2026-10-16: the orders routers decomposition wave added six
 # function-scope edges (orders/routers/* reading the owning services and
 # models — the same shape every sub-router decomposition carries).

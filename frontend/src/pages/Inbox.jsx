@@ -307,6 +307,7 @@ export default function Inbox() {
   const channel = getChannel(activeChannel);
   const isWhatsApp = activeChannel === "whatsapp";
   const isTelegram = activeChannel === "telegram";
+  const isMessenger = activeChannel === "messenger";
   const isFacebook = activeChannel === "facebook";
   const isInstagram = activeChannel === "instagram";
   const allConversations = convMap[activeChannel] || [];
@@ -639,7 +640,7 @@ export default function Inbox() {
 
       <div dir="ltr" className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_52px] overflow-hidden">
       <div className="flex h-full min-h-0 min-w-0 flex-col">
-      {isInstagram && <InstagramModeTabs active={instagramMode} lang={lang} onChange={setInstagramMode} />}
+      {isInstagram && <InstagramModeTabs active={instagramMode} lang={lang} demoMode={demoAccount} onChange={setInstagramMode} />}
       {isInstagram && instagramMode === "comments" ? (
         <InstagramPostsWorkspace posts={instagramPosts} lang={lang} onReply={addInstagramPageReply} />
       ) : isFacebook ? (
@@ -657,29 +658,32 @@ export default function Inbox() {
               ? "gap-0 lg:grid-cols-[clamp(285px,17vw,330px)_minmax(0,1fr)] lg:grid-rows-1 grid-rows-[minmax(180px,30dvh)_minmax(0,1fr)] sm:grid-rows-[minmax(240px,32dvh)_minmax(0,1fr)]"
               : isInstagram
                 ? "gap-0 lg:grid-cols-[350px_minmax(0,1fr)] lg:grid-rows-1 grid-rows-[minmax(180px,30dvh)_minmax(0,1fr)] sm:grid-rows-[minmax(240px,32dvh)_minmax(0,1fr)]"
-            : "gap-3 lg:grid-cols-[clamp(320px,28vw,440px)_minmax(0,1fr)] lg:grid-rows-1 lg:gap-3 grid-rows-[minmax(180px,30dvh)_minmax(0,1fr)] sm:grid-rows-[minmax(240px,32dvh)_minmax(0,1fr)]"
+                : isMessenger
+                  ? "gap-0 grid-rows-[minmax(0,1fr)] lg:grid-cols-[clamp(320px,23vw,380px)_minmax(0,1fr)] lg:grid-rows-1"
+                  : "gap-3 lg:grid-cols-[clamp(320px,28vw,440px)_minmax(0,1fr)] lg:grid-rows-1 lg:gap-3 grid-rows-[minmax(180px,30dvh)_minmax(0,1fr)] sm:grid-rows-[minmax(240px,32dvh)_minmax(0,1fr)]"
         )}
       >
         <div className={cn(
           "bg-card border flex-col min-h-0 overflow-hidden",
-          isWhatsApp ? "rounded-none border-0 bg-white" : isTelegram ? "rounded-none border-0 border-r border-[#e4e9ec] bg-white" : isInstagram ? "rounded-none border-0 border-r border-[#dbdbdb] bg-white" : "rounded-2xl border-border",
-          isWhatsApp && mobileChatOpen ? "hidden lg:flex" : "flex"
+          isWhatsApp ? "rounded-none border-0 bg-white" : isTelegram ? "rounded-none border-0 border-r border-[#e4e9ec] bg-white" : isInstagram ? "rounded-none border-0 border-r border-[#dbdbdb] bg-white" : isMessenger ? "rounded-none border-0 border-r border-[#e4e6eb] bg-white" : "rounded-2xl border-border",
+          (isWhatsApp || isMessenger) && mobileChatOpen ? "hidden lg:flex" : "flex"
         )}>
-          <div className={cn(isTelegram ? "space-y-0 p-2" : isInstagram ? "space-y-3 px-4 pb-3 pt-4" : "space-y-2.5 p-3", isWhatsApp ? "border-b border-[#d1d7db]" : isTelegram ? "border-b border-[#e4e9ec]" : isInstagram ? "border-b border-[#dbdbdb]" : "border-b border-border")}>
+          <div className={cn(isTelegram ? "space-y-0 p-2" : isInstagram ? "space-y-3 px-4 pb-3 pt-4" : isMessenger ? "space-y-3 p-4" : "space-y-2.5 p-3", isWhatsApp ? "border-b border-[#d1d7db]" : isTelegram ? "border-b border-[#e4e9ec]" : isInstagram ? "border-b border-[#dbdbdb]" : isMessenger ? "border-b border-[#e4e6eb]" : "border-b border-border")}>
             {isInstagram && <div className="flex items-center justify-between"><h2 className="text-[19px] font-semibold tracking-tight text-[#262626]">{lang === "ar" ? "الرسائل" : "Messages"}</h2>{instagramAccountIdentity && <span dir="ltr" className="text-[12px] font-semibold text-[#8e8e8e]">{instagramAccountIdentity.startsWith("@") ? instagramAccountIdentity : `@${instagramAccountIdentity}`}</span>}</div>}
+            {isMessenger && <h2 className="text-[20px] font-bold tracking-[-0.02em] text-[#050505]">{lang === "ar" ? "المحادثات" : "Chats"}</h2>}
             <div className="relative">
-              <Search className={cn("absolute top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground", (isWhatsApp || isInstagram) && lang === "ar" ? "right-3" : "left-3")} />
+              <Search className={cn("absolute top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground", (isWhatsApp || isInstagram || isMessenger) && lang === "ar" ? "right-3" : "left-3")} />
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                dir={isWhatsApp || isInstagram ? (lang === "ar" ? "rtl" : "ltr") : undefined}
+                dir={isWhatsApp || isInstagram || isMessenger ? (lang === "ar" ? "rtl" : "ltr") : undefined}
                 aria-label={t("inbox.search")}
                 placeholder={t("inbox.search")}
                 className={cn(
                   "w-full h-9 text-[13px] placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-ring/30",
                   isTelegram ? "h-9 rounded-full border border-transparent bg-[#f1f1f1]" : "rounded-lg",
-                  isWhatsApp && lang === "ar" ? "pr-9 pl-3 text-right" : isInstagram && lang === "ar" ? "pr-9 pl-3 text-right" : "pl-9 pr-3",
-                  isWhatsApp ? "bg-[#f0f2f5] border border-[#f0f2f5]" : isInstagram ? "bg-[#efefef] border border-[#efefef] rounded-lg" : !isTelegram && "bg-surface border border-border"
+                  (isWhatsApp || isInstagram || isMessenger) && lang === "ar" ? "pr-9 pl-3 text-right" : "pl-9 pr-3",
+                  isWhatsApp ? "bg-[#f0f2f5] border border-[#f0f2f5]" : isInstagram ? "bg-[#efefef] border border-[#efefef] rounded-lg" : isMessenger ? "bg-[#f0f2f5] border border-[#f0f2f5] rounded-full" : !isTelegram && "bg-surface border border-border"
                 )}
               />
             </div>
@@ -698,6 +702,8 @@ export default function Inbox() {
                     "whitespace-nowrap transition-colors",
                     isWhatsApp
                       ? cn("px-2.5 py-2 text-[12px]", filter === item.id ? "border-b-2 border-[#00a884] font-semibold text-[#008f72]" : "border-b-2 border-transparent text-[#667781] hover:text-[#111b21]")
+                      : isMessenger
+                        ? cn("rounded-full px-3 py-1.5 text-[12px] font-medium", filter === item.id ? "bg-[#e7f3ff] font-semibold text-[#0866ff]" : "text-[#65676b] hover:bg-[#f0f2f5]")
                       : cn("px-2.5 py-1 rounded-md text-[12px] font-medium", filter === item.id ? "bg-primary text-primary-foreground" : "bg-surface text-muted-foreground hover:text-foreground")
                   )}
                 >
@@ -741,13 +747,13 @@ export default function Inbox() {
                 key={conversation.id}
                 type="button"
                 aria-pressed={current?.id === conversation.id}
-                onClick={() => { selectConversation(conversation); if (isWhatsApp) setMobileChatOpen(true); }}
+                onClick={() => { selectConversation(conversation); if (isWhatsApp || isMessenger) setMobileChatOpen(true); }}
                 className={cn(
                   "w-full flex border-b transition-colors",
                   isTelegram ? "min-h-[58px] gap-2 px-2 py-1.5" : isInstagram ? "min-h-[68px] gap-3 px-4 py-2" : "gap-3 px-3 py-2.5",
-                  isWhatsApp ? "border-[#e9edef] hover:bg-[#f5f6f6]" : isTelegram ? "border-[#edf0f2] hover:bg-[#f4f7f9]" : isInstagram ? "border-transparent hover:bg-[#fafafa]" : "border-border/60 hover:bg-surface/60",
-                  isWhatsApp || isTelegram || isInstagram ? (lang === "ar" ? "text-right" : "text-left") : "text-left",
-                  current?.id === conversation.id && (isWhatsApp ? "bg-[#f0f2f5]" : isTelegram ? "bg-[#419fd9] text-white hover:bg-[#419fd9]" : isInstagram ? "bg-[#efefef]" : "bg-primary/5")
+                  isWhatsApp ? "border-[#e9edef] hover:bg-[#f5f6f6]" : isTelegram ? "border-[#edf0f2] hover:bg-[#f4f7f9]" : isInstagram ? "border-transparent hover:bg-[#fafafa]" : isMessenger ? "border-[#e4e6eb] hover:bg-[#f2f2f2]" : "border-border/60 hover:bg-surface/60",
+                  isWhatsApp || isTelegram || isInstagram || isMessenger ? (lang === "ar" ? "text-right" : "text-left") : "text-left",
+                  current?.id === conversation.id && (isWhatsApp ? "bg-[#f0f2f5]" : isTelegram ? "bg-[#419fd9] text-white hover:bg-[#419fd9]" : isInstagram ? "bg-[#efefef]" : isMessenger ? "bg-[#e7f3ff]" : "bg-primary/5")
                 )}
               >
                 <div className="relative shrink-0">
@@ -755,6 +761,8 @@ export default function Inbox() {
                     <div className={cn("rounded-full p-[2px]", (conversation.hasStory || conversation.story?.available || conversation.story_available) ? "bg-[conic-gradient(from_45deg,#feda75,#fa7e1e,#d62976,#962fbf,#4f5bd5,#feda75)]" : "border border-[#dbdbdb]")}><ConversationAvatar conversation={conversation} className={cn("h-11 w-11 text-[13px]", (conversation.hasStory || conversation.story?.available || conversation.story_available) && "border-2 border-white")} /></div>
                   ) : isTelegram ? (
                     <ConversationAvatar conversation={conversation} className="h-10 w-10 text-[12px]" />
+                  ) : isMessenger ? (
+                    <ConversationAvatar conversation={conversation} className="h-11 w-11 text-[12px]" />
                   ) : (
                     <div className={cn("rounded-full grid place-items-center text-[12px] font-semibold text-white", isWhatsApp ? "h-12 w-12 text-[#54656f]" : "h-11 w-11")} style={{ background: conversation.color, color: isWhatsApp ? "#54656f" : "#fff" }}>
                       {conversation.initials}
@@ -763,7 +771,7 @@ export default function Inbox() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
-                    <span dir={isWhatsApp || isTelegram ? "auto" : undefined} className={cn("truncate", isWhatsApp ? "text-[14px] font-medium text-[#111b21]" : isTelegram ? "text-[14px] font-medium" : "text-[13px] font-medium")}>{conversation.customer}</span>
+                    <span dir={isWhatsApp || isTelegram || isMessenger ? "auto" : undefined} className={cn("truncate", isWhatsApp ? "text-[14px] font-medium text-[#111b21]" : isTelegram ? "text-[14px] font-medium" : "text-[13px] font-medium")}>{conversation.customer}</span>
                     <span dir={isWhatsApp || isTelegram || isInstagram ? "ltr" : undefined} className={cn("shrink-0", isWhatsApp ? "text-[11px] text-[#667781]" : isTelegram ? current?.id === conversation.id ? "text-[11px] text-white/85" : "text-[11px] text-[#7f9db8]" : isInstagram ? "text-[10.5px] text-[#8e8e8e]" : "text-[11px] text-muted-foreground")}>{conversation.time}</span>
                   </div>
                   {isInstagram ? (
@@ -773,7 +781,7 @@ export default function Inbox() {
                       <p dir="auto" className={cn("min-w-0 flex-1 truncate text-[11.5px]", current?.id === conversation.id ? "text-white/90" : "text-[#7b8d9b]")}>{conversation.preview}</p>
                       {conversation.unread > 0 && <span className="min-w-5 rounded-full bg-[#2aabee] px-1.5 py-0.5 text-center text-[10px] font-semibold tabular-nums text-white">{conversation.unread}</span>}
                     </div>
-                  ) : <p dir={isWhatsApp ? "auto" : undefined} className={cn("truncate mt-0.5", isWhatsApp ? "text-[12px] text-[#667781]" : "text-[12px] text-muted-foreground")}>{conversation.preview}</p>}
+                  ) : <p dir={isWhatsApp || isMessenger ? "auto" : undefined} className={cn("truncate mt-0.5", isWhatsApp ? "text-[12px] text-[#667781]" : "text-[12px] text-muted-foreground")}>{conversation.preview}</p>}
                   {!isTelegram && !isInstagram && <div className="mt-1 flex items-center gap-1.5">
                     <span className={cn("px-1.5 py-0.5 text-[10px]", isWhatsApp ? "rounded-full bg-[#f0f2f5] text-[#667781]" : "rounded-md bg-surface text-muted-foreground")}>
                       {t(`inbox.status.${conversation.status}`)}
@@ -831,8 +839,8 @@ export default function Inbox() {
         <ChannelChat
           channel={channel}
           lang={lang}
-          className={isWhatsApp && !mobileChatOpen ? "hidden lg:flex" : ""}
-          onBack={isWhatsApp ? () => setMobileChatOpen(false) : undefined}
+          className={(isWhatsApp || isMessenger) && !mobileChatOpen ? "hidden lg:flex" : ""}
+          onBack={isWhatsApp || isMessenger ? () => setMobileChatOpen(false) : undefined}
           conversation={current}
           approval={pendingApproval}
           loadingMessages={loadingMessages}

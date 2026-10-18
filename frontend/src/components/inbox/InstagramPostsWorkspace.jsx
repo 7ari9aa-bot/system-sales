@@ -90,7 +90,7 @@ export default function InstagramPostsWorkspace({ posts = [], lang = "ar", onRep
 
   return (
     <section dir="ltr" className="flex min-h-0 flex-1 flex-col bg-[#fafafa] text-[#262626]">
-      <div style={!isNarrowViewport ? { "--instagram-post-list-width": `${postListCollapsed ? 48 : postListWidth}px` } : undefined} className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(180px,34dvh)_minmax(0,1fr)] lg:grid-cols-[var(--instagram-post-list-width)_6px_minmax(0,1fr)] lg:grid-rows-1">
+      <div style={!isNarrowViewport && !postListCollapsed ? { "--instagram-post-list-width": `${postListWidth}px` } : undefined} className={cn("grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(180px,34dvh)_minmax(0,1fr)] lg:grid-rows-1", !isNarrowViewport && (postListCollapsed ? "lg:grid-cols-[48px_minmax(0,1fr)]" : "lg:grid-cols-[var(--instagram-post-list-width)_6px_minmax(0,1fr)]"))}>
         <aside dir={isArabic ? "rtl" : "ltr"} aria-label={isArabic ? "قائمة منشورات الصفحة" : "Page post list"} className={cn("flex min-h-0 min-w-0 flex-col border-b border-[#dbdbdb] bg-white lg:border-b-0 lg:border-r", postListCollapsed && !isNarrowViewport && "items-center")}>
           {postListCollapsed && !isNarrowViewport ? <div className="flex h-full w-full flex-col items-center gap-3 py-3">
             <button type="button" onClick={() => setPostListCollapsed(false)} aria-label={isArabic ? "توسيع قائمة المنشورات" : "Expand post list"} title={isArabic ? "توسيع قائمة المنشورات" : "Expand post list"} className="grid h-9 w-9 place-items-center rounded-full text-[#8e8e8e] hover:bg-[#f5f5f5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0095f6]"><ChevronRight className="h-4 w-4" /></button>
@@ -149,7 +149,7 @@ export default function InstagramPostsWorkspace({ posts = [], lang = "ar", onRep
                     <div dir={isArabic ? "rtl" : "ltr"} className="px-4 pb-3 pt-3">
                       <div className="mb-2 flex items-center gap-4 text-[#262626]"><Heart className="h-[19px] w-[19px]" /><MessageCircle className="h-[19px] w-[19px]" /><Send className="h-[18px] w-[18px]" /></div>
                       <p className="text-[13px] font-semibold">{Number(selected.likes || 0).toLocaleString(isArabic ? "ar-EG" : "en-US")} {isArabic ? "إعجاب" : "likes"}</p>
-                      <p className="mt-2 text-[14px] leading-[1.7]"><b dir="ltr" className="me-1 font-semibold">{selected.accountName || "fihrist.store"}</b><span dir="auto">{selected.text}</span></p>
+                      <p className="mt-2 text-[14px] leading-[1.7]"><bdi dir="auto" className="me-1 font-semibold">{selected.accountName || "fihrist.store"}</bdi><span dir="auto">{selected.text}</span></p>
                       <div className="mt-3 flex items-center justify-between border-t border-[#efefef] pt-2.5 text-[12px] text-[#8e8e8e]"><span>{isArabic ? "التعليقات" : "Comments"} <b className="font-medium text-[#262626]">{countComments(selected.comments)}</b></span><span>{isArabic ? "الأحدث" : "Most recent"}</span></div>
                     </div>
                   </div>
@@ -188,8 +188,8 @@ function Comment({ comment, isArabic, onReply, nested = false }) {
       <img src={comment.avatarUrl || "/fihrist-mark.svg"} alt="" className="mt-0.5 h-9 w-9 shrink-0 rounded-full border border-[#efefef] bg-white object-cover" />
       <div className="min-w-0 flex-1">
         <div className="text-[14px] leading-[1.7] text-[#262626]">
-          <b dir="ltr" className="me-1 font-bold">{comment.handle || comment.author}</b>
-          <span dir="auto">{comment.text}</span>
+          <bdi dir="auto" className="me-1 inline-block font-bold">{comment.handle || comment.author}</bdi>
+          <span dir="auto" className="[unicode-bidi:isolate]">{comment.text}</span>
           {comment.isAgent && <span dir="auto" className="ms-1.5 inline-flex translate-y-[-1px] items-center rounded-full bg-[#fce8f0] px-2 py-0.5 text-[10px] font-semibold leading-4 text-[#c13584]">{isArabic ? "رد تلقائي" : "Auto reply"}</span>}
         </div>
         <div className="mt-1 flex items-center gap-3 text-[12px] font-medium text-[#737373]">

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
-import { ArrowLeft, ArrowRight, ArrowUpRight, Search, Sparkles, X, Check, CheckCheck, Paperclip, Smile, Mic, MoreVertical } from "lucide-react";
+import { ArrowLeft, ArrowRight, ArrowUpRight, Search, Sparkles, X, Check, CheckCheck, Paperclip, Smile, Mic, MoreVertical, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ConversationAvatar from "@/components/inbox/ConversationAvatar";
 
@@ -37,6 +37,7 @@ export default function ChannelChat({
   const isApp = channel.theme === "app";
   const isWhatsApp = channel.id === "whatsapp";
   const isInstagram = channel.id === "instagram";
+  const isMessenger = channel.id === "messenger";
   const isTelegram = channel.id === "telegram";
   const th = isApp ? null : channel.theme;
   const allMessages = conversation?.messages || [];
@@ -52,7 +53,7 @@ export default function ChannelChat({
     backgroundRepeat: "no-repeat",
     backgroundSize: "cover",
   } : undefined;
-  const visibleMessages = (isWhatsApp || isInstagram || isTelegram) && searchQuery.trim()
+  const visibleMessages = (isWhatsApp || isInstagram || isMessenger || isTelegram) && searchQuery.trim()
     ? allMessages.filter((message) => String(message.text || "").toLocaleLowerCase().includes(searchQuery.trim().toLocaleLowerCase()))
     : allMessages;
 
@@ -131,28 +132,28 @@ export default function ChannelChat({
 
   return (
     <div
-      className={cn("flex-1 flex flex-col min-h-0 overflow-hidden border", isWhatsApp ? "rounded-xl border-[#d1d7db] lg:rounded-none lg:border-y lg:border-r lg:border-l-0" : isInstagram ? "rounded-none border-0 border-s border-[#dbdbdb] bg-white" : "rounded-2xl border-border", className)}
+      className={cn("flex-1 flex flex-col min-h-0 overflow-hidden border", isWhatsApp ? "rounded-xl border-[#d1d7db] lg:rounded-none lg:border-y lg:border-r lg:border-l-0" : isInstagram ? "rounded-none border-0 border-s border-[#dbdbdb] bg-white" : isMessenger ? "rounded-none border-0 border-s border-[#e4e6eb] bg-white" : "rounded-2xl border-border", className)}
       style={isApp ? undefined : { background: th.chatBg }}>
       
       {/* Header */}
       <div
-        dir={isWhatsApp || isTelegram ? "ltr" : isInstagram && lang === "ar" ? "rtl" : undefined}
-        className={cn("flex items-center gap-3 px-4 shrink-0", isWhatsApp ? "h-[60px] px-4" : isTelegram ? "h-[66px] px-5" : isInstagram ? "h-[64px] px-4" : "h-14")}
-        style={isApp ? { background: "hsl(var(--card))", borderBottom: "1px solid hsl(var(--border))" } : { background: th.headerBg, color: th.headerText, borderBottom: (isWhatsApp || isTelegram || isInstagram) ? "1px solid " + th.divider : undefined }}>
+        dir={isWhatsApp || isTelegram ? "ltr" : isInstagram || isMessenger ? (lang === "ar" ? "rtl" : "ltr") : undefined}
+        className={cn("flex items-center gap-3 px-4 shrink-0", isWhatsApp ? "h-[60px] px-4" : isTelegram ? "h-[66px] px-5" : isInstagram ? "h-[64px] px-4" : isMessenger ? "h-16 px-5" : "h-14")}
+        style={isApp ? { background: "hsl(var(--card))", borderBottom: "1px solid hsl(var(--border))" } : { background: th.headerBg, color: th.headerText, borderBottom: (isWhatsApp || isTelegram || isInstagram || isMessenger) ? "1px solid " + th.divider : undefined }}>
 
-        {isWhatsApp && onBack && (
+        {(isWhatsApp || isMessenger) && onBack && (
           <button
             type="button"
             onClick={onBack}
             aria-label={t("inbox.backToChats", "Back to chats")}
             title={t("inbox.backToChats", "Back to chats")}
-            className="-mx-1 grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#54656f] transition-colors hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884] lg:hidden"
+            className={cn("-mx-1 grid h-9 w-9 shrink-0 place-items-center rounded-full transition-colors hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 lg:hidden", isWhatsApp ? "text-[#54656f] focus-visible:ring-[#00a884]" : "text-[#65676b] focus-visible:ring-[#0084ff]")}
           >
             {lang === "ar" ? <ArrowRight className="h-5 w-5" /> : <ArrowLeft className="h-5 w-5" />}
           </button>
         )}
         
-        {isTelegram || isInstagram ? (
+        {isTelegram || isInstagram || isMessenger ? (
           <ConversationAvatar conversation={conversation} className={cn("h-10 w-10 text-[14px]", isInstagram && "h-11 w-11")} />
         ) : (
           <div
@@ -162,16 +163,16 @@ export default function ChannelChat({
           </div>
         )}
         <div className="flex-1 min-w-0">
-          <div dir={isWhatsApp || isTelegram || isInstagram ? "auto" : undefined} className={cn("truncate", isWhatsApp ? "text-left text-[15px] font-medium text-[#111b21]" : isTelegram ? "text-left text-[15px] font-medium text-[#222]" : isInstagram ? "text-[14px] font-semibold text-[#262626]" : "text-[14px] font-semibold", isApp && "text-foreground")}>{conversation.customer}</div>
-          <div className={cn("truncate", isWhatsApp ? "text-left text-[12px] text-[#667781]" : isTelegram ? "text-[12px] text-[#7f9db8]" : isInstagram ? "text-[11.5px] text-[#8e8e8e]" : "text-[11.5px]", isApp && "text-muted-foreground", !isApp && !isWhatsApp && !isTelegram && !isInstagram && "opacity-80")}>{isTelegram ? "bot" : channel.name}</div>
+          <div dir={isWhatsApp || isTelegram || isInstagram || isMessenger ? "auto" : undefined} className={cn("truncate", isWhatsApp ? "text-left text-[15px] font-medium text-[#111b21]" : isTelegram ? "text-left text-[15px] font-medium text-[#222]" : isInstagram ? "text-[14px] font-semibold text-[#262626]" : isMessenger ? "text-[15px] font-semibold text-[#050505]" : "text-[14px] font-semibold", isApp && "text-foreground")}>{conversation.customer}</div>
+          {!isMessenger && <div className={cn("truncate", isWhatsApp ? "text-left text-[12px] text-[#667781]" : isTelegram ? "text-[12px] text-[#7f9db8]" : isInstagram ? "text-[11.5px] text-[#8e8e8e]" : "text-[11.5px]", isApp && "text-muted-foreground", !isApp && !isWhatsApp && !isTelegram && !isInstagram && "opacity-80")}>{isTelegram ? "bot" : channel.name}</div>}
         </div>
-        {(isWhatsApp || isInstagram || isTelegram) && (
+        {(isWhatsApp || isInstagram || isMessenger || isTelegram) && (
           <button
             type="button"
             aria-label={t("inbox.searchMessages", "Search messages")}
             aria-expanded={searchOpen}
             onClick={() => { setSearchOpen((open) => !open); setSearchQuery(""); }}
-            className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2", isWhatsApp ? "text-[#54656f] hover:bg-[#f5f6f6] focus-visible:ring-[#00a884]" : isInstagram ? "text-[#262626] hover:bg-[#f5f5f5] focus-visible:ring-[#3797f0]" : "text-[#707e8b] hover:bg-[#f2f5f7] focus-visible:ring-[#3390ec]")}
+            className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2", isWhatsApp ? "text-[#54656f] hover:bg-[#f5f6f6] focus-visible:ring-[#00a884]" : isInstagram ? "text-[#262626] hover:bg-[#f5f5f5] focus-visible:ring-[#3797f0]" : isMessenger ? "text-[#0084ff] hover:bg-[#f0f2f5] focus-visible:ring-[#0084ff]" : "text-[#707e8b] hover:bg-[#f2f5f7] focus-visible:ring-[#3390ec]")}
           >
             <Search className="h-[18px] w-[18px]" />
           </button>
@@ -186,9 +187,9 @@ export default function ChannelChat({
         {isInstagram && <button type="button" disabled aria-label={lang === "ar" ? "المزيد من خيارات إنستغرام غير متاحة في العرض التجريبي" : "Instagram more options unavailable in this demo"} title={lang === "ar" ? "الخيارات الإضافية غير متاحة" : "More options unavailable"} className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#262626] disabled:cursor-not-allowed disabled:opacity-60"><MoreVertical className="h-[18px] w-[18px]" /></button>}
       </div>
 
-      {(isWhatsApp || isInstagram || isTelegram) && searchOpen && (
-        <div className={cn("flex h-12 shrink-0 items-center gap-2 border-b bg-white px-3", isWhatsApp ? "border-[#d1d7db]" : isInstagram ? "border-[#dbdbdb]" : "border-[#e4e9ec]")}>
-          <Search className={cn("h-4 w-4 shrink-0", isWhatsApp ? "text-[#667781]" : isInstagram ? "text-[#8e8e8e]" : "text-[#82919e]")} />
+      {(isWhatsApp || isInstagram || isMessenger || isTelegram) && searchOpen && (
+        <div className={cn("flex h-12 shrink-0 items-center gap-2 border-b bg-white px-3", isWhatsApp ? "border-[#d1d7db]" : isInstagram ? "border-[#dbdbdb]" : isMessenger ? "border-[#e4e6eb]" : "border-[#e4e9ec]")}>
+          <Search className={cn("h-4 w-4 shrink-0", isWhatsApp ? "text-[#667781]" : isInstagram ? "text-[#8e8e8e]" : isMessenger ? "text-[#65676b]" : "text-[#82919e]")} />
           <input
             type="search"
             autoFocus
@@ -240,18 +241,18 @@ export default function ChannelChat({
           <div className="py-8 text-center text-[12.5px] text-[#667781]">{t("inbox.noMessageMatches", "No matching messages")}</div>
         )}
         {visibleMessages.map((m, index) => {
-          const dayKey = isWhatsApp || isInstagram || isTelegram ? getMessageDayKey(m.createdAt) : "";
-          const previousDayKey = (isWhatsApp || isInstagram || isTelegram) && index > 0 ? getMessageDayKey(visibleMessages[index - 1].createdAt) : "";
+          const dayKey = isWhatsApp || isInstagram || isMessenger || isTelegram ? getMessageDayKey(m.createdAt) : "";
+          const previousDayKey = (isWhatsApp || isInstagram || isMessenger || isTelegram) && index > 0 ? getMessageDayKey(visibleMessages[index - 1].createdAt) : "";
           return (
             <React.Fragment key={m.id}>
               {dayKey && dayKey !== previousDayKey && (
                 <div className="flex justify-center py-1.5" aria-label={formatWhatsAppDay(m.createdAt, lang, t)}>
-                  <span className={cn("rounded-md bg-white/90 px-2.5 py-1 text-[11px] font-medium shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]", isTelegram ? "text-[#527da3]" : "text-[#54656f]")}>
+                  <span className={cn("rounded-md bg-white/90 px-2.5 py-1 text-[11px] font-medium shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]", isTelegram ? "text-[#527da3]" : isMessenger ? "text-[#65676b]" : "text-[#54656f]")}>
                     {formatWhatsAppDay(m.createdAt, lang, t)}
                   </span>
                 </div>
               )}
-              <Bubble m={m} isApp={isApp} isWhatsApp={isWhatsApp} isInstagram={isInstagram} isTelegram={isTelegram} lang={lang} th={th} />
+              <Bubble m={m} isApp={isApp} isWhatsApp={isWhatsApp} isInstagram={isInstagram} isMessenger={isMessenger} isTelegram={isTelegram} lang={lang} th={th} conversation={conversation} showIncomingAvatar={isMessenger && m.side !== "out" && (index === visibleMessages.length - 1 || visibleMessages[index + 1]?.side === "out")} />
             </React.Fragment>
           );
         })}
@@ -292,7 +293,7 @@ export default function ChannelChat({
       </div>
 
       {/* Input */}
-      <div className={cn("shrink-0 p-2", isWhatsApp && "px-3 py-1 sm:px-4", isInstagram && "px-3 py-2", isTelegram && "px-2 py-1 sm:px-3 sm:py-1.5")} style={isApp ? { background: "hsl(var(--card))", borderTop: "1px solid hsl(var(--border))" } : { background: isWhatsApp ? "#f0f2f5" : isTelegram ? "#f5f6f7" : isInstagram ? "#fff" : th.inputBg, borderTop: "1px solid " + th.inputBorder }}>
+      <div className={cn("shrink-0 p-2", isWhatsApp && "px-3 py-1 sm:px-4", isInstagram && "px-3 py-2", isMessenger && "px-4 py-3", isTelegram && "px-2 py-1 sm:px-3 sm:py-1.5")} style={isApp ? { background: "hsl(var(--card))", borderTop: "1px solid hsl(var(--border))" } : { background: isWhatsApp ? "#f0f2f5" : isTelegram ? "#f5f6f7" : isInstagram ? "#fff" : isMessenger ? "#fff" : th.inputBg, borderTop: "1px solid " + th.inputBorder }}>
         {isWhatsApp ? (
           <div dir="ltr" className="flex h-11 items-center gap-1.5 overflow-hidden rounded-full bg-white px-2 shadow-[0_1px_2px_rgba(0,0,0,0.12)] sm:h-14 sm:gap-2 sm:px-3" style={{ borderRadius: 9999 }}>
             <button
@@ -385,6 +386,30 @@ export default function ChannelChat({
             <input value={text} onChange={(event) => setText(event.target.value)} dir={lang === "ar" ? "rtl" : "ltr"} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void submitMessage(); } }} placeholder={t("inbox.typeMessage")} aria-label={t("inbox.typeMessage")} disabled={sending} className={cn("h-full min-w-0 flex-1 bg-transparent px-2 text-[13px] text-[#262626] outline-none placeholder:text-[#8e8e8e]", lang === "ar" ? "text-right" : "text-left")} />
             {!text.trim() ? <button type="button" disabled aria-label={lang === "ar" ? "إرسال الصور غير متاح في العرض التجريبي" : "Media attachment unavailable in this demo"} title={lang === "ar" ? "المرفقات غير متاحة" : "Attachments unavailable"} className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#262626] disabled:cursor-not-allowed"><Paperclip className="h-[19px] w-[19px]" /></button> : <button type="button" onClick={() => { void submitMessage(); }} disabled={sending} aria-label={t("inbox.send")} title={t("inbox.send")} className="shrink-0 px-2 text-[13px] font-semibold text-[#0095f6] disabled:opacity-50">{lang === "ar" ? "إرسال" : "Send"}</button>}
           </div>
+        ) : isMessenger ? (
+          <div dir="ltr" className="flex h-11 items-center gap-2 rounded-full border border-[#e4e6eb] bg-white px-3">
+            <input
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+              dir="auto"
+              onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void submitMessage(); } }}
+              placeholder={t("inbox.typeMessage")}
+              aria-label={t("inbox.typeMessage")}
+              disabled={sending}
+              className={cn("h-full min-w-0 flex-1 bg-transparent px-2 text-[14px] text-[#050505] outline-none placeholder:text-[#65676b]", lang === "ar" ? "text-right" : "text-left")}
+            />
+            <button
+              type="button"
+              onClick={() => { void submitMessage(); }}
+              disabled={!text.trim() || sending}
+              aria-label={t("inbox.send")}
+              title={t("inbox.send")}
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
+              style={{ background: "#0084ff" }}
+            >
+              <Send className="h-4 w-4" />
+            </button>
+          </div>
         ) : (
           <div
             className="flex items-center gap-2 rounded-full px-3 py-1.5"
@@ -418,7 +443,7 @@ export default function ChannelChat({
 
 }
 
-function Bubble({ m, isApp, isWhatsApp, isInstagram, isTelegram, lang, th }) {
+function Bubble({ m, isApp, isWhatsApp, isInstagram, isMessenger, isTelegram, lang, th, conversation, showIncomingAvatar }) {
   const out = m.side === "out";
   const showTail = !isApp && th?.tail;
   const [mediaFailed, setMediaFailed] = useState(false);
@@ -526,6 +551,27 @@ function Bubble({ m, isApp, isWhatsApp, isInstagram, isTelegram, lang, th }) {
           {!mediaUrl && <span dir="auto" className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{m.text}</span>}
           {mediaFailed && mediaUrl && <div className="flex items-center gap-2 px-2 py-2 text-[12px]"><Paperclip className="h-4 w-4 shrink-0" /><span>{caption || (lang === "ar" ? "تعذر تحميل المرفق" : "Attachment could not be loaded")}</span></div>}
           <div className="mt-1 flex justify-end"><Foot m={m} isApp={isApp} th={th} /></div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isMessenger) {
+    return (
+      <div className={cn("flex items-end gap-2", out ? "justify-end" : "justify-start")}>
+        {!out && (showIncomingAvatar
+          ? <ConversationAvatar conversation={conversation} className="h-7 w-7 text-[10px]" />
+          : <span aria-hidden="true" className="h-7 w-7 shrink-0" />)}
+        <div
+          className="max-w-[82%] rounded-[18px] px-3.5 py-2 text-[14px] leading-[1.45] sm:max-w-[76%] lg:max-w-[680px]"
+          style={{ background: out ? th.out : th.in, color: out ? th.outText : th.inText }}
+        >
+          <span dir="auto" className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{m.text}</span>{" "}
+          <span dir="ltr" className={cn("inline-flex items-center gap-1 align-baseline text-[10px]", out ? "text-white/75" : "text-[#65676b]")}>
+            {m.time}
+            {out && th.checkmarks && (m.status === "read" ? <CheckCheck className="h-3 w-3" /> : m.status === "delivered" ? <CheckCheck className="h-3 w-3" /> : <Check className="h-3 w-3" />)}
+            {m.ai && <Sparkles className="h-3 w-3" />}
+          </span>
         </div>
       </div>
     );

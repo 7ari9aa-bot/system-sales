@@ -147,6 +147,16 @@ function openCenteredPopup(url, name, w = 600, h = 700) {
   );
 }
 
+function withTimeout(promise, timeoutMs, message) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timer = window.setTimeout(() => reject(new Error(message)), timeoutMs);
+    }),
+  ]).finally(() => window.clearTimeout(timer));
+}
+
 export default function ChannelsSettings() {
   const t = useT();
   const { lang } = useI18n();
@@ -157,16 +167,32 @@ export default function ChannelsSettings() {
   const [saving, setSaving] = React.useState(false);
   const [verifyingId, setVerifyingId] = React.useState("");
   const [metaConnecting, setMetaConnecting] = React.useState("");
+  const metaPopupRef = React.useRef(null);
+  const metaPollTimerRef = React.useRef(null);
+  const metaTimeoutRef = React.useRef(null);
   const [formError, setFormError] = React.useState("");
   const [notice, setNotice] = React.useState("");
   const [copiedTarget, setCopiedTarget] = React.useState("");
 
   const editing = channels.find((channel) => channel.id === editingId) || null;
 
+  const clearMetaConnectTimers = React.useCallback((closePopup = false) => {
+    if (metaPollTimerRef.current) window.clearInterval(metaPollTimerRef.current);
+    if (metaTimeoutRef.current) window.clearTimeout(metaTimeoutRef.current);
+    metaPollTimerRef.current = null;
+    metaTimeoutRef.current = null;
+    const popup = metaPopupRef.current;
+    metaPopupRef.current = null;
+    if (closePopup && popup && !popup.closed) popup.close();
+  }, []);
+
+  React.useEffect(() => () => clearMetaConnectTimers(true), [clearMetaConnectTimers]);
+
   // Listen for Meta OAuth popup results (postMessage / BroadcastChannel / storage).
   React.useEffect(() => {
     function handleResult(data) {
       if (!data || data.type !== META_OAUTH_RESULT) return;
+      clearMetaConnectTimers(true);
       const { connected, error: oauthError } = data;
       if (connected) {
         const sep = connected.indexOf(":");
@@ -215,7 +241,7 @@ export default function ChannelsSettings() {
       window.removeEventListener("storage", onStorage);
       if (bc) bc.close();
     };
-  }, [reload, isAr]);
+  }, [reload, isAr, clearMetaConnectTimers]);
 
   // Also handle legacy URL params (in case the popup was blocked and the
   // callback redirected instead).
@@ -340,21 +366,30 @@ export default function ChannelsSettings() {
   }
 
   /** Connect a Meta channel (Instagram/Messenger/Facebook) via popup OAuth. */
-  async function connectViaMeta(channel) {
-    if (metaConnecting) return;
+  async function connectViaMeta(channel, popup) {
+    if (metaConnecting) {
+      if (popup && !popup.closed) popup.close();
+      return;
+    }
+    if (!popup || popup.closed) {
+      setFormError(isAr
+        ? "تعذر فتح نافذة الربط — اسمح بالنوافذ المنبثقة لهذا الموقع ثم أعد المحاولة."
+        : "Could not open the connect window. Allow popups for this site, then retry.");
+      return;
+    }
+    metaPopupRef.current = popup;
     setMetaConnecting(channel.id);
     setFormError("");
     setNotice("");
     try {
-      const { authorize_url: authorizeUrl } = await api(
-        `/integrations/meta/oauth/start?provider=${encodeURIComponent(channel.id)}`
+      const { authorize_url: authorizeUrl } = await withTimeout(
+        api(`/integrations/meta/oauth/start?provider=${encodeURIComponent(channel.id)}`),
+        30_000,
+        isAr ? "استغرق تجهيز نافذة الربط وقتًا أطول من المتوقع. أعد المحاولة." : "Preparing the connect window took too long. Please retry."
       );
       if (!authorizeUrl) {
         throw new Error(isAr ? "لم يصل رابط التفويض من الخادم." : "The server returned no authorize URL.");
       }
-      // Open the Meta OAuth dialog in a centered popup — the callback page
-      // will post the result back via window.postMessage and close itself.
-      const popup = openCenteredPopup(authorizeUrl, "meta_oauth_popup");
       if (!popup || popup.closed) {
         throw new Error(
           isAr
@@ -362,19 +397,32 @@ export default function ChannelsSettings() {
             : "Could not open the connect window — make sure popups are allowed for this site."
         );
       }
-      // Poll to detect if user closed the popup without completing.
-      const pollTimer = window.setInterval(() => {
+      // The popup is opened synchronously in the click handler so browser
+      // popup blockers keep it attached to the user's gesture.
+      popup.location.replace(authorizeUrl);
+      metaPollTimerRef.current = window.setInterval(() => {
         if (popup.closed) {
-          window.clearInterval(pollTimer);
+          clearMetaConnectTimers();
           setMetaConnecting((prev) => {
             if (prev === channel.id) return "";
             return prev;
           });
-          // Always reload to catch any updated status from backend
+          setFormError(isAr
+            ? "أُغلقت نافذة الربط قبل وصول تأكيد. راجع حالة القناة أو أعد المحاولة."
+            : "The connect window closed before confirmation arrived. Check the channel status or retry.");
           void reload().catch(() => {});
         }
       }, 800);
+      metaTimeoutRef.current = window.setTimeout(() => {
+        clearMetaConnectTimers(true);
+        setMetaConnecting((prev) => prev === channel.id ? "" : prev);
+        setFormError(isAr
+          ? "انتهت مهلة ربط القناة. أعد المحاولة من زر الربط."
+          : "The channel connection timed out. Start again from the connect button.");
+        void reload().catch(() => {});
+      }, 10 * 60 * 1000);
     } catch (connectError) {
+      clearMetaConnectTimers(true);
       const raw = connectError?.message || "";
       setFormError(
         raw.includes("not configured") || raw.includes("META_")
@@ -392,7 +440,15 @@ export default function ChannelsSettings() {
     if (channel.id === "whatsapp") {
       connectWhatsApp(channel);
     } else if (META_OAUTH_CHANNELS.has(channel.id)) {
-      connectViaMeta(channel);
+      if (metaConnecting) return;
+      const popup = openCenteredPopup("about:blank", "meta_oauth_popup");
+      if (!popup || popup.closed) {
+        setFormError(isAr
+          ? "تعذر فتح نافذة الربط — اسمح بالنوافذ المنبثقة لهذا الموقع ثم أعد المحاولة."
+          : "Could not open the connect window. Allow popups for this site, then retry.");
+        return;
+      }
+      connectViaMeta(channel, popup);
     } else {
       // Manual credential entry (Telegram, Webchat)
       openConnection(channel);
@@ -562,6 +618,12 @@ export default function ChannelsSettings() {
         {error && <div role="alert" className="mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-[12px] text-destructive">{error}</div>}
         {formError && !editingId && <div role="alert" className="mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-[12px] text-destructive">{formError}</div>}
         {notice && <div role="status" className="mb-3 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-[12px] text-primary">{notice}</div>}
+        {metaConnecting && <div role="status" aria-live="polite" className="mb-3 flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-[12px] leading-relaxed text-primary">
+          <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin" />
+          <span>{isAr
+            ? `جارٍ فتح نافذة ربط ${t(`channel.${metaConnecting}`)}. أكمل خطوات تسجيل الدخول فيها بعد ظهورها؛ ستظهر هنا نتيجة الربط.`
+            : `Opening the ${t(`channel.${metaConnecting}`)} connect window. Complete sign-in there when it appears; the result will show here.`}</span>
+        </div>}
 
         {loading && channels.length === 0 ? (
           <div className="py-8 text-center text-[13px] text-muted-foreground">{isAr ? "جارٍ تحميل القنوات…" : "Loading channels…"}</div>
@@ -575,6 +637,10 @@ export default function ChannelsSettings() {
               const fields = CONNECTION_FIELDS[channel.id];
               const isConnected = channel.connected || channel.webhookStatus === "receiving";
               const isConnecting = metaConnecting === channel.id;
+              const localizedChannelName = t(`channel.${channel.id}`);
+              const displayName = channel.id === "webchat" && channel.displayName?.trim().toLowerCase() === "website chat"
+                ? localizedChannelName
+                : channel.displayName?.trim();
 
               return (
                 <div key={channel.id} className="py-3.5 first:pt-1 last:pb-1">
@@ -582,9 +648,9 @@ export default function ChannelsSettings() {
                   <div className="flex flex-wrap items-center gap-3" style={{ direction: isAr ? "rtl" : "ltr" }}>
                     <ChannelIcon channel={channel.id} />
                     <div className="min-w-0 flex-1">
-                      <div className="text-[13.5px] font-medium">{t(`channel.${channel.id}`)}</div>
+                      <div className="text-[13.5px] font-medium">{localizedChannelName}</div>
                       <div className="text-[12px] text-muted-foreground">{status}</div>
-                      {channel.displayName && <div className="text-[11px] text-muted-foreground">{channel.displayName}</div>}
+                      {displayName && displayName !== localizedChannelName && <div className="text-[11px] text-muted-foreground">{displayName}</div>}
                       {channel.integrationId && (
                         <div className="mt-1 text-[11px] text-muted-foreground">
                           {webhookStatusFor(channel)}
@@ -655,7 +721,9 @@ export default function ChannelsSettings() {
                             className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 text-[12px] font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60 transition-colors"
                           >
                             {isConnecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LinkIcon className="h-3.5 w-3.5" />}
-                            {channel.connected || needsAttention || needsVerification
+                            {isConnecting
+                              ? (isAr ? "جارٍ الربط…" : "Connecting…")
+                              : channel.connected || needsAttention || needsVerification
                               ? (isAr ? "إعادة ربط" : "Reconnect")
                               : (isAr ? "ربط" : "Connect")}
                           </button>
