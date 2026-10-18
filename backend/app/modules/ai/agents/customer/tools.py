@@ -199,6 +199,24 @@ async def _search_catalog(
     # OR per word, not AND across the phrase: "تيشرت أسود مقاس اكس" must
     # still surface the تيشرت even when مقاس اكس matches nothing — the model
     # decides ask-vs-show from total_matches, not from an empty result.
+    #
+    # Each word gets normalization arms on the LIKE side: the raw form, the
+    # form with a leading ال stripped ("الأسود" -> "أسود" — customers write
+    # the definite article, catalogs usually don't), and the TAIL with the
+    # first two characters dropped ("%حمر%" matches "أحمر" and "احمر" — the
+    # hamza only touches the first letter). A word shorter than four
+    # characters is used as-is: its tail is too generic to be a signal.
+    def _word_arms(word: str) -> list[str]:
+        arms = [word]
+        if len(word) >= 4:
+            # Drop the first character: the hamza sits there ("احمر" -> "%حمر%"
+            # matches "أحمر" and "احمر" alike).
+            arms.append(word[1:])
+        if len(word) >= 5:
+            # Drop two: the definite article ("الأسود" -> "%أسود%").
+            arms.append(word[2:])
+        return list(dict.fromkeys(arms))
+
     words = [w for w in query.split() if w][:6] or [query]
     ts_arms = [
         Product.search_ts.op("@@")(func.plainto_tsquery(literal_column("'simple'"), word))
@@ -207,10 +225,11 @@ async def _search_catalog(
     like_arms = [
         arm
         for word in words
+        for pattern in _word_arms(word)
         for arm in (
-            Product.title.ilike(like_pattern(word), escape=LIKE_ESCAPE),
-            ProductVariant.title.ilike(like_pattern(word), escape=LIKE_ESCAPE),
-            ProductVariant.sku.ilike(like_pattern(word), escape=LIKE_ESCAPE),
+            Product.title.ilike(like_pattern(pattern), escape=LIKE_ESCAPE),
+            ProductVariant.title.ilike(like_pattern(pattern), escape=LIKE_ESCAPE),
+            ProductVariant.sku.ilike(like_pattern(pattern), escape=LIKE_ESCAPE),
         )
     ]
     conditions = [
@@ -305,6 +324,7 @@ async def _get_product_details(
     return {
         "product_id": str(product.id),
         "title": product.title,
+        "description": product.description,
         "attributes": product.attributes or {},
         "variants": [
             {

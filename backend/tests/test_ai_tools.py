@@ -732,6 +732,35 @@ def test_search_catalog_matches_any_word_not_the_whole_phrase() -> None:
     )
 
 
+def test_search_catalog_strips_the_article_and_matches_past_the_hamza() -> None:
+    """Customers write ال and type hamza loosely; catalogs don't. The tail
+    arm (first two characters dropped) matches both: "الأسود" carries "أسود"
+    as its tail, and "احمر"'s tail "حمر" sits inside "أحمر" either way."""
+    import asyncio
+
+    from app.modules.ai.tools import _search_catalog
+
+    class _CapturingMulti:
+        def __init__(self) -> None:
+            self.statements = []
+
+        async def execute(self, statement, params=None):  # noqa: ANN001, ARG002
+            self.statements.append(statement)
+            return _NoRows()
+
+    session = _CapturingMulti()
+    asyncio.run(_search_catalog(session, uuid.uuid4(), query="الأسود احمر"))
+    like_params = [
+        v
+        for stmt in session.statements
+        for v in stmt.compile().params.values()
+        if isinstance(v, str) and v.startswith("%")
+    ]
+    joined = " ".join(like_params)
+    assert "%أسود%" in joined, f"the article was not stripped: {like_params!r}"
+    assert "%حمر%" in joined, f"the hamza tail arm is missing: {like_params!r}"
+
+
 def test_search_catalog_reports_zero_matches_with_a_retry_hint() -> None:
     """An empty result carries the retry hint — the model asks or retries,
     it does not invent a product."""

@@ -173,8 +173,15 @@ async def resolve_model_config(
         # §68: secret_ref overrides the inlined api_key when present.
         if row.secret_ref:
             from app.core.secrets import get_secret_store
+            from app.core.tenancy import tenant_scope
 
-            secret_value = await get_secret_store().get_or_none(row.secret_ref)
+            # The secret store resolves its scope from the CONTEXT variable,
+            # not this session — an HTTP request binds it in identity/deps,
+            # but a worker (or any future caller) may reach here without it.
+            # The tenant_id is a parameter of THIS function: bind it for the
+            # lookup instead of failing closed one layer away from the bug.
+            async with tenant_scope(session, tenant_id):
+                secret_value = await get_secret_store().get_or_none(row.secret_ref)
             if secret_value:
                 api_key = secret_value
         return {

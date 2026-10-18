@@ -364,13 +364,28 @@ class MessageWorker(StreamWorker):
             # Phase 3: AI Auto-reply (runs under conversation_lease internally)
             async with SessionLocal() as session:
                 await bind_tenant(session, tenant_id)
-                await maybe_auto_reply(
-                    session,
-                    tenant_id,
-                    uuid.UUID(conversation_id),
-                    inbound_message_id=turn_message_id,
-                )
-                await session.commit()
+                # The HTTP path binds the tenant CONTEXT (identity/deps) for
+                # every request; the worker is that path's background
+                # equivalent. Without it, anything reading a tenant-scoped
+                # SECRET outside this session — DatabaseSecretStore resolves
+                # its scope from the context, not the session — fails closed
+                # with "no tenant in context" BEFORE the first model call:
+                # every real social message dead-whiles the agent entirely.
+                from app.core.tenancy import set_current_tenant
+
+                set_current_tenant(tenant_id)
+                try:
+                    await maybe_auto_reply(
+                        session,
+                        tenant_id,
+                        uuid.UUID(conversation_id),
+                        inbound_message_id=turn_message_id,
+                    )
+                    await session.commit()
+                finally:
+                    from app.core.tenancy import reset_current_tenant
+
+                    reset_current_tenant()
 
             # Phase 4: Finalize consumer-inbox ProcessedEvent (§127)
             async with SessionLocal() as session:

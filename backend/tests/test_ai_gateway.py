@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+import uuid
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
@@ -371,3 +372,94 @@ async def test_reserve_budget_sweeps_reservations_no_run_will_ever_settle(
         .one()
     )
     assert live.status == "active"
+
+
+async def test_chat_reads_a_secret_ref_without_a_request_context(
+    db, tenant_ctx, app_sessions_on_test_connection
+):
+    """THE Oct-18 P0: the worker path binds the tenant to the SESSION only,
+    while the secret store resolves its scope from the CONTEXT variable —
+    which only the HTTP request path sets. Every real social message failed
+    with "no tenant in context" before the first model call. The gateway now
+    binds the tenant_id it already holds for the lookup; this test runs the
+    chat with the context deliberately UNSET, the way the worker arrives."""
+    import base64
+
+    from app.core.secrets import DatabaseSecretStore, EnvelopeSecretStore
+    from app.core.tenancy import reset_current_tenant, set_current_tenant, try_current_tenant
+
+    tenant_id = tenant_ctx.tenant_id
+    # WRITE the secret the way production wrote it: under the admin context.
+    set_current_tenant(tenant_id)
+    key_b64 = base64.b64encode(b"worker-scope-test-key-32-bytes!!").decode("ascii")
+    store = DatabaseSecretStore(envelope=EnvelopeSecretStore(key_b64))
+    secret_ref = f"ai/openai/{uuid.uuid4()}"
+    await store.put(secret_ref, "worker-scope-key")
+    reset_current_tenant()
+
+    # The test env selects EnvSecretStore by default; production selects the
+    # Database one (is_secure_environment). Pin the Database store for this
+    # test — that is the selection the failing path runs under.
+    from app.core.secrets import get_secret_store, set_secret_store
+
+    previous_store = get_secret_store()
+    set_secret_store(store)
+    try:
+        # The worker's arrival state: session-bound, context-UNSET.
+        assert try_current_tenant() is None
+
+        db.add(
+            ModelConfig(
+                tenant_id=tenant_id,
+                alias="fast",
+                provider="openai",
+                model="cfg-model",
+                config={"base_url": "https://cfg.test/v1", "api_key": ""},
+                secret_ref=secret_ref,
+            )
+        )
+        await db.flush()
+
+        monkey = pytest.MonkeyPatch()
+        monkey.setattr(ai_gateway, "get_settings", lambda: _StubSettings())
+        captured: dict = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["auth"] = request.headers.get("authorization")
+            return httpx.Response(200, json=_ok_chat_response())
+
+        try:
+            async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+                result = await AIGateway().chat(
+                    db,
+                    tenant_id,
+                    alias="fast",
+                    messages=[{"role": "user", "content": "hi"}],
+                    _client=client,
+                )
+        finally:
+            monkey.undo()
+            set_secret_store(previous_store)
+
+        assert result.content == "pong"
+        # The key crossed from the encrypted row to the provider header —
+        # through a tenant context the WORKER never sets and the gateway
+        # no longer requires.
+        assert captured["auth"] == "Bearer worker-scope-key"
+    finally:
+        reset_current_tenant()
+
+
+def test_the_worker_binds_the_tenant_context_before_the_ai_phase():
+    """Structural half of the same fix: the worker's AI phase sets the tenant
+    context BEFORE maybe_auto_reply and resets it after — the background
+    equivalent of what identity/deps does for every HTTP request."""
+    import inspect
+
+    from app.workers.message_worker import MessageWorker
+
+    source = inspect.getsource(MessageWorker._on_received)
+    guard = source.index("set_current_tenant(tenant_id)")
+    call = source.index("maybe_auto_reply(")
+    assert guard < call, "the AI phase runs without the tenant context bound"
+    assert "reset_current_tenant()" in source
