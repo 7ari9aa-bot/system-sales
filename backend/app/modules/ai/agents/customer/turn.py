@@ -273,6 +273,7 @@ def _context_lines(
     skipped_photos: int,
     vision_failures: int = 0,
     audio_rides: bool = False,
+    include_ambient: bool = True,
 ) -> str | None:
     """The system-owned context block, or None when there is nothing to say.
 
@@ -281,13 +282,16 @@ def _context_lines(
     untrusted zone). These lines are the model's EYES, not its instructions.
     """
     lines: list[str] = []
-    # Today, as a WEEKDAY with no digits: "بعد يومين" needs the model to
-    # know what day it is, but a numeral here would be an ungrounded numeral
-    # the moment the model repeats it — weekday names carry no numbers, so
-    # the reply stays honest AND grounded.
-    lines.append("النهارده " + _ARABIC_WEEKDAYS[datetime.now(UTC).weekday()])
-    if channel:
-        lines.append(f"القناة: {channel}")
+    if include_ambient:
+        # Today, as a WEEKDAY with no digits: "بعد يومين" needs the model to
+        # know what day it is, but a numeral here would be an ungrounded
+        # numeral the moment the model repeats it — weekday names carry no
+        # numbers, so the reply stays honest AND grounded. The ambient block
+        # NEVER rescues an otherwise-empty turn: a blank message still
+        # short-circuits without spending a model call.
+        lines.append("النهارده " + _ARABIC_WEEKDAYS[datetime.now(UTC).weekday()])
+        if channel:
+            lines.append(f"القناة: {channel}")
     if customer_name:
         line = f"اسم العميل: {customer_name}"
         if customer_locale:
@@ -462,6 +466,15 @@ async def run_customer_turn(
 
     shown = list(state.shown_items) if state else []
     shown_line = await _shown_line(session, params.tenant_id, shown)
+    has_content = bool(
+        turn.text
+        or turn.voice_transcript
+        or turn.has_voice
+        or turn.other_media
+        or shown_line
+        or vision_results
+        or turn.image_keys
+    )
     context = _context_lines(
         turn,
         shown_line,
@@ -472,6 +485,7 @@ async def run_customer_turn(
         skipped_photos,
         vision_failures,
         audio_rides=params.audio_rides,
+        include_ambient=has_content,
     )
     user_message = _message_text(turn, bool(vision_results))
     if not user_message and not context:

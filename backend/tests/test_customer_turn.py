@@ -288,7 +288,9 @@ async def test_context_carries_the_weekday_and_channel(db, tenant_ctx):
     weekday carries NO digits, so grounding never blocks the phrasing."""
     runner = FakeRunner(_result())
     await run_customer_turn(
-        db, _params(db, tenant_ctx, body="السلام عليكم"), runner=runner
+        db,
+        _params(db, tenant_ctx, body="السلام عليكم", channel="webchat"),
+        runner=runner,
     )
     context = runner.calls[0]["context_lines"]
     assert "النهارده" in context
