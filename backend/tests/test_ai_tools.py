@@ -232,6 +232,19 @@ async def test_malformed_binding_is_a_controlled_tool_error() -> None:
 # ------------------------------------------------------------ DB-backed -----
 
 
+async def _warehouse(db: AsyncSession, tenant_id: uuid.UUID) -> uuid.UUID:
+    from app.modules.inventory.models import Warehouse
+
+    warehouse = Warehouse(
+        tenant_id=tenant_id,
+        name="WH",
+        code=f"W-{uuid.uuid4().hex[:6].upper()}",
+    )
+    db.add(warehouse)
+    await db.flush()
+    return warehouse.id
+
+
 async def _conversation(db: AsyncSession, tenant_id: uuid.UUID):
     customer = Customer(tenant_id=tenant_id, name="Tool Customer")
     db.add(customer)
@@ -278,7 +291,7 @@ async def test_search_catalog_returns_price_and_availability(db, tenant_ctx) -> 
     db.add(
         InventoryBalance(
             tenant_id=tenant_id,
-            warehouse_id=uuid.uuid4(),
+            warehouse_id=await _warehouse(db, tenant_id),
             variant_id=variant.id,
             on_hand=10,
             reserved=2,
@@ -307,7 +320,7 @@ async def test_search_catalog_reports_restock_when_empty(db, tenant_ctx) -> None
     db.add(
         InventoryBalance(
             tenant_id=tenant_id,
-            warehouse_id=uuid.uuid4(),
+            warehouse_id=await _warehouse(db, tenant_id),
             variant_id=variant.id,
             on_hand=0,
             reserved=0,
@@ -346,7 +359,7 @@ async def test_search_catalog_hides_restock_from_an_in_stock_variant(db, tenant_
     db.add(
         InventoryBalance(
             tenant_id=tenant_id,
-            warehouse_id=uuid.uuid4(),
+            warehouse_id=await _warehouse(db, tenant_id),
             variant_id=variant.id,
             on_hand=50,
             reserved=0,
@@ -377,7 +390,7 @@ async def test_search_catalog_reports_sold_out_without_restock(db, tenant_ctx) -
     db.add(
         InventoryBalance(
             tenant_id=tenant_id,
-            warehouse_id=uuid.uuid4(),
+            warehouse_id=await _warehouse(db, tenant_id),
             variant_id=variant.id,
             on_hand=0,
             reserved=0,
@@ -400,7 +413,7 @@ async def test_search_catalog_marks_the_low_band(db, tenant_ctx) -> None:
     db.add(
         InventoryBalance(
             tenant_id=tenant_id,
-            warehouse_id=uuid.uuid4(),
+            warehouse_id=await _warehouse(db, tenant_id),
             variant_id=variant.id,
             on_hand=3,
             reserved=0,

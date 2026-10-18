@@ -173,6 +173,8 @@ async def test_photo_without_a_minted_url_is_counted_not_interpreted(db, tenant_
 
 
 async def test_ordinal_referent_resolves_against_shown_items(db, tenant_ctx):
+    """The model resolves "التاني" itself — the context hands it the numbered
+    shown list, ids included, and nothing else decides for it."""
     conversation_id = await _conversation(db, tenant_ctx)
     await apply_patch(
         db,
@@ -181,7 +183,7 @@ async def test_ordinal_referent_resolves_against_shown_items(db, tenant_ctx):
         {"shown_items": [PRODUCT_A, PRODUCT_B]},
     )
     runner = FakeRunner(_result())
-    outcome = await run_customer_turn(
+    await run_customer_turn(
         db,
         _params(
             db,
@@ -191,13 +193,16 @@ async def test_ordinal_referent_resolves_against_shown_items(db, tenant_ctx):
         ),
         runner=runner,
     )
-    assert outcome.referent is not None
-    assert outcome.referent.product_id == PRODUCT_B
-    assert outcome.referent.position == 2
-    assert PRODUCT_B in runner.calls[0]["context_lines"]
+    context = runner.calls[0]["context_lines"]
+    first = context.index("1. ")
+    second = context.index("2. ")
+    assert context.index(PRODUCT_A) < second < context.index(PRODUCT_B)
+    assert first < second
 
 
 async def test_ordinal_beyond_shown_asks_instead_of_guessing(db, tenant_ctx):
+    """A list with one item cannot ground a "التالت" — the model sees exactly
+    that (one numbered line) and the prompt's rule makes it ask."""
     conversation_id = await _conversation(db, tenant_ctx)
     await apply_patch(
         db,
@@ -206,13 +211,14 @@ async def test_ordinal_beyond_shown_asks_instead_of_guessing(db, tenant_ctx):
         {"shown_items": [PRODUCT_A]},
     )
     runner = FakeRunner(_result())
-    outcome = await run_customer_turn(
+    await run_customer_turn(
         db,
         _params(db, tenant_ctx, conversation_id=conversation_id, body="ابعت التالت"),
         runner=runner,
     )
-    assert outcome.referent is None  # position 3 of a one-item list
-    assert "اسأله" in runner.calls[0]["context_lines"]
+    context = runner.calls[0]["context_lines"]
+    assert "1. " in context
+    assert "\n2. " not in context  # there is no second line to point at
 
 
 async def test_ungrounded_numeral_blocks_the_reply(db, tenant_ctx):
@@ -235,10 +241,10 @@ async def test_grounded_numerals_pass_through(db, tenant_ctx):
             content="السعر 149.00 والكمية 2",
             tool_calls=[
                 {
-                    "name": "create_order",
+                    "name": "search_catalog",
                     "status": "ok",
-                    "args": {"quantity": 2},
-                    "result": {"price": "149.00"},
+                    "args": {"query": "widget"},
+                    "result": {"price": "149.00", "quantity": 2},
                 }
             ],
         )

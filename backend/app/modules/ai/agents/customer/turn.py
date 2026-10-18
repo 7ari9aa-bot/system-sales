@@ -457,11 +457,11 @@ async def run_customer_turn(
             blocked_reason="empty_turn",
         )
 
-    # The hook's retrieved snippets ride FIRST; the system-owned context
-    # lines (state, vision, customer identity) follow — both stay OUTSIDE
-    # the system prompt (§132 untrusted zone).
-    merged_context = "\n".join(part for part in (params.knowledge_context, context) if part) or None
-
+    # The hook's retrieved snippets and the system-owned context lines
+    # (state, vision, customer identity) travel SEPARATELY: the runtime
+    # labels each for what it is, and a knowledge failure cannot dress the
+    # customer's name up as a retrieved snippet. Both stay OUTSIDE the
+    # system prompt (§132).
     result: AgentRunResult = await _runner.run(
         session,
         params.tenant_id,
@@ -470,7 +470,8 @@ async def run_customer_turn(
         inbound_message_id=params.inbound_message_id,
         user_message=user_message,
         customer_id=params.customer_id,
-        knowledge_context=merged_context,
+        knowledge_context=params.knowledge_context,
+        context_lines=context,
         vision_state={
             "classified_kind": (
                 classified_kind.value if classified_kind is not None else None

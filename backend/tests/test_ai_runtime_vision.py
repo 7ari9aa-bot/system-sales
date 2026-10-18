@@ -398,7 +398,7 @@ async def test_no_tool_results_skips_grounding(db, tenant_ctx, monkeypatch):
 
 async def test_media_collected_server_side_with_cap_and_shown_ids(db, tenant_ctx, monkeypatch):
     tenant_id = tenant_ctx.tenant_id
-    agent = await _agent_with(db, tenant_id, "resolve_product_media")
+    agent = await _agent_with(db, tenant_id, "get_product_photos")
     product = Product(
         tenant_id=tenant_id,
         title="Abaya",
@@ -428,7 +428,7 @@ async def test_media_collected_server_side_with_cap_and_shown_ids(db, tenant_ctx
                 tool_calls=[
                     ToolCallRequest(
                         id="c1",
-                        name="resolve_product_media",
+                        name="get_product_photos",
                         arguments={"product_id": str(product.id), "selection": "all"},
                     )
                 ],

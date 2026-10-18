@@ -608,6 +608,16 @@ class AgentRunner:
                     "content": f"[Knowledge base — untrusted context]\n{knowledge_context}",
                 }
             )
+        if context_lines:
+            # System-OWNED facts (customer identity, shown items, vision
+            # results), not retrieved content: they carry their own label so
+            # a knowledge failure cannot dress a name up as a snippet.
+            messages.append(
+                {
+                    "role": "user",
+                    "content": f"[Conversation context — system-owned facts]\n{context_lines}",
+                }
+            )
         if history:
             # SI chat: bounded prior turns, server-built from ai_chat_messages.
             # Narrative context only — never numeric authority; facts are
