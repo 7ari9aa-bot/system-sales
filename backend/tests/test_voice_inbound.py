@@ -483,13 +483,13 @@ def test_voice_context_line_yields_when_audio_rides() -> None:
     # Audio rides: no contradictory line — the model hears the customer.
     assert (
         _context_lines(
-            turn, None, None, None, None, [], 0, 0, audio_rides=True, include_ambient=False
+            turn, None, None, None, None, None, [], 0, 0, audio_rides=True, include_ambient=False
         )
         is None
     )
     # Audio does not ride: the ask-to-type line stays.
     surfaced = _context_lines(
-        turn, None, None, None, None, [], 0, 0, audio_rides=False, include_ambient=False
+        turn, None, None, None, None, None, [], 0, 0, audio_rides=False, include_ambient=False
     )
     assert surfaced is not None
     assert "صوتية" in surfaced

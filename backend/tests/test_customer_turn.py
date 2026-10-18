@@ -289,7 +289,13 @@ async def test_context_carries_the_weekday_and_channel(db, tenant_ctx):
     runner = FakeRunner(_result())
     await run_customer_turn(
         db,
-        _params(db, tenant_ctx, body="السلام عليكم", channel="webchat"),
+        _params(
+            db,
+            tenant_ctx,
+            body="السلام عليكم",
+            channel="webchat",
+            tenant_timezone="Africa/Cairo",
+        ),
         runner=runner,
     )
     context = runner.calls[0]["context_lines"]
@@ -297,6 +303,17 @@ async def test_context_carries_the_weekday_and_channel(db, tenant_ctx):
     weekdays = ("الاثنين", "الثلاثاء", "الاربعاء", "الخميس", "الجمعة", "السبت", "الاحد")
     assert any(day in context for day in weekdays)
     assert "القناة: webchat" in context
+
+
+async def test_a_broken_timezone_degrades_to_utc_without_failing(db, tenant_ctx):
+    runner = FakeRunner(_result())
+    outcome = await run_customer_turn(
+        db,
+        _params(db, tenant_ctx, body="السلام عليكم", tenant_timezone="Not/AZone"),
+        runner=runner,
+    )
+    assert "النهارده" in runner.calls[0]["context_lines"]
+    assert outcome.blocked_reason is None
 
 
 async def test_guardrail_block_yields_no_reply(db, tenant_ctx):

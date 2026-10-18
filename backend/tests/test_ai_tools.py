@@ -344,6 +344,10 @@ async def test_search_catalog_reports_restock_when_empty(db, tenant_ctx) -> None
     # The ready label carries certainty and WESTERN digits — grounding matches
     # facts verbatim, and an Arabic-Indic label would never ground "25".
     assert row["availability"]["restock_label"] == "مؤكد: 25 أكتوبر 2026"
+    # The raw day-count is a fact too: "بعد 6 أيام" is quotable, "حسبتها" is not.
+    assert row["availability"]["restock_in_days"] == (
+        date(2026, 10, 25) - date.today()
+    ).days
 
 
 async def test_search_catalog_hides_restock_from_an_in_stock_variant(db, tenant_ctx) -> None:
@@ -813,6 +817,49 @@ def test_the_search_tool_advertises_the_structured_specs() -> None:
     args = SearchCatalogArgs(query="x")
     assert args.attributes is None
     assert args.option_values is None
+
+
+async def test_search_catalog_ranks_word_matches_first(db, tenant_ctx):
+    """CI-only: the black-t-shirt ask must not open with chinos that merely
+    share the color — rows matching MORE of the customer's words rank first,
+    regardless of the alphabet."""
+    tenant_id = tenant_ctx.tenant_id
+    shirt = Product(
+        tenant_id=tenant_id,
+        title="تيشيرت أسود",
+        slug=f"ts-{uuid.uuid4().hex[:8]}",
+        status="active",
+    )
+    pants = Product(
+        tenant_id=tenant_id,
+        title="بنطلون أسود",
+        slug=f"pn-{uuid.uuid4().hex[:8]}",
+        status="active",
+    )
+    db.add_all([shirt, pants])
+    await db.flush()
+    shirt_v = ProductVariant(
+        tenant_id=tenant_id,
+        product_id=shirt.id,
+        sku=f"TS-{uuid.uuid4().hex[:6].upper()}",
+        title="تيشيرت أسود M",
+        price=Decimal("100.00"),
+    )
+    pants_v = ProductVariant(
+        tenant_id=tenant_id,
+        product_id=pants.id,
+        sku=f"PN-{uuid.uuid4().hex[:6].upper()}",
+        title="بنطلون أسود M",
+        price=Decimal("150.00"),
+    )
+    db.add_all([shirt_v, pants_v])
+    await db.flush()
+
+    spec = get_tool("search_catalog")
+    result = await spec.handler(db, tenant_id, query="تيشيرت اسود", limit=20)
+    titles = [row["title"] for row in result["results"]]
+    assert "تيشيرت أسود M" in titles
+    assert titles[0].startswith("تيشيرت"), f"ranking put {titles!r} first"
 
 
 async def test_structured_specs_are_matched_by_the_database(db, tenant_ctx):

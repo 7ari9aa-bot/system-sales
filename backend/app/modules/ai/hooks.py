@@ -289,6 +289,22 @@ async def _do_auto_reply(
     # reply — the agent just talks to an unnamed customer.
     customer_name: str | None = None
     customer_locale: str | None = None
+    # The store's timezone — the weekday the model sees must be the STORE's
+    # today. Parameter-bound read on the shared metadata (the read-model
+    # pattern): importing identity here would trip the boundary ratchet.
+    tenant_timezone: str | None = None
+    try:
+        from app.core.db import Base
+
+        tenants = Base.metadata.tables["tenants"]
+        tz_row = (
+            await session.execute(
+                select(tenants.c.timezone).where(tenants.c.id == tenant_id)
+            )
+        ).first()
+        tenant_timezone = tz_row[0] if tz_row else None
+    except Exception:  # noqa: BLE001 — context is optional, the reply is not
+        logger.warning("auto-reply continuing WITHOUT the store timezone", exc_info=True)
     if customer_id is not None:
         try:
             from app.modules.customers.service import CustomerService
@@ -361,6 +377,7 @@ async def _do_auto_reply(
                 customer_name=customer_name,
                 customer_locale=customer_locale,
                 channel=conversation.channel,
+                tenant_timezone=tenant_timezone,
                 body=body,
                 content_type=last_inbound.content_type,
                 attachments=attachments,

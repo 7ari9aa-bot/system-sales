@@ -17,12 +17,14 @@ conversation from its own context — the model never passes them.
 
 from __future__ import annotations
 
+import operator
 import uuid
-from datetime import date
+from datetime import UTC, date, datetime
+from functools import reduce
 from typing import Literal
 
 from pydantic import BaseModel, Field
-from sqlalchemy import func, literal_column, or_, select
+from sqlalchemy import case, func, literal_column, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import DomainError, NotFoundError, ValidationError
@@ -165,6 +167,11 @@ async def _availability_map(
             "restock_label": _restock_label(restock.expected_on, restock.confidence)
             if restock is not None and status in ("خلص", "هيتجدد")
             else None,
+            # The model can only say "after 7 days" if 7 is a fact — a raw
+            # integer here is what makes the arithmetic quotable.
+            "restock_in_days": (restock.expected_on - datetime.now(UTC).date()).days
+            if restock is not None
+            else None,
             "updated_at": updated_at.isoformat() if updated_at is not None else None,
         }
     return out
@@ -204,8 +211,13 @@ async def _search_catalog(
     # form with a leading ال stripped ("الأسود" -> "أسود" — customers write
     # the definite article, catalogs usually don't), and the TAIL with the
     # first two characters dropped ("%حمر%" matches "أحمر" and "احمر" — the
-    # hamza only touches the first letter). A word shorter than four
-    # characters is used as-is: its tail is too generic to be a signal.
+    # hamza only touches the first letter). Words of four characters or more
+    # ALSO get a trigram arm (pg_trgm): the near-match is what bridges a
+    # mid-word spelling insertion — "تيشرت" finds "تيشيرت" — which prefix
+    # and substring arms structurally cannot.
+    #
+    # Rows are RANKED by how many of the customer's words they matched, so a
+    # black-t-shirt ask never opens with chinos that merely share the color.
     def _word_arms(word: str) -> list[str]:
         arms = [word]
         if len(word) >= 4:
@@ -218,46 +230,67 @@ async def _search_catalog(
         return list(dict.fromkeys(arms))
 
     words = [w for w in query.split() if w][:6] or [query]
-    ts_arms = [
-        Product.search_ts.op("@@")(func.plainto_tsquery(literal_column("'simple'"), word))
-        for word in words
-    ]
-    like_arms = [
-        arm
-        for word in words
-        for pattern in _word_arms(word)
-        for arm in (
-            Product.title.ilike(like_pattern(pattern), escape=LIKE_ESCAPE),
-            ProductVariant.title.ilike(like_pattern(pattern), escape=LIKE_ESCAPE),
-            ProductVariant.sku.ilike(like_pattern(pattern), escape=LIKE_ESCAPE),
-        )
-    ]
+
+    def _word_expr(word: str):
+        arms = [
+            Product.search_ts.op("@@")(
+                func.plainto_tsquery(literal_column("'simple'"), word)
+            ),
+            Product.title.ilike(like_pattern(word), escape=LIKE_ESCAPE),
+            ProductVariant.title.ilike(like_pattern(word), escape=LIKE_ESCAPE),
+            ProductVariant.sku.ilike(like_pattern(word), escape=LIKE_ESCAPE),
+        ]
+        for pattern in _word_arms(word):
+            arms += [
+                Product.title.ilike(like_pattern(pattern), escape=LIKE_ESCAPE),
+                ProductVariant.title.ilike(like_pattern(pattern), escape=LIKE_ESCAPE),
+            ]
+        if len(word) >= 4:
+            # pg_trgm near-match — the migration installs the extension and
+            # the GIN trgm indexes; the threshold is loosened to 0.2 because
+            # Arabic trigram overlap on a one-letter insertion lands ~0.29.
+            arms += [Product.title.op("%")(word), ProductVariant.title.op("%")(word)]
+        return or_(*arms)
+
+    word_exprs = [_word_expr(word) for word in words]
     conditions = [
         ProductVariant.tenant_id == tenant_id,
         ProductVariant.is_active.is_(True),
         Product.status.in_(sellable_product_statuses()),
-        or_(*ts_arms, *like_arms),
+        or_(*word_exprs),
     ]
     if attributes:
         conditions.append(Product.attributes.contains(attributes))
     if option_values:
         conditions.append(ProductVariant.option_values.contains(option_values))
 
+    # The threshold is transaction-local: the % operator above reads it, and
+    # the default 0.3 would miss the very insertions this arm exists for.
+    from sqlalchemy import text
+
+    await session.execute(text("SET LOCAL pg_trgm.similarity_threshold = 0.2"))
+
+    # total_matches counts PRODUCTS — "how many things match" is a product
+    # question; counting variants inflated it with size/color duplicates.
     total_matches = (
         await session.execute(
-            select(func.count())
+            select(func.count(func.distinct(Product.id)))
             .select_from(ProductVariant)
             .join(Product, Product.id == ProductVariant.product_id)
             .where(*conditions)
         )
     ).scalar_one()
 
+    # Rank: most of the customer's words matched first, then alphabetical.
+    match_score = reduce(
+        operator.add, (case((expr, 1), else_=0) for expr in word_exprs)
+    )
     rows = (
         await session.execute(
             select(ProductVariant, Product.title)
             .join(Product, Product.id == ProductVariant.product_id)
             .where(*conditions)
-            .order_by(Product.title.asc(), ProductVariant.id.asc())
+            .order_by(match_score.desc(), Product.title.asc(), ProductVariant.id.asc())
             .limit(limit)
         )
     ).all()

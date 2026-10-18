@@ -20,7 +20,10 @@ state patch. Integrity gates block wrong replies; they never pick a path.
   so far, and patched AFTER it with optimistic concurrency.
 * The vision match runs on the FIRST photo only (v1).
 * Every number the draft uses must trace to a tool result (grounding); a
-  failed check yields NO reply — the caller sends the safe fallback.
+  failed check yields NO reply — the hook records a handover and the
+  customer hears nothing from the agent. That silence is the DECIDED
+  product behavior (2026-10-18): a problem goes to a human, and silence
+  beats a wrong or improvised message.
 * The customer's media never reaches the pipeline as a storage key: the
   caller mints provider-fetchable URLs and passes the mapping in.
 
@@ -130,6 +133,19 @@ MAX_PHOTOS_PER_TURN = 1
 
 #: datetime.weekday() → Arabic day name. No digits, by design — see the
 #: context line above.
+def _today_weekday(timezone: str | None) -> int:
+    """The store's weekday index: the tenant timezone when usable, UTC
+    otherwise — an unparseable timezone must not fail the turn."""
+    from zoneinfo import ZoneInfo
+
+    try:
+        if timezone:
+            return datetime.now(ZoneInfo(timezone)).weekday()
+    except Exception:  # noqa: BLE001 — a bad tz string degrades to UTC
+        pass
+    return datetime.now(UTC).weekday()
+
+
 _ARABIC_WEEKDAYS = {
     0: "الاثنين",
     1: "الثلاثاء",
@@ -169,6 +185,9 @@ class TurnInput:
     # The channel the customer is talking on — "الشحن بيوصل فين" and tone
     # both depend on it, and the model has no other way to know.
     channel: str | None = None
+    # The store's IANA timezone (tenants.timezone): the weekday line is
+    # computed HERE so "today" is the store's today, not UTC's.
+    tenant_timezone: str | None = None
     # Direct-Omni input: the caller determined the newest message's audio will
     # ride the model call itself (scanner-cleared, supported format, flag on).
     # When True the "voice not transcribed yet — ask them to type" context
@@ -269,6 +288,7 @@ def _context_lines(
     customer_name: str | None,
     customer_locale: str | None,
     channel: str | None,
+    tenant_timezone: str | None,
     vision_results: list[MatchResult],
     skipped_photos: int,
     vision_failures: int = 0,
@@ -289,7 +309,7 @@ def _context_lines(
         # numbers, so the reply stays honest AND grounded. The ambient block
         # NEVER rescues an otherwise-empty turn: a blank message still
         # short-circuits without spending a model call.
-        lines.append("النهارده " + _ARABIC_WEEKDAYS[datetime.now(UTC).weekday()])
+        lines.append("النهارده " + _ARABIC_WEEKDAYS[_today_weekday(tenant_timezone)])
         if channel:
             lines.append(f"القناة: {channel}")
     if customer_name:
@@ -481,6 +501,7 @@ async def run_customer_turn(
         params.customer_name,
         params.customer_locale,
         params.channel,
+        params.tenant_timezone,
         vision_results,
         skipped_photos,
         vision_failures,
