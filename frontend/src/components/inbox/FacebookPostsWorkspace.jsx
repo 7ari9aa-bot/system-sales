@@ -44,14 +44,14 @@ function CommentThread({ comment, pageName, onReply, lang }) {
     window.setTimeout(() => setNotice(""), 2200);
   };
   const renderBubble = (author, text, isPage = false) => (
-    <div className="inline-block max-w-full rounded-[18px] bg-[#f0f2f5] px-3 py-2 text-[13px] leading-[1.38] text-[#050505]">
-      <span className="font-semibold">{author}</span>
-      {isPage && <span className="ms-1 text-[10px] font-medium text-[#65676b]">· {isArabic ? "الصفحة" : "Page"}</span>}
+    <div className="inline-block max-w-full rounded-[18px] bg-[#f0f2f5] px-3.5 py-2.5 text-[14px] leading-[1.5] text-[#050505]">
+      <span className="font-bold">{author}</span>
+      {isPage && <span className="ms-1 text-[11px] font-medium text-[#65676b]">· {isArabic ? "الصفحة" : "Page"}</span>}
       <span dir="auto" className="whitespace-pre-wrap break-words">{" "}{text}</span>
     </div>
   );
   const renderActions = (timeLabel, likedCount, isTopLevel = false) => (
-    <div className="mt-0.5 flex min-h-5 items-center gap-2 px-3 text-[11px] font-semibold leading-4 text-[#65676b]">
+    <div className="mt-0.5 flex min-h-6 items-center gap-2.5 px-3 text-[12px] font-semibold leading-5 text-[#65676b]">
       {isTopLevel ? <button type="button" aria-pressed={liked} onClick={() => setLiked((value) => !value)} className={cn("hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0866ff]", liked && "text-[#0866ff]")}>{isArabic ? "أعجبني" : "Like"}</button> : <span>{isArabic ? "أعجبني" : "Like"}</span>}
       <span aria-hidden="true">·</span>
       {isTopLevel ? <button type="button" onClick={() => { setReplyOpen((value) => !value); setNotice(""); }} className="hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0866ff]">{isArabic ? "رد" : "Reply"}</button> : <span>{isArabic ? "رد" : "Reply"}</span>}
@@ -63,24 +63,24 @@ function CommentThread({ comment, pageName, onReply, lang }) {
   return (
     <div className="min-w-0">
       <div className="flex items-start gap-2">
-        <Avatar src={comment.avatarUrl} name={comment.author} size="h-8 w-8" />
+        <Avatar src={comment.avatarUrl} name={comment.author} size="h-9 w-9" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
             {renderBubble(comment.author, comment.text, comment.isPage)}
-            {isAutomatedReply(comment) && <span className="rounded-full bg-[#e7f3ff] px-1.5 py-0.5 text-[9px] font-semibold leading-3 text-[#0866ff]">{isArabic ? "رد تلقائي" : "Auto reply"}</span>}
+            {isAutomatedReply(comment) && <span className="rounded-full bg-[#e7f3ff] px-2 py-0.5 text-[10px] font-semibold leading-4 text-[#0866ff]">{isArabic ? "رد تلقائي" : "Auto reply"}</span>}
           </div>
           {renderActions(comment.timeLabel, comment.likes || 0, true)}
         </div>
       </div>
       {(comment.replies || []).length > 0 && (
-        <div className="mt-1.5 space-y-2 ps-8 sm:ps-10">
+        <div className="mt-2 space-y-2.5 ps-9 sm:ps-11">
           {comment.replies.map((reply) => (
             <div key={reply.id} className="flex items-start gap-2">
-              <Avatar src={reply.avatarUrl || (reply.isPage ? "/fihrist-mark.svg" : undefined)} name={reply.author} size="h-7 w-7" />
+              <Avatar src={reply.avatarUrl || (reply.isPage ? "/fihrist-mark.svg" : undefined)} name={reply.author} size="h-8 w-8" />
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
                   {renderBubble(reply.author, reply.text, reply.isPage)}
-                  {isAutomatedReply(reply) && <span className="rounded-full bg-[#e7f3ff] px-1.5 py-0.5 text-[9px] font-semibold leading-3 text-[#0866ff]">{isArabic ? "رد تلقائي" : "Auto reply"}</span>}
+                  {isAutomatedReply(reply) && <span className="rounded-full bg-[#e7f3ff] px-2 py-0.5 text-[10px] font-semibold leading-4 text-[#0866ff]">{isArabic ? "رد تلقائي" : "Auto reply"}</span>}
                 </div>
                 {renderActions(reply.timeLabel, reply.likes || 0)}
               </div>
@@ -89,15 +89,15 @@ function CommentThread({ comment, pageName, onReply, lang }) {
         </div>
       )}
       {replyOpen && (
-        <form onSubmit={submit} className="mt-2 flex gap-2 ps-8 sm:ps-10">
-          <Avatar src="/fihrist-mark.svg" name={pageName} size="h-7 w-7" />
+        <form onSubmit={submit} className="mt-2 flex gap-2 ps-9 sm:ps-11">
+          <Avatar src="/fihrist-mark.svg" name={pageName} size="h-8 w-8" />
           <div className="flex min-w-0 flex-1 items-center rounded-full border border-[#e4e6eb] bg-white px-3 focus-within:border-[#0866ff]">
             <input autoFocus value={draft} onChange={(event) => setDraft(event.target.value)} dir={isArabic ? "rtl" : "ltr"} placeholder={isArabic ? "اكتب ردًا بصفتك الصفحة..." : "Reply as Page..."} className="min-w-0 flex-1 bg-transparent py-2 text-[12px] outline-none placeholder:text-[#8a8d91]" />
             <button type="submit" disabled={!draft.trim()} aria-label={isArabic ? "إرسال الرد" : "Send reply"} className="grid h-7 w-7 place-items-center rounded-full text-[#0866ff] hover:bg-[#e7f3ff] disabled:opacity-40"><Send className="h-4 w-4" /></button>
           </div>
         </form>
       )}
-      {notice && <p role="status" className="mt-1 ps-8 text-[10.5px] text-[#237a57] sm:ps-10">{notice}</p>}
+      {notice && <p role="status" className="mt-1 ps-9 text-[11px] text-[#237a57] sm:ps-11">{notice}</p>}
     </div>
   );
 }
@@ -201,12 +201,12 @@ export default function FacebookPostsWorkspace({ posts = [], lang = "ar", onRepl
               return <button key={post.id} type="button" onClick={() => { setSelectedPostId(post.id); setCommentingPost(null); setCommentDraft(""); }} aria-current={selectedPostId === post.id ? "true" : undefined} className={cn("flex w-full items-start gap-2.5 border-b border-[#f0f2f5] px-3 py-3 text-start transition-colors hover:bg-[#f7f8fa] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#0866ff]", selectedPostId === post.id && "bg-[#e7f3ff] hover:bg-[#e7f3ff]")}>
                 <Avatar src={post.pageAvatarUrl} name={post.pageName} size="h-10 w-10" />
                 <span className="min-w-0 flex-1">
-                  <span className="flex items-center justify-between gap-2"><span className="truncate text-[12px] font-semibold text-[#1c1e21]">{post.pageName}</span><span className="shrink-0 text-[10px] text-[#65676b]">{post.timeLabel}</span></span>
+                  <span className="flex items-center justify-between gap-2"><span className="truncate text-[13px] font-semibold text-[#1c1e21]">{post.pageName}</span><span className="shrink-0 text-[11px] text-[#65676b]">{post.timeLabel}</span></span>
                   <span className="mt-1 flex items-center gap-2">
                     {post.mediaUrl && <img src={post.mediaUrl} alt="" className="h-8 w-8 shrink-0 rounded-md object-cover" loading="lazy" />}
-                    <span className="line-clamp-2 min-w-0 flex-1 text-[11px] leading-4 text-[#65676b]">{post.text}</span>
+                    <span className="line-clamp-2 min-w-0 flex-1 text-[12px] leading-[1.45] text-[#65676b]">{post.text}</span>
                   </span>
-                  <span className="mt-1.5 flex items-center gap-1 text-[10px] text-[#65676b]"><MessageCircle className="h-3 w-3" />{count} {isArabic ? "تعليقات" : "comments"}</span>
+                  <span className="mt-1.5 flex items-center gap-1 text-[11px] text-[#65676b]"><MessageCircle className="h-3 w-3" />{count} {isArabic ? "تعليقات" : "comments"}</span>
                 </span>
               </button>;
             })}
@@ -226,31 +226,31 @@ export default function FacebookPostsWorkspace({ posts = [], lang = "ar", onRepl
               <header className="sticky top-0 z-20 flex shrink-0 items-center gap-2.5 border-b border-[#e4e6eb] bg-white/95 px-3 py-2.5 backdrop-blur-sm sm:px-5">
                 <button type="button" onClick={() => setSelectedPostId(null)} aria-label={isArabic ? "العودة إلى المنشورات" : "Back to posts"} className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[#65676b] hover:bg-[#f0f2f5] md:hidden"><ArrowLeft className={cn("h-4 w-4", isArabic && "rotate-180")} /></button>
                 <Avatar src={post.pageAvatarUrl} name={post.pageName} size="h-9 w-9" />
-                <div className="min-w-0 flex-1"><h3 className="truncate text-[13px] font-bold text-[#1c1e21]">{post.pageName}</h3><p className="mt-0.5 flex items-center gap-1 text-[10.5px] text-[#65676b]"><span>{post.timeLabel}</span><span aria-hidden="true">·</span><Globe2 className="h-3 w-3" /></p></div>
+                <div className="min-w-0 flex-1"><h3 className="truncate text-[14px] font-bold text-[#1c1e21]">{post.pageName}</h3><p className="mt-0.5 flex items-center gap-1 text-[11.5px] text-[#65676b]"><span>{post.timeLabel}</span><span aria-hidden="true">·</span><Globe2 className="h-3 w-3" /></p></div>
                 <button type="button" disabled aria-label={isArabic ? "المزيد غير متاح في العرض التجريبي" : "More options unavailable in this demo"} className="grid h-8 w-8 cursor-not-allowed place-items-center rounded-full text-[#8a8d91]"><MoreHorizontal className="h-5 w-5" /></button>
               </header>
               <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain scroll-smooth bg-white [scrollbar-gutter:stable]">
               <div className="border-b border-[#e4e6eb] bg-white">
-                <p dir="auto" className="whitespace-pre-wrap px-4 py-3 text-[13px] leading-[1.6] text-[#1c1e21] sm:px-5">{post.text}</p>
-                {post.mediaUrl && <div className="flex max-h-[min(30vh,320px)] justify-center overflow-hidden bg-[#f0f2f5]"><img src={post.mediaUrl} alt={isArabic ? "صورة من منشور الصفحة" : "Page post image"} className="max-h-[min(30vh,320px)] max-w-full object-contain" loading="lazy" /></div>}
-                <div className="flex items-center justify-between px-4 py-2 text-[11px] text-[#65676b] sm:px-5">
+                <p dir="auto" className="whitespace-pre-wrap px-4 py-3.5 text-[15px] leading-[1.65] text-[#1c1e21] sm:px-5">{post.text}</p>
+                {post.mediaUrl && <div className="flex max-h-[min(34vh,360px)] justify-center overflow-hidden bg-[#f0f2f5]"><img src={post.mediaUrl} alt={isArabic ? "صورة من منشور الصفحة" : "Page post image"} className="max-h-[min(34vh,360px)] max-w-full object-contain" loading="lazy" /></div>}
+                <div className="flex items-center justify-between px-4 py-2.5 text-[12px] text-[#65676b] sm:px-5">
                   <span className="inline-flex items-center gap-1.5"><span className="grid h-[18px] w-[18px] place-items-center rounded-full bg-[#0866ff] text-white"><ThumbsUp className="h-2.5 w-2.5 fill-current" /></span>{post.reactionCount + Number(liked)}</span>
                   <span>{totalComments} {isArabic ? "تعليقات وردود" : "comments and replies"} · {post.shareCount} {isArabic ? "مشاركات" : "shares"}</span>
                 </div>
                 <div className="grid grid-cols-3 border-t border-[#e4e6eb] px-2 py-1 sm:px-4">
-                  <button type="button" aria-pressed={liked} onClick={() => setLikedPosts((previous) => { const next = new Set(previous); if (next.has(post.id)) next.delete(post.id); else next.add(post.id); return next; })} className={cn("flex items-center justify-center gap-1.5 rounded-md py-2 text-[12px] font-semibold hover:bg-[#f0f2f5]", liked ? "text-[#0866ff]" : "text-[#65676b]")}><ThumbsUp className={cn("h-4 w-4", liked && "fill-current")} />{isArabic ? "أعجبني" : "Like"}</button>
-                  <button type="button" aria-pressed={commentingPost === post.id} onClick={() => { setCommentingPost((current) => current === post.id ? null : post.id); setCommentDraft(""); }} className="flex items-center justify-center gap-1.5 rounded-md py-2 text-[12px] font-semibold text-[#65676b] hover:bg-[#f0f2f5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0866ff]"><MessageCircle className="h-4 w-4" />{isArabic ? "تعليق" : "Comment"}</button>
-                  <button type="button" disabled title={isArabic ? "المشاركة غير متاحة في العرض التجريبي" : "Sharing is unavailable in this demo"} className="flex cursor-not-allowed items-center justify-center gap-1.5 rounded-md py-2 text-[12px] font-semibold text-[#8a8d91]"><Share2 className="h-4 w-4" />{isArabic ? "مشاركة" : "Share"}</button>
+                  <button type="button" aria-pressed={liked} onClick={() => setLikedPosts((previous) => { const next = new Set(previous); if (next.has(post.id)) next.delete(post.id); else next.add(post.id); return next; })} className={cn("flex items-center justify-center gap-1.5 rounded-md py-2.5 text-[13px] font-semibold hover:bg-[#f0f2f5]", liked ? "text-[#0866ff]" : "text-[#65676b]")}><ThumbsUp className={cn("h-4 w-4", liked && "fill-current")} />{isArabic ? "أعجبني" : "Like"}</button>
+                  <button type="button" aria-pressed={commentingPost === post.id} onClick={() => { setCommentingPost((current) => current === post.id ? null : post.id); setCommentDraft(""); }} className="flex items-center justify-center gap-1.5 rounded-md py-2.5 text-[13px] font-semibold text-[#65676b] hover:bg-[#f0f2f5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0866ff]"><MessageCircle className="h-4 w-4" />{isArabic ? "تعليق" : "Comment"}</button>
+                  <button type="button" disabled title={isArabic ? "المشاركة غير متاحة في العرض التجريبي" : "Sharing is unavailable in this demo"} className="flex cursor-not-allowed items-center justify-center gap-1.5 rounded-md py-2.5 text-[13px] font-semibold text-[#8a8d91]"><Share2 className="h-4 w-4" />{isArabic ? "مشاركة" : "Share"}</button>
                 </div>
               </div>
               <div className="flex items-center justify-between border-b border-[#e4e6eb] bg-white px-4 py-2.5 sm:px-5">
-                <h4 className="text-[12px] font-bold text-[#1c1e21]">{isArabic ? "التعليقات" : "Comments"}</h4>
-                <span className="text-[10.5px] text-[#65676b]">{totalComments}</span>
+                <h4 className="text-[13px] font-bold text-[#1c1e21]">{isArabic ? "التعليقات" : "Comments"}</h4>
+                <span className="text-[11.5px] text-[#65676b]">{totalComments}</span>
               </div>
               {commentingPost === post.id && <form onSubmit={(event) => submitPageComment(event, post)} className="flex items-center gap-2 border-b border-[#e4e6eb] px-4 py-2.5 sm:px-5">
                 <Avatar src={post.pageAvatarUrl} name={post.pageName} size="h-8 w-8" />
                 <div className="flex min-w-0 flex-1 items-center rounded-full bg-[#f0f2f5] px-3 focus-within:ring-2 focus-within:ring-[#0866ff]/40">
-                  <input autoFocus value={commentDraft} onChange={(event) => setCommentDraft(event.target.value)} dir={isArabic ? "rtl" : "ltr"} placeholder={isArabic ? "اكتب تعليقًا بصفتك الصفحة..." : "Comment as Page..."} className="min-w-0 flex-1 bg-transparent py-2 text-[12px] outline-none placeholder:text-[#8a8d91]" />
+                  <input autoFocus value={commentDraft} onChange={(event) => setCommentDraft(event.target.value)} dir={isArabic ? "rtl" : "ltr"} placeholder={isArabic ? "اكتب تعليقًا بصفتك الصفحة..." : "Comment as Page..."} className="min-w-0 flex-1 bg-transparent py-2.5 text-[13px] outline-none placeholder:text-[#8a8d91]" />
                   <button type="submit" disabled={!commentDraft.trim()} aria-label={isArabic ? "نشر التعليق" : "Post comment"} className="grid h-7 w-7 place-items-center rounded-full text-[#0866ff] hover:bg-white disabled:opacity-40"><Send className="h-4 w-4" /></button>
                 </div>
               </form>}
@@ -258,7 +258,7 @@ export default function FacebookPostsWorkspace({ posts = [], lang = "ar", onRepl
               <div className="bg-white px-4 py-3 sm:px-5 sm:py-4">
                 <div className="mx-auto max-w-[900px] space-y-3 pb-3">
                   {(post.comments || []).map((comment) => <CommentThread key={comment.id} comment={comment} pageName={post.pageName} onReply={onReply} lang={lang} />)}
-                  {(post.comments || []).length === 0 && <p className="py-8 text-center text-[12px] text-[#65676b]">{isArabic ? "لا توجد تعليقات بعد." : "No comments yet."}</p>}
+                  {(post.comments || []).length === 0 && <p className="py-8 text-center text-[13px] text-[#65676b]">{isArabic ? "لا توجد تعليقات بعد." : "No comments yet."}</p>}
                 </div>
               </div>
               </div>
