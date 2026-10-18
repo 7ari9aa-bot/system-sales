@@ -137,10 +137,12 @@ async def test_photo_turn_runs_vision_and_shows_verified_products(db, tenant_ctx
 
     assert captured["image_url"] == "https://cdn.test/photo-1.png"
     assert captured["text_hint"] == "دي الصورة"
-    # The vision result rode the context, and the verified product became
-    # shown state — the referent list the next turn resolves against.
+    # The vision result rode the context — the model sees the match. The
+    # verified product does NOT enter shown state here: candidates become
+    # "shown" only when get_product_photos actually delivers their images,
+    # so the numbered list never contains anything the customer never saw.
     assert PRODUCT_A in runner.calls[0]["context_lines"]
-    assert outcome.state_version == 1
+    assert outcome.state_version == 0
     assert outcome.vision[0]["candidates"][0]["product_id"] == PRODUCT_A
 
 
