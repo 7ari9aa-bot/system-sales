@@ -17,9 +17,9 @@ from app.core.risk import (
 )
 
 BASE_LEVELS = {
-    "search_products": RiskLevel.LOW,
-    "get_customer": RiskLevel.LOW,
-    "add_task": RiskLevel.MEDIUM,
+    "search_catalog": RiskLevel.LOW,
+    "get_product_details": RiskLevel.LOW,
+    "handover_to_human": RiskLevel.MEDIUM,
     "send_message": RiskLevel.MEDIUM,
     "create_order": RiskLevel.HIGH,
     "cancel_order": RiskLevel.HIGH,
@@ -82,14 +82,14 @@ def test_escalation_never_exceeds_critical():
 
 
 def test_data_sensitivity_escalates():
-    assessment = classify("get_customer", RiskContext(data_sensitivity=True))
+    assessment = classify("get_product_details", RiskContext(data_sensitivity=True))
 
     assert assessment.level is RiskLevel.MEDIUM
     assert "sensitive data" in assessment.escalations[0]
 
 
 def test_tenant_floor_raises_but_never_lowers():
-    raised = classify("add_task", RiskContext(tenant_policy_floor=RiskLevel.HIGH))
+    raised = classify("handover_to_human", RiskContext(tenant_policy_floor=RiskLevel.HIGH))
     lowered = classify("capture_payment", RiskContext(tenant_policy_floor=RiskLevel.LOW))
 
     assert raised.level is RiskLevel.HIGH
@@ -103,7 +103,7 @@ def test_float_amounts_are_refused_like_every_money_boundary():
 
 
 def test_durable_approval_mapping_per_adr_060():
-    assessment = classify("add_tag")  # MEDIUM
+    assessment = classify("handover_to_human")  # MEDIUM
 
     assert assessment.requires_durable_approval(ActorType.HUMAN) is False
     assert assessment.requires_durable_approval(ActorType.AI_AGENT) is True
@@ -116,7 +116,7 @@ def test_durable_approval_mapping_per_adr_060():
 
 
 def test_low_risk_actions_take_the_fast_path_for_every_actor():
-    low = classify("search_products")
+    low = classify("search_catalog")
 
     for actor in ActorType:
         assert low.requires_durable_approval(actor) is False

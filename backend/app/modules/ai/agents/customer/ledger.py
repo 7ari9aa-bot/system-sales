@@ -1,10 +1,12 @@
-"""Fact ledger v1 — the numbers a reply may honestly use (grounding §12).
+"""Fact ledger — the numbers a reply may honestly use (grounding §12).
 
-Facts come ONLY from tool results the run actually executed, plus — for the
-order tool — the quantities the model itself requested: the customer must
-hear their own quantity echoed, and that number lives in the tool ARGUMENTS,
-not the result. Anything else the model writes is unsourced and the
-grounding controller will bounce it.
+Facts come ONLY from tool results the run actually executed. Anything else
+the model writes is unsourced and the grounding controller will bounce it.
+
+ISO dates are EXCLUDED on purpose: a raw ``2026-10-25`` would leave the
+model's "25 أكتوبر" ungrounded. Tools that carry dates (search_catalog's
+restock) return a ready phrased label with Western digits instead — see
+``_restock_label`` in the customer tools.
 """
 
 from __future__ import annotations
@@ -17,10 +19,10 @@ _IGNORE_KEYS = frozenset(
     {
         "id",
         "uuid",
-        # NOT "sku": `search_products` publishes the SKU to the model on
-        # purpose (tools.py), so the model quoting "BW-1" must be grounded.
-        # Excluding it made every SKU containing a digit read as an ungrounded
-        # numeral and blocked an otherwise correct reply.
+        # NOT "sku": `search_catalog` publishes the SKU to the model on
+        # purpose, so the model quoting "BW-1" must be grounded. Excluding
+        # it made every SKU containing a digit read as an ungrounded numeral
+        # and blocked an otherwise correct reply.
         "code",
         "barcode",
         "tracking_number",
@@ -74,19 +76,6 @@ def _walk_scalars(value, out: list[str]) -> None:
             out.append(value)
 
 
-def _walk_quantities(value, out: list[str]) -> None:
-    """Collect only values under a 'quantity' key (create_order's args shape)."""
-    if isinstance(value, dict):
-        for key, child in value.items():
-            if key == "quantity" and isinstance(child, int) and not isinstance(child, bool):
-                out.append(str(child))
-            else:
-                _walk_quantities(child, out)
-    elif isinstance(value, list):
-        for child in value:
-            _walk_quantities(child, out)
-
-
 def facts_from_tool_calls(
     tool_calls_made: list[dict],
     *,
@@ -99,12 +88,10 @@ def facts_from_tool_calls(
     tools serialized (§47), which is what makes substring matching reliable
     for prices.
 
-    P1-11: Policy numbers are NOT pre-approved. A hardcoded default let every
-    tenant's agent promise a 14-day return window the merchant never published,
-    and grounding passed because the number was pre-approved rather than
-    retrieved. A policy number is a fact only when a tool actually returned it
-    (knowledge search over the tenant's own policy) or a caller passes that
-    tenant's verified policy numbers in explicitly.
+    Policy numbers are NOT pre-approved: a policy number is a fact only when
+    a tool actually returned it (store info / knowledge search over the
+    tenant's own policy) or a caller passes that tenant's verified policy
+    numbers in explicitly.
     """
     facts: list[str] = []
     if policy_facts:
@@ -116,6 +103,4 @@ def facts_from_tool_calls(
         result = call.get("result")
         if isinstance(result, dict):
             _walk_scalars(result, facts)
-        if "order" in str(call.get("name", "")):
-            _walk_quantities(call.get("args"), facts)
     return facts

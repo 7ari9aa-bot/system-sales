@@ -19,7 +19,7 @@ from app.modules.ai.core.registry import AgentCapability, AgentDefinition, Agent
 
 THIRD_KIND = "inventory_ops"
 # A tool the CUSTOMER agent owns — the third kind must NOT be able to use it.
-CUSTOMER_TOOL = "search_products"
+CUSTOMER_TOOL = "search_catalog"
 # A tool the SALES-INTELLIGENCE agent owns.
 SI_TOOL = "si_get_metric"
 

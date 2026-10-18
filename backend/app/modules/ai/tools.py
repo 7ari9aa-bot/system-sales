@@ -60,21 +60,11 @@ async def requires_approval(spec: ToolSpec, context: dict | None = None) -> bool
 
     The agent runtime awaits this before executing; HIGH tools persist an
     ApprovalRequest (status PENDING) and the run parks in WAITING_APPROVAL
-    until a user decides.
-
-    P1-10 phase awareness: create_order without a bound confirmed quote only
-    PROPOSES — it mints a priced quote the customer must confirm by typing
-    the server-minted code, and no order row can exist from that call. There
-    is nothing for a merchant to approve yet, so it runs inline. The
-    EXECUTION call (the coordinator binds the confirmed quote's id into the
-    server-side context) still parks: a human signs off on the exact order
-    the customer confirmed.
+    until a user decides. LOW/MEDIUM tools run inline — MEDIUM marks
+    light-touch side effects (the handover write) that are idempotent by
+    design and need no human sign-off.
     """
-    if spec.risk_level != "HIGH":
-        return False
-    if spec.name == "create_order" and not (context or {}).get("confirmed_quote_id"):
-        return False
-    return True
+    return spec.risk_level == "HIGH"
 
 
 def tool_to_openai_schema(spec: ToolSpec) -> dict:
@@ -108,38 +98,22 @@ _bootstrap()
 # with existing callers and tests.
 
 from app.modules.ai.agents.customer.tools import (  # noqa: E402, F401
-    AddTagArgs,
-    AddTaskArgs,
-    CheckStockArgs,
-    CreateOrderArgs,
-    CreateOrderItemArgs,
     FindProductByImageArgs,
-    GetCustomerArgs,
-    GetOrderArgs,
-    GetVariantPriceArgs,
-    ResolveProductMediaArgs,
+    GetProductDetailsArgs,
+    GetProductPhotosArgs,
+    GetStoreInfoArgs,
+    HandoverToHumanArgs,
+    SearchCatalogArgs,
     SearchKnowledgeArgs,
-    SearchProductsArgs,
-    _add_tag,
-    _add_task,
-    _bound_customer_id,
-    _check_stock,
-    _create_order,
-    _customer_service,
-    _execute_confirmed_order,
     _find_product_by_image,
-    _get_customer,
-    _get_order,
-    _get_variant_price,
+    _get_product_details,
+    _get_product_photos,
+    _get_store_info,
+    _handover_to_human,
     _money,
-    _order_deps,
-    _order_service,
     _parse_bound_id,
-    _propose_quote,
-    _resolve_product_media,
+    _search_catalog,
     _search_knowledge,
-    _search_products,
-    _task_model,
     media_payload_for_ids,
     sellable_product_statuses,
 )

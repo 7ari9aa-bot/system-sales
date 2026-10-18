@@ -208,9 +208,6 @@ class AgentRunner:
         system_prompt: str | None = None,
         # §132: untrusted context, separate from system prompt
         knowledge_context: str | None = None,
-        # P1-10: the conversation's confirmed quote (if the customer typed the
-        # code), bound server-side — create_order executes from it.
-        confirmed_quote_id: uuid.UUID | str | None = None,
         # SI chat: bounded prior turns, server-built from ai_chat_messages.
         # Narrative context only — never numeric authority; facts are
         # re-queried per turn by the deterministic tools.
@@ -310,7 +307,6 @@ class AgentRunner:
                 customer_id=customer_id,
                 system_prompt=system_prompt,
                 knowledge_context=knowledge_context,  # §132
-                confirmed_quote_id=confirmed_quote_id,
                 history=history,
                 vision_state=vision_state,
             )
@@ -567,7 +563,6 @@ class AgentRunner:
         customer_id: uuid.UUID | None,
         system_prompt: str | None,
         knowledge_context: str | None = None,  # §132
-        confirmed_quote_id: uuid.UUID | str | None = None,  # P1-10
         history: list[dict[str, str]] | None = None,
         vision_state: dict | None = None,
     ) -> AgentRunResult:
@@ -822,7 +817,6 @@ class AgentRunner:
                     conversation_id=conversation_id,
                     inbound_message_id=inbound_message_id,
                     customer_image_url=customer_image_url,
-                    confirmed_quote_id=confirmed_quote_id,
                     vision_state=vision_state,
                 )
                 tool_calls_made.append(outcome)
@@ -1252,10 +1246,10 @@ class AgentRunner:
                 continue
             result = call.get("result") or {}
             # find_product_by_image candidates are NOT shown to the customer
-            # until the agent explicitly calls resolve_product_media for one.
+            # until the agent explicitly calls get_product_photos for one.
             # Recording them here would inflate shown_product_ids and bias
             # the deduplication logic in subsequent runs.
-            if call.get("name") != "resolve_product_media":
+            if call.get("name") != "get_product_photos":
                 continue
             product_id = (call.get("args") or {}).get("product_id")
             if product_id and str(product_id) not in shown:
@@ -1280,7 +1274,6 @@ class AgentRunner:
         conversation_id: uuid.UUID | None = None,
         inbound_message_id: uuid.UUID | str | None = None,
         customer_image_url: str | None = None,
-        confirmed_quote_id: uuid.UUID | str | None = None,  # P1-10
         vision_state: dict | None = None,
     ) -> dict[str, Any]:
         """Run one requested tool call under the agent's policy; record the row.
@@ -1392,17 +1385,11 @@ class AgentRunner:
                                 )
                             if vision_state.get("match") is not None:
                                 tool_context["vision_match"] = vision_state["match"]
-                        if confirmed_quote_id:
-                            # P1-10: the conversation's confirmed quote — bound
-                            # by the turn coordinator from the customer's own
-                            # code message, never from model arguments.
-                            tool_context["confirmed_quote_id"] = str(confirmed_quote_id)
                         kwargs["context"] = tool_context
                     # §135: HIGH-risk tools suspend the run until a human
                     # approves. The approval row is durable — the run resumes
-                    # (or dies) on the decision. Phase-aware (P1-10): the
-                    # create_order PROPOSAL runs inline; only the confirmed-
-                    # quote execution parks.
+                    # (or dies) on the decision. No current customer tool is
+                    # HIGH; the path stays for the platform's future agents.
                     from app.modules.ai.approvals import ApprovalService
                     from app.modules.ai.tools import requires_approval
 
@@ -1577,9 +1564,8 @@ class AgentRunner:
             result = {"error": error}
         elif status == "error":
             result = {"error": error or "tool failed"}
-        # `args` rides the outcome so downstream consumers (grounding reads
-        # create_order quantities, media collection reads product ids) never
-        # re-query the ToolCall row.
+        # `args` rides the outcome so downstream consumers (media collection
+        # reads product ids) never re-query the ToolCall row.
         return {
             "name": request.name,
             "status": status,

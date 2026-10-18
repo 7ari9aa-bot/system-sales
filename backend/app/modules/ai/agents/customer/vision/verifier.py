@@ -19,7 +19,7 @@ import uuid
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.ai.tools import sellable_product_statuses
+from app.modules.ai.agents.customer.tools import sellable_product_statuses
 
 # One round trip per verification batch: sellable status, then a per-variant
 # stock rollup (all warehouses), then the count of active variants whose

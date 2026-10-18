@@ -16,8 +16,7 @@ from app.modules.ai.models import Agent, AgentRun, AgentTool, AIUsage, ToolCall
 from app.modules.ai.providers import ChatCompletionResult, ToolCallRequest
 from app.modules.ai.runtime import AgentRunner
 from app.modules.ai.tools import (
-    _get_variant_price,
-    _search_products,
+    _search_catalog,
     get_tool,
     tool_to_openai_schema,
 )
@@ -37,7 +36,7 @@ def _result(content=None, tool_calls=None, tokens_in=0, tokens_out=0) -> ChatCom
     )
 
 
-async def _agent_with_tool(db, tenant_id, *, name="search_products", policy=None) -> Agent:
+async def _agent_with_tool(db, tenant_id, *, name="search_catalog", policy=None) -> Agent:
     agent = Agent(
         tenant_id=tenant_id, name="Sales Agent", model="fast", system_prompt="You sell things."
     )
@@ -95,7 +94,7 @@ async def test_agent_run_calls_tool_then_answers(db, tenant_ctx, monkeypatch):
             tool_calls=[
                 ToolCallRequest(
                     id="call_1",
-                    name="search_products",
+                    name="search_catalog",
                     arguments={"query": "widget", "limit": 5},
                 )
             ],
@@ -113,13 +112,13 @@ async def test_agent_run_calls_tool_then_answers(db, tenant_ctx, monkeypatch):
     assert result.tokens_in == 40
     assert result.tokens_out == 8
     assert [(tc["name"], tc["status"]) for tc in result.tool_calls_made] == [
-        ("search_products", "ok")
+        ("search_catalog", "ok")
     ]
 
     # The tool schema was advertised and the follow-up request carried the
     # tool result message.
     assert calls["tools"] is not None
-    assert calls["tools"][0]["function"]["name"] == "search_products"
+    assert calls["tools"][0]["function"]["name"] == "search_catalog"
     assert any(m["role"] == "tool" for m in calls["messages"])
 
     run = (
@@ -137,7 +136,7 @@ async def test_agent_run_calls_tool_then_answers(db, tenant_ctx, monkeypatch):
         (await db.execute(select(ToolCall).where(ToolCall.tenant_id == tenant_id))).scalars().one()
     )
     assert tc_row.run_id == run.id
-    assert tc_row.name == "search_products"
+    assert tc_row.name == "search_catalog"
     assert tc_row.status == "ok"
     assert tc_row.agent_tool_id is not None
     assert tc_row.args == {"query": "widget", "limit": 5}
@@ -170,7 +169,7 @@ async def test_agent_run_uses_configured_step_limit(db, tenant_ctx, monkeypatch)
                 tool_calls=[
                     ToolCallRequest(
                         id="limited_call",
-                        name="search_products",
+                        name="search_catalog",
                         arguments={"query": "widget"},
                     )
                 ]
@@ -193,11 +192,11 @@ async def test_agent_run_uses_configured_step_limit(db, tenant_ctx, monkeypatch)
 
 async def test_agent_run_denies_tool_by_policy(db, tenant_ctx, monkeypatch):
     tenant_id = tenant_ctx.tenant_id
-    agent = await _agent_with_tool(db, tenant_id, policy={"denied": ["search_products"]})
+    agent = await _agent_with_tool(db, tenant_id, policy={"denied": ["search_catalog"]})
 
     results = [
         _result(
-            tool_calls=[ToolCallRequest(id="c1", name="search_products", arguments={"query": "x"})]
+            tool_calls=[ToolCallRequest(id="c1", name="search_catalog", arguments={"query": "x"})]
         ),
         _result(content="I cannot check the catalog.", tokens_in=5, tokens_out=2),
     ]
@@ -230,7 +229,7 @@ async def test_agent_run_denies_tool_not_enabled_for_agent(db, tenant_ctx, monke
     await db.flush()
 
     results = [
-        _result(tool_calls=[ToolCallRequest(id="c1", name="check_stock", arguments={})]),
+        _result(tool_calls=[ToolCallRequest(id="c1", name="get_store_info", arguments={})]),
         _result(content="Sorry, no tools.", tokens_in=3, tokens_out=1),
     ]
     _patch_gateway_chat(monkeypatch, results)
@@ -278,7 +277,7 @@ async def test_run_unknown_agent_raises_not_found(db, tenant_ctx):
 
 
 def test_core_tools_are_registered():
-    for name in ("search_products", "get_variant_price", "check_stock", "create_order"):
+    for name in ("search_catalog", "get_product_details", "get_product_photos", "get_store_info"):
         spec = get_tool(name)
         assert spec is not None
         assert spec.name == name
@@ -287,21 +286,20 @@ def test_core_tools_are_registered():
         assert spec.handler is not None
 
 
-def test_create_order_tool_registered_without_orders_dependency():
-    # The tool is registered at import time; the handler only imports
-    # OrderService lazily so the registry works even without the module.
-    spec = get_tool("create_order")
-    assert spec is not None
+def test_no_sales_tool_is_registered():
+    """The scope cut is a registry fact: no sales surface exists to steer."""
+    for name in ("create_order", "get_order", "add_task", "add_tag"):
+        assert get_tool(name) is None
+    spec = get_tool("search_catalog")
     schema = tool_to_openai_schema(spec)
     assert schema["type"] == "function"
     properties = schema["function"]["parameters"]["properties"]
-    # §132: the model must NEVER choose the customer — the server pins it
-    # to the conversation scope; only items are model-chosen.
+    # §132: the model must NEVER choose the customer — there is no customer
+    # argument to pass at all.
     assert "customer_id" not in properties
-    assert "items" in properties
 
 
-async def test_check_stock_tool_sums_across_warehouses(db, tenant_ctx):
+async def test_search_catalog_availability_sums_across_warehouses(db, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     variant = await _seed_variant(db, tenant_id)
     warehouse = Warehouse(tenant_id=tenant_id, name="WH", code=f"W-{uuid.uuid4().hex[:6].upper()}")
@@ -318,17 +316,18 @@ async def test_check_stock_tool_sums_across_warehouses(db, tenant_ctx):
     )
     await db.flush()
 
-    spec = get_tool("check_stock")
-    kwargs = spec.args_schema(variant_id=str(variant.id)).model_dump()
+    spec = get_tool("search_catalog")
+    kwargs = spec.args_schema(query="Widget").model_dump()
     result = await spec.handler(db, tenant_id, **kwargs)
-    assert result["available"] == 7
-    assert result["sku"] == variant.sku
+    row = result["results"][0]
+    assert row["sku"] == variant.sku
+    assert row["availability"]["status"] == "متوفر"
 
 
-async def test_get_variant_price_unknown_raises(db, tenant_ctx):
-    spec = get_tool("get_variant_price")
+async def test_get_product_details_unknown_raises(db, tenant_ctx):
+    spec = get_tool("get_product_details")
     with pytest.raises(ModuleNotFoundError):
-        await spec.handler(db, tenant_ctx.tenant_id, variant_id=str(uuid.uuid4()))
+        await spec.handler(db, tenant_ctx.tenant_id, product_id=str(uuid.uuid4()))
 
 
 # ------------------------------------- W4-T5: money wire + sellable browse gate --
@@ -341,6 +340,9 @@ class _StubResult:
     def all(self):
         return self._rows
 
+    def scalars(self):
+        return self._rows
+
     def first(self):
         return self._rows[0] if self._rows else None
 
@@ -348,6 +350,8 @@ class _StubResult:
 class _StubSession:
     """Records the statement and replays canned rows — no database needed.
 
+    ``rows`` is a LIST OF BATCHES, one per execute call (main select, then
+    the availability map's balance and restock reads); the last batch repeats.
     The money tests exercise only the serialization half of a handler, and
     the browse contract test only its WHERE clause; neither may pretend to
     have run the DB-backed half, which is why the behavior test below uses
@@ -355,55 +359,47 @@ class _StubSession:
     """
 
     def __init__(self, rows=()):
-        self._rows = list(rows)
+        self._batches = [list(batch) for batch in rows] or [[]]
         self.statements = []
 
     async def execute(self, stmt):
         self.statements.append(stmt)
-        return _StubResult(self._rows)
+        batch = self._batches[min(len(self.statements), len(self._batches)) - 1]
+        return _StubResult(batch)
 
 
 def _stub_variant(price):
-    return SimpleNamespace(id=uuid.uuid4(), title="Blue Widget M", sku="BW-1", price=price)
+    return SimpleNamespace(id=uuid.uuid4(), product_id=uuid.uuid4(), title="Blue Widget M", sku="BW-1", price=price)
 
 
-async def test_search_products_price_crosses_as_exact_string():
+async def test_search_catalog_price_crosses_as_exact_string():
     # 25.55 must not round-trip through binary float (§47): the tool result
     # carries the exact Decimal string the price row holds.
     variant = _stub_variant(Decimal("25.55"))
-    result = await _search_products(
-        _StubSession([(variant, "Blue Widget")]), uuid.uuid4(), query="widget"
+    result = await _search_catalog(
+        _StubSession([[(variant, "Blue Widget")], [], []]), uuid.uuid4(), query="widget"
     )
     price = result["results"][0]["price"]
     assert price == "25.55"
     assert isinstance(price, str)
 
 
-async def test_get_variant_price_crosses_as_exact_string():
-    variant = _stub_variant(Decimal("25.55"))
-    result = await _get_variant_price(
-        _StubSession([(variant, "Blue Widget")]), uuid.uuid4(), variant_id=variant.id
-    )
-    assert result["price"] == "25.55"
-    assert isinstance(result["price"], str)
-
-
 async def test_null_price_stays_null_not_zero():
     # None is "no price recorded", not "0" and not 0.0 — the wire keeps it null.
     variant = _stub_variant(None)
-    rows = [(variant, "Blue Widget")]
-    search = await _search_products(_StubSession(rows), uuid.uuid4(), query="widget")
+    search = await _search_catalog(
+        _StubSession([[(variant, "Blue Widget")], [], []]), uuid.uuid4(), query="widget"
+    )
     assert search["results"][0]["price"] is None
-    price = await _get_variant_price(_StubSession(rows), uuid.uuid4(), variant_id=variant.id)
-    assert price["price"] is None
+    assert search["results"][0]["availability"]["status"] == "خلص"
 
 
-async def test_search_products_browse_filter_agrees_with_the_sell_gate():
+async def test_search_catalog_browse_filter_agrees_with_the_sell_gate():
     # The browse query must constrain Product.status to exactly the statuses
     # checkout sells (orders.service.SELLABLE_PRODUCT_STATUSES), not re-type
     # the vocabulary.
     session = _StubSession()
-    await _search_products(session, uuid.uuid4(), query="widget")
+    await _search_catalog(session, uuid.uuid4(), query="widget")
     sql = str(session.statements[0].compile(compile_kwargs={"literal_binds": True}))
     match = re.search(r"products\.status IN \(([^)]*)\)", sql)
     assert match is not None, (
@@ -422,7 +418,7 @@ async def test_browse_tool_hides_unlisted_products(db, tenant_ctx):
     await _seed_variant(db, tenant_id, status="draft")
     await _seed_variant(db, tenant_id, status="archived")
 
-    spec = get_tool("search_products")
+    spec = get_tool("search_catalog")
     kwargs = spec.args_schema(query="Widget", limit=20).model_dump()
     result = await spec.handler(db, tenant_id, **kwargs)
     assert [row["variant_id"] for row in result["results"]] == [str(active.id)]

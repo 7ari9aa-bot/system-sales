@@ -89,10 +89,10 @@ class RiskAssessment:
 #: registries agree.
 _REGISTRY: dict[str, RiskLevel] = {
     # V12 §16 examples
-    "search_products": RiskLevel.LOW,
+    "search_catalog": RiskLevel.LOW,
     # Customer Agent vision tools (§12): read-only, ids never URLs
     "find_product_by_image": RiskLevel.LOW,
-    "resolve_product_media": RiskLevel.LOW,
+    "get_product_photos": RiskLevel.LOW,
     # Sales Intelligence tools (read-only analytics; §14 read-only agent)
     "si_get_metric": RiskLevel.LOW,
     "si_compare_periods": RiskLevel.LOW,
@@ -116,14 +116,12 @@ _REGISTRY: dict[str, RiskLevel] = {
     "refund": RiskLevel.CRITICAL,
     "delete_identity": RiskLevel.CRITICAL,
     "merge_identity": RiskLevel.CRITICAL,
-    # This system's AI tools (§15 levels today; this module is their successor)
-    "get_variant_price": RiskLevel.LOW,
-    "check_stock": RiskLevel.LOW,
-    "get_customer": RiskLevel.LOW,
-    "get_order": RiskLevel.LOW,
+    # This system's AI tools (the language-only customer surface + SI reads;
+    # the AI tool registry is the authority, this module mirrors its levels)
     "search_knowledge": RiskLevel.LOW,
-    "add_task": RiskLevel.MEDIUM,
-    "add_tag": RiskLevel.MEDIUM,
+    "get_store_info": RiskLevel.LOW,
+    "get_product_details": RiskLevel.LOW,
+    "handover_to_human": RiskLevel.MEDIUM,
     # Platform actions the chain will govern in later waves
     "send_message": RiskLevel.MEDIUM,
     "cancel_order": RiskLevel.HIGH,

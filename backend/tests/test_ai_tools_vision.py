@@ -16,12 +16,12 @@ import pytest
 from app.core.errors import DomainError, NotFoundError
 from app.modules.ai.agents.customer.vision import pipeline
 from app.modules.ai.agents.customer.vision.schemas import MatchResult
-from app.modules.ai.tools import _find_product_by_image, _resolve_product_media, get_tool
+from app.modules.ai.tools import _find_product_by_image, _get_product_photos, get_tool
 from app.modules.catalog.models import Product, ProductImage
 
 
 async def test_registry_exposes_both_vision_tools_as_low_risk():
-    for name in ("find_product_by_image", "resolve_product_media"):
+    for name in ("find_product_by_image", "get_product_photos"):
         spec = get_tool(name)
         assert spec is not None, name
         assert spec.risk_level == "LOW"
@@ -89,7 +89,7 @@ async def test_product_match_result_is_business_only(monkeypatch, db, tenant_ctx
     assert "http" not in dumped and "score" not in dumped and "distance" not in dumped
 
 
-async def test_resolve_product_media_primary_returns_one_id(db, tenant_ctx):
+async def test_get_product_photos_primary_returns_one_id(db, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     product = Product(
         tenant_id=tenant_id,
@@ -110,7 +110,7 @@ async def test_resolve_product_media_primary_returns_one_id(db, tenant_ctx):
         )
     await db.flush()
 
-    result = await _resolve_product_media(db, tenant_id, product_id=product.id, selection="primary")
+    result = await _get_product_photos(db, tenant_id, product_id=product.id, selection="primary")
     assert len(result["media"]) == 1
     only = result["media"][0]
     assert set(only) == {"image_id", "alt", "position"}
@@ -119,7 +119,7 @@ async def test_resolve_product_media_primary_returns_one_id(db, tenant_ctx):
     assert "url" not in repr(result).lower()
 
 
-async def test_resolve_product_media_all_orders_by_position(db, tenant_ctx):
+async def test_get_product_photos_all_orders_by_position(db, tenant_ctx):
     tenant_id = tenant_ctx.tenant_id
     product = Product(
         tenant_id=tenant_id,
@@ -140,16 +140,16 @@ async def test_resolve_product_media_all_orders_by_position(db, tenant_ctx):
         )
     await db.flush()
 
-    result = await _resolve_product_media(db, tenant_id, product_id=product.id, selection="all")
+    result = await _get_product_photos(db, tenant_id, product_id=product.id, selection="all")
     assert [m["position"] for m in result["media"]] == [0, 1, 2]
     assert all(set(m) == {"image_id", "alt", "position"} for m in result["media"])
 
 
-async def test_resolve_product_media_unknown_product_fails_loudly(db, tenant_ctx):
+async def test_get_product_photos_unknown_product_fails_loudly(db, tenant_ctx):
     """Unknown metric, unknown product — a tool that invents an empty success
     for a nonexistent entity lets the model answer from nothing."""
     with pytest.raises(NotFoundError, match="not found"):
-        await _resolve_product_media(
+        await _get_product_photos(
             db, tenant_ctx.tenant_id, product_id=uuid.uuid4(), selection="all"
         )
 
@@ -159,16 +159,16 @@ async def test_server_side_classification_overrides_the_model_proposal(db, tenan
     proposing "product" for a photo the server classified as a payment proof
     is refused — retrieval never runs on sensitive content, no matter what
     the model asks for."""
-    match = await _find_product_by_image(
-        db,
-        tenant_ctx.tenant_id,
-        image_kind="product",
-        context={
-            "customer_image": "https://cdn.test/receipt.png",
-            "image_kind_classified": "payment_proof",
-        },
-    )
-    assert match == {}
+    with pytest.raises(DomainError, match="payment_proof_requires_human"):
+        await _find_product_by_image(
+            db,
+            tenant_ctx.tenant_id,
+            image_kind="product",
+            context={
+                "customer_image": "https://cdn.test/receipt.png",
+                "image_kind_classified": "payment_proof",
+            },
+        )
 
 
 async def test_precomputed_match_is_reused_not_reanalyzed(db, tenant_ctx):

@@ -35,7 +35,7 @@ def test_registry_registration_and_queries() -> None:
 
     cust_defn = AgentRegistry.get("customer")
     assert cust_defn.kind == "customer"
-    assert "search_products" in cust_defn.allowed_tools
+    assert "search_catalog" in cust_defn.allowed_tools
     # Reply-only: the customer agent answers, it does not transact. The DB
     # permissions were removed first; this asserts the DEFINITION agrees, so the
     # prompt, the capability list and the allowlist cannot drift apart again.
@@ -44,7 +44,7 @@ def test_registry_registration_and_queries() -> None:
     assert cust_defn.guardrail_profile == "customer"
 
     # Authorization enforcement checks
-    assert AgentRegistry.is_tool_authorized("customer", "search_products") is True
+    assert AgentRegistry.is_tool_authorized("customer", "search_catalog") is True
     for transacting in ("create_order", "add_task", "add_tag"):
         assert AgentRegistry.is_tool_authorized("customer", transacting) is False
     # Customer agent must NEVER be authorized for sales intelligence tools
@@ -105,10 +105,10 @@ async def test_runtime_tool_isolation_enforcement() -> None:
     # 2 legitimate customer tools + 1 transacting tool that is no longer
     # authorized + 1 injected SI tool
     legit_tool1 = AgentTool(
-        tenant_id=tenant_id, agent_id=agent_id, name="search_products", is_active=True
+        tenant_id=tenant_id, agent_id=agent_id, name="search_catalog", is_active=True
     )
     legit_tool2 = AgentTool(
-        tenant_id=tenant_id, agent_id=agent_id, name="get_order", is_active=True
+        tenant_id=tenant_id, agent_id=agent_id, name="get_product_details", is_active=True
     )
     transacting_tool = AgentTool(
         tenant_id=tenant_id, agent_id=agent_id, name="create_order", is_active=True
@@ -137,15 +137,15 @@ async def test_runtime_tool_isolation_enforcement() -> None:
 
     loaded_names = [t.name for t in loaded]
     # Authorized tools must remain
-    assert "search_products" in loaded_names
-    assert "get_order" in loaded_names
+    assert "search_catalog" in loaded_names
+    assert "get_product_details" in loaded_names
     # Reply-only: a tool ROW that still exists in the database is stripped
     # anyway — authorization is the definition's allowlist, not the row.
     assert "create_order" not in loaded_names
     # Injected / unauthorized tool MUST be stripped by the enforcement boundary
     assert "si_analyze_drivers" not in loaded_names
-    # search_products + get_order survive; create_order and the injected SI
-    # tool are both stripped.
+    # search_catalog + get_product_details survive; create_order and the
+    # injected SI tool are both stripped.
     assert len(loaded) == 2
 
 
@@ -316,7 +316,7 @@ async def test_two_way_tool_reconciliation_quarantines_unauthorized_tools() -> N
 
     # Pre-existing tools: one authorized and one unauthorized
     authorized_tool = AgentTool(
-        tenant_id=tenant_id, agent_id=agent_id, name="search_products", is_active=True
+        tenant_id=tenant_id, agent_id=agent_id, name="search_catalog", is_active=True
     )
     unauthorized_tool = AgentTool(
         tenant_id=tenant_id, agent_id=agent_id, name="si_analyze_drivers", is_active=True
@@ -554,7 +554,7 @@ async def test_canary_rollout_updates_the_real_deployment_state(db, tenant_ctx) 
 async def test_customer_tools_enforce_canonical_sellability() -> None:
     """§22 Customer Product Sellability: draft products rejected across all customer tools."""
     from app.core.errors import NotFoundError
-    from app.modules.ai.tools import _check_stock, _get_variant_price, _resolve_product_media
+    from app.modules.ai.tools import _get_product_details, _get_product_photos
 
     tenant_id = uuid.uuid4()
     variant_id = uuid.uuid4()
@@ -567,17 +567,13 @@ async def test_customer_tools_enforce_canonical_sellability() -> None:
     mock_res.scalar_one_or_none.return_value = None
     mock_session.execute.return_value = mock_res
 
-    # 1. get_variant_price fails closed when not sellable
+    # 1. get_product_details fails closed when not sellable
     with pytest.raises(NotFoundError):
-        await _get_variant_price(mock_session, tenant_id, variant_id=variant_id)
+        await _get_product_details(mock_session, tenant_id, product_id=product_id)
 
-    # 2. check_stock fails closed when not sellable
+    # 2. get_product_photos fails closed when parent product is not sellable
     with pytest.raises(NotFoundError):
-        await _check_stock(mock_session, tenant_id, variant_id=variant_id)
-
-    # 3. resolve_product_media fails closed when parent product is not sellable
-    with pytest.raises(NotFoundError):
-        await _resolve_product_media(mock_session, tenant_id, product_id=product_id)
+        await _get_product_photos(mock_session, tenant_id, product_id=product_id)
 
 
 def test_worker_process_discovers_registry() -> None:
@@ -622,13 +618,13 @@ async def test_semantic_idempotency_message_discriminator() -> None:
     run.status = "running"
 
     agent_tool = MagicMock()
-    agent_tool.name = "add_task"
+    agent_tool.name = "handover_to_human"
     agent_tool.is_active = True
 
     tc_req = MagicMock()
     tc_req.id = "tc_1"
-    tc_req.name = "add_task"
-    tc_req.arguments = {"title": "Follow up"}
+    tc_req.name = "handover_to_human"
+    tc_req.arguments = {"reason": "missing_data", "summary": "لا توجد سياسة مسجلة"}
 
     # First run for msg_1: prior is None (not executed yet)
     mock_res_empty = MagicMock()
@@ -636,10 +632,10 @@ async def test_semantic_idempotency_message_discriminator() -> None:
 
     # Prior completed ToolCall for msg_1
     prior_tc = MagicMock()
-    prior_tc.name = "add_task"
+    prior_tc.name = "handover_to_human"
     prior_tc.status = "ok"
     prior_tc.error = None
-    prior_tc.result = {"task_id": "tsk_123"}
+    prior_tc.result = {"status": "handover_recorded"}
     mock_res_found = MagicMock()
     mock_res_found.scalar_one_or_none.return_value = prior_tc
 
@@ -656,11 +652,11 @@ async def test_semantic_idempotency_message_discriminator() -> None:
 
     from app.modules.ai.tools import get_tool
 
-    spec = get_tool("add_task")
+    spec = get_tool("handover_to_human")
     assert spec is not None
 
     with patch.object(spec, "handler", new_callable=AsyncMock) as mock_handler:
-        mock_handler.return_value = {"task_id": "tsk_123"}
+        mock_handler.return_value = {"status": "handover_recorded"}
 
         # 1. First execution for msg_1
         res1 = await runner._execute_tool(
@@ -688,7 +684,7 @@ async def test_semantic_idempotency_message_discriminator() -> None:
             inbound_message_id=msg_1,
         )
         assert res2["status"] == "ok"
-        assert res2["result"] == {"task_id": "tsk_123"}
+        assert res2["result"] == {"status": "handover_recorded"}
         assert mock_handler.call_count == 1  # not incremented
 
         # 3. New message msg_2 with same args -> executes anew (NOT swallowed)

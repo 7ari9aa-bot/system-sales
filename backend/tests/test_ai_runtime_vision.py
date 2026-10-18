@@ -132,7 +132,7 @@ def _text(message: dict) -> str:
 
 async def test_current_turn_rides_the_photo_as_content_parts(db, tenant_ctx, monkeypatch):
     tenant_id = tenant_ctx.tenant_id
-    agent = await _agent_with(db, tenant_id, "search_products")
+    agent = await _agent_with(db, tenant_id, "search_catalog")
     conversation, _message = await _conversation_with_inbound_image(
         db,
         tenant_id,
@@ -169,7 +169,7 @@ async def test_current_turn_rides_the_photo_as_content_parts(db, tenant_ctx, mon
 
 async def test_older_photos_stay_text_markers(db, tenant_ctx, monkeypatch):
     tenant_id = tenant_ctx.tenant_id
-    agent = await _agent_with(db, tenant_id, "search_products")
+    agent = await _agent_with(db, tenant_id, "search_catalog")
     now = datetime.now(UTC)
     conversation, _newest = await _conversation_with_inbound_image(
         db, tenant_id, storage_key="photos/old.png", created_at=now - timedelta(minutes=5)
@@ -225,7 +225,7 @@ async def test_older_photos_stay_text_markers(db, tenant_ctx, monkeypatch):
 
 async def test_grounded_reply_needs_no_regeneration(db, tenant_ctx, monkeypatch):
     tenant_id = tenant_ctx.tenant_id
-    agent = await _agent_with(db, tenant_id, "search_products")
+    agent = await _agent_with(db, tenant_id, "search_catalog")
     await _seed_variant(db, tenant_id)
     calls = _patch_gateway(
         monkeypatch,
@@ -233,7 +233,7 @@ async def test_grounded_reply_needs_no_regeneration(db, tenant_ctx, monkeypatch)
             ChatCompletionResult(
                 content=None,
                 tool_calls=[
-                    ToolCallRequest(id="c1", name="search_products", arguments={"query": "widget"})
+                    ToolCallRequest(id="c1", name="search_catalog", arguments={"query": "widget"})
                 ],
                 tokens_in=1,
                 tokens_out=1,
@@ -255,7 +255,7 @@ async def test_grounded_reply_needs_no_regeneration(db, tenant_ctx, monkeypatch)
 
 async def test_ungrounded_reply_regenerates_once_with_tools_disabled(db, tenant_ctx, monkeypatch):
     tenant_id = tenant_ctx.tenant_id
-    agent = await _agent_with(db, tenant_id, "search_products")
+    agent = await _agent_with(db, tenant_id, "search_catalog")
     await _seed_variant(db, tenant_id)
     calls = _patch_gateway(
         monkeypatch,
@@ -263,7 +263,7 @@ async def test_ungrounded_reply_regenerates_once_with_tools_disabled(db, tenant_
             ChatCompletionResult(
                 content=None,
                 tool_calls=[
-                    ToolCallRequest(id="c1", name="search_products", arguments={"query": "widget"})
+                    ToolCallRequest(id="c1", name="search_catalog", arguments={"query": "widget"})
                 ],
                 tokens_in=1,
                 tokens_out=1,
@@ -293,7 +293,7 @@ async def test_ungrounded_reply_regenerates_once_with_tools_disabled(db, tenant_
 
 async def test_ungrounded_twice_hands_over(db, tenant_ctx, monkeypatch):
     tenant_id = tenant_ctx.tenant_id
-    agent = await _agent_with(db, tenant_id, "search_products")
+    agent = await _agent_with(db, tenant_id, "search_catalog")
     await _seed_variant(db, tenant_id)
     calls = _patch_gateway(
         monkeypatch,
@@ -301,7 +301,7 @@ async def test_ungrounded_twice_hands_over(db, tenant_ctx, monkeypatch):
             ChatCompletionResult(
                 content=None,
                 tool_calls=[
-                    ToolCallRequest(id="c1", name="search_products", arguments={"query": "widget"})
+                    ToolCallRequest(id="c1", name="search_catalog", arguments={"query": "widget"})
                 ],
                 tokens_in=1,
                 tokens_out=1,
@@ -336,7 +336,7 @@ async def test_grounding_regeneration_is_bounded_by_the_run_wall_clock(db, tenan
     holding the conversation lease and its open transaction.
     """
     tenant_id = tenant_ctx.tenant_id
-    agent = await _agent_with(db, tenant_id, "search_products")
+    agent = await _agent_with(db, tenant_id, "search_catalog")
     agent.run_limits = {"max_wall_time_seconds": 2}
     await db.flush()
     await _seed_variant(db, tenant_id)
@@ -351,7 +351,7 @@ async def test_grounding_regeneration_is_bounded_by_the_run_wall_clock(db, tenan
             return ChatCompletionResult(
                 content=None,
                 tool_calls=[
-                    ToolCallRequest(id="c1", name="search_products", arguments={"query": "widget"})
+                    ToolCallRequest(id="c1", name="search_catalog", arguments={"query": "widget"})
                 ],
                 tokens_in=1,
                 tokens_out=1,
@@ -377,7 +377,7 @@ async def test_grounding_regeneration_is_bounded_by_the_run_wall_clock(db, tenan
 
 async def test_no_tool_results_skips_grounding(db, tenant_ctx, monkeypatch):
     tenant_id = tenant_ctx.tenant_id
-    agent = await _agent_with(db, tenant_id, "search_products")
+    agent = await _agent_with(db, tenant_id, "search_catalog")
     calls = _patch_gateway(
         monkeypatch,
         [
@@ -460,7 +460,7 @@ async def test_media_binds_to_the_answered_message_not_the_newest(
     code scanned history for the NEWEST inbound row and attached B to A's
     answer (the reviewer's cross-wiring finding, 2026-10-17)."""
     tenant_id = tenant_ctx.tenant_id
-    agent = await _agent_with(db, tenant_id, "search_products")
+    agent = await _agent_with(db, tenant_id, "search_catalog")
     now = datetime.now(UTC)
     conversation, old_message = await _conversation_with_inbound_image(
         db, tenant_id, storage_key="photos/old.png", created_at=now - timedelta(minutes=10)

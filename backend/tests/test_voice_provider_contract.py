@@ -242,30 +242,23 @@ def test_no_app_code_reads_a_setting_through_a_defaulted_getattr() -> None:
 # ------------------------------------- 5. a spoken request reaches a human ----
 
 
-def test_a_voice_transcript_asking_for_a_human_is_detected() -> None:
-    from app.modules.ai.agents.customer.turn import wants_human_request
+def test_no_keyword_gate_stands_between_the_customer_and_the_model() -> None:
+    """The intent keywords are gone: escalation is the MODEL's decision, made
+    through the handover_to_human tool after reading the transcript itself.
 
-    assert wants_human_request("عايز أكلم موظف") is True
-    assert wants_human_request("عايز اكلم حد من فريق خدمة العملاء") is True
-    assert wants_human_request("ممكن أتكلم مع مسؤول") is True
-    # A product question must NOT be mistaken for a handover request.
-    assert wants_human_request("عندكم مقاس M؟") is False
-    assert wants_human_request(None) is False
-
-
-def test_the_human_request_exits_before_the_model_call() -> None:
-    """§37: no state patch, no budget spent, no improvised answer.
-
-    Structural on purpose — the guarantee is the ORDER of two statements in
-    `run_customer_turn`, and the voice transcript rides the same check.
+    A keyword that matched inside a correctly-understood message forced the
+    whole turn down the wrong path; the model reads the words and decides.
     """
     import inspect
 
     from app.modules.ai.agents.customer import turn as turn_module
+    from app.modules.ai.tools import get_tool
 
-    source = inspect.getsource(turn_module.run_customer_turn)
-    guard = source.index("wants_human_request(")
-    model_call = source.index("_runner.run(")
-    assert guard < model_call, "the human-request guard runs after the model call"
-    # And it reads the transcript, not only the text body.
+    source = inspect.getsource(turn_module)
+    assert "wants_human_request" not in source
+    # The spoken words still reach the model: the transcript rides the
+    # user message (or the untranscribed context line when STT has not run).
     assert "turn.voice_transcript" in source
+    # The escalation surface exists and speaks the reason vocabulary.
+    spec = get_tool("handover_to_human")
+    assert spec is not None

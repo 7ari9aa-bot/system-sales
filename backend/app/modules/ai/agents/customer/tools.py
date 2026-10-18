@@ -1,18 +1,24 @@
 """Customer Agent tool implementations and specs.
 
-All 11 tools exposed to or usable by the Customer Agent:
-- Catalog / Inventory: search_products, get_variant_price, check_stock
-- Vision / Media: find_product_by_image, resolve_product_media
-- Orders / Quotes: create_order, get_order
-- Knowledge Base: search_knowledge
-- Customer Context: get_customer
-- Operational Side Effects: add_task, add_tag
+The scope cut (2026-10-18): the customer agent is LANGUAGE-ONLY — it answers
+from store data and hands over; it never sells, never mutates records. Seven
+tools, every one read-only except the escalation:
+
+- Catalog: search_catalog, get_product_details, get_product_photos
+- Vision: find_product_by_image
+- Store: get_store_info, search_knowledge
+- Escalation: handover_to_human
+
+Descriptions follow the platform guidance (Anthropic's tool-design notes,
+OpenAI's function-calling guide): state what the tool does, when to use it,
+when NOT to use it, and what it returns. The server binds customer and
+conversation from its own context — the model never passes them.
 """
 
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Literal
 
@@ -20,44 +26,24 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, literal_column, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import ConflictError, DomainError, NotFoundError, ValidationError
+from app.core.errors import DomainError, NotFoundError, ValidationError
 from app.core.sql import LIKE_ESCAPE, like_pattern
 from app.core.storage import get_storage
 from app.modules.ai.agents.customer.vision.schemas import ImageKind
+from app.modules.ai.models import IncomingStock
 from app.modules.ai.tools import ToolSpec, register_tool
 
 
-def _order_deps():
-    """OrderService and its sellable-status vocabulary, from ONE lazy import."""
-    from app.modules.orders.service import SELLABLE_PRODUCT_STATUSES, OrderService
-
-    return OrderService, SELLABLE_PRODUCT_STATUSES
-
-
 def sellable_product_statuses() -> frozenset[str]:
-    """The checkout gate's sellable vocabulary, for in-module readers."""
-    _, statuses = _order_deps()
-    return statuses
+    """The checkout gate's sellable vocabulary, for in-module readers.
 
+    ONE lazy import site: the catalog's tables are read as parameter-bound
+    read models, and the vision verifier plus every tool here read the
+    vocabulary through this function so they can never drift from checkout.
+    """
+    from app.modules.orders.service import SELLABLE_PRODUCT_STATUSES
 
-def _order_service():
-    """OrderService, imported lazily so the registry works without orders."""
-    OrderService, _ = _order_deps()
-    return OrderService
-
-
-def _customer_service():
-    """CustomerService, imported lazily (customers owns customer data)."""
-    from app.modules.customers.service import CustomerService
-
-    return CustomerService
-
-
-def _task_model():
-    """The operations Task model, imported lazily (operations owns tasks)."""
-    from app.modules.operations.models import Task
-
-    return Task
+    return SELLABLE_PRODUCT_STATUSES
 
 
 def _parse_bound_id(raw: object) -> uuid.UUID | None:
@@ -67,15 +53,7 @@ def _parse_bound_id(raw: object) -> uuid.UUID | None:
     try:
         return uuid.UUID(str(raw))
     except (TypeError, ValueError) as exc:
-        raise DomainError("bound customer is not a valid id") from exc
-
-
-def _bound_customer_id(context: dict | None) -> uuid.UUID:
-    """§132: the ONLY customer a scoped tool may touch."""
-    customer_id = _parse_bound_id((context or {}).get("customer_id"))
-    if customer_id is None:
-        raise DomainError("no customer bound to this conversation")
-    return customer_id
+        raise DomainError("bound id is not a valid uuid") from exc
 
 
 def _money(value) -> str | None:
@@ -83,17 +61,127 @@ def _money(value) -> str | None:
     return None if value is None else str(value)
 
 
-# ----------------------------------------------------------------- handlers --
+#: "قليل" is the top of the low-stock band. A constant, like the vision
+#: thresholds — the model never derives scarcity itself.
+LOW_STOCK_THRESHOLD = 5
+
+#: Western digits ON PURPOSE: grounding folds Arabic-Indic digits in the
+#: REPLY, but matches FACT strings verbatim — an Arabic-Indic label would
+#: never ground the numeral the model writes.
+_ARABIC_MONTHS = {
+    1: "يناير",
+    2: "فبراير",
+    3: "مارس",
+    4: "أبريل",
+    5: "مايو",
+    6: "يونيو",
+    7: "يوليو",
+    8: "أغسطس",
+    9: "سبتمبر",
+    10: "أكتوبر",
+    11: "نوفمبر",
+    12: "ديسمبر",
+}
 
 
-class SearchProductsArgs(BaseModel):
+def _restock_label(expected_on: date, confidence: str) -> str:
+    """The ready-to-say restock phrase (ISO dates are NOT quotable facts).
+
+    The fact ledger excludes ISO date strings, so a raw ``2026-10-25`` would
+    leave the model's "25 أكتوبر" ungrounded and the reply blocked. The tool
+    phrases the date itself, with the certainty baked in: confirmed rows say
+    so, expected rows get the hedge. The model only repeats it.
+    """
+    label = f"{expected_on.day} {_ARABIC_MONTHS[expected_on.month]} {expected_on.year}"
+    if confidence == "confirmed":
+        return f"مؤكد: {label}"
+    return f"متوقع حوالي {label}"
+
+
+async def _availability_map(
+    session: AsyncSession, tenant_id: uuid.UUID, variant_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, dict]:
+    """Stock status + restock phrase per variant, computed SERVER-SIDE.
+
+    Status vocabulary: متوفر / قليل / خلص / هيتجدد. The model phrases what
+    this returns; it never sees or derives the raw quantity. The restock
+    label rides the earliest OPEN incoming_stock row, certainty included.
+    """
+    out: dict[uuid.UUID, dict] = {}
+    if not variant_ids:
+        return out
+
+    from app.modules.inventory.models import InventoryBalance
+
+    balance_rows = (
+        await session.execute(
+            select(
+                InventoryBalance.variant_id,
+                func.coalesce(
+                    func.sum(InventoryBalance.on_hand - InventoryBalance.reserved),
+                    0,
+                ),
+                func.max(InventoryBalance.updated_at),
+            )
+            .where(
+                InventoryBalance.tenant_id == tenant_id,
+                InventoryBalance.variant_id.in_(variant_ids),
+            )
+            .group_by(InventoryBalance.variant_id)
+        )
+    ).all()
+    available = {row[0]: (int(row[1]), row[2]) for row in balance_rows}
+
+    restock_rows = (
+        await session.execute(
+            select(IncomingStock)
+            .where(
+                IncomingStock.tenant_id == tenant_id,
+                IncomingStock.variant_id.in_(variant_ids),
+                IncomingStock.status == "open",
+            )
+            .order_by(IncomingStock.expected_on.asc())
+        )
+    ).scalars()
+    earliest: dict[uuid.UUID, IncomingStock] = {}
+    for row in restock_rows:
+        earliest.setdefault(row.variant_id, row)
+
+    for variant_id in variant_ids:
+        qty, updated_at = available.get(variant_id, (0, None))
+        restock = earliest.get(variant_id)
+        if qty > LOW_STOCK_THRESHOLD:
+            status = "متوفر"
+        elif qty > 0:
+            status = "قليل"
+        elif restock is not None:
+            status = "هيتجدد"
+        else:
+            status = "خلص"
+        # The restock label only matters when the shelf is empty — attaching
+        # it to an in-stock variant invites the model to promise an incoming
+        # shipment for something the customer can buy today.
+        out[variant_id] = {
+            "status": status,
+            "restock_label": _restock_label(restock.expected_on, restock.confidence)
+            if restock is not None and status in ("خلص", "هيتجدد")
+            else None,
+            "updated_at": updated_at.isoformat() if updated_at is not None else None,
+        }
+    return out
+
+
+# ------------------------------------------------------------- catalog tools --
+
+
+class SearchCatalogArgs(BaseModel):
     query: str = Field(min_length=1, max_length=255)
     attributes: dict[str, str | int | float | bool] | None = None
     option_values: dict[str, str | int | float | bool] | None = None
     limit: int = Field(default=5, ge=1, le=20)
 
 
-async def _search_products(
+async def _search_catalog(
     session: AsyncSession,
     tenant_id: uuid.UUID,
     *,
@@ -102,17 +190,20 @@ async def _search_products(
     option_values: dict[str, object] | None = None,
     limit: int = 5,
 ) -> dict:
-    # function-scope: the ratchet's escape hatch — the catalog's tables are
-    # read as a parameter-bound read model, never coupled at module scope.
+    """Search + price + availability in ONE call (consolidation by design).
+
+    The three old reads (search, price, stock) were always called together;
+    one round trip is cheaper and removes the model's tool-choice burden.
+    """
     from app.modules.catalog.models import Product, ProductVariant
-    _, sellable_statuses = _order_deps()
+
     pattern = like_pattern(query)
     ts_query = func.plainto_tsquery(literal_column("'simple'"), query)
 
     conditions = [
         ProductVariant.tenant_id == tenant_id,
         ProductVariant.is_active.is_(True),
-        Product.status.in_(sellable_statuses),
+        Product.status.in_(sellable_product_statuses()),
         or_(
             Product.search_ts.op("@@")(ts_query),
             Product.title.ilike(pattern, escape=LIKE_ESCAPE),
@@ -125,310 +216,174 @@ async def _search_products(
     if option_values:
         conditions.append(ProductVariant.option_values.contains(option_values))
 
-    stmt = (
-        select(ProductVariant, Product.title)
-        .join(Product, Product.id == ProductVariant.product_id)
-        .where(*conditions)
-        .order_by(Product.title.asc(), ProductVariant.id.asc())
-        .limit(limit)
+    rows = (
+        await session.execute(
+            select(ProductVariant, Product.title)
+            .join(Product, Product.id == ProductVariant.product_id)
+            .where(*conditions)
+            .order_by(Product.title.asc(), ProductVariant.id.asc())
+            .limit(limit)
+        )
+    ).all()
+    availability = await _availability_map(
+        session, tenant_id, [variant.id for variant, _ in rows]
     )
-    rows = (await session.execute(stmt)).all()
     return {
         "results": [
             {
                 "variant_id": str(variant.id),
+                "product_id": str(variant.product_id),
                 "title": variant.title or product_title,
                 "sku": variant.sku,
                 "price": _money(variant.price),
+                "availability": availability.get(variant.id),
             }
             for variant, product_title in rows
         ]
     }
 
 
-class GetVariantPriceArgs(BaseModel):
-    variant_id: uuid.UUID
+class GetProductDetailsArgs(BaseModel):
+    product_id: uuid.UUID
 
 
-async def _get_variant_price(
-    session: AsyncSession, tenant_id: uuid.UUID, *, variant_id: uuid.UUID
+async def _get_product_details(
+    session: AsyncSession, tenant_id: uuid.UUID, *, product_id: uuid.UUID
 ) -> dict:
+    """Material, attributes and EVERY variant with price and availability."""
     from app.modules.catalog.models import Product, ProductVariant
-    _, sellable_statuses = _order_deps()
-    row = (
+
+    product = (
         await session.execute(
-            select(ProductVariant, Product.title)
-            .join(Product, Product.id == ProductVariant.product_id)
-            .where(
-                ProductVariant.tenant_id == tenant_id,
-                ProductVariant.id == variant_id,
-                ProductVariant.is_active.is_(True),
-                Product.status.in_(sellable_statuses),
+            select(Product).where(
+                Product.tenant_id == tenant_id,
+                Product.id == product_id,
+                Product.status.in_(sellable_product_statuses()),
             )
         )
-    ).first()
-    if row is None:
-        raise NotFoundError(f"variant {variant_id} not found")
-    variant, product_title = row
-    return {
-        "variant_id": str(variant.id),
-        "title": variant.title or product_title,
-        "sku": variant.sku,
-        "price": _money(variant.price),
-    }
+    ).scalar_one_or_none()
+    if product is None:
+        raise NotFoundError(f"product {product_id} not found")
 
-
-class CheckStockArgs(BaseModel):
-    variant_id: uuid.UUID
-
-
-async def _check_stock(
-    session: AsyncSession, tenant_id: uuid.UUID, *, variant_id: uuid.UUID
-) -> dict:
-    from app.modules.catalog.models import Product, ProductVariant
-    from app.modules.inventory.models import InventoryBalance
-
-    _, sellable_statuses = _order_deps()
-    variant = (
+    variants = (
         await session.execute(
             select(ProductVariant)
-            .join(Product, Product.id == ProductVariant.product_id)
             .where(
                 ProductVariant.tenant_id == tenant_id,
-                ProductVariant.id == variant_id,
-                ProductVariant.is_active.is_(True),
-                Product.status.in_(sellable_statuses),
+                ProductVariant.product_id == product_id,
+            )
+            .order_by(ProductVariant.id.asc())
+        )
+    ).scalars()
+    variant_rows = list(variants.all())
+    active = [v for v in variant_rows if v.is_active]
+    availability = await _availability_map(session, tenant_id, [v.id for v in active])
+    return {
+        "product_id": str(product.id),
+        "title": product.title,
+        "attributes": product.attributes or {},
+        "variants": [
+            {
+                "variant_id": str(variant.id),
+                "title": variant.title or product.title,
+                "sku": variant.sku,
+                "price": _money(variant.price),
+                "is_active": variant.is_active,
+                "option_values": variant.option_values or {},
+                "availability": availability.get(variant.id),
+            }
+            for variant in variant_rows
+        ],
+    }
+
+
+class GetProductPhotosArgs(BaseModel):
+    product_id: uuid.UUID
+    selection: Literal["primary", "all"] = "primary"
+
+
+async def _get_product_photos(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    product_id: uuid.UUID,
+    selection: Literal["primary", "all"] = "primary",
+) -> dict:
+    """Gallery image ids only — the server mints and attaches the URLs."""
+    from app.modules.catalog.models import Product, ProductImage
+
+    product_exists = (
+        await session.execute(
+            select(Product.id).where(
+                Product.tenant_id == tenant_id,
+                Product.id == product_id,
+                Product.status.in_(sellable_product_statuses()),
             )
         )
     ).scalar_one_or_none()
-    if variant is None:
-        raise NotFoundError(f"variant {variant_id} not found")
+    if product_exists is None:
+        raise NotFoundError(f"product {product_id} not found")
 
-    available = (
+    stmt = (
+        select(ProductImage.id, ProductImage.alt, ProductImage.position)
+        .where(
+            ProductImage.tenant_id == tenant_id,
+            ProductImage.product_id == product_id,
+        )
+        .order_by(ProductImage.position.asc(), ProductImage.id.asc())
+    )
+    if selection == "primary":
+        stmt = stmt.limit(1)
+    rows = (await session.execute(stmt)).all()
+    return {
+        "media": [
+            {"image_id": str(image_id), "alt": alt, "position": position}
+            for image_id, alt, position in rows
+        ]
+    }
+
+
+# ------------------------------------------------------------- store tools --
+
+
+class GetStoreInfoArgs(BaseModel):
+    """No arguments — the store's published info is one deterministic pull."""
+
+
+async def _get_store_info(session: AsyncSession, tenant_id: uuid.UUID) -> dict:
+    """The store's own published facts: hours, branches, shipping, payment,
+    returns, how to order.
+
+    Backed by the tenant's customer-facing knowledge items read directly —
+    no embedding call, fully deterministic. The merchant owns the content;
+    behavior lives in prompts, facts live HERE.
+    """
+    from app.modules.ai.models import KnowledgeItem
+
+    rows = (
         await session.execute(
-            select(
-                func.coalesce(func.sum(InventoryBalance.on_hand - InventoryBalance.reserved), 0)
-            ).where(
-                InventoryBalance.tenant_id == tenant_id,
-                InventoryBalance.variant_id == variant_id,
+            select(KnowledgeItem.title, KnowledgeItem.content)
+            .where(
+                KnowledgeItem.tenant_id == tenant_id,
+                KnowledgeItem.visibility == "customer_facing",
             )
+            .order_by(KnowledgeItem.created_at.asc())
+            .limit(30)
         )
-    ).scalar_one()
-    return {
-        "variant_id": str(variant_id),
-        "sku": variant.sku,
-        "available": int(available),
-    }
-
-
-class CreateOrderItemArgs(BaseModel):
-    variant_id: uuid.UUID
-    quantity: int = Field(ge=1, le=999)
-
-
-class CreateOrderArgs(BaseModel):
-    items: list[CreateOrderItemArgs] = Field(min_length=1)
-
-
-async def _create_order(
-    session: AsyncSession,
-    tenant_id: uuid.UUID,
-    *,
-    items: list[dict],
-    channel: str = "ai",
-    context: dict | None = None,
-) -> dict:
-    customer_id = _bound_customer_id(context)
-    conversation_id = _parse_bound_id((context or {}).get("conversation_id"))
-    if conversation_id is None:
-        raise DomainError("no conversation bound to this tool call")
-    bound_quote_id = _parse_bound_id((context or {}).get("confirmed_quote_id"))
-    if bound_quote_id is not None:
-        return await _execute_confirmed_order(
-            session,
-            tenant_id,
-            customer_id=customer_id,
-            conversation_id=conversation_id,
-            quote_id=bound_quote_id,
-            channel=channel,
-        )
-    return await _propose_quote(
-        session,
-        tenant_id,
-        customer_id=customer_id,
-        conversation_id=conversation_id,
-        requested_items=items,
-    )
-
-
-async def _execute_confirmed_order(
-    session: AsyncSession,
-    tenant_id: uuid.UUID,
-    *,
-    customer_id: uuid.UUID,
-    conversation_id: uuid.UUID,
-    quote_id: uuid.UUID,
-    channel: str,
-) -> dict:
-    from app.modules.ai.models import AIOrderQuote
-
-    quote = (
-        await session.execute(
-            select(AIOrderQuote).where(
-                AIOrderQuote.tenant_id == tenant_id,
-                AIOrderQuote.id == quote_id,
-                AIOrderQuote.conversation_id == conversation_id,
-                AIOrderQuote.customer_id == customer_id,
-                AIOrderQuote.status == "confirmed",
-            )
-        )
-    ).scalar_one_or_none()
-    if quote is None:
-        raise DomainError(
-            "create_order requires a confirmed quote — the customer has not "
-            "confirmed this order yet"
-        )
-    if quote.expires_at is not None and quote.expires_at <= datetime.now(UTC):
-        raise DomainError("the confirmed quote expired — propose a fresh quote")
-
-    try:
-        OrderService = _order_service()
-    except ImportError as exc:
-        raise DomainError("orders unavailable") from exc
-    order = await OrderService.create_order(
-        session,
-        tenant_id,
-        customer_id,
-        [
-            {"variant_id": uuid.UUID(str(item["variant_id"])), "quantity": int(item["quantity"])}
-            for item in (quote.items or [])
-        ],
-        channel=channel,
-    )
-    quote.status = "consumed"
-    quote.consumed_at = datetime.now(UTC)
-    await session.flush()
-    return {
-        "order_id": str(order.id),
-        "number": order.number,
-        "status": order.status,
-        "grand_total": _money(order.grand_total),
-        "quote_id": str(quote.id),
-    }
-
-
-async def _propose_quote(
-    session: AsyncSession,
-    tenant_id: uuid.UUID,
-    *,
-    customer_id: uuid.UUID,
-    conversation_id: uuid.UUID,
-    requested_items: list[dict],
-) -> dict:
-    from app.modules.ai.agents.customer.confirmation import live_quote, mint_quote, quote_payload
-    from app.modules.catalog.models import Product, ProductVariant
-
-    existing = await live_quote(
-        session, tenant_id, conversation_id=conversation_id, customer_id=customer_id
-    )
-    if existing is not None:
-        return quote_payload(existing)
-
-    _, sellable_statuses = _order_deps()
-    priced: list[dict] = []
-    total = Decimal("0")
-    for item in requested_items:
-        variant_id = uuid.UUID(str(item["variant_id"]))
-        quantity = int(item["quantity"])
-        row = (
-            await session.execute(
-                select(ProductVariant, Product.status)
-                .join(Product, Product.id == ProductVariant.product_id)
-                .where(
-                    ProductVariant.tenant_id == tenant_id,
-                    ProductVariant.id == variant_id,
-                )
-            )
-        ).first()
-        if row is None:
-            raise NotFoundError(f"variant {variant_id} not found")
-        variant, product_status = row
-        if product_status not in sellable_statuses or not variant.is_active:
-            raise ConflictError(
-                f"variant {variant_id} is not on sale (product status "
-                f"{product_status or 'missing'}, variant active={variant.is_active})"
-            )
-        line_total = variant.price * quantity
-        total += line_total
-        priced.append(
-            {
-                "variant_id": str(variant_id),
-                "quantity": quantity,
-                "unit_price": _money(variant.price),
-                "line_total": _money(line_total),
-            }
-        )
-
-    quote = await mint_quote(
-        session,
-        tenant_id,
-        conversation_id=conversation_id,
-        customer_id=customer_id,
-        items=priced,
-        grand_total=total,
-    )
-    return quote_payload(quote)
-
-
-class GetCustomerArgs(BaseModel):
-    """No arguments — §132: the customer is the conversation's, not the model's."""
-
-
-async def _get_customer(
-    session: AsyncSession, tenant_id: uuid.UUID, *, context: dict | None = None
-) -> dict:
-    customer_id = _bound_customer_id(context)
-    customer = await _customer_service().get(session, tenant_id, customer_id)
-    return {
-        "customer_id": str(customer.id),
-        "name": customer.name,
-        "locale": customer.locale,
-    }
-
-
-class GetOrderArgs(BaseModel):
-    order_id: uuid.UUID
-
-
-async def _get_order(
-    session: AsyncSession,
-    tenant_id: uuid.UUID,
-    *,
-    order_id: uuid.UUID,
-    context: dict | None = None,
-) -> dict:
-    customer_id = _bound_customer_id(context)
-    order = await _order_service().get(session, tenant_id, order_id, with_items=True)
-    if order.customer_id != customer_id:
-        raise NotFoundError(f"order {order_id} not found")
-    return {
-        "order_id": str(order.id),
-        "number": order.number,
-        "status": order.status,
-        "currency": order.currency,
-        "grand_total": _money(order.grand_total),
-        "placed_at": order.placed_at.isoformat() if order.placed_at else None,
-        "items": [
-            {
-                "title": item.title,
-                "sku": item.sku,
-                "quantity": item.quantity,
-                "unit_price": _money(item.unit_price),
-                "total": _money(item.total),
-            }
-            for item in (getattr(order, "items", None) or [])
-        ],
-    }
+    ).all()
+    # Token ceiling: content is merchant-authored Text with no upper bound,
+    # so the pull stops at the budget instead of flooding the model's context
+    # (a tool response cap, per the tool-design guidance).
+    _BUDGET = 6000
+    items: list[dict] = []
+    spent = 0
+    for title, content in rows:
+        cost = len(title) + len(content)
+        if spent + cost > _BUDGET and items:
+            break
+        items.append({"title": title, "content": content})
+        spent += cost
+    return {"items": items}
 
 
 class SearchKnowledgeArgs(BaseModel):
@@ -461,6 +416,56 @@ async def _search_knowledge(
             for item, _distance in hits
         ]
     }
+
+
+# ------------------------------------------------------------- escalation --
+
+
+class HandoverToHumanArgs(BaseModel):
+    reason: Literal["complex_problem", "missing_data", "customer_request"]
+    summary: str = Field(min_length=1, max_length=1000)
+
+
+async def _handover_to_human(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    reason: str,
+    summary: str,
+    context: dict | None = None,
+) -> dict:
+    """The MODEL's escalation decision, executed server-side.
+
+    The conversation id comes from the server-bound context, never from the
+    model. The write goes through the one handover writer (row + conversation
+    status + outbox event + notification, idempotent), so a model that calls
+    this twice, or a retried run, converges on one open handover. The summary
+    is the model's own account — what it tried and what is missing — which is
+    exactly what the staff member opening the conversation needs.
+    """
+    conversation_id = _parse_bound_id((context or {}).get("conversation_id"))
+    if conversation_id is None:
+        raise DomainError("no conversation bound to this tool call")
+
+    from app.modules.ai.handover import request_human_takeover
+
+    await request_human_takeover(
+        session,
+        tenant_id,
+        conversation_id=conversation_id,
+        reason=reason,
+        note=summary,
+    )
+    # Data only — NO instructions here. Trained models treat instructions in
+    # tool results with skepticism and may ignore them (Anthropic's untrusted-
+    # content guidance); the farewell behavior lives in the system prompt.
+    return {
+        "status": "handover_recorded",
+        "reason": reason,
+    }
+
+
+# ---------------------------------------------------------------- vision --
 
 
 class FindProductByImageArgs(BaseModel):
@@ -519,107 +524,11 @@ async def _find_product_by_image(
     }
 
 
-class ResolveProductMediaArgs(BaseModel):
-    product_id: uuid.UUID
-    selection: Literal["primary", "all"] = "primary"
-
-
-async def _resolve_product_media(
-    session: AsyncSession,
-    tenant_id: uuid.UUID,
-    *,
-    product_id: uuid.UUID,
-    selection: Literal["primary", "all"] = "primary",
-) -> dict:
-    from app.modules.catalog.models import Product, ProductImage
-    _, sellable_statuses = _order_deps()
-    product_exists = (
-        await session.execute(
-            select(Product.id).where(
-                Product.tenant_id == tenant_id,
-                Product.id == product_id,
-                Product.status.in_(sellable_statuses),
-            )
-        )
-    ).scalar_one_or_none()
-    if product_exists is None:
-        raise NotFoundError(f"product {product_id} not found")
-
-    stmt = (
-        select(ProductImage.id, ProductImage.alt, ProductImage.position)
-        .where(
-            ProductImage.tenant_id == tenant_id,
-            ProductImage.product_id == product_id,
-        )
-        .order_by(ProductImage.position.asc(), ProductImage.id.asc())
-    )
-    if selection == "primary":
-        stmt = stmt.limit(1)
-    rows = (await session.execute(stmt)).all()
-    return {
-        "media": [
-            {"image_id": str(image_id), "alt": alt, "position": position}
-            for image_id, alt, position in rows
-        ]
-    }
-
-
-class AddTaskArgs(BaseModel):
-    title: str = Field(min_length=1, max_length=255)
-    description: str | None = Field(default=None, max_length=4000)
-    due_date: datetime | None = None
-    priority: int = Field(default=2, ge=1, le=3)
-
-
-async def _add_task(
-    session: AsyncSession,
-    tenant_id: uuid.UUID,
-    *,
-    title: str,
-    description: str | None = None,
-    due_date: datetime | None = None,
-    priority: int = 2,
-    context: dict | None = None,
-) -> dict:
-    from app.modules.operations.task_service import TaskService
-
-    customer_id = _parse_bound_id((context or {}).get("customer_id"))
-    task = await TaskService.create_task(
-        session,
-        tenant_id,
-        title=title,
-        description=description,
-        due_date=due_date,
-        priority=priority,
-        source="ai",
-        created_by="ai",
-        related_entity_type="customer" if customer_id else None,
-        related_entity_id=customer_id,
-    )
-    return {
-        "task_id": str(task.id),
-        "title": task.title,
-        "status": task.status,
-        "priority": task.priority,
-    }
-
-
-class AddTagArgs(BaseModel):
-    tag: str = Field(min_length=1, max_length=63)
-
-
-async def _add_tag(
-    session: AsyncSession, tenant_id: uuid.UUID, *, tag: str, context: dict | None = None
-) -> dict:
-    customer_id = _bound_customer_id(context)
-    created = await _customer_service().add_tag(session, tenant_id, customer_id, tag)
-    return {"customer_id": str(customer_id), "tag": created.name}
-
-
 async def media_payload_for_ids(
     session: AsyncSession, tenant_id: uuid.UUID, image_ids: list[str]
 ) -> list[dict]:
     from app.modules.catalog.models import ProductImage
+
     if not image_ids:
         return []
     rows = (
@@ -644,82 +553,44 @@ async def media_payload_for_ids(
 
 CUSTOMER_TOOL_SPECS: list[ToolSpec] = [
     ToolSpec(
-        name="search_products",
+        name="search_catalog",
         description=(
-            "Search the tenant catalog. Pass the customer's words as `query`, and any "
-            "specs they named as structured filters: `attributes` for product properties "
-            "(color, material) and `option_values` for variant options (size). Returns "
-            "variant, sku and price."
+            "Search the store catalog. Use it when the customer mentions a "
+            "product, a type, or specs (color, material, size) — pass their "
+            "words as `query` and the specs you understood as `attributes` "
+            "(product properties) and `option_values` (variant options like "
+            "size). Returns each variant with its exact price and an "
+            "availability status (متوفر / قليل / خلص / هيتجدد) plus the "
+            "restock date phrase when one exists. Do NOT use it for anything "
+            "that is not a product the store sells."
         ),
-        args_schema=SearchProductsArgs,
-        handler=_search_products,
+        args_schema=SearchCatalogArgs,
+        handler=_search_catalog,
         tags=["catalog"],
     ),
     ToolSpec(
-        name="get_variant_price",
-        description="Look up the current price of one product variant by id.",
-        args_schema=GetVariantPriceArgs,
-        handler=_get_variant_price,
+        name="get_product_details",
+        description=(
+            "Full details for ONE product by id: attributes (material, "
+            "properties) and every variant with price and availability. Use "
+            "it when the customer asks what a product is made of, how it is "
+            "cut, or which sizes/colors it has — usually after search_catalog "
+            "found it."
+        ),
+        args_schema=GetProductDetailsArgs,
+        handler=_get_product_details,
         tags=["catalog"],
     ),
     ToolSpec(
-        name="check_stock",
-        description="Available stock (on hand minus reserved) for a variant, all warehouses.",
-        args_schema=CheckStockArgs,
-        handler=_check_stock,
-        tags=["inventory"],
-    ),
-    ToolSpec(
-        name="create_order",
+        name="get_product_photos",
         description=(
-            "Place an order for the conversation's customer (server-bound). "
-            "Two-phase: a call without a confirmed quote PROPOSES — it returns "
-            "a priced quote with a 6-digit confirmation code the customer must "
-            "type in chat; no order exists yet. Once the customer's own message "
-            "carries the code, call create_order again to execute the confirmed "
-            "quote's items (the execution needs merchant approval)."
+            "List one product's gallery image ids (primary image or all). "
+            "Returns ids only — the server attaches the actual images to the "
+            "reply. Use it when the customer wants to SEE the product."
         ),
-        args_schema=CreateOrderArgs,
-        handler=_create_order,
-        tags=["orders"],
-        risk_level="HIGH",
-    ),
-    ToolSpec(
-        name="get_customer",
-        description="Details of the customer in this conversation (server-bound).",
-        args_schema=GetCustomerArgs,
-        handler=_get_customer,
-        tags=["customers"],
-    ),
-    ToolSpec(
-        name="get_order",
-        description="One order of this conversation's customer, with its line items.",
-        args_schema=GetOrderArgs,
-        handler=_get_order,
-        tags=["orders"],
-    ),
-    ToolSpec(
-        name="search_knowledge",
-        description="Search the tenant knowledge base for answers to a question.",
-        args_schema=SearchKnowledgeArgs,
-        handler=_search_knowledge,
-        tags=["knowledge"],
-    ),
-    ToolSpec(
-        name="add_task",
-        description="Create a follow-up task for the team (optionally about this customer).",
-        args_schema=AddTaskArgs,
-        handler=_add_task,
-        tags=["operations"],
-        risk_level="MEDIUM",
-    ),
-    ToolSpec(
-        name="add_tag",
-        description="Add a tag to this conversation's customer.",
-        args_schema=AddTagArgs,
-        handler=_add_tag,
-        tags=["customers"],
-        risk_level="MEDIUM",
+        args_schema=GetProductPhotosArgs,
+        handler=_get_product_photos,
+        tags=["catalog"],
     ),
     ToolSpec(
         name="find_product_by_image",
@@ -733,15 +604,45 @@ CUSTOMER_TOOL_SPECS: list[ToolSpec] = [
         tags=["catalog", "vision"],
     ),
     ToolSpec(
-        name="resolve_product_media",
+        name="get_store_info",
         description=(
-            "List one product's gallery image ids (primary image or all). "
-            "Returns ids only — the server attaches the actual images to "
-            "the reply."
+            "The store's own published facts: working hours, branches, "
+            "shipping, payment, returns, and how to order. Use it for any "
+            "question about the store itself or its policies. Returns the "
+            "store's knowledge items as title + content — quote them, never "
+            "invent a policy."
         ),
-        args_schema=ResolveProductMediaArgs,
-        handler=_resolve_product_media,
-        tags=["catalog", "vision"],
+        args_schema=GetStoreInfoArgs,
+        handler=_get_store_info,
+        tags=["store"],
+    ),
+    ToolSpec(
+        name="search_knowledge",
+        description=(
+            "Semantic search over the store's knowledge base for a specific "
+            "question. Use it when the customer asks about a policy or detail "
+            "that get_store_info's titles do not cover."
+        ),
+        args_schema=SearchKnowledgeArgs,
+        handler=_search_knowledge,
+        tags=["knowledge"],
+    ),
+    ToolSpec(
+        name="handover_to_human",
+        description=(
+            "Escalate this conversation to a human staff member. Use it ONLY "
+            "when you tried to solve the customer's problem and could not, "
+            "the store's data does not have what you need, or the customer "
+            "explicitly asks for a person. Pass `reason` and a `summary` "
+            "saying what you tried and what is missing — the staff reads it "
+            "before opening the chat. After calling it, write one short "
+            "natural reply telling the customer a team member will continue "
+            "with them."
+        ),
+        args_schema=HandoverToHumanArgs,
+        handler=_handover_to_human,
+        tags=["escalation"],
+        risk_level="MEDIUM",
     ),
 ]
 

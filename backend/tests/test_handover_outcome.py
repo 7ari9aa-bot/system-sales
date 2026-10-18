@@ -1,9 +1,10 @@
 """P1-11 — §37/§150: a handover has two halves, and both are now real.
 
-The intake half: a customer who asks for a person must PRODUCE a handover row.
-Before this, `customer_request` was vocabulary with no writer — the model just
-answered the request itself, and nothing in the system knew the customer had
-asked to stop talking to it.
+The intake half is now the MODEL's decision: the handover_to_human tool
+turns "the agent concluded this needs a person" into the same durable row the
+deterministic paths write. The old keyword detector is gone — a keyword that
+matched inside a correctly-understood message forced the whole turn down the
+wrong path.
 
 The outcome half: closing a handover must record WHO closed it, WHEN and WITH
 WHAT RESULT. The resolve route used to flip `status` and leave no trace, so
@@ -20,8 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ConflictError, ValidationError
-from app.modules.ai.agents.customer.turn import wants_human_request
-from app.modules.ai.handover import request_human_takeover
+from app.modules.ai.handover import OPEN_HANDOVER_STATUSES, request_human_takeover
 from app.modules.ai.hooks import maybe_auto_reply
 from app.modules.ai.models import Agent, AIHandover
 from app.modules.ai.router import resolve_handover
@@ -31,65 +31,7 @@ from app.modules.conversations.service import ConversationService
 from app.modules.customers.models import Customer
 from app.modules.platform.models import OutboxEvent
 
-# ------------------------------------------------------------------ the ask ----
-
-
-@pytest.mark.parametrize(
-    "text",
-    [
-        "عايز أتكلم مع حد من الفريق",
-        "أريد التحدث مع موظف",
-        "مش عايز روبوت، عايز انسان",
-        "لو ممكن كلام مع مسؤول",
-        "نفسى أكلم خدمة العملاء",
-        "I'd like to talk to a human please",
-        # The phrases real customers actually type — the original vocabulary
-        # missed every one of these (verified live before the fix).
-        "محتاج موظف حقيقي",
-        "عايز حد حقيقي",
-        "حولني لموظف",
-        "ممكن حد من خدمة العملاء؟",
-        "مش عايز بوت",
-        "وصّلني بخدمة العملاء",
-        "Could you connect me with a human?",
-        "I need a real person",
-    ],
-)
-def test_asking_for_a_person_is_detected(text: str) -> None:
-    assert wants_human_request(text) is True
-
-
-@pytest.mark.parametrize(
-    "text",
-    [
-        "عايز أعرف السعر",
-        "الموظف اللي بعتلي Says the price is 200",  # a person mentioned, not asked for
-        "هو انت روبوت؟",  # a question ABOUT the bot, not a request for a person
-        "عايز اشتري اتنين",
-        "عايز أعرف مواعيد خدمة العملاء",  # asking ABOUT the service, not for a human
-        "شروط خدمة العملاء إيه؟",
-        None,
-        "",
-    ],
-)
-def test_everything_else_is_not(text: str | None) -> None:
-    assert wants_human_request(text) is False
-
-
-@pytest.mark.parametrize(
-    "text",
-    [
-        "عايز حد أدنى للطلب؟",
-        "إيه الحد الأدنى للطلب؟",
-        "فيه حد أقصى للكمية؟",
-        "الحد الأقصى كام؟",
-    ],
-)
-def test_quantity_limits_are_not_a_person(text: str) -> None:
-    # "حد أدنى / حد أقصى" name a quantity LIMIT, not a human — the most common
-    # commercial false positive of the two-letter noun (each fired a full
-    # handover + owner notification on a pricing question).
-    assert wants_human_request(text) is False
+# ------------------------------------------------------------- the intake ----
 
 
 async def _customer_agent(db: AsyncSession, tenant_id: uuid.UUID) -> None:
@@ -124,49 +66,36 @@ async def _inbound(db: AsyncSession, tenant_id: uuid.UUID, body: str):
     return customer, conversation, message
 
 
-# ------------------------------------------------- customer_request producer --
+async def test_the_model_escalation_tool_creates_the_handover(db, tenant_ctx) -> None:
+    """The reason vocabulary now has a MODEL producer: handover_to_human."""
+    from app.modules.ai.tools import get_tool
 
-
-async def test_asking_for_a_human_creates_the_handover(db, tenant_ctx, monkeypatch) -> None:
-    """The whole point: the reason vocabulary now has a writer."""
     tenant_id = tenant_ctx.tenant_id
     await _customer_agent(db, tenant_id)
-    _customer, conversation, _message = await _inbound(db, tenant_id, "عايز أتكلم مع موظف")
+    _customer, conversation, _message = await _inbound(db, tenant_id, "المشكلة معقدة")
 
-    async def no_model_call(self, session, tenant_id_, **kwargs):
-        raise AssertionError("a customer who asked for a human must not spend a model call")
-
-    monkeypatch.setattr(AgentRunner, "run", no_model_call)
-
-    await maybe_auto_reply(db, tenant_id, conversation.id)
+    spec = get_tool("handover_to_human")
+    result = await spec.handler(
+        db,
+        tenant_id,
+        reason="complex_problem",
+        summary="المشكلة خارج سياسات المتجر المسجلة",
+        context={"conversation_id": str(conversation.id)},
+    )
+    assert result["status"] == "handover_recorded"
+    await db.flush()
 
     handover = (
         (await db.execute(select(AIHandover).where(AIHandover.tenant_id == tenant_id)))
         .scalars()
         .one()
     )
-    assert handover.reason == "customer_request"
+    assert handover.reason == "complex_problem"
     assert handover.status == "pending"
 
     refreshed = await ConversationService.get(db, tenant_id, conversation.id)
     assert refreshed.status == "waiting_human"
 
-    # The customer is not left in silence: an ack went out, and the handover
-    # event is what a human's queue reads.
-    outbound = (
-        (
-            await db.execute(
-                select(Message).where(
-                    Message.tenant_id == tenant_id,
-                    Message.direction == "outbound",
-                )
-            )
-        )
-        .scalars()
-        .all()
-    )
-    assert len(outbound) == 1
-    assert "شخص من الفريق" in (outbound[0].body or "")
     events = (
         (
             await db.execute(
@@ -176,7 +105,7 @@ async def test_asking_for_a_human_creates_the_handover(db, tenant_ctx, monkeypat
         .scalars()
         .all()
     )
-    assert {e.payload["event_type"] for e in events} == {"message.outbound", "ai.handover.created"}
+    assert {e.payload["event_type"] for e in events} == {"ai.handover.created"}
 
 
 async def test_an_ordinary_question_does_not_hand_over(db, tenant_ctx, monkeypatch) -> None:
@@ -196,6 +125,11 @@ async def test_an_ordinary_question_does_not_hand_over(db, tenant_ctx, monkeypat
     assert (
         await db.execute(select(AIHandover).where(AIHandover.tenant_id == tenant_id))
     ).scalars().all() == []
+
+
+def test_the_open_status_vocabulary_is_unchanged() -> None:
+    # `AIHandover.status` documents: pending | claimed | resolved.
+    assert set(OPEN_HANDOVER_STATUSES) == {"pending", "claimed"}
 
 
 # ------------------------------------------------------- the outcome fields ----

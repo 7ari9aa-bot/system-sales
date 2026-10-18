@@ -683,45 +683,39 @@ class ConversationAgentState(TenantMixin, TimestampMixin, WorkspaceScopeMixin, B
     state_version: Mapped[int] = mapped_column(Integer, server_default="1")
 
 
-class AIOrderQuote(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
-    """A server-persisted order quote awaiting the CUSTOMER's confirmation.
+class IncomingStock(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
+    """Merchant-entered expected restock per variant (customer-agent scope cut).
 
-    P1-10: the model proposes an order, the SERVER mints this row plus an
-    expiring confirmation code that is echoed into the chat, and only a quote
-    the customer confirmed — the code came back in THEIR message, matched
-    server-side — authorizes ``create_order`` to execute. The model can read
-    the code (it must, to show it) but can never confirm on the customer's
-    behalf: confirmation is a state transition keyed to an inbound message,
-    not to anything the model says or passes.
+    The customer agent has no order tools, so "متوفر / خلص / هيتجدد" must all
+    come from store data. ``inventory_balances`` answers the first two; this
+    table answers the third. The merchant enters it from the dashboard; the
+    agent never writes it.
 
-    The lifecycle is one-way: pending → confirmed → consumed. ``expired`` is
-    written by the match-time sweep. The order is built from THIS row's items,
-    never from a later tool call's arguments, so what the customer confirmed
-    is exactly what gets ordered.
+    The confidence split is a REPLY policy, not documentation: the tools
+    phrase a ``confirmed`` row as a firm date and an ``expected`` one as
+    "متوقع حوالي ..." — the model never derives certainty itself. Lifecycle
+    is one-way: open → received | cancelled, both terminal and both written
+    by staff, never by the agent.
     """
 
-    __tablename__ = "ai_order_quotes"
+    __tablename__ = "incoming_stock"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    conversation_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("conversations.id", ondelete="CASCADE")
+    variant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("product_variants.id", ondelete="CASCADE")
     )
-    customer_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("customers.id", ondelete="CASCADE")
-    )
-    items: Mapped[list] = mapped_column(JSONB, server_default="[]")
-    grand_total: Mapped[Decimal] = mapped_column(AI_COST, default=0, server_default="0")
-    currency: Mapped[str] = mapped_column(String(3), server_default="EGP")
-    # The customer-facing confirmation code — 6 digits, chat-echoable.
-    code: Mapped[str] = mapped_column(String(12))
-    # allowed: pending | confirmed | consumed | expired
-    status: Mapped[str] = mapped_column(String(15), server_default="pending")
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # A DATE, not a timestamp: the merchant means "the day it lands", and a
+    # tz-aware datetime shifts the day at UTC boundaries (label says the
+    # wrong day). The label derives from the date itself.
+    expected_on: Mapped[date] = mapped_column(Date(), nullable=False)
+    expected_qty: Mapped[int | None] = mapped_column(Integer)
+    # allowed: confirmed | expected
+    confidence: Mapped[str] = mapped_column(String(15), server_default="expected")
+    # allowed: open | received | cancelled
+    status: Mapped[str] = mapped_column(String(15), server_default="open")
 
     __table_args__ = (
-        Index("ix_ai_order_quotes_conversation_status", "tenant_id", "conversation_id", "status"),
+        Index("ix_incoming_stock_variant_status", "tenant_id", "variant_id", "status"),
     )
 
 

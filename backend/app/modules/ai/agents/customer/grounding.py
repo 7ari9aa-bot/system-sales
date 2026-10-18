@@ -46,8 +46,15 @@ def extract_numerals(text: str) -> list[str]:
 
 
 def _numeral_matches_fact(numeral: str, fact: str) -> bool:
-    """True if numeral numerically equals fact or matches as a discrete number."""
-    fact_str = fact.strip()
+    """True if numeral numerically equals fact or matches as a discrete number.
+
+    The FACT side folds too: merchant-authored content (store info, knowledge
+    items) is full of Arabic-Indic digits, while the model almost always
+    writes Western digits. Matching the fact verbatim blocked every grounded
+    reply that quoted such content — the reply side folds, so the fact side
+    must fold with the same table.
+    """
+    fact_str = fact.strip().translate(_ARABIC_INDIC)
     # 1. Exact numeric equality (handles precision: 25.5 == 25.50, 100 == 100.00)
     try:
         if Decimal(numeral) == Decimal(fact_str):

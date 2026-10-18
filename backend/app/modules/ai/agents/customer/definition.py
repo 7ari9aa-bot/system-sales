@@ -8,20 +8,19 @@ from __future__ import annotations
 
 from app.modules.ai.core.registry import AgentCapability, AgentDefinition, AgentRegistry
 
-# REPLY-ONLY (review P0-2): the customer agent answers and looks things up —
-# it never mutates state. Orders, tasks and tags are handled by human staff
-# via handover; the commerce tools stay implemented in tools.py but are NOT
-# authorized for this kind (the runtime refuses them even if a stale row
-# flips back on, and the sync quarantine disables the rows).
+# LANGUAGE-ONLY (scope cut, 2026-10-18): the customer agent answers from store
+# data and escalates — it never sells, never mutates records. The sales cycle
+# (orders, quotes, tags, tasks) is staff work via handover; those tools were
+# removed from this kind. The one non-read tool is handover_to_human, whose
+# side effect is the handover write itself.
 CUSTOMER_TOOLS = [
-    "search_products",
-    "get_variant_price",
-    "check_stock",
-    "get_customer",
-    "get_order",
-    "search_knowledge",
+    "search_catalog",
+    "get_product_details",
+    "get_product_photos",
     "find_product_by_image",
-    "resolve_product_media",
+    "get_store_info",
+    "search_knowledge",
+    "handover_to_human",
 ]
 
 # Canonical system prompt defined in dedicated prompts.py module
@@ -31,35 +30,42 @@ _DEFINITION = AgentDefinition(
     kind="customer",
     name="Customer Service Agent",
     description=(
-        "Answers customer questions from trusted store data: catalog search, "
-        "prices, stock, order status, product photos, and vision-based product "
-        "matching. Reply-only — orders and record changes are handled by human "
-        "staff via handover."
+        "Answers customer questions from trusted store data: catalog search "
+        "with prices and availability, product details and photos, vision "
+        "matching, store policies. Language-only — it tries to solve, and "
+        "escalates to human staff when it cannot or the data is missing."
     ),
     capabilities=[
         AgentCapability(
-            name="get_customer", description="Read current customer profile", required=True
-        ),
-        AgentCapability(name="get_order", description="Read customer order details", required=True),
-        AgentCapability(
-            name="search_products", description="Search products in catalog", required=True
+            name="search_catalog",
+            description="Search products with price and availability",
+            required=True,
         ),
         AgentCapability(
-            name="get_variant_price", description="Check variant price", required=False
+            name="get_product_details",
+            description="Full product details and variants",
+            required=True,
         ),
         AgentCapability(
-            name="check_stock", description="Check inventory availability", required=False
-        ),
-        AgentCapability(
-            name="search_knowledge", description="Search store knowledge base", required=False
-        ),
-        AgentCapability(
-            name="resolve_product_media",
+            name="get_product_photos",
             description="Retrieve product gallery photos",
             required=False,
         ),
         AgentCapability(
             name="find_product_by_image", description="Match product from image", required=False
+        ),
+        AgentCapability(
+            name="get_store_info",
+            description="Store facts: hours, branches, shipping, payment, returns",
+            required=False,
+        ),
+        AgentCapability(
+            name="search_knowledge", description="Search store knowledge base", required=False
+        ),
+        AgentCapability(
+            name="handover_to_human",
+            description="Escalate the conversation to human staff",
+            required=True,
         ),
     ],
     system_prompt_template=CUSTOMER_SYSTEM_PROMPT,

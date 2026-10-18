@@ -76,23 +76,21 @@ def test_customer_agent_has_no_order_placement_task_type() -> None:
 
 def test_customer_prompt_forbids_selling_and_keeps_the_read_allowance() -> None:
     prompt = CUSTOMER_SYSTEM_PROMPT
-    # The old prompt said the job was "إتمام عمليات الشراء" and required
-    # confirming details "قبل تسجيل أي طلب".
-    assert "إتمام" not in prompt
-    assert "تسجيل أي طلب" not in prompt
     # An explicit prohibition, not just an absence.
     assert "ممنوع" in prompt
-    # Reading an existing order to answer a question stays allowed.
-    assert "قراءة حالة طلب" in prompt
-    # …and the handover instruction survives the rewrite.
-    assert "موظف" in prompt
+    # The selling boundary is stated as the agent's own limit.
+    assert "مش بتبيع" in prompt
+    # Solving comes first; the escalation tool is named, not implied.
+    assert "handover_to_human" in prompt
+    # …and the human handover instruction survives the rewrite.
+    assert "الفريق" in prompt
 
 
 def test_the_prompt_and_the_tool_list_agree() -> None:
     """A prompt that promises an action its tools cannot perform is a lie."""
     definition = _customer()
     allowed = set(definition.allowed_tools)
-    for tool in ("search_products", "get_order", "find_product_by_image"):
+    for tool in ("search_catalog", "get_product_details", "handover_to_human"):
         assert tool in allowed
     assert definition.enforce_grounding is True
 

@@ -284,6 +284,26 @@ async def _do_auto_reply(
         return
     customer_id: uuid.UUID | None = conversation.customer_id
 
+    # The customer's name/locale ride the CONTEXT as store-owned facts (the
+    # get_customer tool is gone). Best-effort: a missing row never blocks the
+    # reply — the agent just talks to an unnamed customer.
+    customer_name: str | None = None
+    customer_locale: str | None = None
+    if customer_id is not None:
+        try:
+            from app.modules.customers.service import CustomerService
+
+            customer = await CustomerService().get(session, tenant_id, customer_id)
+            customer_name = customer.name
+            customer_locale = customer.locale
+        except Exception:  # noqa: BLE001 — identity context is optional, the reply is not
+            logger.warning(
+                "auto-reply continuing WITHOUT customer identity context "
+                "customer=%s",
+                customer_id,
+                exc_info=True,
+            )
+
     # Knowledge context is a bonus, never a hard dependency: if retrieval fails
     # the reply still goes out. That part is deliberate.
     #
@@ -338,6 +358,8 @@ async def _do_auto_reply(
                 agent_id=agent.id,
                 inbound_message_id=last_inbound.id,
                 customer_id=customer_id,
+                customer_name=customer_name,
+                customer_locale=customer_locale,
                 body=body,
                 content_type=last_inbound.content_type,
                 attachments=attachments,

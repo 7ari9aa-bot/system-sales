@@ -1,9 +1,8 @@
-"""Grounding v1 unit tests — ledger facts + numeral tracing (pure logic).
+"""Grounding unit tests — ledger facts + numeral tracing (pure logic).
 
 Pins the Arabic-Indic folding (the assistant replies in Arabic), the
-substring-match contract, the create_order quantity exception (facts live in
-ARGS for the order tool), and that failed/denied tool calls never become
-quotable facts.
+substring-match contract, the ISO-date exclusion and its ready-label
+workaround, and that failed/denied tool calls never become quotable facts.
 """
 
 from __future__ import annotations
@@ -28,6 +27,17 @@ def test_arabic_indic_digits_fold_before_matching():
     assert check_grounding("السعر ٢٦ جنيه", ["25.50"]) is not None
 
 
+def test_the_fact_side_folds_arabic_indic_too():
+    """Merchant-authored content (store info, knowledge items) is full of
+    Arabic-Indic digits while the model almost always writes Western ones —
+    matching facts verbatim blocked every grounded reply quoting such text.
+    Both sides fold with the same table; invented numerals still fail."""
+    fact = "الشحن داخل القاهرة خلال ٣ أيام"
+    assert check_grounding("الشحن خلال 3 أيام", [fact]) is None
+    assert check_grounding("الشحن خلال ٣ أيام", [fact]) is None
+    assert check_grounding("الشحن خلال 7 أيام", [fact]) is not None
+
+
 def test_substring_matches_both_precisions():
     # The fact "25.50" grounds 25.5 and 25.50; the count "3" grounds "3 قطع".
     assert check_grounding("بـ 25.5 بس", ["25.50"]) is None
@@ -39,13 +49,13 @@ def test_substring_matches_both_precisions():
 def test_facts_come_from_ok_results_only():
     calls = [
         {
-            "name": "search_products",
+            "name": "search_catalog",
             "status": "ok",
             "args": {"query": "widget"},
             "result": {"results": [{"price": "25.50", "sku": "BW-1"}]},
         },
-        {"name": "check_stock", "status": "error", "args": {}, "result": {"error": "boom"}},
-        {"name": "create_order", "status": "denied", "args": {}, "result": {"error": "x"}},
+        {"name": "get_product_details", "status": "error", "args": {}, "result": {"error": "boom"}},
+        {"name": "handover_to_human", "status": "denied", "args": {}, "result": {"error": "x"}},
     ]
     facts = facts_from_tool_calls(calls)
     assert "25.50" in facts and "BW-1" in facts
@@ -53,55 +63,73 @@ def test_facts_come_from_ok_results_only():
     assert "boom" not in facts
 
 
-def test_order_quantities_read_from_args_not_result():
+def test_tool_args_never_leak_in():
+    """Args are never facts for ANY tool — the result is the only source.
+
+    The one exception the ledger used to carry (create_order quantities read
+    from args) died with the order tools.
+    """
     calls = [
         {
-            "name": "create_order",
-            "status": "ok",
-            "args": {"items": [{"variant_id": "v1", "quantity": 3}]},
-            "result": {
-                "order_id": "o-9",
-                "number": "ORD-1043",
-                "status": "pending",
-                "grand_total": "75.00",
-            },
-        }
-    ]
-    facts = facts_from_tool_calls(calls)
-    assert "3" in facts  # the customer's own quantity
-    assert "75.00" in facts
-    # The order NUMBER is what a human reads back to the customer, so it must
-    # be quotable; the UUID behind it is an entity id and stays out (P1-10).
-    assert "ORD-1043" in facts
-    assert "o-9" not in facts
-
-
-def test_non_order_tool_args_do_not_leak_in():
-    calls = [
-        {
-            "name": "search_products",
+            "name": "search_catalog",
             "status": "ok",
             "args": {"query": "99", "limit": 5},
             "result": {"results": []},
         }
     ]
     facts = facts_from_tool_calls(calls)
-    assert "99" not in facts  # args are facts ONLY for the order tool
+    assert "99" not in facts
     assert "5" not in facts
 
 
 def test_bools_and_nones_are_not_facts():
     calls = [
         {
-            "name": "get_customer",
+            "name": "get_product_details",
             "status": "ok",
             "args": {},
-            "result": {"is_blocked": False, "phone": None, "name": "سالم"},
+            "result": {"is_active": False, "phone": None, "title": "تيشيرت"},
         }
     ]
     facts = facts_from_tool_calls(calls)
     assert "False" not in facts and "None" not in facts
-    assert "سالم" in facts
+    assert "تيشيرت" in facts
+
+
+def test_restock_label_grounded_but_iso_date_not():
+    """The ISO-date trap: ledger excludes ISO strings, so the tool must
+    return a ready Arabic phrase with WESTERN digits — the reply's numeral
+    matches the label verbatim (facts are not digit-folded)."""
+    from datetime import date
+
+    from app.modules.ai.agents.customer.tools import _restock_label
+
+    label = _restock_label(date(2026, 10, 25), "confirmed")
+    assert label == "مؤكد: 25 أكتوبر 2026"
+    hedged = _restock_label(date(2026, 10, 25), "expected")
+    assert hedged == "متوقع حوالي 25 أكتوبر 2026"
+
+    raw_iso = [
+        {
+            "name": "search_catalog",
+            "status": "ok",
+            "args": {},
+            "result": {"results": [{"restock_on": "2026-10-25"}]},
+        }
+    ]
+    # The raw ISO string is excluded from facts: "25" is ungrounded.
+    assert check_grounding("هيتجدد يوم 25 أكتوبر", facts_from_tool_calls(raw_iso)) is not None
+
+    labelled = [
+        {
+            "name": "search_catalog",
+            "status": "ok",
+            "args": {},
+            "result": {"results": [{"restock_label": label}]},
+        }
+    ]
+    # The phrased label IS a fact, and grounds the numeral the model writes.
+    assert check_grounding("هيتجدد يوم 25 أكتوبر", facts_from_tool_calls(labelled)) is None
 
 
 def test_no_policy_number_is_pre_approved():
@@ -113,7 +141,7 @@ def test_no_policy_number_is_pre_approved():
     retrieved. It is grounded only once the tenant's own knowledge says it.
     """
     empty = [
-        {"name": "search_products", "status": "ok", "args": {}, "result": {"results": []}},
+        {"name": "search_catalog", "status": "ok", "args": {}, "result": {"results": []}},
     ]
     facts = facts_from_tool_calls(empty)
     assert "14" not in facts and "30" not in facts
