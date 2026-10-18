@@ -4,11 +4,13 @@ import ChannelSwitcher from "@/components/inbox/ChannelSwitcher";
 import ChannelChat from "@/components/inbox/ChannelChat";
 import ConversationAvatar from "@/components/inbox/ConversationAvatar";
 import FacebookPostsWorkspace from "@/components/inbox/FacebookPostsWorkspace";
+import InstagramModeTabs from "@/components/inbox/InstagramModeTabs";
+import InstagramPostsWorkspace from "@/components/inbox/InstagramPostsWorkspace";
 import { CHANNELS, getChannel } from "@/lib/channels";
 import { api } from "@/lib/api";
 import { useI18n, useT } from "@/lib/i18n";
 import { useAuth } from "@/lib/AuthContext";
-import { isDemoConversation, loadDemoFacebookPosts, loadDemoInbox, saveDemoFacebookPosts, saveDemoInbox } from "@/lib/inboxDemoData";
+import { isDemoConversation, loadDemoFacebookPosts, loadDemoInbox, loadDemoInstagramPosts, saveDemoFacebookPosts, saveDemoInstagramPosts, saveDemoInbox } from "@/lib/inboxDemoData";
 import { cn } from "@/lib/utils";
 
 const INBOX_PAGE_SIZE = 50;
@@ -97,6 +99,8 @@ export default function Inbox() {
   const demoAccount = String(user?.email || "").toLowerCase() === "dmin@revenueosapp.com";
   const [activeChannel, setActiveChannel] = useState("whatsapp");
   const [facebookPosts, setFacebookPosts] = useState([]);
+  const [instagramPosts, setInstagramPosts] = useState([]);
+  const [instagramMode, setInstagramMode] = useState("comments");
   const [chatListWidth, setChatListWidth] = useState(() => {
     if (typeof window === "undefined") return CHAT_LIST_DEFAULT_WIDTH;
     try {
@@ -216,6 +220,10 @@ export default function Inbox() {
 
   useEffect(() => {
     setFacebookPosts(demoAccount ? loadDemoFacebookPosts() : []);
+  }, [demoAccount]);
+
+  useEffect(() => {
+    setInstagramPosts(demoAccount ? loadDemoInstagramPosts() : []);
   }, [demoAccount]);
 
   useEffect(() => () => clearTimeout(telegramListScrollTimerRef.current), []);
@@ -583,6 +591,38 @@ export default function Inbox() {
     });
   }
 
+  function addInstagramPageReply(commentId, postId, text) {
+    if (!demoAccount) return;
+    setInstagramPosts((previous) => {
+      const createdAt = new Date();
+      const reply = {
+        id: `demo:instagram-reply:${createdAt.getTime()}`,
+        author: "fihrist.store",
+        handle: "fihrist.store",
+        avatarUrl: "/fihrist-mark.svg",
+        timeLabel: lang === "ar" ? "الآن" : "Just now",
+        text,
+        likes: 0,
+        isPage: true,
+        isAgent: false,
+        replies: [],
+      };
+      const updated = previous.map((post) => {
+        if (post.id !== postId) return post;
+        if (!commentId) return { ...post, comments: [...(post.comments || []), { ...reply, id: `demo:instagram-comment:${createdAt.getTime()}` }] };
+        const addReply = (comments) => (comments || []).map((comment) => {
+          if (comment.id === commentId) return { ...comment, replies: [...(comment.replies || []), reply] };
+          return comment.replies?.some((nested) => nested.id === commentId)
+            ? { ...comment, replies: addReply(comment.replies) }
+            : comment;
+        });
+        return { ...post, comments: addReply(post.comments) };
+      });
+      saveDemoInstagramPosts(updated);
+      return updated;
+    });
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       {error && (
@@ -599,7 +639,10 @@ export default function Inbox() {
 
       <div dir="ltr" className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_52px] overflow-hidden">
       <div className="flex h-full min-h-0 min-w-0 flex-col">
-      {isFacebook ? (
+      {isInstagram && <InstagramModeTabs active={instagramMode} lang={lang} onChange={setInstagramMode} />}
+      {isInstagram && instagramMode === "comments" ? (
+        <InstagramPostsWorkspace posts={instagramPosts} lang={lang} onReply={addInstagramPageReply} />
+      ) : isFacebook ? (
         <FacebookPostsWorkspace posts={facebookPosts} lang={lang} onReply={addFacebookPageReply} onComment={addFacebookPageComment} />
       ) : (
       <div

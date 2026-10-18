@@ -4,6 +4,7 @@ import { CHANNELS } from "@/lib/channels";
 // It never creates provider integrations or sends messages to external services.
 const STORAGE_KEY = "fihrist:inbox-demo:dmin@revenueosapp.com:v1";
 const FACEBOOK_POSTS_STORAGE_KEY = "fihrist:facebook-page-posts-demo:dmin@revenueosapp.com:v1";
+const INSTAGRAM_POSTS_STORAGE_KEY = "fihrist:instagram-posts-demo:dmin@revenueosapp.com:v1";
 
 const CONTACTS = [
   { name: "ملك أحمد", initials: "مل", telegramAvatar: "malak-ahmed", messages: ["هل المقاس متاح؟", "ممكن أعرف تفاصيل التوصيل؟", "تمام، هأكد الطلب النهارده"] },
@@ -156,6 +157,142 @@ export function loadDemoFacebookPosts() {
 export function saveDemoFacebookPosts(posts) {
   if (typeof window === "undefined") return;
   try { window.localStorage.setItem(FACEBOOK_POSTS_STORAGE_KEY, JSON.stringify(posts)); } catch { /* local page demo is optional */ }
+}
+
+function createDemoInstagramPosts() {
+  return [
+    {
+      id: "demo:instagram-post:collection",
+      accountName: "fihrist.store",
+      accountAvatarUrl: "/fihrist-mark.svg",
+      timeLabel: "منذ ساعتين",
+      text: "وصلت تشكيلة الصيف الجديدة 🌿 ألوان خفيفة وتفاصيل تكمّل إطلالتك. أنهي قطعة عجبتكم أكتر؟ #تشكيلة_جديدة",
+      mediaUrl: "/facebook-posts/spring-collection.png",
+      mediaType: "image",
+      likes: 1240,
+      comments: [
+        {
+          id: "demo:instagram-comment:collection-1",
+          author: "منّة رضا",
+          handle: "menna.reeda",
+          avatarUrl: "/telegram-avatars/malak-ahmed.png",
+          timeLabel: "منذ ٢٥ دقيقة",
+          text: "اللون الأبيض متوفر منه؟ 😍",
+          likes: 6,
+          replies: [
+            {
+              id: "demo:instagram-reply:collection-1-agent",
+              author: "fihrist.store",
+              handle: "fihrist.store",
+              avatarUrl: "/fihrist-mark.svg",
+              timeLabel: "منذ ١٨ دقيقة",
+              text: "أهلًا منّة، متوفر حاليًا 🤍 ابعتي لنا رسالة خاصة ونساعدك في اختيار المقاس.",
+              likes: 1,
+              isPage: true,
+              isAgent: true,
+            },
+          ],
+        },
+        {
+          id: "demo:instagram-comment:collection-2",
+          author: "نور محمد",
+          handle: "noor.mohamed",
+          avatarUrl: "/telegram-avatars/noor-mohamed.png",
+          timeLabel: "منذ ٤٠ دقيقة",
+          text: "التفاصيل جميلة جدًا، مستنية أشوف باقي الألوان ✨",
+          likes: 3,
+          replies: [],
+        },
+      ],
+    },
+    {
+      id: "demo:instagram-post:delivery",
+      accountName: "fihrist.store",
+      accountAvatarUrl: "/fihrist-mark.svg",
+      timeLabel: "أمس",
+      text: "كل طلب بيتجهز بحب ويوصل لحد بابك 📦 الشحن متاح لكل المحافظات.",
+      mediaUrl: "/facebook-posts/careful-packing.png",
+      mediaType: "image",
+      likes: 864,
+      comments: [
+        {
+          id: "demo:instagram-comment:delivery-1",
+          author: "سارة محمود",
+          handle: "sara.mhmoud",
+          avatarUrl: "/telegram-avatars/sara-mahmoud.png",
+          timeLabel: "منذ ٣ ساعات",
+          text: "التوصيل للمنصورة بياخد قد إيه؟",
+          likes: 2,
+          replies: [],
+        },
+        {
+          id: "demo:instagram-comment:delivery-2",
+          author: "هند سامي",
+          handle: "hind.samy",
+          avatarUrl: "/telegram-avatars/hind-sami.png",
+          timeLabel: "منذ ٥ ساعات",
+          text: "وصلني الأوردر والتغليف تحفة 🤍",
+          likes: 8,
+          replies: [
+            {
+              id: "demo:instagram-reply:delivery-2-page",
+              author: "fihrist.store",
+              handle: "fihrist.store",
+              avatarUrl: "/fihrist-mark.svg",
+              timeLabel: "منذ ٤ ساعات",
+              text: "مبروك عليكِ يا هند، شكرًا إنك شاركتينا رأيك 🤍",
+              likes: 0,
+              isPage: true,
+              isAgent: false,
+            },
+          ],
+        },
+      ],
+    },
+    {
+      id: "demo:instagram-post:colors",
+      accountName: "fihrist.store",
+      accountAvatarUrl: "/fihrist-mark.svg",
+      timeLabel: "١٥ أكتوبر",
+      text: "محتارين نضيف أنهي لون للمجموعة الجاية؟ اكتبوا اختياركم في التعليقات 💬",
+      mediaUrl: null,
+      mediaType: null,
+      likes: 342,
+      comments: [
+        {
+          id: "demo:instagram-comment:colors-1",
+          author: "كريم يوسف",
+          handle: "karim.youssef",
+          avatarUrl: "/telegram-avatars/karim-youssef.png",
+          timeLabel: "١٥ أكتوبر",
+          text: "الأزرق الهادي هيليق على كل حاجة.",
+          likes: 4,
+          replies: [],
+        },
+      ],
+    },
+  ];
+}
+
+export function loadDemoInstagramPosts() {
+  if (typeof window === "undefined") return createDemoInstagramPosts();
+  try {
+    const saved = window.localStorage.getItem(INSTAGRAM_POSTS_STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {
+    // Use the bundled sample account when local demo storage is unavailable.
+  }
+  const posts = createDemoInstagramPosts();
+  saveDemoInstagramPosts(posts);
+  return posts;
+}
+
+export function saveDemoInstagramPosts(posts) {
+  if (typeof window === "undefined") return;
+  try { window.localStorage.setItem(INSTAGRAM_POSTS_STORAGE_KEY, JSON.stringify(posts)); } catch { /* local page demo is optional */ }
 }
 
 function createInitialData() {
