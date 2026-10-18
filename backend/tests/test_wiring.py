@@ -433,23 +433,36 @@ async def test_integration_webhook_health_column(db, tenant_ctx):
 
 
 def test_tool_risk_levels_and_requires_approval():
-    create_order = TOOLS["create_order"]
-    assert create_order.risk_level == "HIGH"
-    for name in ("search_products", "get_variant_price", "check_stock"):
+    """§135 on the language-only surface: reads are LOW, the handover write is
+    MEDIUM, and nothing HIGH exists for the customer agent to park on. The
+    removed sales tools are gone from the registry entirely, not downgraded.
+    """
+    for name in (
+        "search_catalog",
+        "get_product_details",
+        "get_product_photos",
+        "find_product_by_image",
+        "get_store_info",
+        "search_knowledge",
+    ):
         assert TOOLS[name].risk_level == "LOW"
+    assert TOOLS["handover_to_human"].risk_level == "MEDIUM"
+    for name in ("create_order", "add_task", "add_tag"):
+        assert name not in TOOLS
 
-    # P1-10 phase-aware gate: only the execution call — the one with a bound
-    # confirmed quote — parks for the merchant. A proposal (no binding) mints
-    # a quote the customer must confirm first, so there is nothing to approve.
-    assert (
-        asyncio.run(requires_approval(create_order, {"confirmed_quote_id": str(uuid.uuid4())}))
-        is True
-    )
-    assert asyncio.run(requires_approval(create_order)) is False
-    assert asyncio.run(requires_approval(TOOLS["check_stock"])) is False
-
-
-# ----------------- (§152) relay EventLog param mapping (pure unit) ---------
+    # The gate is HIGH-only and generic: no current tool qualifies, and the
+    # special-case for a bound quote died with the confirmation flow.
+    for name in TOOLS:
+        if name.startswith("si_") or name in (
+            "search_catalog",
+            "get_product_details",
+            "get_product_photos",
+            "find_product_by_image",
+            "get_store_info",
+            "search_knowledge",
+        ):
+            assert asyncio.run(requires_approval(TOOLS[name])) is False
+    assert asyncio.run(requires_approval(TOOLS["handover_to_human"])) is False
 
 
 def test_relay_event_log_param_mapping_is_defensive():
