@@ -123,7 +123,7 @@ export default function FacebookPostsWorkspace({ posts = [], lang = "ar", onRepl
         <div className="flex shrink-0 items-center gap-1 rounded-lg bg-[#e7f3ff] px-2.5 py-1.5 text-[11px] font-semibold text-[#0866ff]"><Facebook className="h-3.5 w-3.5" />{isArabic ? "فيسبوك" : "Facebook"}</div>
       </div>
       <div dir="ltr" className="flex min-h-0 flex-1 overflow-hidden">
-        <aside dir={isArabic ? "rtl" : "ltr"} aria-label={isArabic ? "قائمة منشورات الصفحة" : "Page post list"} className={cn("flex w-full shrink-0 flex-col border-e border-[#d8dadf] bg-white md:w-[310px] lg:w-[350px]", selectedPost && "hidden md:flex")}>
+        <aside dir={isArabic ? "rtl" : "ltr"} aria-label={isArabic ? "قائمة منشورات الصفحة" : "Page post list"} className={cn("flex w-full shrink-0 flex-col border-r border-[#d8dadf] bg-white md:w-[310px] lg:w-[350px]", selectedPost && "hidden md:flex")}>
           <div className="shrink-0 border-b border-[#e4e6eb] p-3">
             <label className="flex h-10 items-center gap-2 rounded-full bg-[#f0f2f5] px-3 text-[#65676b] focus-within:ring-2 focus-within:ring-[#0866ff]/40">
               <Search className="h-4 w-4 shrink-0" />

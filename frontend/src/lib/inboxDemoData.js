@@ -61,7 +61,7 @@ function createDemoFacebookPosts() {
           likes: 2,
           replies: [
             { id: "demo:facebook-reply:collection-1-customer", author: "ملك أحمد", avatarUrl: "/telegram-avatars/malak-ahmed.png", timeLabel: "منذ ٣٥ دقيقة", text: "ممتاز، هبعتلكم رسالة بالتفاصيل." },
-            { id: "demo:facebook-reply:collection-1-page", author: "فهرست | FIHRIST", avatarUrl: "/fihrist-mark.svg", timeLabel: "منذ ٣٠ دقيقة", text: "أهلًا يا ملك، متاحة بمقاس M 💙 ابعتي لنا رسالة ونبعت لك صورها." , isPage: true },
+            { id: "demo:facebook-reply:collection-1-page", author: "فهرست | FIHRIST", avatarUrl: "/fihrist-mark.svg", timeLabel: "منذ ٣٠ دقيقة", text: "أهلًا يا ملك، متاحة بمقاس M 💙 ابعتي لنا رسالة ونبعت لك صورها.", isPage: true, isAgent: true },
           ],
         },
         {
@@ -144,7 +144,22 @@ export function loadDemoFacebookPosts() {
     const saved = window.localStorage.getItem(FACEBOOK_POSTS_STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed)) {
+        let migrated = false;
+        const posts = parsed.map((post) => ({
+          ...post,
+          comments: (post.comments || []).map((comment) => ({
+            ...comment,
+            replies: (comment.replies || []).map((reply) => {
+              if (reply.id !== "demo:facebook-reply:collection-1-page" || reply.isAgent) return reply;
+              migrated = true;
+              return { ...reply, isAgent: true };
+            }),
+          })),
+        }));
+        if (migrated) saveDemoFacebookPosts(posts);
+        return posts;
+      }
     }
   } catch {
     // Use the bundled sample page when local demo storage is unavailable.
