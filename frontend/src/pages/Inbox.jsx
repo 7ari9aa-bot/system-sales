@@ -663,18 +663,18 @@ export default function Inbox() {
       <div
         ref={inboxSplitRef}
         dir="ltr"
-        style={isWhatsApp || isMessenger ? { "--inbox-chat-list-width": `${chatListWidth}px` } : undefined}
+        style={{ "--inbox-chat-list-width": `${chatListWidth}px` }}
         className={cn(
           "grid min-h-0 flex-1 grid-cols-1",
           isWhatsApp
             ? "grid-rows-[minmax(0,1fr)] lg:grid-cols-[var(--inbox-chat-list-width)_5px_minmax(0,1fr)] lg:gap-0"
             : isTelegram
-              ? "gap-0 lg:grid-cols-[clamp(285px,17vw,330px)_minmax(0,1fr)] lg:grid-rows-1 grid-rows-[minmax(180px,30dvh)_minmax(0,1fr)] sm:grid-rows-[minmax(240px,32dvh)_minmax(0,1fr)]"
+              ? "gap-0 lg:grid-cols-[var(--inbox-chat-list-width)_5px_minmax(0,1fr)] lg:grid-rows-1 grid-rows-[minmax(180px,30dvh)_minmax(0,1fr)] sm:grid-rows-[minmax(240px,32dvh)_minmax(0,1fr)]"
               : isInstagram
-                ? "gap-0 lg:grid-cols-[350px_minmax(0,1fr)] lg:grid-rows-1 grid-rows-[minmax(180px,30dvh)_minmax(0,1fr)] sm:grid-rows-[minmax(240px,32dvh)_minmax(0,1fr)]"
+                ? "gap-0 lg:grid-cols-[var(--inbox-chat-list-width)_5px_minmax(0,1fr)] lg:grid-rows-1 grid-rows-[minmax(180px,30dvh)_minmax(0,1fr)] sm:grid-rows-[minmax(240px,32dvh)_minmax(0,1fr)]"
                 : isMessenger
                   ? "gap-0 grid-rows-[minmax(0,1fr)] lg:grid-cols-[var(--inbox-chat-list-width)_5px_minmax(0,1fr)] lg:grid-rows-1"
-                  : "gap-3 lg:grid-cols-[clamp(320px,28vw,440px)_minmax(0,1fr)] lg:grid-rows-1 lg:gap-3 grid-rows-[minmax(180px,30dvh)_minmax(0,1fr)] sm:grid-rows-[minmax(240px,32dvh)_minmax(0,1fr)]"
+                  : "gap-0 lg:grid-cols-[var(--inbox-chat-list-width)_5px_minmax(0,1fr)] lg:grid-rows-1 grid-rows-[minmax(180px,30dvh)_minmax(0,1fr)] sm:grid-rows-[minmax(240px,32dvh)_minmax(0,1fr)]"
         )}
       >
         <div className={cn(
@@ -826,7 +826,7 @@ export default function Inbox() {
           )}
         </div>
 
-        {(isWhatsApp || isMessenger) && (
+        {!isFacebook && (
           <div
             role="separator"
             aria-label={lang === "ar" ? "تغيير عرض قائمة المحادثات" : "Resize conversation list"}
@@ -837,8 +837,8 @@ export default function Inbox() {
             tabIndex={0}
             className={cn(
               "group relative hidden cursor-col-resize touch-none select-none border-x outline-none transition-colors lg:block",
-              isMessenger ? "border-[#e4e6eb] bg-white hover:bg-[#e7f3ff] focus-visible:bg-[#e7f3ff]" : "border-[#d1d7db] bg-[#f7f5f3] hover:bg-[#e8f5ef] focus-visible:bg-[#e8f5ef]",
-              isResizingChatList && (isMessenger ? "bg-[#e7f3ff]" : "bg-[#e8f5ef]")
+              isMessenger ? "border-[#e4e6eb] bg-white hover:bg-[#e7f3ff] focus-visible:bg-[#e7f3ff]" : isInstagram ? "border-[#dbdbdb] bg-white hover:bg-[#fff2f6] focus-visible:bg-[#fff2f6]" : isTelegram ? "border-[#e4e9ec] bg-white hover:bg-[#eff8fd] focus-visible:bg-[#eff8fd]" : "border-[#d1d7db] bg-[#f7f5f3] hover:bg-[#e8f5ef] focus-visible:bg-[#e8f5ef]",
+              isResizingChatList && (isMessenger ? "bg-[#e7f3ff]" : isInstagram ? "bg-[#fff2f6]" : isTelegram ? "bg-[#eff8fd]" : "bg-[#e8f5ef]")
             )}
             onPointerDown={handleResizePointerDown}
             onPointerMove={handleResizePointerMove}
@@ -847,8 +847,8 @@ export default function Inbox() {
             onLostPointerCapture={() => finishChatListResize()}
             onKeyDown={handleResizeKeyDown}
           >
-            <span className={cn("absolute inset-y-0 left-1/2 w-px -translate-x-1/2 transition-colors", isMessenger ? "bg-[#e4e6eb] group-hover:bg-[#0084ff] group-focus-visible:bg-[#0084ff]" : "bg-[#d1d7db] group-hover:bg-[#00a884] group-focus-visible:bg-[#00a884]")} />
-            <span className={cn("absolute left-1/2 top-1/2 h-9 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full transition-colors", isMessenger ? "bg-[#c4c8ce] group-hover:bg-[#0084ff] group-focus-visible:bg-[#0084ff]" : "bg-[#c1c9ce] group-hover:bg-[#00a884] group-focus-visible:bg-[#00a884]")} />
+            <span className={cn("absolute inset-y-0 left-1/2 w-px -translate-x-1/2 transition-colors", isMessenger ? "bg-[#e4e6eb] group-hover:bg-[#0084ff] group-focus-visible:bg-[#0084ff]" : isInstagram ? "bg-[#dbdbdb] group-hover:bg-[#d62976] group-focus-visible:bg-[#d62976]" : isTelegram ? "bg-[#e4e9ec] group-hover:bg-[#2aabee] group-focus-visible:bg-[#2aabee]" : "bg-[#d1d7db] group-hover:bg-[#00a884] group-focus-visible:bg-[#00a884]")} />
+            <span className={cn("absolute left-1/2 top-1/2 h-9 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full transition-colors", isMessenger ? "bg-[#c4c8ce] group-hover:bg-[#0084ff] group-focus-visible:bg-[#0084ff]" : isInstagram ? "bg-[#c4c8ce] group-hover:bg-[#d62976] group-focus-visible:bg-[#d62976]" : isTelegram ? "bg-[#c4c8ce] group-hover:bg-[#2aabee] group-focus-visible:bg-[#2aabee]" : "bg-[#c1c9ce] group-hover:bg-[#00a884] group-focus-visible:bg-[#00a884]")} />
           </div>
         )}
 
