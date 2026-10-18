@@ -208,6 +208,11 @@ class AgentRunner:
         system_prompt: str | None = None,
         # §132: untrusted context, separate from system prompt
         knowledge_context: str | None = None,
+        # System-owned conversation facts (customer name, shown items, vision
+        # results) — injected under their OWN label, never wearing the
+        # knowledge one: a customer name is not a retrieved snippet, and a
+        # knowledge-failure turn would otherwise look like it served one.
+        context_lines: str | None = None,
         # SI chat: bounded prior turns, server-built from ai_chat_messages.
         # Narrative context only — never numeric authority; facts are
         # re-queried per turn by the deterministic tools.
@@ -307,6 +312,7 @@ class AgentRunner:
                 customer_id=customer_id,
                 system_prompt=system_prompt,
                 knowledge_context=knowledge_context,  # §132
+                context_lines=context_lines,
                 history=history,
                 vision_state=vision_state,
             )
@@ -563,6 +569,7 @@ class AgentRunner:
         customer_id: uuid.UUID | None,
         system_prompt: str | None,
         knowledge_context: str | None = None,  # §132
+        context_lines: str | None = None,
         history: list[dict[str, str]] | None = None,
         vision_state: dict | None = None,
     ) -> AgentRunResult:

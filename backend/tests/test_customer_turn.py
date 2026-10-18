@@ -139,7 +139,7 @@ async def test_photo_turn_runs_vision_and_shows_verified_products(db, tenant_ctx
     assert captured["text_hint"] == "دي الصورة"
     # The vision result rode the context, and the verified product became
     # shown state — the referent list the next turn resolves against.
-    assert PRODUCT_A in runner.calls[0]["knowledge_context"]
+    assert PRODUCT_A in runner.calls[0]["context_lines"]
     assert outcome.state_version == 1
     assert outcome.vision[0]["candidates"][0]["product_id"] == PRODUCT_A
 
@@ -169,7 +169,7 @@ async def test_photo_without_a_minted_url_is_counted_not_interpreted(db, tenant_
     )
     assert seen == []  # nothing was sent to the vision pipeline
     assert outcome.vision == []
-    assert "2 صورة" in runner.calls[0]["knowledge_context"]
+    assert "2 صورة" in runner.calls[0]["context_lines"]
 
 
 async def test_ordinal_referent_resolves_against_shown_items(db, tenant_ctx):
@@ -194,7 +194,7 @@ async def test_ordinal_referent_resolves_against_shown_items(db, tenant_ctx):
     assert outcome.referent is not None
     assert outcome.referent.product_id == PRODUCT_B
     assert outcome.referent.position == 2
-    assert PRODUCT_B in runner.calls[0]["knowledge_context"]
+    assert PRODUCT_B in runner.calls[0]["context_lines"]
 
 
 async def test_ordinal_beyond_shown_asks_instead_of_guessing(db, tenant_ctx):
@@ -212,7 +212,7 @@ async def test_ordinal_beyond_shown_asks_instead_of_guessing(db, tenant_ctx):
         runner=runner,
     )
     assert outcome.referent is None  # position 3 of a one-item list
-    assert "اسأله" in runner.calls[0]["knowledge_context"]
+    assert "اسأله" in runner.calls[0]["context_lines"]
 
 
 async def test_ungrounded_numeral_blocks_the_reply(db, tenant_ctx):
@@ -261,7 +261,7 @@ async def test_voice_without_transcript_is_surfaced_not_hidden(db, tenant_ctx):
         ),
         runner=runner,
     )
-    assert "صوتية" in runner.calls[0]["knowledge_context"]
+    assert "صوتية" in runner.calls[0]["context_lines"]
 
 
 async def test_other_media_is_acknowledged(db, tenant_ctx):
@@ -271,7 +271,7 @@ async def test_other_media_is_acknowledged(db, tenant_ctx):
         _params(db, tenant_ctx, body=None, content_type="location"),
         runner=runner,
     )
-    assert "اعترف بيه" in runner.calls[0]["knowledge_context"]
+    assert "اعترف بيه" in runner.calls[0]["context_lines"]
 
 
 async def test_guardrail_block_yields_no_reply(db, tenant_ctx):

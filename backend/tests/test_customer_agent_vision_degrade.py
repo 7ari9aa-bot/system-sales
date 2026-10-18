@@ -31,7 +31,7 @@ class _ReplyRunner:
         self.seen_context: str | None = None
 
     async def run(self, session, tenant_id, **kwargs):
-        self.seen_context = kwargs.get("knowledge_context")
+        self.seen_context = kwargs.get("context_lines")
         return AgentRunResult(
             content="معلش، الصورة مقدرتش تتحلل — تحب أحولك لموظف؟",
             run_id=None,
