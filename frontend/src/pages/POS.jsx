@@ -542,18 +542,6 @@ export default function POS() {
         </div>
       )}
 
-      {/* فتح الوردية — شريط فوق الشاشة لما مفيش جلسة، مش حاجز بيقفلها */}
-      {!session && (
-        <div className="mb-4">
-          <OpenShiftPanel
-            registers={registers}
-            profiles={profiles}
-            busy={busy}
-            onOpen={(payload) => void openShift(payload)}
-          />
-        </div>
-      )}
-
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_380px] gap-4">
           {/* يسار: مسح/تصفح + السلة */}
           <div className="space-y-4">
