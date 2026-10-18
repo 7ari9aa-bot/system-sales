@@ -557,7 +557,6 @@ async def test_customer_tools_enforce_canonical_sellability() -> None:
     from app.modules.ai.tools import _get_product_details, _get_product_photos
 
     tenant_id = uuid.uuid4()
-    variant_id = uuid.uuid4()
     product_id = uuid.uuid4()
 
     mock_session = AsyncMock()

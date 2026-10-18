@@ -18,8 +18,7 @@ conversation from its own context — the model never passes them.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, date, datetime
-from decimal import Decimal
+from datetime import date
 from typing import Literal
 
 from pydantic import BaseModel, Field

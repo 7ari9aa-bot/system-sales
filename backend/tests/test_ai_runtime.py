@@ -369,7 +369,9 @@ class _StubSession:
 
 
 def _stub_variant(price):
-    return SimpleNamespace(id=uuid.uuid4(), product_id=uuid.uuid4(), title="Blue Widget M", sku="BW-1", price=price)
+    return SimpleNamespace(
+        id=uuid.uuid4(), product_id=uuid.uuid4(), title="Blue Widget M", sku="BW-1", price=price
+    )
 
 
 async def test_search_catalog_price_crosses_as_exact_string():

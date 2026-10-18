@@ -413,7 +413,7 @@ async def test_search_catalog_marks_the_low_band(db, tenant_ctx) -> None:
     assert result["results"][0]["availability"]["status"] == "قليل"
 
 
-async def test_search_catalog_keeps_the_sellable_gate(db, tenant_ctx) -> None:
+async def test_search_catalog_hides_nonsellable_products_from_results(db, tenant_ctx) -> None:
     tenant_id = tenant_ctx.tenant_id
     await _variant(db, tenant_id, status="draft")
 

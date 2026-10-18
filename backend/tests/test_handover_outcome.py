@@ -26,7 +26,7 @@ from app.modules.ai.hooks import maybe_auto_reply
 from app.modules.ai.models import Agent, AIHandover
 from app.modules.ai.router import resolve_handover
 from app.modules.ai.runtime import AgentRunner
-from app.modules.conversations.models import Conversation, Message
+from app.modules.conversations.models import Conversation
 from app.modules.conversations.service import ConversationService
 from app.modules.customers.models import Customer
 from app.modules.platform.models import OutboxEvent
