@@ -282,6 +282,21 @@ async def test_other_media_is_acknowledged(db, tenant_ctx):
     assert "اعترف بيه" in runner.calls[0]["context_lines"]
 
 
+async def test_context_carries_the_weekday_and_channel(db, tenant_ctx):
+    """The model cannot say "بعد يومين" or match the channel's tone without
+    knowing what day it is and where the customer is talking — and the
+    weekday carries NO digits, so grounding never blocks the phrasing."""
+    runner = FakeRunner(_result())
+    await run_customer_turn(
+        db, _params(db, tenant_ctx, body="السلام عليكم"), runner=runner
+    )
+    context = runner.calls[0]["context_lines"]
+    assert "النهارده" in context
+    weekdays = ("الاثنين", "الثلاثاء", "الاربعاء", "الخميس", "الجمعة", "السبت", "الاحد")
+    assert any(day in context for day in weekdays)
+    assert "القناة: webchat" in context
+
+
 async def test_guardrail_block_yields_no_reply(db, tenant_ctx):
     runner = FakeRunner(_result(guardrail="deny"))
     outcome = await run_customer_turn(db, _params(db, tenant_ctx), runner=runner)

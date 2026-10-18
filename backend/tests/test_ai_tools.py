@@ -304,6 +304,7 @@ async def test_search_catalog_returns_price_and_availability(db, tenant_ctx) -> 
     result = await spec.handler(db, tenant_id, **kwargs)
 
     assert len(result["results"]) == 1
+    assert result["total_matches"] == 1
     row = result["results"][0]
     assert row["price"] == "25.50"
     assert row["availability"]["status"] == "متوفر"
@@ -618,6 +619,12 @@ class _NoRows:
     def all(self) -> list:
         return []
 
+    def scalars(self):
+        return self._rows
+
+    def scalar_one(self) -> int:
+        return 0
+
     def first(self):  # noqa: ANN201
         return None
 
@@ -710,6 +717,33 @@ def test_search_catalog_uses_the_indexed_full_text_arm() -> None:
     # The substring arms stay: a substring INSIDE a word ("قطن" in "قطني") is
     # trigram work, not tsvector — the column's own note.
     assert "ILIKE" in sql.upper()
+
+
+def test_search_catalog_matches_any_word_not_the_whole_phrase() -> None:
+    """The phrase killer: a four-word ask with AND semantics matched nothing
+    when any word was absent. Each word gets its own tsquery arm — one
+    matching word surfaces the product, and total_matches tells the model
+    whether to show options or ask."""
+    two_words = _search_sql(query="تيشرت أسود", limit=5)
+    single = _search_sql(query="تيشرت", limit=5)
+    # each arm renders the function name twice; the ratio is what matters
+    assert two_words.count("plainto_tsquery") == 2 * single.count("plainto_tsquery"), (
+        "words are ANDed, not ORed"
+    )
+
+
+def test_search_catalog_reports_zero_matches_with_a_retry_hint() -> None:
+    """An empty result carries the retry hint — the model asks or retries,
+    it does not invent a product."""
+    import asyncio
+
+    from app.modules.ai.tools import _search_catalog
+
+    session = _CapturingSession()
+    result = asyncio.run(_search_catalog(session, uuid.uuid4(), query="حاجة مش موجودة"))
+    assert result["results"] == []
+    assert result["total_matches"] == 0
+    assert "مفيش مطابق" in result["hint"]
 
 
 def test_search_catalog_without_specs_is_still_the_plain_keyword_path() -> None:

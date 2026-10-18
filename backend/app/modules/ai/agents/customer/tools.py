@@ -196,24 +196,42 @@ async def _search_catalog(
     """
     from app.modules.catalog.models import Product, ProductVariant
 
-    pattern = like_pattern(query)
-    ts_query = func.plainto_tsquery(literal_column("'simple'"), query)
-
+    # OR per word, not AND across the phrase: "تيشرت أسود مقاس اكس" must
+    # still surface the تيشرت even when مقاس اكس matches nothing — the model
+    # decides ask-vs-show from total_matches, not from an empty result.
+    words = [w for w in query.split() if w][:6] or [query]
+    ts_arms = [
+        Product.search_ts.op("@@")(func.plainto_tsquery(literal_column("'simple'"), word))
+        for word in words
+    ]
+    like_arms = [
+        arm
+        for word in words
+        for arm in (
+            Product.title.ilike(like_pattern(word), escape=LIKE_ESCAPE),
+            ProductVariant.title.ilike(like_pattern(word), escape=LIKE_ESCAPE),
+            ProductVariant.sku.ilike(like_pattern(word), escape=LIKE_ESCAPE),
+        )
+    ]
     conditions = [
         ProductVariant.tenant_id == tenant_id,
         ProductVariant.is_active.is_(True),
         Product.status.in_(sellable_product_statuses()),
-        or_(
-            Product.search_ts.op("@@")(ts_query),
-            Product.title.ilike(pattern, escape=LIKE_ESCAPE),
-            ProductVariant.title.ilike(pattern, escape=LIKE_ESCAPE),
-            ProductVariant.sku.ilike(pattern, escape=LIKE_ESCAPE),
-        ),
+        or_(*ts_arms, *like_arms),
     ]
     if attributes:
         conditions.append(Product.attributes.contains(attributes))
     if option_values:
         conditions.append(ProductVariant.option_values.contains(option_values))
+
+    total_matches = (
+        await session.execute(
+            select(func.count())
+            .select_from(ProductVariant)
+            .join(Product, Product.id == ProductVariant.product_id)
+            .where(*conditions)
+        )
+    ).scalar_one()
 
     rows = (
         await session.execute(
@@ -227,7 +245,8 @@ async def _search_catalog(
     availability = await _availability_map(
         session, tenant_id, [variant.id for variant, _ in rows]
     )
-    return {
+    result = {
+        "total_matches": int(total_matches),
         "results": [
             {
                 "variant_id": str(variant.id),
@@ -240,6 +259,12 @@ async def _search_catalog(
             for variant, product_title in rows
         ]
     }
+    if not rows:
+        result["hint"] = (
+            "مفيش مطابق — جرب كلمة واحدة بس، أو تهجئة مختلفة للكلمة، أو شيل "
+            "الفلاتر."
+        )
+    return result
 
 
 class GetProductDetailsArgs(BaseModel):
@@ -421,7 +446,10 @@ async def _search_knowledge(
 
 
 class HandoverToHumanArgs(BaseModel):
-    reason: Literal["complex_problem", "missing_data", "customer_request"]
+    reason: Literal[
+        "complex_problem", "missing_data", "customer_request",
+        "complaint", "purchase_intent",
+    ]
     summary: str = Field(min_length=1, max_length=1000)
 
 
@@ -558,10 +586,15 @@ CUSTOMER_TOOL_SPECS: list[ToolSpec] = [
             "product, a type, or specs (color, material, size) — pass their "
             "words as `query` and the specs you understood as `attributes` "
             "(product properties) and `option_values` (variant options like "
-            "size). Returns each variant with its exact price and an "
-            "availability status (متوفر / قليل / خلص / هيتجدد) plus the "
-            "restock date phrase when one exists. Do NOT use it for anything "
-            "that is not a product the store sells."
+            "size). Words match with OR: one matching word is enough, and "
+            "`total_matches` tells you how much is out there — many matches "
+            "means show the best ones, zero means say nothing matched and "
+            "retry once with a single word or a different spelling (تيشرت / "
+            "تيشيرت) before telling the customer it is not found. Returns "
+            "each variant with product_id, exact price and an availability "
+            "status (متوفر / قليل / خلص / هيتجدد) plus the restock phrase "
+            "when the item is out of stock. Do NOT use it for anything that "
+            "is not a product the store sells."
         ),
         args_schema=SearchCatalogArgs,
         handler=_search_catalog,
@@ -629,14 +662,17 @@ CUSTOMER_TOOL_SPECS: list[ToolSpec] = [
     ToolSpec(
         name="handover_to_human",
         description=(
-            "Escalate this conversation to a human staff member. Use it ONLY "
-            "when you tried to solve the customer's problem and could not, "
-            "the store's data does not have what you need, or the customer "
-            "explicitly asks for a person. Pass `reason` and a `summary` "
-            "saying what you tried and what is missing — the staff reads it "
-            "before opening the chat. After calling it, write one short "
-            "natural reply telling the customer a team member will continue "
-            "with them."
+            "Escalate this conversation to a human staff member. Use it when: "
+            "you tried to solve the customer's problem and could not "
+            "(complex_problem); the store's data does not have what you need "
+            "(missing_data); the customer explicitly asks for a person "
+            "(customer_request); the customer is complaining about the store, "
+            "an order or the service (complaint); or the customer wants to "
+            "PLACE or CHANGE an order — selling is staff work "
+            "(purchase_intent). Pass `reason` and a `summary` saying what you "
+            "tried and what is missing — the staff reads it before opening "
+            "the chat. After calling it, write one short natural reply "
+            "telling the customer a team member will continue with them."
         ),
         args_schema=HandoverToHumanArgs,
         handler=_handover_to_human,

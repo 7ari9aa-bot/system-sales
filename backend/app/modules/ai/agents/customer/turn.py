@@ -34,6 +34,7 @@ import logging
 import time
 import uuid
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -127,6 +128,18 @@ TURN_DEADLINE_SECONDS = 45.0
 #: Photos processed per turn — the rest are acknowledged, not interpreted.
 MAX_PHOTOS_PER_TURN = 1
 
+#: datetime.weekday() → Arabic day name. No digits, by design — see the
+#: context line above.
+_ARABIC_WEEKDAYS = {
+    0: "الاثنين",
+    1: "الثلاثاء",
+    2: "الاربعاء",
+    3: "الخميس",
+    4: "الجمعة",
+    5: "السبت",
+    6: "الاحد",
+}
+
 
 @dataclass(slots=True)
 class TurnInput:
@@ -153,6 +166,9 @@ class TurnInput:
     # spends a call to learn the customer's name.
     customer_name: str | None = None
     customer_locale: str | None = None
+    # The channel the customer is talking on — "الشحن بيوصل فين" and tone
+    # both depend on it, and the model has no other way to know.
+    channel: str | None = None
     # Direct-Omni input: the caller determined the newest message's audio will
     # ride the model call itself (scanner-cleared, supported format, flag on).
     # When True the "voice not transcribed yet — ask them to type" context
@@ -252,6 +268,7 @@ def _context_lines(
     shown_line: str | None,
     customer_name: str | None,
     customer_locale: str | None,
+    channel: str | None,
     vision_results: list[MatchResult],
     skipped_photos: int,
     vision_failures: int = 0,
@@ -264,6 +281,13 @@ def _context_lines(
     untrusted zone). These lines are the model's EYES, not its instructions.
     """
     lines: list[str] = []
+    # Today, as a WEEKDAY with no digits: "بعد يومين" needs the model to
+    # know what day it is, but a numeral here would be an ungrounded numeral
+    # the moment the model repeats it — weekday names carry no numbers, so
+    # the reply stays honest AND grounded.
+    lines.append("النهارده " + _ARABIC_WEEKDAYS[datetime.now(UTC).weekday()])
+    if channel:
+        lines.append(f"القناة: {channel}")
     if customer_name:
         line = f"اسم العميل: {customer_name}"
         if customer_locale:
@@ -443,6 +467,7 @@ async def run_customer_turn(
         shown_line,
         params.customer_name,
         params.customer_locale,
+        params.channel,
         vision_results,
         skipped_photos,
         vision_failures,

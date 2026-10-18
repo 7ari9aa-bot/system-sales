@@ -343,6 +343,9 @@ class _StubResult:
     def scalars(self):
         return self._rows
 
+    def scalar_one(self):
+        return 0
+
     def first(self):
         return self._rows[0] if self._rows else None
 
@@ -379,7 +382,7 @@ async def test_search_catalog_price_crosses_as_exact_string():
     # carries the exact Decimal string the price row holds.
     variant = _stub_variant(Decimal("25.55"))
     result = await _search_catalog(
-        _StubSession([[(variant, "Blue Widget")], [], []]), uuid.uuid4(), query="widget"
+        _StubSession([[], [(variant, "Blue Widget")], [], []]), uuid.uuid4(), query="widget"
     )
     price = result["results"][0]["price"]
     assert price == "25.55"
@@ -390,7 +393,7 @@ async def test_null_price_stays_null_not_zero():
     # None is "no price recorded", not "0" and not 0.0 — the wire keeps it null.
     variant = _stub_variant(None)
     search = await _search_catalog(
-        _StubSession([[(variant, "Blue Widget")], [], []]), uuid.uuid4(), query="widget"
+        _StubSession([[], [(variant, "Blue Widget")], [], []]), uuid.uuid4(), query="widget"
     )
     assert search["results"][0]["price"] is None
     assert search["results"][0]["availability"]["status"] == "خلص"

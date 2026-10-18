@@ -360,6 +360,7 @@ async def _do_auto_reply(
                 customer_id=customer_id,
                 customer_name=customer_name,
                 customer_locale=customer_locale,
+                channel=conversation.channel,
                 body=body,
                 content_type=last_inbound.content_type,
                 attachments=attachments,
