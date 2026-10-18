@@ -27,7 +27,7 @@ import { api } from "@/lib/api";
 import { PageHeader, Badge } from "@/components/dashboard/ui";
 import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
-import { money, mul, utcDay } from "@/components/pos/money";
+import { money, utcDay } from "@/components/pos/money";
 import OpenShiftPanel from "@/components/pos/OpenShiftPanel";
 import PaymentPanel from "@/components/pos/PaymentPanel";
 import ClosePanel from "@/components/pos/ClosePanel";
