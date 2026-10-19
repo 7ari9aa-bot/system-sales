@@ -100,6 +100,7 @@ _ALLOWED_PUBLIC_ROUTES: frozenset[str] = frozenset(
         # time; both hops write audit_logs rows.
         "POST /api/v1/platform/impersonation/tickets",
         "GET /api/v1/platform/impersonation/redeem",
+        "POST /api/v1/platform/impersonation/redeem/confirm",
         # public webchat visitor ingress (widget public key + visitor token)
         "POST /api/v1/webchat/{public_key}/messages",
         "GET /api/v1/webchat/{public_key}/messages",
