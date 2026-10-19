@@ -31,6 +31,81 @@ KNOWLEDGE_SNIPPETS = 3
 HISTORY_MESSAGES = 10
 
 
+async def _handover_commitment_active(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    *,
+    customer_message_at,
+) -> tuple[bool, str | None]:
+    """Is the A6 human-commitment still standing for this conversation?
+
+    The commitment stands while an open (pending/claimed) handover exists
+    with no staff OUTBOUND message sent after it — that is the state "a
+    human took this and has not answered yet". Two exits dissolve it:
+
+    * the handover was resolved (claimed + closed) — the human finished; or
+    * the handover is open but a staff reply followed it — the human already
+      answered inside the conversation, so the customer is being served.
+
+    Returns (commitment_stands, handover_created_at_iso) — the timestamp is
+    for the skip log.
+    """
+
+    from sqlalchemy import select
+
+    from app.modules.ai.models import AIHandover
+
+    handover = (
+        (
+            await session.execute(
+                select(AIHandover)
+                .where(
+                    AIHandover.tenant_id == tenant_id,
+                    AIHandover.conversation_id == conversation_id,
+                )
+                .order_by(AIHandover.created_at.desc())
+                .limit(1)
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if handover is None:
+        return False, None
+    if handover.status == "resolved":
+        # The human CLOSED the queue item — the commitment is finished.
+        return False, handover.created_at.isoformat()
+    # Open handover: it jails the conversation ONLY when a staff member
+    # actually took over — an outbound staff message after the handover
+    # was created. An open handover NOBODY picked up is exactly the Oct-17
+    # shape: the customer must not type into silence for days. Parameter-
+    # bound read on the shared metadata (conversations owns the messages
+    # table; importing it here would trip the boundary ratchet).
+    from app.core.db import Base
+
+    messages = Base.metadata.tables["messages"]
+    staff_reply = (
+        await session.execute(
+            select(messages.c.id)
+            .where(
+                messages.c.tenant_id == tenant_id,
+                messages.c.conversation_id == conversation_id,
+                messages.c.direction == "outbound",
+                messages.c.sender_type == "agent",
+                messages.c.created_at > handover.created_at,
+                # BEFORE this customer message: a reply landing after it
+                # belongs to the NEXT turn, not this one.
+                messages.c.created_at < customer_message_at,
+            )
+            .limit(1)
+        )
+    ).first()
+    if staff_reply is not None:
+        return True, handover.created_at.isoformat()
+    return False, handover.created_at.isoformat()
+
+
 async def maybe_auto_reply(
     session: AsyncSession,
     tenant_id: uuid.UUID,
@@ -273,15 +348,48 @@ async def _do_auto_reply(
                 break
 
     conversation = await ConversationService.get(session, tenant_id, conversation_id)
-    # A6: never talk over a human. When the conversation is closed, paused or
-    # waiting for the team, the next inbound must not re-trigger the agent.
-    if conversation.status in ("closed", "paused", "waiting_human"):
+    # A6: never talk over a human. Closed and paused stay quiet forever —
+    # a human ended them on purpose.
+    if conversation.status in ("closed", "paused"):
         logger.info(
             "auto-reply skipped conversation=%s status=%s",
             conversation_id,
             conversation.status,
         )
         return
+    if conversation.status == "waiting_human":
+        # waiting_human is a HUMAN-COMMITMENT, not a life sentence. The
+        # Oct-18 incident made the failure shape explicit: a dead handover
+        # left a conversation in waiting_human for DAYS while the customer
+        # kept messaging into silence. The re-arm rule, decided PER MESSAGE:
+        # the commitment holds only when a staff member REPLIED after the
+        # handover was created AND before THIS customer message — a human
+        # is actively serving the thread. An open handover nobody picked
+        # up, or one resolved without a reply, dissolves on the customer's
+        # next message: the agent re-arms (and if it still cannot answer,
+        # it hands over again — the failure path unchanged).
+        active_commitment, handover_created_at = await _handover_commitment_active(
+            session,
+            tenant_id,
+            conversation_id,
+            customer_message_at=last_inbound.created_at,
+        )
+        if active_commitment:
+            logger.info(
+                "auto-reply skipped conversation=%s — a staff member took "
+                "over after the handover (%s); A6 holds",
+                conversation_id,
+                handover_created_at,
+            )
+            return
+        # Open handover nobody picked up (no staff reply after it), or a
+        # resolved one: the commitment never took — re-open and answer.
+        await ConversationService.set_status(session, tenant_id, conversation_id, "open")
+        logger.info(
+            "ai.waiting_human_rearmed conversation=%s — customer wrote again "
+            "and no staff replied since the handover",
+            conversation_id,
+        )
     customer_id: uuid.UUID | None = conversation.customer_id
 
     # The customer's name/locale ride the CONTEXT as store-owned facts (the

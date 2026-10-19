@@ -17,7 +17,7 @@ import uuid
 from types import SimpleNamespace
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ConflictError, ValidationError
@@ -26,7 +26,7 @@ from app.modules.ai.hooks import maybe_auto_reply
 from app.modules.ai.models import Agent, AIHandover
 from app.modules.ai.router import resolve_handover
 from app.modules.ai.runtime import AgentRunner
-from app.modules.conversations.models import Conversation
+from app.modules.conversations.models import Conversation, Message
 from app.modules.conversations.service import ConversationService
 from app.modules.customers.models import Customer
 from app.modules.platform.models import OutboxEvent
@@ -254,3 +254,165 @@ async def test_a_resolve_without_a_body_still_records_who_and_when(db, tenant_ct
     assert out.status == "resolved"
     assert out.resolved_by_user_id == tenant_ctx.user.id
     assert out.outcome is None
+
+
+# --------------------------------------- waiting_human re-arm (Oct-19) ----
+
+
+async def _set_status(db, tenant_id, conversation_id, status):
+    await ConversationService.set_status(db, tenant_id, conversation_id, status)
+    await db.flush()
+
+
+async def test_a_dead_handover_does_not_jail_the_conversation_forever(
+    db, tenant_ctx, monkeypatch
+):
+    """THE Oct-19 incident: the Oct-17 failure handover left the telegram
+    conversation in waiting_human for days while the customer kept typing
+    into silence. The re-arm rule: with NO staff reply after the handover,
+    the customer's new message re-opens the conversation and the agent gets
+    one more attempt — handing over again if it still cannot answer."""
+    tenant_id = tenant_ctx.tenant_id
+    await _customer_agent(db, tenant_id)
+    customer, conversation, _message = await _inbound(db, tenant_id, "هلا")
+
+    # A handover with NO staff reply follows — the jail shape.
+    await request_human_takeover(
+        db, tenant_id, conversation_id=conversation.id, reason="failure", note="old"
+    )
+    await _set_status(db, tenant_id, conversation.id, "waiting_human")
+
+    async def answered(self, session, tenant_id_, **kwargs):
+        from app.modules.ai.runtime import AgentRunResult
+
+        return AgentRunResult(content="أهلاً بيك!", guardrail_decision="allow")
+
+    monkeypatch.setattr(AgentRunner, "run", answered)
+
+    await maybe_auto_reply(db, tenant_id, conversation.id)
+
+    refreshed = await ConversationService.get(db, tenant_id, conversation.id)
+    assert refreshed.status == "open"
+    outbound = (
+        (
+            await db.execute(
+                select(Message).where(
+                    Message.tenant_id == tenant_id,
+                    Message.conversation_id == conversation.id,
+                    Message.direction == "outbound",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert any(m.body == "أهلاً بيك!" for m in outbound)
+
+
+async def test_a_staff_reply_keeps_the_human_commitment(db, tenant_ctx, monkeypatch):
+    """A6 holds when the human actually took over: a staff outbound after the
+    handover keeps waiting_human — the agent must not talk over them."""
+    tenant_id = tenant_ctx.tenant_id
+    await _customer_agent(db, tenant_id)
+    customer, conversation, _message = await _inbound(db, tenant_id, "هلا")
+
+    await request_human_takeover(
+        db, tenant_id, conversation_id=conversation.id, reason="failure", note="old"
+    )
+    await _set_status(db, tenant_id, conversation.id, "waiting_human")
+    # The staff reply and the second customer message are added in one
+    # flush, and Message.created_at is a SERVER default (the DB clock) —
+    # every row lands on the same instant. The test WRITES the timeline it
+    # needs: handover < staff reply < customer. Production ordering comes
+    # from the wire, not from this harness.
+    from datetime import UTC, datetime, timedelta
+
+    staff_reply = await ConversationService.add_message(
+        db,
+        tenant_id,
+        conversation_id=conversation.id,
+        direction="outbound",
+        sender_type="agent",
+        body="معاك أحمد من الفريق",
+    )
+    customer_again = await ConversationService.add_message(
+        db,
+        tenant_id,
+        conversation_id=conversation.id,
+        direction="inbound",
+        sender_type="customer",
+        body="لسه فيه؟",
+    )
+    base = datetime.now(UTC)
+    await db.execute(
+        text("UPDATE messages SET created_at = :t WHERE id = :id"),
+        [
+            {"t": base + timedelta(seconds=10), "id": str(staff_reply.id)},
+            {"t": base + timedelta(seconds=20), "id": str(customer_again.id)},
+        ],
+    )
+    await db.flush()
+    # Message.created_at is a server default: the ORM objects still carry
+    # the flush-time value in their identity map, and the hook reads the
+    # created_at OFF the ORM — refresh so it re-reads the written clock.
+    await db.refresh(staff_reply)
+    await db.refresh(customer_again)
+    # The ORM objects are expired (the timeline rewrite) — read the written
+    # clocks back BEFORE the hook runs, so its comparisons come off the DB.
+    await db.refresh(staff_reply)
+    await db.refresh(customer_again)
+
+    ai_calls: list = []
+
+    async def counted_run(self, session, tenant_id_, **kwargs):
+        ai_calls.append(kwargs.get("user_message"))
+        from app.modules.ai.runtime import AgentRunResult
+
+        return AgentRunResult(content="should not happen", guardrail_decision="allow")
+
+    monkeypatch.setattr(AgentRunner, "run", counted_run)
+
+    await maybe_auto_reply(db, tenant_id, conversation.id)
+
+    # A6 held: the agent never ran over the active staff reply...
+    assert ai_calls == []
+    # ...and the conversation stayed with the human.
+    refreshed = await ConversationService.get(db, tenant_id, conversation.id)
+    assert refreshed.status == "waiting_human"
+
+
+async def test_an_resolved_handover_releases_the_conversation(db, tenant_ctx, monkeypatch):
+    """A RESOLVED handover is a finished commitment: the human closed it —
+    the next customer message goes back to the agent without ceremony."""
+    tenant_id = tenant_ctx.tenant_id
+    await _customer_agent(db, tenant_id)
+    customer, conversation, _message = await _inbound(db, tenant_id, "هلا")
+
+    handover_created = await request_human_takeover(
+        db, tenant_id, conversation_id=conversation.id, reason="failure", note="old"
+    )
+    assert handover_created is True
+    await _set_status(db, tenant_id, conversation.id, "waiting_human")
+    # The human resolved the handover from the queue (no in-thread reply).
+    (
+        await db.execute(
+            text(
+                "UPDATE ai_handovers SET status = 'resolved', resolved_at = now() "
+                "WHERE conversation_id = :cid AND status = 'pending'"
+            ),
+            {"cid": str(conversation.id)},
+        )
+    )
+    await db.flush()
+
+    async def answered(self, session, tenant_id_, **kwargs):
+        from app.modules.ai.runtime import AgentRunResult
+
+        return AgentRunResult(content="رجعنا ليك", guardrail_decision="allow")
+
+    monkeypatch.setattr(AgentRunner, "run", answered)
+
+    await maybe_auto_reply(db, tenant_id, conversation.id)
+
+    refreshed = await ConversationService.get(db, tenant_id, conversation.id)
+    assert refreshed.status == "open"
