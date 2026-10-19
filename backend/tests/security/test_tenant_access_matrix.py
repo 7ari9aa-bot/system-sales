@@ -92,6 +92,14 @@ _ALLOWED_PUBLIC_ROUTES: frozenset[str] = frozenset(
         # SEC-1: mints a 5-minute stream-scoped credential from the caller's
         # OWN authed identity — reads no tenant-scoped row, binds no GUC.
         "POST /api/v1/realtime/stream-token",
+        # Owner-console impersonation bridge (modules/platform/impersonation.py):
+        # the caller is the OWNER CONSOLE (server-to-server), gated by the
+        # shared platform token — NOT a browser session, so get_tenant_ctx is
+        # deliberately absent. Tenancy comes from the one-time two-minute
+        # ticket claims and is re-verified against tenant_users at redeem
+        # time; both hops write audit_logs rows.
+        "POST /api/v1/platform/impersonation/tickets",
+        "GET /api/v1/platform/impersonation/redeem",
         # public webchat visitor ingress (widget public key + visitor token)
         "POST /api/v1/webchat/{public_key}/messages",
         "GET /api/v1/webchat/{public_key}/messages",
