@@ -257,16 +257,17 @@ async def _search_catalog(
             # EXISTS over the title's own words carries the real match.
             # Unindexed by construction (per-row word split) — fine at
             # catalog scale, revisited if catalogs grow orders of magnitude.
-            for index, col in enumerate(
-                ("products.title", "product_variants.title")
-            ):
+            for col in ("products.title", "product_variants.title"):
                 # The column names are OUR constants, never user input; the
-                # word rides as a bound parameter.
+                # word rides as a bound parameter. The bindparam name is
+                # UNIQUE per (word, column): shared names across arms let a
+                # later arm's value leak into an earlier one's text().
+                param = f"trgm_{abs(hash(word)) % 99999}_{col.split('.')[0]}"
                 arms.append(
                     text(
                         f"EXISTS (SELECT 1 FROM unnest(regexp_split_to_array("
-                        f"{col}, '[[:space:]]+')) AS t(w) WHERE w % :trgm_{index})"
-                    ).bindparams(**{f"trgm_{index}": word})
+                        f"{col}, '[[:space:]]+')) AS t(w) WHERE w % :{param})"
+                    ).bindparams(**{param: word})
                 )
         return or_(*arms)
 
