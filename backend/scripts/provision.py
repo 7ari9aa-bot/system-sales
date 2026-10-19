@@ -424,6 +424,13 @@ async def setup_app_role(conn: asyncpg.Connection, password: str) -> None:
     # ALTER ROLE is a utility statement — no bind params; quote defensively.
     safe_password = password.replace("'", "''")
     await conn.execute(f"ALTER ROLE sales_app LOGIN PASSWORD '{safe_password}'")
+    # The runtime role's search_path MUST include the extensions schema: on
+    # Supabase, pgvector lives there, and the memory/knowledge cosine queries
+    # fail to resolve `extensions.vector <=> unknown` without it — aborting
+    # the whole worker transaction (the Oct-19 telegram silence).
+    await conn.execute(
+        'ALTER ROLE sales_app SET search_path = "$user", public, extensions'
+    )
     grants = [
         "GRANT USAGE ON SCHEMA public TO sales_app",
         (
