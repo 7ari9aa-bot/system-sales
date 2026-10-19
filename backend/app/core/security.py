@@ -119,6 +119,21 @@ def create_refresh_token(user_id: str, claims: dict[str, Any] | None = None) -> 
     return _create_token(user_id, settings.refresh_token_ttl_seconds, "refresh", claims or {})
 
 
+IMPERSONATION_TICKET_TTL_SECONDS = 120
+
+
+def create_impersonation_ticket(
+    user_id: str, ttl_seconds: int, claims: dict[str, Any] | None = None
+) -> str:
+    """A one-time, two-minute entry ticket for platform impersonation.
+
+    type='impersonation_ticket' — decode_token callers MUST reject it as an
+    access or refresh token; single-use is enforced OUTSIDE the JWT (Redis
+    SET NX on the jti) because stateless tokens cannot be consumed.
+    """
+    return _create_token(user_id, ttl_seconds, "impersonation_ticket", claims or {})
+
+
 STREAM_TOKEN_TTL_SECONDS = 300
 
 

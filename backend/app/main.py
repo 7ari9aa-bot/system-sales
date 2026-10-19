@@ -96,6 +96,7 @@ from app.modules.operations.router import (
     sla_router as operations_sla_router,
 )
 from app.modules.orders.router import router as orders_router
+from app.modules.platform.impersonation import router as platform_impersonation_router
 from app.modules.platform.router import router as platform_module_router
 from app.modules.pos.router import router as pos_router
 from app.modules.privacy.router import router as privacy_router
@@ -471,6 +472,7 @@ def create_app() -> FastAPI:
         notifications_router,
         privacy_router,
         platform_module_router,
+        platform_impersonation_router,
         segments_router,
         automation_router,
         analytics_module_router,
