@@ -28,7 +28,6 @@ import { PageHeader, Badge } from "@/components/dashboard/ui";
 import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { money, utcDay } from "@/components/pos/money";
-import OpenShiftPanel from "@/components/pos/OpenShiftPanel";
 import PaymentPanel from "@/components/pos/PaymentPanel";
 import ClosePanel from "@/components/pos/ClosePanel";
 import ReturnsPanel from "@/components/pos/ReturnsPanel";
@@ -37,9 +36,10 @@ import useRealtime from "@/hooks/useRealtime";
 
 /** نظام الكاشير — طبقة البيع كاملة فوق /api/v1/pos.
  *
- * المسار الواحد: افتح الوردية (بروفايل + رصيد لكل وسيلة) → امسح أو دوّر →
- * سلة → تقسيمة دفع → إيصال حراري. والوردية بتتكفل برجوعها بعد أي refresh،
- * والمرتجع بسطوره، والتسليم بين الكاشيرين، والقفل بمطابقة لكل وسيلة.
+ * الصفحة هي الجدول نفسه: امسح → السطر يتسجل على طول → ادفع. مفيش بانل
+ * لفتح الوردية — الدرج بيفتح لوحده بصمت عند أول مسح (رصيد بداية صفر)،
+ * والوردية بتتكفل برجوعها بعد أي refresh، والمرتجع بسطوره، والتسليم
+ * بين الكاشيرين، والقفل بمطابقة لكل وسيلة.
  *
  * كل فلوس نصوص Decimal من الخادم — مفيش floats. مفيش نجاح بيتقال غير من
  * رد الخادم نفسه (قاعدة frontend/AGENTS.md). */
@@ -82,6 +82,12 @@ export default function POS() {
 
   const scanRef = React.useRef(null);
 
+  // المراجع بتسند أحدث حالة — عشان ensureSession ينفع جوه useCallback ثابت.
+  const sessionRef = useRef(null);
+  sessionRef.current = session;
+  const registersRef = useRef([]);
+  registersRef.current = registers;
+
   // ------------------------------------------------------------------ load -
 
   const loadBootstrap = useCallback(async () => {
@@ -102,7 +108,7 @@ export default function POS() {
     } catch (e) {
       setError(e?.message || t("pos.err.registers", "Could not load registers."));
     }
-     
+
   }, []);
 
   useEffect(() => {
@@ -137,42 +143,59 @@ export default function POS() {
     void loadHeld();
   }, [loadHeld]);
 
-  // ------------------------------------------------------------------ open -
+  // ------------------------------------------------- silent drawer opening -
 
-  async function openShift({ registerId, profileId, floatsByMethod, openingFloat }) {
-    setBusy(true);
-    setError(null);
+  // الدرج بيتفتح لوحده عند أول مسح: أول كاشير متاح، رصيد بداية صفر،
+  // بدون أي حوار. لو وردية مفتوحة ليه أصلاً — بنرجع ليها.
+  const ensureSession = useCallback(async () => {
+    const current = sessionRef.current;
+    if (current?.status === "OPEN" && !stale) return current;
+    if (current?.status === "OPEN" && stale) {
+      throw new Error(t("pos.staleSession", "This shift was opened on a different day — close it and open a new one before selling."));
+    }
+    let regs = registersRef.current;
+    if (!Array.isArray(regs) || regs.length === 0) {
+      regs = await api(`${POS_API}/registers`);
+      setRegisters(Array.isArray(regs) ? regs : []);
+    }
+    const reg = (Array.isArray(regs) ? regs : []).find((r) => r.is_active !== false) || regs?.[0];
+    if (!reg) {
+      throw new Error(t("pos.noRegister", "No register is configured — add one in settings first."));
+    }
     try {
-      const created = await api(`${POS_API}/registers/${registerId}/sessions`, {
+      const created = await api(`${POS_API}/registers/${reg.id}/sessions`, {
         method: "POST",
-        body: {
-          opening_float: openingFloat,
-          profile_id: profileId || undefined,
-          floats_by_method: floatsByMethod || undefined,
-        },
+        body: { opening_float: "0.00" },
       });
-      await resumeSession(created);
       setLines([]);
       setQuote(null);
       setTenders([]);
       setLastReceiptId(null);
-      setNotice(t("pos.opened", "Drawer open — good shift."));
+      await resumeSession(created);
+      setNotice(t("pos.autoOpened", "Drawer opened automatically — starting float zero."));
+      return created;
     } catch (e) {
-      setError(e?.message || t("pos.err.open", "Could not open the drawer."));
-    } finally {
-      setBusy(false);
+      // سباق وردية مفتوحة (واحدة لكل مستخدم) — رجّع الحالية بدل ما تفشل المسح.
+      const open = await api(`${POS_API}/sessions?status=OPEN`).catch(() => []);
+      const mine = Array.isArray(open) ? open[0] : null;
+      if (mine) {
+        await resumeSession(mine);
+        return mine;
+      }
+      throw e;
     }
-  }
+  }, [stale, t]);
 
   // ----------------------------------------------------------------- scan -
 
   async function doScan(e) {
     e?.preventDefault?.();
     const value = barcode.trim();
-    if (!value || !session?.id || session.status !== "OPEN") return;
+    if (!value || busy) return;
     setError(null);
     try {
-      const found = await api(`${POS_API}/sessions/${session.id}/scan`, {
+      const s = await ensureSession();
+      const found = await api(`${POS_API}/sessions/${s.id}/scan`, {
         method: "POST",
         body: { identifier_type: "barcode", value },
       });
@@ -207,6 +230,22 @@ export default function POS() {
         },
       ];
     });
+  }
+
+  async function addFromBrowse(item) {
+    setError(null);
+    try {
+      const s = await ensureSession();
+      if (!s) return;
+      addVariant({
+        variant_id: item.variant_id,
+        title: item.title,
+        sku: item.sku,
+        unit_price: item.unit_price,
+      });
+    } catch (e) {
+      setError(e?.message || t("pos.err.open", "Could not open the drawer."));
+    }
   }
 
   function setLineDiscount(variantId, raw) {
@@ -246,20 +285,21 @@ export default function POS() {
   // --------------------------------------------------------------- browse -
 
   const loadBrowse = useCallback(async () => {
-    if (!session?.id || session.status !== "OPEN") return;
     setBrowseLoading(true);
     try {
+      const s = await ensureSession();
       const page = await api(
-        `${POS_API}/sessions/${session.id}/items?q=${encodeURIComponent(browseQ)}&limit=24`
+        `${POS_API}/sessions/${s.id}/items?q=${encodeURIComponent(browseQ)}&limit=24`
       );
       setBrowseItems(Array.isArray(page.items) ? page.items : []);
     } catch (e) {
+      setBrowseItems([]);
       setError(e?.message || t("pos.err.browse", "Could not load the products."));
     } finally {
       setBrowseLoading(false);
     }
-     
-  }, [session?.id, session?.status, browseQ]);
+
+  }, [ensureSession, browseQ, t]);
 
   useEffect(() => {
     if (tab === "browse") void loadBrowse();
@@ -508,7 +548,7 @@ export default function POS() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-     
+
   }, []);
 
   return (
@@ -542,503 +582,476 @@ export default function POS() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 xl:grid-cols-[1fr_380px] gap-4">
-          {/* يسار: مسح/تصفح + السلة */}
-          <div className="space-y-4">
-            <div className="rounded-2xl bg-card border border-border overflow-hidden">
-              <div className="flex items-center border-b border-border">
-                <button
-                  type="button"
-                  onClick={() => setTab("scan")}
-                  className={cn(
-                    "flex-1 px-4 py-2.5 text-[13px] font-medium inline-flex items-center justify-center gap-2",
-                    tab === "scan" ? "bg-primary/5 text-primary" : "text-muted-foreground"
-                  )}
-                >
-                  <ScanLine className="h-4 w-4" />
-                  {t("pos.scanLabel", "Scan or type a barcode")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTab("browse")}
-                  className={cn(
-                    "flex-1 px-4 py-2.5 text-[13px] font-medium inline-flex items-center justify-center gap-2 border-s border-border",
-                    tab === "browse" ? "bg-primary/5 text-primary" : "text-muted-foreground"
-                  )}
-                >
-                  <Package className="h-4 w-4" />
-                  {t("pos.browse", "Products")}
-                </button>
-              </div>
-
-              {tab === "scan" ? (
-                <form onSubmit={doScan} className="p-4">
-                  <div className="flex items-center gap-2">
-                    <div className="relative flex-1">
-                      <ScanLine className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <input
-                        ref={scanRef}
-                        value={barcode}
-                        onChange={(e) => setBarcode(e.target.value)}
-                        placeholder={t("pos.scanPlaceholder", "Barcode…")}
-                        dir="ltr"
-                        disabled={!isOpen || stale}
-                        className="h-11 w-full rounded-xl border border-border bg-surface ps-9 pe-3 text-[14px] tabular-nums"
-                      />
-                    </div>
-                    <button
-                      type="submit"
-                      disabled={!isOpen || stale || !barcode.trim()}
-                      className="h-11 px-4 rounded-xl bg-primary text-primary-foreground text-[13px] font-medium disabled:opacity-50"
-                    >
-                      {t("pos.add", "Add")}
-                    </button>
-                  </div>
-                </form>
-              ) : (
-                <div className="p-4">
-                  <div className="relative mb-3">
-                    <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <input
-                      value={browseQ}
-                      onChange={(e) => setBrowseQ(e.target.value)}
-                      placeholder={t("pos.searchPlaceholder", "Search by name or SKU…")}
-                      dir="auto"
-                      className="h-11 w-full rounded-xl border border-border bg-surface ps-9 pe-3 text-[13px]"
-                    />
-                  </div>
-                  {browseLoading ? (
-                    <div className="flex items-center gap-2 py-6 text-[13px] text-muted-foreground">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    </div>
-                  ) : browseItems.length === 0 ? (
-                    <p className="py-6 text-center text-[13px] text-muted-foreground">
-                      {t("pos.emptyBrowse", "Nothing matches that search.")}
-                    </p>
-                  ) : (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 max-h-80 overflow-y-auto">
-                      {browseItems.map((item) => (
-                        <button
-                          key={item.variant_id}
-                          type="button"
-                          onClick={() =>
-                            addVariant({
-                              variant_id: item.variant_id,
-                              title: item.title,
-                              sku: item.sku,
-                              unit_price: item.unit_price,
-                            })
-                          }
-                          disabled={!isOpen || stale}
-                          className="rounded-xl border border-border bg-surface p-3 text-start hover:border-primary/40 disabled:opacity-50"
-                        >
-                          <div className="text-[12.5px] font-medium truncate" dir="auto">
-                            {item.title || item.sku}
-                          </div>
-                          <div className="text-[12px] text-muted-foreground tabular-nums" dir="ltr">
-                            {money(item.unit_price)}
-                          </div>
-                          <div
-                            className={cn(
-                              "mt-1 inline-block rounded-lg px-1.5 py-0.5 text-[10.5px] tabular-nums",
-                              item.available > 10
-                                ? "bg-success/10 text-success"
-                                : item.available > 0
-                                  ? "bg-warning/10 text-warning"
-                                  : "bg-destructive/10 text-destructive"
-                            )}
-                            dir="ltr"
-                          >
-                            {item.available > 0
-                              ? t("pos.inStock", "{n} in stock", { n: item.available })
-                              : t("pos.outOfStock", "Out of stock")}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
+      {/* شريط المسح — شغال دايماً: أول مسح بيفتح الدرج لوحده لو مقفول */}
+      <div className="rounded-2xl bg-card border border-border p-3 mb-4">
+        {tab === "scan" ? (
+          <form onSubmit={doScan} className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <ScanLine className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <input
+                ref={scanRef}
+                value={barcode}
+                onChange={(e) => setBarcode(e.target.value)}
+                placeholder={t("pos.scanPlaceholder", "Barcode…")}
+                dir="ltr"
+                disabled={stale}
+                autoFocus
+                className="h-11 w-full rounded-xl border border-border bg-surface ps-9 pe-3 text-[14px] tabular-nums"
+              />
             </div>
-
-            <div className="rounded-2xl bg-card border border-border overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-                <span className="inline-flex items-center gap-2 text-[13.5px] font-medium">
-                  <ShoppingCart className="h-4 w-4" />
-                  {t("pos.cart", "Cart")} · {lines.length}
-                  {heldCartId && (
-                    <Badge tone="warning">{t("pos.resumedBadge", "resumed")}</Badge>
-                  )}
-                </span>
-                {lines.length > 0 && isOpen && !stale && (
+            <button
+              type="button"
+              onClick={() => setTab("browse")}
+              className="h-11 px-3 rounded-xl border border-border inline-flex items-center gap-1.5 text-[12.5px] text-muted-foreground hover:text-foreground"
+            >
+              <Package className="h-4 w-4" />
+              {t("pos.browse", "Products")}
+            </button>
+          </form>
+        ) : (
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <div className="relative flex-1">
+                <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <input
+                  value={browseQ}
+                  onChange={(e) => setBrowseQ(e.target.value)}
+                  placeholder={t("pos.searchPlaceholder", "Search by name or SKU…")}
+                  dir="auto"
+                  className="h-11 w-full rounded-xl border border-border bg-surface ps-9 pe-3 text-[13px]"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => setTab("scan")}
+                className="h-11 px-3 rounded-xl border border-border inline-flex items-center gap-1.5 text-[12.5px] text-muted-foreground hover:text-foreground"
+              >
+                <ScanLine className="h-4 w-4" />
+                {t("pos.scanLabel", "Scan")}
+              </button>
+            </div>
+            {browseLoading ? (
+              <div className="flex items-center gap-2 py-6 text-[13px] text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+              </div>
+            ) : browseItems.length === 0 ? (
+              <p className="py-6 text-center text-[13px] text-muted-foreground">
+                {t("pos.emptyBrowse", "Nothing matches that search.")}
+              </p>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 max-h-72 overflow-y-auto">
+                {browseItems.map((item) => (
                   <button
+                    key={item.variant_id}
                     type="button"
-                    onClick={() => void holdCart()}
-                    className="inline-flex items-center gap-1.5 text-[12.5px] text-muted-foreground hover:text-foreground"
+                    onClick={() => void addFromBrowse(item)}
+                    disabled={stale}
+                    className="rounded-xl border border-border bg-surface p-3 text-start hover:border-primary/40 disabled:opacity-50"
                   >
-                    <PauseCircle className="h-4 w-4" />
-                    {t("pos.hold", "Park")}
+                    <div className="text-[12.5px] font-medium truncate" dir="auto">
+                      {item.title || item.sku}
+                    </div>
+                    <div className="text-[12px] text-muted-foreground tabular-nums" dir="ltr">
+                      {money(item.unit_price)}
+                    </div>
+                    <div
+                      className={cn(
+                        "mt-1 inline-block rounded-lg px-1.5 py-0.5 text-[10.5px] tabular-nums",
+                        item.available > 10
+                          ? "bg-success/10 text-success"
+                          : item.available > 0
+                            ? "bg-warning/10 text-warning"
+                            : "bg-destructive/10 text-destructive"
+                      )}
+                      dir="ltr"
+                    >
+                      {item.available > 0
+                        ? t("pos.inStock", "{n} in stock", { n: item.available })
+                        : t("pos.outOfStock", "Out of stock")}
+                    </div>
                   </button>
-                )}
-              </div>
-
-              {lines.length === 0 ? (
-                <div className="py-12 text-center text-[13px] text-muted-foreground">
-                  {t("pos.emptyCart", "Scan an item to start the sale.")}
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-[13px]">
-                    <thead>
-                      <tr className="text-muted-foreground text-[11px] uppercase tracking-wide border-b border-border">
-                        <th className="text-start font-medium py-2 ps-4">{t("pos.col.item", "Item")}</th>
-                        <th className="text-end font-medium py-2 px-2">{t("pos.col.price", "Price")}</th>
-                        <th className="text-center font-medium py-2 px-2">{t("pos.col.qty", "Qty")}</th>
-                        <th className="text-center font-medium py-2 px-2">{t("pos.col.discount", "Discount %")}</th>
-                        <th className="text-end font-medium py-2 px-2">{t("pos.col.lineTotal", "Line total")}</th>
-                        <th className="py-2 pe-3" />
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border">
-                      {lines.map((l) => {
-                        const net = (Number(l.unit_price || 0) * l.quantity * (1 - Number(l.discount_pct || 0) / 100)).toFixed(2);
-                        return (
-                          <tr key={l.variant_id} className="hover:bg-surface/60">
-                            <td className="py-2 ps-4 max-w-[220px]">
-                              <div className="font-medium truncate" dir="auto">
-                                {l.title || l.sku || `${l.variant_id.slice(0, 8)}…`}
-                              </div>
-                              <div className="text-[11px] text-muted-foreground tabular-nums" dir="ltr">
-                                {l.sku || l.variant_id.slice(0, 8)}
-                              </div>
-                            </td>
-                            <td className="text-end tabular-nums px-2" dir="ltr">{money(l.unit_price)}</td>
-                            <td className="px-2">
-                              <div className="flex items-center justify-center gap-1">
-                                <button type="button" aria-label="Decrease" onClick={() => step(l.variant_id, -1)} className="h-7 w-7 grid place-items-center rounded-lg border border-border hover:bg-surface">
-                                  <Minus className="h-3 w-3" />
-                                </button>
-                                <span className="w-7 text-center tabular-nums">{l.quantity}</span>
-                                <button type="button" aria-label="Increase" onClick={() => step(l.variant_id, 1)} className="h-7 w-7 grid place-items-center rounded-lg border border-border hover:bg-surface">
-                                  <Plus className="h-3 w-3" />
-                                </button>
-                              </div>
-                            </td>
-                            <td className="px-2 text-center">
-                              <input
-                                value={l.discount_pct ?? ""}
-                                onChange={(e) => setLineDiscount(l.variant_id, e.target.value)}
-                                placeholder="0"
-                                title={t("pos.lineDiscount", "Line discount %")}
-                                aria-label={t("pos.lineDiscount", "Line discount %")}
-                                dir="ltr"
-                                inputMode="decimal"
-                                className="h-8 w-14 rounded-lg border border-border bg-surface px-1.5 text-[12px] tabular-nums text-center"
-                              />
-                            </td>
-                            <td className="text-end tabular-nums px-2 font-medium" dir="ltr">{net}</td>
-                            <td className="text-center pe-3">
-                              <button type="button" aria-label="Remove" onClick={() => removeLine(l.variant_id)} className="h-7 w-7 grid place-items-center rounded-lg text-destructive hover:bg-destructive/10">
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                    <tfoot className="border-t-2 border-border bg-surface/50">
-                      <tr>
-                        <td colSpan={3} className="py-2.5 ps-4 text-[12.5px] text-muted-foreground">
-                          {t("pos.col.pieces", "{n} pieces", { n: lines.reduce((a, l) => a + l.quantity, 0) })}
-                        </td>
-                        <td colSpan={3} className="text-end py-2.5 pe-3 font-semibold tabular-nums" dir="ltr">
-                          {money(lines.reduce((a, l) => a + Number(l.unit_price || 0) * l.quantity, 0).toFixed(2))}
-                        </td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-              )}
-            </div>
-
-            {/* السلات المعلّقة */}
-            {held.length > 0 && (
-              <div className="rounded-2xl bg-card border border-border p-4">
-                <div className="text-[13px] font-medium mb-2 inline-flex items-center gap-2">
-                  <PlayCircle className="h-4 w-4" />
-                  {t("pos.heldCarts", "Parked carts")}
-                </div>
-                <ul className="flex flex-wrap gap-2">
-                  {held.map((h) => (
-                    <li key={h.id} className="inline-flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => resumeCart(h)}
-                        className={cn(
-                          "rounded-xl border px-3 py-2 text-[12.5px]",
-                          h.id === heldCartId
-                            ? "border-primary bg-primary/5"
-                            : "border-border bg-surface hover:border-primary/40"
-                        )}
-                      >
-                        {h.label || t("pos.parked", "{n} items", { n: (h.items || []).length })}
-                      </button>
-                      <button
-                        type="button"
-                        aria-label={t("pos.discard", "Discard")}
-                        onClick={() => void discardCart(h)}
-                        className="h-8 w-8 grid place-items-center rounded-lg text-destructive hover:bg-destructive/10"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {/* المرتجعات */}
-            {isOpen && !stale && (
-              <div className="rounded-2xl bg-card border border-border p-4">
-                <button
-                  type="button"
-                  onClick={() => setShowReturns((v) => !v)}
-                  className="w-full inline-flex items-center justify-between text-[13px] font-medium"
-                >
-                  <span className="inline-flex items-center gap-2">
-                    <Undo2 className="h-4 w-4" />
-                    {t("pos.refund", "Refund a sale")}
-                  </span>
-                  <ArrowLeftRight className="h-4 w-4 text-muted-foreground" />
-                </button>
-                {showReturns && (
-                  <div className="mt-3">
-                    <ReturnsPanel
-                      sessionId={session.id}
-                      onNotice={setNotice}
-                      onError={setError}
-                      onDone={(result) => {
-                        if (result?.new_receipt_id) {
-                          // الاستبدال بيطلع إيصالين — نعرض إيصال البيع الجديد.
-                          setLastReceiptId(result.new_receipt_id);
-                        }
-                      }}
-                    />
-                  </div>
-                )}
+                ))}
               </div>
             )}
           </div>
+        )}
+      </div>
 
-          {/* يمين: فتح الوردية (بدون جلسة) + الإجمالي + الدفع + القفل */}
-          <div className="space-y-4">
-            {!session && (
-              <OpenShiftPanel
-                registers={registers}
-                profiles={profiles}
-                busy={busy}
-                onOpen={(payload) => void openShift(payload)}
-              />
+      {/* الجدول — الصفحة كلها جدول عادي بخطوط */}
+      <div className="rounded-2xl bg-card border border-border overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+          <span className="inline-flex items-center gap-2 text-[13.5px] font-medium">
+            <ShoppingCart className="h-4 w-4" />
+            {t("pos.cart", "Cart")} · {lines.length}
+            {heldCartId && (
+              <Badge tone="warning">{t("pos.resumedBadge", "resumed")}</Badge>
             )}
-            {session && (
-            <>
-            <div className="rounded-2xl bg-card border border-border p-4">
-              <div className="text-[13px] font-medium mb-3">{t("pos.total", "Total")}</div>
+          </span>
+          {lines.length > 0 && isOpen && !stale && (
+            <button
+              type="button"
+              onClick={() => void holdCart()}
+              className="inline-flex items-center gap-1.5 text-[12.5px] text-muted-foreground hover:text-foreground"
+            >
+              <PauseCircle className="h-4 w-4" />
+              {t("pos.hold", "Park")}
+            </button>
+          )}
+        </div>
 
-              <label className="block text-[12.5px] text-muted-foreground mb-1.5 inline-flex items-center gap-1.5">
-                <Percent className="h-3.5 w-3.5" />
-                {t("pos.discount", "Discount")}
-                {profile?.discount_ceiling_pct ? (
-                  <span className="text-[11.5px]">
-                    · {t("pos.ceiling", "ceiling {p}%", { p: profile.discount_ceiling_pct })}
-                  </span>
-                ) : null}
-              </label>
-              <input
-                id="pos-discount"
-                value={discount}
-                onChange={(e) => setDiscount(e.target.value)}
-                placeholder="0.00"
-                dir="ltr"
-                className="h-10 w-full rounded-xl border border-border bg-surface px-3 text-[13px] tabular-nums mb-3"
-              />
-              <dl className="space-y-1.5 mb-3 text-[13px]">
-                <div className="flex items-center justify-between">
+        <div className="overflow-x-auto">
+          <table className="w-full text-[13px] border-collapse">
+            <thead>
+              <tr>
+                <th className="border border-border bg-muted/40 px-3 py-2.5 text-start text-[11.5px] font-semibold uppercase tracking-wide">
+                  {t("pos.col.item", "Item")}
+                </th>
+                <th className="border border-border bg-muted/40 px-3 py-2.5 text-end text-[11.5px] font-semibold uppercase tracking-wide">
+                  {t("pos.col.price", "Price")}
+                </th>
+                <th className="border border-border bg-muted/40 px-3 py-2.5 text-center text-[11.5px] font-semibold uppercase tracking-wide">
+                  {t("pos.col.qty", "Qty")}
+                </th>
+                <th className="border border-border bg-muted/40 px-3 py-2.5 text-center text-[11.5px] font-semibold uppercase tracking-wide">
+                  {t("pos.col.discount", "Discount %")}
+                </th>
+                <th className="border border-border bg-muted/40 px-3 py-2.5 text-end text-[11.5px] font-semibold uppercase tracking-wide">
+                  {t("pos.col.lineTotal", "Line total")}
+                </th>
+                <th className="border border-border bg-muted/40 px-3 py-2.5 text-center text-[11.5px] font-semibold uppercase tracking-wide">
+                  {t("pos.col.remove", "Remove")}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {lines.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="border border-border py-12 text-center text-[13px] text-muted-foreground">
+                    {t("pos.emptyCart", "Scan an item to start the sale.")}
+                  </td>
+                </tr>
+              ) : (
+                lines.map((l) => {
+                  const net = (Number(l.unit_price || 0) * l.quantity * (1 - Number(l.discount_pct || 0) / 100)).toFixed(2);
+                  return (
+                    <tr key={l.variant_id} className="hover:bg-surface/60">
+                      <td className="border border-border px-3 py-2.5 max-w-[260px]">
+                        <div className="font-medium truncate" dir="auto">
+                          {l.title || l.sku || `${l.variant_id.slice(0, 8)}…`}
+                        </div>
+                        <div className="text-[11px] text-muted-foreground tabular-nums" dir="ltr">
+                          {l.sku || l.variant_id.slice(0, 8)}
+                        </div>
+                      </td>
+                      <td className="border border-border px-3 py-2.5 text-end tabular-nums" dir="ltr">{money(l.unit_price)}</td>
+                      <td className="border border-border px-3 py-2.5">
+                        <div className="flex items-center justify-center gap-1">
+                          <button type="button" aria-label="Decrease" onClick={() => step(l.variant_id, -1)} className="h-7 w-7 grid place-items-center rounded-lg border border-border hover:bg-surface">
+                            <Minus className="h-3 w-3" />
+                          </button>
+                          <span className="w-7 text-center tabular-nums">{l.quantity}</span>
+                          <button type="button" aria-label="Increase" onClick={() => step(l.variant_id, 1)} className="h-7 w-7 grid place-items-center rounded-lg border border-border hover:bg-surface">
+                            <Plus className="h-3 w-3" />
+                          </button>
+                        </div>
+                      </td>
+                      <td className="border border-border px-3 py-2.5 text-center">
+                        <input
+                          value={l.discount_pct ?? ""}
+                          onChange={(e) => setLineDiscount(l.variant_id, e.target.value)}
+                          placeholder="0"
+                          title={t("pos.lineDiscount", "Line discount %")}
+                          aria-label={t("pos.lineDiscount", "Line discount %")}
+                          dir="ltr"
+                          inputMode="decimal"
+                          className="h-8 w-14 rounded-lg border border-border bg-surface px-1.5 text-[12px] tabular-nums text-center"
+                        />
+                      </td>
+                      <td className="border border-border px-3 py-2.5 text-end tabular-nums font-medium" dir="ltr">{net}</td>
+                      <td className="border border-border px-3 py-2.5 text-center">
+                        <button type="button" aria-label="Remove" onClick={() => removeLine(l.variant_id)} className="h-7 w-7 grid place-items-center rounded-lg text-destructive hover:bg-destructive/10">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan={4} className="border border-border bg-muted/20 px-3 py-2.5 text-[12.5px] text-muted-foreground">
+                  {t("pos.col.pieces", "{n} pieces", { n: lines.reduce((a, l) => a + l.quantity, 0) })}
+                </td>
+                <td colSpan={2} className="border border-border bg-muted/20 px-3 py-2.5 text-end font-semibold tabular-nums" dir="ltr">
+                  {money(lines.reduce((a, l) => a + Number(l.unit_price || 0) * l.quantity, 0).toFixed(2))}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        {/* الإجمالي والخصم والدفع — تحت الجدول مباشرة */}
+        {session && (
+          <div className="border-t-2 border-border p-4 space-y-3">
+            <div className="flex flex-wrap items-end gap-4">
+              <div>
+                <label className="block text-[12.5px] text-muted-foreground mb-1.5 inline-flex items-center gap-1.5">
+                  <Percent className="h-3.5 w-3.5" />
+                  {t("pos.discount", "Discount")}
+                  {profile?.discount_ceiling_pct ? (
+                    <span className="text-[11.5px]">
+                      · {t("pos.ceiling", "ceiling {p}%", { p: profile.discount_ceiling_pct })}
+                    </span>
+                  ) : null}
+                </label>
+                <input
+                  id="pos-discount"
+                  value={discount}
+                  onChange={(e) => setDiscount(e.target.value)}
+                  placeholder="0.00"
+                  dir="ltr"
+                  className="h-10 w-32 rounded-xl border border-border bg-surface px-3 text-[13px] tabular-nums"
+                />
+              </div>
+              <dl className="flex items-center gap-5 mb-0.5 text-[13px]">
+                <div className="flex items-center gap-2">
                   <dt className="text-muted-foreground">{t("pos.subtotal", "Subtotal")}</dt>
                   <dd className="tabular-nums" dir="ltr">{money(quote?.subtotal)}</dd>
                 </div>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
                   <dt className="text-muted-foreground">{t("pos.discountLabel", "Discount")}</dt>
                   <dd className="tabular-nums" dir="ltr">{money(quote?.discount_total)}</dd>
                 </div>
-                <div className="flex items-center justify-between border-t border-border pt-1.5">
+                <div className="flex items-center gap-2">
                   <dt className="font-medium">{t("pos.grandTotal", "Total due")}</dt>
-                  <dd className="font-display text-[18px] font-semibold tabular-nums" dir="ltr">
+                  <dd className="font-display text-[20px] font-semibold tabular-nums" dir="ltr">
                     {money(quote?.grand_total)}
                   </dd>
                 </div>
               </dl>
-
-              <PaymentPanel
-                quote={quote}
-                methods={profile?.allowed_payment_methods || []}
-                tenders={tenders}
-                onTendersChange={setTenders}
-                onSell={() => void sell()}
-                busy={busy}
-                discountBlocked={stale}
-              />
             </div>
 
-            {lastReceiptId && (
-              <div className="rounded-2xl bg-card border border-border p-4">
-                <ReceiptView receiptId={lastReceiptId} onNotice={setNotice} />
-              </div>
-            )}
-
-            {/* التسليم */}
-            {isOpen && !stale && (
-              <div className="rounded-2xl bg-card border border-border p-4">
-                <button
-                  type="button"
-                  onClick={() => void toggleHandover()}
-                  className="w-full inline-flex items-center justify-between text-[13px] font-medium"
-                >
-                  <span className="inline-flex items-center gap-2">
-                    <ArrowLeftRight className="h-4 w-4" />
-                    {t("pos.handover", "Hand over the drawer")}
-                  </span>
-                </button>
-                {showHandover && (
-                  <div className="mt-3 space-y-2">
-                    <select
-                      value={handoverTo}
-                      onChange={(e) => setHandoverTo(e.target.value)}
-                      className="h-10 w-full rounded-xl border border-border bg-surface px-3 text-[13px]"
-                    >
-                      <option value="">{t("pos.handoverTo", "Hand to")}</option>
-                      {grantees.map((g) => (
-                        <option key={g.user_id} value={g.user_id}>
-                          {g.full_name || `${g.user_id.slice(0, 8)}…`}
-                        </option>
-                      ))}
-                    </select>
-                    {grantees.length === 0 && (
-                      <p className="text-[11.5px] text-muted-foreground">
-                        {t("pos.noGrantees", "No grantees on this profile.")}
-                      </p>
-                    )}
-                    <input
-                      value={handoverCounted}
-                      onChange={(e) => setHandoverCounted(e.target.value)}
-                      placeholder={t("pos.handoverCounted", "Counted at handover")}
-                      dir="ltr"
-                      inputMode="decimal"
-                      className="h-10 w-full rounded-xl border border-border bg-surface px-3 text-[13px] tabular-nums"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => void handover()}
-                      disabled={busy || !handoverTo}
-                      className="h-10 w-full rounded-xl border border-border text-[13px] font-medium disabled:opacity-50"
-                    >
-                      {t("pos.handoverAction", "Hand over")}
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* قفل الوردية */}
-            {isOpen && (
-              <div className="rounded-2xl bg-card border border-border p-4">
-                <button
-                  type="button"
-                  onClick={() => setShowClose((v) => !v)}
-                  className="w-full inline-flex items-center justify-between text-[13px] font-medium"
-                >
-                  <span className="inline-flex items-center gap-2">
-                    <Lock className="h-4 w-4" />
-                    {t("pos.closeDrawer", "Close the drawer")}
-                  </span>
-                  <ArrowLeftRight className="h-4 w-4 text-muted-foreground" />
-                </button>
-                {showClose && (
-                  <div className="mt-3">
-                    <ClosePanel
-                      sessionId={session.id}
-                      onClosed={(closed) => void afterClose(closed)}
-                      onError={setError}
-                    />
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* تقرير الوردية بعد القفل */}
-            {closedReport && (
-              <div className="rounded-2xl bg-card border border-border p-4">
-                <div className="text-[13px] font-medium mb-2 inline-flex items-center gap-2">
-                  <FileText className="h-4 w-4" />
-                  {t("pos.report", "Shift report")}
-                </div>
-                <dl className="grid grid-cols-2 gap-y-1.5 text-[12.5px] mb-3">
-                  <dt className="text-muted-foreground">{t("pos.invoices", "{n} sales", { n: closedReport.sales.invoice_count })}</dt>
-                  <dd className="text-end tabular-nums" dir="ltr">{money(closedReport.sales.total)}</dd>
-                  <dt className="text-muted-foreground">{t("pos.returnsTotal", "Returns")}</dt>
-                  <dd className="text-end tabular-nums" dir="ltr">{money(closedReport.returns.total)}</dd>
-                  <dt className="text-muted-foreground">{t("pos.expected", "Expected")}</dt>
-                  <dd className="text-end tabular-nums" dir="ltr">{money(closedReport.expected_total ?? "—")}</dd>
-                  <dt className="text-muted-foreground">{t("pos.variance", "Variance")}</dt>
-                  <dd className={cn("text-end tabular-nums", Number(closedReport.variance_total || 0) !== 0 && "text-destructive")} dir="ltr">
-                    {money(closedReport.variance_total ?? "—")}
-                  </dd>
-                </dl>
-                <table className="w-full text-[12.5px]">
-                  <thead>
-                    <tr className="text-muted-foreground text-[11px] uppercase tracking-wide">
-                      <th className="text-start font-medium py-1">{t("pos.method", "Method")}</th>
-                      <th className="text-end font-medium py-1">{t("pos.expected", "Expected")}</th>
-                      <th className="text-end font-medium py-1">{t("pos.counted", "Counted")}</th>
-                      <th className="text-end font-medium py-1">{t("pos.variance", "Variance")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {closedReport.by_method.map((r) => (
-                      <tr key={r.method} className="border-t border-border">
-                        <td className="py-1.5">{t(`pos.method.${r.method}`)}</td>
-                        <td className="py-1.5 text-end tabular-nums" dir="ltr">{money(r.expected)}</td>
-                        <td className="py-1.5 text-end tabular-nums" dir="ltr">{money(r.counted)}</td>
-                        <td
-                          className={cn(
-                            "py-1.5 text-end tabular-nums",
-                            r.variance != null && r.variance !== "0.00" && "text-destructive"
-                          )}
-                          dir="ltr"
-                        >
-                          {money(r.variance)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSession(null);
-                    setClosedReport(null);
-                    setProfile(null);
-                  }}
-                  className="mt-3 h-10 w-full rounded-xl bg-primary text-primary-foreground text-[13px] font-medium"
-                >
-                  {t("pos.newShift", "Start a new shift")}
-                </button>
-              </div>
-            )}
-            </>
-            )}
+            <PaymentPanel
+              quote={quote}
+              methods={profile?.allowed_payment_methods || []}
+              tenders={tenders}
+              onTendersChange={setTenders}
+              onSell={() => void sell()}
+              busy={busy}
+              discountBlocked={stale}
+            />
           </div>
+        )}
+      </div>
+
+      {/* أدوات الوردية — مرتجع / تسليم / قفل */}
+      {isOpen && !stale && (
+        <div className="flex flex-wrap gap-2 mt-4">
+          <button
+            type="button"
+            onClick={() => setShowReturns((v) => !v)}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-[12.5px] font-medium",
+              showReturns ? "border-primary bg-primary/5 text-primary" : "border-border hover:border-primary/40"
+            )}
+          >
+            <Undo2 className="h-4 w-4" />
+            {t("pos.refund", "Refund a sale")}
+          </button>
+          <button
+            type="button"
+            onClick={() => void toggleHandover()}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-[12.5px] font-medium",
+              showHandover ? "border-primary bg-primary/5 text-primary" : "border-border hover:border-primary/40"
+            )}
+          >
+            <ArrowLeftRight className="h-4 w-4" />
+            {t("pos.handover", "Hand over the drawer")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowClose((v) => !v)}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-[12.5px] font-medium",
+              showClose ? "border-primary bg-primary/5 text-primary" : "border-border hover:border-primary/40"
+            )}
+          >
+            <Lock className="h-4 w-4" />
+            {t("pos.closeDrawer", "Close the drawer")}
+          </button>
         </div>
+      )}
+
+      {/* لوحات الأدوات */}
+      {showReturns && isOpen && !stale && (
+        <div className="rounded-2xl bg-card border border-border p-4 mt-3">
+          <ReturnsPanel
+            sessionId={session.id}
+            onNotice={setNotice}
+            onError={setError}
+            onDone={(result) => {
+              if (result?.new_receipt_id) {
+                // الاستبدال بيطلع إيصالين — نعرض إيصال البيع الجديد.
+                setLastReceiptId(result.new_receipt_id);
+              }
+            }}
+          />
+        </div>
+      )}
+
+      {showHandover && isOpen && !stale && (
+        <div className="rounded-2xl bg-card border border-border p-4 mt-3 space-y-2">
+          <select
+            value={handoverTo}
+            onChange={(e) => setHandoverTo(e.target.value)}
+            className="h-10 w-full rounded-xl border border-border bg-surface px-3 text-[13px]"
+          >
+            <option value="">{t("pos.handoverTo", "Hand to")}</option>
+            {grantees.map((g) => (
+              <option key={g.user_id} value={g.user_id}>
+                {g.full_name || `${g.user_id.slice(0, 8)}…`}
+              </option>
+            ))}
+          </select>
+          {grantees.length === 0 && (
+            <p className="text-[11.5px] text-muted-foreground">
+              {t("pos.noGrantees", "No grantees on this profile.")}
+            </p>
+          )}
+          <input
+            value={handoverCounted}
+            onChange={(e) => setHandoverCounted(e.target.value)}
+            placeholder={t("pos.handoverCounted", "Counted at handover")}
+            dir="ltr"
+            inputMode="decimal"
+            className="h-10 w-full rounded-xl border border-border bg-surface px-3 text-[13px] tabular-nums"
+          />
+          <button
+            type="button"
+            onClick={() => void handover()}
+            disabled={busy || !handoverTo}
+            className="h-10 w-full rounded-xl border border-border text-[13px] font-medium disabled:opacity-50"
+          >
+            {t("pos.handoverAction", "Hand over")}
+          </button>
+        </div>
+      )}
+
+      {showClose && isOpen && (
+        <div className="rounded-2xl bg-card border border-border p-4 mt-3">
+          <ClosePanel
+            sessionId={session.id}
+            onClosed={(closed) => void afterClose(closed)}
+            onError={setError}
+          />
+        </div>
+      )}
+
+      {/* الإيصال الأخير */}
+      {lastReceiptId && (
+        <div className="rounded-2xl bg-card border border-border p-4 mt-4">
+          <ReceiptView receiptId={lastReceiptId} onNotice={setNotice} />
+        </div>
+      )}
+
+      {/* السلات المعلّقة */}
+      {held.length > 0 && (
+        <div className="rounded-2xl bg-card border border-border p-4 mt-4">
+          <div className="text-[13px] font-medium mb-2 inline-flex items-center gap-2">
+            <PlayCircle className="h-4 w-4" />
+            {t("pos.heldCarts", "Parked carts")}
+          </div>
+          <ul className="flex flex-wrap gap-2">
+            {held.map((h) => (
+              <li key={h.id} className="inline-flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => resumeCart(h)}
+                  className={cn(
+                    "rounded-xl border px-3 py-2 text-[12.5px]",
+                    h.id === heldCartId
+                      ? "border-primary bg-primary/5"
+                      : "border-border bg-surface hover:border-primary/40"
+                  )}
+                >
+                  {h.label || t("pos.parked", "{n} items", { n: (h.items || []).length })}
+                </button>
+                <button
+                  type="button"
+                  aria-label={t("pos.discard", "Discard")}
+                  onClick={() => void discardCart(h)}
+                  className="h-8 w-8 grid place-items-center rounded-lg text-destructive hover:bg-destructive/10"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* تقرير الوردية بعد القفل */}
+      {closedReport && (
+        <div className="rounded-2xl bg-card border border-border p-4 mt-4">
+          <div className="text-[13px] font-medium mb-2 inline-flex items-center gap-2">
+            <FileText className="h-4 w-4" />
+            {t("pos.report", "Shift report")}
+          </div>
+          <dl className="grid grid-cols-2 gap-y-1.5 text-[12.5px] mb-3">
+            <dt className="text-muted-foreground">{t("pos.invoices", "{n} sales", { n: closedReport.sales.invoice_count })}</dt>
+            <dd className="text-end tabular-nums" dir="ltr">{money(closedReport.sales.total)}</dd>
+            <dt className="text-muted-foreground">{t("pos.returnsTotal", "Returns")}</dt>
+            <dd className="text-end tabular-nums" dir="ltr">{money(closedReport.returns.total)}</dd>
+            <dt className="text-muted-foreground">{t("pos.expected", "Expected")}</dt>
+            <dd className="text-end tabular-nums" dir="ltr">{money(closedReport.expected_total ?? "—")}</dd>
+            <dt className="text-muted-foreground">{t("pos.variance", "Variance")}</dt>
+            <dd className={cn("text-end tabular-nums", Number(closedReport.variance_total || 0) !== 0 && "text-destructive")} dir="ltr">
+              {money(closedReport.variance_total ?? "—")}
+            </dd>
+          </dl>
+          <table className="w-full text-[12.5px]">
+            <thead>
+              <tr className="text-muted-foreground text-[11px] uppercase tracking-wide">
+                <th className="text-start font-medium py-1">{t("pos.method", "Method")}</th>
+                <th className="text-end font-medium py-1">{t("pos.expected", "Expected")}</th>
+                <th className="text-end font-medium py-1">{t("pos.counted", "Counted")}</th>
+                <th className="text-end font-medium py-1">{t("pos.variance", "Variance")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {closedReport.by_method.map((r) => (
+                <tr key={r.method} className="border-t border-border">
+                  <td className="py-1.5">{t(`pos.method.${r.method}`)}</td>
+                  <td className="py-1.5 text-end tabular-nums" dir="ltr">{money(r.expected)}</td>
+                  <td className="py-1.5 text-end tabular-nums" dir="ltr">{money(r.counted)}</td>
+                  <td
+                    className={cn(
+                      "py-1.5 text-end tabular-nums",
+                      r.variance != null && r.variance !== "0.00" && "text-destructive"
+                    )}
+                    dir="ltr"
+                  >
+                    {money(r.variance)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <button
+            type="button"
+            onClick={() => {
+              setSession(null);
+              setClosedReport(null);
+              setProfile(null);
+            }}
+            className="mt-3 h-10 w-full rounded-xl bg-primary text-primary-foreground text-[13px] font-medium"
+          >
+            {t("pos.newShift", "Start a new shift")}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
