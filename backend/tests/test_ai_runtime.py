@@ -382,7 +382,7 @@ async def test_search_catalog_price_crosses_as_exact_string():
     # carries the exact Decimal string the price row holds.
     variant = _stub_variant(Decimal("25.55"))
     result = await _search_catalog(
-        _StubSession([[], [(variant, "Blue Widget")], [], []]), uuid.uuid4(), query="widget"
+        _StubSession([[], [], [(variant, "Blue Widget")], [], []]), uuid.uuid4(), query="widget"
     )
     price = result["results"][0]["price"]
     assert price == "25.55"
@@ -393,7 +393,7 @@ async def test_null_price_stays_null_not_zero():
     # None is "no price recorded", not "0" and not 0.0 — the wire keeps it null.
     variant = _stub_variant(None)
     search = await _search_catalog(
-        _StubSession([[], [(variant, "Blue Widget")], [], []]), uuid.uuid4(), query="widget"
+        _StubSession([[], [], [(variant, "Blue Widget")], [], []]), uuid.uuid4(), query="widget"
     )
     assert search["results"][0]["price"] is None
     assert search["results"][0]["availability"]["status"] == "خلص"
@@ -405,7 +405,8 @@ async def test_search_catalog_browse_filter_agrees_with_the_sell_gate():
     # the vocabulary.
     session = _StubSession()
     await _search_catalog(session, uuid.uuid4(), query="widget")
-    sql = str(session.statements[0].compile(compile_kwargs={"literal_binds": True}))
+    # statements[0] is the SET LOCAL; the main select is the last one.
+    sql = str(session.statements[-1].compile(compile_kwargs={"literal_binds": True}))
     match = re.search(r"products\.status IN \(([^)]*)\)", sql)
     assert match is not None, (
         "the browse query never filters Product.status — a draft/archived "
