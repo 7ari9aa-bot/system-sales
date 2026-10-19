@@ -24,7 +24,7 @@ from functools import reduce
 from typing import Literal
 
 from pydantic import BaseModel, Field
-from sqlalchemy import case, func, literal_column, or_, select
+from sqlalchemy import case, func, literal_column, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import DomainError, NotFoundError, ValidationError
@@ -250,6 +250,24 @@ async def _search_catalog(
             # the GIN trgm indexes; the threshold is loosened to 0.2 because
             # Arabic trigram overlap on a one-letter insertion lands ~0.29.
             arms += [Product.title.op("%")(word), ProductVariant.title.op("%")(word)]
+            # Title-LEVEL trigram dilutes as titles grow (a short query word
+            # against a long title scores ~0.28, under every threshold). The
+            # WORD-to-word comparison is where the signal lives: تيشرت vs
+            # تيشيرت scores 0.44 token-to-token on the live catalog — so an
+            # EXISTS over the title's own words carries the real match.
+            # Unindexed by construction (per-row word split) — fine at
+            # catalog scale, revisited if catalogs grow orders of magnitude.
+            for index, col in enumerate(
+                ("products.title", "product_variants.title")
+            ):
+                # The column names are OUR constants, never user input; the
+                # word rides as a bound parameter.
+                arms.append(
+                    text(
+                        f"EXISTS (SELECT 1 FROM unnest(regexp_split_to_array("
+                        f"{col}, '[[:space:]]+')) AS t(w) WHERE w % :trgm_{index})"
+                    ).bindparams(**{f"trgm_{index}": word})
+                )
         return or_(*arms)
 
     word_exprs = [_word_expr(word) for word in words]
@@ -266,8 +284,6 @@ async def _search_catalog(
 
     # The threshold is transaction-local: the % operator above reads it, and
     # the default 0.3 would miss the very insertions this arm exists for.
-    from sqlalchemy import text
-
     await session.execute(text("SET LOCAL pg_trgm.similarity_threshold = 0.2"))
 
     # total_matches counts PRODUCTS — "how many things match" is a product
