@@ -205,3 +205,38 @@ async def test_sell_on_a_closed_session_is_refused(db, tenant_ctx):
             customer_id=customer.id,
             items=[{"variant_id": variant.id, "quantity": 1}],
         )
+
+
+async def test_close_with_only_counted_cash_records_the_cash_shortage(db, tenant_ctx):
+    """A closer who sends ``counted_cash`` but no per-method figures must not turn a
+    short drawer into a "matched" one: the cash reconciliation row has to carry the
+    shortage, otherwise the shift report and Z-report hide the shortfall."""
+    from decimal import Decimal
+
+    register = await _register(db, tenant_ctx)
+    pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
+    variant = await _sellable_variant(db, tenant_ctx)
+    customer = await _customer(db, tenant_ctx)
+    await PosService.sell(
+        db,
+        tenant_ctx.tenant_id,
+        pos_session.id,
+        customer_id=customer.id,
+        items=[{"variant_id": variant.id, "quantity": 1}],
+    )  # 25.00 cash into the drawer
+
+    closed = await PosService.close_session(
+        db, tenant_ctx.tenant_id, pos_session.id, counted_cash="20.00"
+    )
+    assert closed.variance == Decimal("-5.00")
+
+    rows = {
+        r.method: r
+        for r in await PosService.list_reconciliation(db, tenant_ctx.tenant_id, pos_session.id)
+    }
+    assert rows["cash"].expected_amount == Decimal("25.00")
+    assert rows["cash"].counted_amount == Decimal("20.00")
+    assert rows["cash"].variance == Decimal("-5.00")
+
+    report = await PosService.session_report(db, tenant_ctx.tenant_id, pos_session.id)
+    assert Decimal(report["variance_total"]) == Decimal("-5.00")

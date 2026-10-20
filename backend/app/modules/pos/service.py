@@ -1079,8 +1079,13 @@ class PosService:
 
         # Per-method reconciliation, written BEFORE the status flips so the rows
         # belong to the same transaction as the close.
+        # ``counted_cash`` is the closer's cash count. When no per-method figure for cash
+        # came with it, it still IS the cash figure: without this a short drawer was
+        # recorded as "matched" in the reconciliation and the shift report.
+        counted_for_rows = dict(counted_by_method or {})
+        counted_for_rows.setdefault("cash", counted)
         recon_rows = await PosService._write_reconciliation(
-            session, tenant_id, pos_session, counted_by_method or {}
+            session, tenant_id, pos_session, counted_for_rows
         )
 
         pos_session.status = "CLOSED"
