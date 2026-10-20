@@ -698,7 +698,7 @@ async def _find_support_playbook(
     ``matched`` is explicit so "no playbook" is a stated fact the model hands
     over on, never a guess it fills in.
     """
-    from app.modules.ai.models import SupportPlaybook as P
+    from app.modules.ai.models import SupportPlaybook
 
     # Stopword test on BOTH forms: "واعرف" is the stopword "اعرف" wearing a
     # clitic, and "حاولت" must not survive because stripping changed nothing.
@@ -713,10 +713,12 @@ async def _find_support_playbook(
     )[:8]
     if not words:
         return {"matched": 0, "playbooks": []}
-    title_f, problem_f = _fold_sql(P.title), _fold_sql(P.problem)
+    title_f = _fold_sql(SupportPlaybook.title)
+    problem_f = _fold_sql(SupportPlaybook.problem)
     per_word = []
     for word in words:
-        arms = [P.search_ts.op("@@")(func.plainto_tsquery(literal_column("'simple'"), word))]
+        ts_query = func.plainto_tsquery(literal_column("'simple'"), word)
+        arms = [SupportPlaybook.search_ts.op("@@")(ts_query)]
         for pattern in _playbook_word_arms(word):
             arms += [
                 title_f.ilike(like_pattern(pattern), escape=LIKE_ESCAPE),
@@ -736,14 +738,20 @@ async def _find_support_playbook(
     min_hits = max(1, (len(words) + 1) // 2)
     rows = (
         await session.execute(
-            select(P.title, P.problem, P.steps, P.escalate_when, hits.label("hits"))
+            select(
+                SupportPlaybook.title,
+                SupportPlaybook.problem,
+                SupportPlaybook.steps,
+                SupportPlaybook.escalate_when,
+                hits.label("hits"),
+            )
             .where(
-                P.tenant_id == tenant_id,
-                P.is_active.is_(True),
+                SupportPlaybook.tenant_id == tenant_id,
+                SupportPlaybook.is_active.is_(True),
                 topic_hits >= 1,
                 hits >= min_hits,
             )
-            .order_by(hits.desc(), P.updated_at.desc())
+            .order_by(hits.desc(), SupportPlaybook.updated_at.desc())
             .limit(limit)
         )
     ).all()
