@@ -24,33 +24,6 @@ _TENANT_GUARD = "NULLIF(current_setting('app.tenant_id', true), '')::uuid"
 _TABLES = ("expense_categories", "expenses", "document_counters")
 
 
-def _common_columns() -> list[sa.Column]:
-    return [
-        sa.Column("id", sa.Uuid(), primary_key=True),
-        sa.Column(
-            "tenant_id", sa.Uuid(), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
-        ),
-        sa.Column(
-            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
-        ),
-        sa.Column(
-            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
-        ),
-        sa.Column(
-            "workspace_id",
-            sa.Uuid(),
-            sa.ForeignKey("workspaces.id", ondelete="SET NULL"),
-            nullable=True,
-        ),
-        sa.Column(
-            "location_id",
-            sa.Uuid(),
-            sa.ForeignKey("locations.id", ondelete="SET NULL"),
-            nullable=True,
-        ),
-    ]
-
-
 def _scope_indexes(table: str) -> None:
     op.create_index(f"ix_{table}_tenant_id", table, ["tenant_id"])
     op.create_index(f"ix_{table}_workspace_id", table, ["workspace_id"])
@@ -80,7 +53,28 @@ def _secure(table: str) -> None:
 def upgrade() -> None:
     op.create_table(
         "expense_categories",
-        *_common_columns(),
+        sa.Column("id", sa.Uuid(), primary_key=True),
+        sa.Column(
+            "tenant_id", sa.Uuid(), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+        ),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "workspace_id",
+            sa.Uuid(),
+            sa.ForeignKey("workspaces.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
+        sa.Column(
+            "location_id",
+            sa.Uuid(),
+            sa.ForeignKey("locations.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
         sa.Column("name", sa.String(80), nullable=False),
         sa.Column("is_active", sa.Boolean(), server_default=sa.true(), nullable=False),
         sa.UniqueConstraint("tenant_id", "name", name="uq_expense_categories_tenant_name"),
@@ -89,7 +83,28 @@ def upgrade() -> None:
 
     op.create_table(
         "document_counters",
-        *_common_columns(),
+        sa.Column("id", sa.Uuid(), primary_key=True),
+        sa.Column(
+            "tenant_id", sa.Uuid(), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+        ),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "workspace_id",
+            sa.Uuid(),
+            sa.ForeignKey("workspaces.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
+        sa.Column(
+            "location_id",
+            sa.Uuid(),
+            sa.ForeignKey("locations.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
         sa.Column("kind", sa.String(8), nullable=False),
         sa.Column("year", sa.Integer(), nullable=False),
         sa.Column("last_seq", sa.Integer(), server_default="0", nullable=False),
@@ -101,7 +116,28 @@ def upgrade() -> None:
 
     op.create_table(
         "expenses",
-        *_common_columns(),
+        sa.Column("id", sa.Uuid(), primary_key=True),
+        sa.Column(
+            "tenant_id", sa.Uuid(), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+        ),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "workspace_id",
+            sa.Uuid(),
+            sa.ForeignKey("workspaces.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
+        sa.Column(
+            "location_id",
+            sa.Uuid(),
+            sa.ForeignKey("locations.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
         sa.Column("number", sa.String(31), nullable=False),
         sa.Column(
             "category_id",

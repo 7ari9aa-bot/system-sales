@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -42,6 +42,23 @@ class BalanceServiceMixin:
                 )
             )
         ).scalar_one()
+
+    @staticmethod
+    async def total_on_hand(session: AsyncSession, tenant_id: UUID, variant_id: UUID) -> int:
+        """Units of a variant on the shelf across ALL warehouses (0 if never stocked).
+
+        Read-only and unlocked: a caller that needs a stable figure (moving-average cost)
+        takes its own lock first. May be negative: stock can be sold before the receipt is entered.
+        """
+        total = (
+            await session.execute(
+                select(func.coalesce(func.sum(InventoryBalance.on_hand), 0)).where(
+                    InventoryBalance.tenant_id == tenant_id,
+                    InventoryBalance.variant_id == variant_id,
+                )
+            )
+        ).scalar_one()
+        return int(total)
 
     @staticmethod
     async def list_balances(session: AsyncSession, tenant_id: UUID, *, limit: int = 200) -> list:

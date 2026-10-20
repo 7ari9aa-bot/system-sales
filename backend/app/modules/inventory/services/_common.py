@@ -32,7 +32,19 @@ PHYSICAL_MOVEMENT_REASONS: frozenset[str] = frozenset(
         "transfer_out",
         "adjustment",
         "damage",
+        # Goods LEAVING the shop back to a supplier (`return` is a CUSTOMER bringing goods in).
+        # Written only by the purchasing service (reference_type='supplier_return'); it is
+        # deliberately NOT in the hand-written API pattern below.
+        "supplier_return",
+        # The supplier REFUSED those goods and they went back on the shelf. Not `return_reversal`:
+        # that one undoes a CUSTOMER return, and a report filtering on it must not mix the two.
+        "supplier_return_reversal",
     }
+)
+#: Reasons only a domain service may write. A person typing one into POST /inventory/movements
+#: would fake goods leaving to a supplier that no document claims.
+SERVICE_ONLY_MOVEMENT_REASONS: frozenset[str] = frozenset(
+    {"supplier_return", "supplier_return_reversal"}
 )
 AVAILABILITY_MOVEMENT_REASONS: frozenset[str] = frozenset({"reservation", "reservation_release"})
 MOVEMENT_REASONS: frozenset[str] = PHYSICAL_MOVEMENT_REASONS | AVAILABILITY_MOVEMENT_REASONS
@@ -41,7 +53,9 @@ RESERVATION_REFERENCE = "inventory_reservation"
 
 #: Patterns for the request models: a whitelist the API document can show.
 MOVEMENT_DIRECTION_PATTERN = "^(?:" + "|".join(sorted(_DIRECTIONS)) + ")$"
-MOVEMENT_REASON_PATTERN = "^(?:" + "|".join(sorted(PHYSICAL_MOVEMENT_REASONS)) + ")$"
+MOVEMENT_REASON_PATTERN = (
+    "^(?:" + "|".join(sorted(PHYSICAL_MOVEMENT_REASONS - SERVICE_ONLY_MOVEMENT_REASONS)) + ")$"
+)
 #: The read filter may name ANY reason — the hold rows are what an auditor
 #: reconciling on_hand against available has to be able to ask for.
 MOVEMENT_REASON_FILTER_PATTERN = "^(?:" + "|".join(sorted(MOVEMENT_REASONS)) + ")$"

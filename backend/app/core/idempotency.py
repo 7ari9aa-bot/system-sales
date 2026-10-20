@@ -123,6 +123,11 @@ IDEMPOTENT_PATHS: tuple[str, ...] = (
     "/api/v1/pos",
     # A double tap on Save must not book the expense (and its drawer pay-out) twice.
     "/api/v1/expenses",
+    # Receiving stock, paying a supplier and deciding a return each move stock and/or cash exactly
+    # once.
+    "/api/v1/purchase-orders",
+    "/api/v1/supplier-payments",
+    "/api/v1/supplier-returns",
     "/api/v1/billing",  # start-trial, usage metering (money)
     "/api/v1/marketing/campaigns",  # campaign send / broadcast
     "/api/v1/marketing/touchpoints",  # outbound touchpoint

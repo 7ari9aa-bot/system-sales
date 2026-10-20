@@ -50,7 +50,12 @@ PHYSICAL_REASONS = {
     "transfer_out",
     "adjustment",
     "damage",
+    # Written only by the purchasing service (goods going back to / refused by a supplier).
+    "supplier_return",
+    "supplier_return_reversal",
 }
+# ...and a person cannot type these into POST /inventory/movements: no document would back them.
+SERVICE_ONLY_REASONS = {"supplier_return", "supplier_return_reversal"}
 AVAILABILITY_REASONS = {"reservation", "reservation_release"}
 
 
@@ -73,6 +78,20 @@ def test_the_ledger_exports_its_reason_vocabulary() -> None:
     assert set(inventory_service.MOVEMENT_REASONS) == PHYSICAL_REASONS | AVAILABILITY_REASONS
     assert set(inventory_service.PHYSICAL_MOVEMENT_REASONS) == PHYSICAL_REASONS
     assert set(inventory_service.AVAILABILITY_MOVEMENT_REASONS) == AVAILABILITY_REASONS
+
+
+def test_service_only_reasons_are_not_accepted_from_the_api() -> None:
+    """A hand-typed supplier return would fake goods leaving that no document claims."""
+    import re
+
+    from app.modules.inventory.services._common import MOVEMENT_REASON_PATTERN
+
+    for reason in PHYSICAL_REASONS - SERVICE_ONLY_REASONS:
+        assert re.match(MOVEMENT_REASON_PATTERN, reason), reason
+    for reason in SERVICE_ONLY_REASONS:
+        assert not re.match(MOVEMENT_REASON_PATTERN, reason), reason
+        with pytest.raises(PydanticValidationError):
+            _request(reason=reason)
 
 
 async def test_an_unknown_reason_is_refused_before_the_session_is_touched() -> None:
@@ -159,7 +178,7 @@ def _request(**kw) -> MovementRequest:
     return MovementRequest(**{**base, **kw})
 
 
-@pytest.mark.parametrize("reason", sorted(PHYSICAL_REASONS))
+@pytest.mark.parametrize("reason", sorted(PHYSICAL_REASONS - SERVICE_ONLY_REASONS))
 def test_the_manual_surface_accepts_each_physical_reason(reason: str) -> None:
     assert _request(reason=reason).reason == reason
 

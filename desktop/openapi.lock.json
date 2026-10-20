@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 385,
-    "sha256": "06c14ac5549a7d003aabf0a6467009c41931e3b389ce72f7c299824099beca6b",
-    "typed_operations": 231
+    "operations": 403,
+    "sha256": "699186e3f2a538f789c57969f043eeacb034677cc322389f3de87d529ae2416b",
+    "typed_operations": 249
   },
   "spec": {
     "components": {
@@ -3881,6 +3881,88 @@
             }
           },
           "title": "ConversionRequest",
+          "type": "object"
+        },
+        "CostHistoryOut": {
+          "properties": {
+            "created_at": {
+              "title": "Created At",
+              "type": "string"
+            },
+            "new_avg_cost": {
+              "title": "New Avg Cost",
+              "type": "string"
+            },
+            "old_avg_cost": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Old Avg Cost"
+            },
+            "on_hand_before": {
+              "title": "On Hand Before",
+              "type": "integer"
+            },
+            "purchase_order_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Purchase Order Id"
+            },
+            "received_quantity": {
+              "title": "Received Quantity",
+              "type": "integer"
+            },
+            "unit_cost": {
+              "title": "Unit Cost",
+              "type": "string"
+            }
+          },
+          "required": [
+            "old_avg_cost",
+            "new_avg_cost",
+            "on_hand_before",
+            "received_quantity",
+            "unit_cost",
+            "purchase_order_id",
+            "created_at"
+          ],
+          "title": "CostHistoryOut",
+          "type": "object"
+        },
+        "CostOut": {
+          "properties": {
+            "avg_cost": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Avg Cost"
+            },
+            "variant_id": {
+              "title": "Variant Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "variant_id",
+            "avg_cost"
+          ],
+          "title": "CostOut",
           "type": "object"
         },
         "CreateBrandRequest": {
@@ -12215,6 +12297,150 @@
           "title": "PaymentCreateRequest",
           "type": "object"
         },
+        "PaymentIn": {
+          "properties": {
+            "amount": {
+              "maxLength": 20,
+              "minLength": 1,
+              "title": "Amount",
+              "type": "string"
+            },
+            "method": {
+              "pattern": "^(cash|card|wallet|bank_transfer)$",
+              "title": "Method",
+              "type": "string"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "paid_on": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Paid On"
+            },
+            "purchase_order_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Purchase Order Id"
+            },
+            "session_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Id"
+            },
+            "supplier_id": {
+              "format": "uuid",
+              "title": "Supplier Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "supplier_id",
+            "amount",
+            "method"
+          ],
+          "title": "PaymentIn",
+          "type": "object"
+        },
+        "PaymentOut": {
+          "properties": {
+            "amount": {
+              "title": "Amount",
+              "type": "string"
+            },
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "method": {
+              "title": "Method",
+              "type": "string"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "paid_on": {
+              "title": "Paid On",
+              "type": "string"
+            },
+            "purchase_order_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Purchase Order Id"
+            },
+            "session_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Id"
+            },
+            "supplier_id": {
+              "title": "Supplier Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "supplier_id",
+            "purchase_order_id",
+            "amount",
+            "method",
+            "paid_on",
+            "session_id",
+            "note"
+          ],
+          "title": "PaymentOut",
+          "type": "object"
+        },
         "PaymentReconciliationRequest": {
           "properties": {
             "provider_ref": {
@@ -12240,6 +12466,99 @@
             "provider_status"
           ],
           "title": "PaymentReconciliationRequest",
+          "type": "object"
+        },
+        "PaymentRowOut": {
+          "properties": {
+            "amount": {
+              "title": "Amount",
+              "type": "string"
+            },
+            "created_by_user_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created By User Id"
+            },
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "method": {
+              "title": "Method",
+              "type": "string"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "paid_on": {
+              "title": "Paid On",
+              "type": "string"
+            },
+            "purchase_order_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Purchase Order Id"
+            },
+            "reverses_payment_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reverses Payment Id"
+            },
+            "session_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Id"
+            },
+            "supplier_id": {
+              "title": "Supplier Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "supplier_id",
+            "purchase_order_id",
+            "amount",
+            "method",
+            "paid_on",
+            "session_id",
+            "note",
+            "reverses_payment_id",
+            "created_by_user_id"
+          ],
+          "title": "PaymentRowOut",
           "type": "object"
         },
         "PlatformHealthOut": {
@@ -12302,6 +12621,229 @@
             "status"
           ],
           "title": "PlatformInvitation",
+          "type": "object"
+        },
+        "PoIn": {
+          "properties": {
+            "lines": {
+              "items": {
+                "$ref": "#/components/schemas/PoLineIn"
+              },
+              "maxItems": 200,
+              "minItems": 1,
+              "title": "Lines",
+              "type": "array"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "order_date": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Order Date"
+            },
+            "receive_now": {
+              "default": false,
+              "title": "Receive Now",
+              "type": "boolean"
+            },
+            "supplier_id": {
+              "format": "uuid",
+              "title": "Supplier Id",
+              "type": "string"
+            },
+            "warehouse_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Warehouse Id"
+            }
+          },
+          "required": [
+            "supplier_id",
+            "lines"
+          ],
+          "title": "PoIn",
+          "type": "object"
+        },
+        "PoLineIn": {
+          "properties": {
+            "quantity": {
+              "maxLength": 10,
+              "minLength": 1,
+              "title": "Quantity",
+              "type": "string"
+            },
+            "unit_cost": {
+              "maxLength": 20,
+              "minLength": 1,
+              "title": "Unit Cost",
+              "type": "string"
+            },
+            "variant_id": {
+              "format": "uuid",
+              "title": "Variant Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "variant_id",
+            "quantity",
+            "unit_cost"
+          ],
+          "title": "PoLineIn",
+          "type": "object"
+        },
+        "PoLineOut": {
+          "properties": {
+            "line_total": {
+              "title": "Line Total",
+              "type": "string"
+            },
+            "quantity": {
+              "title": "Quantity",
+              "type": "integer"
+            },
+            "unit_cost": {
+              "title": "Unit Cost",
+              "type": "string"
+            },
+            "variant_id": {
+              "title": "Variant Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "variant_id",
+            "quantity",
+            "unit_cost",
+            "line_total"
+          ],
+          "title": "PoLineOut",
+          "type": "object"
+        },
+        "PoOut": {
+          "properties": {
+            "balance": {
+              "title": "Balance",
+              "type": "string"
+            },
+            "created_by_user_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created By User Id"
+            },
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "lines": {
+              "items": {
+                "$ref": "#/components/schemas/PoLineOut"
+              },
+              "title": "Lines",
+              "type": "array"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "number": {
+              "title": "Number",
+              "type": "string"
+            },
+            "order_date": {
+              "title": "Order Date",
+              "type": "string"
+            },
+            "paid": {
+              "title": "Paid",
+              "type": "string"
+            },
+            "payment_status": {
+              "title": "Payment Status",
+              "type": "string"
+            },
+            "received_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Received At"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            },
+            "supplier_id": {
+              "title": "Supplier Id",
+              "type": "string"
+            },
+            "total": {
+              "title": "Total",
+              "type": "string"
+            },
+            "warehouse_id": {
+              "title": "Warehouse Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "number",
+            "supplier_id",
+            "warehouse_id",
+            "order_date",
+            "status",
+            "total",
+            "paid",
+            "payment_status",
+            "balance",
+            "note",
+            "received_at",
+            "created_by_user_id",
+            "lines"
+          ],
+          "title": "PoOut",
           "type": "object"
         },
         "PolicyList": {
@@ -13036,6 +13578,96 @@
           "title": "RetentionPositionOut",
           "type": "object"
         },
+        "ReturnAccept": {
+          "properties": {
+            "session_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Id"
+            }
+          },
+          "title": "ReturnAccept",
+          "type": "object"
+        },
+        "ReturnIn": {
+          "properties": {
+            "lines": {
+              "items": {
+                "$ref": "#/components/schemas/ReturnLineIn"
+              },
+              "maxItems": 200,
+              "minItems": 1,
+              "title": "Lines",
+              "type": "array"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "purchase_order_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Purchase Order Id"
+            },
+            "reason": {
+              "pattern": "^(manufacturing_defect|damaged_on_receipt|wrong_size|wrong_color|below_spec|surplus)$",
+              "title": "Reason",
+              "type": "string"
+            },
+            "return_date": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Return Date"
+            },
+            "settlement": {
+              "pattern": "^(cash|credit|replace)$",
+              "title": "Settlement",
+              "type": "string"
+            },
+            "supplier_id": {
+              "format": "uuid",
+              "title": "Supplier Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "supplier_id",
+            "lines",
+            "reason",
+            "settlement"
+          ],
+          "title": "ReturnIn",
+          "type": "object"
+        },
         "ReturnLine": {
           "properties": {
             "quantity": {
@@ -13054,6 +13686,159 @@
             "quantity"
           ],
           "title": "ReturnLine",
+          "type": "object"
+        },
+        "ReturnLineIn": {
+          "properties": {
+            "quantity": {
+              "maxLength": 10,
+              "minLength": 1,
+              "title": "Quantity",
+              "type": "string"
+            },
+            "unit_cost": {
+              "anyOf": [
+                {
+                  "maxLength": 20,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Unit Cost"
+            },
+            "variant_id": {
+              "format": "uuid",
+              "title": "Variant Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "variant_id",
+            "quantity"
+          ],
+          "title": "ReturnLineIn",
+          "type": "object"
+        },
+        "ReturnLineOut": {
+          "properties": {
+            "line_total": {
+              "title": "Line Total",
+              "type": "string"
+            },
+            "quantity": {
+              "title": "Quantity",
+              "type": "integer"
+            },
+            "unit_cost": {
+              "title": "Unit Cost",
+              "type": "string"
+            },
+            "variant_id": {
+              "title": "Variant Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "variant_id",
+            "quantity",
+            "unit_cost",
+            "line_total"
+          ],
+          "title": "ReturnLineOut",
+          "type": "object"
+        },
+        "ReturnOut": {
+          "properties": {
+            "decided_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decided At"
+            },
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "lines": {
+              "items": {
+                "$ref": "#/components/schemas/ReturnLineOut"
+              },
+              "title": "Lines",
+              "type": "array"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "number": {
+              "title": "Number",
+              "type": "string"
+            },
+            "purchase_order_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Purchase Order Id"
+            },
+            "reason": {
+              "title": "Reason",
+              "type": "string"
+            },
+            "return_date": {
+              "title": "Return Date",
+              "type": "string"
+            },
+            "settlement": {
+              "title": "Settlement",
+              "type": "string"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            },
+            "supplier_id": {
+              "title": "Supplier Id",
+              "type": "string"
+            },
+            "total": {
+              "title": "Total",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "number",
+            "supplier_id",
+            "purchase_order_id",
+            "reason",
+            "settlement",
+            "status",
+            "total",
+            "return_date",
+            "note",
+            "decided_at",
+            "lines"
+          ],
+          "title": "ReturnOut",
           "type": "object"
         },
         "RevenueSummaryOut": {
@@ -14750,6 +15535,56 @@
           "title": "ShippingUpdateRequest",
           "type": "object"
         },
+        "StatementOut": {
+          "properties": {
+            "balance": {
+              "title": "Balance",
+              "type": "string"
+            },
+            "credit_returns": {
+              "title": "Credit Returns",
+              "type": "string"
+            },
+            "items_count": {
+              "title": "Items Count",
+              "type": "integer"
+            },
+            "last_order_date": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Order Date"
+            },
+            "orders_count": {
+              "title": "Orders Count",
+              "type": "integer"
+            },
+            "paid": {
+              "title": "Paid",
+              "type": "string"
+            },
+            "total_supplied": {
+              "title": "Total Supplied",
+              "type": "string"
+            }
+          },
+          "required": [
+            "total_supplied",
+            "orders_count",
+            "last_order_date",
+            "items_count",
+            "paid",
+            "credit_returns",
+            "balance"
+          ],
+          "title": "StatementOut",
+          "type": "object"
+        },
         "StatusChangeRequest": {
           "properties": {
             "note": {
@@ -14819,6 +15654,301 @@
             "expires_in"
           ],
           "title": "StreamTokenOut",
+          "type": "object"
+        },
+        "SupplierIn": {
+          "properties": {
+            "address": {
+              "anyOf": [
+                {
+                  "maxLength": 2000,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Address"
+            },
+            "city": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "City"
+            },
+            "company": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Company"
+            },
+            "contact_name": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Contact Name"
+            },
+            "name": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            },
+            "notes": {
+              "anyOf": [
+                {
+                  "maxLength": 2000,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Notes"
+            },
+            "phone": {
+              "anyOf": [
+                {
+                  "maxLength": 31,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Phone"
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "title": "SupplierIn",
+          "type": "object"
+        },
+        "SupplierOut": {
+          "properties": {
+            "address": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Address"
+            },
+            "city": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "City"
+            },
+            "company": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Company"
+            },
+            "contact_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Contact Name"
+            },
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "notes": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Notes"
+            },
+            "phone": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Phone"
+            },
+            "statement": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/StatementOut"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "company",
+            "contact_name",
+            "phone",
+            "city",
+            "address",
+            "notes",
+            "status"
+          ],
+          "title": "SupplierOut",
+          "type": "object"
+        },
+        "SupplierPatch": {
+          "properties": {
+            "address": {
+              "anyOf": [
+                {
+                  "maxLength": 2000,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Address"
+            },
+            "city": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "City"
+            },
+            "company": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Company"
+            },
+            "contact_name": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Contact Name"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name"
+            },
+            "notes": {
+              "anyOf": [
+                {
+                  "maxLength": 2000,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Notes"
+            },
+            "phone": {
+              "anyOf": [
+                {
+                  "maxLength": 31,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Phone"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "pattern": "^(active|inactive)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          "title": "SupplierPatch",
           "type": "object"
         },
         "SwitchTenantRequest": {
@@ -37352,7 +38482,7 @@
               "schema": {
                 "anyOf": [
                   {
-                    "pattern": "^(?:adjustment|damage|purchase|reservation|reservation_release|return|return_reversal|sale|transfer_in|transfer_out)$",
+                    "pattern": "^(?:adjustment|damage|purchase|reservation|reservation_release|return|return_reversal|sale|supplier_return|supplier_return_reversal|transfer_in|transfer_out)$",
                     "type": "string"
                   },
                   {
@@ -53390,6 +54520,590 @@
           ]
         }
       },
+      "/api/v1/purchase-orders": {
+        "get": {
+          "operationId": "list_purchase_orders_api_v1_purchase_orders_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "supplier_id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Supplier Id"
+              }
+            },
+            {
+              "in": "query",
+              "name": "status",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "pattern": "^(draft|received|cancelled)$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Status"
+              }
+            },
+            {
+              "in": "query",
+              "name": "limit",
+              "required": false,
+              "schema": {
+                "default": 100,
+                "maximum": 500,
+                "minimum": 1,
+                "title": "Limit",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "default": 0,
+                "minimum": 0,
+                "title": "Offset",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/PoOut"
+                    },
+                    "title": "Response List Purchase Orders Api V1 Purchase Orders Get",
+                    "type": "array"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Purchase Orders",
+          "tags": [
+            "purchasing"
+          ]
+        },
+        "post": {
+          "operationId": "create_purchase_order_api_v1_purchase_orders_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoIn"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PoOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Create Purchase Order",
+          "tags": [
+            "purchasing"
+          ]
+        }
+      },
+      "/api/v1/purchase-orders/{order_id}": {
+        "get": {
+          "operationId": "get_purchase_order_api_v1_purchase_orders__order_id__get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "order_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Order Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PoOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get Purchase Order",
+          "tags": [
+            "purchasing"
+          ]
+        }
+      },
+      "/api/v1/purchase-orders/{order_id}/cancel": {
+        "post": {
+          "operationId": "cancel_purchase_order_api_v1_purchase_orders__order_id__cancel_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "order_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Order Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PoOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Cancel Purchase Order",
+          "tags": [
+            "purchasing"
+          ]
+        }
+      },
+      "/api/v1/purchase-orders/{order_id}/receive": {
+        "post": {
+          "operationId": "receive_purchase_order_api_v1_purchase_orders__order_id__receive_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "order_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Order Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PoOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Receive Purchase Order",
+          "tags": [
+            "purchasing"
+          ]
+        }
+      },
       "/api/v1/realtime/events": {
         "get": {
           "description": "Open a Server-Sent Events connection for realtime domain events.\n\nThe client MUST send a valid `Authorization: Bearer <token>` header.\nEvents are scoped to the tenant embedded in the token — cross-tenant\nleakage is structurally impossible.\n\n### Reconnecting after disconnect\nPass `?cursor=<last_id>` (the `id:` field from the last received frame)\nto resume without replaying already-processed events.\n\n### Selecting streams\n`?streams=message.events&streams=conversation.events`\nDefault: all four streams.",
@@ -55478,6 +57192,1308 @@
           ]
         }
       },
+      "/api/v1/supplier-payments": {
+        "get": {
+          "operationId": "list_supplier_payments_api_v1_supplier_payments_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "supplier_id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Supplier Id"
+              }
+            },
+            {
+              "in": "query",
+              "name": "purchase_order_id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Purchase Order Id"
+              }
+            },
+            {
+              "in": "query",
+              "name": "limit",
+              "required": false,
+              "schema": {
+                "default": 100,
+                "maximum": 500,
+                "minimum": 1,
+                "title": "Limit",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "default": 0,
+                "minimum": 0,
+                "title": "Offset",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/PaymentRowOut"
+                    },
+                    "title": "Response List Supplier Payments Api V1 Supplier Payments Get",
+                    "type": "array"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Supplier Payments",
+          "tags": [
+            "purchasing"
+          ]
+        },
+        "post": {
+          "operationId": "create_supplier_payment_api_v1_supplier_payments_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentIn"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PaymentOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Create Supplier Payment",
+          "tags": [
+            "purchasing"
+          ]
+        }
+      },
+      "/api/v1/supplier-returns": {
+        "get": {
+          "operationId": "list_supplier_returns_api_v1_supplier_returns_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "supplier_id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Supplier Id"
+              }
+            },
+            {
+              "in": "query",
+              "name": "status",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "pattern": "^(review|accepted|rejected)$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Status"
+              }
+            },
+            {
+              "in": "query",
+              "name": "limit",
+              "required": false,
+              "schema": {
+                "default": 100,
+                "maximum": 500,
+                "minimum": 1,
+                "title": "Limit",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "default": 0,
+                "minimum": 0,
+                "title": "Offset",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/ReturnOut"
+                    },
+                    "title": "Response List Supplier Returns Api V1 Supplier Returns Get",
+                    "type": "array"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Supplier Returns",
+          "tags": [
+            "purchasing"
+          ]
+        },
+        "post": {
+          "operationId": "create_supplier_return_api_v1_supplier_returns_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReturnIn"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ReturnOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Create Supplier Return",
+          "tags": [
+            "purchasing"
+          ]
+        }
+      },
+      "/api/v1/supplier-returns/{return_id}": {
+        "get": {
+          "operationId": "get_supplier_return_api_v1_supplier_returns__return_id__get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "return_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Return Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ReturnOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get Supplier Return",
+          "tags": [
+            "purchasing"
+          ]
+        }
+      },
+      "/api/v1/supplier-returns/{return_id}/accept": {
+        "post": {
+          "operationId": "accept_supplier_return_api_v1_supplier_returns__return_id__accept_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "return_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Return Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReturnAccept"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ReturnOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Accept Supplier Return",
+          "tags": [
+            "purchasing"
+          ]
+        }
+      },
+      "/api/v1/supplier-returns/{return_id}/reject": {
+        "post": {
+          "operationId": "reject_supplier_return_api_v1_supplier_returns__return_id__reject_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "return_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Return Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ReturnOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Reject Supplier Return",
+          "tags": [
+            "purchasing"
+          ]
+        }
+      },
+      "/api/v1/suppliers": {
+        "get": {
+          "operationId": "list_suppliers_api_v1_suppliers_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "status",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "pattern": "^(active|inactive)$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Status"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/SupplierOut"
+                    },
+                    "title": "Response List Suppliers Api V1 Suppliers Get",
+                    "type": "array"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Suppliers",
+          "tags": [
+            "purchasing"
+          ]
+        },
+        "post": {
+          "operationId": "create_supplier_api_v1_suppliers_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierIn"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SupplierOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Create Supplier",
+          "tags": [
+            "purchasing"
+          ]
+        }
+      },
+      "/api/v1/suppliers/{supplier_id}": {
+        "get": {
+          "operationId": "get_supplier_api_v1_suppliers__supplier_id__get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "supplier_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Supplier Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SupplierOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get Supplier",
+          "tags": [
+            "purchasing"
+          ]
+        },
+        "patch": {
+          "operationId": "update_supplier_api_v1_suppliers__supplier_id__patch",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "supplier_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Supplier Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierPatch"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SupplierOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Update Supplier",
+          "tags": [
+            "purchasing"
+          ]
+        }
+      },
       "/api/v1/tasks": {
         "get": {
           "description": "The tenant's tasks, newest first.",
@@ -57163,6 +60179,236 @@
           "summary": "My Profile",
           "tags": [
             "users"
+          ]
+        }
+      },
+      "/api/v1/variant-costs/{variant_id}": {
+        "get": {
+          "operationId": "get_variant_cost_api_v1_variant_costs__variant_id__get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "variant_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Variant Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CostOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get Variant Cost",
+          "tags": [
+            "purchasing"
+          ]
+        }
+      },
+      "/api/v1/variant-costs/{variant_id}/history": {
+        "get": {
+          "operationId": "get_variant_cost_history_api_v1_variant_costs__variant_id__history_get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "variant_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Variant Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "query",
+              "name": "limit",
+              "required": false,
+              "schema": {
+                "default": 100,
+                "maximum": 500,
+                "minimum": 1,
+                "title": "Limit",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/CostHistoryOut"
+                    },
+                    "title": "Response Get Variant Cost History Api V1 Variant Costs  Variant Id  History Get",
+                    "type": "array"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get Variant Cost History",
+          "tags": [
+            "purchasing"
           ]
         }
       },

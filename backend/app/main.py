@@ -101,6 +101,7 @@ from app.modules.platform.impersonation import router as platform_impersonation_
 from app.modules.platform.router import router as platform_module_router
 from app.modules.pos.router import router as pos_router
 from app.modules.privacy.router import router as privacy_router
+from app.modules.purchasing.router import router as purchasing_router
 from app.modules.realtime.router import router as realtime_router
 from app.modules.segments.router import router as segments_router
 from app.modules.website.router import router as website_router
@@ -484,6 +485,7 @@ def create_app() -> FastAPI:
         financial_router,
         pos_router,
         expenses_router,
+        purchasing_router,
     ):
         api_v1.include_router(router)
     app.include_router(api_v1)

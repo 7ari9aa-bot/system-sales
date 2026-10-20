@@ -15,13 +15,14 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, date, datetime
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.money import exact_money
 from app.modules.errors import ConflictError, NotFoundError, ValidationError
 from app.modules.expenses.models import (
     EXPENSE_PAYMENT_METHODS,
@@ -54,27 +55,6 @@ def _pos_service():
     from app.modules.pos.service import PosService
 
     return PosService
-
-
-_CENT = Decimal("0.01")
-_MAX_AMOUNT = Decimal("999999999.99")  # MONEY is Numeric(14, 2)
-
-
-def exact_money(value: object, field: str = "amount") -> Decimal:
-    """A strictly positive amount with at most 2 decimals. Never rounds."""
-    try:
-        amount = Decimal(str(value).strip())
-    except (InvalidOperation, ValueError, TypeError) as exc:
-        raise ValidationError(f"{field} must be a valid number") from exc
-    if not amount.is_finite():
-        raise ValidationError(f"{field} must be a finite number")
-    if amount != amount.quantize(_CENT):
-        raise ValidationError(f"{field} must have at most 2 decimal places")
-    if amount <= 0:
-        raise ValidationError(f"{field} must be greater than zero")
-    if amount > _MAX_AMOUNT:
-        raise ValidationError(f"{field} is too large")
-    return amount.quantize(_CENT)
 
 
 class NumberingService:
