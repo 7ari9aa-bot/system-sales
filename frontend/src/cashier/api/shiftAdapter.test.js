@@ -128,3 +128,17 @@ describe("Z-report cash columns (real shift: card refund + exchange echo)", () =
     expect(shiftFromApi(session, real).expensesCash).toBe(0);
   });
 });
+
+describe("expected cash of an OPEN shift", () => {
+  const open = { id: "aaaaaaaa-1", status: "OPEN", opened_at: "2026-10-20T09:00:00Z", opening_float: "100.00", cashier_user_id: "u" };
+  it("is derived from the report: opening + cash in - cash out", () => {
+    const report = { opening_float: "100.00", cash_in: "450.00", cash_out: "120.00", sales: { invoice_count: 1 }, by_method: [], cash_movements: [] };
+    expect(shiftFromApi(open, report).expected).toBe(430);
+  });
+  it("prefers the backend figure whenever it sends one", () => {
+    expect(shiftFromApi({ ...open, expected_cash: "999.00" }, { opening_float: "1", cash_in: "1", cash_out: "0" }).expected).toBe(999);
+  });
+  it("is 0 (not a guess) when there is no report yet", () => {
+    expect(shiftFromApi(open, null).expected).toBe(0);
+  });
+});

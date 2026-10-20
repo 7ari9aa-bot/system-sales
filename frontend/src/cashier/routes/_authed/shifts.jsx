@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Clock, Unlock } from "lucide-react";
+import { ArrowLeftRight, Clock, Unlock } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/cashier/components/ui/button";
 import { Image } from "@/cashier/components/ui/image";
@@ -8,13 +8,14 @@ import LedgerPage from "@/cashier/components/ui-kit/LedgerPage";
 import LedgerStats from "@/cashier/components/ui-kit/LedgerStats";
 import PageHero from "@/cashier/components/ui-kit/PageHero";
 import ShiftOpenDialog from "@/cashier/components/shifts/ShiftOpenDialog";
+import CashMovementDialog from "@/cashier/components/shifts/CashMovementDialog";
 import ShiftCloseDialog from "@/cashier/components/shifts/ShiftCloseDialog";
 import ShiftDetailsDialog from "@/cashier/components/shifts/ShiftDetailsDialog";
 import ShiftFilters from "@/cashier/components/shifts/ShiftFilters";
 import shiftColumns from "@/cashier/components/shifts/shiftColumns";
 import { BTN, BTN_PRIMARY, LEDGER, LEDGER_FOOTER, LEDGER_TOOLBAR } from "@/cashier/components/ui-kit/ledgerStyles";
 import { shiftsSummary } from "@/cashier/lib/storeOpsData";
-import { useClosePreview, useCloseShift, useHeldCount, useOpenShift, useShifts } from "@/cashier/api/useShifts";
+import { useCashMovement, useClosePreview, useCloseShift, useHeldCount, useOpenShift, useShifts } from "@/cashier/api/useShifts";
 import { useAuth } from "@/lib/AuthContext";
 import { fmtInt, fmtMoney, fmtTime } from "@/cashier/lib/format";
 
@@ -34,6 +35,8 @@ export default function ShiftsPage() {
   const { data: rows = [], isLoading, error: loadError, refetch } = useShifts({ employees: user?.id ? { [user.id]: user.full_name || user.email } : {} });
   const openShift = useOpenShift();
   const closeShift = useCloseShift();
+  const cashMovement = useCashMovement();
+  const [movementOpen, setMovementOpen] = useState(false);
   const [employeeFilter, setEmployeeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [openDialog, setOpenDialog] = useState(false);
@@ -56,6 +59,19 @@ export default function ShiftsPage() {
         onSuccess: () => {
           setOpenDialog(false);
           toast.success(`تم فتح الوردية برصيد ${fmtMoney(openingCash)}`);
+        },
+      },
+    );
+  }
+
+  function submitMovement({ direction, reason, amount, intent }) {
+    const shift = summary.open;
+    cashMovement.mutate(
+      { sessionId: shift.id, direction, reason, amount, intent },
+      {
+        onSuccess: () => {
+          setMovementOpen(false);
+          toast.success(`تم تسجيل الحركة ${fmtMoney(Number(amount))} على الوردية ${shift.number}`);
         },
       },
     );
@@ -84,6 +100,10 @@ export default function ShiftsPage() {
           <Button className={BTN} disabled={!summary.open} title={summary.open ? "" : "لا توجد وردية مفتوحة"} onClick={() => setDetails(summary.open)}>
             <Clock />
             الوردية الجارية
+          </Button>
+          <Button className={BTN} disabled={!summary.open} title={summary.open ? "" : "لا توجد وردية مفتوحة"} onClick={() => setMovementOpen(true)}>
+            <ArrowLeftRight />
+            حركة نقدية
           </Button>
           <Button className={BTN_PRIMARY} disabled={Boolean(summary.open)} onClick={() => setOpenDialog(true)}>
             <Unlock />
@@ -142,6 +162,15 @@ export default function ShiftsPage() {
         ]}
       />
 
+      <CashMovementDialog
+        open={movementOpen}
+        onOpenChange={(v) => { setMovementOpen(v); if (!v) cashMovement.reset(); }}
+        shift={summary.open}
+        expectedCash={summary.open?.expected}
+        onSubmit={submitMovement}
+        pending={cashMovement.isPending}
+        error={messageOf(cashMovement.error)}
+      />
       <ShiftOpenDialog open={openDialog} onOpenChange={(v) => { setOpenDialog(v); if (!v) openShift.reset(); }} onSubmit={submitOpen} pending={openShift.isPending} error={messageOf(openShift.error)} />
       <ShiftCloseDialog open={Boolean(closing)} onOpenChange={(v) => { if (!v) { setClosing(null); closeShift.reset(); } }} shift={closing} heldCount={heldCount.data ?? 0} preview={preview.data} previewLoading={preview.isLoading} onSubmit={submitClose} pending={closeShift.isPending} error={messageOf(closeShift.error) || (preview.error ? messageOf(preview.error) : null)} />
       <ShiftDetailsDialog open={Boolean(details)} onOpenChange={(open) => !open && setDetails(null)} shift={details} />

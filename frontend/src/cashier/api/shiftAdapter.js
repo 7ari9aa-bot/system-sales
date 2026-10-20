@@ -33,7 +33,15 @@ export const CASH_OTHER_OUT = ["pay_out", "cash_drop"];
 
 export function shiftFromApi(session, report = null, { employees = {} } = {}) {
   const closed = session.status === "CLOSED";
-  const expected = num(session.expected_cash);
+  // The backend only fills `expected_cash` when a shift is CLOSED. For an open shift derive it
+  // from the report with the backend's own formula (opening + cash in - cash out); this matched
+  // the stored expected_cash on every closed shift checked. No report -> 0, never a guess.
+  const expected =
+    session.expected_cash != null
+      ? num(session.expected_cash)
+      : report && report.opening_float != null
+        ? (parseMoney(report.opening_float).minor + parseMoney(report.cash_in ?? "0").minor - parseMoney(report.cash_out ?? "0").minor) / 100
+        : 0;
   const actual = closed ? num(session.counted_cash) : null;
   return {
     id: session.id,

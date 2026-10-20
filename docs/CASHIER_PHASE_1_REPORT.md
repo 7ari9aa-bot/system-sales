@@ -52,3 +52,29 @@ or concurrent registers (that is Phase 2 territory).
 7. Persist shop details (name, address, phone, receipt footer) in the backend settings?
 8. Legacy shifts with no counted cash: show as "not counted" or hide?
 9. Exchange drafts/notes kept only in the browser: keep or remove?
+
+## Phase 2, step 1: manual drawer movements (pay-in / pay-out / cash-drop)
+Wired the existing `POST /pos/sessions/{id}/cash-movements` to a "حركة نقدية" dialog on the shifts page.
+Backend untouched. Frontend tests 215 -> **231**, lint 0 errors, build passes.
+
+Browser evidence against the real backend (9/9): the button is disabled with no open shift; amounts typed
+in Arabic digits (٥٠) reach the wire as `50.00`; pay-in 50, pay-out 30, cash-drop 20 each produce exactly one
+request; withdrawing more than the drawer holds is stopped before any request; a double-click on confirm
+sends one request; closing counting exactly the expected 100 gives variance 0; Z shows cash expenses 50.00.
+
+Two defects found and fixed on the way:
+1. **"Expected cash" of an OPEN shift always showed 0.00** (the card on the shifts page and the new
+   dialog). The backend only stores `expected_cash` at close. It is now derived from the shift report with
+   the backend's own formula (opening + cash in - cash out), which matched the stored figure on 27 of 27
+   closed shifts. A backend-sent value always wins.
+2. A fast double-click could send the confirm request twice (the backend's idempotency key still booked it
+   once, but the UI must not rely on that). Now guarded synchronously.
+
+Not done, on purpose: the **expenses screen stays mock**. The ledger is append-only with four reasons
+(pay_in, pay_out, cash_drop, float_adjust), while the screen edits and deletes expenses and keeps a free
+category, description, employee and non-cash payment. Wiring it as-is would let a user "delete" an expense
+the drawer already paid. It needs a product decision (see below).
+
+Decision needed: (a) expenses = read-only list of `pay_out` rows with a reference note, edits made by an
+opposite movement; (b) build a real `expenses` backend module (categories, receipts, edit/void with audit);
+(c) keep the expenses screen out of Phase 2.
