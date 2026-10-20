@@ -78,11 +78,15 @@ const AuthRoutes = () => (
 
 const DashboardRoutes = () => (
   <Routes>
-    {CASHIER_PREVIEW && <Route path="/cashier/*" element={<CashierApp />} />}
-    <Route element={<ProtectedRoute />}>
-      {/* وحدة الكاشير الجديدة: لها هيكلها الخاص (قائمة جانبية وشريط علوي) فلا تُلَفّ بـ DashboardLayout. */}
-      {!CASHIER_PREVIEW && <Route path="/cashier/*" element={<CashierApp />} />}
+    {CASHIER_PREVIEW && (
       <Route element={<DashboardLayout />}>
+        <Route path="/cashier/*" element={<CashierApp />} />
+      </Route>
+    )}
+    <Route element={<ProtectedRoute />}>
+      <Route element={<DashboardLayout />}>
+        {/* الكاشير داخل نفس الداشبورد والسايدبار الرئيسي. */}
+        {!CASHIER_PREVIEW && <Route path="/cashier/*" element={<CashierApp />} />}
         <Route path="/dashboard" element={<Home />} />
         <Route path="/inbox" element={<Inbox />} />
         <Route path="/customers" element={<Customers />} />

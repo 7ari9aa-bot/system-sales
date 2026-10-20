@@ -18,7 +18,18 @@ import {
   ScanLine,
   CirclePlus,
   MessageSquareText,
+  Receipt,
+  RotateCcw,
+  RefreshCw,
+  Printer,
+  Truck,
+  ShoppingBag,
+  Undo2,
+  Wallet,
+  ReceiptText,
+  ClipboardList,
 } from "lucide-react";
+import { cashierNavGroups } from "@/cashier/components/layout/navItems";
 import { useI18n, useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/AuthContext";
@@ -78,7 +89,7 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
     {
       section: t("nav.sell"),
       items: [
-        { to: "/pos", label: t("nav.pos"), icon: ScanLine },
+        { to: "/cashier/pos", base: "/cashier", label: t("nav.pos"), icon: ScanLine, cashierChildren: true },
         { to: "/products", label: t("nav.products"), icon: Package },
         { to: "/products/new", label: t("nav.addProduct"), icon: CirclePlus },
         { to: "/inventory", label: t("nav.inventory"), icon: Boxes, badge: stockIssues },
@@ -145,7 +156,7 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
               )}
               <div className="space-y-0.5">
                 {group.items.map((item) => {
-                  const active = item.end ? pathname === item.to : pathname.startsWith(item.to);
+                  const active = item.end ? pathname === item.to : pathname.startsWith(item.base || item.to);
                   const Icon = item.icon;
                   const section = new URLSearchParams(search).get("s");
                   return (
@@ -194,6 +205,49 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
                                 <ChildIcon className={cn("h-[17px] w-[17px] shrink-0", childActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground")} />
                                 <span className="flex-1 min-w-0 truncate text-start">{child.label}</span>
                               </Link>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                      {!collapsed && item.cashierChildren && active ? (
+                        <div className="ms-5 mt-0.5 mb-1 space-y-2 border-s border-sidebar-border ps-2">
+                          {cashierNavGroups.map((g) => {
+                            const groupActive = g.items.some((c) => pathname === `/cashier${c.to}` || pathname.startsWith(`/cashier${c.to}/`));
+                            return (
+                              <div key={g.title}>
+                                <Link
+                                  to={`/cashier${g.items[0].to}`}
+                                  onClick={onClose}
+                                  className={cn(
+                                    "block px-3 pb-0.5 pt-1 text-[10.5px] font-semibold transition-colors",
+                                    groupActive ? "text-primary" : "text-muted-foreground/70 hover:text-foreground"
+                                  )}
+                                >
+                                  {g.title}
+                                </Link>
+                                {groupActive && g.items.map((child) => {
+                                  const full = `/cashier${child.to}`;
+                                  const childActive = pathname === full || pathname.startsWith(`${full}/`);
+                                  const ChildIcon = child.icon;
+                                  return (
+                                    <Link
+                                      key={child.to}
+                                      to={full}
+                                      onClick={onClose}
+                                      aria-current={childActive ? "page" : undefined}
+                                      className={cn(
+                                        "group flex items-center gap-3 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors",
+                                        childActive
+                                          ? "bg-primary/10 font-semibold text-primary"
+                                          : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                                      )}
+                                    >
+                                      <ChildIcon className={cn("h-[17px] w-[17px] shrink-0", childActive ? "text-primary" : "text-muted-foreground group-hover:text-sidebar-accent-foreground")} />
+                                      <span className="flex-1 min-w-0 truncate text-start">{child.label}</span>
+                                    </Link>
+                                  );
+                                })}
+                              </div>
                             );
                           })}
                         </div>
