@@ -19,6 +19,7 @@ CUSTOMER_TOOLS = [
     "get_product_photos",
     "find_product_by_image",
     "get_store_info",
+    "find_support_playbook",
     "handover_to_human",
 ]
 # `search_knowledge` is retired from this agent (merged into get_store_info's
@@ -63,6 +64,14 @@ _DEFINITION = AgentDefinition(
             description=(
                 "Store facts: hours, branches, shipping, payment, returns; "
                 "ranked by the customer's question when one is given"
+            ),
+            required=False,
+        ),
+        AgentCapability(
+            name="find_support_playbook",
+            description=(
+                "The store's written steps for a recurring customer problem, "
+                "explained by the agent, never executed"
             ),
             required=False,
         ),

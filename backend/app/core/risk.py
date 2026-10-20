@@ -120,6 +120,7 @@ _REGISTRY: dict[str, RiskLevel] = {
     # the AI tool registry is the authority, this module mirrors its levels)
     "search_knowledge": RiskLevel.LOW,
     "get_store_info": RiskLevel.LOW,
+    "find_support_playbook": RiskLevel.LOW,
     "get_product_details": RiskLevel.LOW,
     "handover_to_human": RiskLevel.MEDIUM,
     # Platform actions the chain will govern in later waves
