@@ -116,6 +116,11 @@ GUARDED_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 #: duplicate execution would be harmful; it is not a default.
 IDEMPOTENT_PATHS: tuple[str, ...] = (
     "/api/v1/orders",  # create order, capture/reconcile payment, refund, cancel
+    # POS money path: sell, refund, return, exchange, cash-movement. A cashier's
+    # double tap, or a client retry after the response was lost on a flaky shop
+    # network, used to run the command twice: two sales, two charges, the shelf
+    # decremented twice. Opt-in via the header, so existing clients are unchanged.
+    "/api/v1/pos",
     "/api/v1/billing",  # start-trial, usage metering (money)
     "/api/v1/marketing/campaigns",  # campaign send / broadcast
     "/api/v1/marketing/touchpoints",  # outbound touchpoint
