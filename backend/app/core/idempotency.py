@@ -121,6 +121,8 @@ IDEMPOTENT_PATHS: tuple[str, ...] = (
     # network, used to run the command twice: two sales, two charges, the shelf
     # decremented twice. Opt-in via the header, so existing clients are unchanged.
     "/api/v1/pos",
+    # A double tap on Save must not book the expense (and its drawer pay-out) twice.
+    "/api/v1/expenses",
     "/api/v1/billing",  # start-trial, usage metering (money)
     "/api/v1/marketing/campaigns",  # campaign send / broadcast
     "/api/v1/marketing/touchpoints",  # outbound touchpoint

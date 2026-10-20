@@ -73,6 +73,7 @@ from app.modules.customers.router import router as customers_router
 from app.modules.decisions.router import router as decisions_router
 from app.modules.effects.router import router as effects_router
 from app.modules.evidence.router import router as evidence_router
+from app.modules.expenses.router import router as expenses_router
 from app.modules.financial.router import router as financial_router
 from app.modules.identity.router import hierarchy_router as identity_hierarchy_router
 from app.modules.identity.router import router as identity_router
@@ -482,6 +483,7 @@ def create_app() -> FastAPI:
         effects_router,
         financial_router,
         pos_router,
+        expenses_router,
     ):
         api_v1.include_router(router)
     app.include_router(api_v1)

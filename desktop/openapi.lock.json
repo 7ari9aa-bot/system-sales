@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 379,
-    "sha256": "7d6eefd7e88896225d9c596bddd176445fbc634db45d7a39d8cc618052c9e611",
-    "typed_operations": 225
+    "operations": 385,
+    "sha256": "06c14ac5549a7d003aabf0a6467009c41931e3b389ce72f7c299824099beca6b",
+    "typed_operations": 231
   },
   "spec": {
     "components": {
@@ -3337,6 +3337,44 @@
             "amount"
           ],
           "title": "CashMovementRequest",
+          "type": "object"
+        },
+        "CategoryOut": {
+          "properties": {
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "is_active": {
+              "title": "Is Active",
+              "type": "boolean"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "is_active"
+          ],
+          "title": "CategoryOut",
+          "type": "object"
+        },
+        "CategoryRequest": {
+          "properties": {
+            "name": {
+              "maxLength": 80,
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "title": "CategoryRequest",
           "type": "object"
         },
         "ChosenRetentionPolicyOut": {
@@ -7434,6 +7472,226 @@
             "executed_at"
           ],
           "title": "ExecutionResultOut",
+          "type": "object"
+        },
+        "ExpenseListOut": {
+          "properties": {
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/ExpenseOut"
+              },
+              "title": "Items",
+              "type": "array"
+            },
+            "totals": {
+              "$ref": "#/components/schemas/ExpenseTotalsOut"
+            }
+          },
+          "required": [
+            "items",
+            "totals"
+          ],
+          "title": "ExpenseListOut",
+          "type": "object"
+        },
+        "ExpenseOut": {
+          "properties": {
+            "amount": {
+              "title": "Amount",
+              "type": "string"
+            },
+            "category_id": {
+              "title": "Category Id",
+              "type": "string"
+            },
+            "created_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created At"
+            },
+            "created_by_user_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created By User Id"
+            },
+            "description": {
+              "title": "Description",
+              "type": "string"
+            },
+            "expense_date": {
+              "title": "Expense Date",
+              "type": "string"
+            },
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "number": {
+              "title": "Number",
+              "type": "string"
+            },
+            "payment_method": {
+              "title": "Payment Method",
+              "type": "string"
+            },
+            "session_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Id"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            },
+            "void_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Void Reason"
+            },
+            "voided_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Voided At"
+            }
+          },
+          "required": [
+            "id",
+            "number",
+            "category_id",
+            "description",
+            "amount",
+            "payment_method",
+            "expense_date",
+            "session_id",
+            "status",
+            "voided_at",
+            "void_reason",
+            "created_at",
+            "created_by_user_id"
+          ],
+          "title": "ExpenseOut",
+          "type": "object"
+        },
+        "ExpenseRequest": {
+          "properties": {
+            "amount": {
+              "maxLength": 20,
+              "minLength": 1,
+              "title": "Amount",
+              "type": "string"
+            },
+            "category_id": {
+              "format": "uuid",
+              "title": "Category Id",
+              "type": "string"
+            },
+            "description": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Description",
+              "type": "string"
+            },
+            "expense_date": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expense Date"
+            },
+            "payment_method": {
+              "pattern": "^(cash|card|wallet|bank_transfer)$",
+              "title": "Payment Method",
+              "type": "string"
+            },
+            "session_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Id"
+            }
+          },
+          "required": [
+            "category_id",
+            "description",
+            "amount",
+            "payment_method"
+          ],
+          "title": "ExpenseRequest",
+          "type": "object"
+        },
+        "ExpenseTotalsOut": {
+          "properties": {
+            "by_category": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "title": "By Category",
+              "type": "object"
+            },
+            "by_method": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "title": "By Method",
+              "type": "object"
+            },
+            "count": {
+              "title": "Count",
+              "type": "integer"
+            },
+            "total": {
+              "title": "Total",
+              "type": "string"
+            }
+          },
+          "required": [
+            "total",
+            "count",
+            "by_method",
+            "by_category"
+          ],
+          "title": "ExpenseTotalsOut",
           "type": "object"
         },
         "FactCreate": {
@@ -17177,6 +17435,21 @@
             "token"
           ],
           "title": "VerifyEmailRequest",
+          "type": "object"
+        },
+        "VoidRequest": {
+          "properties": {
+            "reason": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Reason",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason"
+          ],
+          "title": "VoidRequest",
           "type": "object"
         },
         "WebchatInbound": {
@@ -32738,6 +33011,746 @@
           "summary": "Get Set",
           "tags": [
             "evidence"
+          ]
+        }
+      },
+      "/api/v1/expenses": {
+        "get": {
+          "operationId": "list_expenses_api_v1_expenses_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "date_from",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Date From"
+              }
+            },
+            {
+              "in": "query",
+              "name": "date_to",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Date To"
+              }
+            },
+            {
+              "in": "query",
+              "name": "category_id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Category Id"
+              }
+            },
+            {
+              "in": "query",
+              "name": "payment_method",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "pattern": "^(cash|card|wallet|bank_transfer)$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payment Method"
+              }
+            },
+            {
+              "in": "query",
+              "name": "status",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "pattern": "^(posted|voided)$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Status"
+              }
+            },
+            {
+              "in": "query",
+              "name": "limit",
+              "required": false,
+              "schema": {
+                "default": 100,
+                "maximum": 500,
+                "minimum": 1,
+                "title": "Limit",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "default": 0,
+                "minimum": 0,
+                "title": "Offset",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ExpenseListOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Expenses",
+          "tags": [
+            "expenses"
+          ]
+        },
+        "post": {
+          "operationId": "create_expense_api_v1_expenses_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpenseRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ExpenseOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Create Expense",
+          "tags": [
+            "expenses"
+          ]
+        }
+      },
+      "/api/v1/expenses/categories": {
+        "get": {
+          "operationId": "list_categories_api_v1_expenses_categories_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/CategoryOut"
+                    },
+                    "title": "Response List Categories Api V1 Expenses Categories Get",
+                    "type": "array"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Categories",
+          "tags": [
+            "expenses"
+          ]
+        },
+        "post": {
+          "operationId": "create_category_api_v1_expenses_categories_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CategoryOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Create Category",
+          "tags": [
+            "expenses"
+          ]
+        }
+      },
+      "/api/v1/expenses/{expense_id}": {
+        "get": {
+          "operationId": "get_expense_api_v1_expenses__expense_id__get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "expense_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Expense Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ExpenseOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get Expense",
+          "tags": [
+            "expenses"
+          ]
+        }
+      },
+      "/api/v1/expenses/{expense_id}/void": {
+        "post": {
+          "operationId": "void_expense_api_v1_expenses__expense_id__void_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "expense_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Expense Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ExpenseOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Void Expense",
+          "tags": [
+            "expenses"
           ]
         }
       },
