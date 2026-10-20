@@ -54,6 +54,8 @@ export const PAYMENT_METHODS = {
   card: { label: "بطاقة", tone: "info" },
   wallet: { label: "محفظة إلكترونية", tone: "violet" },
   credit: { label: "آجل", tone: "warning" },
+  bank_transfer: { label: "تحويل بنكي", tone: "info" },
+  mixed: { label: "مقسّم", tone: "violet" },
 };
 
 export const INVENTORY_STATUS = {

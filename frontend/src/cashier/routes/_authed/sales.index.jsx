@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
 import { Download, FilePlus2 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/cashier/components/ui/button";
 import SalesLogFilters from "@/cashier/components/sales/SalesLogFilters";
@@ -9,28 +9,21 @@ import LogBadge from "@/cashier/components/sales/LogBadge";
 import InvoiceRowActions from "@/cashier/components/sales/InvoiceRowActions";
 import OperationsLogDialog from "@/cashier/components/sales/OperationsLogDialog";
 import ReceiptDialog from "@/cashier/components/pos/ReceiptDialog";
-import { invoices } from "@/cashier/lib/mockData";
+import { useAuth } from "@/lib/AuthContext";
+import { useShifts } from "@/cashier/api/useShifts";
+import { useShiftSales } from "@/cashier/api/usePosSale";
+import { filterRows, totalsOf } from "@/cashier/api/salesLog";
 import { fmtDateTime, fmtInt, fmtMoney, INVOICE_STATUS, PAYMENT_METHODS } from "@/cashier/lib/format";
-import { invoiceToReceipt } from "@/cashier/lib/receipt";
 import { exportCsv } from "@/cashier/lib/exportCsv";
 
 
 // الفلاتر الافتراضية: آخر أسبوع. «مسح الفلاتر» يرجع لهذه القيم.
-const DEFAULT_FILTERS = { from: "2026-10-13", to: "2026-10-19", term: "", payment: "", status: "", employee: "" };
+const DEFAULT_FILTERS = { from: "", to: "", term: "", payment: "", status: "" };
 
 const BTN =
   "h-10 gap-2 rounded-[10px] border border-[#e3d6c2] bg-white px-[18px] text-[13px] font-bold text-[#0F172A] shadow-none transition-[background-color,box-shadow,border-color] duration-150 hover:border-[#F97316] hover:bg-[#FFF4E8] hover:text-[#0F172A] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#F97316] focus-visible:ring-0 active:shadow-[inset_0_2px_4px_rgba(15,23,42,.15)]";
 const BTN_PRIMARY =
   "h-10 gap-2 rounded-[10px] border border-[#F97316] bg-[#F97316] px-[18px] text-[13px] font-bold text-white shadow-none transition-[background-color,box-shadow,border-color] duration-150 hover:border-[#F97316] hover:bg-[#ea6a0a] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#F97316] focus-visible:ring-0 active:shadow-[inset_0_2px_4px_rgba(15,23,42,.15)]";
-
-function matchesTerm(inv, raw) {
-  const term = raw.trim();
-  if (!term) return true;
-  const lower = term.toLowerCase();
-  if (inv.number.toLowerCase().includes(lower)) return true;
-  if (inv.items.some((it) => String(it.barcode).includes(term) || String(it.code).toLowerCase().includes(lower))) return true;
-  return inv.customerName.includes(term) || inv.customerPhone.includes(term);
-}
 
 export default function SalesLogPage() {
   const navigate = useNavigate();
@@ -38,27 +31,19 @@ export default function SalesLogPage() {
   const [logInvoice, setLogInvoice] = useState(null);
   const [receipt, setReceipt] = useState(null);
 
-  const rows = invoices.filter((inv) => {
-    const day = inv.date.slice(0, 10);
-    if (filters.from && day < filters.from) return false;
-    if (filters.to && day > filters.to) return false;
-    if (filters.payment && inv.payment !== filters.payment) return false;
-    if (filters.status && inv.status !== filters.status) return false;
-    if (filters.employee && inv.cashier !== filters.employee) return false;
-    return matchesTerm(inv, filters.term);
-  });
+  const { user } = useAuth();
+  const shiftsQuery = useShifts({ employees: user?.id ? { [user.id]: user.full_name || user.email } : {} });
+  const shifts = shiftsQuery.data ?? [];
+  const [pickedShift, setPickedShift] = useState("");
+  const shiftId = pickedShift || shifts[0]?.id || "";
+  const salesQuery = useShiftSales(shiftId, { cashier: shifts.find((x) => x.id === shiftId)?.employeeId === user?.id ? (user.full_name || user.email || "") : "" });
 
-  const activeCount =
-    (filters.from !== DEFAULT_FILTERS.from ? 1 : 0) +
-    (filters.to !== DEFAULT_FILTERS.to ? 1 : 0) +
-    ["term", "payment", "status", "employee"].filter((k) => filters[k] !== "").length;
-
-  const totals = rows.reduce((acc, inv) => ({ total: acc.total + inv.total, pieces: acc.pieces + inv.pieces }), {
-    total: 0,
-    pieces: 0,
-  });
+  const rows = useMemo(() => filterRows(salesQuery.data ?? [], filters), [salesQuery.data, filters]);
+  const activeCount = ["from", "to", "term", "payment", "status"].filter((k) => filters[k] !== "").length;
+  const totals = totalsOf(rows);
 
   const openInvoice = (inv) => navigate(`/cashier/sales/${inv.id}`);
+  const shift = shifts.find((x) => x.id === shiftId);
 
   const columns = [
     {
@@ -86,7 +71,7 @@ export default function SalesLogPage() {
       key: "payment",
       header: "طريقة الدفع",
       render: (inv) => (
-        <LogBadge label={PAYMENT_METHODS[inv.payment]?.label ?? inv.payment} tone={PAYMENT_METHODS[inv.payment]?.tone} />
+        <LogBadge label={inv.payment === "mixed" ? inv.paymentLabel : (PAYMENT_METHODS[inv.payment]?.label ?? inv.payment)} tone={PAYMENT_METHODS[inv.payment]?.tone} />
       ),
     },
     {
@@ -108,8 +93,7 @@ export default function SalesLogPage() {
             invoice={inv}
             onView={() => openInvoice(inv)}
             onPrint={() => {
-              setReceipt(invoiceToReceipt(inv));
-              toast.info(`تم تجهيز ${inv.number} للطباعة`);
+              setReceipt(inv.receipt);
             }}
             onReturn={() => navigate(`/cashier/returns?invoice=${encodeURIComponent(inv.number)}`)}
             onLog={() => setLogInvoice(inv)}
@@ -125,7 +109,7 @@ export default function SalesLogPage() {
         <div>
           <h1 className="text-[26px] font-extrabold leading-[1.2] tracking-[-.03em] sm:text-[32px]">سجل المبيعات</h1>
           <p className="mt-1.5 text-[13px] text-[#6b6358]">
-            كل فواتير البيع مع البحث والفلاتر — اضغط أي صف لعرض تفاصيل الفاتورة
+            فواتير الوردية المختارة مع البحث والفلاتر. اضغط أي صف لعرض التفاصيل
           </p>
         </div>
         <div className="flex flex-wrap gap-2.5">
@@ -156,16 +140,13 @@ export default function SalesLogPage() {
           className={BTN}
           onClick={() => {
             exportCsv(
-              `سجل-المبيعات-${filters.from}-${filters.to}.csv`,
+              `سجل-المبيعات-${shift?.number ?? "وردية"}.csv`,
               [
                 { header: "رقم الفاتورة", key: "number" },
                 { header: "التاريخ", key: "date" },
-                { header: "العميل", key: "customerName" },
-                { header: "الهاتف", key: "customerPhone" },
                 { header: "عدد القطع", key: "pieces" },
                 { header: "الإجمالي", key: "total" },
-                { header: "طريقة الدفع", value: (inv) => PAYMENT_METHODS[inv.payment].label },
-                { header: "الكاشير", key: "cashier" },
+                { header: "طريقة الدفع", value: (inv) => inv.paymentLabel },
                 { header: "الحالة", value: (inv) => INVOICE_STATUS[inv.status]?.label ?? inv.status },
               ],
               rows,
@@ -176,6 +157,24 @@ export default function SalesLogPage() {
           <Download className="h-4 w-4" />
           تصدير Excel
         </Button>
+      </div>
+
+      <div className="mb-3 flex flex-wrap items-center gap-2 text-[13px]">
+        <label htmlFor="sales-shift" className="font-semibold text-[#6b6358]">الوردية</label>
+        <select
+          id="sales-shift"
+          value={shiftId}
+          onChange={(e) => setPickedShift(e.target.value)}
+          className="h-9 rounded-lg border border-[#e3d6c2] bg-white px-3 text-[13px]"
+        >
+          {shifts.map((x) => (
+            <option key={x.id} value={x.id}>
+              {x.number} • {fmtDateTime(x.date)} • {x.status === "open" ? "مفتوحة" : "مغلقة"}
+            </option>
+          ))}
+        </select>
+        {salesQuery.isError ? <span role="alert" className="font-semibold text-rose-600">تعذّر تحميل فواتير هذه الوردية</span> : null}
+        {salesQuery.isLoading || shiftsQuery.isLoading ? <span role="status" className="text-[#7a6f61]">جارٍ التحميل…</span> : null}
       </div>
 
       <SalesLogFilters

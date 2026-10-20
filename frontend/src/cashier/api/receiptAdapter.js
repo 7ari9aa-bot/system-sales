@@ -9,6 +9,12 @@ import { parseMoney } from "./money";
 const num = (wire) => (wire === null || wire === undefined ? 0 : parseMoney(wire).minor / 100);
 const LABELS = { cash: "نقدي", card: "بطاقة", wallet: "محفظة إلكترونية", bank_transfer: "تحويل بنكي" };
 
+/** paid | partial_return | returned, from what was actually handed back (per line), not one flag. */
+export function statusOf(order, items) {
+  if (order?.fully_returned) return "returned";
+  return items.some((i) => (i.returnedQty ?? 0) > 0) ? "partial_return" : "paid";
+}
+
 export function receiptFromApi(data, { cashier = "", customerName = "", names = {} } = {}) {
   const { receipt, order, lines = [], tenders = [] } = data;
   const payments = tenders.map((t) => ({ method: t.method, label: LABELS[t.method] ?? t.method, amount: num(t.amount) }));
@@ -54,6 +60,6 @@ export function receiptFromApi(data, { cashier = "", customerName = "", names = 
     payments,
     paymentLabel: payments.map((p) => p.label).join(" + "),
     note: "",
-    status: order.fully_returned ? "returned" : "paid",
+    status: statusOf(order, items),
   };
 }

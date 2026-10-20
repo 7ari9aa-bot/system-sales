@@ -3,11 +3,14 @@ import { Button } from "@/cashier/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/cashier/components/ui/dialog";
 import StatusBadge from "@/cashier/components/ui-kit/StatusBadge";
 import { fmtMoney } from "@/cashier/lib/format";
-import { shop } from "@/cashier/lib/mockData";
+import { useAuth } from "@/lib/AuthContext";
+import { receiptHeader } from "@/cashier/lib/shopProfile";
 import FlipButtons from "@/cashier/components/pos/FlipButtons";
 
 // معاينة الفاتورة الحرارية ٨٠ مم قبل الطباعة.
 export default function ReceiptDialog({ open, onOpenChange, receipt, onNewSale, onEdit, onPrev, onNext, prevDisabled, nextDisabled }) {
+  const { user } = useAuth();
+  const shop = receiptHeader(user?.tenants?.length === 1 ? user.tenants[0] : null);
   if (!receipt) return null;
 
   return (
@@ -21,9 +24,9 @@ export default function ReceiptDialog({ open, onOpenChange, receipt, onNewSale, 
           <div className="print-area mx-auto w-full max-w-[320px] rounded-lg bg-white p-4 font-body text-[12px] leading-relaxed text-black shadow-sm">
             <div className="text-center">
               <p className="font-heading text-base font-extrabold">{shop.name}</p>
-              <p>{shop.branch}</p>
-              <p className="num">{shop.phone}</p>
-              <p className="num">الرقم الضريبي: {shop.taxId}</p>
+              {shop.branch ? <p>{shop.branch}</p> : null}
+              {shop.phone ? <p className="num">{shop.phone}</p> : null}
+              {shop.taxId ? <p className="num">الرقم الضريبي: {shop.taxId}</p> : null}
             </div>
             <div className="my-3 border-t border-dashed border-black/40" />
             <div className="flex justify-between">

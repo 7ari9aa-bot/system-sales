@@ -2,8 +2,11 @@ import { Search, X } from "lucide-react";
 import { Input } from "@/cashier/components/ui/input";
 import { Label } from "@/cashier/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/cashier/components/ui/select";
-import { employees } from "@/cashier/lib/mockData";
 import { INVOICE_STATUS, PAYMENT_METHODS } from "@/cashier/lib/format";
+
+// ما يدعمه الخادم فقط: «مقسّم» لفواتير الدفع المتعدد، وبدون «آجل» و«معلقة» و«ملغاة» (لا توجد كإيصالات بيع).
+export const SALES_PAYMENT_OPTIONS = { cash: PAYMENT_METHODS.cash, card: PAYMENT_METHODS.card, wallet: PAYMENT_METHODS.wallet, mixed: { label: "مقسّم (أكثر من طريقة)" } };
+export const SALES_STATUS_OPTIONS = { paid: INVOICE_STATUS.paid, partial_return: INVOICE_STATUS.partial_return, returned: INVOICE_STATUS.returned };
 import { cn } from "@/cashier/lib/utils";
 
 const LABEL = "mb-[5px] block text-[11px] font-semibold text-[#7a6f61]";
@@ -13,7 +16,7 @@ const TRIGGER =
   "num h-[38px] rounded-[9px] border border-[#e3d6c2] bg-[#FFFDFA] px-3 text-[13px] text-[#0F172A] shadow-none transition-[border-color,box-shadow] duration-150 hover:border-[#F97316] focus:border-[#F97316] focus:ring-2 focus:ring-[#F97316]/30 focus:ring-offset-0 data-[state=open]:border-[#F97316] [&>svg]:h-[15px] [&>svg]:w-[15px] [&>svg]:text-[#9a8e7d] [&>svg]:opacity-100";
 
 // شريط تحكّم ملتصق بحد الجدول العلوي: بحث برقم الفاتورة أو الباركود، الفترة، طريقة الدفع، حالة الفاتورة، الموظف.
-export default function SalesLogFilters({ filters, onChange, onReset, activeCount = 0 }) {
+export default function SalesLogFilters({ filters, onChange, onReset, activeCount = 0, paymentOptions = SALES_PAYMENT_OPTIONS, statusOptions = SALES_STATUS_OPTIONS }) {
   const set = (patch) => onChange({ ...filters, ...patch });
 
   return (
@@ -31,7 +34,7 @@ export default function SalesLogFilters({ filters, onChange, onReset, activeCoun
             id="sales-search"
             value={filters.term}
             onChange={(e) => set({ term: e.target.value })}
-            placeholder="INV-2026-0060 • باركود القطعة • اسم العميل"
+            placeholder="رقم الفاتورة POS-… • كود الصنف • اسم الصنف"
             className={cn(FIELD, "pr-9 placeholder:text-[#8a7f70]")}
           />
         </div>
@@ -66,7 +69,7 @@ export default function SalesLogFilters({ filters, onChange, onReset, activeCoun
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">كل الطرق</SelectItem>
-            {Object.entries(PAYMENT_METHODS).map(([key, m]) => (
+            {Object.entries(paymentOptions).map(([key, m]) => (
               <SelectItem key={key} value={key}>
                 {m.label}
               </SelectItem>
@@ -83,26 +86,9 @@ export default function SalesLogFilters({ filters, onChange, onReset, activeCoun
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">كل الحالات</SelectItem>
-            {Object.entries(INVOICE_STATUS).map(([key, s]) => (
+            {Object.entries(statusOptions).map(([key, s]) => (
               <SelectItem key={key} value={key}>
                 {s.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div>
-        <Label className={LABEL}>الموظف</Label>
-        <Select value={filters.employee || "all"} onValueChange={(v) => set({ employee: v === "all" ? "" : v })}>
-          <SelectTrigger className={TRIGGER}>
-            <SelectValue placeholder="كل الموظفين" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">كل الموظفين</SelectItem>
-            {employees.map((e) => (
-              <SelectItem key={e.id} value={e.name}>
-                {e.name}
               </SelectItem>
             ))}
           </SelectContent>

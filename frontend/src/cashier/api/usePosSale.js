@@ -6,6 +6,7 @@ import { clampQty } from "./checkout";
 import { createSaleSession } from "./saleSession";
 import { receiptFromApi } from "./receiptAdapter";
 import { heldFromApi, holdPayload, restoreHeld } from "./heldCarts";
+import { rowFromDetail, saleReceipts } from "./salesLog";
 import { fromMinor } from "./money";
 import { discountMinor, latestOnly } from "./latest";
 
@@ -176,4 +177,25 @@ export function usePosSale({ sessionId, catalog = [], onSold, loadFreshCatalog }
   const scan = useCallback((value) => posApi.scan(sessionId, { identifierType: "barcode", value }), [sessionId]);
 
   return { lines, scan, hold, restore, quote, discountTotal, invoiceDiscount, setInvoiceDiscount, add, setQty, stepQty, setLineDiscount, remove, clear, pay, paying, payError, searchCatalog };
+}
+
+/**
+ * Every sale receipt of one shift, completed with its detail (total, pieces, payment, return state).
+ * The list endpoint only has number/time/returned units, so details are read a few at a time.
+ */
+export function useShiftSales(sessionId, { cashier = "" } = {}) {
+  return useQuery({
+    queryKey: ["cashier", "shift-sales", sessionId, cashier],
+    enabled: Boolean(sessionId),
+    staleTime: 10_000,
+    queryFn: async () => {
+      const list = saleReceipts((await posApi.receipts(sessionId)) ?? []);
+      const rows = [];
+      for (let i = 0; i < list.length; i += 6) {
+        const batch = await Promise.all(list.slice(i, i + 6).map((r) => posApi.receipt(r.id)));
+        rows.push(...batch.map((d) => rowFromDetail(d, { cashier })));
+      }
+      return rows.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    },
+  });
 }
