@@ -454,15 +454,17 @@ async def _get_store_info(session: AsyncSession, tenant_id: uuid.UUID) -> dict:
     """
     from app.modules.ai.models import KnowledgeItem
 
+    _LIMIT = 30
     rows = (
         await session.execute(
-            select(KnowledgeItem.title, KnowledgeItem.content)
+            select(KnowledgeItem.title, KnowledgeItem.content, KnowledgeItem.updated_at)
             .where(
                 KnowledgeItem.tenant_id == tenant_id,
                 KnowledgeItem.visibility == "customer_facing",
             )
             .order_by(KnowledgeItem.created_at.asc())
-            .limit(30)
+            # One past the cap, so "there was more" is known, not guessed.
+            .limit(_LIMIT + 1)
         )
     ).all()
     # Token ceiling: content is merchant-authored Text with no upper bound,
@@ -471,13 +473,26 @@ async def _get_store_info(session: AsyncSession, tenant_id: uuid.UUID) -> dict:
     _BUDGET = 6000
     items: list[dict] = []
     spent = 0
-    for title, content in rows:
+    truncated = len(rows) > _LIMIT
+    for title, content, updated_at in rows[:_LIMIT]:
         cost = len(title) + len(content)
         if spent + cost > _BUDGET and items:
+            truncated = True
             break
-        items.append({"title": title, "content": content})
+        items.append(
+            {
+                "title": title,
+                "content": content,
+                # ISO on purpose: the fact ledger skips `*_at` keys, so the
+                # model can judge how old an answer is without the timestamp
+                # becoming a numeral it may quote.
+                "updated_at": updated_at.isoformat() if updated_at else None,
+            }
+        )
         spent += cost
-    return {"items": items}
+    # `truncated` tells the model the list is NOT the whole store: silence
+    # about a missing policy must not read as "the store has none".
+    return {"items": items, "truncated": truncated}
 
 
 class SearchKnowledgeArgs(BaseModel):

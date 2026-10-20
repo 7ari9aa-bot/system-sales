@@ -538,6 +538,76 @@ async def test_get_store_info_reads_customer_facing_items_only(db, tenant_ctx) -
     assert "هامش الربح" not in titles
 
 
+async def test_get_store_info_says_how_old_each_item_is(db, tenant_ctx) -> None:
+    """The model cannot hedge a stale hours/policy answer if it cannot see
+    its age. ISO + a `*_at` key: the fact ledger skips it, so the timestamp is
+    visible to the model without becoming a numeral it may quote."""
+    from app.modules.ai.agents.customer.ledger import facts_from_tool_calls
+    from app.modules.ai.models import KnowledgeItem
+
+    tenant_id = tenant_ctx.tenant_id
+    db.add(
+        KnowledgeItem(
+            tenant_id=tenant_id,
+            title="مواعيد العمل",
+            source_type="text",
+            content="من الصبح لبالليل.",
+            visibility="customer_facing",
+        )
+    )
+    await db.flush()
+
+    result = await get_tool("get_store_info").handler(db, tenant_id)
+    updated_at = result["items"][0]["updated_at"]
+    assert updated_at and "T" in updated_at
+    facts = facts_from_tool_calls([{"status": "ok", "result": result}])
+    assert updated_at not in facts
+    assert not any(updated_at[:10] in f for f in facts)
+
+
+async def test_get_store_info_reports_when_the_list_is_not_the_whole_store(
+    db, tenant_ctx
+) -> None:
+    """Silence about a policy must not read as "the store has none": a cut-off
+    pull says so, whether the item cap or the token budget did the cutting."""
+    from app.modules.ai.models import KnowledgeItem
+
+    tenant_id = tenant_ctx.tenant_id
+    for i in range(40):
+        db.add(
+            KnowledgeItem(
+                tenant_id=tenant_id,
+                title=f"بند {i}",
+                source_type="text",
+                content="ا" * 500,
+                visibility="customer_facing",
+            )
+        )
+    await db.flush()
+    result = await get_tool("get_store_info").handler(db, tenant_id)
+    assert result["truncated"] is True
+
+
+async def test_get_store_info_is_not_truncated_when_everything_fits(db, tenant_ctx) -> None:
+    from app.modules.ai.models import KnowledgeItem
+
+    tenant_id = tenant_ctx.tenant_id
+    for i in range(3):
+        db.add(
+            KnowledgeItem(
+                tenant_id=tenant_id,
+                title=f"بند {i}",
+                source_type="text",
+                content="قصير",
+                visibility="customer_facing",
+            )
+        )
+    await db.flush()
+    result = await get_tool("get_store_info").handler(db, tenant_id)
+    assert len(result["items"]) == 3
+    assert result["truncated"] is False
+
+
 async def test_handover_to_human_writes_the_handover(db, tenant_ctx) -> None:
     """The model's escalation decision becomes the ONE durable handover:
     the row, the conversation status, and the summary the staff reads."""
