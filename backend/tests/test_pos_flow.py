@@ -207,6 +207,46 @@ async def test_sell_on_a_closed_session_is_refused(db, tenant_ctx):
         )
 
 
+@pytest.mark.parametrize("quantity", [0, -1, "0", "-3", "abc"])
+async def test_sell_with_a_non_positive_quantity_is_a_validation_error_not_a_500(
+    db, tenant_ctx, quantity
+):
+    """/quote already refused these; /sell let them reach OrderService, whose bare ValueError became
+    an HTTP 500 marked retryable. It must be the same 400-class ValidationError, and nothing is
+    reserved or sold."""
+    register = await _register(db, tenant_ctx)
+    pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
+    variant = await _sellable_variant(db, tenant_ctx)
+    with pytest.raises(ValidationError):
+        await PosService.sell(
+            db,
+            tenant_ctx.tenant_id,
+            pos_session.id,
+            items=[{"variant_id": variant.id, "quantity": quantity}],
+        )
+    reserved = (await db.execute(select(InventoryReservation))).scalars().all()
+    assert [r for r in reserved if r.variant_id == variant.id] == []
+
+
+async def test_sell_validates_every_line_before_touching_anything(db, tenant_ctx):
+    """A good line followed by a bad one must not leave the good line reserved."""
+    register = await _register(db, tenant_ctx)
+    pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
+    variant = await _sellable_variant(db, tenant_ctx)
+    with pytest.raises(ValidationError):
+        await PosService.sell(
+            db,
+            tenant_ctx.tenant_id,
+            pos_session.id,
+            items=[
+                {"variant_id": variant.id, "quantity": 1},
+                {"variant_id": variant.id, "quantity": -2},
+            ],
+        )
+    reserved = (await db.execute(select(InventoryReservation))).scalars().all()
+    assert [r for r in reserved if r.variant_id == variant.id] == []
+
+
 async def test_close_with_only_counted_cash_records_the_cash_shortage(db, tenant_ctx):
     """A closer who sends ``counted_cash`` but no per-method figures must not turn a
     short drawer into a "matched" one: the cash reconciliation row has to carry the

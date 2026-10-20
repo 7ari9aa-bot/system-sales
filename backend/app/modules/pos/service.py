@@ -783,6 +783,10 @@ class PosService:
                 discount_total = held.discount_total
         if not items:
             raise ValidationError("a sale must contain at least one item")
+        # Same rule /quote applies. Without it a zero/negative quantity reached
+        # OrderService, which raises a bare ValueError -> HTTP 500 (retryable).
+        for item in items:
+            PosService._positive_qty(item.get("quantity"))
         register = await PosService._get_register(session, tenant_id, pos_session.register_id)
         profile = await PosService.resolve_profile(session, tenant_id, pos_session)
         if profile is not None and not profile.is_active:
