@@ -6,8 +6,13 @@ a dot. The match is substring-level by design — strictness beyond that
 belongs to the offline eval suite, not the hot path; one ungrounded numeral
 fails the whole reply.
 
-Skip contract: the runner calls this ONLY when the run has tool results —
-the unsourced-claim guardrail gate owns the no-tool-results case.
+Skip contract: the runner calls ``check_grounding`` ONLY when the run has tool
+results. The no-tool-results case is owned by ``check_unsourced_numerals``
+below: the system prompt makes tools the ONLY source of a number a reply may
+state, so a numeral with no successful tool behind it (and not echoed from the
+customer's own message) is an unsourced claim, whatever it is about. The
+financial-claim guardrail alone cannot see "الاسترجاع خلال 14 يوم" or
+"بنقفل الساعة 10", because it only recognises price / stock / money wording.
 """
 
 from __future__ import annotations
@@ -81,4 +86,35 @@ def check_grounding(reply: str, facts: list[str]) -> str | None:
     for numeral in extract_numerals(reply):
         if not any(_numeral_matches_fact(numeral, fact) for fact in facts):
             return f"ungrounded numeral: {numeral}"
+    return None
+
+
+def check_unsourced_numerals(reply: str, customer_message: str | None) -> str | None:
+    """A failure reason when a run with NO tool facts still states a number.
+
+    Called only when the run produced no usable facts (no tool ran, or none
+    succeeded). Then the only legitimate source of a numeral is the customer's
+    own message: "عايز 2 تيشرت" -> "تمام، 2 تيشرت" is an echo, not a claim, and
+    blocking it would silence an innocent confirmation. Anything else is a
+    figure the model produced from nowhere (a return window, closing hour,
+    delivery time, warranty length, size guidance) and the customer must not
+    receive it.
+
+    Same normalisation as ``check_grounding`` (Arabic-Indic digits and the
+    Arabic decimal separator fold first), compared numerically, so "١٤" in the
+    customer's message covers a reply that says "14".
+    """
+    echoed: list[Decimal] = []
+    for numeral in extract_numerals(customer_message or ""):
+        try:
+            echoed.append(Decimal(numeral))
+        except InvalidOperation:
+            continue
+    for numeral in extract_numerals(reply):
+        try:
+            value = Decimal(numeral)
+        except InvalidOperation:
+            return f"unsourced numeral: {numeral}"
+        if value not in echoed:
+            return f"unsourced numeral: {numeral}"
     return None

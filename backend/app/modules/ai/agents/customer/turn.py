@@ -42,7 +42,10 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.ai.agents.customer.grounding import check_grounding
+from app.modules.ai.agents.customer.grounding import (
+    check_grounding,
+    check_unsourced_numerals,
+)
 from app.modules.ai.agents.customer.intake import InboundTurn, build_turn
 from app.modules.ai.agents.customer.ledger import facts_from_tool_calls
 from app.modules.ai.agents.customer.state import (
@@ -551,8 +554,29 @@ async def run_customer_turn(
     elif result.content:
         facts = facts_from_tool_calls(result.tool_calls_made)
         if not facts:
-            # Skip contract: the unsourced-claim guardrail owns this case.
+            # No tool produced a fact, so grounding has nothing to compare
+            # against. The financial-claim guardrail only recognises price /
+            # stock / money wording, so a policy or schedule figure ("الاسترجاع
+            # خلال 14 يوم", "بنقفل 10") used to pass here untouched. The
+            # system prompt makes tools the only source of a number, so with
+            # none behind the reply, a numeral is allowed only as an echo of
+            # the customer's own message. Withholding hands the turn to a
+            # human (silence beats an invented policy — decided 2026-10-18).
             grounding = "skipped_no_facts"
+            # A tool that RAN and succeeded is a source even when it returned
+            # no figure ("لقيت 0 نتيجة" after an empty search: the zero is the
+            # tool's answer). Only a run with no successful tool at all has
+            # nothing behind its numbers.
+            any_tool_ok = any(c.get("status") == "ok" for c in result.tool_calls_made)
+            reason = (
+                None
+                if any_tool_ok
+                else check_unsourced_numerals(result.content, user_message)
+            )
+            if reason is not None:
+                grounding = "failed"
+                reply = None
+                blocked_reason = f"grounding:{reason}"
         else:
             # No regeneration HERE (§8): the runner already owns the one
             # grounded regen. A reply that survived it does not need a second

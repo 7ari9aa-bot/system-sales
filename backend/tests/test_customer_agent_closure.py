@@ -29,14 +29,23 @@ from app.modules.customers.models import Customer
 from app.modules.notifications.models import Notification
 
 
-def _runner_result(reply: str) -> SimpleNamespace:
-    """The minimal AgentRunResult the hook consumes: an allowed, grounded,
-    text-only reply with no media and no handover request."""
+def _runner_result(reply: str, *, grounded_in: dict | None = None) -> SimpleNamespace:
+    """The minimal AgentRunResult the hook consumes: an allowed, text-only reply
+    with no media and no handover request.
+
+    A reply that states a figure must have a tool result behind it — the turn
+    withholds an unsourced number. ``grounded_in`` is that tool result, so a
+    test about *delivery* (not about grounding) can still say "السعر ٢٥٠"
+    honestly instead of leaning on the unsourced-number gap."""
     return SimpleNamespace(
         content=reply,
         guardrail_decision="allow",
         guardrail_reason=None,
-        tool_calls_made=[],
+        tool_calls_made=(
+            [{"name": "search_catalog", "status": "ok", "result": grounded_in}]
+            if grounded_in is not None
+            else []
+        ),
         shown_product_ids=[],
         media=[],
         tokens_in=10,
@@ -94,7 +103,7 @@ async def test_the_same_inbound_is_never_answered_twice(db, tenant_ctx, monkeypa
     conversation, inbound = await _seed_conversation_with_inbound(db, tenant_id)
 
     async def reply_once(self, session, tenant_id_, **kwargs):
-        return _runner_result("السعر ٢٥٠ جنيه")
+        return _runner_result("السعر ٢٥٠ جنيه", grounded_in={"price": "250.00"})
 
     monkeypatch.setattr(AgentRunner, "run", reply_once)
 
