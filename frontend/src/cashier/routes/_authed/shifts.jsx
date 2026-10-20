@@ -14,7 +14,7 @@ import ShiftFilters from "@/cashier/components/shifts/ShiftFilters";
 import shiftColumns from "@/cashier/components/shifts/shiftColumns";
 import { BTN, BTN_PRIMARY, LEDGER, LEDGER_FOOTER, LEDGER_TOOLBAR } from "@/cashier/components/ui-kit/ledgerStyles";
 import { shiftsSummary } from "@/cashier/lib/storeOpsData";
-import { useClosePreview, useCloseShift, useOpenShift, useShifts } from "@/cashier/api/useShifts";
+import { useClosePreview, useCloseShift, useHeldCount, useOpenShift, useShifts } from "@/cashier/api/useShifts";
 import { useAuth } from "@/lib/AuthContext";
 import { fmtInt, fmtMoney, fmtTime } from "@/cashier/lib/format";
 
@@ -40,6 +40,7 @@ export default function ShiftsPage() {
   const [closing, setClosing] = useState(null);
   const [details, setDetails] = useState(null);
   const preview = useClosePreview(closing?.id, Boolean(closing));
+  const heldCount = useHeldCount(closing?.id, Boolean(closing));
 
   const summary = shiftsSummary(rows);
   const filtered = rows.filter((r) => {
@@ -142,7 +143,7 @@ export default function ShiftsPage() {
       />
 
       <ShiftOpenDialog open={openDialog} onOpenChange={(v) => { setOpenDialog(v); if (!v) openShift.reset(); }} onSubmit={submitOpen} pending={openShift.isPending} error={messageOf(openShift.error)} />
-      <ShiftCloseDialog open={Boolean(closing)} onOpenChange={(v) => { if (!v) { setClosing(null); closeShift.reset(); } }} shift={closing} preview={preview.data} previewLoading={preview.isLoading} onSubmit={submitClose} pending={closeShift.isPending} error={messageOf(closeShift.error) || (preview.error ? messageOf(preview.error) : null)} />
+      <ShiftCloseDialog open={Boolean(closing)} onOpenChange={(v) => { if (!v) { setClosing(null); closeShift.reset(); } }} shift={closing} heldCount={heldCount.data ?? 0} preview={preview.data} previewLoading={preview.isLoading} onSubmit={submitClose} pending={closeShift.isPending} error={messageOf(closeShift.error) || (preview.error ? messageOf(preview.error) : null)} />
       <ShiftDetailsDialog open={Boolean(details)} onOpenChange={(open) => !open && setDetails(null)} shift={details} />
     </LedgerPage>
   );

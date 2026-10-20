@@ -11,11 +11,14 @@ import PosInvoiceDiscounts from "@/cashier/components/pos/PosInvoiceDiscounts";
 import PosInvoiceSummary from "@/cashier/components/pos/PosInvoiceSummary";
 import PaymentDialog from "@/cashier/components/pos/PaymentDialog";
 import ReceiptDialog from "@/cashier/components/pos/ReceiptDialog";
+import SuspendedDialog from "@/cashier/components/pos/SuspendedDialog";
+import HoldDialog from "@/cashier/components/pos/HoldDialog";
 import ConfirmDialog from "@/cashier/components/ui-kit/ConfirmDialog";
 import { Button } from "@/cashier/components/ui/button";
-import { CATALOG_KEY, useCatalog, usePosSale } from "@/cashier/api/usePosSale";
+import { CATALOG_KEY, HELD_KEY, fetchCatalog, useCatalog, useHeldCarts, usePosSale } from "@/cashier/api/usePosSale";
 import { useShiftState } from "@/cashier/api/useShifts";
 import { searchCatalog } from "@/cashier/api/catalogAdapter";
+import { posApi } from "@/cashier/api/posApi";
 import { useSalesSettings } from "@/cashier/lib/salesSettings";
 import { useAuth } from "@/lib/AuthContext";
 
@@ -63,6 +66,7 @@ function PosScreen({ user, session }) {
   const sale = usePosSale({
     sessionId: session.id,
     catalog,
+    loadFreshCatalog: async () => (await qc.fetchQuery({ queryKey: CATALOG_KEY, queryFn: () => fetchCatalog(), staleTime: 0 })) ?? [],
     onSold: (r) => {
       setReceipt(r);
       setLastReceipt(r);
@@ -71,6 +75,11 @@ function PosScreen({ user, session }) {
     },
   });
   const { lines } = sale;
+  const heldQuery = useHeldCarts(session.id, catalog);
+  const [heldBusy, setHeldBusy] = useState(null);
+  const [heldError, setHeldError] = useState(null);
+  const [holding, setHolding] = useState(false);
+  const refreshHeld = () => qc.invalidateQueries({ queryKey: HELD_KEY(session.id) });
 
   const [barcode, setBarcode] = useState("");
   const [scanError, setScanError] = useState("");
@@ -200,6 +209,62 @@ function PosScreen({ user, session }) {
     setScanError("");
   }
 
+
+  async function confirmHold(label) {
+    setHolding(true);
+    setHeldError(null);
+    try {
+      await sale.hold({ label });
+      await refreshHeld();
+      resetInvoice();
+      setDialog(null);
+      toast.success("تم تعليق الفاتورة");
+    } catch (e) {
+      setHeldError(e?.message || "تعذّر تعليق الفاتورة");
+    } finally {
+      setHolding(false);
+    }
+  }
+
+  async function resumeHeld(h) {
+    if (hasLines) {
+      setHeldError("أكمل الفاتورة الحالية أو علّقها أو ألغها أولاً قبل استعادة فاتورة أخرى");
+      return;
+    }
+    setHeldBusy(h.id);
+    setHeldError(null);
+    try {
+      const r = await sale.restore(h.id);
+      await refreshHeld();
+      if (r.lines.length === 0) {
+        setHeldError("لا يمكن استعادة هذه الفاتورة: كل أصنافها نافدة أو غير متاحة. بقيت معلقة كما هي.");
+        return;
+      }
+      setDialog(null);
+      if (r.releaseError) toast.warning(`تمت الاستعادة لكن بقيت نسخة معلقة: ${r.releaseError}`);
+      for (const d of r.dropped) toast.warning(`${d.name}: ${d.reason === "out_of_stock" ? "نافد من المخزون فتم حذفه" : "غير متاح فتم حذفه"}`);
+      for (const a of r.adjusted) toast.warning(`${a.name}: المتاح ${a.got} فقط (كان ${a.wanted})`);
+      toast.success(`تمت استعادة «${h.label}»`);
+    } catch (e) {
+      setHeldError(e?.message || "تعذّرت الاستعادة");
+    } finally {
+      setHeldBusy(null);
+    }
+  }
+
+  async function deleteHeld(h) {
+    setHeldBusy(h.id);
+    setHeldError(null);
+    try {
+      await posApi.releaseHeldCart(h.id);
+    } catch (e) {
+      if (e?.status !== 404) setHeldError(e?.message || "تعذّر الحذف");
+    } finally {
+      await refreshHeld();
+      setHeldBusy(null);
+    }
+  }
+
   async function confirmSale(tenders) {
     try {
       const r = await sale.pay({ tenders, cashier, customerName });
@@ -227,7 +292,17 @@ function PosScreen({ user, session }) {
 
   return (
     <div className="animate-fade-up flex h-[calc(100dvh-60px)] flex-col gap-2 overflow-hidden lg:h-[calc(100dvh-16px)]">
-      <PosHeaderBar invoiceNo={lastReceipt ? `بعد ${lastReceipt.number}` : "جديدة"} cashier={cashier} shiftOpenedAt={session.opened_at} />
+      <PosHeaderBar
+        invoiceNo={lastReceipt ? `بعد ${lastReceipt.number}` : "جديدة"}
+        cashier={cashier}
+        shiftOpenedAt={session.opened_at}
+        suspendedCount={heldQuery.data?.length ?? 0}
+        onRestore={() => {
+          setHeldError(null);
+          refreshHeld();
+          setDialog("held");
+        }}
+      />
 
       <PosInvoiceTable
         lines={lines}
@@ -272,6 +347,10 @@ function PosScreen({ user, session }) {
         hasNote={false}
         payLabel="دفع وطباعة"
         onPay={() => setDialog("payment")}
+        onSuspend={() => {
+          setHeldError(null);
+          setDialog("hold");
+        }}
         onCancel={() => setDialog("cancel")}
         onNew={() => {
           resetInvoice();
@@ -294,6 +373,19 @@ function PosScreen({ user, session }) {
         onConfirm={confirmSale}
         pending={sale.paying}
         error={sale.payError}
+      />
+
+      <HoldDialog open={dialog === "hold"} onOpenChange={(open) => setDialog(open ? "hold" : null)} defaultLabel={customerName.trim()} pending={holding} error={heldError} onConfirm={confirmHold} />
+
+      <SuspendedDialog
+        open={dialog === "held"}
+        onOpenChange={(open) => setDialog(open ? "held" : null)}
+        held={heldQuery.data ?? []}
+        loading={heldQuery.isLoading}
+        error={heldError || (heldQuery.isError ? "تعذّر تحميل الفواتير المعلقة" : null)}
+        busyId={heldBusy}
+        onResume={resumeHeld}
+        onDelete={deleteHeld}
       />
 
       <ConfirmDialog

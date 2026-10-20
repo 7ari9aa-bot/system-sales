@@ -5,21 +5,32 @@ import { buildCatalog, searchCatalog } from "./catalogAdapter";
 import { clampQty } from "./checkout";
 import { createSaleSession } from "./saleSession";
 import { receiptFromApi } from "./receiptAdapter";
+import { heldFromApi, holdPayload, restoreHeld } from "./heldCarts";
 import { fromMinor } from "./money";
 import { discountMinor, latestOnly } from "./latest";
 
 export const CATALOG_KEY = ["cashier", "catalog"];
+export const HELD_KEY = (sessionId) => ["cashier", "held", sessionId];
 
-/** Sellable variants with live stock. Refetched after every sale so the numbers never go stale. */
-export function useCatalog() {
+/** Carts parked on this shift, oldest first. */
+export function useHeldCarts(sessionId, catalog) {
   return useQuery({
-    queryKey: CATALOG_KEY,
-    queryFn: async () => {
-      const [products, balances] = await Promise.all([posApi.products(), posApi.stockBalances()]);
-      return buildCatalog(Array.isArray(products) ? products : products?.items, Array.isArray(balances) ? balances : balances?.items);
-    },
-    staleTime: 30_000,
+    queryKey: HELD_KEY(sessionId),
+    queryFn: async () => heldFromApi((await posApi.heldCarts(sessionId)) ?? [], catalog),
+    enabled: Boolean(sessionId),
+    staleTime: 0,
   });
+}
+
+/** Sellable variants with live stock, straight from the backend. */
+export async function fetchCatalog() {
+  const [products, balances] = await Promise.all([posApi.products(), posApi.stockBalances()]);
+  return buildCatalog(Array.isArray(products) ? products : products?.items, Array.isArray(balances) ? balances : balances?.items);
+}
+
+/** Refetched after every sale, and on demand where stock must be exact (restoring a held cart). */
+export function useCatalog() {
+  return useQuery({ queryKey: CATALOG_KEY, queryFn: fetchCatalog, staleTime: 30_000 });
 }
 
 const lineOf = (v) => ({
@@ -43,7 +54,7 @@ const lineOf = (v) => ({
  * and never sums prices itself. A newer quote request wins: a slow earlier answer cannot
  * overwrite the total of a cart that has changed since.
  */
-export function usePosSale({ sessionId, catalog = [], onSold }) {
+export function usePosSale({ sessionId, catalog = [], onSold, loadFreshCatalog }) {
   const [lines, setLines] = useState([]);
   const [invoiceDiscount, setInvoiceDiscount] = useState("");
   const [quote, setQuote] = useState({ subtotal: "0.00", discountTotal: "0.00", total: "0.00", loading: false, error: null });
@@ -102,6 +113,42 @@ export function usePosSale({ sessionId, catalog = [], onSold }) {
     setPayError(null);
   }, []);
 
+
+  /** Park the current cart on the backend and empty the screen. The cart is only cleared after the backend accepted it. */
+  const hold = useCallback(
+    async ({ label, customerId } = {}) => {
+      if (!sessionId || cart.length === 0) throw new Error("لا توجد أصناف لتعليقها");
+      const saved = await posApi.holdCart(sessionId, holdPayload({ cart, customerId, discountTotal, label }));
+      setLines([]);
+      setInvoiceDiscount("");
+      return saved;
+    },
+    [sessionId, cart, discountTotal],
+  );
+
+  /**
+   * Bring a held cart back. Re-checks price and stock now; deletes the parked copy ONLY after the lines are
+   * on the screen, so an error can never lose the cart. A 404 on delete means it was already released.
+   */
+  const restore = useCallback(
+    async (heldId) => {
+      const cartData = await posApi.getHeldCart(heldId);
+      // Stock may have changed since the screen last loaded it (another till, another cashier): ask again NOW.
+      const fresh = loadFreshCatalog ? await loadFreshCatalog() : catalog;
+      const r = restoreHeld(cartData, fresh);
+      if (!r.canRelease) return { ...r, released: false };
+      setLines(r.lines);
+      setInvoiceDiscount(r.discount > 0 ? String(r.discount) : "");
+      try {
+        await posApi.releaseHeldCart(heldId);
+      } catch (e) {
+        if (e?.status !== 404) return { ...r, released: false, releaseError: e?.message || "تعذّر حذف النسخة المعلقة" };
+      }
+      return { ...r, released: true };
+    },
+    [catalog, loadFreshCatalog],
+  );
+
   const pay = useCallback(
     async ({ tenders, customerId, cashier, customerName }) => {
       if (!sale) throw new Error("لا توجد وردية مفتوحة");
@@ -128,5 +175,5 @@ export function usePosSale({ sessionId, catalog = [], onSold }) {
 
   const scan = useCallback((value) => posApi.scan(sessionId, { identifierType: "barcode", value }), [sessionId]);
 
-  return { lines, scan, quote, discountTotal, invoiceDiscount, setInvoiceDiscount, add, setQty, stepQty, setLineDiscount, remove, clear, pay, paying, payError, searchCatalog };
+  return { lines, scan, hold, restore, quote, discountTotal, invoiceDiscount, setInvoiceDiscount, add, setQty, stepQty, setLineDiscount, remove, clear, pay, paying, payError, searchCatalog };
 }

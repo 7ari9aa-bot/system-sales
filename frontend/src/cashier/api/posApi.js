@@ -112,6 +112,7 @@ export const posApi = {
       `/pos/sessions/${seg(id)}/held-carts`,
       compact({ items: lines(items), customer_id: customerId, discount_total: opt(discountTotal), label }),
     ),
+  getHeldCart: (heldId) => api(`/pos/held-carts/${seg(heldId)}`),
   releaseHeldCart: (heldId) => api(`/pos/held-carts/${seg(heldId)}`, { method: "DELETE" }),
 
   /* ---- money (intent required) ---- */

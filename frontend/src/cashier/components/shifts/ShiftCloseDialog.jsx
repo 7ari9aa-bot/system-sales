@@ -8,7 +8,7 @@ import { cn } from "@/cashier/lib/utils";
 
 // إغلاق الوردية: مقارنة النقدية المتوقعة بالمبلغ الفعلي المعدود وحساب الفرق.
 // `preview` = the backend's close-preview (expected cash computed from the ledger, not on the client).
-export default function ShiftCloseDialog({ open, onOpenChange, shift, preview, previewLoading = false, onSubmit, pending = false, error = null }) {
+export default function ShiftCloseDialog({ open, onOpenChange, shift, heldCount = 0, preview, previewLoading = false, onSubmit, pending = false, error = null }) {
   const [actual, setActual] = useState("");
 
   const cash = preview?.by_method?.find((m) => m.method === "cash");
@@ -71,6 +71,11 @@ export default function ShiftCloseDialog({ open, onOpenChange, shift, preview, p
             <span>{difference > 0 ? `+${fmtMoney(difference)}` : fmtMoney(difference)}</span>
           </div> : null}
 
+          {heldCount > 0 ? (
+            <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+              يوجد {heldCount} {heldCount === 1 ? "فاتورة معلقة" : "فواتير معلقة"} على هذه الوردية. بعد الإغلاق لا يمكن استعادتها، أكملها أو احذفها قبل الإغلاق.
+            </p>
+          ) : null}
           {error ? <p role="alert" className="text-xs font-semibold text-rose-600">{error}</p> : null}
         </div>
 

@@ -34,6 +34,17 @@ export function useClosePreview(sessionId, enabled) {
   });
 }
 
+/** Number of carts still parked on a shift. They cannot be restored once the shift is closed. */
+export function useHeldCount(sessionId, enabled) {
+  return useQuery({
+    queryKey: ["cashier", "held-count", sessionId],
+    queryFn: async () => ((await posApi.heldCarts(sessionId)) ?? []).length,
+    enabled: Boolean(sessionId) && enabled,
+    staleTime: 0,
+    gcTime: 0,
+  });
+}
+
 function useRefresh() {
   const qc = useQueryClient();
   return () => Promise.all([qc.invalidateQueries({ queryKey: SHIFTS_KEY }), qc.invalidateQueries({ queryKey: SHIFT_STATE_KEY })]);
