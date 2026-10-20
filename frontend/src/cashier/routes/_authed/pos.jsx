@@ -23,7 +23,6 @@ import { useSalesSettings } from "@/cashier/lib/salesSettings";
 import { useAuth } from "@/lib/AuthContext";
 
 // Only methods the backend accepts; the profile's own list narrows this further once loaded.
-const BACKEND_METHODS = ["cash", "card", "wallet", "bank_transfer"];
 
 // مُعرّف ثابت لرسالة الحذف: كل حذف جديد يستبدل الرسالة السابقة، فيكون التراجع لأحدث حذف.
 const UNDO_TOAST_ID = "pos-undo-remove";
@@ -95,7 +94,6 @@ function PosScreen({ user, session }) {
   const hasLines = lines.length > 0;
   const displayCustomer = customerName.trim() || "عميل نقدي";
   const quoteReady = hasLines && !sale.quote.loading && !sale.quote.error;
-  const allowedMethods = BACKEND_METHODS.filter((m) => salesSettings.enabledMethods.includes(m));
 
   // Invoice discount = percentage of the subtotal + a fixed amount, sent to the backend as ONE amount.
   const subtotalNumber = Number(sale.quote.subtotal) || 0;
@@ -367,8 +365,6 @@ function PosScreen({ user, session }) {
         open={dialog === "payment"}
         onOpenChange={(open) => setDialog(open ? "payment" : null)}
         total={sale.quote.total}
-        allowedMethods={allowedMethods}
-        defaultMethod={salesSettings.defaultMethod}
         customerName={displayCustomer}
         onConfirm={confirmSale}
         pending={sale.paying}
