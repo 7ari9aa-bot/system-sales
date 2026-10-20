@@ -106,6 +106,48 @@ async def test_a_new_tenant_gets_the_tools_its_definitions_authorize(db, tenant_
     assert tools["sales_intelligence"] == set(SI_TOOLS)
 
 
+async def test_the_retired_knowledge_tool_is_quarantined_on_an_existing_tenant(
+    db, tenant_ctx
+) -> None:
+    """search_knowledge was merged into get_store_info. A store provisioned
+    BEFORE the merge still has its row; reconciliation must switch it off (not
+    delete it: run audit keeps resolving), so the model never sees two tools
+    over one table, while get_store_info stays on."""
+    from app.modules.ai.core.provisioning import sync_existing_tenant_tools
+
+    await _provision(db, tenant_ctx.tenant_id)
+    agent = (await _agents(db, tenant_ctx.tenant_id))["customer"]
+    db.add(
+        AgentTool(
+            tenant_id=tenant_ctx.tenant_id,
+            agent_id=agent.id,
+            name="search_knowledge",
+            policy={},
+            is_active=True,
+        )
+    )
+    await db.flush()
+
+    await sync_existing_tenant_tools(db, tenant_ctx.tenant_id)
+    await db.flush()
+
+    rows = {
+        r.name: r.is_active
+        for r in (
+            await db.execute(select(AgentTool).where(AgentTool.agent_id == agent.id))
+        ).scalars()
+    }
+    assert rows["search_knowledge"] is False
+    assert rows["get_store_info"] is True
+
+
+def test_the_customer_prompt_only_names_tools_the_agent_still_has() -> None:
+    """A rule pointing at a retired tool is an instruction the model cannot
+    follow."""
+    assert "search_knowledge" not in CUSTOMER_SYSTEM_PROMPT
+    assert "search_knowledge" not in CUSTOMER_TOOLS
+
+
 async def test_provisioning_twice_does_not_double_the_agents(db, tenant_ctx) -> None:
     """Register runs the seeder and the hook in one transaction; a retry, a
     backfill and the hook must all be safe on a tenant that already has them."""

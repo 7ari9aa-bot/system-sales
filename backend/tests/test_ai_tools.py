@@ -123,10 +123,13 @@ def test_escalation_tool_never_lets_the_model_choose_the_scope() -> None:
     assert "customer_id" not in dumped
 
 
-def test_get_store_info_takes_no_arguments() -> None:
+def test_get_store_info_has_one_optional_question() -> None:
+    """The model never chooses between "the list" and "a search": one tool, and
+    the question only reorders. It must stay optional so the plain pull works."""
     spec = get_tool("get_store_info")
-    properties = tool_to_openai_schema(spec)["function"]["parameters"]["properties"]
-    assert properties == {}
+    parameters = tool_to_openai_schema(spec)["function"]["parameters"]
+    assert set(parameters["properties"]) == {"question"}
+    assert "question" not in (parameters.get("required") or [])
 
 
 def test_search_knowledge_cannot_ask_for_hidden_visibility() -> None:
@@ -606,6 +609,117 @@ async def test_get_store_info_is_not_truncated_when_everything_fits(db, tenant_c
     result = await get_tool("get_store_info").handler(db, tenant_id)
     assert len(result["items"]) == 3
     assert result["truncated"] is False
+
+
+async def _knowledge(db, tenant_id, titles, *, content="قصير"):
+    from app.modules.ai.models import KnowledgeItem
+
+    items = []
+    for title in titles:
+        item = KnowledgeItem(
+            tenant_id=tenant_id,
+            title=title,
+            source_type="text",
+            content=content,
+            visibility="customer_facing",
+        )
+        db.add(item)
+        items.append(item)
+    await db.flush()
+    return items
+
+
+async def test_get_store_info_ranks_by_the_question_when_retrieval_works(
+    db, tenant_ctx, monkeypatch
+) -> None:
+    """The relevant item is the LAST one by age and the budget would cut it:
+    ranking has to happen before the cut, or the question changes nothing."""
+    from app.modules.ai import knowledge
+
+    tenant_id = tenant_ctx.tenant_id
+    filler = await _knowledge(db, tenant_id, [f"بند {i}" for i in range(35)], content="ا" * 400)
+    target = (await _knowledge(db, tenant_id, ["سياسة الاسترجاع"]))[0]
+
+    async def _search(session, tid, query, *, limit=5, visibility="customer_facing"):
+        return [(target, 0.1)]
+
+    monkeypatch.setattr(knowledge, "search_knowledge", _search)
+
+    spec = get_tool("get_store_info")
+    plain = await spec.handler(db, tenant_id)
+    ranked = await spec.handler(db, tenant_id, question="ينفع ارجع؟")
+
+    assert "سياسة الاسترجاع" not in [i["title"] for i in plain["items"]]
+    assert ranked["items"][0]["title"] == "سياسة الاسترجاع"
+    assert ranked["ranking"] == "by_relevance"
+    assert "ranking" not in plain
+    assert len(filler) == 35
+
+
+async def test_get_store_info_still_answers_when_retrieval_is_down(
+    db, tenant_ctx, monkeypatch
+) -> None:
+    """Hours and returns must not depend on an embedding vendor, and the outage
+    must not be swallowed either: the items come back AND the result says the
+    ranking was unavailable."""
+    from app.modules.ai import knowledge
+
+    tenant_id = tenant_ctx.tenant_id
+    await _knowledge(db, tenant_id, ["مواعيد العمل"])
+
+    async def _no_model(session, tid, query, *, limit=5, visibility="customer_facing"):
+        raise ValidationError("no model configured for alias embedding")
+
+    monkeypatch.setattr(knowledge, "search_knowledge", _no_model)
+
+    result = await get_tool("get_store_info").handler(db, tenant_id, question="بتفتحوا امتى")
+    assert [i["title"] for i in result["items"]] == ["مواعيد العمل"]
+    assert result["ranking"] == "unavailable"
+
+
+async def test_get_store_info_without_a_question_never_touches_retrieval(
+    db, tenant_ctx, monkeypatch
+) -> None:
+    from app.modules.ai import knowledge
+
+    tenant_id = tenant_ctx.tenant_id
+    await _knowledge(db, tenant_id, ["مواعيد العمل"])
+
+    async def _boom(*args, **kwargs):
+        raise AssertionError("retrieval must not run without a question")
+
+    monkeypatch.setattr(knowledge, "search_knowledge", _boom)
+
+    result = await get_tool("get_store_info").handler(db, tenant_id)
+    assert [i["title"] for i in result["items"]] == ["مواعيد العمل"]
+    assert result["truncated"] is False
+
+
+async def test_get_store_info_ranked_items_never_leak_hidden_visibility(
+    db, tenant_ctx, monkeypatch
+) -> None:
+    """Even if retrieval returned a staff-only item id, the pull re-applies the
+    customer_facing filter — ranking reorders, it never widens."""
+    from app.modules.ai import knowledge
+    from app.modules.ai.models import KnowledgeItem
+
+    tenant_id = tenant_ctx.tenant_id
+    secret = KnowledgeItem(
+        tenant_id=tenant_id,
+        title="هامش الربح",
+        source_type="text",
+        content="سري.",
+        visibility="staff_only",
+    )
+    db.add(secret)
+    await db.flush()
+
+    async def _search(session, tid, query, *, limit=5, visibility="customer_facing"):
+        return [(secret, 0.0)]
+
+    monkeypatch.setattr(knowledge, "search_knowledge", _search)
+    result = await get_tool("get_store_info").handler(db, tenant_id, question="الربح")
+    assert "هامش الربح" not in [i["title"] for i in result["items"]]
 
 
 async def test_handover_to_human_writes_the_handover(db, tenant_ctx) -> None:

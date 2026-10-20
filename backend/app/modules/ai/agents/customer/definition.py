@@ -19,9 +19,13 @@ CUSTOMER_TOOLS = [
     "get_product_photos",
     "find_product_by_image",
     "get_store_info",
-    "search_knowledge",
     "handover_to_human",
 ]
+# `search_knowledge` is retired from this agent (merged into get_store_info's
+# optional `question`): the model no longer chooses between "the list" and "a
+# search" over the same table. The tool stays REGISTERED so historical
+# tool_calls rows keep resolving; it is simply no longer authorized for this
+# kind, so reconciliation quarantines any tenant row that still carries it.
 
 # Canonical system prompt defined in dedicated prompts.py module
 from app.modules.ai.agents.customer.prompts import CUSTOMER_SYSTEM_PROMPT  # noqa: E402
@@ -56,11 +60,11 @@ _DEFINITION = AgentDefinition(
         ),
         AgentCapability(
             name="get_store_info",
-            description="Store facts: hours, branches, shipping, payment, returns",
+            description=(
+                "Store facts: hours, branches, shipping, payment, returns; "
+                "ranked by the customer's question when one is given"
+            ),
             required=False,
-        ),
-        AgentCapability(
-            name="search_knowledge", description="Search store knowledge base", required=False
         ),
         AgentCapability(
             name="handover_to_human",
