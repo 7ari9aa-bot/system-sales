@@ -14,9 +14,7 @@ export default function ZReportSection({ rows }) {
   const totals = {
     invoices: sum("invoices"),
     cashSales: sum("cashSales"),
-    cardSales: sum("cardSales"),
-    walletSales: sum("walletSales"),
-    creditSales: sum("creditSales"),
+    nonCashSales: sum("nonCashSales"),
     returnsCash: sum("returnsCash"),
     expensesCash: sum("expensesCash"),
     expected: sum("expected"),
@@ -49,9 +47,7 @@ export default function ZReportSection({ rows }) {
     { key: "invoices", header: "الفواتير", align: "center", render: (r) => <span className={CELL_NUM}>{fmtInt(r.invoices)}</span> },
     { key: "openingCash", header: "رصيد البداية", align: "end", render: (r) => <span className={CELL_NUM}>{fmtMoney(r.openingCash)}</span> },
     { key: "cashSales", header: "مبيعات نقدي", align: "end", render: (r) => <span className={CELL_NUM}>{fmtMoney(r.cashSales)}</span> },
-    { key: "cardSales", header: "بطاقة", align: "end", render: (r) => <span className={CELL_NUM}>{fmtMoney(r.cardSales)}</span> },
-    { key: "walletSales", header: "محفظة", align: "end", render: (r) => <span className={CELL_NUM}>{fmtMoney(r.walletSales)}</span> },
-    { key: "creditSales", header: "آجل", align: "end", render: (r) => <span className={CELL_NUM}>{fmtMoney(r.creditSales)}</span> },
+    { key: "nonCashSales", header: "مبيعات غير نقدية", align: "end", render: (r) => <span className={CELL_NUM}>{fmtMoney(r.nonCashSales)}</span> },
     { key: "returnsCash", header: "مرتجعات نقدي", align: "end", render: (r) => <span className={`${CELL_NUM} text-rose-600`}>{fmtMoney(r.returnsCash)}</span> },
     { key: "expensesCash", header: "مصروفات نقدي", align: "end", render: (r) => <span className={`${CELL_NUM} text-rose-600`}>{fmtMoney(r.expensesCash)}</span> },
     { key: "expected", header: "المتوقع في الدرج", align: "end", render: (r) => <span className={CELL_ACCENT}>{fmtMoney(r.expected)}</span> },
@@ -74,9 +70,7 @@ export default function ZReportSection({ rows }) {
     number: "الإجمالي",
     invoices: fmtInt(totals.invoices),
     cashSales: fmtMoney(totals.cashSales),
-    cardSales: fmtMoney(totals.cardSales),
-    walletSales: fmtMoney(totals.walletSales),
-    creditSales: fmtMoney(totals.creditSales),
+    nonCashSales: fmtMoney(totals.nonCashSales),
     returnsCash: fmtMoney(totals.returnsCash),
     expensesCash: fmtMoney(totals.expensesCash),
     expected: fmtMoney(totals.expected),
@@ -99,13 +93,11 @@ export default function ZReportSection({ rows }) {
 
       <ReportTable
         title="تقرير Z — إغلاق الورديات"
-        description="لكل وردية: المبيعات حسب طريقة الدفع، النقدية الخارجة، والمتوقع في الدرج مقابل المعدود"
+        description="لكل وردية: المبيعات النقدية وغير النقدية، النقدية الخارجة، والمتوقع في الدرج مقابل المعدود"
         columns={columns}
         rows={rows}
         totals={footTotals}
-        footnote={`الورديات: ${fmtInt(rows.length)} • المغلقة: ${fmtInt(closed.length)} • المبيعات غير النقدية (بطاقة + محفظة + آجل): ${fmtMoney(
-          totals.cardSales + totals.walletSales + totals.creditSales,
-        )}`}
+        footnote={`الورديات: ${fmtInt(rows.length)} • المغلقة: ${fmtInt(closed.length)}`}
       />
     </div>
   );

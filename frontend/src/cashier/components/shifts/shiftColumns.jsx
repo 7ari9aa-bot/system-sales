@@ -44,12 +44,12 @@ export default function shiftColumns({ onClose, onDetails }) {
     { key: "openingCash", header: "رصيد البداية", headerClassName: TH, className: TD, align: "end", render: (r) => <span className={CELL_NUM}>{fmtMoney(r.openingCash)}</span> },
     { key: "cashSales", header: "مبيعات نقدية", headerClassName: TH, className: TD, align: "end", render: (r) => <span className={CELL_NUM}>{fmtMoney(r.cashSales)}</span> },
     {
-      key: "otherSales",
-      header: "بطاقة ومحفظة",
+      key: "nonCashSales",
+      header: "مبيعات غير نقدية",
       headerClassName: TH,
       className: TD,
       align: "end",
-      render: (r) => <span className={`${CELL_NUM} text-[#7A766C]`}>{fmtMoney(r.otherSales)}</span>,
+      render: (r) => <span className={`${CELL_NUM} text-[#7A766C]`}>{fmtMoney(r.nonCashSales)}</span>,
     },
     {
       key: "returnsCash",

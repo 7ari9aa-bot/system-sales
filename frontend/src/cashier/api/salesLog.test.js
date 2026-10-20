@@ -56,7 +56,7 @@ describe("filterRows / totalsOf", () => {
     expect(filterRows(rows, { to: "2026-10-19" }).map((r) => dayOf(r.date))).toEqual(["2026-10-19"]);
     expect(filterRows(rows, { from: "2026-10-21" })).toHaveLength(0);
   });
-  it("filters by payment method", () => expect(filterRows(rows, { payment: "card" }).map((r) => r.number)).toEqual(["POS-20261019-BBB"]));
+  it("no longer filters by payment method (the app does not model it)", () => expect(filterRows(rows, { payment: "card" })).toHaveLength(rows.length));
   it("searches by number or by item code/name", () => {
     expect(filterRows(rows, { term: "bbb" })).toHaveLength(1);
     expect(filterRows(rows, { term: "je-1" })).toHaveLength(2);

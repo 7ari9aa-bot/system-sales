@@ -1,16 +1,10 @@
 // إعدادات البيع المشتركة بين شاشة الكاشير وصفحة الإعدادات:
-// طرق الدفع المفعّلة، الطريقة الافتراضية، وحد الخصم المسموح للكاشير.
+// حد الخصم المسموح للكاشير.
 
 import { useSyncExternalStore } from "react";
-import { PAYMENT_METHODS } from "@/cashier/lib/format";
-
-export const ALL_PAYMENT_METHODS = Object.keys(PAYMENT_METHODS);
-
 const listeners = new Set();
 
 let state = {
-  enabledMethods: ALL_PAYMENT_METHODS,
-  defaultMethod: "cash",
   maxDiscountPct: 20,
 };
 

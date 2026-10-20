@@ -29,13 +29,12 @@ export function rowFromDetail(detail, extra = {}) {
   };
 }
 
-export function filterRows(rows, { from, to, term, payment, status }) {
+export function filterRows(rows, { from, to, term, status }) {
   const t = (term ?? "").trim().toLowerCase();
   return rows.filter((row) => {
     const day = dayOf(row.date);
     if (from && day < from) return false;
     if (to && day > to) return false;
-    if (payment && row.payment !== payment) return false;
     if (status && row.status !== status) return false;
     if (!t) return true;
     return row.number.toLowerCase().includes(t) || row.items.some((i) => String(i.code ?? "").toLowerCase().includes(t) || String(i.name ?? "").toLowerCase().includes(t));

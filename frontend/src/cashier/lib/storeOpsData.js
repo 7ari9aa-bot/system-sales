@@ -150,9 +150,7 @@ function dayFigures(dateStr) {
     invoices: dayInvoices.length,
     pieces: dayInvoices.reduce((s, i) => s + i.pieces, 0),
     cashSales: byMethod("cash"),
-    cardSales: byMethod("card"),
-    walletSales: byMethod("wallet"),
-    creditSales: byMethod("credit"),
+    nonCashSales: +(byMethod("card") + byMethod("wallet") + byMethod("credit")).toFixed(2),
     returnsCash: +returnRecords
       .filter((r) => day(r.date) === dateStr && r.refundMethod === "cash")
       .reduce((s, r) => s + r.amount, 0)
@@ -196,7 +194,7 @@ export function shiftRow(shift) {
   const actual = shift.status === "closed" ? +(expected + (shift.variance ?? 0)).toFixed(2) : null;
   return {
     ...shift,
-    otherSales: +(shift.cardSales + shift.walletSales + shift.creditSales).toFixed(2),
+    otherSales: shift.nonCashSales,
     expected,
     actual,
     difference: actual == null ? 0 : +(actual - expected).toFixed(2),

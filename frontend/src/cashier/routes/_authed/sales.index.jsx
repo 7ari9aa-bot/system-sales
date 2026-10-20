@@ -13,12 +13,12 @@ import { useAuth } from "@/lib/AuthContext";
 import { useShifts } from "@/cashier/api/useShifts";
 import { useShiftSales } from "@/cashier/api/usePosSale";
 import { filterRows, totalsOf } from "@/cashier/api/salesLog";
-import { fmtDateTime, fmtInt, fmtMoney, INVOICE_STATUS, PAYMENT_METHODS } from "@/cashier/lib/format";
+import { fmtDateTime, fmtInt, fmtMoney, INVOICE_STATUS } from "@/cashier/lib/format";
 import { exportCsv } from "@/cashier/lib/exportCsv";
 
 
 // الفلاتر الافتراضية: آخر أسبوع. «مسح الفلاتر» يرجع لهذه القيم.
-const DEFAULT_FILTERS = { from: "", to: "", term: "", payment: "", status: "" };
+const DEFAULT_FILTERS = { from: "", to: "", term: "", status: "" };
 
 const BTN =
   "h-10 gap-2 rounded-[10px] border border-[#e3d6c2] bg-white px-[18px] text-[13px] font-bold text-[#0F172A] shadow-none transition-[background-color,box-shadow,border-color] duration-150 hover:border-[#F97316] hover:bg-[#FFF4E8] hover:text-[#0F172A] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#F97316] focus-visible:ring-0 active:shadow-[inset_0_2px_4px_rgba(15,23,42,.15)]";
@@ -39,7 +39,7 @@ export default function SalesLogPage() {
   const salesQuery = useShiftSales(shiftId, { cashier: shifts.find((x) => x.id === shiftId)?.employeeId === user?.id ? (user.full_name || user.email || "") : "" });
 
   const rows = useMemo(() => filterRows(salesQuery.data ?? [], filters), [salesQuery.data, filters]);
-  const activeCount = ["from", "to", "term", "payment", "status"].filter((k) => filters[k] !== "").length;
+  const activeCount = ["from", "to", "term", "status"].filter((k) => filters[k] !== "").length;
   const totals = totalsOf(rows);
 
   const openInvoice = (inv) => navigate(`/cashier/sales/${inv.id}?shift=${encodeURIComponent(shiftId)}`);
@@ -66,13 +66,6 @@ export default function SalesLogPage() {
       key: "total",
       header: "إجمالي الفاتورة",
       render: (inv) => <span className="num font-bold">{fmtMoney(inv.total)}</span>,
-    },
-    {
-      key: "payment",
-      header: "طريقة الدفع",
-      render: (inv) => (
-        <LogBadge label={inv.payment === "mixed" ? inv.paymentLabel : (PAYMENT_METHODS[inv.payment]?.label ?? inv.payment)} tone={PAYMENT_METHODS[inv.payment]?.tone} />
-      ),
     },
     {
       key: "status",
@@ -146,7 +139,6 @@ export default function SalesLogPage() {
                 { header: "التاريخ", key: "date" },
                 { header: "عدد القطع", key: "pieces" },
                 { header: "الإجمالي", key: "total" },
-                { header: "طريقة الدفع", value: (inv) => inv.paymentLabel },
                 { header: "الحالة", value: (inv) => INVOICE_STATUS[inv.status]?.label ?? inv.status },
               ],
               rows,

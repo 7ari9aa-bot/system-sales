@@ -25,7 +25,6 @@ import { estimateRefund, returnableLines, sendReturn, setQty, tableLine } from "
 import { addReplacement, previewTotal, removeReplacement, setReplacementQty, useExchangeQuote } from "@/cashier/api/exchangeCart";
 import { differenceMinor, exchangeErrorMessage, exchangePayment, exchangeRequest, settlementKind } from "@/cashier/api/exchangePlan";
 
-const METHODS = ["cash", "card", "wallet", "bank_transfer"];
 
 const asInvoice = (d) => ({
   id: d.receipt.id,
@@ -272,8 +271,6 @@ function ExchangeScreen({ session }) {
         open={dialog === "payment"}
         onOpenChange={(o) => { setDialog(o ? "payment" : null); if (!o) setPayError(null); }}
         total={fromMinor(Math.max(diffMinor, 0))}
-        allowedMethods={METHODS}
-        defaultMethod="cash"
         customerName="فرق الاستبدال"
         onConfirm={onPay}
         pending={busy}

@@ -36,7 +36,7 @@ export default function ShiftDetailsDialog({ open, onOpenChange, shift }) {
         <div className="rounded-xl border border-border p-3">
           <Row label="رصيد البداية" value={fmtMoney(shift.openingCash)} />
           <Row label="مبيعات نقدية" value={fmtMoney(shift.cashSales)} />
-          <Row label="بطاقة ومحفظة وآجل" value={fmtMoney(shift.otherSales)} />
+          <Row label="مبيعات غير نقدية" value={fmtMoney(shift.nonCashSales)} />
           <Row label="مرتجعات نقدية" value={`−${fmtMoney(shift.returnsCash)}`} tone="text-rose-600" />
           <Row label="مصروفات نقدية" value={`−${fmtMoney(shift.expensesCash)}`} tone="text-rose-600" />
           <Row label="النقدية المتوقعة" value={fmtMoney(shift.expected)} tone="font-bold" />

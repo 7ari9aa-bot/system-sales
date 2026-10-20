@@ -2,10 +2,8 @@ import { Search, X } from "lucide-react";
 import { Input } from "@/cashier/components/ui/input";
 import { Label } from "@/cashier/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/cashier/components/ui/select";
-import { INVOICE_STATUS, PAYMENT_METHODS } from "@/cashier/lib/format";
+import { INVOICE_STATUS } from "@/cashier/lib/format";
 
-// ما يدعمه الخادم فقط: «مقسّم» لفواتير الدفع المتعدد، وبدون «آجل» و«معلقة» و«ملغاة» (لا توجد كإيصالات بيع).
-export const SALES_PAYMENT_OPTIONS = { cash: PAYMENT_METHODS.cash, card: PAYMENT_METHODS.card, wallet: PAYMENT_METHODS.wallet, mixed: { label: "مقسّم (أكثر من طريقة)" } };
 export const SALES_STATUS_OPTIONS = { paid: INVOICE_STATUS.paid, partial_return: INVOICE_STATUS.partial_return, returned: INVOICE_STATUS.returned };
 import { cn } from "@/cashier/lib/utils";
 
@@ -16,7 +14,7 @@ const TRIGGER =
   "num h-[38px] rounded-[9px] border border-[#e3d6c2] bg-[#FFFDFA] px-3 text-[13px] text-[#0F172A] shadow-none transition-[border-color,box-shadow] duration-150 hover:border-[#F97316] focus:border-[#F97316] focus:ring-2 focus:ring-[#F97316]/30 focus:ring-offset-0 data-[state=open]:border-[#F97316] [&>svg]:h-[15px] [&>svg]:w-[15px] [&>svg]:text-[#9a8e7d] [&>svg]:opacity-100";
 
 // شريط تحكّم ملتصق بحد الجدول العلوي: بحث برقم الفاتورة أو الباركود، الفترة، طريقة الدفع، حالة الفاتورة، الموظف.
-export default function SalesLogFilters({ filters, onChange, onReset, activeCount = 0, paymentOptions = SALES_PAYMENT_OPTIONS, statusOptions = SALES_STATUS_OPTIONS }) {
+export default function SalesLogFilters({ filters, onChange, onReset, activeCount = 0, statusOptions = SALES_STATUS_OPTIONS }) {
   const set = (patch) => onChange({ ...filters, ...patch });
 
   return (
@@ -59,23 +57,6 @@ export default function SalesLogFilters({ filters, onChange, onReset, activeCoun
             className={cn(FIELD, "flex-1")}
           />
         </div>
-      </div>
-
-      <div>
-        <Label className={LABEL}>طريقة الدفع</Label>
-        <Select value={filters.payment || "all"} onValueChange={(v) => set({ payment: v === "all" ? "" : v })}>
-          <SelectTrigger className={TRIGGER}>
-            <SelectValue placeholder="كل الطرق" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">كل الطرق</SelectItem>
-            {Object.entries(paymentOptions).map(([key, m]) => (
-              <SelectItem key={key} value={key}>
-                {m.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
       </div>
 
       <div>

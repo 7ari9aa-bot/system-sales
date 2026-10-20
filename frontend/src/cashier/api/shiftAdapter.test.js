@@ -42,8 +42,7 @@ describe("shiftFromApi", () => {
       expected: 120,
       actual: 118,
       difference: -2,
-      cardSales: 20,
-      walletSales: 7.5,
+      nonCashSales: 27.5, // old card 20 + wallet 7.5 are kept, as ONE figure
       invoices: 1,
     });
   });
@@ -73,7 +72,7 @@ describe("shiftFromApi", () => {
 
   it("without a report the per-method sales are zero, never undefined/NaN", () => {
     const row = shiftFromApi(session);
-    for (const k of ["cardSales", "walletSales", "creditSales", "cashSales", "returnsCash", "expensesCash", "invoices", "pieces"]) {
+    for (const k of ["nonCashSales", "cashSales", "returnsCash", "expensesCash", "invoices", "pieces"]) {
       expect(Number.isFinite(row[k])).toBe(true);
     }
   });
@@ -140,5 +139,20 @@ describe("expected cash of an OPEN shift", () => {
   });
   it("is 0 (not a guess) when there is no report yet", () => {
     expect(shiftFromApi(open, null).expected).toBe(0);
+  });
+});
+
+describe("payment methods are no longer modelled, but no historical money disappears", () => {
+  const closed = { id: "bbbbbbbb-1", status: "CLOSED", opened_at: "2026-10-01T09:00:00Z", opening_float: "0.00", expected_cash: "0.00", counted_cash: "0.00", variance: "0.00", cashier_user_id: "u" };
+  it("sums every non-cash method from the backend into one figure", () => {
+    const report = { by_method: [{ method: "cash", expected: "100.00" }, { method: "card", expected: "20.00" }, { method: "wallet", expected: "7.50" }, { method: "credit", expected: "2.50" }], cash_movements: [] };
+    expect(shiftFromApi(closed, report).nonCashSales).toBe(30);
+  });
+  it("is 0 when the shift was all cash", () => {
+    expect(shiftFromApi(closed, { by_method: [{ method: "cash", expected: "100.00" }], cash_movements: [] }).nonCashSales).toBe(0);
+  });
+  it("does not expose the per-method fields any more", () => {
+    const row = shiftFromApi(closed, { by_method: [], cash_movements: [] });
+    for (const k of ["cardSales", "walletSales", "creditSales", "otherSales"]) expect(row).not.toHaveProperty(k);
   });
 });
