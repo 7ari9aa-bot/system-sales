@@ -92,13 +92,13 @@ def check_grounding(reply: str, facts: list[str]) -> str | None:
 def check_unsourced_numerals(reply: str, customer_message: str | None) -> str | None:
     """A failure reason when a run with NO tool facts still states a number.
 
-    Called only when the run produced no usable facts (no tool ran, or none
-    succeeded). Then the only legitimate source of a numeral is the customer's
-    own message: "عايز 2 تيشرت" -> "تمام، 2 تيشرت" is an echo, not a claim, and
-    blocking it would silence an innocent confirmation. Anything else is a
-    figure the model produced from nowhere (a return window, closing hour,
-    delivery time, warranty length, size guidance) and the customer must not
-    receive it.
+    Called only when the run produced no usable facts (no tool ran, none
+    succeeded, or the ones that did returned nothing). Then a numeral has two
+    legitimate sources: ``0`` ("none"), and the customer's own message.
+    "عايز 2 تيشرت" -> "تمام، 2 تيشرت" is an echo, not a claim, and blocking it
+    would silence an innocent confirmation. Anything else is a figure the model
+    produced from nowhere (a return window, closing hour, delivery time,
+    warranty length, size guidance) and the customer must not receive it.
 
     Same normalisation as ``check_grounding`` (Arabic-Indic digits and the
     Arabic decimal separator fold first), compared numerically, so "١٤" in the
@@ -115,6 +115,6 @@ def check_unsourced_numerals(reply: str, customer_message: str | None) -> str | 
             value = Decimal(numeral)
         except InvalidOperation:
             return f"unsourced numeral: {numeral}"
-        if value not in echoed:
+        if value != 0 and value not in echoed:
             return f"unsourced numeral: {numeral}"
     return None

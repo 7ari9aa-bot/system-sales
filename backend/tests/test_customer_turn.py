@@ -425,3 +425,17 @@ async def test_deadline_exceeded_is_surfaced(db, tenant_ctx):
         db, _params(db, tenant_ctx), runner=runner, deadline_seconds=0.01
     )
     assert outcome.deadline_exceeded is True
+
+
+def test_unsourced_numerals_allows_zero_and_the_customers_own_numbers() -> None:
+    from app.modules.ai.agents.customer.grounding import check_unsourced_numerals
+
+    assert check_unsourced_numerals("ملقتش حاجة، 0 نتيجة.", "عندكم بنطلون؟") is None
+    assert check_unsourced_numerals("تمام، 2 تيشرت", "عايز 2 تيشرت") is None
+    assert check_unsourced_numerals("تمام، ٢ تيشرت", "عايز 2 تيشرت") is None
+    assert check_unsourced_numerals("الاسترجاع خلال 14 يوم", "ينفع ارجع؟") == (
+        "unsourced numeral: 14"
+    )
+    # 0 is allowed, but only 0: it must not open the door to 10 or 0.5.
+    assert check_unsourced_numerals("بنقفل 10", "امتى؟") == "unsourced numeral: 10"
+    assert check_unsourced_numerals("خصم 0.5", "امتى؟") == "unsourced numeral: 0.5"

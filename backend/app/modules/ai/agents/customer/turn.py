@@ -563,16 +563,14 @@ async def run_customer_turn(
             # the customer's own message. Withholding hands the turn to a
             # human (silence beats an invented policy — decided 2026-10-18).
             grounding = "skipped_no_facts"
-            # A tool that RAN and succeeded is a source even when it returned
-            # no figure ("لقيت 0 نتيجة" after an empty search: the zero is the
-            # tool's answer). Only a run with no successful tool at all has
-            # nothing behind its numbers.
-            any_tool_ok = any(c.get("status") == "ok" for c in result.tool_calls_made)
-            reason = (
-                None
-                if any_tool_ok
-                else check_unsourced_numerals(result.content, user_message)
-            )
+            # A tool that RAN is not, by itself, a source: get_store_info on a
+            # store with no knowledge succeeds and returns nothing, and a
+            # policy figure after it is still invented. A real "found none"
+            # carries its own number (search_catalog returns total_matches=0,
+            # which the ledger records as the fact 0), so it never reaches this
+            # branch. What is left is the customer's own numbers (an echo) and
+            # 0, a legitimate "none".
+            reason = check_unsourced_numerals(result.content, user_message)
             if reason is not None:
                 grounding = "failed"
                 reply = None
