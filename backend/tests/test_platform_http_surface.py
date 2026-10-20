@@ -264,12 +264,17 @@ def test_every_platform_response_schema_documents_its_fields() -> None:
         return schema
 
     untyped: list[str] = []
+    # The redeem GET is a BROWSER handoff page (auto-submitting form), not an
+    # API response — it returns text/html by design and is allowlisted here.
+    HTML_HANDOFF = {("GET", "/api/v1/platform/impersonation/redeem")}
     for path, operations in document["paths"].items():
         if not path.startswith(API):
             continue
         for method, operation in operations.items():
             for code, response in operation.get("responses", {}).items():
                 if not code.startswith("2"):
+                    continue
+                if (method.upper(), path) in HTML_HANDOFF:
                     continue
                 schema = (response.get("content") or {}).get("application/json", {}).get("schema")
                 if schema is None:
