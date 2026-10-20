@@ -1,0 +1,127 @@
+/* ===== الكاشير (معزول): كل المتغيرات والأنماط محصورة داخل .cashier-root حتى لا تتأثر باقي صفحات Sales OS ===== */
+
+.cashier-root {
+    --background: 36 22% 97%;
+    --foreground: 24 14% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 24 14% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 24 14% 12%;
+    --primary: 26 94% 51%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 30 16% 94%;
+    --secondary-foreground: 24 14% 18%;
+    --muted: 30 16% 95%;
+    --muted-foreground: 24 9% 45%;
+    --accent: 30 100% 96%;
+    --accent-foreground: 26 88% 36%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 158 62% 36%;
+    --success-foreground: 0 0% 100%;
+    --warning: 36 92% 48%;
+    --warning-foreground: 30 40% 14%;
+    --info: 205 86% 46%;
+    --info-foreground: 0 0% 100%;
+    --border: 28 16% 89%;
+    --input: 28 16% 86%;
+    --ring: 26 94% 51%;
+    --chart-1: 26 94% 51%;
+    --chart-2: 205 86% 46%;
+    --chart-3: 158 62% 36%;
+    --chart-4: 274 60% 55%;
+    --chart-5: 42 92% 52%;
+    --radius: 0.75rem;
+    --base-radius: 0.75rem;
+    --font-heading: "Cairo", ui-sans-serif, system-ui, sans-serif;
+    --font-body: "IBM Plex Sans Arabic", "Cairo", ui-sans-serif, system-ui, sans-serif;
+    --font-display: "Cairo", ui-sans-serif, system-ui, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 24 12% 26%;
+    --sidebar-primary: 26 94% 51%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 30 100% 96%;
+    --sidebar-accent-foreground: 26 88% 36%;
+    --sidebar-border: 28 16% 91%;
+    --sidebar-ring: 26 94% 51%;
+  font-size: 14px;
+  font-family: var(--font-body);
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  min-height: 100vh;
+  -webkit-text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
+}
+.cashier-root.dark, .dark .cashier-root {
+    --background: 24 14% 8%;
+    --foreground: 30 20% 96%;
+    --card: 24 12% 11%;
+    --card-foreground: 30 20% 96%;
+    --popover: 24 12% 11%;
+    --popover-foreground: 30 20% 96%;
+    --primary: 26 92% 55%;
+    --primary-foreground: 24 20% 10%;
+    --secondary: 24 10% 18%;
+    --secondary-foreground: 30 20% 96%;
+    --muted: 24 10% 18%;
+    --muted-foreground: 30 10% 66%;
+    --accent: 26 30% 20%;
+    --accent-foreground: 30 100% 92%;
+    --destructive: 0 62% 45%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 158 50% 42%;
+    --success-foreground: 24 20% 10%;
+    --warning: 36 88% 55%;
+    --warning-foreground: 30 40% 12%;
+    --info: 205 76% 55%;
+    --info-foreground: 24 20% 10%;
+    --border: 24 10% 20%;
+    --input: 24 10% 22%;
+    --ring: 26 92% 55%;
+    --sidebar-background: 24 12% 10%;
+    --sidebar-foreground: 30 14% 88%;
+    --sidebar-primary: 26 92% 55%;
+    --sidebar-primary-foreground: 24 20% 10%;
+    --sidebar-accent: 24 10% 18%;
+    --sidebar-accent-foreground: 30 100% 92%;
+    --sidebar-border: 24 10% 20%;
+    --sidebar-ring: 26 92% 55%;
+}
+.cashier-root h1, .cashier-root h2, .cashier-root h3, .cashier-root h4 { font-family: var(--font-heading); }
+.cashier-root input, .cashier-root select, .cashier-root textarea, .cashier-root button { font-family: inherit; }
+.cashier-root * { border-color: hsl(var(--border)); }
+
+/* أدوات مساعدة يستخدمها الكاشير فقط */
+.cashier-root .num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+.cashier-root .card-soft { box-shadow: 0 1px 2px rgba(28,22,16,.04), 0 18px 40px -28px rgba(28,22,16,.24); }
+.cashier-root .scroll-slim { scrollbar-width: thin; scrollbar-color: hsl(var(--border)) transparent; }
+.cashier-root .scroll-slim::-webkit-scrollbar { height: 10px; width: 10px; }
+.cashier-root .scroll-slim::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 999px; }
+.cashier-root .scroll-slim::-webkit-scrollbar-track { background: transparent; }
+.cashier-root .ledger-rows tbody tr { animation: cashier-row-in .5s ease both; }
+.cashier-root .ledger-rows tbody tr:nth-child(1) { animation-delay: 0.05s; }
+.cashier-root .ledger-rows tbody tr:nth-child(2) { animation-delay: 0.12s; }
+.cashier-root .ledger-rows tbody tr:nth-child(3) { animation-delay: 0.19s; }
+.cashier-root .ledger-rows tbody tr:nth-child(4) { animation-delay: 0.26s; }
+.cashier-root .ledger-rows tbody tr:nth-child(5) { animation-delay: 0.33s; }
+.cashier-root .ledger-rows tbody tr:nth-child(6) { animation-delay: 0.4s; }
+.cashier-root .ledger-rows tbody tr:nth-child(7) { animation-delay: 0.47s; }
+.cashier-root .ledger-rows tbody tr:nth-child(8) { animation-delay: 0.54s; }
+
+@keyframes cashier-row-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fade-up { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes slide-in { from { opacity: 0; transform: translateX(8px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes drop { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes up { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
+@keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(28px); } }
+@keyframes inv-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes flash { 0%,100% { background: #fff; } 50% { background: #FDEBD8; } }
+
+/* الطباعة: يظهر فقط ما هو داخل .print-area */
+@media print {
+  body * { visibility: hidden; }
+  .print-area, .print-area * { visibility: visible; }
+  .print-area { position: fixed; inset: 0; margin: 0; padding: 16px; width: 100%; background: #fff; }
+}

@@ -26,7 +26,7 @@ const Customers = lazy(() => import('@/pages/Customers'));
 const Products = lazy(() => import('@/pages/Products'));
 const AddProduct = lazy(() => import('@/pages/AddProduct'));
 const Inventory = lazy(() => import('@/pages/Inventory'));
-const POS = lazy(() => import('@/pages/POS'));
+const CashierApp = lazy(() => import('@/cashier/CashierApp'));
 const Marketing = lazy(() => import('@/pages/Marketing'));
 const MarketingCampaigns = lazy(() => import('@/pages/marketing/Campaigns'));
 const MarketingAudience = lazy(() => import('@/pages/marketing/Audience'));
@@ -75,6 +75,8 @@ const AuthRoutes = () => (
 const DashboardRoutes = () => (
   <Routes>
     <Route element={<ProtectedRoute />}>
+      {/* وحدة الكاشير الجديدة: لها هيكلها الخاص (قائمة جانبية وشريط علوي) فلا تُلَفّ بـ DashboardLayout. */}
+      <Route path="/cashier/*" element={<CashierApp />} />
       <Route element={<DashboardLayout />}>
         <Route path="/dashboard" element={<Home />} />
         <Route path="/inbox" element={<Inbox />} />
@@ -82,12 +84,12 @@ const DashboardRoutes = () => (
         <Route path="/products" element={<Products />} />
         <Route path="/products/new" element={<AddProduct />} />
         <Route path="/inventory" element={<Inventory />} />
-        <Route path="/pos" element={<POS />} />
+        <Route path="/pos" element={<Navigate to="/cashier/pos" replace />} />
         {/* The manual sales workspace is gone; the cashier took its place. Old
             links (bookmarks, cached ?s=new|returns|exchanges) redirect there
             instead of landing on the 404 screen. */}
-        <Route path="/orders" element={<Navigate to="/pos" replace />} />
-        <Route path="/orders/:rest" element={<Navigate to="/pos" replace />} />
+        <Route path="/orders" element={<Navigate to="/cashier/pos" replace />} />
+        <Route path="/orders/:rest" element={<Navigate to="/cashier/pos" replace />} />
         <Route path="/marketing" element={<Marketing />}>
           <Route index element={<MarketingCampaigns />} />
           <Route path="audience" element={<MarketingAudience />} />
@@ -146,7 +148,7 @@ function PathRouter() {
   const location = useLocation();
   const path = location.pathname;
   const under = (base) => path === base || path.startsWith(`${base}/`);
-  if (['/dashboard', '/inbox', '/customers', '/products', '/inventory', '/pos', '/sales',
+  if (['/dashboard', '/inbox', '/customers', '/products', '/inventory', '/pos', '/cashier', '/sales',
     '/sales-assistant', '/marketing', '/ai', '/analytics', '/usage', '/website', '/settings'].some(under)) {
     return <DashboardRoutes />;
   }
