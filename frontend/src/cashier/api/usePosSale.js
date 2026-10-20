@@ -7,6 +7,7 @@ import { createSaleSession } from "./saleSession";
 import { receiptFromApi } from "./receiptAdapter";
 import { heldFromApi, holdPayload, restoreHeld } from "./heldCarts";
 import { rowFromDetail, saleReceipts } from "./salesLog";
+import { invoiceFromApi, returnsOf } from "./invoiceDetail";
 import { fromMinor } from "./money";
 import { discountMinor, latestOnly } from "./latest";
 
@@ -196,6 +197,22 @@ export function useShiftSales(sessionId, { cashier = "" } = {}) {
         rows.push(...batch.map((d) => rowFromDetail(d, { cashier })));
       }
       return rows.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    },
+  });
+}
+
+/** One sale with its returns. `sessionId` (in the link) lets us find the return receipts of the same order. */
+export function useInvoice(receiptId, sessionId, { cashier = "" } = {}) {
+  return useQuery({
+    queryKey: ["cashier", "invoice", receiptId, sessionId, cashier],
+    enabled: Boolean(receiptId),
+    staleTime: 5_000,
+    queryFn: async () => {
+      const sale = await posApi.receipt(receiptId);
+      const list = sessionId ? ((await posApi.receipts(sessionId)) ?? []) : [];
+      const mine = list.filter((r) => r.kind === "return" && r.order_id === sale.order.id);
+      const details = Object.fromEntries(await Promise.all(mine.map(async (r) => [r.id, await posApi.receipt(r.id)])));
+      return invoiceFromApi(sale, { returns: returnsOf(sale.order.id, list, details), cashier });
     },
   });
 }

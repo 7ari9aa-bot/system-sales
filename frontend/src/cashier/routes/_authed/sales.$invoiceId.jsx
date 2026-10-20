@@ -1,25 +1,33 @@
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ArrowRight, History, Printer, Repeat2, SearchX, Undo2, User, Wallet } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/cashier/components/ui/button";
 import PageHeader from "@/cashier/components/ui-kit/PageHeader";
 import SectionCard from "@/cashier/components/ui-kit/SectionCard";
 import StatusBadge from "@/cashier/components/ui-kit/StatusBadge";
-import ColorSwatch from "@/cashier/components/ui-kit/ColorSwatch";
 import EmptyState from "@/cashier/components/ui-kit/EmptyState";
 import OperationsLogDialog from "@/cashier/components/sales/OperationsLogDialog";
 import ReceiptDialog from "@/cashier/components/pos/ReceiptDialog";
-import { colorHex, invoiceById } from "@/cashier/lib/mockData";
+import { useAuth } from "@/lib/AuthContext";
+import { useInvoice } from "@/cashier/api/usePosSale";
+import { useShifts } from "@/cashier/api/useShifts";
 import { fmtDateTime, fmtInt, fmtMoney, PAYMENT_METHODS } from "@/cashier/lib/format";
-import { invoiceToReceipt } from "@/cashier/lib/receipt";
 
 
 export default function InvoiceDetailPage() {
   const { invoiceId } = useParams();
   const navigate = useNavigate();
-  const invoice = invoiceById(invoiceId);
+  const [params] = useSearchParams();
+  const sessionId = params.get("shift") ?? "";
+  const { user } = useAuth();
+  const me = user?.id ? { [user.id]: user.full_name || user.email } : {};
+  const shifts = useShifts({ employees: me }).data ?? [];
+  const cashierOfShift = shifts.find((x) => x.id === sessionId)?.employeeId === user?.id ? (user?.full_name || user?.email || "") : "";
+  const { data: invoice, isLoading, isError } = useInvoice(invoiceId, sessionId, { cashier: cashierOfShift });
   const [logOpen, setLogOpen] = useState(false);
   const [receipt, setReceipt] = useState(null);
+
+  if (isLoading) return <div role="status" className="p-8 text-center text-sm text-muted-foreground">جارٍ تحميل الفاتورة…</div>;
 
   if (!invoice) {
     return (
@@ -29,7 +37,7 @@ export default function InvoiceDetailPage() {
           <EmptyState
             icon={SearchX}
             title="لم يتم العثور على الفاتورة"
-            description="الرقم المطلوب غير مسجل في هذا النموذج التجريبي. عد إلى سجل المبيعات واختر فاتورة من القائمة."
+            description={isError ? "تعذّر تحميل الفاتورة. تأكد من الاتصال ثم أعد المحاولة من سجل المبيعات." : "الفاتورة غير موجودة. عد إلى سجل المبيعات واختر فاتورة من القائمة."}
             action={
               <Button asChild variant="outline">
                 <Link to="/cashier/sales">العودة إلى سجل المبيعات</Link>
@@ -41,8 +49,8 @@ export default function InvoiceDetailPage() {
     );
   }
 
-  const remaining = invoice.total - invoice.paid;
-  const returnedAmount = invoice.returns.reduce((s, r) => s + r.amount, 0);
+  const remaining = invoice.remaining;
+  const returnedAmount = invoice.returnedAmount;
 
   return (
     <div className="animate-fade-up">
@@ -55,12 +63,12 @@ export default function InvoiceDetailPage() {
           <History className="h-4 w-4" />
           سجل العمليات
         </Button>
-        <Button variant="outline" className="gap-2" onClick={() => setReceipt(invoiceToReceipt(invoice))}>
+        <Button variant="outline" className="gap-2" onClick={() => setReceipt(invoice)}>
           <Printer className="h-4 w-4" />
           طباعة الفاتورة
         </Button>
         <Button asChild className="gap-2">
-          <Link to="/cashier/returns" search={{ invoice: invoice.number }}>
+          <Link to={`/cashier/returns?invoice=${encodeURIComponent(invoice.number)}`}>
             <Repeat2 className="h-4 w-4" />
             استرجاع / استبدال
           </Link>
@@ -85,10 +93,6 @@ export default function InvoiceDetailPage() {
                   <StatusBadge kind="invoice" value={invoice.status} />
                 </dd>
               </div>
-              <div className="flex items-center justify-between">
-                <dt className="text-muted-foreground">الفرع</dt>
-                <dd className="text-xs">{invoice.branch}</dd>
-              </div>
             </dl>
           </SectionCard>
 
@@ -98,13 +102,12 @@ export default function InvoiceDetailPage() {
                 <User className="mt-0.5 h-4 w-4 text-muted-foreground" />
                 <span>
                   <span className="block font-semibold">{invoice.customerName}</span>
-                  <span className="num block text-xs text-muted-foreground">{invoice.customerPhone}</span>
                 </span>
               </li>
               <li className="flex items-start gap-2">
                 <User className="mt-0.5 h-4 w-4 text-muted-foreground" />
                 <span>
-                  <span className="block font-semibold">{invoice.cashier}</span>
+                  <span className="block font-semibold">{invoice.cashier || "غير معروف"}</span>
                   <span className="block text-xs text-muted-foreground">الكاشير المسؤول عن البيع</span>
                 </span>
               </li>
@@ -112,10 +115,9 @@ export default function InvoiceDetailPage() {
                 <Wallet className="mt-0.5 h-4 w-4 text-muted-foreground" />
                 <span>
                   <span className="flex items-center gap-2">
-                    <span className="font-semibold">{PAYMENT_METHODS[invoice.payment].label}</span>
-                    <StatusBadge kind="payment" value={invoice.payment} />
+                    <span className="font-semibold">{invoice.paymentLabel}</span>
                   </span>
-                  <span className="num block text-xs text-muted-foreground">المدفوع {fmtMoney(invoice.paid)}</span>
+                  <span className="num block text-xs text-muted-foreground">المدفوع {fmtMoney(invoice.total - remaining)}</span>
                 </span>
               </li>
             </ul>
@@ -161,11 +163,9 @@ export default function InvoiceDetailPage() {
                   <tr className="bg-muted/50 text-xs text-muted-foreground">
                     <th className="px-4 py-2 text-start font-semibold">الكود</th>
                     <th className="px-4 py-2 text-start font-semibold">المنتج</th>
-                    <th className="px-4 py-2 text-start font-semibold">اللون</th>
-                    <th className="px-4 py-2 text-center font-semibold">المقاس</th>
                     <th className="px-4 py-2 text-center font-semibold">الكمية</th>
                     <th className="px-4 py-2 text-start font-semibold">سعر الوحدة</th>
-                    <th className="px-4 py-2 text-start font-semibold">الخصم</th>
+                    <th className="px-4 py-2 text-center font-semibold">مرتجع</th>
                     <th className="px-4 py-2 text-start font-semibold">الإجمالي</th>
                   </tr>
                 </thead>
@@ -174,15 +174,9 @@ export default function InvoiceDetailPage() {
                     <tr key={`${it.code}-${i}`} className="transition-colors hover:bg-accent/30">
                       <td className="num px-4 py-2.5 text-xs text-muted-foreground">{it.code}</td>
                       <td className="px-4 py-2.5 font-medium">{it.name}</td>
-                      <td className="px-4 py-2.5">
-                        <ColorSwatch color={it.color} hex={colorHex(it.color)} />
-                      </td>
-                      <td className="px-4 py-2.5 text-center font-semibold">{it.size}</td>
                       <td className="num px-4 py-2.5 text-center">{it.qty}</td>
                       <td className="num px-4 py-2.5">{fmtMoney(it.price)}</td>
-                      <td className="num px-4 py-2.5 text-rose-600">
-                        {it.discount > 0 ? `- ${fmtMoney(it.discount)} (${it.discountPct}%)` : "—"}
-                      </td>
+                      <td className="num px-4 py-2.5 text-center text-rose-600">{it.returnedQty > 0 ? it.returnedQty : "—"}</td>
                       <td className="num px-4 py-2.5 font-bold">{fmtMoney(it.total)}</td>
                     </tr>
                   ))}
@@ -196,7 +190,7 @@ export default function InvoiceDetailPage() {
             description="مرتبطة بفاتورة البيع الأصلية ولا تُخلط معها"
             action={
               <Button asChild size="sm" variant="outline" className="gap-1.5">
-                <Link to="/cashier/returns" search={{ invoice: invoice.number }}>
+                <Link to={`/cashier/returns?invoice=${encodeURIComponent(invoice.number)}`}>
                   <Undo2 className="h-3.5 w-3.5" />
                   تسجيل عملية جديدة
                 </Link>
@@ -216,7 +210,7 @@ export default function InvoiceDetailPage() {
                   <li key={r.id} className="rounded-xl border border-border p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
-                        <StatusBadge kind="movement" value={r.type} />
+                        <span className="num text-xs font-semibold">{r.number}</span>
                         <span className="num text-xs text-muted-foreground">{fmtDateTime(r.date)}</span>
                       </div>
                       <span className="num font-heading text-base font-bold text-rose-600">{fmtMoney(r.amount)}</span>
@@ -224,17 +218,10 @@ export default function InvoiceDetailPage() {
                     <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
                       {r.items.map((ri, i) => (
                         <li key={`${ri.name}-${i}`}>
-                          {ri.name} — {ri.color} / {ri.size} • كمية {ri.qty}
+                          {ri.name} • كمية {ri.qty}
                         </li>
                       ))}
                     </ul>
-                    <p className="mt-2 text-xs">
-                      <span className="text-muted-foreground">السبب: </span>
-                      {r.reason}
-                      <span className="mx-2 text-border">|</span>
-                      <span className="text-muted-foreground">نُفذت بواسطة: </span>
-                      {r.handledBy}
-                    </p>
                   </li>
                 ))}
               </ul>

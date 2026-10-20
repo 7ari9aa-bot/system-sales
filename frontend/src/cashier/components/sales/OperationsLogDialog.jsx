@@ -11,24 +11,27 @@ const ICONS = {
   cancel: Ban,
 };
 
-// سجل العمليات المرتبطة بالفاتورة (إنشاء، طباعة، مرتجع، استبدال).
+// سجل العمليات المرتبطة بالفاتورة (إنشاء، مرتجع) من واقع إيصالات الخادم فقط.
 export default function OperationsLogDialog({ open, onOpenChange, invoice }) {
   if (!invoice) return null;
 
+  // Only events the backend really recorded: the sale itself and each return receipt issued against it.
+  // (No "printed" event: reprints are not stored, so showing one would be invented.)
+  const payment = invoice.paymentLabel || PAYMENT_METHODS[invoice.payment]?.label || "";
+  const who = invoice.cashier ? `بواسطة ${invoice.cashier} • ` : "";
   const events = [
     {
       id: "ev-1",
       kind: "create",
       title: "تم إنشاء الفاتورة",
-      detail: `بواسطة ${invoice.cashier} • ${PAYMENT_METHODS[invoice.payment].label} • ${fmtMoney(invoice.total)}`,
+      detail: `${who}${payment} • ${fmtMoney(invoice.total)}`,
       time: invoice.date,
     },
-    { id: "ev-2", kind: "print", title: "طباعة الفاتورة الحرارية", detail: `نسخة أولى • ${invoice.cashier}`, time: invoice.date },
-    ...invoice.returns.map((r, i) => ({
+    ...(invoice.returns ?? []).map((r, i) => ({
       id: `ev-r-${i}`,
-      kind: r.type === "exchange" ? "exchange" : "return",
-      title: r.type === "exchange" ? "عملية استبدال" : "عملية استرجاع",
-      detail: `${r.reason} • ${fmtMoney(r.amount)} • ${r.handledBy}`,
+      kind: "return",
+      title: "عملية استرجاع",
+      detail: `${r.number} • ${fmtMoney(r.amount)}`,
       time: r.date,
     })),
   ];
@@ -40,7 +43,7 @@ export default function OperationsLogDialog({ open, onOpenChange, invoice }) {
           <DialogTitle className="font-heading text-base">
             سجل العمليات — <span className="num">{invoice.number}</span>
           </DialogTitle>
-          <DialogDescription>كل ما تم على هذه الفاتورة من إنشاء وطباعة ومرتجعات.</DialogDescription>
+          <DialogDescription>الإنشاء والمرتجعات المسجّلة على هذه الفاتورة.</DialogDescription>
         </DialogHeader>
 
         {events.length === 0 ? (

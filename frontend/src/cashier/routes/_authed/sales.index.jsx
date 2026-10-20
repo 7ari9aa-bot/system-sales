@@ -42,7 +42,7 @@ export default function SalesLogPage() {
   const activeCount = ["from", "to", "term", "payment", "status"].filter((k) => filters[k] !== "").length;
   const totals = totalsOf(rows);
 
-  const openInvoice = (inv) => navigate(`/cashier/sales/${inv.id}`);
+  const openInvoice = (inv) => navigate(`/cashier/sales/${inv.id}?shift=${encodeURIComponent(shiftId)}`);
   const shift = shifts.find((x) => x.id === shiftId);
 
   const columns = [
