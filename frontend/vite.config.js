@@ -18,6 +18,9 @@ export default defineConfig(({ mode }) => {
   if (cashierPreview && (deployEnv === 'production' || (!deployEnv && process.env.NODE_ENV === 'production' && process.env.CI_ALLOW_CASHIER_PREVIEW !== '1' && process.env.VERCEL))) {
     throw new Error('VITE_CASHIER_PREVIEW=1 bypasses login and must never be enabled for a production build.');
   }
+  // على Vercel Preview فقط (VERCEL_ENV=preview) يتفعل وضع معاينة الكاشير تلقائياً بدون أي إعداد يدوي.
+  // الإنتاج (VERCEL_ENV=production) والتطوير المحلي والـ CI لا يتأثرون أبداً.
+  const autoPreview = deployEnv === 'preview';
   const apiProxy = {
     '/api': { target: apiProxyTarget, changeOrigin: true },
     '/auth': { target: apiProxyTarget, changeOrigin: true },
@@ -27,6 +30,9 @@ export default defineConfig(({ mode }) => {
   // طلبات /api و /auth بتتوجه للـbackend المحلي على :8000 عشان مفيش CORS.
   return {
     plugins: [react()],
+    define: {
+      'import.meta.env.VITE_CASHIER_PREVIEW': JSON.stringify(cashierPreview || autoPreview ? '1' : ''),
+    },
     resolve: {
       alias: { '@': path.resolve(dirname, 'src') },
     },
