@@ -14,6 +14,7 @@
 import { api } from "@/lib/api";
 import { toWire } from "./money";
 
+export const BALANCES_LIMIT = 5000;
 const METHODS = ["cash", "card", "wallet", "bank_transfer"];
 const DIRECTIONS = ["in", "out"];
 const REASONS = ["pay_in", "pay_out", "cash_drop", "float_adjust"];
@@ -73,7 +74,9 @@ export const posApi = {
   report: (id) => api(`/pos/sessions/${seg(id)}/report`),
   /* ---- catalog (read-only): products with variants, and stock per variant/warehouse ---- */
   products: () => api("/products?limit=500"),
-  stockBalances: () => api("/inventory/balances"),
+  // The backend lists 200 rows by default with NO ORDER BY: past 200 variants the rest would silently show
+  // stock 0 and be unsellable. Ask for a big page and let fetchCatalog() refuse a full page (see BALANCES_LIMIT).
+  stockBalances: () => api(`/inventory/balances?limit=${BALANCES_LIMIT}`),
   receipts: (id) => api(`/pos/sessions/${seg(id)}/receipts`),
   receipt: (id) => api(`/pos/receipts/${seg(id)}`),
   heldCarts: (id) => api(`/pos/sessions/${seg(id)}/held-carts`),

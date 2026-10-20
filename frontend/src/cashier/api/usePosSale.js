@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { posApi } from "./posApi";
+import { BALANCES_LIMIT, posApi } from "./posApi";
 import { buildCatalog, searchCatalog } from "./catalogAdapter";
 import { clampQty } from "./checkout";
 import { createSaleSession } from "./saleSession";
@@ -28,7 +28,13 @@ export function useHeldCarts(sessionId, catalog) {
 /** Sellable variants with live stock, straight from the backend. */
 export async function fetchCatalog() {
   const [products, balances] = await Promise.all([posApi.products(), posApi.stockBalances()]);
-  return buildCatalog(Array.isArray(products) ? products : products?.items, Array.isArray(balances) ? balances : balances?.items);
+  const rows = Array.isArray(balances) ? balances : balances?.items;
+  // A page exactly as big as the limit means the list was probably cut: selling from it would show real
+  // stock as 0. Fail loudly instead of letting the cashier lose sales without any message.
+  if (Array.isArray(rows) && rows.length >= BALANCES_LIMIT) {
+    throw new Error(`قائمة الأرصدة وصلت للحد الأقصى (${BALANCES_LIMIT}) وقد تكون ناقصة. أبلغ الدعم الفني قبل البيع.`);
+  }
+  return buildCatalog(Array.isArray(products) ? products : products?.items, rows);
 }
 
 /** Refetched after every sale, and on demand where stock must be exact (restoring a held cart). */

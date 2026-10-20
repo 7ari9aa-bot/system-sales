@@ -8,10 +8,13 @@ import ProductImageCard from "@/cashier/components/products/ProductImageCard";
 import VariantsMatrix from "@/cashier/components/products/VariantsMatrix";
 import { CARD, CARD_PAD, DOT, MAIN_COL, SECTION_HEAD, SECTION_HINT, SECTION_TITLE, WRAP } from "@/cashier/components/products/formStyles";
 import { brands, categories, SIZE_SETS } from "@/cashier/lib/mockData";
+import { nextSkuBase } from "@/cashier/api/catalogApi";
+import { useExistingSkus } from "@/cashier/api/useCatalogWrite";
 
 // نموذج إضافة / تعديل منتج مع مولّد متغيرات اللون والمقاس.
 export default function ProductForm({ product, onSubmit, onCancel, onPrintLabels }) {
   const isEdit = !!product;
+  const { data: existingSkus = [] } = useExistingSkus();
   const [form, setForm] = useState({
     name: product?.name ?? "",
     category: product?.category ?? categories[0],
@@ -50,7 +53,9 @@ export default function ProductForm({ product, onSubmit, onCancel, onPrintLabels
   }
 
   function generateRows() {
-    const skuBase = (product?.sku ?? `SKU-${String(1000 + Math.floor(Math.random() * 899))}`).replace(/-\d{2,4}$/, "");
+    // أساس SKU فريد من الأكواد الموجودة فعلاً في النظام (العشوائي كان يتكرر ويرفضه الباك بـ 409).
+    // في التعديل نشيل لاحقة التركيبة من sku المنتج؛ في الإضافة الأساس جاهز (SKU-0203) ولا نقصّه.
+    const skuBase = product?.sku ? product.sku.replace(/-\d{2,4}$/, "") : nextSkuBase(existingSkus);
     const next = [];
     colors.forEach((color, ci) => {
       sizes.forEach((size, si) => {
