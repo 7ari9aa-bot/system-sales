@@ -116,7 +116,15 @@ async def test_an_ordinary_question_does_not_hand_over(db, tenant_ctx, monkeypat
     async def answered(self, session, tenant_id_, **kwargs):
         from app.modules.ai.runtime import AgentRunResult
 
-        return AgentRunResult(content="السعر 250", guardrail_decision="allow")
+        # A price is a figure, so it needs a tool result behind it — the turn
+        # withholds an unsourced number (and that withholding IS a handover).
+        return AgentRunResult(
+            content="السعر 250",
+            guardrail_decision="allow",
+            tool_calls_made=[
+                {"name": "search_catalog", "status": "ok", "result": {"price": "250.00"}}
+            ],
+        )
 
     monkeypatch.setattr(AgentRunner, "run", answered)
 

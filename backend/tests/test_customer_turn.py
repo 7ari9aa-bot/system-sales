@@ -256,6 +256,82 @@ async def test_grounded_numerals_pass_through(db, tenant_ctx):
     assert outcome.grounding == "ok"
 
 
+# ---- numbers with NO tool behind them (the skipped_no_facts gap) -----------
+#
+# The financial-claim guardrail only recognises price / stock / money wording,
+# and grounding only runs when a tool returned facts. A policy or schedule
+# figure in a run with no tool used to reach the customer untouched.
+
+
+async def test_a_policy_figure_with_no_tool_behind_it_is_withheld(db, tenant_ctx):
+    runner = FakeRunner(_result(content="الاسترجاع خلال 14 يوم من الاستلام"))
+    outcome = await run_customer_turn(
+        db, _params(db, tenant_ctx, body="ينفع ارجع المنتج؟"), runner=runner
+    )
+    assert outcome.reply is None
+    assert outcome.grounding == "failed"
+    assert outcome.blocked_reason == "grounding:unsourced numeral: 14"
+
+
+async def test_a_schedule_figure_with_no_tool_behind_it_is_withheld(db, tenant_ctx):
+    runner = FakeRunner(_result(content="بنقفل الساعة 10 بالليل"))
+    outcome = await run_customer_turn(
+        db, _params(db, tenant_ctx, body="بتقفلوا امتى؟"), runner=runner
+    )
+    assert outcome.reply is None
+    assert outcome.blocked_reason == "grounding:unsourced numeral: 10"
+
+
+async def test_the_customers_own_number_may_be_echoed_without_a_tool(db, tenant_ctx):
+    """"عايز 2 تيشرت" -> "تمام، 2 تيشرت" is a confirmation, not a claim."""
+    runner = FakeRunner(_result(content="تمام، 2 تيشرت. هحولك لحد من الفريق يكمل معاك."))
+    outcome = await run_customer_turn(
+        db, _params(db, tenant_ctx, body="عايز 2 تيشرت"), runner=runner
+    )
+    assert outcome.reply is not None
+    assert outcome.blocked_reason is None
+
+
+async def test_an_arabic_indic_number_in_the_customers_message_covers_the_echo(db, tenant_ctx):
+    runner = FakeRunner(_result(content="تمام، 2 تيشرت"))
+    outcome = await run_customer_turn(
+        db, _params(db, tenant_ctx, body="عايز ٢ تيشرت"), runner=runner
+    )
+    assert outcome.reply is not None
+
+
+async def test_a_reply_without_numbers_and_without_a_tool_is_unaffected(db, tenant_ctx):
+    runner = FakeRunner(_result(content="ممكن توضحلي أكتر تقصد أنهي موديل؟"))
+    outcome = await run_customer_turn(db, _params(db, tenant_ctx), runner=runner)
+    assert outcome.reply is not None
+    assert outcome.grounding == "skipped_no_facts"
+
+
+async def test_a_successful_tool_with_no_figures_is_still_a_source(db, tenant_ctx):
+    """An empty search RAN: "لقيت 0 نتيجة" is the tool's own answer, so the
+    new check must not silence it."""
+    runner = FakeRunner(
+        _result(
+            content="مفيش مطابق ل 0 نتيجة، وضحلي أكتر",
+            tool_calls=[{"name": "search_catalog", "status": "ok", "result": {"results": []}}],
+        )
+    )
+    outcome = await run_customer_turn(db, _params(db, tenant_ctx), runner=runner)
+    assert outcome.reply is not None
+
+
+async def test_a_failed_tool_is_not_a_source_for_a_number(db, tenant_ctx):
+    runner = FakeRunner(
+        _result(
+            content="الاسترجاع خلال 14 يوم",
+            tool_calls=[{"name": "get_store_info", "status": "error", "result": {"error": "x"}}],
+        )
+    )
+    outcome = await run_customer_turn(db, _params(db, tenant_ctx), runner=runner)
+    assert outcome.reply is None
+    assert outcome.blocked_reason == "grounding:unsourced numeral: 14"
+
+
 async def test_voice_without_transcript_is_surfaced_not_hidden(db, tenant_ctx):
     runner = FakeRunner(_result())
     await run_customer_turn(
