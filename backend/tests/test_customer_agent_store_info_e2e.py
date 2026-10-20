@@ -184,3 +184,42 @@ async def test_an_undeclared_argument_is_an_error_the_model_can_correct(
     first_result = [m["content"] for m in seen["calls"][1]["messages"] if m.get("role") == "tool"]
     assert "staff_only" not in "".join(first_result)  # nothing leaked through
     assert outcome.reply == "من الصبح لبالليل."
+
+
+async def test_an_empty_store_info_call_is_not_a_source_for_a_policy_number(
+    db, tenant_ctx, monkeypatch
+):
+    """A tool that ran and returned NOTHING backs no number. This store has no
+    knowledge at all (most do not yet), get_store_info succeeds with an empty
+    list, and the model still states a return window out of thin air."""
+    tenant_id = tenant_ctx.tenant_id
+    agent = await _customer_agent(db, tenant_id)
+    _script(
+        monkeypatch,
+        _calls("get_store_info"),
+        _says("الاسترجاع خلال 14 يوم من الاستلام."),
+    )
+
+    outcome = await _turn(db, tenant_id, agent, "ينفع ارجع المنتج؟")
+
+    assert outcome.reply is None
+    assert outcome.blocked_reason == "grounding:unsourced numeral: 14"
+
+
+async def test_an_empty_store_info_call_still_allows_an_echo_and_zero(
+    db, tenant_ctx, monkeypatch
+):
+    """The fix must not silence an innocent confirmation: the customer's own
+    number is an echo, and 0 is a legitimate "none"."""
+    tenant_id = tenant_ctx.tenant_id
+    agent = await _customer_agent(db, tenant_id)
+    _script(
+        monkeypatch,
+        _calls("get_store_info"),
+        _says("تمام، 2 تيشرت. ملقتش سياسة مسجلة، هخلي الفريق يرد عليك."),
+    )
+
+    outcome = await _turn(db, tenant_id, agent, "عايز 2 تيشرت وعايز اعرف الاسترجاع")
+
+    assert outcome.blocked_reason is None
+    assert outcome.reply is not None
