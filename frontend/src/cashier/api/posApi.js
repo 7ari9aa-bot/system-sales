@@ -127,6 +127,25 @@ export const posApi = {
   voidExpense: async (id, { reason }, intent) =>
     post(`/expenses/${seg(id)}/void`, { reason: String(reason ?? "").trim() }, needIntent(intent)),
 
+  /* ---- purchasing (backend/app/modules/purchasing) ---- */
+  listSuppliers: () => api("/suppliers"),
+  getSupplier: (id) => api(`/suppliers/${seg(id)}`),
+  createSupplier: (body) => post("/suppliers", body),
+  updateSupplier: (id, body) => api(`/suppliers/${seg(id)}`, { method: "PATCH", body }),
+  listPurchaseOrders: (query = "") => api(`/purchase-orders?limit=500${query ? `&${query}` : ""}`),
+  // Receiving moves stock AND cost exactly once: a retried Save must replay, not double the shelf.
+  createPurchaseOrder: async (payload, intent) => post("/purchase-orders", payload, needIntent(intent)),
+  receivePurchaseOrder: async (id, intent) => post(`/purchase-orders/${seg(id)}/receive`, undefined, needIntent(intent)),
+  cancelPurchaseOrder: async (id, intent) => post(`/purchase-orders/${seg(id)}/cancel`, undefined, needIntent(intent)),
+  listSupplierPayments: (query = "") => api(`/supplier-payments?limit=500${query ? `&${query}` : ""}`),
+  createSupplierPayment: async (payload, intent) => post("/supplier-payments", payload, needIntent(intent)),
+  listSupplierReturns: (query = "") => api(`/supplier-returns?limit=500${query ? `&${query}` : ""}`),
+  createSupplierReturn: async (payload, intent) => post("/supplier-returns", payload, needIntent(intent)),
+  acceptSupplierReturn: async (id, body, intent) => post(`/supplier-returns/${seg(id)}/accept`, body ?? {}, needIntent(intent)),
+  rejectSupplierReturn: async (id, intent) => post(`/supplier-returns/${seg(id)}/reject`, undefined, needIntent(intent)),
+  variantCost: (id) => api(`/variant-costs/${seg(id)}`),
+  variantCostHistory: (id) => api(`/variant-costs/${seg(id)}/history`),
+
   /* ---- money (intent required) ---- */
   sell: async (id, { items, customerId, tenders: t, discountTotal, tenderedCash, heldCartId }, intent) => {
     const headers = needIntent(intent);

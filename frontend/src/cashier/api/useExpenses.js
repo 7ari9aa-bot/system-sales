@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { newIntent, posApi } from "./posApi";
+import { posApi } from "./posApi";
+import { createIntentStore } from "./intentStore";
 import { categoriesFromApi, expensesFromApi } from "./expensesAdapter";
 import { SHIFTS_KEY, SHIFT_STATE_KEY } from "./useShifts";
 
@@ -36,21 +37,19 @@ function useRefresh() {
 }
 
 /**
- * The intent lives as long as the user's intention: a failed Save that is tapped again re-sends
- * the SAME key (so a lost response cannot book the expense twice); a successful one starts a new intent.
+ * One Idempotency-Key per user intention (see intentStore.js): re-sending the same Save reuses the key so a lost
+ * response cannot book the expense twice; a corrected Save gets a new key instead of a guaranteed 409.
  */
 function useIntentMutation(call) {
   const refresh = useRefresh();
-  // useRef, not a plain Map: a Map built in the hook body is new on every render, which would hand a retry a
-  // fresh key and defeat the whole point (the server could not tell it is the same Save).
-  const intents = useRef(new Map()).current;
+  const store = useRef(null);
+  if (!store.current) store.current = createIntentStore();
   return useMutation({
     mutationFn: async ({ id, ...args }) => {
       const slot = id ?? "new";
-      const intent = intents.get(slot) ?? newIntent();
-      intents.set(slot, intent);
+      const intent = store.current.take(slot, args);
       const result = await call(args, intent);
-      intents.delete(slot);
+      store.current.done(slot);
       return result;
     },
     onSuccess: refresh,

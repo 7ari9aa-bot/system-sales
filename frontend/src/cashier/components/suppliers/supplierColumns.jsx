@@ -1,10 +1,11 @@
 import StatusBadge from "@/cashier/components/ui-kit/StatusBadge";
 import SupplierHistoryButton from "@/cashier/components/suppliers/SupplierHistoryButton";
 import { CELL_ACCENT, CELL_EMPTY, CELL_MAIN, CELL_NUM, CELL_SUB, TD, TH } from "@/cashier/components/ui-kit/ledgerStyles";
-import { supplierReturnCredit } from "@/cashier/lib/storeOpsData";
+import { toMinor } from "@/cashier/api/money";
 import { fmtDate, fmtInt, fmtMoney } from "@/cashier/lib/format";
 
-// أعمدة جدول الموردين: التوريدات، آخر تعامل، والرصيد المستحق بعد خصم المرتجعات.
+// أعمدة جدول الموردين. الرصيد جاي من الخادم محسوب من المستندات وبعد خصم المرتجعات المقبولة، فبيتعرض زي ما هو.
+// (خصم المرتجعات هنا مرة تانية كان هيخصمها مرتين.)
 export default function supplierColumns({ onHistory }) {
   return [
     {
@@ -63,14 +64,14 @@ export default function supplierColumns({ onHistory }) {
       headerClassName: TH,
       className: TD,
       align: "end",
-      sortValue: (s) => +(s.balance - supplierReturnCredit(s.id)).toFixed(2),
+      sortValue: (s) => toMinor(s.balance),
       render: (s) => {
-        const credit = supplierReturnCredit(s.id);
-        const net = +(s.balance - credit).toFixed(2);
+        const owed = toMinor(s.balance);
         return (
           <span>
-            <span className={`block ${net > 0 ? CELL_ACCENT : CELL_EMPTY}`}>{fmtMoney(net)}</span>
-            {credit > 0 && <span className={`mt-0.5 block ${CELL_SUB}`}>مرتجعات مخصومة {fmtMoney(credit)}</span>}
+            <span className={`block ${owed > 0 ? CELL_ACCENT : CELL_EMPTY}`}>{fmtMoney(s.balance)}</span>
+            {owed < 0 && <span className={`mt-0.5 block ${CELL_SUB}`}>رصيد لصالح المحل</span>}
+            {toMinor(s.credit) > 0 && <span className={`mt-0.5 block ${CELL_SUB}`}>مرتجعات مخصومة {fmtMoney(s.credit)}</span>}
           </span>
         );
       },

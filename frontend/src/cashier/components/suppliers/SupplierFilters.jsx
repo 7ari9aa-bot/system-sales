@@ -3,11 +3,10 @@ import { Label } from "@/cashier/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/cashier/components/ui/select";
 import FilterPanel from "@/cashier/components/ui-kit/FilterPanel";
 import { FIELD, FIELD_LABEL, FIELD_SELECT, FILTER_PANEL, FILTER_PANEL_CONTENT, FILTER_PANEL_HEADER } from "@/cashier/components/ui-kit/ledgerStyles";
-import { supplierCities } from "@/cashier/lib/opsData";
 import { SUPPLIER_STATUS } from "@/cashier/lib/format";
 
 // فلاتر جدول الموردين: بحث، مدينة، وحالة المورد.
-export default function SupplierFilters({ term, onTerm, city, onCity, status, onStatus, onReset }) {
+export default function SupplierFilters({ term, onTerm, city, onCity, status, onStatus, onReset, cities = [] }) {
   const activeCount = [city, status].filter(Boolean).length + (term ? 1 : 0);
 
   return (
@@ -32,7 +31,7 @@ export default function SupplierFilters({ term, onTerm, city, onCity, status, on
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">كل المدن</SelectItem>
-              {supplierCities.map((c) => (
+              {cities.map((c) => (
                 <SelectItem key={c} value={c}>
                   {c}
                 </SelectItem>
