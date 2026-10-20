@@ -216,3 +216,21 @@ export function useInvoice(receiptId, sessionId, { cashier = "" } = {}) {
     },
   });
 }
+
+/** Sales of the OPEN shift (the only ones the backend lets us return), newest first, with number + total. */
+export function useReturnableSales(sessionId) {
+  return useQuery({
+    queryKey: ["cashier", "returnable", sessionId],
+    enabled: Boolean(sessionId),
+    staleTime: 0,
+    queryFn: async () => {
+      const list = saleReceipts((await posApi.receipts(sessionId)) ?? []);
+      const rows = [];
+      for (let i = 0; i < list.length; i += 6) {
+        const batch = await Promise.all(list.slice(i, i + 6).map((r) => posApi.receipt(r.id)));
+        rows.push(...batch);
+      }
+      return rows.sort((a, b) => String(b.receipt.issued_at).localeCompare(String(a.receipt.issued_at)));
+    },
+  });
+}

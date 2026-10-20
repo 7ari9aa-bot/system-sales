@@ -1,208 +1,140 @@
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import ExchangeInvoiceSearch from "@/cashier/components/exchanges/ExchangeInvoiceSearch";
-import ConfirmDialog from "@/cashier/components/ui-kit/ConfirmDialog";
-import ReturnActionsBar from "@/cashier/components/returns/ReturnActionsBar";
+import { TriangleAlert } from "lucide-react";
+import { Button } from "@/cashier/components/ui/button";
+import { useAuth } from "@/lib/AuthContext";
 import ReturnHeaderBar from "@/cashier/components/returns/ReturnHeaderBar";
-import ReturnItemsTable from "@/cashier/components/returns/ReturnItemsTable";
+import ExchangeInvoiceSearch from "@/cashier/components/exchanges/ExchangeInvoiceSearch";
 import ReturnOriginalTable from "@/cashier/components/returns/ReturnOriginalTable";
-import ReturnSettlementBar from "@/cashier/components/returns/ReturnSettlementBar";
+import ReturnItemsTable from "@/cashier/components/returns/ReturnItemsTable";
 import ReturnTotalsBar from "@/cashier/components/returns/ReturnTotalsBar";
+import ReturnSettlementBar from "@/cashier/components/returns/ReturnSettlementBar";
+import ReturnActionsBar from "@/cashier/components/returns/ReturnActionsBar";
+import ConfirmDialog from "@/cashier/components/ui-kit/ConfirmDialog";
 import useFillRowCount from "@/cashier/hooks/use-fill-row-count";
 import { fmtMoney } from "@/cashier/lib/format";
-import { colorHex, employees, invoices } from "@/cashier/lib/mockData";
-import { completeReturn, nextReturnNumber } from "@/cashier/lib/returnsStore";
-import { applyStockMovement } from "@/cashier/lib/stockMovement";
+import { newIntent, posApi } from "@/cashier/api/posApi";
+import { useShiftState } from "@/cashier/api/useShifts";
+import { useReturnableSales } from "@/cashier/api/usePosSale";
+import { estimateRefund, returnErrorMessage, returnRequest, returnableLines, sendReturn, setQty, tableLine } from "@/cashier/api/returnPlan";
 
+const asInvoice = (d) => ({
+  id: d.receipt.id,
+  number: d.receipt.number,
+  date: d.receipt.issued_at,
+  total: Number(d.order.grand_total),
+  pieces: (d.lines ?? []).reduce((s, l) => s + Number(l.quantity), 0),
+  customerName: "عميل نقدي",
+  customerPhone: "",
+  detail: d,
+});
 
-// بنود الفاتورة الأصلية: المتاح للاسترجاع = المباع ناقص ما سبق استرجاعه، والسعر الصافي بعد الخصم.
-function buildLines(invoice) {
-  const returned = {};
-  invoice.returns.forEach((r) =>
-    r.items.forEach((ri) => {
-      const key = `${ri.name}|${ri.color}|${ri.size}`;
-      returned[key] = (returned[key] || 0) + ri.qty;
-    }),
+function NoShift() {
+  return (
+    <div className="animate-fade-up mx-auto mt-16 flex max-w-md flex-col items-center gap-3 rounded-2xl border border-border bg-card p-8 text-center">
+      <TriangleAlert className="h-7 w-7 text-amber-600" aria-hidden="true" />
+      <p className="text-sm font-semibold" role="status">لا توجد وردية مفتوحة. المرتجع يتم على الوردية المفتوحة التي بيعت فيها الفاتورة.</p>
+      <Button asChild><Link to="/cashier/shifts">الذهاب إلى الورديات</Link></Button>
+    </div>
   );
-
-  return invoice.items.map((it, index) => {
-    const alreadyReturned = returned[`${it.name}|${it.color}|${it.size}`] || 0;
-    return {
-      ...it,
-      key: `${it.name}|${it.color}|${it.size}|${index}`,
-      hex: colorHex(it.color),
-      unitNet: +((it.total ?? it.price * it.qty) / it.qty).toFixed(2),
-      alreadyReturned,
-      maxQty: Math.max(0, it.qty - alreadyReturned),
-      returnQty: 0,
-    };
-  });
 }
 
 export default function NewReturnPage() {
+  const shift = useShiftState({ canConfigure: false });
+  if (shift.isLoading) return <p className="p-8 text-center text-sm text-muted-foreground" role="status">جارٍ التحميل…</p>;
+  if (shift.data?.status !== "open") return <NoShift />;
+  return <ReturnScreen session={shift.data.session} />;
+}
+
+function ReturnScreen({ session }) {
   const navigate = useNavigate();
+  const qc = useQueryClient();
+  const { user } = useAuth();
   const { invoice: invoiceParam } = Object.fromEntries(useSearchParams()[0]);
-  const [employee, setEmployee] = useState(employees[0].name);
+  const salesQuery = useReturnableSales(session.id);
+  const sales = useMemo(() => (salesQuery.data ?? []).map(asInvoice), [salesQuery.data]);
+
   const [invoice, setInvoice] = useState(null);
   const [lines, setLines] = useState([]);
   const [term, setTerm] = useState("");
   const [error, setError] = useState("");
-  const [reason, setReason] = useState("");
-  const [refundMethod, setRefundMethod] = useState("cash");
+  const [restock, setRestock] = useState(true);
+  const [busy, setBusy] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
+  const intentRef = useRef(null); // one intent per deliberate return: a retry after a network drop replays, never double-refunds
   const gridRef = useRef(null);
   const actionsRef = useRef(null);
   const fillRows = useFillRowCount({ areaRef: gridRef, bottomRef: actionsRef });
 
-  // فواتير جاهزة للتجربة السريعة.
-  const quickPicks = invoices.filter((inv) => inv.status === "paid" && inv.items.length >= 2).slice(0, 3);
+  const key = term.trim().toLowerCase();
+  const matches = (key ? sales.filter((s) => s.number.toLowerCase().includes(key) || s.detail.lines.some((l) => String(l.sku ?? "").toLowerCase().includes(key))) : sales).slice(0, 6);
+  const quickPicks = sales.filter((s) => s.detail.lines.some((l) => Number(l.quantity) - Number(l.returned_qty ?? 0) > 0)).slice(0, 3);
 
-  const searchKey = term.trim().toLowerCase();
-  const digits = searchKey.replace(/\D/g, "");
-  const matches = (searchKey
-    ? invoices.filter(
-        (inv) =>
-          inv.number.toLowerCase().includes(searchKey) ||
-          inv.customerName.toLowerCase().includes(searchKey) ||
-          (digits.length >= 4 && (inv.customerPhone ?? "").replace(/\D/g, "").includes(digits)) ||
-          inv.items.some((it) => (it.barcode ?? "").includes(searchKey)),
-      )
-    : invoices.slice(0, 5)
-  ).slice(0, 6);
-
-  const pickedLines = lines.filter((l) => l.returnQty > 0);
-  const totals = {
-    pieces: pickedLines.reduce((sum, l) => sum + l.returnQty, 0),
-    value: +pickedLines.reduce((sum, l) => sum + l.unitNet * l.returnQty, 0).toFixed(2),
-  };
+  const tableLines = useMemo(() => lines.map(tableLine), [lines]);
+  const pickedLines = tableLines.filter((l) => l.returnQty > 0);
+  const refund = invoice ? estimateRefund(invoice.detail, lines) : "0.00";
+  const totals = { pieces: pickedLines.reduce((s, l) => s + l.returnQty, 0), value: Number(refund) };
   const hasDraft = !!invoice || pickedLines.length > 0;
-  const canComplete = !!invoice && pickedLines.length > 0 && !!reason;
+  const canComplete = !!invoice && pickedLines.length > 0 && !busy;
 
   function selectInvoice(inv) {
-    const fresh = buildLines(inv);
     setInvoice(inv);
-    setLines(fresh);
+    setLines(returnableLines(inv.detail));
     setTerm(inv.number);
-    setReason("");
     setError("");
-    toast.success(`تم تحميل الفاتورة ${inv.number} — ${inv.items.length} صنف`);
-
-    const used = fresh.filter((l) => l.alreadyReturned > 0);
-    if (used.length) toast.info(`${used.length} صنف سبق استرجاعه — المتاح محدّث.`);
+    intentRef.current = null;
+    toast.success(`تم تحميل الفاتورة ${inv.number}`);
   }
-
-  function submitSearch() {
-    const clean = term.trim();
-    if (!clean) {
-      setError("اكتب رقم الفاتورة أو هاتف العميل أولًا");
-      return;
-    }
-    const key = clean.toLowerCase();
-    const keyDigits = key.replace(/\D/g, "");
-    const exact = invoices.find(
-      (inv) =>
-        inv.number.toLowerCase() === key ||
-        inv.id.toLowerCase() === key ||
-        (keyDigits.length >= 6 && (inv.customerPhone ?? "").replace(/\D/g, "") === keyDigits) ||
-        inv.items.some((it) => (it.barcode ?? "") === key),
-    );
-    if (exact) {
-      selectInvoice(exact);
-      return;
-    }
-    if (matches.length === 1) {
-      selectInvoice(matches[0]);
-      return;
-    }
-    setError(matches.length ? `أكثر من فاتورة مطابقة «${clean}» — اختر من القائمة` : `لا توجد فاتورة مطابقة لـ «${clean}»`);
-  }
-
-  // نقل قطعة من الفاتورة الأصلية إلى جدول المرتجع.
-  function startReturn(key) {
-    setLines((prev) => prev.map((l) => (l.key === key && l.maxQty > 0 ? { ...l, returnQty: 1 } : l)));
-  }
-
-  function cancelReturn(key) {
-    setLines((prev) => prev.map((l) => (l.key === key ? { ...l, returnQty: 0 } : l)));
-  }
-
-  function setReturnQty(key, value) {
-    setLines((prev) => prev.map((l) => (l.key === key ? { ...l, returnQty: Math.min(l.maxQty, Math.max(1, Number(value) || 1)) } : l)));
-  }
-
-  function stepReturnQty(key, delta) {
-    setLines((prev) => prev.map((l) => (l.key === key ? { ...l, returnQty: Math.min(l.maxQty, Math.max(1, l.returnQty + delta)) } : l)));
-  }
-
   function resetDraft() {
     setInvoice(null);
     setLines([]);
     setTerm("");
     setError("");
-    setReason("");
+    intentRef.current = null;
+  }
+  function submitSearch() {
+    const clean = term.trim().toLowerCase();
+    if (!clean) return setError("اكتب رقم الفاتورة أو كود الصنف أولًا");
+    const exact = sales.find((s) => s.number.toLowerCase() === clean);
+    if (exact) return selectInvoice(exact);
+    if (matches.length === 1) return selectInvoice(matches[0]);
+    setError(matches.length ? "أكثر من فاتورة مطابقة. اختر من القائمة" : "لا توجد فاتورة بهذا الرقم في الوردية المفتوحة. المرتجع يتم على نفس وردية البيع.");
+  }
+  const start = (k) => setLines((p) => setQty(p, k, 1));
+  const cancelLine = (k) => setLines((p) => setQty(p, k, 0));
+  const setLineQty = (k, v) => setLines((p) => setQty(p, k, Math.max(1, Number(v) || 1)));
+  const step = (k, d) => setLines((p) => setQty(p, k, Math.max(1, (p.find((l) => l.variantId === k)?.returnQty ?? 1) + d)));
+
+  async function confirmReturn() {
+    if (!canComplete) return;
+    setBusy(true);
+    try {
+      const req = returnRequest(invoice.detail, lines, { restock });
+      intentRef.current ??= newIntent();
+      const intent = intentRef.current;
+      const res = await sendReturn(() => posApi.returnSale(session.id, req, intent));
+      toast.success(`تم اعتماد المرتجع ${res.receipt_number}. رد ${fmtMoney(Number(res.refunded_total))} للعميل`);
+      intentRef.current = null;
+      await Promise.all([qc.invalidateQueries({ queryKey: ["cashier"] })]);
+      resetDraft();
+    } catch (e) {
+      setError(returnErrorMessage(e));
+      toast.error(returnErrorMessage(e));
+    } finally {
+      setBusy(false);
+    }
   }
 
-  // اعتماد المرتجع: تسجيله في السجل، إرجاع الكميات للمخزون، وتحديث الفاتورة الأصلية.
-  function confirmReturn() {
-    const record = {
-      id: `ret-${Date.now()}`,
-      number: nextReturnNumber(),
-      date: new Date().toISOString(),
-      invoiceId: invoice.id,
-      invoiceNumber: invoice.number,
-      customer: invoice.customerName,
-      productName: pickedLines.length > 1 ? `${pickedLines[0].name} +${pickedLines.length - 1}` : pickedLines[0].name,
-      variant: `${pickedLines[0].color} / ${pickedLines[0].size}`,
-      qty: totals.pieces,
-      amount: totals.value,
-      refundMethod,
-      reason,
-      employee,
-      status: "completed",
-      items: pickedLines.map((l) => ({
-        name: l.name,
-        code: l.code,
-        barcode: l.barcode,
-        color: l.color,
-        size: l.size,
-        qty: l.returnQty,
-        unitNet: l.unitNet,
-        total: +(l.unitNet * l.returnQty).toFixed(2),
-      })),
-    };
-
-    // الكميات المرتجعة تعود لمخزون نفس المتغير (لون / مقاس).
-    applyStockMovement(
-      pickedLines.map((l) => ({ code: l.code, barcode: l.barcode, qty: l.returnQty })),
-      [],
-    );
-
-    // تُسجَّل العملية على الفاتورة الأصلية: تحدّث المتاح للاسترجاع وتظهر في تفاصيل الفاتورة.
-    const source = invoices.find((i) => i.id === invoice.id);
-    source?.returns.push({
-      id: record.id,
-      date: record.date,
-      type: "return",
-      amount: record.amount,
-      items: record.items.map((i) => ({ name: i.name, color: i.color, size: i.size, qty: i.qty })),
-      reason,
-      handledBy: employee,
-    });
-
-    completeReturn(record);
-    toast.success(`تم اعتماد المرتجع ${record.number} — رد ${fmtMoney(totals.value)} للعميل`);
-    resetDraft();
-    setTimeout(() => navigate("/cashier/returns/log"), 900);
-  }
-
-  // تحميل فاتورة محددة عند القدوم من تفاصيل الفاتورة.
   useEffect(() => {
-    if (!invoiceParam) return;
-    const found = invoices.find((i) => i.number.toLowerCase() === invoiceParam.toLowerCase());
+    if (!invoiceParam || invoice || !sales.length) return;
+    const found = sales.find((s) => s.number.toLowerCase() === invoiceParam.toLowerCase());
     if (found) selectInvoice(found);
+    else setError(`الفاتورة ${invoiceParam} ليست ضمن الوردية المفتوحة. المرتجع يتم على نفس وردية البيع.`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [invoiceParam]);
+  }, [invoiceParam, sales]);
 
   useEffect(() => {
     function onKey(e) {
@@ -217,14 +149,10 @@ export default function NewReturnPage() {
 
   return (
     <div className="animate-fade-up flex flex-col gap-2 pb-2">
-      <ReturnHeaderBar number={nextReturnNumber()} employee={employee} employees={employees} onEmployeeChange={setEmployee} />
-
+      <ReturnHeaderBar employee={user?.full_name || user?.email || ""} />
       <ExchangeInvoiceSearch
         term={term}
-        onTermChange={(value) => {
-          setTerm(value);
-          setError("");
-        }}
+        onTermChange={(v) => { setTerm(v); setError(""); }}
         onSubmit={submitSearch}
         error={error}
         invoice={invoice}
@@ -233,62 +161,27 @@ export default function NewReturnPage() {
         onPick={selectInvoice}
         onClear={resetDraft}
       />
-
+      {salesQuery.isError ? <p role="alert" className="text-xs font-semibold text-rose-600">تعذّر تحميل فواتير الوردية</p> : null}
       <div ref={gridRef} className="grid gap-2 2xl:grid-cols-2">
         <div className="flex min-h-0 flex-col gap-1.5">
-          <ReturnOriginalTable
-            invoice={invoice}
-            lines={lines}
-            onStart={startReturn}
-            onQty={setReturnQty}
-            onQtyStep={stepReturnQty}
-            onCancel={cancelReturn}
-            totals={totals}
-            minRows={fillRows}
-          />
-
+          <ReturnOriginalTable invoice={invoice} lines={tableLines} onStart={start} onQty={setLineQty} onQtyStep={step} onCancel={cancelLine} totals={totals} minRows={fillRows} />
           <ReturnTotalsBar totals={totals} />
         </div>
-
         <div className="flex min-h-0 flex-col gap-1.5">
-          <ReturnItemsTable
-            lines={pickedLines}
-            totals={totals}
-            onQty={setReturnQty}
-            onQtyStep={stepReturnQty}
-            onRemove={(line) => cancelReturn(line.key)}
-            minRows={fillRows}
-          />
-
-          <ReturnSettlementBar
-            value={totals.value}
-            reason={reason}
-            onReasonChange={setReason}
-            refundMethod={refundMethod}
-            onRefundMethodChange={setRefundMethod}
-          />
+          <ReturnItemsTable lines={pickedLines} totals={totals} onQty={setLineQty} onQtyStep={step} onRemove={(l) => cancelLine(l.key)} minRows={fillRows} />
+          <ReturnSettlementBar value={totals.value} restock={restock} onRestockChange={setRestock} />
         </div>
       </div>
-
       <div ref={actionsRef}>
-        <ReturnActionsBar
-          canComplete={canComplete}
-          hasDraft={hasDraft}
-          onComplete={confirmReturn}
-          onCancel={() => setCancelOpen(true)}
-        />
+        <ReturnActionsBar canComplete={canComplete} hasDraft={hasDraft} onComplete={confirmReturn} onCancel={() => setCancelOpen(true)} />
       </div>
-
       <ConfirmDialog
         open={cancelOpen}
         onOpenChange={setCancelOpen}
         title="إلغاء عملية المرتجع"
         description="سيتم حذف الفاتورة المختارة والأصناف المحددة في هذه العملية، دون أي تأثير على المخزون أو تسجيل مرتجع."
         confirmLabel="إلغاء العملية"
-        onConfirm={() => {
-          resetDraft();
-          toast.info("تم إلغاء عملية المرتجع");
-        }}
+        onConfirm={() => { resetDraft(); toast.info("تم إلغاء عملية المرتجع"); }}
       />
     </div>
   );

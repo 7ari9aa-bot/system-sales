@@ -34,7 +34,7 @@ export default function ExchangeInvoiceSearch({ term, onTermChange, onSubmit, er
                 setOpen(false);
               }
             }}
-            placeholder="رقم الفاتورة أو الباركود أو هاتف العميل"
+            placeholder="رقم الفاتورة POS-… أو كود الصنف"
             className="num h-8 pe-8 text-[12px] font-semibold"
             aria-label="بحث عن الفاتورة الأصلية"
           />
@@ -91,7 +91,7 @@ export default function ExchangeInvoiceSearch({ term, onTermChange, onSubmit, er
               <span className="text-muted-foreground">
                 العميل: <span className="font-semibold text-foreground">{invoice.customerName}</span>
               </span>
-              <span className="num text-muted-foreground">{invoice.customerPhone}</span>
+              {invoice.customerPhone ? <span className="num text-muted-foreground">{invoice.customerPhone}</span> : null}
               <span className="num text-muted-foreground">{fmtDateTime(invoice.date)}</span>
               <span className="num font-semibold text-foreground">{fmtMoney(invoice.total)}</span>
               <Badge variant="secondary" className="num">
