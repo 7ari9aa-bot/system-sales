@@ -63,6 +63,16 @@ def _require_platform_token(request: Request) -> None:
         raise PermissionDeniedError("invalid platform token")
 
 
+class ImpersonationTicketOut(BaseModel):
+    ticket: str
+    expires_in: int
+    redeem_path: str
+
+
+class ImpersonationRedeemOut(BaseModel):
+    location: str
+
+
 class ImpersonationTicketRequest(BaseModel):
     tenant_id: uuid.UUID
     user_id: uuid.UUID
@@ -118,7 +128,7 @@ def _safe_target(claims_next: str | None) -> str:
     return "/dashboard"
 
 
-@router.post("/impersonation/tickets")
+@router.post("/impersonation/tickets", response_model=ImpersonationTicketOut)
 async def mint_impersonation_ticket(
     body: ImpersonationTicketRequest, session: DbSession, _: None = Depends(_require_platform_token)
 ):
@@ -150,11 +160,13 @@ async def mint_impersonation_ticket(
         after={"reason": body.reason[:500]},
     )
     await session.commit()
-    return {"ticket": ticket, "expires_in": _TICKET_TTL_SECONDS,
-            "redeem_path": "/api/v1/platform/impersonation/redeem"}
+    return ImpersonationTicketOut(
+        ticket=ticket, expires_in=_TICKET_TTL_SECONDS,
+        redeem_path="/api/v1/platform/impersonation/redeem",
+    )
 
 
-@router.get("/impersonation/redeem")
+@router.get("/impersonation/redeem", response_model=ImpersonationRedeemOut, response_class=HTMLResponse)
 async def redeem_impersonation_ticket(
     ticket: Annotated[str, Query(min_length=1)],
     session: DbSession,
@@ -206,7 +218,7 @@ class ImpersonationConfirmBody(BaseModel):
     nonce: str = Field(min_length=8, max_length=128)
 
 
-@router.post("/impersonation/redeem/confirm")
+@router.post("/impersonation/redeem/confirm", response_model=ImpersonationRedeemOut)
 async def confirm_impersonation_ticket(
     body: ImpersonationConfirmBody,
     request: Request,
@@ -287,7 +299,7 @@ async def confirm_impersonation_ticket(
     from fastapi.responses import JSONResponse
 
     target = _safe_target(claims.get("redirect_to"))
-    result = JSONResponse({"location": target})
+    result = JSONResponse(content=ImpersonationRedeemOut(location=target).model_dump())
     set_auth_cookies(result, pair.access_token, pair.refresh_token)
     result.headers["Cache-Control"] = "no-store"
     return result
