@@ -64,3 +64,25 @@ test("cashier theme does not leak into the main app", async ({ page }) => {
   const after = await page.evaluate(() => getComputedStyle(document.documentElement).fontSize);
   expect(after).toBe(htmlSize);
 });
+
+test("a full sale can be completed from the POS (F2 -> confirm -> receipt -> next invoice)", async ({ page }) => {
+  await signIn(page);
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/cashier/pos", { waitUntil: "networkidle" });
+  const main = page.locator(".cashier-root main");
+  const invoiceNo = async () => ((await main.innerText()).match(/INV-\d{4}-\d+/) || [""])[0];
+  const before = await invoiceNo();
+  expect(before).toMatch(/^INV-/);
+
+  await page.keyboard.press("F2");
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("إتمام عملية البيع")).toBeVisible();
+  await dialog.getByRole("button", { name: /تأكيد البيع/ }).click();
+  await expect(dialog.getByText("معاينة الفاتورة")).toBeVisible();
+  await expect(dialog).toContainText(before);
+  await page.keyboard.press("Escape");
+
+  await expect.poll(invoiceNo, { message: "invoice number must advance after a sale" }).not.toBe(before);
+  expect(errors).toEqual([]);
+});
