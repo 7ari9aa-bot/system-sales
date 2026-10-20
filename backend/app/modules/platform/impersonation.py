@@ -166,7 +166,11 @@ async def mint_impersonation_ticket(
     )
 
 
-@router.get("/impersonation/redeem", response_model=ImpersonationRedeemOut, response_class=HTMLResponse)
+@router.get(
+    "/impersonation/redeem",
+    response_model=ImpersonationRedeemOut,
+    response_class=HTMLResponse,
+)
 async def redeem_impersonation_ticket(
     ticket: Annotated[str, Query(min_length=1)],
     session: DbSession,
