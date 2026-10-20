@@ -594,6 +594,173 @@ async def _search_knowledge(
 # ------------------------------------------------------------- escalation --
 
 
+class FindSupportPlaybookArgs(_StrictArgs):
+    """The customer's problem in their own words."""
+
+    problem: str = Field(min_length=1, max_length=1000)
+    limit: int = Field(default=3, ge=1, le=5)
+
+
+def _fold_arabic(text_: str) -> str:
+    """Fold the spellings Egyptian customers vary freely, on BOTH sides.
+
+    Hamza forms (أ إ آ) -> ا, ى -> ي, ة -> ه, and diacritics dropped, so
+    "اتأخر" / "اتاخر" and "مقاس" / "مقاس" compare equal. Applied to the
+    customer's words here and to the stored text in SQL (``_FOLD_SQL``), so the
+    two sides always agree.
+    """
+    table = str.maketrans({"أ": "ا", "إ": "ا", "آ": "ا", "ى": "ي", "ة": "ه"})
+    return "".join(
+        ch for ch in text_.translate(table) if not ("\u064b" <= ch <= "\u0652")
+    )
+
+
+def _fold_sql(column):
+    """SQL twin of ``_fold_arabic`` for a text column."""
+    folded = func.translate(column, "أإآىة", "اااية")
+    return func.regexp_replace(folded, "[\u064b-\u0652]", "", "g")
+
+
+# Function words carry no topic. Matched as substrings they hit inside other
+# words ("في" inside "فين", "علي" inside "عليا"), so a question that shares
+# nothing with a playbook still "matched" it. Folded spellings, like the text.
+_PLAYBOOK_STOPWORDS = frozenset(
+    _fold_arabic(w)
+    for w in (
+        # particles and pronouns
+        "في فى من علي على الي الى عن مع ده دي دا هو هي انا انت احنا يا ما لا ان "
+        "ليا ليك لي لك عليا عليه عليها معايا معاه ليه بتاعي بتاعتي بتاع "
+        # question and request words
+        "ايه ازاي امتي امتى فين هل ممكن عايز عايزه عاوز عاوزه اعرف اعرفه "
+        # fillers, politeness, tense markers
+        "لو لما مش كل بس كده اوي قوي جدا اهلا شكرا تمام عندكم عندي اللي "
+        "لسه دلوقتي بقي بقى حاولت جربت"
+    ).split()
+)
+
+
+# Words that describe THAT something is wrong, not WHAT. They appear in every
+# kind of complaint ("المقاس غلط", "الفاتورة غلط", "الدفع غلط"), so matching on
+# one alone sends a customer to the wrong fix. They still count toward a match
+# when a topic word agrees; they just cannot be the only evidence.
+_PLAYBOOK_GENERIC = frozenset(
+    _fold_arabic(w)
+    for w in {
+        "غلط", "غلطه", "غلطات", "مشكله", "مشاكل", "عطل", "خربان", "بايظ", "مش", "شغال",
+        "حاجه", "حاجات", "موضوع", "وحش", "سيء", "كويس", "تاني", "تانيه", "جديد",
+    }
+)
+
+
+def _strip_clitic(word: str) -> str:
+    """Drop a conjunction/preposition glued to the front of a word.
+
+    Egyptian writing glues them on ("والمقاس", "بالفيزا", "وفشلت"), so the bare
+    word never matches the stored one. Deliberately CONSERVATIVE: a lone ل / ب /
+    ف is usually part of the word ("لبست", "بتفتحوا", "فتحوا"), and cutting it
+    turns a verb into a different word. So only the unambiguous forms go: the
+    definite-article compounds (وال / بال / فال / كال / لل) and a leading و,
+    and only when a real stem of 3+ letters remains.
+    """
+    for prefix in ("وبال", "وال", "بال", "فال", "كال", "لل", "و"):
+        if word.startswith(prefix) and len(word) - len(prefix) >= 3:
+            return word[len(prefix) :]
+    return word
+
+
+def _playbook_word_arms(word: str) -> list[str]:
+    """Match forms for one (already folded) customer word.
+
+    The raw word; without a leading definite article ("الطلب" -> "طلب");
+    without a trailing possessive/plural ("طلبي" / "طلبات" -> "طلب"); and both
+    together. A stem under three letters is dropped: "%او%" would match half
+    the language.
+    """
+    forms = {word}
+    if word.startswith("ال") and len(word) > 4:
+        forms.add(word[2:])
+    for form in list(forms):
+        for suffix in ("ي", "ك", "ه", "ها", "هم", "نا", "ات", "ين", "ون"):
+            if form.endswith(suffix) and len(form) - len(suffix) >= 3:
+                forms.add(form[: -len(suffix)])
+    return [f for f in dict.fromkeys(forms) if len(f) >= 3 or f == word]
+
+
+async def _find_support_playbook(
+    session: AsyncSession, tenant_id: uuid.UUID, *, problem: str, limit: int = 3
+) -> dict:
+    """Recurring problems the merchant wrote a solution for, best match first.
+
+    Deterministic: no embedding model, so a vendor outage cannot take support
+    answers down. OR across the customer's words (colloquial Arabic rarely
+    repeats the merchant's exact phrasing), ranked by how many words matched.
+    The agent EXPLAINS the steps in its own words; nothing here executes.
+    ``matched`` is explicit so "no playbook" is a stated fact the model hands
+    over on, never a guess it fills in.
+    """
+    from app.modules.ai.models import SupportPlaybook as P
+
+    # Stopword test on BOTH forms: "واعرف" is the stopword "اعرف" wearing a
+    # clitic, and "حاولت" must not survive because stripping changed nothing.
+    words = list(
+        dict.fromkeys(
+            stem
+            for raw in _fold_arabic(problem).split()
+            if raw and raw not in _PLAYBOOK_STOPWORDS
+            for stem in (_strip_clitic(raw),)
+            if stem not in _PLAYBOOK_STOPWORDS
+        )
+    )[:8]
+    if not words:
+        return {"matched": 0, "playbooks": []}
+    title_f, problem_f = _fold_sql(P.title), _fold_sql(P.problem)
+    per_word = []
+    for word in words:
+        arms = [P.search_ts.op("@@")(func.plainto_tsquery(literal_column("'simple'"), word))]
+        for pattern in _playbook_word_arms(word):
+            arms += [
+                title_f.ilike(like_pattern(pattern), escape=LIKE_ESCAPE),
+                problem_f.ilike(like_pattern(pattern), escape=LIKE_ESCAPE),
+            ]
+        per_word.append(or_(*arms))
+
+    hits = sum(case((expr, 1), else_=0) for expr in per_word)
+    topic = [e for w, e in zip(words, per_word, strict=True) if w not in _PLAYBOOK_GENERIC]
+    if not topic:
+        # Only generic complaint words ("غلط", "مشكلة"): nothing says WHAT is
+        # wrong, so no playbook can be the right one. Hand over, do not guess.
+        return {"matched": 0, "playbooks": []}
+    topic_hits = sum(case((expr, 1), else_=0) for expr in topic)
+    # A topic word must agree AND at least half of ALL content words must match:
+    # one shared word out of three is a coincidence, not an answer.
+    min_hits = max(1, (len(words) + 1) // 2)
+    rows = (
+        await session.execute(
+            select(P.title, P.problem, P.steps, P.escalate_when, hits.label("hits"))
+            .where(
+                P.tenant_id == tenant_id,
+                P.is_active.is_(True),
+                topic_hits >= 1,
+                hits >= min_hits,
+            )
+            .order_by(hits.desc(), P.updated_at.desc())
+            .limit(limit)
+        )
+    ).all()
+    return {
+        "matched": len(rows),
+        "playbooks": [
+            {
+                "title": title,
+                "problem": prob,
+                "steps": list(steps or []),
+                "escalate_when": escalate_when,
+            }
+            for title, prob, steps, escalate_when, _hits in rows
+        ],
+    }
+
+
 class HandoverToHumanArgs(BaseModel):
     # NOT _StrictArgs, on purpose. Models habitually add `conversation_id` /
     # `customer_id` from context; the scope is bound server-side and an extra
@@ -821,6 +988,23 @@ CUSTOMER_TOOL_SPECS: list[ToolSpec] = [
         args_schema=SearchKnowledgeArgs,
         handler=_search_knowledge,
         tags=["knowledge"],
+    ),
+    ToolSpec(
+        name="find_support_playbook",
+        description=(
+            "Find the store's written solution for a recurring customer "
+            "problem (a late order, a wrong size, a payment that did not go "
+            "through, how to track a shipment). Pass the problem in the "
+            "customer's own words as `problem`. Each result has ordered "
+            "`steps` and an `escalate_when` condition. Explain the steps in "
+            "your own natural words, one or two at a time, and check how it "
+            "went; never paste them as a list. If `escalate_when` is true for "
+            "this customer, or `matched` is 0, do not improvise a solution: "
+            "call handover_to_human."
+        ),
+        args_schema=FindSupportPlaybookArgs,
+        handler=_find_support_playbook,
+        tags=["support"],
     ),
     ToolSpec(
         name="handover_to_human",
