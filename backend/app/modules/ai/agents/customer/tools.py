@@ -23,7 +23,7 @@ from datetime import UTC, date, datetime
 from functools import reduce
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import case, func, literal_column, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -180,7 +180,20 @@ async def _availability_map(
 # ------------------------------------------------------------- catalog tools --
 
 
-class SearchCatalogArgs(BaseModel):
+class _StrictArgs(BaseModel):
+    """Base of every customer tool's arguments.
+
+    An argument the tool does not declare is an error, not something to drop:
+    the model cannot slip `visibility` or an id past a handler that never asked
+    for it, and the generated JSON schema carries `additionalProperties: false`
+    without depending on a provider's `strict` mode (the base_url is a
+    per-tenant OpenAI-compatible endpoint, so that mode is not guaranteed).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class SearchCatalogArgs(_StrictArgs):
     query: str = Field(min_length=1, max_length=255)
     attributes: dict[str, str | int | float | bool] | None = None
     option_values: dict[str, str | int | float | bool] | None = None
@@ -336,7 +349,7 @@ async def _search_catalog(
     return result
 
 
-class GetProductDetailsArgs(BaseModel):
+class GetProductDetailsArgs(_StrictArgs):
     product_id: uuid.UUID
 
 
@@ -391,7 +404,7 @@ async def _get_product_details(
     }
 
 
-class GetProductPhotosArgs(BaseModel):
+class GetProductPhotosArgs(_StrictArgs):
     product_id: uuid.UUID
     selection: Literal["primary", "all"] = "primary"
 
@@ -440,7 +453,7 @@ async def _get_product_photos(
 # ------------------------------------------------------------- store tools --
 
 
-class GetStoreInfoArgs(BaseModel):
+class GetStoreInfoArgs(_StrictArgs):
     """The store's published info: one deterministic pull, optionally ranked.
 
     `question` only changes the ORDER: the same customer-facing items come back
@@ -546,7 +559,7 @@ async def _get_store_info(
     return result
 
 
-class SearchKnowledgeArgs(BaseModel):
+class SearchKnowledgeArgs(_StrictArgs):
     query: str = Field(min_length=1, max_length=1000)
     limit: int = Field(default=3, ge=1, le=10)
 
@@ -582,6 +595,11 @@ async def _search_knowledge(
 
 
 class HandoverToHumanArgs(BaseModel):
+    # NOT _StrictArgs, on purpose. Models habitually add `conversation_id` /
+    # `customer_id` from context; the scope is bound server-side and an extra
+    # one is DROPPED before the handler (§132). Rejecting the call over a
+    # harmless extra field would fail the escalation itself, and escalation is
+    # the safety net for complaints and purchase intent.
     reason: Literal[
         "complex_problem", "missing_data", "customer_request",
         "complaint", "purchase_intent",
@@ -631,7 +649,7 @@ async def _handover_to_human(
 # ---------------------------------------------------------------- vision --
 
 
-class FindProductByImageArgs(BaseModel):
+class FindProductByImageArgs(_StrictArgs):
     image_kind: ImageKind
     hints: str | None = Field(default=None, max_length=500)
 
