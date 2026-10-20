@@ -1488,7 +1488,18 @@ class AgentRunner:
                             result = await spec.handler(session, tenant_id, **kwargs)
                 except PydanticValidationError as exc:
                     status = "error"
-                    error = f"invalid tool arguments: {exc.errors()[0].get('msg', str(exc))}"
+                    # Name the field: "Extra inputs are not permitted" alone does
+                    # not tell the model WHICH argument to drop, so it retries
+                    # blind. Only the field path goes back, never the value
+                    # (an argument can carry customer text).
+                    first = exc.errors()[0]
+                    field = ".".join(str(part) for part in first.get("loc", ()))
+                    reason = first.get("msg", str(exc))
+                    error = (
+                        f"invalid tool arguments: {field}: {reason}"
+                        if field
+                        else f"invalid tool arguments: {reason}"
+                    )
                 except ExternalProviderError as exc:
                     # Provider failures are NOT designed outcomes: the
                     # exception text can carry the provider's response body

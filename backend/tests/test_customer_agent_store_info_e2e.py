@@ -182,7 +182,9 @@ async def test_an_undeclared_argument_is_an_error_the_model_can_correct(
     outcome = await _turn(db, tenant_id, agent, "بتفتحوا امتى؟")
 
     first_result = [m["content"] for m in seen["calls"][1]["messages"] if m.get("role") == "tool"]
-    assert "staff_only" not in "".join(first_result)  # nothing leaked through
+    joined = "".join(first_result)
+    assert "visibility" in joined  # the model is told WHICH argument to drop
+    assert "staff_only" not in joined  # ...but never handed the value back
     assert outcome.reply == "من الصبح لبالليل."
 
 
@@ -223,3 +225,56 @@ async def test_an_empty_store_info_call_still_allows_an_echo_and_zero(
 
     assert outcome.blocked_reason is None
     assert outcome.reply is not None
+
+
+async def test_a_policy_number_read_only_from_the_injected_snippet_is_withheld(
+    db, tenant_ctx, monkeypatch
+):
+    """The hook injects knowledge snippets before the model runs. That text is
+    context, not a source: a figure the model takes from it WITHOUT calling a
+    tool has nothing behind it in the ledger, so it is withheld. This is why the
+    pre-injection adds little and a tool call is the only grounded path."""
+    tenant_id = tenant_ctx.tenant_id
+    agent = await _customer_agent(db, tenant_id)
+    _script(monkeypatch, _says("أيوه، الاسترجاع خلال 14 يوم من الاستلام."))
+
+    outcome = await run_customer_turn(
+        db,
+        TurnInput(
+            tenant_id=tenant_id,
+            conversation_id=await _conversation(db, tenant_id),
+            agent_id=agent.id,
+            inbound_message_id=uuid.uuid4(),
+            body="ينفع ارجع المنتج؟",
+            knowledge_context="- الاسترجاع خلال 14 يوم من الاستلام.",
+        ),
+        runner=AgentRunner(gateway=AIGateway()),
+    )
+
+    assert outcome.reply is None
+    assert outcome.blocked_reason == "grounding:unsourced numeral: 14"
+
+
+async def test_a_follow_up_repeating_an_earlier_figure_without_a_tool_is_withheld(
+    db, tenant_ctx, monkeypatch
+):
+    """MEASURES the review's open question. The customer follows up and the
+    model answers from the earlier turn, no tool this run. The figure was true a
+    message ago, but nothing in THIS run backs it, so the reply is withheld and
+    a human gets the chat. Safe (stock and hours change), and it costs a
+    handover: watch the handover rate after release.
+
+    Money is held by the older financial-claim guardrail; a policy or schedule
+    figure is held by the unsourced-numeral check added in this branch."""
+    tenant_id = tenant_ctx.tenant_id
+    agent = await _customer_agent(db, tenant_id)
+
+    _script(monkeypatch, _says("سعره 250 جنيه."))
+    price = await _turn(db, tenant_id, agent, "والسعر كام؟")
+    assert price.reply is None
+    assert price.blocked_reason == "guardrail:unsourced_claim"
+
+    _script(monkeypatch, _says("بنقفل الساعة 10."))
+    hours = await _turn(db, tenant_id, agent, "وبتقفلوا امتى؟")
+    assert hours.reply is None
+    assert hours.blocked_reason == "grounding:unsourced numeral: 10"
