@@ -153,3 +153,34 @@ async def test_the_retired_tool_cannot_be_called_even_if_the_model_asks(
 
     tool_msgs = [m["content"] for m in seen["calls"][1]["messages"] if m.get("role") == "tool"]
     assert "not authorized" in tool_msgs[0]
+
+
+async def test_an_undeclared_argument_is_an_error_the_model_can_correct(
+    db, tenant_ctx, monkeypatch
+):
+    """Rejecting an extra field must stay a recoverable tool error: the model
+    sees it as a failed call, retries, and the customer still gets an answer."""
+    tenant_id = tenant_ctx.tenant_id
+    agent = await _customer_agent(db, tenant_id)
+    db.add(
+        KnowledgeItem(
+            tenant_id=tenant_id,
+            title="مواعيد العمل",
+            source_type="text",
+            content="من الصبح لبالليل.",
+            visibility="customer_facing",
+        )
+    )
+    await db.flush()
+    seen = _script(
+        monkeypatch,
+        _calls("get_store_info", question="بتفتحوا امتى؟", visibility="staff_only"),
+        _calls("get_store_info", question="بتفتحوا امتى؟"),
+        _says("من الصبح لبالليل."),
+    )
+
+    outcome = await _turn(db, tenant_id, agent, "بتفتحوا امتى؟")
+
+    first_result = [m["content"] for m in seen["calls"][1]["messages"] if m.get("role") == "tool"]
+    assert "staff_only" not in "".join(first_result)  # nothing leaked through
+    assert outcome.reply == "من الصبح لبالليل."

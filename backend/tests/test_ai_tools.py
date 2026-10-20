@@ -140,6 +140,36 @@ def test_search_knowledge_cannot_ask_for_hidden_visibility() -> None:
     assert "visibility" not in properties
 
 
+def test_every_customer_tool_rejects_an_undeclared_argument() -> None:
+    """A handler only ever receives what its schema declares. `visibility` or an
+    id the tool never asked for is an error, and the schema the model is shown
+    says so (`additionalProperties: false`) without relying on a provider's
+    `strict` mode, which a per-tenant OpenAI-compatible endpoint may not have."""
+    from pydantic import ValidationError as PydanticValidationError
+
+    minimal = {
+        "search_catalog": {"query": "x"},
+        "get_product_details": {"product_id": str(uuid.uuid4())},
+        "get_product_photos": {"product_id": str(uuid.uuid4())},
+        "find_product_by_image": {"image_kind": "product"},
+        "get_store_info": {},
+        "search_knowledge": {"query": "x"},
+        "handover_to_human": {"reason": "complaint", "summary": "s"},
+    }
+    assert set(minimal) == set(NEW_TOOLS)  # every tool is accounted for
+    # The escalation tool is the deliberate exception: it DROPS an extra
+    # conversation_id/customer_id rather than failing the handover (see
+    # test_escalation_tool_never_lets_the_model_choose_the_scope).
+    minimal.pop("handover_to_human")
+    for name, valid in minimal.items():
+        spec = get_tool(name)
+        spec.args_schema(**valid)  # the minimal call itself is fine
+        with pytest.raises(PydanticValidationError):
+            spec.args_schema(**valid, visibility="staff_only")
+        schema = tool_to_openai_schema(spec)["function"]["parameters"]
+        assert schema.get("additionalProperties") is False, name
+
+
 async def test_search_knowledge_requests_customer_facing_visibility(monkeypatch) -> None:
     """The RAG tool reuses the knowledge service AND keeps §157 scoping.
 
