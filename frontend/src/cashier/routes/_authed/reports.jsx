@@ -22,15 +22,19 @@ import { fmtInt, fmtMoney } from "@/cashier/lib/format";
 const HERO_IMAGE = "https://media.base44.com/images/public/6ad5982c1b45f350e41ffe73/62d4eef78_generated_image.png";
 const HERO_ALT = "مكتب إدارة المحل مع تقارير مبيعات ودفتر حساب";
 
-const REPORTS = [
-  { key: "sales", label: "المبيعات" },
-  { key: "products", label: "الأصناف" },
-  { key: "returns", label: "المرتجعات" },
-  { key: "purchases", label: "المشتريات" },
-  { key: "profit", label: "الأرباح" },
-  { key: "inventory", label: "تقييم المخزون" },
-  { key: "zreport", label: "إغلاق اليوم (Z)" },
+// `wired: false` = still runs on sample data (src/cashier/lib/opsData.js), so it is NOT shown: a made-up
+// profit or stock figure next to a real Z report would be read as the shop's real numbers.
+// Flip a tab to `wired: true` only once it reads the backend.
+const ALL_REPORTS = [
+  { key: "sales", label: "المبيعات", wired: false },
+  { key: "products", label: "الأصناف", wired: false },
+  { key: "returns", label: "المرتجعات", wired: false },
+  { key: "purchases", label: "المشتريات", wired: false },
+  { key: "profit", label: "الأرباح", wired: false },
+  { key: "inventory", label: "تقييم المخزون", wired: false },
+  { key: "zreport", label: "إغلاق اليوم (Z)", wired: true },
 ];
+const REPORTS = ALL_REPORTS.filter((r) => r.wired);
 
 const TAB_TRIGGER =
   "rounded-md px-3 py-1.5 text-[12px] font-normal text-[#7A766C] transition-colors hover:bg-[#FDEBD8] hover:text-[#33322E] data-[state=active]:bg-[#33322E] data-[state=active]:text-[#F7F5F0] data-[state=active]:shadow-none";
@@ -38,7 +42,7 @@ const TAB_TRIGGER =
 export default function ReportsPage() {
   const [period, setPeriod] = useState("7d");
   const [category, setCategory] = useState("");
-  const [tab, setTab] = useState("sales");
+  const [tab, setTab] = useState(REPORTS[0].key);
 
   const daily = dailySalesRows(period);
   const profitRows = category ? categoryProfitRows.filter((r) => r.category === category) : categoryProfitRows;
