@@ -62,7 +62,6 @@ export function useExchangeQuote(sessionId, lines) {
     }
     setQuote((q) => ({ ...q, loading: true, error: null }));
     run(() => posApi.quote(sessionId, { items: lines.map((l) => ({ variant_id: l.variantId, quantity: l.qty })) }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, key, run]);
   return quote;
 }

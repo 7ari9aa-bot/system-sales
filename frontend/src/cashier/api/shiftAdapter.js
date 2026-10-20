@@ -19,6 +19,18 @@ const byMethod = (report, method, field = "expected") => {
   return hit ? num(hit[field]) : 0;
 };
 
+// Cash that really moved through the drawer, by the backend's own reason. `report.returns.total` is
+// every refund on every tender (a card refund never touches the drawer) and `cash_in` also holds the
+// internal echo of an exchange, so neither is the "cash sales" / "cash returns" a Z report must show.
+const cashBy = (report, direction, reasons) =>
+  (report?.cash_movements ?? [])
+    .filter((m) => m.direction === direction && reasons.includes(m.reason))
+    .reduce((minor, m) => minor + parseMoney(m.amount).minor, 0) / 100;
+
+export const CASH_SALE = ["cash_sale"];
+export const CASH_REFUND = ["cash_refund"];
+export const CASH_OTHER_OUT = ["pay_out", "cash_drop"];
+
 export function shiftFromApi(session, report = null, { employees = {} } = {}) {
   const closed = session.status === "CLOSED";
   const expected = num(session.expected_cash);
@@ -36,12 +48,12 @@ export function shiftFromApi(session, report = null, { employees = {} } = {}) {
     openingCash: num(session.opening_float),
     invoices: report?.sales?.invoice_count ?? 0,
     pieces: 0,
-    cashSales: num(report?.cash_in),
+    cashSales: cashBy(report, "in", CASH_SALE),
     cardSales: byMethod(report, "card"),
     walletSales: byMethod(report, "wallet"),
     creditSales: byMethod(report, "credit"),
-    returnsCash: num(report?.returns?.total),
-    expensesCash: num(report?.cash_out),
+    returnsCash: cashBy(report, "out", CASH_REFUND),
+    expensesCash: cashBy(report, "out", CASH_OTHER_OUT),
     variance: closed ? num(session.variance) : 0,
     note: "",
     otherSales: byMethod(report, "card") + byMethod(report, "wallet") + byMethod(report, "credit"),

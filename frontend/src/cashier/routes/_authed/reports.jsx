@@ -11,8 +11,11 @@ import InventoryReportSection from "@/cashier/components/reports/InventoryReport
 import ReturnsReportSection from "@/cashier/components/reports/ReturnsReportSection";
 import PurchasesReportSection from "@/cashier/components/reports/PurchasesReportSection";
 import ZReportSection from "@/cashier/components/reports/ZReportSection";
-import { categoryProfitRows, dailySalesRows, inPeriod, inventoryValueRows, PERIODS, returnsReportRows, topProductRows } from "@/cashier/lib/opsData";
-import { purchasesReportRows, shiftRows } from "@/cashier/lib/storeOpsData";
+import { categoryProfitRows, dailySalesRows, inventoryValueRows, PERIODS, returnsReportRows, topProductRows } from "@/cashier/lib/opsData";
+import { purchasesReportRows } from "@/cashier/lib/storeOpsData";
+import { useAuth } from "@/lib/AuthContext";
+import { useShifts } from "@/cashier/api/useShifts";
+import { inShopPeriod } from "@/cashier/lib/period";
 import { fmtInt, fmtMoney } from "@/cashier/lib/format";
 
 
@@ -42,8 +45,10 @@ export default function ReportsPage() {
   const productRows = category ? topProductRows.filter((r) => r.category === category) : topProductRows;
   const inventoryRows = category ? inventoryValueRows.filter((r) => r.category === category) : inventoryValueRows;
 
-  // ورديات نفس الفترة المختارة (تقرير Z يتبع فلتر الفترة مثل باقي التقارير).
-  const zRows = shiftRows.filter((r) => inPeriod(r.date, period));
+  // ورديات نفس الفترة المختارة من الخادم (تقرير Z يتبع فلتر الفترة مثل باقي التقارير).
+  const { user } = useAuth();
+  const shifts = useShifts({ employees: user?.id ? { [user.id]: user.full_name || user.email } : {} });
+  const zRows = (shifts.data ?? []).filter((r) => inShopPeriod(r.date, period));
 
   const periodLabel = PERIODS.find((p) => p.key === period)?.label ?? "";
   const salesTotal = daily.reduce((s, r) => s + r.net, 0);
@@ -102,7 +107,13 @@ export default function ReportsPage() {
           <InventoryReportSection rows={inventoryRows} />
         </TabsContent>
         <TabsContent value="zreport" className="mt-0">
-          <ZReportSection rows={zRows} />
+          {shifts.isLoading ? (
+            <p className="p-6 text-center text-sm text-muted-foreground" role="status">جارٍ تحميل الورديات…</p>
+          ) : shifts.isError ? (
+            <p className="p-6 text-center text-sm font-semibold text-rose-600" role="alert">تعذّر تحميل الورديات. حاول مرة أخرى.</p>
+          ) : (
+            <ZReportSection rows={zRows} />
+          )}
         </TabsContent>
       </Tabs>
 

@@ -17,6 +17,11 @@ const report = {
   opening_float: "100.00",
   cash_in: "30.00",
   cash_out: "10.00",
+  cash_movements: [
+    { direction: "in", reason: "cash_sale", amount: "30.00" },
+    { direction: "out", reason: "cash_refund", amount: "5.00" },
+    { direction: "out", reason: "pay_out", amount: "5.00" },
+  ],
   sales: { invoice_count: 1, total: "50.00" },
   returns: { return_count: 1, total: "5.00" },
   by_method: [
@@ -84,5 +89,42 @@ describe("shiftsFromApi", () => {
     expect(shiftsFromApi([older, session]).map((r) => r.id)).toEqual(["s-1", "s-0"]);
     expect(shiftsFromApi([])).toEqual([]);
     expect(shiftsFromApi(null)).toEqual([]);
+  });
+});
+
+describe("Z-report cash columns (real shift: card refund + exchange echo)", () => {
+  // Numbers copied from a real backend shift: 6 sales (1650), 3 returns (590) of which 350 went back
+  // on a CARD, and cash_in holds 940 of cash plus the 240 echo of an exchange.
+  const real = {
+    opening_float: "0.00",
+    cash_in: "1180.00",
+    cash_out: "240.00",
+    sales: { invoice_count: 6, total: "1650.00" },
+    returns: { return_count: 3, total: "590.00" },
+    by_method: [
+      { method: "card", expected: "120.00" },
+      { method: "cash", expected: "940.00" },
+    ],
+    cash_movements: [
+      { direction: "in", reason: "cash_sale", amount: "240.00" },
+      { direction: "in", reason: "cash_sale", amount: "700.00" },
+      { direction: "in", reason: "cash_sale", amount: "240.00" },
+      { direction: "out", reason: "cash_refund", amount: "120.00" },
+      { direction: "out", reason: "cash_refund", amount: "120.00" },
+    ],
+  };
+  it("cash returns = cash that left the drawer, NOT the 590 refunded on every tender", () => {
+    const row = shiftFromApi({ ...session, id: "s-2" }, real);
+    expect(row.returnsCash).toBe(240);
+    expect(row.returnsCash).not.toBe(590);
+  });
+  it("cash sales come from cash_sale movements; manual pay_out goes to the outflow column", () => {
+    const row = shiftFromApi(session, { ...real, cash_movements: [...real.cash_movements, { direction: "out", reason: "pay_out", amount: "15.50" }] });
+    expect(row.cashSales).toBe(1180);
+    expect(row.expensesCash).toBe(15.5);
+  });
+  it("a refund is never counted as an expense, and a missing movements list is zero", () => {
+    expect(shiftFromApi(session, { ...real, cash_movements: undefined }).returnsCash).toBe(0);
+    expect(shiftFromApi(session, real).expensesCash).toBe(0);
   });
 });
