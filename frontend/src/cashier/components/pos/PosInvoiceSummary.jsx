@@ -9,7 +9,7 @@ export default function PosInvoiceSummary({ subTotal = 0, discount = 0, total = 
         <span className="num text-end font-semibold">{fmtNumber(subTotal)} ج.م</span>
 
         <span className="text-muted-foreground">إجمالي الخصم</span>
-        <span className="num text-end font-semibold">-{fmtNumber(discount)} ج.م</span>
+        <span className="num text-end font-semibold">{discount > 0 ? "-" : ""}{fmtNumber(discount)} ج.م</span>
 
         <span className="col-span-2 border-t border-border" />
 

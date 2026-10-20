@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { Link } from "react-router-dom";
 import { TriangleAlert } from "lucide-react";
 import PosHeaderBar from "@/cashier/components/pos/PosHeaderBar";
 import PosCustomerFields from "@/cashier/components/pos/PosCustomerFields";
@@ -7,207 +9,172 @@ import PosInvoiceTable from "@/cashier/components/pos/PosInvoiceTable";
 import PosActionsBar from "@/cashier/components/pos/PosActionsBar";
 import PosInvoiceDiscounts from "@/cashier/components/pos/PosInvoiceDiscounts";
 import PosInvoiceSummary from "@/cashier/components/pos/PosInvoiceSummary";
-import NoteDialog from "@/cashier/components/pos/NoteDialog";
 import PaymentDialog from "@/cashier/components/pos/PaymentDialog";
-import SuspendedDialog from "@/cashier/components/pos/SuspendedDialog";
 import ReceiptDialog from "@/cashier/components/pos/ReceiptDialog";
 import ConfirmDialog from "@/cashier/components/ui-kit/ConfirmDialog";
-import { removeSuspended, resumeSuspended, setLastReceipt, suspendInvoice, usePosState } from "@/cashier/lib/posStore";
+import { Button } from "@/cashier/components/ui/button";
+import { CATALOG_KEY, useCatalog, usePosSale } from "@/cashier/api/usePosSale";
+import { useShiftState } from "@/cashier/api/useShifts";
+import { searchCatalog } from "@/cashier/api/catalogAdapter";
 import { useSalesSettings } from "@/cashier/lib/salesSettings";
-import { allVariants, colorHex, customers, employees, findProductByBarcode, invoices, products, searchVariants } from "@/cashier/lib/mockData";
-import { PAYMENT_METHODS } from "@/cashier/lib/format";
+import { useAuth } from "@/lib/AuthContext";
 
-
-function invoiceNumber(seq) {
-  return `INV-2026-${String(seq).padStart(4, "0")}`;
-}
+// Only methods the backend accepts; the profile's own list narrows this further once loaded.
+const BACKEND_METHODS = ["cash", "card", "wallet", "bank_transfer"];
 
 // مُعرّف ثابت لرسالة الحذف: كل حذف جديد يستبدل الرسالة السابقة، فيكون التراجع لأحدث حذف.
 const UNDO_TOAST_ID = "pos-undo-remove";
 
-function withTotals(line) {
-  return { ...line, total: +(line.price * line.qty - line.discount).toFixed(2) };
+function NoShift({ state }) {
+  const text =
+    state.status === "needs_setup"
+      ? "لم يتم تجهيز الكاشير بعد. افتح أول وردية من شاشة الورديات لتجهيزه."
+      : state.status === "forbidden"
+        ? "ليست لديك صلاحية استخدام الكاشير."
+        : state.status === "error"
+          ? state.message || "تعذّر تحميل حالة الوردية."
+          : "لا توجد وردية مفتوحة. افتح وردية لتبدأ البيع.";
+  return (
+    <div className="animate-fade-up mx-auto mt-16 flex max-w-md flex-col items-center gap-3 rounded-2xl border border-border bg-card p-8 text-center">
+      <TriangleAlert className="h-7 w-7 text-amber-600" aria-hidden="true" />
+      <p className="text-sm font-semibold" role="status">{text}</p>
+      <Button asChild>
+        <Link to="/cashier/shifts">الذهاب إلى الورديات</Link>
+      </Button>
+    </div>
+  );
 }
-
-// تجهيز بنود فاتورة معلقة لتكون قابلة للتعديل بنفس شكل بنود الفاتورة الحالية.
-function resumeLines(items) {
-  return items.map((it, index) => ({
-    ...it,
-    lineId: it.lineId ?? `${it.code ?? "line"}-${index}`,
-    variantId: it.variantId ?? it.code ?? `line-${index}`,
-    hex: it.hex ?? colorHex(it.color),
-    stock: it.stock ?? allVariants.find((v) => v.sku === it.code || v.barcode === it.barcode)?.stock ?? 0,
-  }));
-}
-
-// بناء بند فاتورة من صنف في المخزون (يُستخدم عند المسح وعند بنود العرض التجريبية).
-function lineFromVariant(variant, lineId) {
-  return {
-    lineId,
-    variantId: variant.id,
-    code: variant.sku,
-    barcode: variant.barcode,
-    name: variant.productName,
-    color: variant.color,
-    hex: colorHex(variant.color),
-    size: variant.size,
-    stock: variant.stock,
-    price: variant.sellPrice,
-    qty: 1,
-    discountPct: 0,
-    discount: 0,
-  };
-}
-
-// بنود تجريبية تظهر عند فتح الشاشة: ٣ أصناف حقيقية من المخزون.
-const DEMO_LINES = [0, 4, 8].map((index, i) => {
-  const variant = products[index].variants.find((v) => v.stock > 3) ?? products[index].variants[0];
-  return lineFromVariant(variant, `demo-${i + 1}`);
-});
 
 export default function PosPage() {
-  const posState = usePosState();
+  const { user } = useAuth?.() ?? {};
+  const shift = useShiftState({ canConfigure: false });
+  if (shift.isLoading) return <p className="p-8 text-center text-sm text-muted-foreground" role="status">جارٍ التحميل…</p>;
+  if (shift.data?.status !== "open") return <NoShift state={shift.data ?? { status: "error", message: shift.error?.message }} />;
+  return <PosScreen user={user} session={shift.data.session} />;
+}
+
+function PosScreen({ user, session }) {
+  const qc = useQueryClient();
   const salesSettings = useSalesSettings();
-  const [lines, setLines] = useState(() => DEMO_LINES.map((l) => ({ ...l })));
+  const catalogQuery = useCatalog();
+  const catalog = useMemo(() => catalogQuery.data ?? [], [catalogQuery.data]);
+  const [receipt, setReceipt] = useState(null);
+  const [lastReceipt, setLastReceipt] = useState(null);
+  const sale = usePosSale({
+    sessionId: session.id,
+    catalog,
+    onSold: (r) => {
+      setReceipt(r);
+      setLastReceipt(r);
+      setDialog("receipt");
+      qc.invalidateQueries({ queryKey: CATALOG_KEY }); // stock changed
+    },
+  });
+  const { lines } = sale;
+
   const [barcode, setBarcode] = useState("");
   const [scanError, setScanError] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
-  const [employee, setEmployee] = useState(employees[0].name);
-  const [paid, setPaid] = useState(0);
-  const [method, setMethod] = useState(salesSettings.defaultMethod);
-  const [invoiceDiscountPct, setInvoiceDiscountPct] = useState(0);
-  const [invoiceDiscountAmount, setInvoiceDiscountAmount] = useState(0);
-  const [note, setNote] = useState("");
   const [activeLineId, setActiveLineId] = useState(null);
-  const [dialog, setDialog] = useState(null); // payment | suspended | receipt | cancel | note
-  const [receipt, setReceipt] = useState(null);
-  const [sessionSales, setSessionSales] = useState([]); // فواتير أُتمّت في هذه الجلسة
-  const [historyIndex, setHistoryIndex] = useState(-1); // الفاتورة المعروضة من السجل (-1 = لا شيء)
-  const [seq, setSeq] = useState(invoices.length + 61);
-  // آخر صنف محذوف: بياناته وموضعه الأصلي للاسترجاع عند الضغط على «تراجع».
+  const [invoiceDiscountPct, setInvoiceDiscountPct] = useState(0);
+  const [invoiceDiscountAmt, setInvoiceDiscountAmt] = useState(0);
+  const [dialog, setDialog] = useState(null); // payment | receipt | cancel
   const removedRef = useRef(null);
 
-  // سجل الفواتير القابل للتقليب: فواتير الجلسة أولاً ثم فواتير النظام (الأحدث أولاً).
-  const invoiceHistory = [...sessionSales, ...invoices];
-
+  const cashier = user?.full_name || user?.email || "";
   const hasLines = lines.length > 0;
-  // الزبون اختياري: بدون اسم تُسجَّل الفاتورة على عميل نقدي.
   const displayCustomer = customerName.trim() || "عميل نقدي";
+  const quoteReady = hasLines && !sale.quote.loading && !sale.quote.error;
+  const allowedMethods = BACKEND_METHODS.filter((m) => salesSettings.enabledMethods.includes(m));
 
-  const totals = lines.reduce(
-    (acc, l) => {
-      const gross = l.price * l.qty;
-      return {
-        pieces: acc.pieces + l.qty,
-        subTotal: acc.subTotal + gross,
-        linesDiscount: acc.linesDiscount + l.discount,
-        net: acc.net + gross - l.discount,
-      };
-    },
-    { pieces: 0, subTotal: 0, linesDiscount: 0, net: 0 },
-  );
+  // Invoice discount = percentage of the subtotal + a fixed amount, sent to the backend as ONE amount.
+  const subtotalNumber = Number(sale.quote.subtotal) || 0;
+  useEffect(() => {
+    const fromPct = (subtotalNumber * (Number(invoiceDiscountPct) || 0)) / 100;
+    const amount = +(fromPct + (Number(invoiceDiscountAmt) || 0)).toFixed(2);
+    sale.setInvoiceDiscount(amount > 0 ? String(amount) : "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoiceDiscountPct, invoiceDiscountAmt, subtotalNumber]);
 
-  const pctDiscount = +((totals.net * (Number(invoiceDiscountPct) || 0)) / 100).toFixed(2);
-  const invoiceDiscount = +Math.min(totals.net, pctDiscount + (Number(invoiceDiscountAmount) || 0)).toFixed(2);
-  const finalTotals = { ...totals, pctDiscount, invoiceDiscount, total: +(totals.net - invoiceDiscount).toFixed(2) };
+  const finalTotals = {
+    pieces: lines.reduce((s, l) => s + l.qty, 0),
+    subTotal: Number(sale.quote.subtotal) || 0,
+    linesDiscount: 0,
+    invoiceDiscount: Number(sale.quote.discountTotal) || 0,
+    pctDiscount: Number(sale.quote.discountTotal) || 0,
+    total: Number(sale.quote.total) || 0,
+  };
 
   function addVariant(variant) {
-    const existing = lines.find((l) => l.variantId === variant.id);
-    if (existing) {
-      setLines((prev) => prev.map((l) => (l.variantId === variant.id ? { ...l, qty: l.qty + 1 } : l)));
-      setActiveLineId(existing.lineId);
-      return;
+    const r = sale.add(variant);
+    if (!r.ok) {
+      setScanError(`${variant.productName}: ${r.reason}`);
+      return false;
     }
-    const lineId = `${variant.id}-${Date.now()}`;
-    setLines((prev) => [...prev, lineFromVariant(variant, lineId)]);
-    setActiveLineId(lineId);
+    setActiveLineId(String(variant.id));
+    return true;
   }
 
-  function submitBarcode() {
+  async function submitBarcode() {
     const clean = barcode.trim();
     if (!clean) return;
-
-    const found = findProductByBarcode(clean);
-    if (found) {
-      if (found.variant.stock === 0) {
-        setScanError(`${found.product.name} — ${found.variant.color} / ${found.variant.size} نافد من المخزون`);
+    // 1) a barcode scan is answered by the backend, 2) otherwise it is a name / code search.
+    try {
+      const scan = await sale.scan(clean);
+      if (scan && scan.found === false && scan.refusal) {
+        setScanError(scan.refusal); // e.g. "outside this terminal's catalog": say so instead of "not found"
         return;
       }
-      addVariant(found.variant);
-      setBarcode("");
-      setScanError("");
-      toast.success(`تمت إضافة ${found.product.name} — ${found.variant.color} / ${found.variant.size}`);
-      return;
+      const hit = scan?.found ? catalog.find((v) => v.id === scan.variant_id) : null;
+      if (hit) {
+        if (addVariant(hit)) {
+          setScanError("");
+          setBarcode("");
+          toast.success(`تمت إضافة ${hit.productName}`);
+        }
+        return;
+      }
+    } catch {
+      /* fall through to the local search */
     }
-
-    // بحث بالاسم أو الكود: لو فيه صنف واحد متاح نضيفه، وأكثر من صنف يستلزم الباركود بالكامل.
-    const matches = searchVariants(clean, 2).filter((v) => v.stock > 0);
+    const matches = searchCatalog(catalog, clean, 2).filter((v) => v.stock > 0);
     if (matches.length === 1) {
-      addVariant(matches[0]);
-      setBarcode("");
-      setScanError("");
-      toast.success(`تمت إضافة ${matches[0].productName} — ${matches[0].color} / ${matches[0].size}`);
+      if (addVariant(matches[0])) {
+        setScanError("");
+        setBarcode("");
+        toast.success(`تمت إضافة ${matches[0].productName}`);
+      }
       return;
     }
-    setScanError(matches.length > 1 ? `أكثر من صنف يطابق «${clean}» — اكتب الباركود بالكامل` : `لا يوجد صنف بالباركود ${clean}`);
+    setScanError(matches.length > 1 ? `أكثر من صنف يطابق «${clean}» — اكتب الباركود أو الكود بالكامل` : `لا يوجد صنف متاح بـ ${clean}`);
   }
 
-  // حذف صنف من الفاتورة، مع رسالة تتضمن زر «تراجع» لاسترجاعه كما كان.
   function removeLine(line) {
     const index = lines.findIndex((l) => l.lineId === line.lineId);
     removedRef.current = { line, index };
-    setLines((prev) => prev.filter((l) => l.lineId !== line.lineId));
+    sale.remove(line.lineId);
     toast.info(`تم حذف ${line.name} من الفاتورة`, {
       id: UNDO_TOAST_ID,
-      action: { label: "تراجع", onClick: undoRemove },
+      action: {
+        label: "تراجع",
+        onClick: () => {
+          const removed = removedRef.current;
+          if (!removed) return;
+          removedRef.current = null;
+          const v = catalog.find((c) => c.id === removed.line.variantId);
+          if (v) sale.add(v);
+          toast.dismiss(UNDO_TOAST_ID);
+        },
+      },
     });
   }
 
-  // استرجاع الصنف المحذوف بنفس بياناته (الكمية والخصم) وفي موضعه الأصلي.
-  function undoRemove() {
-    const removed = removedRef.current;
-    if (!removed) return;
-    removedRef.current = null;
-    setLines((prev) => {
-      if (prev.some((l) => l.lineId === removed.line.lineId)) return prev;
-      const next = [...prev];
-      next.splice(Math.min(Math.max(removed.index, 0), next.length), 0, removed.line);
-      return next;
-    });
-    setActiveLineId(removed.line.lineId);
-    toast.dismiss(UNDO_TOAST_ID);
-    toast.success(`تم استرجاع ${removed.line.name} إلى الفاتورة`);
-  }
-
-  function updateLine(lineId, patch) {
-    setLines((prev) =>
-      prev.map((l) => {
-        if (l.lineId !== lineId) return l;
-        const next = { ...l, ...patch };
-        next.discount = +((next.price * next.qty * next.discountPct) / 100).toFixed(2);
-        return next;
-      }),
-    );
-  }
-
-  function setQty(lineId, value) {
-    const qty = Math.max(1, Number(value) || 1);
-    updateLine(lineId, { qty });
-  }
-
-  function stepQty(lineId, delta) {
-    const line = lines.find((l) => l.lineId === lineId);
-    if (!line) return;
-    updateLine(lineId, { qty: Math.max(1, line.qty + delta) });
-  }
-
-  // الخصم محدود بما حُفظ في الإعدادات: أي نسبة أكبر تُصحَّح مع تنبيه.
   function applyLineDiscount(lineId, pct) {
     const limit = salesSettings.maxDiscountPct;
     const value = Math.max(0, Number(pct) || 0);
     if (value > limit) toast.warning(`أقصى خصم مسموح ${limit}% — عدّل الحد من الإعدادات`);
-    updateLine(lineId, { discountPct: Math.min(limit, value) });
+    sale.setLineDiscount(lineId, Math.min(limit, value));
   }
 
   function applyInvoiceDiscount(value) {
@@ -217,158 +184,50 @@ export default function PosPage() {
     setInvoiceDiscountPct(Math.min(limit, pct));
   }
 
-  // الخصم النقدي محدود بالمتبقي بعد خصم النسبة.
-  function applyInvoiceDiscountAmount(value) {
-    const limit = Math.max(0, +(totals.net - pctDiscount).toFixed(2));
+  function applyInvoiceAmount(value) {
     const amount = Math.max(0, Number(value) || 0);
-    if (amount > limit) toast.warning(`أقصى خصم مسموح على الفاتورة ${limit.toFixed(2)} ج.م`);
-    setInvoiceDiscountAmount(Math.min(limit, amount));
+    // a fixed discount can never exceed the subtotal (the total must not go negative)
+    setInvoiceDiscountAmt(Math.min(amount, subtotalNumber));
   }
 
-  function resetInvoice({ keepSeq = false } = {}) {
-    // لا تراجع عن حذف بعد بدء فاتورة جديدة (لئلا يعود صنف إلى فاتورة أخرى).
+  function resetInvoice() {
     removedRef.current = null;
     toast.dismiss(UNDO_TOAST_ID);
-    setLines([]);
-    setPaid(0);
+    sale.clear();
     setInvoiceDiscountPct(0);
-    setInvoiceDiscountAmount(0);
-    setNote("");
+    setInvoiceDiscountAmt(0);
     setActiveLineId(null);
-    setMethod(salesSettings.defaultMethod);
-    setHistoryIndex(-1);
-    if (!keepSeq) setSeq((s) => s + 1);
+    setScanError("");
   }
 
-  function suspendCurrent() {
-    if (!hasLines) return;
-    const record = {
-      id: `hold-${Date.now()}`,
-      number: invoiceNumber(seq),
-      customerName: displayCustomer,
-      customerPhone: customerPhone.trim() || "—",
-      cashier: employee,
-      heldAt: new Date().toISOString(),
-      note,
-      discountPct: invoiceDiscountPct,
-      discountAmount: invoiceDiscountAmount,
-      items: lines.map(withTotals),
-    };
-    suspendInvoice(record);
-    resetInvoice();
-    toast.info(`تم تعليق الفاتورة ${record.number}`);
-  }
-
-  function buildReceipt(status = "paid") {
-    return {
-      number: invoiceNumber(seq),
-      date: new Date().toISOString(),
-      cashier: employee,
-      customerName: displayCustomer,
-      customerPhone: customerPhone.trim() || "—",
-      items: lines.map(withTotals),
-      pieces: finalTotals.pieces,
-      subTotal: +finalTotals.subTotal.toFixed(2),
-      lineDiscount: +finalTotals.linesDiscount.toFixed(2),
-      invoiceDiscount: finalTotals.invoiceDiscount,
-      discount: +(finalTotals.linesDiscount + finalTotals.invoiceDiscount).toFixed(2),
-      total: finalTotals.total,
-      paid: Number(paid) || 0,
-      payment: method,
-      paymentLabel: PAYMENT_METHODS[method].label,
-      note,
-      status,
-    };
-  }
-
-  function confirmSale() {
-    const record = buildReceipt("paid");
-    setLastReceipt(record);
-    setSessionSales((prev) => [record, ...prev]);
-    setReceipt(record);
-    resetInvoice();
-    setHistoryIndex(0); // الفاتورة التي أُتمّت الآن هي الأحدث في السجل
-    setDialog("receipt");
-    toast.success(`تم إتمام البيع ${record.number} بمبلغ ${record.total.toFixed(2)} ج.م`);
-  }
-
-  // التقليب بين الفواتير: «السابق» (delta = 1) يفتح الأقدم، و«التالي» (delta = -1) يرجع للأحدث،
-  // وفي الحالتين تُحمَّل الفاتورة في الجدول للتعديل بدلاً من الاكتفاء بمعاينتها.
-  function browseInvoice(delta) {
-    if (!invoiceHistory.length) return;
-    const next = historyIndex < 0 ? 0 : Math.min(invoiceHistory.length - 1, Math.max(0, historyIndex + delta));
-    setHistoryIndex(next);
-    loadInvoice(invoiceHistory[next]);
-  }
-
-  function reprintLast() {
-    if (!posState.lastReceipt) {
-      toast.error("لا توجد فاتورة سابقة لإعادة طباعتها");
-      return;
+  async function confirmSale(tenders) {
+    try {
+      const r = await sale.pay({ tenders, cashier, customerName });
+      setDialog("receipt");
+      toast.success(`تم إتمام البيع ${r.number} بمبلغ ${r.total.toFixed(2)} ج.م`);
+      setInvoiceDiscountPct(0);
+      setInvoiceDiscountAmt(0);
+      setCustomerName("");
+      setCustomerPhone("");
+    } catch {
+      /* the dialog shows sale.payError and stays open so the cashier can retry safely */
     }
-    setReceipt(posState.lastReceipt);
-    setDialog("receipt");
-  }
-
-  // تحميل بنود فاتورة في جدول الفاتورة لتعديلها (يُستخدم في الاستعادة والتنقل بين الفواتير).
-  function applyInvoiceToGrid(record) {
-    const resumed = resumeLines(record.items ?? []);
-    setLines(resumed);
-    setPaid(0);
-    setInvoiceDiscountPct(record.discountPct ?? 0);
-    setInvoiceDiscountAmount(record.invoiceDiscount ?? record.discountAmount ?? 0);
-    setNote(record.note ?? "");
-    setActiveLineId(resumed[resumed.length - 1]?.lineId ?? null);
-    setCustomerName(record.customerName && record.customerName !== "عميل نقدي" ? record.customerName : "");
-    setCustomerPhone(record.customerPhone && record.customerPhone !== "—" ? record.customerPhone : "");
-  }
-
-  // فتح فاتورة سابقة في جدول الكاشير لتعديل بنودها، مع إغلاق نافذة المعاينة.
-  function loadInvoice(record) {
-    if (!record) return;
-    applyInvoiceToGrid(record);
-    setReceipt(null);
-    setDialog(null);
-    toast.success(`تم تحميل الفاتورة ${record.number} في الجدول للتعديل`);
-  }
-
-  function resumeHold(record) {
-    applyInvoiceToGrid(record);
-    resumeSuspended(record.id);
-    setDialog(null);
-    toast.success(`تم استعادة الفاتورة ${record.number}`);
   }
 
   useEffect(() => {
     function onKey(e) {
-      if (e.key === "F2" && hasLines) {
+      if (e.key === "F2" && quoteReady) {
         e.preventDefault();
         setDialog("payment");
-      }
-      if (e.key === "F4" && hasLines) {
-        e.preventDefault();
-        suspendCurrent();
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [hasLines, lines, seq, customerName, customerPhone, employee, invoiceDiscountPct, note]);
-
-  // لو أُوقفت طريقة الدفع المختارة من الإعدادات، نرجع للطريقة الافتراضية.
-  useEffect(() => {
-    if (!salesSettings.enabledMethods.includes(method)) setMethod(salesSettings.defaultMethod);
-  }, [salesSettings.enabledMethods, salesSettings.defaultMethod, method]);
+  }, [quoteReady]);
 
   return (
     <div className="animate-fade-up flex h-[calc(100dvh-60px)] flex-col gap-2 overflow-hidden lg:h-[calc(100dvh-16px)]">
-      <PosHeaderBar
-        invoiceNo={invoiceNumber(seq)}
-        employee={employee}
-        employees={employees}
-        onEmployeeChange={setEmployee}
-        suspendedCount={posState.suspended.length}
-        onRestore={() => setDialog("suspended")}
-      />
+      <PosHeaderBar invoiceNo={lastReceipt ? `بعد ${lastReceipt.number}` : "جديدة"} cashier={cashier} shiftOpenedAt={session.opened_at} />
 
       <PosInvoiceTable
         lines={lines}
@@ -378,105 +237,70 @@ export default function PosPage() {
         onBarcodeSubmit={submitBarcode}
         activeLineId={activeLineId}
         onActivate={setActiveLineId}
-        onQty={setQty}
-        onQtyStep={stepQty}
+        onQty={sale.setQty}
+        onQtyStep={sale.stepQty}
         onDiscount={applyLineDiscount}
         onRemove={removeLine}
         maxDiscount={salesSettings.maxDiscountPct}
       >
         <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-2 border-t border-border bg-muted/30 px-3 py-2">
-          {scanError ? (
-            <p className="flex w-full items-center gap-1.5 text-[11px] font-semibold text-rose-600">
+          {scanError || sale.quote.error || catalogQuery.isError ? (
+            <p className="flex w-full items-center gap-1.5 text-[11px] font-semibold text-rose-600" role="alert">
               <TriangleAlert className="h-3.5 w-3.5" />
-              {scanError}
+              {scanError || sale.quote.error || "تعذّر تحميل الأصناف من الخادم"}
             </p>
           ) : null}
 
-          {/* الشريط كله في المنتصف: خصم الفاتورة، ثم بيانات الزبون، ثم المجموع في الطرف الشمال */}
           <PosInvoiceDiscounts
             pct={invoiceDiscountPct}
             onPctChange={applyInvoiceDiscount}
-            amount={invoiceDiscountAmount}
-            onAmountChange={applyInvoiceDiscountAmount}
+            amount={invoiceDiscountAmt}
+            onAmountChange={applyInvoiceAmount}
             maxDiscount={salesSettings.maxDiscountPct}
             disabled={!hasLines}
           />
 
-          <PosCustomerFields
-            name={customerName}
-            onNameChange={setCustomerName}
-            phone={customerPhone}
-            onPhoneChange={setCustomerPhone}
-            customers={customers}
-          />
+          <PosCustomerFields name={customerName} onNameChange={setCustomerName} phone={customerPhone} onPhoneChange={setCustomerPhone} customers={[]} />
 
-          <PosInvoiceSummary
-            subTotal={finalTotals.subTotal}
-            discount={finalTotals.linesDiscount + finalTotals.invoiceDiscount}
-            total={finalTotals.total}
-          />
+          <PosInvoiceSummary subTotal={finalTotals.subTotal} discount={finalTotals.invoiceDiscount} total={finalTotals.total} />
         </div>
       </PosInvoiceTable>
 
       <PosActionsBar
-        hasLines={hasLines}
-        hasLastReceipt={!!posState.lastReceipt}
-        hasNote={!!note}
+        hasLines={quoteReady}
+        hasLastReceipt={!!lastReceipt}
+        hasNote={false}
+        payLabel="دفع وطباعة"
         onPay={() => setDialog("payment")}
-        onSuspend={suspendCurrent}
         onCancel={() => setDialog("cancel")}
         onNew={() => {
           resetInvoice();
           toast.info("تم بدء فاتورة جديدة");
         }}
-        onReprint={reprintLast}
-        onNote={() => setDialog("note")}
-        onPrev={() => browseInvoice(1)}
-        onNext={() => browseInvoice(-1)}
-        prevDisabled={!invoiceHistory.length}
-        nextDisabled={historyIndex <= 0}
+        onReprint={() => {
+          setReceipt(lastReceipt);
+          setDialog("receipt");
+        }}
+        onNote={() => toast.info("الملاحظات على الفاتورة غير متاحة بعد")}
       />
 
       <PaymentDialog
         open={dialog === "payment"}
         onOpenChange={(open) => setDialog(open ? "payment" : null)}
-        total={finalTotals.total}
-        method={method}
-        onMethodChange={setMethod}
-        paid={paid}
-        onPaidChange={setPaid}
-        onConfirm={confirmSale}
+        total={sale.quote.total}
+        allowedMethods={allowedMethods}
+        defaultMethod={salesSettings.defaultMethod}
         customerName={displayCustomer}
-        enabledMethods={salesSettings.enabledMethods}
-      />
-
-      <SuspendedDialog
-        open={dialog === "suspended"}
-        onOpenChange={(open) => setDialog(open ? "suspended" : null)}
-        suspended={posState.suspended}
-        onResume={resumeHold}
-        onDelete={(id) => {
-          removeSuspended(id);
-          toast.info("تم حذف الفاتورة المعلقة");
-        }}
-      />
-
-      <NoteDialog
-        open={dialog === "note"}
-        onOpenChange={(open) => setDialog(open ? "note" : null)}
-        note={note}
-        onSave={(value) => {
-          setNote(value);
-          setDialog(null);
-          toast.success(value ? "تم حفظ الملاحظة على الفاتورة" : "تم حذف الملاحظة");
-        }}
+        onConfirm={confirmSale}
+        pending={sale.paying}
+        error={sale.payError}
       />
 
       <ConfirmDialog
         open={dialog === "cancel"}
         onOpenChange={(open) => setDialog(open ? "cancel" : null)}
         title="إلغاء الفاتورة الحالية"
-        description="سيتم حذف كل الأصناف والخصومات والملاحظات المسجلة في هذه الفاتورة. لا يمكن التراجع."
+        description="سيتم حذف كل الأصناف والخصومات المسجلة في هذه الفاتورة. لا يمكن التراجع."
         confirmLabel="إلغاء الفاتورة"
         onConfirm={() => {
           resetInvoice();
@@ -494,11 +318,6 @@ export default function PosPage() {
         }}
         receipt={receipt}
         onNewSale={() => resetInvoice()}
-        onEdit={() => loadInvoice(receipt)}
-        onPrev={() => browseInvoice(1)}
-        onNext={() => browseInvoice(-1)}
-        prevDisabled={historyIndex < 0 || historyIndex >= invoiceHistory.length - 1}
-        nextDisabled={historyIndex <= 0}
       />
     </div>
   );

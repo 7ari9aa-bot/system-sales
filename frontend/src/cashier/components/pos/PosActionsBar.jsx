@@ -10,6 +10,7 @@ export default function PosActionsBar({
   hasLines,
   hasLastReceipt,
   hasNote,
+  payLabel = "طباعة",
   onPay,
   onSuspend,
   onCancel,
@@ -29,7 +30,7 @@ export default function PosActionsBar({
         onClick={onPay}
       >
         <Printer className="h-4 w-4" />
-        طباعة
+        {payLabel}
         <span className="text-[11px] opacity-80">(F2)</span>
       </Button>
 
@@ -39,11 +40,13 @@ export default function PosActionsBar({
         {hasNote && <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-label="توجد ملاحظة" />}
       </Button>
 
-      <Button variant="outline" className={SECONDARY} disabled={!hasLines} onClick={onSuspend}>
-        <PauseCircle className="h-4 w-4" />
-        تعليق الفاتورة
-        <span className="text-[11px] opacity-70">(F4)</span>
-      </Button>
+      {onSuspend ? (
+        <Button variant="outline" className={SECONDARY} disabled={!hasLines} onClick={onSuspend}>
+          <PauseCircle className="h-4 w-4" />
+          تعليق الفاتورة
+          <span className="text-[11px] opacity-70">(F4)</span>
+        </Button>
+      ) : null}
 
       <Button variant="outline" className={SECONDARY} onClick={onNew}>
         <FilePlus2 className="h-4 w-4" />
@@ -65,7 +68,7 @@ export default function PosActionsBar({
         إلغاء الفاتورة
       </Button>
 
-      <FlipButtons onPrev={onPrev} onNext={onNext} prevDisabled={prevDisabled} nextDisabled={nextDisabled} />
+      {onPrev ? <FlipButtons onPrev={onPrev} onNext={onNext} prevDisabled={prevDisabled} nextDisabled={nextDisabled} /> : null}
     </div>
   );
 }

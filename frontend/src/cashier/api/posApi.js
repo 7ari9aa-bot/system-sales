@@ -71,6 +71,9 @@ export const posApi = {
   closePreview: (id) => api(`/pos/sessions/${seg(id)}/close-preview`),
   reconciliation: (id) => api(`/pos/sessions/${seg(id)}/reconciliation`),
   report: (id) => api(`/pos/sessions/${seg(id)}/report`),
+  /* ---- catalog (read-only): products with variants, and stock per variant/warehouse ---- */
+  products: () => api("/products?limit=500"),
+  stockBalances: () => api("/inventory/balances"),
   receipts: (id) => api(`/pos/sessions/${seg(id)}/receipts`),
   receipt: (id) => api(`/pos/receipts/${seg(id)}`),
   heldCarts: (id) => api(`/pos/sessions/${seg(id)}/held-carts`),

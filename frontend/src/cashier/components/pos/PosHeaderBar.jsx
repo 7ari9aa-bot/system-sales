@@ -5,9 +5,8 @@ import { Button } from "@/cashier/components/ui/button";
 // رأس شاشة الكاشير: عنوان الشاشة ورقم الفاتورة، بيانات اليوم والكاشير والوردية، وأزرار الفواتير المعلقة والخروج.
 export default function PosHeaderBar({
   invoiceNo,
-  employee,
-  employees,
-  onEmployeeChange,
+  cashier,
+  shiftOpenedAt,
   suspendedCount = 0,
   onRestore,
 }) {
@@ -37,32 +36,25 @@ export default function PosHeaderBar({
           {dayLabel} {timeLabel}
         </span>
         <span aria-hidden="true">|</span>
-        <select
-          value={employee}
-          onChange={(e) => onEmployeeChange(e.target.value)}
-          aria-label="الكاشير"
-          className="rounded-md border border-border bg-card px-1.5 py-0.5 text-[11px] font-semibold text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        >
-          {employees.map((e) => (
-            <option key={e.id} value={e.name}>
-              {e.name} — {e.job}
-            </option>
-          ))}
-        </select>
+        <span className="font-semibold text-foreground" aria-label="الكاشير">
+          {cashier || "—"}
+        </span>
         <span aria-hidden="true">|</span>
         <span className="inline-flex items-center gap-1.5 font-semibold text-emerald-700">
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
-          وردية مفتوحة منذ 09:00
+          {shiftOpenedAt ? `وردية مفتوحة منذ ${new Date(shiftOpenedAt).toLocaleTimeString("ar-EG-u-nu-latn", { hour: "2-digit", minute: "2-digit" })}` : "وردية مفتوحة"}
         </span>
       </div>
 
-      <div className="ms-auto flex items-center gap-2">
-        <Button variant="outline" size="sm" className="h-8 gap-1.5 text-[12px]" onClick={onRestore}>
-          <History className="h-3.5 w-3.5" />
-          الفواتير المعلقة
-          <span className="num rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-primary">{suspendedCount}</span>
-        </Button>
-      </div>
+      {onRestore ? (
+        <div className="ms-auto flex items-center gap-2">
+          <Button variant="outline" size="sm" className="h-8 gap-1.5 text-[12px]" onClick={onRestore}>
+            <History className="h-3.5 w-3.5" />
+            الفواتير المعلقة
+            <span className="num rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-primary">{suspendedCount}</span>
+          </Button>
+        </div>
+      ) : null}
     </header>
   );
 }

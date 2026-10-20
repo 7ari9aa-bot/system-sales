@@ -286,7 +286,7 @@ export default function PosInvoiceTable({
               </td>
               <td className={cn(HCELL, "num text-center")}>{fmtInt(totals?.pieces ?? 0)}</td>
               <td className={HCELL} />
-              <td className={cn(HCELL, "num text-center")}>-{fmtNumber(discountTotal)}</td>
+              <td className={cn(HCELL, "num text-center")}>{discountTotal > 0 ? "-" : ""}{fmtNumber(discountTotal)}</td>
               <td className={cn(HCELL, "num text-center")}>{fmtNumber(totals?.total ?? 0)}</td>
               <td className={HCELL} />
             </tr>
