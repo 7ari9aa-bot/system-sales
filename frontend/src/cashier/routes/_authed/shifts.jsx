@@ -13,21 +13,33 @@ import ShiftDetailsDialog from "@/cashier/components/shifts/ShiftDetailsDialog";
 import ShiftFilters from "@/cashier/components/shifts/ShiftFilters";
 import shiftColumns from "@/cashier/components/shifts/shiftColumns";
 import { BTN, BTN_PRIMARY, LEDGER, LEDGER_FOOTER, LEDGER_TOOLBAR } from "@/cashier/components/ui-kit/ledgerStyles";
-import { shiftRow, shiftRows, shiftsSummary } from "@/cashier/lib/storeOpsData";
-import { shop } from "@/cashier/lib/mockData";
+import { shiftsSummary } from "@/cashier/lib/storeOpsData";
+import { useClosePreview, useCloseShift, useOpenShift, useShifts } from "@/cashier/api/useShifts";
+import { useAuth } from "@/lib/AuthContext";
 import { fmtInt, fmtMoney, fmtTime } from "@/cashier/lib/format";
 
 
 const HERO_IMAGE = "https://media.base44.com/images/public/6ad5982c1b45f350e41ffe73/6e1281bb6_generated_image.png";
 const HERO_ALT = "منضدة الكاشير عند إغلاق الوردية مع عدّ النقدية";
 
+function messageOf(err) {
+  if (!err) return null;
+  if (err.status === 403) return "ليست لديك صلاحية لهذه العملية.";
+  if (err.status === 409) return "الوردية تغيّرت حالتها. حدّث الصفحة وحاول مرة أخرى.";
+  return err.message || "حدث خطأ غير متوقع. حاول مرة أخرى.";
+}
+
 export default function ShiftsPage() {
-  const [rows, setRows] = useState(shiftRows);
+  const { user } = useAuth?.() ?? {};
+  const { data: rows = [], isLoading, error: loadError, refetch } = useShifts({ employees: user?.id ? { [user.id]: user.full_name || user.email } : {} });
+  const openShift = useOpenShift();
+  const closeShift = useCloseShift();
   const [employeeFilter, setEmployeeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [openDialog, setOpenDialog] = useState(false);
   const [closing, setClosing] = useState(null);
   const [details, setDetails] = useState(null);
+  const preview = useClosePreview(closing?.id, Boolean(closing));
 
   const summary = shiftsSummary(rows);
   const filtered = rows.filter((r) => {
@@ -36,48 +48,30 @@ export default function ShiftsPage() {
     return true;
   });
 
-  function addShift(record) {
-    setRows((prev) => [
-      shiftRow({
-        id: `sh-new-${prev.length + 1}`,
-        number: `SH-2026-${String(42 + prev.length).padStart(4, "0")}`,
-        date: new Date().toISOString(),
-        branch: shop.branch,
-        employee: record.employee,
-        openingCash: record.openingCash,
-        invoices: 0,
-        pieces: 0,
-        cashSales: 0,
-        cardSales: 0,
-        walletSales: 0,
-        creditSales: 0,
-        returnsCash: 0,
-        expensesCash: 0,
-        variance: 0,
-        closedAt: null,
-        status: "open",
-        note: record.note,
-      }),
-      ...prev,
-    ]);
-    toast.success(`تم فتح وردية ${record.employee} برصيد ${fmtMoney(record.openingCash)}`);
+  function submitOpen({ openingCash }) {
+    openShift.mutate(
+      { openingCash },
+      {
+        onSuccess: () => {
+          setOpenDialog(false);
+          toast.success(`تم فتح الوردية برصيد ${fmtMoney(openingCash)}`);
+        },
+      },
+    );
   }
 
-  function closeShift(shift, { actual, note }) {
-    setRows((prev) =>
-      prev.map((r) =>
-        r.id === shift.id
-          ? shiftRow({
-              ...r,
-              status: "closed",
-              closedAt: new Date().toISOString(),
-              variance: +(actual - shift.expected).toFixed(2),
-              note: note || r.note,
-            })
-          : r,
-      ),
+  function submitClose({ actual }) {
+    const shift = closing;
+    closeShift.mutate(
+      { sessionId: shift.id, countedCash: actual },
+      {
+        onSuccess: (closed) => {
+          const diff = Number(closed?.variance ?? 0);
+          setClosing(null);
+          toast.success(`تم إغلاق الوردية ${shift.number} — ${diff === 0 ? "الخزنة مطابقة" : `فرق ${fmtMoney(diff)}`}`);
+        },
+      },
     );
-    toast.success(`تم إغلاق الوردية ${shift.number} — ${actual === shift.expected ? "الخزنة مطابقة" : `فرق ${fmtMoney(actual - shift.expected)}`}`);
   }
 
   const columns = shiftColumns({ onClose: setClosing, onDetails: setDetails });
@@ -97,6 +91,13 @@ export default function ShiftsPage() {
         </PageHero>
       }
     >
+      {loadError ? (
+        <div role="alert" className="mb-3 flex items-center justify-between rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+          <span>تعذّر تحميل الورديات: {messageOf(loadError)}</span>
+          <Button variant="outline" onClick={() => refetch()}>إعادة المحاولة</Button>
+        </div>
+      ) : null}
+
       <ShiftFilters
         employee={employeeFilter}
         onEmployee={(value) => setEmployeeFilter(value === "all" ? "" : value)}
@@ -115,7 +116,7 @@ export default function ShiftsPage() {
         columns={columns}
         rows={filtered}
         pageSize={8}
-        emptyTitle="لا توجد ورديات مطابقة"
+        emptyTitle={isLoading ? "جارٍ التحميل…" : "لا توجد ورديات مطابقة"}
         emptyDescription="جرّب تغيير الموظف أو حالة الوردية."
         toolbar={
           <div className="num flex items-center gap-3 text-[12px] text-[#7A766C]">
@@ -140,8 +141,8 @@ export default function ShiftsPage() {
         ]}
       />
 
-      <ShiftOpenDialog open={openDialog} onOpenChange={setOpenDialog} onSubmit={addShift} />
-      <ShiftCloseDialog open={Boolean(closing)} onOpenChange={(open) => !open && setClosing(null)} shift={closing} onSubmit={(payload) => closeShift(closing, payload)} />
+      <ShiftOpenDialog open={openDialog} onOpenChange={(v) => { setOpenDialog(v); if (!v) openShift.reset(); }} onSubmit={submitOpen} pending={openShift.isPending} error={messageOf(openShift.error)} />
+      <ShiftCloseDialog open={Boolean(closing)} onOpenChange={(v) => { if (!v) { setClosing(null); closeShift.reset(); } }} shift={closing} preview={preview.data} previewLoading={preview.isLoading} onSubmit={submitClose} pending={closeShift.isPending} error={messageOf(closeShift.error) || (preview.error ? messageOf(preview.error) : null)} />
       <ShiftDetailsDialog open={Boolean(details)} onOpenChange={(open) => !open && setDetails(null)} shift={details} />
     </LedgerPage>
   );

@@ -3,15 +3,12 @@ import { Button } from "@/cashier/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/cashier/components/ui/dialog";
 import { Input } from "@/cashier/components/ui/input";
 import { Label } from "@/cashier/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/cashier/components/ui/select";
-import { Textarea } from "@/cashier/components/ui/textarea";
-import { employees } from "@/cashier/lib/mockData";
 import { fmtMoney } from "@/cashier/lib/format";
 
-const EMPTY = { employee: "", openingCash: "1500", note: "" };
+const EMPTY = { openingCash: "0" };
 
 // فتح وردية جديدة: الموظف المسؤول ورصيد البداية في الخزنة.
-export default function ShiftOpenDialog({ open, onOpenChange, onSubmit }) {
+export default function ShiftOpenDialog({ open, onOpenChange, onSubmit, pending = false, error = null }) {
   const [form, setForm] = useState(EMPTY);
 
   useEffect(() => {
@@ -19,43 +16,22 @@ export default function ShiftOpenDialog({ open, onOpenChange, onSubmit }) {
   }, [open]);
 
   const opening = Number(form.openingCash) || 0;
-  const canSubmit = Boolean(form.employee);
+  const canSubmit = opening >= 0 && !pending;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent dir="rtl" className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="font-heading text-base">فتح وردية جديدة</DialogTitle>
-          <DialogDescription>حدّد الموظف المسؤول ورصيد البداية الموجود في الخزنة قبل بدء البيع.</DialogDescription>
+          <DialogDescription>تُفتح الوردية باسم المستخدم الحالي. حدّد رصيد البداية الموجود في الخزنة قبل بدء البيع.</DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-3">
           <div>
-            <Label className="mb-1.5 block text-xs text-muted-foreground">الموظف المسؤول</Label>
-            <Select value={form.employee || "none"} onValueChange={(v) => setForm((prev) => ({ ...prev, employee: v === "none" ? "" : v }))}>
-              <SelectTrigger>
-                <SelectValue placeholder="اختر الموظف" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">اختر الموظف</SelectItem>
-                {employees
-                  .filter((e) => e.status === "active")
-                  .map((e) => (
-                    <SelectItem key={e.id} value={e.name}>
-                      {e.name} — {e.job}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
             <Label className="mb-1.5 block text-xs text-muted-foreground">رصيد البداية في الخزنة</Label>
             <Input type="number" min={0} value={form.openingCash} onChange={(e) => setForm((prev) => ({ ...prev, openingCash: e.target.value }))} className="num" />
           </div>
-          <div>
-            <Label className="mb-1.5 block text-xs text-muted-foreground">ملاحظات</Label>
-            <Textarea rows={2} value={form.note} onChange={(e) => setForm((prev) => ({ ...prev, note: e.target.value }))} placeholder="مثال: وردية صباحية" />
-          </div>
+          {error ? <p role="alert" className="text-xs font-semibold text-rose-600">{error}</p> : null}
         </div>
 
         <DialogFooter className="flex-wrap gap-2 sm:justify-between">
@@ -69,12 +45,9 @@ export default function ShiftOpenDialog({ open, onOpenChange, onSubmit }) {
             <Button
               className="font-bold"
               disabled={!canSubmit}
-              onClick={() => {
-                onSubmit({ employee: form.employee, openingCash: opening, note: form.note });
-                onOpenChange(false);
-              }}
+              onClick={() => onSubmit({ openingCash: opening })}
             >
-              فتح الوردية
+              {pending ? "جارٍ الفتح…" : "فتح الوردية"}
             </Button>
           </div>
         </DialogFooter>
