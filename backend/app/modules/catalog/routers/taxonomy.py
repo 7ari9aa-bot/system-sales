@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import hashlib
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select
 
 from app.core.errors import StorageUnavailableError, ValidationError
 from app.core.storage import FetchedMedia, get_storage
 from app.modules.catalog.service import CatalogService
+from app.modules.identity.deps import TenantContext, require_permission
 
 from ._deps import (
     AddImageRequest,
@@ -166,3 +168,26 @@ async def list_warehouses(ctx: TenantCtxDep, limit: int = 200, offset: int = 0):
         }
         for w in rows
     ]
+
+
+@router.post("/warehouses/ensure-default")
+async def ensure_default_warehouse(
+    ctx: Annotated[TenantContext, Depends(require_permission("settings:write"))],
+):
+    """First-use setup: make sure the shop has a warehouse, and return it.
+
+    A brand-new shop has none, and every stock movement, POS profile and register needs a
+    ``warehouse_id``. This reuses the inventory service's race-safe "first active warehouse,
+    bootstrapping 'Main'" so a double click converges on one row. Manager-only
+    (``settings:write``) like the rest of the POS setup.
+    """
+    from app.modules.inventory.services import InventoryService  # inventory owns warehouses
+
+    w = await InventoryService.get_default_warehouse(ctx.session, ctx.tenant_id)
+    return {
+        "id": str(w.id),
+        "name": w.name,
+        "code": w.code,
+        "address": w.address,
+        "is_active": w.is_active,
+    }

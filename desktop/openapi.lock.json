@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 375,
-    "sha256": "6fbb0e307a6e803f10303898489c4277eb5e7517e709d925c36a5ddbace6ef33",
-    "typed_operations": 223
+    "operations": 379,
+    "sha256": "7d6eefd7e88896225d9c596bddd176445fbc634db45d7a39d8cc618052c9e611",
+    "typed_operations": 225
   },
   "spec": {
     "components": {
@@ -8633,6 +8633,89 @@
             "external_id"
           ],
           "title": "IdentityOut",
+          "type": "object"
+        },
+        "ImpersonationConfirmBody": {
+          "properties": {
+            "nonce": {
+              "maxLength": 128,
+              "minLength": 8,
+              "title": "Nonce",
+              "type": "string"
+            }
+          },
+          "required": [
+            "nonce"
+          ],
+          "title": "ImpersonationConfirmBody",
+          "type": "object"
+        },
+        "ImpersonationRedeemOut": {
+          "properties": {
+            "location": {
+              "title": "Location",
+              "type": "string"
+            }
+          },
+          "required": [
+            "location"
+          ],
+          "title": "ImpersonationRedeemOut",
+          "type": "object"
+        },
+        "ImpersonationTicketOut": {
+          "properties": {
+            "expires_in": {
+              "title": "Expires In",
+              "type": "integer"
+            },
+            "redeem_path": {
+              "title": "Redeem Path",
+              "type": "string"
+            },
+            "ticket": {
+              "title": "Ticket",
+              "type": "string"
+            }
+          },
+          "required": [
+            "ticket",
+            "expires_in",
+            "redeem_path"
+          ],
+          "title": "ImpersonationTicketOut",
+          "type": "object"
+        },
+        "ImpersonationTicketRequest": {
+          "properties": {
+            "reason": {
+              "maxLength": 500,
+              "minLength": 3,
+              "title": "Reason",
+              "type": "string"
+            },
+            "redirect_to": {
+              "default": "/dashboard",
+              "title": "Redirect To",
+              "type": "string"
+            },
+            "tenant_id": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            },
+            "user_id": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "tenant_id",
+            "user_id",
+            "reason"
+          ],
+          "title": "ImpersonationTicketRequest",
           "type": "object"
         },
         "IntegrationBody": {
@@ -43761,6 +43844,134 @@
           ]
         }
       },
+      "/api/v1/platform/impersonation/redeem": {
+        "get": {
+          "description": "The handoff page — GET returns an auto-submitting POST form (F4).\n\nThe ticket travels in the form BODY, never in a URL that server access\nlogs, browser history or referrers keep. Nothing is consumed here; the\nconfirm endpoint below does all the state-changing work.",
+          "operationId": "redeem_impersonation_ticket_api_v1_platform_impersonation_redeem_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "ticket",
+              "required": true,
+              "schema": {
+                "minLength": 1,
+                "title": "Ticket",
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "text/html": {
+                  "schema": {
+                    "type": "string"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Redeem Impersonation Ticket",
+          "tags": [
+            "platform"
+          ]
+        }
+      },
+      "/api/v1/platform/impersonation/redeem/confirm": {
+        "post": {
+          "description": "Consume the ticket (once) and sign the OWNER'S BROWSER in as the user.\n\nThe cookies are exactly the login flow's pair — nothing bespoke is added\nto the session. Every guard re-runs here: ticket type, single-use via\nRedis, the user's activity and membership, the tenant's login policy.\nAn MFA-protected user is refused outright — impersonating past a second\nfactor would defeat the factor itself.",
+          "operationId": "confirm_impersonation_ticket_api_v1_platform_impersonation_redeem_confirm_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImpersonationConfirmBody"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ImpersonationRedeemOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Confirm Impersonation Ticket",
+          "tags": [
+            "platform"
+          ]
+        }
+      },
+      "/api/v1/platform/impersonation/tickets": {
+        "post": {
+          "description": "Mint a one-time, two-minute ticket to enter `user_id`'s session.\n\nRedeem re-checks everything (defense in depth against a ticket minted\nfor a membership that was revoked in the two-minute window).",
+          "operationId": "mint_impersonation_ticket_api_v1_platform_impersonation_tickets_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImpersonationTicketRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ImpersonationTicketOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Mint Impersonation Ticket",
+          "tags": [
+            "platform"
+          ]
+        }
+      },
       "/api/v1/platform/metrics": {
         "get": {
           "description": "The canonical metric registry (§167) — one definition per number.\n\nReads need only a tenant context. Every screen must resolve a metric through\nthis registry rather than re-deriving the formula, so the same number is not\ncomputed differently in two places.\n\nSOURCE: the in-code ``MetricRegistry`` (the authority), NOT the\n``metric_definitions`` table. A tenant that wants the definitions IT was\nmeasured under — with version history and any convergence gap — reads\n``GET /platform/metrics/definitions``, which answers from the table.\n\nThe payload is the module's ``{items}`` envelope: the registry has no\n``updated_at`` to carry and no gap to report, so its rows are\n``MetricSpecOut`` rather than ``MetricDefinitionRowOut``.",
@@ -56619,6 +56830,102 @@
             }
           },
           "summary": "List Warehouses",
+          "tags": [
+            "catalog"
+          ]
+        }
+      },
+      "/api/v1/warehouses/ensure-default": {
+        "post": {
+          "description": "First-use setup: make sure the shop has a warehouse, and return it.\n\nA brand-new shop has none, and every stock movement, POS profile and register needs a\n``warehouse_id``. This reuses the inventory service's race-safe \"first active warehouse,\nbootstrapping 'Main'\" so a double click converges on one row. Manager-only\n(``settings:write``) like the rest of the POS setup.",
+          "operationId": "ensure_default_warehouse_api_v1_warehouses_ensure_default_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Ensure Default Warehouse",
           "tags": [
             "catalog"
           ]
