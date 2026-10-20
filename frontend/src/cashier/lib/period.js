@@ -9,6 +9,10 @@ export const PERIOD_DAYS = { today: 1, "7d": 7, "30d": 30 };
 const dayKey = (date, tz = SHOP_TZ) => new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
 const dayNumber = (key) => Math.floor(Date.parse(`${key}T00:00:00Z`) / 86_400_000);
 
+/** The shop's calendar date ("2026-10-21") for an instant. NOT toISOString(): that is the UTC date, which is
+ * still yesterday between 00:00 and 03:00 in Cairo, so "today" would be wrong every night. */
+export const shopToday = (now = new Date(), tz = SHOP_TZ) => dayKey(now, tz);
+
 /** True when the instant falls in the last `days` shop days, today included. Unknown period = 7 days. */
 export function inShopPeriod(isoInstant, period = "7d", now = new Date(), tz = SHOP_TZ) {
   const when = new Date(isoInstant);

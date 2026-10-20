@@ -118,6 +118,15 @@ export const posApi = {
   getHeldCart: (heldId) => api(`/pos/held-carts/${seg(heldId)}`),
   releaseHeldCart: (heldId) => api(`/pos/held-carts/${seg(heldId)}`, { method: "DELETE" }),
 
+  /* ---- expenses (backend/app/modules/expenses) ---- */
+  expenseCategories: () => api("/expenses/categories"),
+  createExpenseCategory: (name) => post("/expenses/categories", { name: String(name ?? "").trim() }),
+  listExpenses: (query = "") => api(`/expenses?limit=500${query ? `&${query}` : ""}`),
+  // Posting books the expense AND (if cash) the drawer pay-out: a retry must not do it twice.
+  createExpense: async (payload, intent) => post("/expenses", payload, needIntent(intent)),
+  voidExpense: async (id, { reason }, intent) =>
+    post(`/expenses/${seg(id)}/void`, { reason: String(reason ?? "").trim() }, needIntent(intent)),
+
   /* ---- money (intent required) ---- */
   sell: async (id, { items, customerId, tenders: t, discountTotal, tenderedCash, heldCartId }, intent) => {
     const headers = needIntent(intent);

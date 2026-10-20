@@ -7,14 +7,17 @@ import DataTable from "@/cashier/components/ui-kit/DataTable";
 import LedgerPage from "@/cashier/components/ui-kit/LedgerPage";
 import LedgerStats from "@/cashier/components/ui-kit/LedgerStats";
 import PageHero from "@/cashier/components/ui-kit/PageHero";
-import ConfirmDialog from "@/cashier/components/ui-kit/ConfirmDialog";
 import ExpenseDialog from "@/cashier/components/expenses/ExpenseDialog";
+import VoidExpenseDialog from "@/cashier/components/expenses/VoidExpenseDialog";
 import ExpenseFilters from "@/cashier/components/expenses/ExpenseFilters";
 import expenseColumns from "@/cashier/components/expenses/expenseColumns";
 import { BTN, BTN_PRIMARY, LEDGER, LEDGER_FOOTER, LEDGER_TOOLBAR } from "@/cashier/components/ui-kit/ledgerStyles";
-import { expenseRows, expensesSummary } from "@/cashier/lib/storeOpsData";
 import { PAYMENT_METHODS, fmtDate, fmtInt, fmtMoney } from "@/cashier/lib/format";
 import { exportCsv } from "@/cashier/lib/exportCsv";
+import { useAuth } from "@/lib/AuthContext";
+import { EXPENSE_METHODS, expenseErrorMessage, filterExpenses, summarize } from "@/cashier/api/expensesAdapter";
+import { useExpenseCategories, useExpenses, usePostExpense, useVoidExpense } from "@/cashier/api/useExpenses";
+import { useShiftState } from "@/cashier/api/useShifts";
 
 
 const HERO_IMAGE = "https://media.base44.com/images/public/6ad5982c1b45f350e41ffe73/2115fad41_generated_image.png";
@@ -28,55 +31,56 @@ const EXPORT_COLUMNS = [
   { header: "المبلغ", key: "amount" },
   { header: "طريقة الدفع", value: (r) => PAYMENT_METHODS[r.payment]?.label ?? "—" },
   { header: "الموظف", key: "employee" },
+  // A voided expense stays in the file but is marked, or Excel would add it to the total.
+  { header: "الحالة", value: (r) => (r.voided ? "ملغي" : "مسجّل") },
 ];
 
 export default function ExpensesPage() {
-  const [rows, setRows] = useState(expenseRows);
+  const { user } = useAuth?.() ?? {};
+  const users = user?.id ? { [user.id]: user.full_name || user.email } : {};
+  const categoriesQ = useExpenseCategories();
+  const categories = categoriesQ.data ?? [];
+  const { data: rows = [], isLoading, error: loadError, refetch } = useExpenses({ categories, users });
+  const shiftState = useShiftState();
+  const openSessionId = shiftState.data?.status === "open" ? shiftState.data.session.id : null;
+  const post = usePostExpense();
+  const voidMut = useVoidExpense();
+
   const [term, setTerm] = useState("");
   const [category, setCategory] = useState("");
   const [payment, setPayment] = useState("");
-  const [editing, setEditing] = useState(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [deleting, setDeleting] = useState(null);
+  const [voiding, setVoiding] = useState(null);
 
-  const summary = expensesSummary(rows);
-  const filtered = rows.filter((e) => {
-    const t = term.trim().toLowerCase();
-    if (t && !(e.number.toLowerCase().includes(t) || e.description.toLowerCase().includes(t) || e.category.toLowerCase().includes(t) || e.employee.toLowerCase().includes(t)))
-      return false;
-    if (category && e.category !== category) return false;
-    if (payment && e.payment !== payment) return false;
-    return true;
-  });
+  const summary = summarize(rows);
+  const filtered = filterExpenses(rows, { term, category, payment });
+  const shownTotal = summarize(filtered).total;
 
-  function nextNumber() {
-    const max = rows.reduce((m, r) => Math.max(m, Number(String(r.number).replace(/\D/g, "")) || 0), 0);
-    return `EXP-${max + 1}`;
+  function saveExpense(payload) {
+    post.mutate(
+      { payload },
+      {
+        onSuccess: (created) => {
+          setDialogOpen(false);
+          toast.success(`تم تسجيل المصروف ${created.number} بمبلغ ${fmtMoney(created.amount)}`);
+        },
+      },
+    );
   }
 
-  function saveExpense(record) {
-    if (record.id) {
-      setRows((prev) => prev.map((r) => (r.id === record.id ? { ...r, ...record } : r)));
-      toast.success(`تم تعديل المصروف ${record.number}`);
-    } else {
-      const number = nextNumber();
-      setRows((prev) => [{ ...record, id: `ex-new-${prev.length + 1}`, number }, ...prev]);
-      toast.success(`تم تسجيل المصروف ${number} بمبلغ ${fmtMoney(record.amount)}`);
-    }
+  function voidExpense(reason) {
+    voidMut.mutate(
+      { id: voiding.id, expenseId: voiding.id, reason },
+      {
+        onSuccess: () => {
+          toast.success(`تم إلغاء المصروف ${voiding.number}`);
+          setVoiding(null);
+        },
+      },
+    );
   }
 
-  function removeExpense(record) {
-    setRows((prev) => prev.filter((r) => r.id !== record.id));
-    toast.success(`تم حذف المصروف ${record.number}`);
-  }
-
-  const columns = expenseColumns({
-    onEdit: (expense) => {
-      setEditing(expense);
-      setDialogOpen(true);
-    },
-    onDelete: setDeleting,
-  });
+  const columns = expenseColumns({ onVoid: (expense) => { voidMut.reset(); setVoiding(expense); } });
 
   return (
     <LedgerPage
@@ -94,8 +98,9 @@ export default function ExpensesPage() {
           </Button>
           <Button
             className={BTN_PRIMARY}
+            disabled={categoriesQ.isLoading || categories.length === 0}
             onClick={() => {
-              setEditing(null);
+              post.reset();
               setDialogOpen(true);
             }}
           >
@@ -105,6 +110,13 @@ export default function ExpensesPage() {
         </PageHero>
       }
     >
+      {loadError || categoriesQ.error ? (
+        <div role="alert" className="mb-3 flex items-center justify-between rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+          <span>تعذّر تحميل المصروفات: {expenseErrorMessage(loadError || categoriesQ.error)}</span>
+          <Button variant="outline" onClick={() => { categoriesQ.refetch(); refetch(); }}>إعادة المحاولة</Button>
+        </div>
+      ) : null}
+
       <ExpenseFilters
         term={term}
         onTerm={setTerm}
@@ -112,6 +124,8 @@ export default function ExpensesPage() {
         onCategory={(value) => setCategory(value === "all" ? "" : value)}
         payment={payment}
         onPayment={(value) => setPayment(value === "all" ? "" : value)}
+        categories={categories}
+        methods={EXPENSE_METHODS}
         onReset={() => {
           setTerm("");
           setCategory("");
@@ -126,13 +140,13 @@ export default function ExpensesPage() {
         columns={columns}
         rows={filtered}
         pageSize={8}
-        emptyTitle="لا توجد مصروفات مطابقة"
+        emptyTitle={isLoading ? "جارٍ التحميل…" : "لا توجد مصروفات مطابقة"}
         emptyDescription="جرّب تغيير التصنيف أو طريقة الدفع أو كلمة البحث."
         toolbar={
           <div className="num flex items-center gap-3 text-[12px] text-[#7A766C]">
             <Image src={HERO_IMAGE} alt={HERO_ALT} className="h-[34px] w-[34px] overflow-hidden rounded-[4px] border border-[#DED8CD]" />
             <span>
-              {fmtInt(filtered.length)} مصروفًا • الإجمالي {fmtMoney(filtered.reduce((s, e) => s + e.amount, 0))}
+              {fmtInt(filtered.length)} مصروفًا • الإجمالي {fmtMoney(shownTotal)}
             </span>
           </div>
         }
@@ -140,24 +154,29 @@ export default function ExpensesPage() {
 
       <LedgerStats
         stats={[
-          { label: "إجمالي المصروفات", value: fmtMoney(summary.total), hint: `${fmtInt(summary.count)} مصروفًا مسجلًا`, accent: true },
+          { label: "إجمالي المصروفات", value: fmtMoney(summary.total), hint: `${fmtInt(summary.count)} مصروفًا${summary.voidedCount ? ` • ${fmtInt(summary.voidedCount)} ملغي` : ""}`, accent: true },
           { label: "مصروفات اليوم", value: fmtMoney(summary.today), hint: "مسجلة في تاريخ اليوم" },
           { label: "مدفوع نقدًا", value: fmtMoney(summary.cash), hint: "يُخصم من خزنة الوردية" },
           { label: "أكبر تصنيف", value: summary.top, hint: `${fmtMoney(summary.topAmount)} من إجمالي المصروفات` },
         ]}
       />
 
-      <ExpenseDialog open={dialogOpen} onOpenChange={setDialogOpen} expense={editing} onSubmit={saveExpense} />
-      <ConfirmDialog
-        open={Boolean(deleting)}
-        onOpenChange={(open) => !open && setDeleting(null)}
-        title={`حذف المصروف ${deleting?.number ?? ""}؟`}
-        description="سيتم حذف المصروف من السجل ولن يظهر في التقارير."
-        confirmLabel="حذف المصروف"
-        onConfirm={() => {
-          removeExpense(deleting);
-          setDeleting(null);
-        }}
+      <ExpenseDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        categories={categories}
+        methods={EXPENSE_METHODS}
+        openSessionId={openSessionId}
+        onSubmit={saveExpense}
+        pending={post.isPending}
+        error={post.error ? expenseErrorMessage(post.error) : null}
+      />
+      <VoidExpenseDialog
+        expense={voiding}
+        onOpenChange={(open) => !open && setVoiding(null)}
+        onSubmit={voidExpense}
+        pending={voidMut.isPending}
+        error={voidMut.error ? expenseErrorMessage(voidMut.error) : null}
       />
     </LedgerPage>
   );

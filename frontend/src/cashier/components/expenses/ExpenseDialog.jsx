@@ -4,65 +4,63 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/cashier/components/ui/input";
 import { Label } from "@/cashier/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/cashier/components/ui/select";
-import { employees } from "@/cashier/lib/mockData";
-import { EXPENSE_CATEGORIES, EXPENSE_PAYMENTS } from "@/cashier/lib/storeOpsData";
+import { buildExpense, normalizeAmountInput } from "@/cashier/api/expensesAdapter";
 import { PAYMENT_METHODS, fmtMoney } from "@/cashier/lib/format";
+import { shopToday } from "@/cashier/lib/period";
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => shopToday();
+const blank = () => ({ categoryId: "", description: "", amount: "", payment: "cash", date: today() });
 
-// تسجيل أو تعديل مصروف: التصنيف والبيان والمبلغ والتاريخ وطريقة الدفع.
-export default function ExpenseDialog({ open, onOpenChange, expense, onSubmit }) {
-  const [form, setForm] = useState({ category: "", description: "", amount: "", payment: "cash", date: today(), employee: employees[1].name });
+// تسجيل مصروف جديد. المصروف المسجَّل ما بيتعدّلش: التصحيح بإلغائه وتسجيل مصروف صحيح.
+// النقدي بيطلع من درج الوردية المفتوحة، فبيتمنع هنا لو مفيش وردية.
+export default function ExpenseDialog({ open, onOpenChange, categories, methods, openSessionId, onSubmit, pending, error }) {
+  const [form, setForm] = useState(blank);
+  const [localError, setLocalError] = useState("");
 
   useEffect(() => {
     if (!open) return;
-    setForm(
-      expense
-        ? { ...expense, amount: String(expense.amount), date: String(expense.date).slice(0, 10) }
-        : { category: "", description: "", amount: "", payment: "cash", date: today(), employee: employees[1].name },
-    );
-  }, [open, expense]);
+    setForm({ ...blank(), payment: openSessionId ? "cash" : "bank_transfer" });
+    setLocalError("");
+  }, [open, openSessionId]);
 
-  const amount = Number(form.amount) || 0;
-  const canSubmit = Boolean(form.category && form.description.trim() && amount > 0 && form.date);
-
-  function set(field, value) {
-    setForm((prev) => ({ ...prev, [field]: value }));
-  }
+  const set = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
+  const amount = normalizeAmountInput(form.amount);
+  const cashWithoutShift = form.payment === "cash" && !openSessionId;
+  const built = buildExpense(form, { openSessionId });
 
   function submit() {
-    onSubmit({
-      ...(expense ? { id: expense.id, number: expense.number } : {}),
-      category: form.category,
-      description: form.description.trim(),
-      amount: +amount.toFixed(2),
-      payment: form.payment,
-      date: `${form.date}T${new Date().toTimeString().slice(0, 5)}:00`,
-      employee: form.employee,
-    });
-    onOpenChange(false);
+    if (!built.ok) {
+      setLocalError(built.error);
+      return;
+    }
+    setLocalError("");
+    onSubmit(built.payload);
   }
 
+  const shown = localError || error;
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(next) => !pending && onOpenChange(next)}>
       <DialogContent dir="rtl" className="max-w-xl">
         <DialogHeader>
-          <DialogTitle className="font-heading text-base">{expense ? "تعديل مصروف" : "تسجيل مصروف جديد"}</DialogTitle>
-          <DialogDescription>سجّل المصروف بتصنيفه ومبلغه وطريقة دفعه ليُخصم من خزنة الوردية.</DialogDescription>
+          <DialogTitle className="font-heading text-base">تسجيل مصروف جديد</DialogTitle>
+          <DialogDescription>
+            المصروف النقدي بيطلع من درج الوردية المفتوحة. وبعد التسجيل ما بيتعدّلش: لو غلطت، ألغيه وسجّله صح.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <Label className="mb-1.5 block text-xs text-muted-foreground">التصنيف</Label>
-            <Select value={form.category || "none"} onValueChange={(v) => set("category", v === "none" ? "" : v)}>
+            <Select value={form.categoryId || "none"} onValueChange={(v) => set("categoryId", v === "none" ? "" : v)}>
               <SelectTrigger>
                 <SelectValue placeholder="اختر التصنيف" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">اختر التصنيف</SelectItem>
-                {EXPENSE_CATEGORIES.map((c) => (
-                  <SelectItem key={c} value={c}>
-                    {c}
+                {categories.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -70,11 +68,11 @@ export default function ExpenseDialog({ open, onOpenChange, expense, onSubmit })
           </div>
           <div>
             <Label className="mb-1.5 block text-xs text-muted-foreground">المبلغ</Label>
-            <Input type="number" min={0} value={form.amount} onChange={(e) => set("amount", e.target.value)} className="num" />
+            <Input inputMode="decimal" value={form.amount} onChange={(e) => set("amount", e.target.value)} className="num" placeholder="0.00" />
           </div>
           <div className="sm:col-span-2">
             <Label className="mb-1.5 block text-xs text-muted-foreground">البيان</Label>
-            <Input value={form.description} onChange={(e) => set("description", e.target.value)} placeholder="مثال: فاتورة الكهرباء" />
+            <Input value={form.description} maxLength={255} onChange={(e) => set("description", e.target.value)} placeholder="مثال: فاتورة الكهرباء" />
           </div>
           <div>
             <Label className="mb-1.5 block text-xs text-muted-foreground">تاريخ المصروف</Label>
@@ -87,7 +85,7 @@ export default function ExpenseDialog({ open, onOpenChange, expense, onSubmit })
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {EXPENSE_PAYMENTS.map((p) => (
+                {methods.map((p) => (
                   <SelectItem key={p} value={p}>
                     {PAYMENT_METHODS[p]?.label ?? p}
                   </SelectItem>
@@ -95,33 +93,29 @@ export default function ExpenseDialog({ open, onOpenChange, expense, onSubmit })
               </SelectContent>
             </Select>
           </div>
-          <div className="sm:col-span-2">
-            <Label className="mb-1.5 block text-xs text-muted-foreground">الموظف المسؤول</Label>
-            <Select value={form.employee} onValueChange={(v) => set("employee", v)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {employees.map((e) => (
-                  <SelectItem key={e.id} value={e.name}>
-                    {e.name} — {e.job}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
         </div>
+
+        {cashWithoutShift && (
+          <p role="status" className="rounded-md border border-[#EBD9A8] bg-[#FFF8E5] px-3 py-2 text-xs font-semibold text-[#8A6100]">
+            مفيش وردية مفتوحة، والمصروف النقدي بيطلع من الدرج. افتح وردية الأول أو اختر طريقة دفع تانية.
+          </p>
+        )}
+        {shown && (
+          <p role="alert" className="rounded-md border border-[#F1C7C3] bg-[#FDECEA] px-3 py-2 text-xs font-semibold text-[#B3261E]">
+            {shown}
+          </p>
+        )}
 
         <DialogFooter className="flex-wrap gap-2 sm:justify-between">
           <p className="num text-xs text-muted-foreground">
-            المبلغ: <span className="font-bold text-foreground">{fmtMoney(amount)}</span>
+            المبلغ: <span className="font-bold text-foreground">{amount ? fmtMoney(amount) : "—"}</span>
           </p>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
-              إلغاء
+            <Button variant="outline" disabled={pending} onClick={() => onOpenChange(false)}>
+              رجوع
             </Button>
-            <Button className="font-bold" disabled={!canSubmit} onClick={submit}>
-              {expense ? "حفظ التعديل" : "تسجيل المصروف"}
+            <Button className="font-bold" disabled={pending || cashWithoutShift} onClick={submit}>
+              {pending ? "جارٍ التسجيل..." : "تسجيل المصروف"}
             </Button>
           </div>
         </DialogFooter>

@@ -5,10 +5,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import FilterPanel from "@/cashier/components/ui-kit/FilterPanel";
 import { FIELD, FIELD_LABEL, FIELD_SELECT, FILTER_PANEL, FILTER_PANEL_CONTENT, FILTER_PANEL_HEADER } from "@/cashier/components/ui-kit/ledgerStyles";
 import { PAYMENT_METHODS } from "@/cashier/lib/format";
-import { EXPENSE_CATEGORIES, EXPENSE_PAYMENTS } from "@/cashier/lib/storeOpsData";
 
 // فلاتر جدول المصروفات: بحث، التصنيف، وطريقة الدفع.
-export default function ExpenseFilters({ term, onTerm, category, onCategory, payment, onPayment, onReset }) {
+export default function ExpenseFilters({ term, onTerm, category, onCategory, payment, onPayment, onReset, categories, methods }) {
   const activeCount = [category, payment].filter(Boolean).length + (term ? 1 : 0);
 
   return (
@@ -36,9 +35,9 @@ export default function ExpenseFilters({ term, onTerm, category, onCategory, pay
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">كل التصنيفات</SelectItem>
-              {EXPENSE_CATEGORIES.map((c) => (
-                <SelectItem key={c} value={c}>
-                  {c}
+              {categories.map((c) => (
+                <SelectItem key={c.id} value={c.name}>
+                  {c.name}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -53,7 +52,7 @@ export default function ExpenseFilters({ term, onTerm, category, onCategory, pay
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">كل الطرق</SelectItem>
-              {EXPENSE_PAYMENTS.map((p) => (
+              {methods.map((p) => (
                 <SelectItem key={p} value={p}>
                   {PAYMENT_METHODS[p]?.label ?? p}
                 </SelectItem>
