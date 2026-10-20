@@ -18,16 +18,6 @@ import {
   ScanLine,
   CirclePlus,
   MessageSquareText,
-  Receipt,
-  RotateCcw,
-  RefreshCw,
-  Printer,
-  Truck,
-  ShoppingBag,
-  Undo2,
-  Wallet,
-  ReceiptText,
-  ClipboardList,
 } from "lucide-react";
 import { cashierNavGroups } from "@/cashier/components/layout/navItems";
 import { useI18n, useT } from "@/lib/i18n";
