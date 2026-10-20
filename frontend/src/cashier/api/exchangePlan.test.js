@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { api } from "@/lib/api";
 import { newIntent, posApi } from "./posApi";
 import { setQty, returnableLines } from "./returnPlan";
-import { differenceMinor, exchangeErrorMessage, exchangePayment, exchangeRequest, settlementKind } from "./exchangePlan";
+import { differenceMinor, exchangeErrorMessage, exchangePayment, exchangeRequest, sendExchange, settlementKind } from "./exchangePlan";
 
 vi.mock("@/lib/api", () => ({ api: vi.fn(async () => ({ ok: true })) }));
 
@@ -66,4 +66,17 @@ describe("exchangeErrorMessage", () => {
     expect(exchangeErrorMessage(new Error("this session is closed; exchanges ride the open drawer"))).toMatch(/مغلقة/);
   });
   it("never hides an unknown error", () => expect(exchangeErrorMessage(new Error("boom 7"))).toBe("boom 7"));
+});
+
+describe("sendExchange", () => {
+  it("waits and re-sends the SAME call while the first is in progress, then returns the replayed answer", async () => {
+    const send = vi.fn().mockRejectedValueOnce(new Error("request with this Idempotency-Key is in progress")).mockResolvedValueOnce({ new_receipt_number: "POS-9" });
+    expect(await sendExchange(send, { sleep: async () => {} })).toEqual({ new_receipt_number: "POS-9" });
+    expect(send).toHaveBeenCalledTimes(2);
+  });
+  it("does not retry a real refusal (underpaid difference)", async () => {
+    const send = vi.fn().mockRejectedValue(new Error("tenders total 100.00 but the exchange difference is 230.00"));
+    await expect(sendExchange(send, { sleep: async () => {} })).rejects.toThrow(/difference/);
+    expect(send).toHaveBeenCalledTimes(1);
+  });
 });

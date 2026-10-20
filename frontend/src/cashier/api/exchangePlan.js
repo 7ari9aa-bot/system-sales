@@ -46,3 +46,5 @@ export function exchangeErrorMessage(err) {
   if (/insufficient|not enough stock|out of stock/i.test(m)) return "الكمية المطلوبة من الصنف البديل غير متوفرة في المخزون.";
   return m ? m : "تعذّر تنفيذ الاستبدال";
 }
+
+export { sendReturn as sendExchange } from "./returnPlan";
