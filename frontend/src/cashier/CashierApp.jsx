@@ -1,6 +1,5 @@
 import { lazy, Suspense } from "react";
 import { Navigate, Outlet, Route, Routes } from "react-router-dom";
-import AppShell from "./components/layout/AppShell";
 import "./cashier.css";
 
 // كل صفحات الكاشير تُحمَّل عند الطلب حتى لا تثقل باقي النظام.
@@ -28,13 +27,12 @@ const Page20 = lazy(() => import("./routes/_authed/supplier-returns.jsx"));
 const Page21 = lazy(() => import("./routes/_authed/suppliers.jsx"));
 
 function CashierLayout() {
+  // الهيكل (السايدبار والتنقل) جاي من DashboardLayout في النظام الرئيسي؛ هنا بس الثيم المعزول.
   return (
     <div className="cashier-root" dir="rtl">
-      <AppShell>
-        <Suspense fallback={<div className="p-8 text-center text-sm text-muted-foreground">جارٍ التحميل…</div>}>
-          <Outlet />
-        </Suspense>
-      </AppShell>
+      <Suspense fallback={<div className="p-8 text-center text-sm text-muted-foreground">جارٍ التحميل…</div>}>
+        <Outlet />
+      </Suspense>
     </div>
   );
 }

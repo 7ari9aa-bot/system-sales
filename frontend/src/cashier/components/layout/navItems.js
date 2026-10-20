@@ -78,3 +78,5 @@ export function pageTitle(pathname) {
     .sort((a, b) => b.to.length - a.to.length)[0];
   return match?.label ?? "بوتيك النخبة";
 }
+// اسم صريح للاستخدام من سايدبار النظام الرئيسي.
+export const cashierNavGroups = navGroups;

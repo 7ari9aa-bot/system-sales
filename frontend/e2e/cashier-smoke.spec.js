@@ -35,7 +35,7 @@ test("every cashier screen renders without runtime errors", async ({ page }) => 
     // ننتظر ظهور الهيكل الخاص بالكاشير، وإلا فالصفحة لم تُركَّب أصلاً
     await expect(page.locator(".cashier-root"), `${route} must mount the cashier shell`).toBeVisible({ timeout: 8000 });
     // المحتوى الرئيسي (بدون القائمة الجانبية) لازم يكون فيه نص حقيقي، وإلا فالصفحة فاضية أو رسمت دالة مساعدة بالغلط
-    const main = page.locator(".cashier-root main").first();
+    const main = page.locator("main:has(.cashier-root)").first();
     await expect(main, `${route} must have a <main> region`).toBeVisible({ timeout: 8000 });
     const text = (await main.innerText()).trim();
     expect(text.length, `${route} main content too short: "${text.slice(0, 60)}"`).toBeGreaterThan(30);
@@ -70,7 +70,7 @@ test("a full sale can be completed from the POS (F2 -> confirm -> receipt -> nex
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/cashier/pos", { waitUntil: "networkidle" });
-  const main = page.locator(".cashier-root main");
+  const main = page.locator("main:has(.cashier-root)");
   const invoiceNo = async () => ((await main.innerText()).match(/INV-\d{4}-\d+/) || [""])[0];
   const before = await invoiceNo();
   expect(before).toMatch(/^INV-/);
@@ -85,4 +85,19 @@ test("a full sale can be completed from the POS (F2 -> confirm -> receipt -> nex
 
   await expect.poll(invoiceNo, { message: "invoice number must advance after a sale" }).not.toBe(before);
   expect(errors).toEqual([]);
+});
+
+test("cashier lives inside the main dashboard: one sidebar, cashier screens reachable from it", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/cashier/pos", { waitUntil: "networkidle" });
+  // سايدبار واحد فقط (النظام الأساسي)، مش اتنين.
+  await expect(page.locator("aside")).toHaveCount(1);
+  const aside = page.locator("aside").first();
+  await expect(aside).toContainText("Inbox");            // بند من النظام الأساسي
+  await expect(aside).toContainText("سجل المبيعات");     // شاشة كاشير في نفس القائمة
+  await aside.getByRole("link", { name: "سجل المبيعات" }).click();
+  await expect(page).toHaveURL(/\/cashier\/sales$/);
+  await expect(page.locator("aside")).toHaveCount(1);
+  await aside.getByRole("link", { name: "Home" }).click(); // الرجوع للداشبورد الأساسي
+  await expect(page).toHaveURL(/\/dashboard/);
 });
