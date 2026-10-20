@@ -39,7 +39,7 @@ assert.equal(headers.get("x-content-type-options"), "nosniff");
 assert.equal(headers.get("x-frame-options"), "DENY");
 assert.ok(csp.includes("connect-src 'self'"), "API requests should stay same-origin through the Vercel proxy");
 assert.ok(
-  production.rewrites.some((rule) => rule.destination.startsWith("https://api-production-81629.up.railway.app/")),
+  production.rewrites.some((rule) => rule.destination.startsWith("https://api-production-8f51.up.railway.app/")),
   "Production must keep its configured backend proxy",
 );
 assert.equal(
@@ -54,12 +54,12 @@ assert.ok(
 assert.throws(
   () => createVercelConfig({
     environment: "preview",
-    backendApiOrigin: "https://api-production-81629.up.railway.app",
+    backendApiOrigin: "https://api-production-8f51.up.railway.app",
   }),
   /Non-production deployments cannot route to the production backend/,
 );
 assert.equal(
-  previewWithStaging.rewrites.some((rule) => rule.destination.includes("api-production-81629")),
+  previewWithStaging.rewrites.some((rule) => rule.destination.includes("api-production-8f51")),
   false,
   "Preview must not fall back to production when a staging backend is configured",
 );

@@ -3,7 +3,7 @@
 ## الـ Callback (setWebhook)
 
 ```
-https://api-production-81629.up.railway.app/api/v1/webhooks/telegram?tenant_key=<مفتاح-التينانت>
+https://api-production-8f51.up.railway.app/api/v1/webhooks/telegram?tenant_key=<مفتاح-التينانت>
 ```
 
 التينانت بيتحدد من الـ query — والدالة `resolve_channel_tenant`
@@ -26,7 +26,7 @@ https://api-production-81629.up.railway.app/api/v1/webhooks/telegram?tenant_key=
 3. اضبط الـ webhook بالأمر (بعد ما تحط `TELEGRAM_WEBHOOK_SECRET` على Railway):
    ```
    curl "https://api.telegram.org/bot<TOKEN>/setWebhook" \
-     -d "url=https://api-production-81629.up.railway.app/api/v1/webhooks/telegram?tenant_key=<KEY>" \
+     -d "url=https://api-production-8f51.up.railway.app/api/v1/webhooks/telegram?tenant_key=<KEY>" \
      -d "secret_token=<نفس قيمة المتغير>"
    ```
 

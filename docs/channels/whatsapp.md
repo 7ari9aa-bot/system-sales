@@ -3,7 +3,7 @@
 ## الـ Callback
 
 ```
-https://api-production-81629.up.railway.app/api/v1/webhooks/whatsapp
+https://api-production-8f51.up.railway.app/api/v1/webhooks/whatsapp
 ```
 
 ## متغيرات البيئة (Railway — خدمة api)

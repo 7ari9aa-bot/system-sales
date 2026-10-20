@@ -3,7 +3,7 @@
 ## الـ Callback
 
 ```
-POST https://api-production-81629.up.railway.app/api/v1/webchat/{public_key}/messages
+POST https://api-production-8f51.up.railway.app/api/v1/webchat/{public_key}/messages
 ```
 
 `public_key` بييجي من إعدادات الويجت بتاعة التينانت (الداشبورد) — ده حسم

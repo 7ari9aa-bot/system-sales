@@ -11,7 +11,7 @@
 | services | redis, api, workers |
 | builder | RAILPACK on all three |
 | source repo | 7ari9aa-bot/system-sales on api and workers |
-| domain | api-production-81629.up.railway.app → port 8080 (api only) |
+| domain | api-production-8f51.up.railway.app → port 8080 (api only) |
 
 ## ‫ملخص النتائج‬
 

@@ -26,7 +26,7 @@ import urllib.request
 import uuid
 from datetime import UTC, datetime
 
-DEFAULT_BASE_URL = "https://api-production-81629.up.railway.app"
+DEFAULT_BASE_URL = "https://api-production-8f51.up.railway.app"
 
 PASSWORD = "smoke-test-password-1"
 

@@ -10,7 +10,7 @@
 | Telegram | `/api/v1/webhooks/telegram` | [telegram.md](telegram.md) |
 | Webchat | `/api/v1/webchat/{public_key}/messages` | [webchat.md](webchat.md) |
 
-الدومين الإنتاجي: `https://api-production-81629.up.railway.app`
+الدومين الإنتاجي: `https://api-production-8f51.up.railway.app`
 
 ## الخط المشترك لكل الـ webhooks (conversations/router.py)
 
