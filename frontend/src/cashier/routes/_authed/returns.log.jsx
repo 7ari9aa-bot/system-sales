@@ -11,9 +11,9 @@ import PageHero from "@/cashier/components/ui-kit/PageHero";
 import ReturnLogFilters from "@/cashier/components/returns/ReturnLogFilters";
 import returnLogColumns from "@/cashier/components/returns/returnLogColumns";
 import { BTN, BTN_PRIMARY, LEDGER, LEDGER_FOOTER, LEDGER_TOOLBAR } from "@/cashier/components/ui-kit/ledgerStyles";
-import { returnsSummary } from "@/cashier/lib/opsData";
-import { allReturnRecords, useReturnState } from "@/cashier/lib/returnsStore";
-import { fmtDateTime, fmtInt, fmtMoney, REFUND_METHODS, RETURN_STATUS } from "@/cashier/lib/format";
+import { useReturnsLog } from "@/cashier/api/usePosSale";
+import { filterReturns, summarizeReturns } from "@/cashier/api/returnsLog";
+import { fmtDateTime, fmtInt, fmtMoney } from "@/cashier/lib/format";
 import { exportCsv } from "@/cashier/lib/exportCsv";
 
 
@@ -24,41 +24,17 @@ const EXPORT_COLUMNS = [
   { header: "رقم المرتجع", key: "number" },
   { header: "التاريخ", value: (r) => fmtDateTime(r.date) },
   { header: "الفاتورة الأصلية", key: "invoiceNumber" },
-  { header: "العميل", key: "customer" },
-  { header: "الصنف", value: (r) => `${r.productName} (${r.variant})` },
   { header: "الكمية", key: "qty" },
   { header: "القيمة", key: "amount" },
-  { header: "طريقة الاسترداد", value: (r) => REFUND_METHODS[r.refundMethod]?.label ?? "—" },
-  { header: "السبب", key: "reason" },
-  { header: "الموظف", key: "employee" },
-  { header: "الحالة", value: (r) => RETURN_STATUS[r.status]?.label ?? "—" },
 ];
 
 export default function ReturnsLogPage() {
   const [term, setTerm] = useState("");
-  const [refund, setRefund] = useState("");
-  const [status, setStatus] = useState("");
-
-  useReturnState(); // لمزامنة السجل بعد اعتماد عملية مرتجع جديدة
-  const records = allReturnRecords();
-  const summary = returnsSummary(records);
-  const rows = records.filter((r) => {
-    const t = term.trim().toLowerCase();
-    if (
-      t &&
-      !(
-        r.number.toLowerCase().includes(t) ||
-        r.invoiceNumber.toLowerCase().includes(t) ||
-        r.customer.toLowerCase().includes(t) ||
-        r.productName.toLowerCase().includes(t)
-      )
-    )
-      return false;
-    if (refund && r.refundMethod !== refund) return false;
-    if (status && r.status !== status) return false;
-    return true;
-  });
-
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const { data: all = [], isLoading, isError } = useReturnsLog();
+  const rows = filterReturns(all, { term, from, to });
+  const summary = summarizeReturns(rows);
   const columns = returnLogColumns();
 
   return (
@@ -87,14 +63,14 @@ export default function ReturnsLogPage() {
       <ReturnLogFilters
         term={term}
         onTerm={setTerm}
-        refund={refund}
-        onRefund={(value) => setRefund(value === "all" ? "" : value)}
-        status={status}
-        onStatus={(value) => setStatus(value === "all" ? "" : value)}
+        from={from}
+        onFrom={setFrom}
+        to={to}
+        onTo={setTo}
         onReset={() => {
           setTerm("");
-          setRefund("");
-          setStatus("");
+          setFrom("");
+          setTo("");
         }}
       />
 
@@ -105,13 +81,13 @@ export default function ReturnsLogPage() {
         columns={columns}
         rows={rows}
         pageSize={8}
-        emptyTitle="لا توجد عمليات مرتجع مطابقة"
+        emptyTitle={isLoading ? "جارٍ التحميل…" : isError ? "تعذّر تحميل المرتجعات" : "لا توجد عمليات مرتجع مطابقة"}
         emptyDescription="جرّب تغيير الفلتر أو البحث برقم آخر."
         toolbar={
           <div className="num flex items-center gap-3 text-[12px] text-[#7A766C]">
             <Image src={HERO_IMAGE} alt={HERO_ALT} className="h-[34px] w-[34px] overflow-hidden rounded-[4px] border border-[#DED8CD]" />
             <span>
-              {fmtInt(rows.length)} عملية • إجمالي {fmtMoney(rows.reduce((s, r) => s + r.amount, 0))} • {fmtInt(rows.reduce((s, r) => s + r.qty, 0))} قطعة
+              {fmtInt(summary.count)} عملية • إجمالي {fmtMoney(summary.amount)} • {fmtInt(summary.qty)} قطعة
             </span>
           </div>
         }
@@ -119,10 +95,9 @@ export default function ReturnsLogPage() {
 
       <LedgerStats
         stats={[
-          { label: "عدد المرتجعات", value: fmtInt(summary.count), hint: "آخر ٧ أيام", accent: true },
-          { label: "إجمالي المبالغ المردودة", value: fmtMoney(summary.amount), hint: "نقدًا وبطاقة ومحفظة ورصيد" },
-          { label: "القطع المرتجعة", value: fmtInt(summary.qty), hint: "عادت إلى المخزون" },
-          { label: "عمليات قيد المراجعة", value: fmtInt(summary.review), hint: "بانتظار اعتماد المدير" },
+          { label: "عدد المرتجعات", value: fmtInt(summary.count), hint: "حسب الفلتر الحالي", accent: true },
+          { label: "إجمالي المبالغ المردودة", value: fmtMoney(summary.amount), hint: "على طريقة الدفع الأصلية" },
+          { label: "القطع المرتجعة", value: fmtInt(summary.qty), hint: "من كل الورديات" },
         ]}
       />
     </LedgerPage>

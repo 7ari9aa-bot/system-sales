@@ -8,6 +8,7 @@ import { receiptFromApi } from "./receiptAdapter";
 import { heldFromApi, holdPayload, restoreHeld } from "./heldCarts";
 import { rowFromDetail, saleReceipts } from "./salesLog";
 import { invoiceFromApi, returnsOf } from "./invoiceDetail";
+import { returnRows } from "./returnsLog";
 import { fromMinor } from "./money";
 import { discountMinor, latestOnly } from "./latest";
 
@@ -233,4 +234,23 @@ export function useReturnableSales(sessionId) {
       return rows.sort((a, b) => String(b.receipt.issued_at).localeCompare(String(a.receipt.issued_at)));
     },
   });
+}
+
+/** Every return receipt of every shift (list endpoint only), linked to its original invoice. */
+export async function fetchReturnsLog(client = posApi) {
+  const sessions = (await client.listSessions()) ?? [];
+  const lists = await Promise.all(sessions.map(async (s) => ((await client.receipts(s.id)) ?? []).map((r) => ({ ...r, session_id: r.session_id ?? s.id }))));
+  const all = lists.flat();
+  const saleByOrder = new Map(all.filter((r) => r.kind === "sale").map((r) => [r.order_id, r.id]));
+  const returns = all.filter((r) => r.kind === "return");
+  const details = {};
+  for (let i = 0; i < returns.length; i += 6) {
+    const batch = await Promise.all(returns.slice(i, i + 6).map((r) => client.receipt(r.id)));
+    batch.forEach((d, j) => { details[returns[i + j].id] = d; });
+  }
+  return returnRows(all, details).map((r) => ({ ...r, saleReceiptId: saleByOrder.get(r.invoiceId) }));
+}
+
+export function useReturnsLog() {
+  return useQuery({ queryKey: ["cashier", "returns-log"], staleTime: 0, queryFn: () => fetchReturnsLog() });
 }
