@@ -52,6 +52,20 @@
   --color-pill: hsl(var(--pill));
   --color-pill-foreground: hsl(var(--pill-foreground));
 
+  /* cashier-tokens: ألوان وحركات يستخدمها وحدة الكاشير فقط (إضافة بدون تعديل أي قيمة موجودة). */
+  --color-info: hsl(var(--info));
+  --color-info-foreground: hsl(var(--info-foreground));
+  --color-success-foreground: hsl(var(--success-foreground));
+  --color-warning-foreground: hsl(var(--warning-foreground));
+  --animate-fade-up: fade-up 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-slide-in: slide-in 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-row-rise: rise 0.4s ease-out both;
+  --animate-bar-drop: drop 0.5s ease-out both;
+  --animate-up: up 0.8s ease-out both;
+  --animate-float: float 9s ease-in-out infinite;
+  --animate-inv-rise: inv-rise 0.6s ease-out both;
+  --animate-flash: flash 2.4s ease-in-out infinite;
+
   /* Self-referential on purpose (inline): resolves to the :root vars below. */
   --font-heading: var(--font-heading);
   --font-body: var(--font-body);

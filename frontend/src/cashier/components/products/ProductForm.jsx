@@ -1,0 +1,141 @@
+import { useState } from "react";
+import ProductEditorHero from "@/cashier/components/products/ProductEditorHero";
+import ProductBasicsSection from "@/cashier/components/products/ProductBasicsSection";
+import ProductPricingSection from "@/cashier/components/products/ProductPricingSection";
+import ProductVariantsPicker from "@/cashier/components/products/ProductVariantsPicker";
+import ProductSummarySection from "@/cashier/components/products/ProductSummarySection";
+import ProductImageCard from "@/cashier/components/products/ProductImageCard";
+import VariantsMatrix from "@/cashier/components/products/VariantsMatrix";
+import { CARD, CARD_PAD, DOT, MAIN_COL, SECTION_HEAD, SECTION_HINT, SECTION_TITLE, WRAP } from "@/cashier/components/products/formStyles";
+import { brands, categories, SIZE_SETS } from "@/cashier/lib/mockData";
+
+// نموذج إضافة / تعديل منتج مع مولّد متغيرات اللون والمقاس.
+export default function ProductForm({ product, onSubmit, onCancel, onPrintLabels }) {
+  const isEdit = !!product;
+  const [form, setForm] = useState({
+    name: product?.name ?? "",
+    category: product?.category ?? categories[0],
+    brand: product?.brand ?? brands[0],
+    description: product?.description ?? "",
+    buyPrice: product?.buyPrice ?? 200,
+    sellPrice: product?.sellPrice ?? 400,
+    threshold: product?.threshold ?? 5,
+  });
+  const [colors, setColors] = useState(product?.colors ?? []);
+  const [sizePreset, setSizePreset] = useState("clothing");
+  const [sizes, setSizes] = useState(product?.sizes ?? []);
+  const [image, setImage] = useState(null);
+  const [rows, setRows] = useState(
+    product
+      ? product.variants.map((v, i) => ({ id: `row-${i}`, color: v.color, size: v.size, sku: v.sku, barcode: v.barcode, buyPrice: v.buyPrice, sellPrice: v.sellPrice, stock: v.stock }))
+      : [],
+  );
+
+  const presetSizes = SIZE_SETS[sizePreset] ?? [];
+
+  function patch(fields) {
+    setForm((prev) => ({ ...prev, ...fields }));
+  }
+
+  function toggleColor(name) {
+    setColors((prev) => (prev.includes(name) ? prev.filter((c) => c !== name) : [...prev, name]));
+  }
+
+  function toggleSize(size) {
+    setSizes((prev) => (prev.includes(size) ? prev.filter((s) => s !== size) : [...prev, size]));
+  }
+
+  function pickImage(file) {
+    if (file) setImage(URL.createObjectURL(file));
+  }
+
+  function generateRows() {
+    const skuBase = (product?.sku ?? `SKU-${String(1000 + Math.floor(Math.random() * 899))}`).replace(/-\d{2,4}$/, "");
+    const next = [];
+    colors.forEach((color, ci) => {
+      sizes.forEach((size, si) => {
+        const existing = rows.find((r) => r.color === color && r.size === size);
+        next.push(
+          existing ?? {
+            id: `row-${ci}-${si}`,
+            color,
+            size,
+            sku: `${skuBase}-${String(ci + 1).padStart(2, "0")}${String(si + 1).padStart(2, "0")}`,
+            barcode: "",
+            buyPrice: form.buyPrice,
+            sellPrice: form.sellPrice,
+            stock: 0,
+          },
+        );
+      });
+    });
+    setRows(next);
+  }
+
+  function updateRow(id, fields) {
+    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...fields } : r)));
+  }
+
+  function generateBarcodes() {
+    setRows((prev) => prev.map((r, i) => ({ ...r, barcode: `299${String(1000000000 + r.sku.length * 7919 + i * 137).slice(0, 10)}` })));
+  }
+
+  const canSave = form.name.trim().length > 2 && rows.length > 0;
+
+  return (
+    <>
+      <ProductEditorHero
+        title={isEdit ? `تعديل المنتج: ${product.name}` : "إضافة منتج"}
+        subtitle="سجل بيانات الموديل ومقاساته وألوانه وسعر الشراء والبيع والمخزون الافتتاحي."
+        sku={product?.sku}
+        canPrint={rows.length > 0}
+        onPrintLabels={() => onPrintLabels?.(rows)}
+      />
+
+      <div className={WRAP}>
+        <div className={MAIN_COL}>
+          <div className={`${CARD} ${CARD_PAD} flex animate-up flex-col gap-7 [animation-delay:.15s]`}>
+            <ProductBasicsSection form={form} onPatch={patch} sizePreset={sizePreset} onSizePresetChange={(v) => { setSizePreset(v); setSizes([]); }} />
+            <ProductPricingSection form={form} onPatch={patch} />
+            <ProductVariantsPicker
+              colors={colors}
+              onToggleColor={toggleColor}
+              sizes={sizes}
+              onToggleSize={toggleSize}
+              presetSizes={presetSizes}
+              canGenerate={colors.length > 0 && sizes.length > 0}
+              onGenerate={generateRows}
+            />
+            <ProductSummarySection rows={rows} />
+          </div>
+
+          <div className={`${CARD} ${CARD_PAD} animate-up [animation-delay:.2s]`}>
+            <div className={SECTION_HEAD}>
+              <span className={DOT} />
+              <h2 className={SECTION_TITLE}>جدول التركيبات</h2>
+              <span className={SECTION_HINT}>SKU وباركود ورصيد افتتاحي لكل تركيبة لون × مقاس</span>
+            </div>
+            <div className="mt-[18px]">
+              <VariantsMatrix
+                rows={rows}
+                onChange={updateRow}
+                onGenerate={generateRows}
+                onGenerateBarcodes={generateBarcodes}
+                defaultBuy={form.buyPrice}
+                defaultSell={form.sellPrice}
+              />
+            </div>
+          </div>
+        </div>
+
+        <ProductImageCard
+          preview={image}
+          onPickImage={pickImage}
+          canSave={canSave}
+          onSave={() => onSubmit({ ...form, colors, sizes, variants: rows, image })}
+          onCancel={onCancel}
+        />
+      </div>
+    </>
+  );
+}
