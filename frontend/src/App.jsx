@@ -27,6 +27,10 @@ const Products = lazy(() => import('@/pages/Products'));
 const AddProduct = lazy(() => import('@/pages/AddProduct'));
 const Inventory = lazy(() => import('@/pages/Inventory'));
 const CashierApp = lazy(() => import('@/cashier/CashierApp'));
+
+// وضع معاينة الكاشير: يفتح مسار /cashier/* فقط بدون تسجيل دخول، لمعاينة الواجهة (بيانات تجريبية) على Vercel Preview.
+// vite.config.js يمنع البناء تماماً لو اتفعّل مع بيئة الإنتاج، فلا يمكن أن يصل لمستخدمين حقيقيين.
+const CASHIER_PREVIEW = import.meta.env.VITE_CASHIER_PREVIEW === '1';
 const Marketing = lazy(() => import('@/pages/Marketing'));
 const MarketingCampaigns = lazy(() => import('@/pages/marketing/Campaigns'));
 const MarketingAudience = lazy(() => import('@/pages/marketing/Audience'));
@@ -74,9 +78,10 @@ const AuthRoutes = () => (
 
 const DashboardRoutes = () => (
   <Routes>
+    {CASHIER_PREVIEW && <Route path="/cashier/*" element={<CashierApp />} />}
     <Route element={<ProtectedRoute />}>
       {/* وحدة الكاشير الجديدة: لها هيكلها الخاص (قائمة جانبية وشريط علوي) فلا تُلَفّ بـ DashboardLayout. */}
-      <Route path="/cashier/*" element={<CashierApp />} />
+      {!CASHIER_PREVIEW && <Route path="/cashier/*" element={<CashierApp />} />}
       <Route element={<DashboardLayout />}>
         <Route path="/dashboard" element={<Home />} />
         <Route path="/inbox" element={<Inbox />} />

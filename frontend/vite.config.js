@@ -12,6 +12,12 @@ export default defineConfig(({ mode }) => {
   // same .env files the app code gets (third arg: all vars, not just VITE_).
   const env = loadEnv(mode, process.cwd(), '');
   const apiProxyTarget = env.VITE_API_PROXY_TARGET || process.env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:8000';
+  // حارس أمان: وضع معاينة الكاشير يتخطى تسجيل الدخول، فممنوع منعاً باتاً أن يُبنى مع الإنتاج.
+  const cashierPreview = (env.VITE_CASHIER_PREVIEW || process.env.VITE_CASHIER_PREVIEW) === '1';
+  const deployEnv = process.env.VERCEL_ENV || '';
+  if (cashierPreview && (deployEnv === 'production' || (!deployEnv && process.env.NODE_ENV === 'production' && process.env.CI_ALLOW_CASHIER_PREVIEW !== '1' && process.env.VERCEL))) {
+    throw new Error('VITE_CASHIER_PREVIEW=1 bypasses login and must never be enabled for a production build.');
+  }
   const apiProxy = {
     '/api': { target: apiProxyTarget, changeOrigin: true },
     '/auth': { target: apiProxyTarget, changeOrigin: true },
