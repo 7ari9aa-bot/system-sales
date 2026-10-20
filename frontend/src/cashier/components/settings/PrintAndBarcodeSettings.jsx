@@ -23,7 +23,7 @@ function ToggleRow({ label, hint, checked, onCheckedChange }) {
 // إعدادات شكل الفاتورة المطبوعة والباركود.
 export default function PrintAndBarcodeSettings() {
   const [cfg, setCfg] = useState({
-    headerNote: "بوتيك النخبة — الفرع الرئيسي",
+    headerNote: "",
     footerNote: "شكرًا لتعاملكم معنا • الاستبدال خلال ١٤ يومًا بشرط وجود الفاتورة",
     paper: "80mm",
     copies: 1,
@@ -53,7 +53,7 @@ export default function PrintAndBarcodeSettings() {
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="sm:col-span-2">
           <Label className="mb-1.5 block text-xs text-muted-foreground">سطر أعلى الفاتورة</Label>
-          <Input value={cfg.headerNote} onChange={(e) => set("headerNote", e.target.value)} />
+          <Input value={cfg.headerNote} onChange={(e) => set("headerNote", e.target.value)} placeholder="مثال: اسم المحل أو الفرع" />
         </div>
         <div className="sm:col-span-2">
           <Label className="mb-1.5 block text-xs text-muted-foreground">سطر أسفل الفاتورة</Label>

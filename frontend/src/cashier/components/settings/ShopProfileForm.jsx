@@ -1,67 +1,41 @@
-import { useState } from "react";
-import { Save } from "lucide-react";
-import { toast } from "sonner";
-import { Button } from "@/cashier/components/ui/button";
+import { Info } from "lucide-react";
 import { Input } from "@/cashier/components/ui/input";
 import { Label } from "@/cashier/components/ui/label";
 import SectionCard from "@/cashier/components/ui-kit/SectionCard";
-import { shop } from "@/cashier/lib/mockData";
+import { useAuth } from "@/lib/AuthContext";
+import { shopFromUser } from "@/cashier/lib/shopIdentity";
 
-// بيانات المحل الأساسية — تظهر في الفاتورة والتقارير.
+const NOT_STORED = "غير مسجَّل بعد";
+
+// بيانات المحل. الخادم يحتفظ حاليًا باسم المحل فقط؛ العنوان والهاتف والرقم الضريبي لا تُحفظ في أي مكان،
+// فنعرضها فارغة بدل بيانات وهمية، ولا يوجد زر حفظ كي لا نوهم بحفظ لا يحدث.
 export default function ShopProfileForm() {
-  const [form, setForm] = useState({ ...shop });
-
-  function set(key, value) {
-    setForm((f) => ({ ...f, [key]: value }));
-  }
+  const { user } = useAuth();
+  const shop = shopFromUser(user);
 
   return (
-    <SectionCard
-      title="بيانات المحل"
-      description="الاسم والعنوان والبيانات الضريبية المستخدمة في الفاتورة والتقارير"
-      action={
-        <Button className="gap-2" onClick={() => toast.success("تم حفظ بيانات المحل")}>
-          <Save className="h-4 w-4" />
-          حفظ
-        </Button>
-      }
-    >
+    <SectionCard title="بيانات المحل" description="الاسم المسجَّل للحساب. بقية البيانات تُضاف عند توفر حفظها في الخادم">
       <div className="grid gap-3 sm:grid-cols-2">
-        <div>
-          <Label className="mb-1.5 block text-xs text-muted-foreground">اسم المحل</Label>
-          <Input value={form.name} onChange={(e) => set("name", e.target.value)} />
-        </div>
-        <div>
-          <Label className="mb-1.5 block text-xs text-muted-foreground">الفرع</Label>
-          <Input value={form.branch} onChange={(e) => set("branch", e.target.value)} />
-        </div>
         <div className="sm:col-span-2">
-          <Label className="mb-1.5 block text-xs text-muted-foreground">العنوان</Label>
-          <Input value={form.address} onChange={(e) => set("address", e.target.value)} />
+          <Label className="mb-1.5 block text-xs text-muted-foreground">اسم المحل</Label>
+          <Input value={shop.name} readOnly aria-label="اسم المحل" />
         </div>
-        <div>
-          <Label className="mb-1.5 block text-xs text-muted-foreground">الهاتف</Label>
-          <Input value={form.phone} onChange={(e) => set("phone", e.target.value)} className="num" />
-        </div>
-        <div>
-          <Label className="mb-1.5 block text-xs text-muted-foreground">الرقم الضريبي</Label>
-          <Input value={form.taxId} onChange={(e) => set("taxId", e.target.value)} className="num" />
-        </div>
-        <div>
-          <Label className="mb-1.5 block text-xs text-muted-foreground">العملة</Label>
-          <Input value={form.currency} onChange={(e) => set("currency", e.target.value)} />
-        </div>
-        <div>
-          <Label className="mb-1.5 block text-xs text-muted-foreground">حد إعادة الطلب (قطعة)</Label>
-          <Input
-            type="number"
-            min={0}
-            value={form.lowStockThreshold}
-            onChange={(e) => set("lowStockThreshold", Number(e.target.value) || 0)}
-            className="num"
-          />
-        </div>
+        {[
+          ["الفرع", "branch"],
+          ["العنوان", "address"],
+          ["الهاتف", "phone"],
+          ["الرقم الضريبي", "taxId"],
+        ].map(([label, id]) => (
+          <div key={id} className={id === "address" ? "sm:col-span-2" : ""}>
+            <Label className="mb-1.5 block text-xs text-muted-foreground">{label}</Label>
+            <Input value="" readOnly disabled placeholder={NOT_STORED} aria-label={label} />
+          </div>
+        ))}
       </div>
+      <p className="mt-3 flex items-start gap-1.5 text-[11px] text-muted-foreground">
+        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+        الإيصالات المطبوعة تعرض اسم المحل أعلاه فقط حتى تُحفظ بقية البيانات.
+      </p>
     </SectionCard>
   );
 }

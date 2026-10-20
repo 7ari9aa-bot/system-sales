@@ -76,7 +76,7 @@ export function pageTitle(pathname) {
   const match = flatNav
     .filter((item) => pathname === item.to || pathname.startsWith(`${item.to}/`))
     .sort((a, b) => b.to.length - a.to.length)[0];
-  return match?.label ?? "بوتيك النخبة";
+  return match?.label ?? "الكاشير";
 }
 // اسم صريح للاستخدام من سايدبار النظام الرئيسي.
 export const cashierNavGroups = navGroups;
