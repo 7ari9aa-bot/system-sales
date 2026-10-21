@@ -109,10 +109,21 @@ class InventoryMovement(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMix
     # and invent a discrepancy that never happened (§181: a replayable ledger
     # needs a replay order).
     ledger_seq: Mapped[int] = mapped_column(BigInteger, Identity(), nullable=False)
+    # Who made the movement. NULL = unknown (rows from before this column) or a system actor.
+    # No FK on purpose, like reference_id: the ledger is append-only, and ON DELETE SET NULL
+    # would rewrite history rows when a user is removed.
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
     __table_args__ = (
         Index("ix_inv_mov_tenant_variant_created", "tenant_id", "variant_id", "created_at"),
         Index("ix_inv_mov_tenant_wh_created", "tenant_id", "warehouse_id", "created_at"),
+        Index(
+            "ix_inv_mov_tenant_actor_created",
+            "tenant_id",
+            "actor_user_id",
+            "created_at",
+            postgresql_where=text("actor_user_id IS NOT NULL"),
+        ),
     )
 
 

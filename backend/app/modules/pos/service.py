@@ -1005,6 +1005,7 @@ class PosService:
                 order.id,
                 method=tender["method"],
                 amount=tender["amount"],
+                actor_user_id=actor_user_id,
             )
 
         # Cash into the drawer: one aggregate row for however many cash tenders
@@ -2724,6 +2725,7 @@ class PosService:
                 reason="return",
                 reference_type="order",
                 reference_id=order_id,
+                actor_user_id=actor_user_id,
             )
         return True
 
@@ -3068,6 +3070,7 @@ class PosService:
                     reason="return",
                     reference_type="order",
                     reference_id=order_id,
+                    actor_user_id=actor_user_id,
                 )
             restocked = True
 
@@ -3489,6 +3492,7 @@ class PosService:
                 new_order.id,
                 method=t_method,
                 amount=t_amount,
+                actor_user_id=actor_user_id,
             )
         for t in resolved:
             await OrderService.add_payment(
@@ -3497,6 +3501,7 @@ class PosService:
                 new_order.id,
                 method=t["method"],
                 amount=t["amount"],
+                actor_user_id=actor_user_id,
             )
         funding_cash = sum((amt for m, amt in funding if m == "cash"), Decimal("0"))
         caller_cash = sum((t["amount"] for t in resolved if t["method"] == "cash"), Decimal("0"))
@@ -3532,6 +3537,7 @@ class PosService:
                     reason="return",
                     reference_type="order",
                     reference_id=order_id,
+                    actor_user_id=actor_user_id,
                 )
 
         return_receipt = await PosService._issue_receipt(

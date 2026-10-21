@@ -475,11 +475,16 @@ class PurchaseService:
             )
         await session.flush()
         if receive_now:
-            await PurchaseService.receive(session, tenant_id, order.id)
+            await PurchaseService.receive(session, tenant_id, order.id, created_by)
         return order
 
     @staticmethod
-    async def receive(session: AsyncSession, tenant_id: UUID, po_id: UUID) -> PurchaseOrder:
+    async def receive(
+        session: AsyncSession,
+        tenant_id: UUID,
+        po_id: UUID,
+        actor_user_id: UUID | None = None,
+    ) -> PurchaseOrder:
         """Put the goods on the shelf and fold their cost into the average. Runs exactly once."""
         order = (
             await session.execute(
@@ -511,6 +516,7 @@ class PurchaseService:
                 reason="purchase",
                 reference_type="purchase_order",
                 reference_id=order.id,
+                actor_user_id=actor_user_id,
             )
             await CostService.apply_receipt(
                 session,
@@ -885,6 +891,7 @@ class SupplierReturnService:
                 reason="supplier_return",
                 reference_type="supplier_return",
                 reference_id=ret.id,
+                actor_user_id=created_by,
             )
         await session.flush()
         return ret

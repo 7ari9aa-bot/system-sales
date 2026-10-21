@@ -261,7 +261,10 @@ async def get_purchase_order(order_id: uuid.UUID, ctx: ReadCtx):
 
 @router.post("/purchase-orders/{order_id}/receive", response_model=PoOut)
 async def receive_purchase_order(order_id: uuid.UUID, ctx: WriteCtx):
-    return await _po_out(ctx, await PurchaseService.receive(ctx.session, ctx.tenant_id, order_id))
+    return await _po_out(
+        ctx,
+        await PurchaseService.receive(ctx.session, ctx.tenant_id, order_id, ctx.user.id),
+    )
 
 
 @router.post("/purchase-orders/{order_id}/cancel", response_model=PoOut)

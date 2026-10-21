@@ -43,6 +43,7 @@ class MovementServiceMixin:
         reason: str,
         reference_type: str | None = None,
         reference_id: UUID | None = None,
+        actor_user_id: UUID | None = None,
     ) -> InventoryMovement:
         """Apply a stock movement and append its ledger row.
 
@@ -92,6 +93,7 @@ class MovementServiceMixin:
             balance_after=new_on_hand,
             reference_type=reference_type,
             reference_id=reference_id,
+            actor_user_id=actor_user_id,
         )
 
     @staticmethod
@@ -107,6 +109,7 @@ class MovementServiceMixin:
         balance_after: int,
         reference_type: str | None = None,
         reference_id: UUID | None = None,
+        actor_user_id: UUID | None = None,
     ) -> InventoryMovement:
         """Append one ledger row (the single writer of the append-only ledger)."""
         check_movement_shape(direction, reason)
@@ -120,6 +123,7 @@ class MovementServiceMixin:
             reference_type=reference_type,
             reference_id=reference_id,
             balance_after=balance_after,
+            actor_user_id=actor_user_id,
         )
         session.add(movement)
         await session.flush()

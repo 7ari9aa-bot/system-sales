@@ -103,6 +103,7 @@ async def record_movement(
         direction=body.direction,
         quantity=body.quantity,
         reason=body.reason,
+        actor_user_id=ctx.user.id,
     )
     return {
         "id": str(movement.id),

@@ -249,6 +249,7 @@ class StocktakeService:
                 reason="adjustment",
                 reference_type="stocktake",
                 reference_id=stocktake.id,
+                actor_user_id=user_id,
             )
             adjusted += 1
 

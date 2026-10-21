@@ -24,7 +24,12 @@ class InventoryReservationService:
     """
 
     @staticmethod
-    async def convert(session: AsyncSession, tenant_id: UUID, order_id: UUID) -> int:
+    async def convert(
+        session: AsyncSession,
+        tenant_id: UUID,
+        order_id: UUID,
+        actor_user_id: UUID | None = None,
+    ) -> int:
         """Mark the order's ACTIVE reservations CONVERTED (payment captured)."""
         reservations = (
             (
@@ -77,6 +82,7 @@ class InventoryReservationService:
                 balance_after=balance.on_hand,
                 reference_type="order",
                 reference_id=order_id,
+                actor_user_id=actor_user_id,
             )
             reservation.status = "CONVERTED"
             reservation.converted_at = _now()

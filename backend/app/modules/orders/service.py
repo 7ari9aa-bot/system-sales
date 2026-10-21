@@ -886,6 +886,7 @@ class OrderService:
         amount: object,
         provider: str | None = None,
         currency: str | None = None,
+        actor_user_id: UUID | None = None,
     ) -> OrderPayment:
         """Capture a payment; a paid pending order becomes confirmed.
 
@@ -943,7 +944,7 @@ class OrderService:
         # into a sale (ACTIVE -> CONVERTED).
         from app.modules.inventory.service import InventoryReservationService as _IRS2
 
-        await _IRS2.convert(session, tenant_id, order.id)
+        await _IRS2.convert(session, tenant_id, order.id, actor_user_id)
 
         # §139: money really arrived, so the saga says so.
         if OrderService._saga_move(order, "paid"):
