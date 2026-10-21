@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 // كل شاشات وحدة الكاشير (/cashier/*) يجب أن تُفتح بدون أخطاء React أو console،
-// وبدون أن تتسرب أنماطها إلى صفحات النظام الرئيسي. الـ API كله مُحاكى (لا يوجد backend).
+// وبدون أن تتسرب أنماطها إلى صفحات النظام الرئيسي. الـ API مُحاكى (لا يوجد backend)؛ البيع الكامل الحقيقي يُختبر في live-api.spec.js.
 const SCREENS = [
   "/cashier/pos", "/cashier/sales", "/cashier/sales/inv-1", "/cashier/returns", "/cashier/returns/log",
   "/cashier/exchanges", "/cashier/exchanges/log", "/cashier/products", "/cashier/products/new",
@@ -16,6 +16,18 @@ async function signIn(page) {
     const url = route.request().url();
     if (url.includes("/auth/me")) {
       return route.fulfill({ json: { id: "u1", email: "t@example.com", full_name: "Tester", role: "owner" } });
+    }
+    // The invoice screen reads ONE receipt (an object, not a list). Answer with the real
+    // /pos/receipts/{id} shape so the detail screen renders instead of retrying forever.
+    if (/\/pos\/receipts\/[^/?]+/.test(url)) {
+      return route.fulfill({
+        json: {
+          receipt: { id: "inv-1", number: "INV-2026-0001", issued_at: "2026-10-20T10:00:00Z", change_amount: "0", tendered_amount: "100.00", kind: "sale" },
+          order: { id: "o-1", number: "ORD-1", discount_total: "0", grand_total: "100.00", status: "paid" },
+          lines: [{ variant_id: "v-1", title: "Test item", sku: "SKU-1", quantity: 1, unit_price: "100.00", total: "100.00", returned_qty: 0 }],
+          tenders: [{ method: "cash", amount: "100.00" }],
+        },
+      });
     }
     return route.fulfill({ json: [] });
   });
@@ -63,28 +75,6 @@ test("cashier theme does not leak into the main app", async ({ page }) => {
   await page.goto("/dashboard", { waitUntil: "networkidle" });
   const after = await page.evaluate(() => getComputedStyle(document.documentElement).fontSize);
   expect(after).toBe(htmlSize);
-});
-
-test("a full sale can be completed from the POS (F2 -> confirm -> receipt -> next invoice)", async ({ page }) => {
-  await signIn(page);
-  const errors = [];
-  page.on("pageerror", (e) => errors.push(e.message));
-  await page.goto("/cashier/pos", { waitUntil: "networkidle" });
-  const main = page.locator("main:has(.cashier-root)");
-  const invoiceNo = async () => ((await main.innerText()).match(/INV-\d{4}-\d+/) || [""])[0];
-  const before = await invoiceNo();
-  expect(before).toMatch(/^INV-/);
-
-  await page.keyboard.press("F2");
-  const dialog = page.getByRole("dialog");
-  await expect(dialog.getByText("إتمام عملية البيع")).toBeVisible();
-  await dialog.getByRole("button", { name: /تأكيد البيع/ }).click();
-  await expect(dialog.getByText("معاينة الفاتورة")).toBeVisible();
-  await expect(dialog).toContainText(before);
-  await page.keyboard.press("Escape");
-
-  await expect.poll(invoiceNo, { message: "invoice number must advance after a sale" }).not.toBe(before);
-  expect(errors).toEqual([]);
 });
 
 test("cashier lives inside the main dashboard: one sidebar, cashier screens reachable from it", async ({ page }) => {

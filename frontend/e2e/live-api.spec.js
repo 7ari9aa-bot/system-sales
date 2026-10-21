@@ -82,3 +82,86 @@ test("real registration, dashboard reads, orders, and logout work end to end", a
   await expect(page).toHaveURL(/\/login\?returnTo=/);
   expect(pageErrors).toEqual([]);
 });
+
+// A full cashier sale against the REAL backend: the UI is the only thing under test, so the shop
+// (warehouse, till, open shift, one stocked product) is prepared through the same endpoints the
+// cashier screens use. This replaces the sale test that ran against a mocked API, which could only
+// ever prove the mock.
+test("a real sale: scan -> confirm -> receipt -> two sales get two invoice numbers and stock drops by two", async ({ page }) => {
+  const pageErrors = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+
+  const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const email = `live-sale-${suffix}@example.com`;
+  const password = `Live-sale-${suffix}!`;
+
+  // Register + sign in through the UI so the session is exactly what a person gets.
+  await page.goto("/register");
+  await page.getByLabel(/البريد الإلكتروني|email/i).fill(email);
+  await page.getByLabel(/^كلمة المرور$|^password$/i).fill(password);
+  await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(password);
+  await page.getByRole("button", { name: /إنشاء الحساب|create account/i }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+
+  // Prepare the shop from inside the page, so the app's own auth (token + CSRF) is used.
+  const barcode = `620${Date.now().toString().slice(-9)}`;
+  const setup = await page.evaluate(async ({ sfx, barcode }) => {
+    const raw = JSON.parse(localStorage.getItem("fihrist_tokens") || "null");
+    const csrf = (document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/) || [])[1];
+    const headers = { "Content-Type": "application/json", ...(csrf ? { "X-CSRF-Token": csrf } : {}), ...(raw?.access_token ? { Authorization: `Bearer ${raw.access_token}` } : {}) };
+    const call = async (method, path, body) => {
+      const res = await fetch(`/api/v1${path}`, { method, headers, credentials: "include", body: body ? JSON.stringify(body) : undefined });
+      const text = await res.text();
+      if (!res.ok) throw new Error(`${method} ${path} -> ${res.status} ${text.slice(0, 160)}`);
+      return text ? JSON.parse(text) : null;
+    };
+    const wh = await call("POST", "/warehouses/ensure-default");
+    const product = await call("POST", "/products", { title: `Live item ${sfx}`, slug: `live-item-${sfx}`, description: null });
+    const variant = await call("POST", `/products/${product.id}/variants`, { sku: `LIVE-${sfx}`, price: "100.00", option_values: {} });
+    await call("POST", `/variants/${variant.id}/identifiers`, { identifier_type: "barcode", value: barcode });
+    await call("POST", "/inventory/movements", { variant_id: variant.id, warehouse_id: wh.id, direction: "in", quantity: 10, reason: "adjustment" });
+    await call("PATCH", `/products/${product.id}`, { status: "active" });
+    const profile = await call("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash", "card", "wallet", "bank_transfer"], default_payment_method: "cash" });
+    const register = await call("POST", "/pos/registers", { name: "Main till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
+    await call("POST", `/pos/registers/${register.id}/sessions`, { opening_float: "0.00" });
+    return { variantId: variant.id, warehouseId: wh.id };
+  }, { sfx: suffix.replace(/[^a-z0-9]/gi, "").toLowerCase(), barcode });
+
+  await page.goto("/cashier/pos", { waitUntil: "networkidle" });
+  const main = page.locator("main:has(.cashier-root)");
+  const barcodeField = page.getByLabel("باركود المنتج").first();
+
+  // One real sale: scan -> F2 -> confirm. The invoice number is minted by the backend at confirm
+  // time (the screen says "new invoice" until then), so read it from the receipt.
+  const sell = async () => {
+    await barcodeField.fill(barcode);
+    await barcodeField.press("Enter");
+    await expect(main).toContainText(/Live item/);
+    await main.getByRole("button", { name: /\(F2\)/ }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByText("إتمام عملية البيع")).toBeVisible();
+    await dialog.getByRole("button", { name: /تأكيد البيع/ }).click();
+    await expect(dialog.getByText("معاينة الفاتورة")).toBeVisible();
+    const number = ((await dialog.innerText()).match(/POS-\d{8}-[A-Z0-9]+/) || [""])[0];
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    return number;
+  };
+
+  const first = await sell();
+  expect(first, "the receipt must carry the invoice number the backend issued").toMatch(/^POS-/);
+  const second = await sell();
+  expect(second).toMatch(/^POS-/);
+  expect(second, "a second sale must get a new invoice number").not.toBe(first);
+
+  // The backend, not the screen, is the witness that stock actually left the shelf.
+  const onHand = await page.evaluate(async ({ variantId }) => {
+    const raw = JSON.parse(localStorage.getItem("fihrist_tokens") || "null");
+    const res = await fetch(`/api/v1/pos/stock?limit=50`, { credentials: "include", headers: raw?.access_token ? { Authorization: `Bearer ${raw.access_token}` } : {} });
+    const body = await res.json();
+    const rows = Array.isArray(body) ? body : body.items ?? [];
+    return rows.find((r) => r.variant_id === variantId || r.id === variantId)?.on_hand ?? rows.find((r) => r.variant_id === variantId)?.quantity ?? null;
+  }, { variantId: setup.variantId });
+  expect(Number(onHand)).toBe(8);
+  expect(pageErrors).toEqual([]);
+});
