@@ -34,3 +34,26 @@ export function summarizeSales(rows) {
     net: Number(fromMinor(sum("net"))),
   };
 }
+
+/** Best sellers. The server ranks by NET revenue (returns taken off); the order is kept as received. */
+export function topProductRows(apiRows = []) {
+  return apiRows.map((r, i) => ({
+    id: r.variant_id,
+    rank: i + 1,
+    name: r.product_title || "صنف محذوف",
+    sku: r.sku ?? "",
+    sold: Number(r.sold_qty ?? 0),
+    returned: Number(r.returned_qty ?? 0),
+    qty: Number(r.net_qty ?? 0),
+    revenue: money(r.net_revenue),
+  }));
+}
+
+export function summarizeTopProducts(rows) {
+  return {
+    sold: rows.reduce((n, r) => n + r.sold, 0),
+    returned: rows.reduce((n, r) => n + r.returned, 0),
+    qty: rows.reduce((n, r) => n + r.qty, 0),
+    revenue: Number(fromMinor(rows.reduce((c, r) => c + toMinor(r.revenue), 0))),
+  };
+}

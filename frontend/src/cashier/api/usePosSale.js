@@ -13,7 +13,7 @@ import { rowFromDetail, saleReceipts } from "./salesLog";
 import { invoiceFromApi, returnsOf } from "./invoiceDetail";
 import { returnRows } from "./returnsLog";
 import { exchangeRows } from "./exchangesLog";
-import { salesRows } from "./salesReport";
+import { salesRows, topProductRows } from "./salesReport";
 import { periodRange } from "@/cashier/lib/period";
 import { fromMinor } from "./money";
 import { discountMinor, latestOnly } from "./latest";
@@ -332,6 +332,16 @@ export function useSalesReport(period) {
     queryKey: ["cashier", "sales-report", since, until],
     staleTime: 0,
     queryFn: async () => salesRows((await posApi.salesReport(since, until)) ?? []),
+  });
+}
+
+/** Best sellers for a period (ranked by net revenue on the server). */
+export function useTopProducts(period) {
+  const { since, until } = periodRange(period);
+  return useQuery({
+    queryKey: ["cashier", "top-products", since, until],
+    staleTime: 0,
+    queryFn: async () => topProductRows((await posApi.topProducts(since, until)) ?? []),
   });
 }
 

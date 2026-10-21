@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { salesRows, summarizeSales } from "./salesReport";
+import { salesRows, summarizeSales, summarizeTopProducts, topProductRows } from "./salesReport";
 import { periodRange } from "../lib/period";
 
 describe("salesRows", () => {
@@ -28,4 +28,24 @@ describe("periodRange", () => {
   it("30d crosses a month boundary correctly", () => expect(periodRange("30d", new Date("2026-10-21T10:00:00Z")).since).toBe("2026-09-22"));
   it("uses the SHOP day: 23:30 UTC is already the next day in Cairo", () => expect(periodRange("today", new Date("2026-10-20T23:30:00Z")).until).toBe("2026-10-21"));
   it("an unknown period falls back to 7 days", () => expect(periodRange("zzz", new Date("2026-10-21T10:00:00Z")).since).toBe("2026-10-15"));
+});
+
+describe("topProductRows", () => {
+  const api = [
+    { variant_id: "v1", product_title: "تيشيرت", sku: "T-1", sold_qty: 5, returned_qty: 2, net_qty: 3, net_revenue: "150.10" },
+    { variant_id: "v2", product_title: null, sku: null, sold_qty: 1, returned_qty: 0, net_qty: 1, net_revenue: "0.20" },
+  ];
+  it("keeps the server's ranking and reads sold, returned and net quantities", () => {
+    const r = topProductRows(api);
+    expect(r.map((x) => x.id)).toEqual(["v1", "v2"]);
+    expect(r.map((x) => x.rank)).toEqual([1, 2]);
+    expect(r[0]).toMatchObject({ name: "تيشيرت", sku: "T-1", sold: 5, returned: 2, qty: 3, revenue: 150.1 });
+  });
+  it("a deleted product still shows a row instead of breaking", () => {
+    expect(topProductRows(api)[1]).toMatchObject({ name: "صنف محذوف", sku: "" });
+  });
+  it("totals add exactly", () => {
+    expect(summarizeTopProducts(topProductRows(api))).toEqual({ sold: 6, returned: 2, qty: 4, revenue: 150.3 });
+  });
+  it("empty is empty", () => expect(topProductRows()).toEqual([]));
 });

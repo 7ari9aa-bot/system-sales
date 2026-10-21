@@ -9,7 +9,8 @@ import ZReportSection from "@/cashier/components/reports/ZReportSection";
 import { PERIODS } from "@/cashier/lib/opsData";
 import { useAuth } from "@/lib/AuthContext";
 import { useShifts } from "@/cashier/api/useShifts";
-import { useSalesReport } from "@/cashier/api/usePosSale";
+import { useSalesReport, useTopProducts } from "@/cashier/api/usePosSale";
+import ProductsReportSection from "@/cashier/components/reports/ProductsReportSection";
 import { useStock } from "@/cashier/api/useStock";
 import { valuationByCategory } from "@/cashier/api/inventoryValuation";
 import InventoryReportSection from "@/cashier/components/reports/InventoryReportSection";
@@ -26,6 +27,7 @@ const HERO_ALT = "مكتب إدارة المحل مع تقارير مبيعات 
 // figure next to a real Z report would be read as the shop's real numbers.
 const REPORTS = [
   { key: "sales", label: "المبيعات" },
+  { key: "products", label: "الأصناف" },
   { key: "inventory", label: "تقييم المخزون" },
   { key: "zreport", label: "إغلاق اليوم (Z)" },
 ];
@@ -40,6 +42,7 @@ export default function ReportsPage() {
   const stockQuery = useStock({});
   const valuation = valuationByCategory(stockQuery.data ?? []);
   const salesQuery = useSalesReport(period);
+  const topQuery = useTopProducts(period);
   const daily = salesQuery.data ?? [];
 
   // ورديات نفس الفترة المختارة من الخادم (تقرير Z يتبع فلتر الفترة مثل باقي التقارير).
@@ -83,6 +86,15 @@ export default function ReportsPage() {
             <p className="p-6 text-center text-sm font-semibold text-rose-600" role="alert">تعذّر تحميل تقرير المبيعات. حاول مرة أخرى.</p>
           ) : (
             <SalesReportSection rows={daily} />
+          )}
+        </TabsContent>
+        <TabsContent value="products" className="mt-0">
+          {topQuery.isLoading ? (
+            <p className="p-6 text-center text-sm text-muted-foreground" role="status">جارٍ تحميل الأصناف…</p>
+          ) : topQuery.isError ? (
+            <p className="p-6 text-center text-sm font-semibold text-rose-600" role="alert">تعذّر تحميل تقرير الأصناف. حاول مرة أخرى.</p>
+          ) : (
+            <ProductsReportSection rows={topQuery.data ?? []} />
           )}
         </TabsContent>
         <TabsContent value="inventory" className="mt-0">

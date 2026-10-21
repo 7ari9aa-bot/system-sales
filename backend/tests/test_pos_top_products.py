@@ -118,3 +118,39 @@ async def test_nothing_sold_is_an_empty_list(db, tenant_ctx):
     from app.modules.pos.service import PosService
 
     assert await PosService.top_products(db, tenant_ctx.tenant_id, **WIDE) == []
+
+
+async def test_an_invoice_level_discount_is_shared_over_the_lines_and_the_total_still_matches(
+    db, tenant_ctx
+):
+    """The order carries the invoice discount, the lines do not: revenue must still add up.
+
+    Without sharing it out, the best sellers over-state revenue by every invoice discount and
+    stop matching the day report. 3 lines and a 10.00 discount do not divide evenly, so this also
+    pins that no cent is lost or invented by rounding.
+    """
+    PosService, pos_session, customer = await _till(db, tenant_ctx)
+    a = await _sellable_variant(db, tenant_ctx, price="33.33", stock=50)
+    b = await _sellable_variant(db, tenant_ctx, price="33.33", stock=50)
+    c = await _sellable_variant(db, tenant_ctx, price="33.34", stock=50)
+    sold = await PosService.sell(
+        db,
+        tenant_ctx.tenant_id,
+        pos_session.id,
+        customer_id=customer.id,
+        items=[
+            {"variant_id": str(a.id), "quantity": 1},
+            {"variant_id": str(b.id), "quantity": 1},
+            {"variant_id": str(c.id), "quantity": 1},
+        ],
+        discount_total="10.00",
+        discount_override=True,
+        tenders=[{"method": "cash", "amount": "90.00"}],
+    )
+    assert sold is not None
+    top = await PosService.top_products(db, tenant_ctx.tenant_id, **WIDE)
+    day = (await PosService.sales_by_day(db, tenant_ctx.tenant_id, **WIDE))[0]
+    assert Decimal(day["discount"]) == Decimal("10.00")
+    assert Decimal(day["net"]) == Decimal("90.00")
+    assert sum(Decimal(r["net_revenue"]) for r in top) == Decimal("90.00")  # not 100.00
+    assert all(Decimal(r["net_revenue"]) < Decimal("34.00") for r in top)

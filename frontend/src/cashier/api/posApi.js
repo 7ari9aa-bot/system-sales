@@ -104,6 +104,8 @@ export const posApi = {
   dailyReport: (query = "") => api(`/pos/reports/daily${query ? `?${query}` : ""}`),
   /** Sales per shop day over [since, until] (YYYY-MM-DD, inclusive), newest first. */
   salesReport: (since, until) => api(`/pos/reports/sales?since=${since}&until=${until}`),
+  /** Best sellers over [since, until] by net revenue (returns taken off). No cost or profit. */
+  topProducts: (since, until, limit = 20) => api(`/pos/reports/top-products?since=${since}&until=${until}&limit=${limit}`),
 
   /* ---- shift ---- */
   openSession: async (registerId, { openingFloat = 0, floatsByMethod, profileId } = {}) =>

@@ -2054,7 +2054,7 @@ class PosService:
         """
         from zoneinfo import ZoneInfo
 
-        from app.modules.orders.models import OrderItem
+        from app.modules.orders.models import Order, OrderItem
         from app.modules.pos.stock_view import StockViewService
 
         tz = (await PosService._shop_timezone(session, tenant_id) or "UTC").strip() or "UTC"
@@ -2063,14 +2063,22 @@ class PosService:
         nxt = until + timedelta(days=1)
         hi = datetime(nxt.year, nxt.month, nxt.day, tzinfo=zone).astimezone(UTC)
 
-        sold = (
+        # Each sale's lines carry their own NET (after the cashier's line discount) but NOT the
+        # invoice-level discount, which lives on the order. Share it out over the lines in
+        # proportion to their net, rounded per line HALF_UP: the rule `_return_line_totals` refunds
+        # with, so a product's revenue here and its refund there are the same number.
+        lines = (
             await session.execute(
                 select(
+                    PosReceipt.order_id,
+                    Order.grand_total,
+                    OrderItem.id,
                     OrderItem.variant_id,
-                    func.coalesce(func.sum(OrderItem.quantity), 0),
-                    func.coalesce(func.sum(OrderItem.total), 0),
+                    OrderItem.quantity,
+                    OrderItem.total,
                 )
                 .select_from(PosReceipt)
+                .join(Order, Order.id == PosReceipt.order_id)
                 .join(OrderItem, OrderItem.order_id == PosReceipt.order_id)
                 .where(
                     PosReceipt.tenant_id == tenant_id,
@@ -2078,9 +2086,36 @@ class PosService:
                     PosReceipt.issued_at >= lo,
                     PosReceipt.issued_at < hi,
                 )
-                .group_by(OrderItem.variant_id)
+                .order_by(PosReceipt.order_id, OrderItem.id)
             )
         ).all()
+        by_order: dict = {}
+        for order_id, grand, _item_id, variant_id, qty, total in lines:
+            by_order.setdefault(order_id, (to_money(grand, "grand"), []))[1].append(
+                (variant_id, int(qty), to_money(total, "total"))
+            )
+        money = Decimal("0.01")
+        totals_by_variant: dict = {}
+        for grand, items in by_order.values():
+            net_base = sum((t for _v, _q, t in items), Decimal("0"))
+            allocated = Decimal("0")
+            shares = []
+            for _v, _q, t in items:
+                share = (
+                    (grand * t / net_base).quantize(money, rounding=ROUND_HALF_UP)
+                    if net_base > 0
+                    else t
+                )
+                shares.append(share)
+                allocated += share
+            # rounding can leave a cent or two: give it to the largest line so a sale always adds up
+            if shares and allocated != grand and net_base > 0:
+                biggest = max(range(len(items)), key=lambda i: items[i][2])
+                shares[biggest] += grand - allocated
+            for (variant_id, qty, _t), share in zip(items, shares, strict=True):
+                q0, r0 = totals_by_variant.get(variant_id, (0, Decimal("0")))
+                totals_by_variant[variant_id] = (q0 + qty, r0 + share)
+        sold = [(vid, q, r) for vid, (q, r) in totals_by_variant.items()]
         returned = {
             variant_id: (int(qty), to_money(amount, "returned"))
             for variant_id, qty, amount in (
