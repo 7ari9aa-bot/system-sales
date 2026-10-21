@@ -165,6 +165,26 @@ export const posApi = {
     return api(`/pos/stock/${seg(variantId)}/reorder-level`, { method: "PUT", body: { reorder_level: level } });
   },
 
+  /* ---- physical stocktake (backend/app/modules/inventory, via /pos/stocktakes) ----
+   * Saving counts SETS values, so it is idempotent by nature. Approve and cancel change stock / close
+   * the count: they carry an intent so a retried tap is replayed by the server, never applied twice. */
+  stocktakes: () => api("/pos/stocktakes"),
+  stocktake: (id) => api(`/pos/stocktakes/${seg(id)}`),
+  openStocktake: (note, intent) =>
+    post("/pos/stocktakes", compact({ note: note ? String(note).trim().slice(0, 255) : undefined }), needIntent(intent)),
+  saveStocktakeCounts: (id, counts) => {
+    if (!Array.isArray(counts) || counts.length === 0) throw new TypeError("posApi: nothing to save");
+    for (const c of counts) {
+      const q = c.counted_qty;
+      if (q !== null && (!Number.isInteger(q) || q < 0 || q > 1_000_000)) {
+        throw new RangeError("posApi: a count must be a whole number from 0 to 1,000,000, or null");
+      }
+    }
+    return api(`/pos/stocktakes/${seg(id)}/counts`, { method: "PUT", body: { counts } });
+  },
+  approveStocktake: (id, intent) => post(`/pos/stocktakes/${seg(id)}/approve`, {}, needIntent(intent)),
+  cancelStocktake: (id, intent) => post(`/pos/stocktakes/${seg(id)}/cancel`, {}, needIntent(intent)),
+
   /* ---- stock ledger (backend/app/modules/inventory, GET /inventory/movements): read-only here ---- */
   movements: (query = "") => api(`/inventory/movements${query ? `?${query}` : ""}`),
 
