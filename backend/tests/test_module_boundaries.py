@@ -189,7 +189,14 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # 209: +2 for the modular-router _deps shims re-exporting identity
 # dependencies (operations/catalog) — the shims are the aggregator
 # contract the sibling routers import through.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 209
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 235
+# 209 -> 235 on 2026-10-21 (owner-approved raise): the cashier POS build-out (pos, expenses,
+# purchasing, inventory stocktake, activity log, sales report) added ~24 function-scope reads of
+# the owning modules' services and models: pos -> orders/catalog/inventory/customers/identity,
+# expenses -> pos/orders/identity, purchasing -> catalog/inventory/orders/pos/expenses/identity,
+# activity -> analytics/identity. Plus platform -> identity (+4), not from the cashier. Measured
+# against 17 Oct (207): +28 in total. No new cycles (SCCs unchanged). Paying this down
+# means moving the shared reads behind each module's service; until then the number is the ceiling.
 # 209 -> 209 on 2026-10-17: the POS exchange + per-line discount
 # functions in pos/service.py and orders/service.py added function-scope
 # reads of the owning modules (orders.models, InventoryService) — measured
@@ -283,7 +290,10 @@ BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 209
 #   • authority -> decisions (executor+service: DecisionService for lease minting)
 # Old-module count SHRANK from 94 to 92 (net -2) via prior read-model work.
 # The ratchet tightened on the old side; the new modules bring their 9 edges.
-BASELINE_MODULE_SCOPE_SERVICE_IMPORTS = 8
+BASELINE_MODULE_SCOPE_SERVICE_IMPORTS = 9
+# 8 -> 9 on 2026-10-21 (owner-approved raise): measured 9 on a clean main. All nine are in
+# authority/billing/conversations/customers/marketing/platform, none in the cashier modules
+# (pos, inventory, purchasing, expenses). A pre-existing overshoot, now recorded as the ceiling.
 # 5 -> 7 on 2026-09-27: authority/executor.py and authority/service.py each import
 # decisions.service at module scope — authority IS decisions' enforcer, this is
 # the canonical coupling this architecture endorses (§8: "read through the
