@@ -2,9 +2,10 @@ import { Link } from "react-router-dom";
 import StatusBadge from "@/cashier/components/ui-kit/StatusBadge";
 import { CELL_MAIN, CELL_NUM, CELL_SUB, TD, TH } from "@/cashier/components/ui-kit/ledgerStyles";
 import { fmtDateTime, fmtMoney } from "@/cashier/lib/format";
-import { settlementOf } from "@/cashier/lib/opsData";
+import { settlementOf } from "@/cashier/api/exchangesLog";
 
-// أعمدة سجل الاستبدال: الرقم والتاريخ، الفاتورة الأصلية، العميل، الصنف المرتجع، البديل، قيمتيهما، الفرق، التسوية، الموظف، والحالة.
+// أعمدة سجل الاستبدال: الرقم والتاريخ، الفاتورة الأصلية، الصنف المرتجع، البديل، قيمتيهما، الفرق، والتسوية.
+// العميل والموظف وحالة المراجعة غير محفوظة في الباك فلا تُعرض.
 export default function exchangeLogColumns() {
   return [
     {
@@ -15,7 +16,7 @@ export default function exchangeLogColumns() {
       render: (r) => (
         <span>
           <span className="block num text-[12px] font-semibold text-[#33322E]">{r.number}</span>
-          <span className={`mt-0.5 block num ${CELL_SUB}`}>{fmtDateTime(r.date)}</span>
+          <span className={`mt-0.5 block num ${CELL_SUB}`}>{fmtDateTime(r.date)} • {r.returnReceiptNumber}</span>
         </span>
       ),
     },
@@ -25,12 +26,15 @@ export default function exchangeLogColumns() {
       headerClassName: TH,
       className: TD,
       render: (r) => (
-        <Link to="/cashier/sales/$invoiceId" params={{ invoiceId: r.invoiceId }} className="num text-[12px] font-semibold text-[#E8761A] hover:underline">
-          {r.invoiceNumber}
-        </Link>
+        r.invoiceId ? (
+          <Link to={`/cashier/sales/${r.invoiceId}?shift=${encodeURIComponent(r.sessionId ?? "")}`} className="num text-[12px] font-semibold text-[#E8761A] hover:underline">
+            {r.invoiceNumber}
+          </Link>
+        ) : (
+          <span className="num text-[12px] text-[#7A766C]">{r.invoiceNumber}</span>
+        )
       ),
     },
-    { key: "customer", header: "العميل", headerClassName: TH, className: TD, render: (r) => <span className={CELL_MAIN}>{r.customer}</span> },
     { key: "returnedItem", header: "الصنف المرتجع", headerClassName: TH, className: TD, render: (r) => <span className={CELL_SUB}>{r.returnedItem}</span> },
     { key: "newItem", header: "الصنف البديل", headerClassName: TH, className: TD, render: (r) => <span className={`${CELL_MAIN} font-medium`}>{r.newItem}</span> },
     { key: "returnedValue", header: "قيمة المستبدل", headerClassName: TH, className: TD, align: "end", render: (r) => <span className={CELL_NUM}>{fmtMoney(r.returnedValue)}</span> },
@@ -49,7 +53,5 @@ export default function exchangeLogColumns() {
       },
     },
     { key: "settlement", header: "التسوية", headerClassName: TH, className: TD, render: (r) => <StatusBadge kind="settlement" value={settlementOf(r).kind} /> },
-    { key: "employee", header: "الموظف", headerClassName: TH, className: TD, render: (r) => <span className={CELL_SUB}>{r.employee}</span> },
-    { key: "status", header: "الحالة", headerClassName: TH, className: TD, render: (r) => <StatusBadge kind="exchange" value={r.status} /> },
   ];
 }

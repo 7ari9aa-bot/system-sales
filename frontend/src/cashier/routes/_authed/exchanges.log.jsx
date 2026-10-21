@@ -11,9 +11,9 @@ import PageHero from "@/cashier/components/ui-kit/PageHero";
 import ExchangeLogFilters from "@/cashier/components/exchanges/ExchangeLogFilters";
 import exchangeLogColumns from "@/cashier/components/exchanges/exchangeLogColumns";
 import { BTN, BTN_PRIMARY, LEDGER, LEDGER_FOOTER, LEDGER_TOOLBAR } from "@/cashier/components/ui-kit/ledgerStyles";
-import { allExchangeRecords } from "@/cashier/lib/exchangeStore";
-import { exchangesSummary, settlementOf } from "@/cashier/lib/opsData";
-import { EXCHANGE_STATUS, fmtDateTime, fmtInt, fmtMoney, SETTLEMENT_TYPES } from "@/cashier/lib/format";
+import { useExchangesLog } from "@/cashier/api/usePosSale";
+import { filterExchanges, settlementOf, summarizeExchanges } from "@/cashier/api/exchangesLog";
+import { fmtDateTime, fmtInt, fmtMoney, SETTLEMENT_TYPES } from "@/cashier/lib/format";
 import { exportCsv } from "@/cashier/lib/exportCsv";
 
 
@@ -22,43 +22,24 @@ const HERO_ALT = "عمليتا استبدال ورد قطعتين ملابس ع�
 
 const EXPORT_COLUMNS = [
   { header: "رقم الاستبدال", key: "number" },
+  { header: "إيصال المرتجع", key: "returnReceiptNumber" },
   { header: "التاريخ", value: (r) => fmtDateTime(r.date) },
   { header: "الفاتورة الأصلية", key: "invoiceNumber" },
-  { header: "العميل", key: "customer" },
   { header: "الصنف المرتجع", key: "returnedItem" },
   { header: "الصنف البديل", key: "newItem" },
   { header: "قيمة المستبدل", key: "returnedValue" },
   { header: "قيمة البديل", key: "newValue" },
   { header: "الفرق", value: (r) => settlementOf(r).difference },
   { header: "التسوية", value: (r) => SETTLEMENT_TYPES[settlementOf(r).kind]?.label ?? "—" },
-  { header: "الموظف", key: "employee" },
-  { header: "الحالة", value: (r) => EXCHANGE_STATUS[r.status]?.label ?? "—" },
 ];
 
 export default function ExchangesLogPage() {
   const [term, setTerm] = useState("");
   const [settlement, setSettlement] = useState("");
-  const [status, setStatus] = useState("");
 
-  // يشمل السجل عمليات هذه الجلسة المعتمدة من شاشة الاستبدال.
-  const records = allExchangeRecords();
-  const summary = exchangesSummary(records);
-  const rows = records.filter((r) => {
-    const t = term.trim().toLowerCase();
-    if (
-      t &&
-      !(
-        r.number.toLowerCase().includes(t) ||
-        r.invoiceNumber.toLowerCase().includes(t) ||
-        r.customer.toLowerCase().includes(t) ||
-        r.newItem.toLowerCase().includes(t)
-      )
-    )
-      return false;
-    if (settlement && settlementOf(r).kind !== settlement) return false;
-    if (status && r.status !== status) return false;
-    return true;
-  });
+  const { data: all = [], isLoading, isError } = useExchangesLog();
+  const summary = summarizeExchanges(all);
+  const rows = filterExchanges(all, { term, settlement });
 
   const columns = exchangeLogColumns();
 
@@ -90,12 +71,9 @@ export default function ExchangesLogPage() {
         onTerm={setTerm}
         settlement={settlement}
         onSettlement={(value) => setSettlement(value === "all" ? "" : value)}
-        status={status}
-        onStatus={(value) => setStatus(value === "all" ? "" : value)}
         onReset={() => {
           setTerm("");
           setSettlement("");
-          setStatus("");
         }}
       />
 
@@ -106,8 +84,8 @@ export default function ExchangesLogPage() {
         columns={columns}
         rows={rows}
         pageSize={8}
-        emptyTitle="لا توجد عمليات استبدال مطابقة"
-        emptyDescription="جرّب تغيير الفلتر أو البحث برقم آخر."
+        emptyTitle={isLoading ? "جارٍ التحميل…" : isError ? "تعذّر تحميل سجل الاستبدال" : "لا توجد عمليات استبدال مطابقة"}
+        emptyDescription={isError ? "أعد المحاولة بعد لحظة." : "جرّب تغيير الفلتر أو البحث برقم آخر."}
         toolbar={
           <div className="num flex items-center gap-3 text-[12px] text-[#7A766C]">
             <Image src={HERO_IMAGE} alt={HERO_ALT} className="h-[34px] w-[34px] overflow-hidden rounded-[4px] border border-[#DED8CD]" />
@@ -121,10 +99,10 @@ export default function ExchangesLogPage() {
 
       <LedgerStats
         stats={[
-          { label: "عدد عمليات الاستبدال", value: fmtInt(summary.count), hint: "آخر ٧ أيام", accent: true },
+          { label: "عدد عمليات الاستبدال", value: fmtInt(summary.count), hint: "كل الورديات", accent: true },
           { label: "قيمة الأصناف البديلة", value: fmtMoney(summary.newValue), hint: "سعر بيع الأصناف المسلّمة" },
           { label: "صافي فروق التحصيل", value: fmtMoney(summary.net), hint: "تحصيل فرق ناقص المبالغ المردودة" },
-          { label: "عمليات بفارق صفر", value: fmtInt(summary.even), hint: `${summary.review} عملية قيد المراجعة` },
+          { label: "عمليات بفارق صفر", value: fmtInt(summary.even), hint: "استبدال بدون تحصيل أو رد" },
         ]}
       />
     </LedgerPage>

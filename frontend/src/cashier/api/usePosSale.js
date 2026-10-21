@@ -12,6 +12,7 @@ import { heldFromApi, holdPayload, restoreHeld } from "./heldCarts";
 import { rowFromDetail, saleReceipts } from "./salesLog";
 import { invoiceFromApi, returnsOf } from "./invoiceDetail";
 import { returnRows } from "./returnsLog";
+import { exchangeRows } from "./exchangesLog";
 import { fromMinor } from "./money";
 import { discountMinor, latestOnly } from "./latest";
 
@@ -302,6 +303,24 @@ export async function fetchReturnsLog(client = posApi) {
     batch.forEach((d, j) => { details[returns[i + j].id] = d; });
   }
   return returnRows(all, details).map((r) => ({ ...r, saleReceiptId: saleByOrder.get(r.invoiceId) }));
+}
+
+/** Every exchange of every shift: the new sale receipts that carry the stored link, with both halves read. */
+export async function fetchExchangesLog(client = posApi) {
+  const sessions = (await client.listSessions()) ?? [];
+  const lists = await Promise.all(sessions.map(async (s) => ((await client.receipts(s.id)) ?? []).map((r) => ({ ...r, session_id: r.session_id ?? s.id }))));
+  const all = lists.flat();
+  const ids = all.filter((r) => r.kind === "sale" && r.exchange_return_receipt_id).flatMap((r) => [r.id, r.exchange_return_receipt_id]);
+  const details = {};
+  for (let i = 0; i < ids.length; i += 6) {
+    const batch = await Promise.all(ids.slice(i, i + 6).map((id) => client.receipt(id)));
+    batch.forEach((d, j) => { details[ids[i + j]] = d; });
+  }
+  return exchangeRows(all, details);
+}
+
+export function useExchangesLog() {
+  return useQuery({ queryKey: ["cashier", "exchanges-log"], staleTime: 0, queryFn: () => fetchExchangesLog() });
 }
 
 export function useReturnsLog() {
