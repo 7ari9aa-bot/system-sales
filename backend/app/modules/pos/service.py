@@ -22,7 +22,12 @@ from sqlalchemy import delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.errors import ConflictError, NotFoundError, ValidationError
+from app.modules.errors import (
+    ConflictError,
+    NotFoundError,
+    PermissionDeniedError,
+    ValidationError,
+)
 from app.modules.orders.money import compute_totals, to_money
 from app.modules.pos.models import (
     PosCashMovement,
@@ -253,6 +258,21 @@ class PosService:
         return pos_session
 
     @staticmethod
+    def _ensure_holds_shift(
+        pos_session: PosSession, actor_user_id: UUID | None, *, override: bool
+    ) -> None:
+        """The actor must hold this drawer, or hold ``pos:override`` (a manager covering for it).
+
+        A drawer with no holder (legacy rows) stays open to everyone, as before. An UNKNOWN actor
+        on a drawer that has a holder is refused: HTTP always supplies the user, so a missing one is
+        an internal caller, and "unknown" must not be a way around the check.
+        """
+        holder = pos_session.cashier_user_id
+        if holder is None or override or actor_user_id == holder:
+            return
+        raise PermissionDeniedError("this drawer is held by another cashier")
+
+    @staticmethod
     def _enforce_discount_ceiling(
         profile: PosProfile | None,
         discount_total: object,
@@ -364,6 +384,7 @@ class PosService:
         reason: str,
         amount: object,
         created_by: UUID | None = None,
+        shift_override: bool = False,
         reference_type: str | None = None,
         reference_id: UUID | None = None,
     ) -> PosCashMovement:
@@ -379,6 +400,7 @@ class PosService:
                 raise ValidationError(f"reason '{reason}' is written by the sell flow only")
             raise ValidationError(f"reason must be one of {sorted(_MANUAL_CASH_REASONS)}")
         pos_session = await PosService._get_session(session, tenant_id, session_id)
+        PosService._ensure_holds_shift(pos_session, created_by, override=shift_override)
         if pos_session.status != "OPEN":
             raise ConflictError("cash rows are booked on the open session only")
         PosService._ensure_session_current(
@@ -792,6 +814,7 @@ class PosService:
         tendered_cash: object | None = None,
         held_cart_id: UUID | None = None,
         actor_user_id: UUID | None = None,
+        shift_override: bool = False,
         discount_override: bool = False,
     ) -> dict:
         """One POS sale = one commerce command chain (§189).
@@ -812,6 +835,7 @@ class PosService:
         from app.modules.orders.service import OrderService
 
         pos_session = await PosService._get_session(session, tenant_id, session_id)
+        PosService._ensure_holds_shift(pos_session, actor_user_id, override=shift_override)
         if pos_session.status != "OPEN":
             raise ConflictError("this session is closed; open a new one to sell")
         PosService._ensure_session_current(
@@ -1117,6 +1141,7 @@ class PosService:
         counted_cash: object,
         counted_by_method: dict | None = None,
         closed_by: UUID | None = None,
+        shift_override: bool = False,
     ) -> PosSession:
         """OPEN → CLOSED; the POS cash reconciliation (§188) happens here.
 
@@ -1132,6 +1157,7 @@ class PosService:
         from app.core.events.writer import add_outbox_event
 
         pos_session = await PosService._get_session(session, tenant_id, session_id)
+        PosService._ensure_holds_shift(pos_session, closed_by, override=shift_override)
         if pos_session.status != "OPEN":
             raise ConflictError(f"pos session is already {pos_session.status}")
         counted = to_money(counted_cash, "counted_cash")
@@ -2137,6 +2163,7 @@ class PosService:
         reason: str = "customer_return",
         restock: bool = False,
         actor_user_id: UUID | None = None,
+        shift_override: bool = False,
     ) -> dict:
         """Give money back on a POS sale, and optionally take the goods back.
 
@@ -2156,6 +2183,7 @@ class PosService:
         from app.modules.orders.service import OrderService
 
         pos_session = await PosService._get_session(session, tenant_id, session_id)
+        PosService._ensure_holds_shift(pos_session, actor_user_id, override=shift_override)
         if pos_session.status != "OPEN":
             raise ConflictError("this session is closed; refunds ride the open drawer")
         PosService._ensure_session_current(
@@ -2395,6 +2423,7 @@ class PosService:
         lines: list[dict],
         restock: bool = False,
         actor_user_id: UUID | None = None,
+        shift_override: bool = False,
     ) -> dict:
         """Give goods AND money back, line by line (ERPNext's POS return).
 
@@ -2414,6 +2443,7 @@ class PosService:
         from app.modules.orders.service import OrderService
 
         pos_session = await PosService._get_session(session, tenant_id, session_id)
+        PosService._ensure_holds_shift(pos_session, actor_user_id, override=shift_override)
         if pos_session.status != "OPEN":
             raise ConflictError("this session is closed; returns ride the open drawer")
         PosService._ensure_session_current(
@@ -2758,6 +2788,7 @@ class PosService:
         amount: object | None = None,
         tendered_cash: object | None = None,
         actor_user_id: UUID | None = None,
+        shift_override: bool = False,
     ) -> dict:
         """The one-transaction exchange (§189 — beyond ERPNext and Odoo).
 
@@ -2780,6 +2811,7 @@ class PosService:
         from app.modules.orders.service import OrderService
 
         pos_session = await PosService._get_session(session, tenant_id, session_id)
+        PosService._ensure_holds_shift(pos_session, actor_user_id, override=shift_override)
         if pos_session.status != "OPEN":
             raise ConflictError("this session is closed; exchanges ride the open drawer")
         PosService._ensure_session_current(

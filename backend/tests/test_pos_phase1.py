@@ -400,7 +400,11 @@ async def test_profile_cannot_be_disabled_with_open_session(db, tenant_ctx):
         db, tenant_ctx.tenant_id, status="OPEN", register_id=register.id
     )
     await PosService.close_session(
-        db, tenant_ctx.tenant_id, sessions[0].id, counted_cash="0.00"
+        db,
+        tenant_ctx.tenant_id,
+        sessions[0].id,
+        counted_cash="0.00",
+        closed_by=tenant_ctx.user.id,
     )
     updated = await PosProfileService.update(
         db, tenant_ctx.tenant_id, profile.id, is_active=False
@@ -439,6 +443,7 @@ async def test_profile_default_method_charges_the_whole_total(db, tenant_ctx):
         pos_session.id,
         customer_id=customer.id,
         items=[{"variant_id": str(variant.id), "quantity": 1}],
+        actor_user_id=tenant_ctx.user.id,
     )
     payment = (
         (

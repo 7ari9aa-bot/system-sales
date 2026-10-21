@@ -123,6 +123,7 @@ async def create_expense(body: ExpenseRequest, ctx: PostCtx):
         expense_date=body.expense_date,
         session_id=body.session_id,
         created_by=ctx.user.id,
+        shift_override="pos:override" in ctx.permission_codes,
     )
     return _expense(row)
 
@@ -173,6 +174,11 @@ async def get_expense(expense_id: uuid.UUID, ctx: ReadCtx):
 @router.post("/{expense_id}/void", response_model=ExpenseOut)
 async def void_expense(expense_id: uuid.UUID, body: VoidRequest, ctx: VoidCtx):
     row = await ExpenseService.void(
-        ctx.session, ctx.tenant_id, expense_id, reason=body.reason, voided_by=ctx.user.id
+        ctx.session,
+        ctx.tenant_id,
+        expense_id,
+        reason=body.reason,
+        voided_by=ctx.user.id,
+        shift_override="pos:override" in ctx.permission_codes,
     )
     return _expense(row)

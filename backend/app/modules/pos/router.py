@@ -427,6 +427,7 @@ async def record_cash_movement(session_id: UUID, body: CashMovementRequest, ctx:
         amount=body.amount,
         created_by=ctx.user.id,
         reference_id=body.reference_id,
+        shift_override="pos:override" in ctx.permission_codes,
     )
     return {
         "id": str(row.id),
@@ -465,6 +466,7 @@ async def sell(session_id: UUID, body: SellRequest, ctx: PosWriteCtx):
         held_cart_id=body.held_cart_id,
         actor_user_id=ctx.user.id,
         discount_override="pos:override" in ctx.permission_codes,
+        shift_override="pos:override" in ctx.permission_codes,
     )
     return {k: str(v) for k, v in result.items()}
 
@@ -478,6 +480,7 @@ async def close_session(session_id: UUID, body: CloseSessionRequest, ctx: PosWri
         counted_cash=body.counted_cash,
         counted_by_method=body.counted_by_method,
         closed_by=ctx.user.id,
+        shift_override="pos:override" in ctx.permission_codes,
     )
     return _session_out(pos_session)
 
@@ -671,6 +674,7 @@ async def refund(session_id: UUID, body: RefundRequest, ctx: PosWriteCtx):
         reason=body.reason,
         restock=body.restock,
         actor_user_id=ctx.user.id,
+        shift_override="pos:override" in ctx.permission_codes,
     )
 
 
@@ -688,6 +692,7 @@ async def return_sale(session_id: UUID, body: ReturnRequest, ctx: PosWriteCtx):
         ],
         restock=body.restock,
         actor_user_id=ctx.user.id,
+        shift_override="pos:override" in ctx.permission_codes,
     )
     return {
         **result,
@@ -723,6 +728,7 @@ async def exchange(session_id: UUID, body: ExchangeRequest, ctx: PosWriteCtx):
         amount=body.amount,
         tendered_cash=body.tendered_cash,
         actor_user_id=ctx.user.id,
+        shift_override="pos:override" in ctx.permission_codes,
     )
     return {
         **result,

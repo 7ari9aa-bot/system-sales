@@ -154,6 +154,7 @@ class ExpenseService:
         expense_date: date | None = None,
         session_id: UUID | None = None,
         created_by: UUID | None = None,
+        shift_override: bool = False,
     ) -> Expense:
         description = (description or "").strip()
         if not description:
@@ -183,6 +184,7 @@ class ExpenseService:
             if session_id is None:
                 raise ConflictError("a cash expense is paid from an open shift: open a shift first")
             cash_session = await _pos_service()._get_session(session, tenant_id, session_id)
+            _pos_service()._ensure_holds_shift(cash_session, created_by, override=shift_override)
             if cash_session.status != "OPEN":
                 raise ConflictError("a cash expense needs an OPEN shift; this one is closed")
         elif session_id is not None:
@@ -237,6 +239,7 @@ class ExpenseService:
         *,
         reason: str,
         voided_by: UUID | None = None,
+        shift_override: bool = False,
     ) -> Expense:
         reason = (reason or "").strip()
         if not reason:
@@ -270,6 +273,7 @@ class ExpenseService:
                 reason="pay_in",
                 amount=expense.amount,
                 created_by=voided_by,
+                shift_override=shift_override,
                 reference_type="expense_void",
                 reference_id=expense.id,
             )
