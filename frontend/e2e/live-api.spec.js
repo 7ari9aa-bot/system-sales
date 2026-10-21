@@ -165,3 +165,82 @@ test("a real sale: scan -> confirm -> receipt -> two sales get two invoice numbe
   expect(Number(onHand)).toBe(8);
   expect(pageErrors).toEqual([]);
 });
+
+test("a real back-office day: supplier stock in -> cash expense -> stocktake approved; the backend ledger and the screens agree", async ({ page }) => {
+  const pageErrors = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+
+  const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const email = `live-ops-${suffix}@example.com`;
+  const password = `Live-ops-${suffix}!`;
+
+  await page.goto("/register");
+  await page.getByLabel(/البريد الإلكتروني|email/i).fill(email);
+  await page.getByLabel(/^كلمة المرور$|^password$/i).fill(password);
+  await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(password);
+  await page.getByRole("button", { name: /إنشاء الحساب|create account/i }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+
+  // Every call goes through the page, so the app's own token + CSRF are what the backend sees.
+  const api = (method, path, body) =>
+    page.evaluate(async ({ method, path, body }) => {
+      const raw = JSON.parse(localStorage.getItem("fihrist_tokens") || "null");
+      const csrf = (document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/) || [])[1];
+      const headers = { "Content-Type": "application/json", ...(csrf ? { "X-CSRF-Token": csrf } : {}), ...(raw?.access_token ? { Authorization: `Bearer ${raw.access_token}` } : {}) };
+      const res = await fetch(`/api/v1${path}`, { method, headers, credentials: "include", body: body ? JSON.stringify(body) : undefined });
+      const text = await res.text();
+      if (!res.ok) throw new Error(`${method} ${path} -> ${res.status} ${text.slice(0, 200)}`);
+      return text ? JSON.parse(text) : null;
+    }, { method, path, body });
+
+  const sfx = suffix.replace(/[^a-z0-9]/gi, "").toLowerCase();
+  const wh = await api("POST", "/warehouses/ensure-default");
+  const product = await api("POST", "/products", { title: `Ops item ${sfx}`, slug: `ops-item-${sfx}`, description: null });
+  const variant = await api("POST", `/products/${product.id}/variants`, { sku: `OPS-${sfx}`, price: "100.00", option_values: {} });
+  await api("POST", `/variants/${variant.id}/identifiers`, { identifier_type: "barcode", value: `621${Date.now().toString().slice(-9)}` });
+  await api("PATCH", `/products/${product.id}`, { status: "active" });
+  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash" });
+  const register = await api("POST", "/pos/registers", { name: "Main till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
+  const shift = await api("POST", `/pos/registers/${register.id}/sessions`, { opening_float: "500.00" });
+
+  const onHand = async () => {
+    const body = await api("GET", "/pos/stock?limit=100");
+    const rows = Array.isArray(body) ? body : body.items ?? [];
+    const row = rows.find((r) => r.variant_id === variant.id);
+    return row ? Number(row.on_hand ?? row.quantity) : 0;
+  };
+
+  // 1) Supplier stock in: 6 units at 40.50 -> shelf 0 -> 6, the invoice is still unpaid.
+  const supplier = await api("POST", "/suppliers", { name: `Supplier ${sfx}` });
+  const po = await api("POST", "/purchase-orders", { supplier_id: supplier.id, warehouse_id: wh.id, lines: [{ variant_id: variant.id, quantity: "6", unit_cost: "40.50" }], receive_now: true });
+  expect(po.id, "the purchase order must be created").toBeTruthy();
+  expect(await onHand(), "receiving the order puts the goods on the shelf").toBe(6);
+
+  // 2) A cash expense rung against the open shift leaves the drawer by exactly its amount.
+  const categories = await api("GET", "/expenses/categories");
+  const category = (Array.isArray(categories) ? categories : categories.items ?? [])[0];
+  expect(category, "the shop must come with at least one expense category").toBeTruthy();
+  await api("POST", "/expenses", { category_id: category.id, description: `Cleaning ${sfx}`, amount: "25.00", payment_method: "cash", session_id: shift.id });
+  const preview = await api("GET", `/pos/sessions/${shift.id}/close-preview`);
+  expect(Number(preview.cash_out), "the expense is the only cash that left the drawer").toBe(25);
+
+  // 3) Stocktake: the shelf really holds 4, not 6. Approving moves the book by -2, exactly once.
+  const take = await api("POST", "/pos/stocktakes", { note: `count ${sfx}` });
+  await api("PUT", `/pos/stocktakes/${take.id}/counts`, { counts: [{ variant_id: variant.id, counted_qty: 4 }] });
+  await api("POST", `/pos/stocktakes/${take.id}/approve`, {});
+  expect(await onHand(), "approving the count settles the book on what was counted").toBe(4);
+  await api("POST", `/pos/stocktakes/${take.id}/approve`, {}).catch(() => {});
+  expect(await onHand(), "approving again must not move stock a second time").toBe(4);
+
+  // The screens a person opens must show what the ledger just recorded.
+  for (const [path, needle] of [
+    ["/cashier/expenses", `Cleaning ${sfx}`],
+    ["/cashier/purchases", `Supplier ${sfx}`],
+    ["/cashier/suppliers", `Supplier ${sfx}`],
+    ["/cashier/inventory", `Ops item ${sfx}`],
+  ]) {
+    await page.goto(path, { waitUntil: "networkidle" });
+    await expect(page.locator("main:has(.cashier-root)"), `${path} must show ${needle}`).toContainText(needle, { timeout: 10000 });
+  }
+  expect(pageErrors).toEqual([]);
+});
