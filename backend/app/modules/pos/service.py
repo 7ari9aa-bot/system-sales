@@ -14,7 +14,7 @@ product or a price.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from uuid import UUID
 
@@ -2068,6 +2068,137 @@ class PosService:
             written += 1
         await session.flush()
         return written
+
+    @staticmethod
+    async def sales_by_day(
+        session: AsyncSession,
+        tenant_id: UUID,
+        *,
+        since: date,
+        until: date,
+    ) -> list[dict]:
+        """Sales per MERCHANT day over ``[since, until]`` (inclusive), straight from the receipts.
+
+        Same rules the shift report uses, so a day always equals the sum of its shifts: sales are
+        the ``grand_total`` of ``sale`` receipts (an exchange's new sale counts as a sale, its
+        return counts as a return), returns are the ``refund_total`` of the return lines, and a day
+        is the shop's own calendar day (``tenants.timezone``), never UTC's. A day with no activity
+        is simply absent. ``net`` = sales - returns; the discount is the order's own
+        ``discount_total``. Returns are booked on the day the RETURN happened, not the sale's day.
+        """
+        from zoneinfo import ZoneInfo
+
+        from app.modules.orders.models import Order, OrderItem
+
+        tz = (await PosService._shop_timezone(session, tenant_id) or "UTC").strip() or "UTC"
+        zone = ZoneInfo(tz)  # a stored zone that no longer resolves fails loudly, never as UTC
+        lo = datetime(since.year, since.month, since.day, tzinfo=zone).astimezone(UTC)
+        nxt = until + timedelta(days=1)
+        hi = datetime(nxt.year, nxt.month, nxt.day, tzinfo=zone).astimezone(UTC)
+
+        sale_day = func.date(func.timezone(tz, PosReceipt.issued_at))
+        sales = (
+            await session.execute(
+                select(
+                    sale_day.label("day"),
+                    func.count(PosReceipt.id),
+                    func.coalesce(func.sum(Order.subtotal), 0),
+                    func.coalesce(func.sum(Order.discount_total), 0),
+                    func.coalesce(func.sum(Order.grand_total), 0),
+                )
+                .select_from(PosReceipt)
+                .join(Order, Order.id == PosReceipt.order_id)
+                .where(
+                    PosReceipt.tenant_id == tenant_id,
+                    PosReceipt.kind == "sale",
+                    PosReceipt.issued_at >= lo,
+                    PosReceipt.issued_at < hi,
+                )
+                .group_by(sale_day)
+            )
+        ).all()
+        pieces = (
+            await session.execute(
+                select(
+                    sale_day.label("day"),
+                    func.coalesce(func.sum(OrderItem.quantity), 0),
+                )
+                .select_from(PosReceipt)
+                .join(OrderItem, OrderItem.order_id == PosReceipt.order_id)
+                .where(
+                    PosReceipt.tenant_id == tenant_id,
+                    PosReceipt.kind == "sale",
+                    PosReceipt.issued_at >= lo,
+                    PosReceipt.issued_at < hi,
+                )
+                .group_by(sale_day)
+            )
+        ).all()
+        ret_day = func.date(func.timezone(tz, PosReceipt.issued_at))
+        returns = (
+            await session.execute(
+                select(
+                    ret_day.label("day"),
+                    func.count(func.distinct(PosReturnLine.receipt_id)),
+                    func.coalesce(func.sum(PosReturnLine.refund_total), 0),
+                )
+                .select_from(PosReturnLine)
+                .join(PosReceipt, PosReceipt.id == PosReturnLine.receipt_id)
+                .where(
+                    PosReturnLine.tenant_id == tenant_id,
+                    PosReceipt.issued_at >= lo,
+                    PosReceipt.issued_at < hi,
+                )
+                .group_by(ret_day)
+            )
+        ).all()
+
+        days: dict[date, dict] = {}
+
+        def row(day: date) -> dict:
+            return days.setdefault(
+                day,
+                {
+                    "date": day,
+                    "invoices": 0,
+                    "pieces": 0,
+                    "gross": Decimal("0"),
+                    "discount": Decimal("0"),
+                    "returns_count": 0,
+                    "returns": Decimal("0"),
+                },
+            )
+
+        for day, count, subtotal, discount, _grand in sales:
+            r = row(day)
+            r["invoices"] = int(count)
+            r["gross"] = to_money(subtotal, "gross")
+            r["discount"] = to_money(discount, "discount")
+        for day, qty in pieces:
+            row(day)["pieces"] = int(qty)
+        for day, count, refunded in returns:
+            r = row(day)
+            r["returns_count"] = int(count)
+            r["returns"] = to_money(refunded, "returns")
+        # net = what was actually charged (grand total) minus what was given back.
+        grand_by_day = {d: to_money(g, "grand") for d, _c, _s, _d, g in sales}
+        out = []
+        for day in sorted(days, reverse=True):
+            r = days[day]
+            net = grand_by_day.get(day, Decimal("0")) - r["returns"]
+            out.append(
+                {
+                    "date": str(day),
+                    "invoices": r["invoices"],
+                    "pieces": r["pieces"],
+                    "gross": str(r["gross"]),
+                    "discount": str(r["discount"]),
+                    "returns_count": r["returns_count"],
+                    "returns": str(r["returns"]),
+                    "net": str(to_money(net, "net")),
+                }
+            )
+        return out
 
     @staticmethod
     async def daily_report(

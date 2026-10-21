@@ -556,6 +556,24 @@ async def list_receipts(session_id: UUID, ctx: TenantCtxDep):
     ]
 
 
+@router.get("/reports/sales")
+async def sales_report(ctx: TenantCtxDep, since: str, until: str):
+    """Sales per shop day over ``[since, until]`` (YYYY-MM-DD, inclusive), newest day first.
+
+    Straight from the receipts and the shop's own calendar day, so a day equals the sum of its
+    shifts. A range is capped so one request cannot scan the whole history.
+    """
+    try:
+        lo, hi = date.fromisoformat(since), date.fromisoformat(until)
+    except ValueError:
+        raise ValidationError("since and until must be YYYY-MM-DD") from None
+    if hi < lo:
+        raise ValidationError("until must not be before since")
+    if (hi - lo).days > 366:
+        raise ValidationError("the range is limited to 366 days")
+    return await PosService.sales_by_day(ctx.session, ctx.tenant_id, since=lo, until=hi)
+
+
 @router.get("/reports/daily")
 async def daily_report(
     ctx: TenantCtxDep,

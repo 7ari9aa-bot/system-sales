@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 412,
-    "sha256": "f1f40d24f154c2ac9420f91b04cf111ecdaf6fcb8fc0cd6555cb0bd2fae33c2e",
+    "operations": 413,
+    "sha256": "cc4f4b2a28ce6683f12f36ad9eb34adc9eb64dcf2612757bb477395e96b3282a",
     "typed_operations": 254
   },
   "spec": {
@@ -51454,6 +51454,120 @@
             }
           },
           "summary": "Daily Report",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
+      "/api/v1/pos/reports/sales": {
+        "get": {
+          "description": "Sales per shop day over ``[since, until]`` (YYYY-MM-DD, inclusive), newest day first.\n\nStraight from the receipts and the shop's own calendar day, so a day equals the sum of its\nshifts. A range is capped so one request cannot scan the whole history.",
+          "operationId": "sales_report_api_v1_pos_reports_sales_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "since",
+              "required": true,
+              "schema": {
+                "title": "Since",
+                "type": "string"
+              }
+            },
+            {
+              "in": "query",
+              "name": "until",
+              "required": true,
+              "schema": {
+                "title": "Until",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Sales Report",
           "tags": [
             "pos"
           ]
