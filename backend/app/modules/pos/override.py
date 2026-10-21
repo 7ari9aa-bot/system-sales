@@ -28,13 +28,14 @@ from uuid import UUID
 
 import sqlalchemy as sa
 from fastapi import Depends, Header, Request
+from redis.exceptions import RedisError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core import auth_lockout
 from app.core.audit import write_audit_row
 from app.core.db import bind_tenant
-from app.core.errors import RateLimitExceededError
+from app.core.errors import CircuitOpenError, RateLimitExceededError
 from app.core.redis import get_redis
 from app.core.security import hash_password_async, verify_password_async
 from app.modules.errors import PermissionDeniedError, ValidationError
@@ -48,6 +49,7 @@ _PIN_RE = re.compile(r"^[0-9]{4,8}$")
 
 #: The one thing a caller is ever told about a failed approval.
 _REFUSED = "manager approval refused"
+_UNAVAILABLE = "manager approval is unavailable right now; try again shortly"
 
 #: A real bcrypt hash of nothing in particular, so a lookup that finds no PIN still pays for a
 #: hash comparison. Computed lazily (bcrypt is slow on purpose) and cached for the process.
@@ -121,7 +123,11 @@ class ManagerPinService:
         """
         redis = get_redis()
         scope = {"ip": str(tenant_id), "email": str(user_id)}
-        status = await auth_lockout.check(redis, **scope)
+        try:
+            status = await auth_lockout.check(redis, **scope)
+        except RedisError:
+            # Without the counter there is no limit on password guesses: refuse, never fall open.
+            raise CircuitOpenError(_UNAVAILABLE) from None
         if status.locked:
             raise RateLimitExceededError(
                 "too many wrong attempts; try again later",
@@ -190,7 +196,15 @@ class ManagerPinService:
         redis = get_redis()
         scope = {"ip": str(tenant_id), "email": str(manager_id)}
 
-        status = await auth_lockout.check(redis, **scope)
+        try:
+            status = await auth_lockout.check(redis, **scope)
+        except RedisError:
+            # Without the counter there is no limit on guesses: refuse (fail closed), say why, and
+            # leave a trace. Never fall through to "no lock", and never a bare 500.
+            await _audit_refusal(
+                session, tenant_id, cashier_id, "pos.override.unavailable", manager_id, operation
+            )
+            raise CircuitOpenError(_UNAVAILABLE) from None
         if status.locked:
             await _audit_refusal(
                 session, tenant_id, cashier_id, "pos.override.locked", manager_id, operation
@@ -216,13 +230,19 @@ class ManagerPinService:
         )
 
         if not authorised:
-            await auth_lockout.record_failure(redis, **scope)
+            try:
+                await auth_lockout.record_failure(redis, **scope)
+            except RedisError:
+                pass  # still a refusal and still audited below; only the count is lost
             await _audit_refusal(
                 session, tenant_id, cashier_id, "pos.override.denied", manager_id, operation
             )
             raise PermissionDeniedError(_REFUSED)
 
-        await auth_lockout.reset(redis, **scope)
+        try:
+            await auth_lockout.reset(redis, **scope)
+        except RedisError:
+            pass  # the PIN was right; a stale counter only means an earlier typo still counts
         await _audit(session, tenant_id, manager_id, "pos.override.granted", cashier_id, operation)
         return OverrideGrant(active=True, approved_by=manager_id)
 

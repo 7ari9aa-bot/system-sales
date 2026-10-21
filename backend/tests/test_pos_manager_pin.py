@@ -418,3 +418,89 @@ async def test_a_pin_lets_a_cashier_sell_past_the_ceiling_and_nothing_else_chang
     grant = await _resolve(ctx, str(manager.id), "4821")
     out = await sell(shift.id, _body(variant, customer), ctx, grant)
     assert out["grand_total"] == "60.00"
+
+
+# ------------------------------------------------------------ redis is down --
+#
+# The attempt counter lives in Redis. With it gone there is no limit on guesses, so the override
+# must REFUSE (and say so with a 503), never fall open and never a bare 500.
+
+
+class _DeadRedis:
+    """Every call fails the way a dropped connection does."""
+
+    def __getattr__(self, _name):
+        async def boom(*_a, **_k):
+            from redis.exceptions import ConnectionError as RedisConnectionError
+
+            raise RedisConnectionError("redis is down")
+
+        return boom
+
+
+async def _override_audit_names(db, tenant_ctx):
+    return set(
+        (
+            await db.execute(
+                sa.text(
+                    "SELECT action FROM audit_logs WHERE tenant_id = :t "
+                    "AND action LIKE 'pos.override.%'"
+                ),
+                {"t": tenant_ctx.tenant_id},
+            )
+        ).scalars()
+    )
+
+
+async def test_with_redis_down_even_the_right_pin_is_refused_and_says_why(
+    db, tenant_ctx, monkeypatch
+):
+    from app.core.errors import CircuitOpenError
+    from app.modules.pos import override
+
+    manager, _, ctx = await _setup(db, tenant_ctx)
+    monkeypatch.setattr(override, "get_redis", lambda: _DeadRedis())
+
+    with pytest.raises(CircuitOpenError) as exc:
+        await _resolve(ctx, str(manager.id), "4821")  # the CORRECT pin
+    assert exc.value.http_status == 503
+    assert "unavailable" in str(exc.value)
+    assert "pos.override.unavailable" in await _override_audit_names(db, tenant_ctx)
+    assert "pos.override.granted" not in await _override_audit_names(db, tenant_ctx)
+
+
+async def test_a_wrong_pin_is_still_refused_and_audited_when_the_count_cannot_be_written(
+    db, tenant_ctx, monkeypatch, _redis
+):
+    """Redis answers the lock check, then dies: the guess is refused AND leaves its audit row."""
+    from app.modules.pos import override
+
+    manager, _, ctx = await _setup(db, tenant_ctx)
+
+    async def cannot_count(*_a, **_k):
+        from redis.exceptions import ConnectionError as RedisConnectionError
+
+        raise RedisConnectionError("redis died between the two calls")
+
+    monkeypatch.setattr(override.auth_lockout, "record_failure", cannot_count)
+    with pytest.raises(PermissionDeniedError):
+        await _resolve(ctx, str(manager.id), "0000")
+    assert "pos.override.denied" in await _override_audit_names(db, tenant_ctx)
+
+
+async def test_a_right_pin_still_grants_when_the_counter_cannot_be_reset(
+    db, tenant_ctx, monkeypatch
+):
+    """The PIN was right: a failed reset leaves a stale count, it must not undo the approval."""
+    from app.modules.pos import override
+
+    manager, _, ctx = await _setup(db, tenant_ctx)
+
+    async def cannot_reset(*_a, **_k):
+        from redis.exceptions import ConnectionError as RedisConnectionError
+
+        raise RedisConnectionError("redis died after the check")
+
+    monkeypatch.setattr(override.auth_lockout, "reset", cannot_reset)
+    assert (await _resolve(ctx, str(manager.id), "4821")).active
+    assert "pos.override.granted" in await _override_audit_names(db, tenant_ctx)
