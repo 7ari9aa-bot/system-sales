@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 405,
-    "sha256": "b9aeae7751d3915a0a02a17ff1e94c9f4f9a36e041bab0bbfec9ab916bf570a5",
-    "typed_operations": 251
+    "operations": 408,
+    "sha256": "b68efffc144beb954d2a27951fa19de84d3a5e07d21f2e8b0a74ad602818fc57",
+    "typed_operations": 254
   },
   "spec": {
     "components": {
@@ -13416,6 +13416,21 @@
           "title": "RemediationResultOut",
           "type": "object"
         },
+        "ReorderLevelRequest": {
+          "properties": {
+            "reorder_level": {
+              "maximum": 1000000.0,
+              "minimum": 0.0,
+              "title": "Reorder Level",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "reorder_level"
+          ],
+          "title": "ReorderLevelRequest",
+          "type": "object"
+        },
         "ResendVerificationRequest": {
           "description": "Body for POST /auth/resend-verification — an address, nothing else.\n\nShape-identical to PasswordResetRequest on purpose: both endpoints answer\nwith the same neutral response regardless of account state. It stays its\nown type so the two contracts can evolve independently.",
           "properties": {
@@ -15738,6 +15753,187 @@
             "healthy_count"
           ],
           "title": "StockHealthOut",
+          "type": "object"
+        },
+        "StockRow": {
+          "properties": {
+            "avg_cost": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Avg Cost"
+            },
+            "barcode": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Barcode"
+            },
+            "category": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            },
+            "category_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category Id"
+            },
+            "on_hand": {
+              "title": "On Hand",
+              "type": "integer"
+            },
+            "options": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "title": "Options",
+              "type": "object"
+            },
+            "price": {
+              "title": "Price",
+              "type": "string"
+            },
+            "product_id": {
+              "title": "Product Id",
+              "type": "string"
+            },
+            "product_title": {
+              "title": "Product Title",
+              "type": "string"
+            },
+            "reorder_level": {
+              "title": "Reorder Level",
+              "type": "integer"
+            },
+            "reserved": {
+              "title": "Reserved",
+              "type": "integer"
+            },
+            "sku": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sku"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            },
+            "stock_cost_value": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Stock Cost Value"
+            },
+            "stock_retail_value": {
+              "title": "Stock Retail Value",
+              "type": "string"
+            },
+            "variant_id": {
+              "title": "Variant Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "variant_id",
+            "product_id",
+            "product_title",
+            "category_id",
+            "category",
+            "sku",
+            "options",
+            "barcode",
+            "price",
+            "avg_cost",
+            "on_hand",
+            "reserved",
+            "reorder_level",
+            "status",
+            "stock_cost_value",
+            "stock_retail_value"
+          ],
+          "title": "StockRow",
+          "type": "object"
+        },
+        "StockSummary": {
+          "properties": {
+            "alerts": {
+              "title": "Alerts",
+              "type": "integer"
+            },
+            "cost_value": {
+              "title": "Cost Value",
+              "type": "string"
+            },
+            "low": {
+              "title": "Low",
+              "type": "integer"
+            },
+            "out": {
+              "title": "Out",
+              "type": "integer"
+            },
+            "pieces": {
+              "title": "Pieces",
+              "type": "integer"
+            },
+            "retail_value": {
+              "title": "Retail Value",
+              "type": "string"
+            },
+            "unknown_cost_variants": {
+              "title": "Unknown Cost Variants",
+              "type": "integer"
+            },
+            "variants": {
+              "title": "Variants",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "variants",
+            "pieces",
+            "out",
+            "low",
+            "alerts",
+            "cost_value",
+            "retail_value",
+            "unknown_cost_variants"
+          ],
+          "title": "StockSummary",
           "type": "object"
         },
         "StreamTokenOut": {
@@ -52873,6 +53069,397 @@
             }
           },
           "summary": "Sell",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
+      "/api/v1/pos/stock": {
+        "get": {
+          "description": "One joined row per active variant: names, options, barcode, price, cost, on-hand, level.",
+          "operationId": "list_stock_api_v1_pos_stock_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "term",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "maxLength": 100,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Term"
+              }
+            },
+            {
+              "in": "query",
+              "name": "category_id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Category Id"
+              }
+            },
+            {
+              "in": "query",
+              "name": "status",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "pattern": "^(in|low|out)$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Status"
+              }
+            },
+            {
+              "in": "query",
+              "name": "limit",
+              "required": false,
+              "schema": {
+                "default": 500,
+                "maximum": 1000,
+                "minimum": 1,
+                "title": "Limit",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "default": 0,
+                "minimum": 0,
+                "title": "Offset",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/StockRow"
+                    },
+                    "title": "Response List Stock Api V1 Pos Stock Get",
+                    "type": "array"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Stock",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
+      "/api/v1/pos/stock/summary": {
+        "get": {
+          "description": "Totals over every active variant, not over the page the screen shows.",
+          "operationId": "stock_summary_api_v1_pos_stock_summary_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/StockSummary"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Stock Summary",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
+      "/api/v1/pos/stock/{variant_id}/reorder-level": {
+        "put": {
+          "operationId": "set_reorder_level_api_v1_pos_stock__variant_id__reorder_level_put",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "variant_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Variant Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReorderLevelRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ReorderLevelRequest"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Set Reorder Level",
           "tags": [
             "pos"
           ]

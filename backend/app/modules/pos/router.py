@@ -11,13 +11,15 @@ from datetime import date
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
 from app.modules.errors import ValidationError
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
+from app.modules.inventory.stock_view import StockLevelService
 from app.modules.pos.profiles import PosProfileService
 from app.modules.pos.service import PosService
+from app.modules.pos.stock_view import StockViewService
 
 router = APIRouter(prefix="/pos", tags=["pos"])
 
@@ -775,3 +777,77 @@ async def list_handovers(session_id: UUID, ctx: TenantCtxDep):
     return [_handover_out(r) for r in rows]
 
 
+class StockRow(BaseModel):
+    variant_id: str
+    product_id: str
+    product_title: str
+    category_id: str | None
+    category: str | None
+    sku: str | None
+    options: dict[str, str]
+    barcode: str | None
+    price: str
+    avg_cost: str | None  # null = nobody recorded a cost; it is NOT zero
+    on_hand: int
+    reserved: int
+    reorder_level: int  # 0 = no alert configured
+    status: str  # in | low | out, decided by the backend and nowhere else
+    stock_cost_value: str | None
+    stock_retail_value: str
+
+
+class StockSummary(BaseModel):
+    variants: int
+    pieces: int
+    out: int
+    low: int
+    alerts: int
+    cost_value: str
+    retail_value: str
+    unknown_cost_variants: int
+
+
+class ReorderLevelRequest(BaseModel):
+    # strict: a JSON `true` or "3" must not become a level (bool is an int in Python).
+    reorder_level: int = Field(strict=True, ge=0, le=1_000_000)
+
+
+@router.get("/stock", response_model=list[StockRow])
+async def list_stock(
+    ctx: TenantCtxDep,
+    term: Annotated[str | None, Query(max_length=100)] = None,
+    category_id: UUID | None = None,
+    status: Annotated[str | None, Query(pattern="^(in|low|out)$")] = None,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 500,
+    offset: Annotated[int, Query(ge=0)] = 0,
+):
+    """One joined row per active variant: names, options, barcode, price, cost, on-hand, level."""
+    return await StockViewService.list_stock(
+        ctx.session,
+        ctx.tenant_id,
+        term=term,
+        category_id=category_id,
+        status=status,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get("/stock/summary", response_model=StockSummary)
+async def stock_summary(ctx: TenantCtxDep):
+    """Totals over every active variant, not over the page the screen shows."""
+    return await StockViewService.summary(ctx.session, ctx.tenant_id)
+
+
+@router.put("/stock/{variant_id}/reorder-level", response_model=ReorderLevelRequest)
+async def set_reorder_level(
+    variant_id: UUID,
+    body: ReorderLevelRequest,
+    ctx: TenantContext = Depends(require_permission("inventory:write")),
+):
+    await StockLevelService.set_reorder_level(
+        ctx.session, ctx.tenant_id, variant_id, body.reorder_level
+    )
+    # Answer with what the database now holds, not an echo of the request.
+    level = await StockLevelService.get_reorder_level(ctx.session, ctx.tenant_id, variant_id)
+    return ReorderLevelRequest(reorder_level=level)

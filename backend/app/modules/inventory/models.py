@@ -15,6 +15,7 @@ from datetime import datetime
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Identity,
@@ -217,5 +218,29 @@ class InventoryReconciliationFinding(
             "tenant_id",
             "status",
             "created_at",
+        ),
+    )
+
+
+class VariantStockSetting(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, Base):
+    """The reorder level of ONE variant (a shop first: per variant, not per warehouse).
+
+    0 means "no alert configured", so a variant nobody set up is never reported as running low.
+    No row at all reads as 0. The ceiling is a sanity bound against a mistyped barcode scan
+    landing in the field, not a business rule.
+    """
+
+    __tablename__ = "variant_stock_settings"
+
+    variant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("product_variants.id", ondelete="CASCADE")
+    )
+    reorder_level: Mapped[int] = mapped_column(Integer, server_default="0")
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "variant_id", name="uq_variant_stock_settings_variant"),
+        CheckConstraint(
+            "reorder_level >= 0 AND reorder_level <= 1000000",
+            name="ck_variant_stock_settings_level",
         ),
     )
