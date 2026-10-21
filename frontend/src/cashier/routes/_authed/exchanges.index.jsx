@@ -21,7 +21,7 @@ import { newIntent, posApi, withApproval } from "@/cashier/api/posApi";
 import { approvalFailure, approvalReason, needsApproval } from "@/cashier/api/approval";
 import ManagerApprovalDialog from "@/cashier/components/shifts/ManagerApprovalDialog";
 import { useShiftState } from "@/cashier/api/useShifts";
-import { useCatalog, useReturnableSales } from "@/cashier/api/usePosSale";
+import { RECEIPT_SEARCH_MIN, useReceiptSearch, useReturnableSales, useSessionCatalog } from "@/cashier/api/usePosSale";
 import { searchCatalog } from "@/cashier/api/catalogAdapter";
 import { estimateRefund, returnableLines, sendReturn, setQty, tableLine } from "@/cashier/api/returnPlan";
 import { addReplacement, previewTotal, removeReplacement, setReplacementQty, useExchangeQuote } from "@/cashier/api/exchangeCart";
@@ -62,7 +62,7 @@ function ExchangeScreen({ session }) {
   const { invoice: invoiceParam } = Object.fromEntries(useSearchParams()[0]);
   const salesQuery = useReturnableSales(session.id);
   const sales = useMemo(() => (salesQuery.data ?? []).map(asInvoice), [salesQuery.data]);
-  const catalogQuery = useCatalog();
+  const catalogQuery = useSessionCatalog(session.id); // this till's items, price and warehouse stock, like the sales screen
   const catalog = useMemo(() => catalogQuery.data ?? [], [catalogQuery.data]);
 
   const [invoice, setInvoice] = useState(null);
@@ -84,7 +84,17 @@ function ExchangeScreen({ session }) {
   const fillRows = useFillRowCount({ areaRef: gridRef, bottomRef: actionsRef });
 
   const key = invoiceTerm.trim().toLowerCase();
-  const matches = (key ? sales.filter((s) => s.number.toLowerCase().includes(key) || s.detail.lines.some((l) => String(l.sku ?? "").toLowerCase().includes(key))) : sales).slice(0, 6);
+  // The server finds a sale on ANY shift; wait for a pause in typing so each keystroke is not a request.
+  const [searchTerm, setSearchTerm] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setSearchTerm(invoiceTerm), 300);
+    return () => clearTimeout(t);
+  }, [invoiceTerm]);
+  const remote = useReceiptSearch(searchTerm);
+  const remoteSales = useMemo(() => (remote.data ?? []).map(asInvoice), [remote.data]);
+  const local = key ? sales.filter((s) => s.number.toLowerCase().includes(key) || s.detail.lines.some((l) => String(l.sku ?? "").toLowerCase().includes(key))) : sales;
+  const seen = new Set(local.map((s) => s.id));
+  const matches = [...local, ...(key ? remoteSales.filter((s) => !seen.has(s.id)) : [])].slice(0, 6);
   const quickPicks = sales.filter((s) => s.detail.lines.some((l) => Number(l.quantity) - Number(l.returned_qty ?? 0) > 0)).slice(0, 3);
   const variantMatches = term.trim() ? searchCatalog(catalog, term, 10).filter((v) => v.stock > 0) : [];
 
@@ -132,10 +142,13 @@ function ExchangeScreen({ session }) {
   function submitSearch() {
     const clean = invoiceTerm.trim().toLowerCase();
     if (!clean) return setError("اكتب رقم الفاتورة أو كود الصنف أولًا");
-    const exact = sales.find((s) => s.number.toLowerCase() === clean);
+    const exact = [...sales, ...remoteSales].find((s) => s.number.toLowerCase() === clean);
     if (exact) return selectInvoice(exact);
     if (matches.length === 1) return selectInvoice(matches[0]);
-    setError(matches.length ? "أكثر من فاتورة مطابقة. اختر من القائمة" : "لا توجد فاتورة بهذا الرقم في الوردية المفتوحة. الاستبدال يتم على نفس وردية البيع.");
+    if (matches.length) return setError("أكثر من فاتورة مطابقة. اختر من القائمة");
+    if (clean.length < RECEIPT_SEARCH_MIN) return setError(`اكتب ${RECEIPT_SEARCH_MIN} أحرف على الأقل من رقم الفاتورة`);
+    if (remote.isFetching || searchTerm.trim().toLowerCase() !== clean) return setError("جارٍ البحث… أعد المحاولة بعد لحظة");
+    setError("لا توجد فاتورة بيع بهذا الرقم");
   }
   const start = (k) => setLines((p) => setQty(p, k, 1));
   const cancelLine = (k) => setLines((p) => setQty(p, k, 0));
@@ -210,13 +223,16 @@ function ExchangeScreen({ session }) {
     send(p);
   }
 
+  const paramSearch = useReceiptSearch(invoiceParam ?? "");
   useEffect(() => {
-    if (!invoiceParam || invoice || !sales.length) return;
-    const found = sales.find((s) => s.number.toLowerCase() === invoiceParam.toLowerCase());
-    if (found) selectInvoice(found);
-    else setError(`الفاتورة ${invoiceParam} ليست ضمن الوردية المفتوحة. الاستبدال يتم على نفس وردية البيع.`);
+    if (!invoiceParam || invoice) return;
+    const want = invoiceParam.toLowerCase();
+    const found = [...sales, ...(paramSearch.data ?? []).map(asInvoice)].find((s) => s.number.toLowerCase() === want);
+    if (found) return selectInvoice(found);
+    if (salesQuery.isLoading || paramSearch.isLoading) return; // still looking: do not say "not found" yet
+    setError(`لا توجد فاتورة بيع بالرقم ${invoiceParam}`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [invoiceParam, sales]);
+  }, [invoiceParam, sales, paramSearch.data, paramSearch.isLoading, salesQuery.isLoading]);
 
   useEffect(() => {
     function onKey(e) {
