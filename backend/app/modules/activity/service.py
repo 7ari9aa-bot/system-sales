@@ -98,8 +98,8 @@ _SOURCES: dict[str, str] = {
            AND m.reason NOT IN ('reservation', 'reservation_release')
     """,
     "shift": """
-        SELECT x.at, 'shift', x.id, x.doc, x.amount, x.actor_id, x.detail FROM (
-            SELECT s.opened_at AS at, s.id, 'فتح وردية' AS doc, s.opening_float AS amount,
+        SELECT x.at, 'shift', x.ref_id, x.doc, x.amount, x.actor_id, x.detail FROM (
+            SELECT s.opened_at AS at, s.id AS ref_id, 'فتح وردية' AS doc, s.opening_float AS amount,
                    COALESCE(s.opened_by_user_id, s.cashier_user_id) AS actor_id, 'opened' AS detail
               FROM pos_sessions s WHERE s.tenant_id = :tenant
             UNION ALL
@@ -187,23 +187,24 @@ class ActivityService:
         if cursor:
             # Strictly after the last row seen, in (time desc, ref desc) order: no row is
             # skipped or repeated when several share the same instant.
-            where.append("(f.occurred_at, f.ref_id::text) < (:cat, :cref)")
+            where.append("(f.occurred_at, f.ekey) < (:cat, :cref)")
             params["cat"] = cursor.at
             params["cref"] = cursor.ref
 
         sql = f"""
-            SELECT f.occurred_at, f.kind, f.ref_id::text AS ref_id, f.doc, f.amount,
+            SELECT f.occurred_at, f.kind, f.ref_id::text AS ref_id, f.ekey, f.doc, f.amount,
                    f.actor_id::text AS actor_id, u.full_name AS actor_name, f.detail
-              FROM ({union}) f
+              FROM (SELECT *, kind || ':' || ref_id::text || ':' || doc AS ekey
+                      FROM ({union}) base) f
               LEFT JOIN users u ON u.id = f.actor_id
              WHERE {" AND ".join(where)}
-             ORDER BY f.occurred_at DESC, f.ref_id::text DESC
+             ORDER BY f.occurred_at DESC, f.ekey DESC
              LIMIT :lim
         """  # noqa: S608 - only whitelisted fragments are interpolated; every value is bound
         rows = [dict(r) for r in (await session.execute(text(sql), params)).mappings()]
         more = len(rows) > limit
         rows = rows[:limit]
-        nxt = Cursor(at=rows[-1]["occurred_at"], ref=rows[-1]["ref_id"]) if more and rows else None
+        nxt = Cursor(at=rows[-1]["occurred_at"], ref=rows[-1]["ekey"]) if more and rows else None
         return rows, nxt
 
     @staticmethod

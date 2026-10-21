@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 405,
-    "sha256": "5ee8c7d684476fd314c99dbfbee2cad49fe8c7d3e17bd5078634a413223008b5",
+    "sha256": "b9aeae7751d3915a0a02a17ff1e94c9f4f9a36e041bab0bbfec9ab916bf570a5",
     "typed_operations": 251
   },
   "spec": {
@@ -186,6 +186,10 @@
               "title": "Doc",
               "type": "string"
             },
+            "event_key": {
+              "title": "Event Key",
+              "type": "string"
+            },
             "kind": {
               "title": "Kind",
               "type": "string"
@@ -203,6 +207,7 @@
             "occurred_at",
             "kind",
             "ref_id",
+            "event_key",
             "doc",
             "amount",
             "actor_id",

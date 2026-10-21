@@ -6,9 +6,10 @@ import FilterPanel from "@/cashier/components/ui-kit/FilterPanel";
 import { FIELD, FIELD_LABEL, FIELD_SELECT, FILTER_PANEL, FILTER_PANEL_CONTENT, FILTER_PANEL_HEADER } from "@/cashier/components/ui-kit/ledgerStyles";
 import { ACTIVITY_TYPES } from "@/cashier/lib/format";
 
-// فلاتر سجل العمليات: بحث برقم المستند أو التفاصيل أو الموظف، نوع العملية، والموظف.
-export default function ActivityLogFilters({ term, onTerm, type, onType, employee, onEmployee, employeesList, onReset }) {
-  const activeCount = [type, employee].filter(Boolean).length + (term ? 1 : 0);
+// فلاتر سجل العمليات: بحث برقم المستند أو التفاصيل أو الموظف، نوع العملية، الموظف، ونطاق التاريخ.
+// كلها تُرسل للسيرفر، فالفلتر يصل لعمليات أقدم من المعروض حاليًا.
+export default function ActivityLogFilters({ term, onTerm, type, onType, employee, onEmployee, employeesList, from, onFrom, to, onTo, onReset }) {
+  const activeCount = [type, employee, from, to].filter(Boolean).length + (term ? 1 : 0);
 
   return (
     <FilterPanel
@@ -19,11 +20,11 @@ export default function ActivityLogFilters({ term, onTerm, type, onType, employe
       onReset={onReset}
     >
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <div>
+        <div className="sm:col-span-2 lg:col-span-3">
           <Label className={FIELD_LABEL}>بحث برقم المستند أو التفاصيل أو الموظف</Label>
           <div className="relative">
             <Search className="pointer-events-none absolute right-1.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#7A766C]" />
-            <Input value={term} onChange={(e) => onTerm(e.target.value)} placeholder="INV-2026-0061، مرتجع، منى" className={`${FIELD} ps-6`} />
+            <Input value={term} onChange={(e) => onTerm(e.target.value)} placeholder="POS-RET، مورد، منى" className={`${FIELD} ps-6`} />
           </div>
         </div>
 
@@ -53,12 +54,23 @@ export default function ActivityLogFilters({ term, onTerm, type, onType, employe
             <SelectContent>
               <SelectItem value="all">كل الموظفين</SelectItem>
               {employeesList.map((e) => (
-                <SelectItem key={e} value={e}>
-                  {e}
+                <SelectItem key={e.id} value={e.id}>
+                  {e.name}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label className={FIELD_LABEL}>من تاريخ</Label>
+            <Input type="date" value={from} max={to || undefined} onChange={(e) => onFrom(e.target.value)} className={FIELD} />
+          </div>
+          <div>
+            <Label className={FIELD_LABEL}>إلى تاريخ</Label>
+            <Input type="date" value={to} min={from || undefined} onChange={(e) => onTo(e.target.value)} className={FIELD} />
+          </div>
         </div>
       </div>
     </FilterPanel>

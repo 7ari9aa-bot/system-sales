@@ -28,6 +28,8 @@ class ActivityOut(BaseModel):
     occurred_at: str
     kind: str
     ref_id: str
+    # Unique per event (a shift's open and close share a ref_id); the screen's row key.
+    event_key: str
     doc: str
     # Decimal as a string: a JSON float would lose cents. Inventory rows carry a unit count.
     amount: str
@@ -75,6 +77,7 @@ def _out(r: dict) -> ActivityOut:
         occurred_at=r["occurred_at"].isoformat(),
         kind=r["kind"],
         ref_id=r["ref_id"],
+        event_key=r["ekey"],
         doc=r["doc"] or "",
         amount=f"{r['amount']:.2f}" if r["kind"] != "inventory" else str(int(r["amount"])),
         actor_id=r["actor_id"],

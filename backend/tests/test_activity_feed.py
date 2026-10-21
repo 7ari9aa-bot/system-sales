@@ -118,7 +118,7 @@ async def test_paging_walks_every_row_once_even_when_rows_share_an_instant(db, t
         rows, cursor = await ActivityService.feed(
             db, tenant_ctx.tenant_id, kinds=("expense",), limit=3, cursor=cursor
         )
-        seen += [r["ref_id"] for r in rows]
+        seen += [r["ekey"] for r in rows]
         if cursor is None:
             break
     assert len(seen) == len(set(seen)) == len(made), "a row was repeated or skipped between pages"
@@ -169,7 +169,7 @@ async def test_a_tenant_never_sees_another_tenants_activity(db, tenant_ctx) -> N
     await bind_tenant(db, other.id)
     theirs, _ = await ActivityService.feed(db, other.id)
     assert not any("سري" in (r["detail"] or "") for r in theirs)
-    assert {r["ref_id"] for r in theirs}.isdisjoint({r["ref_id"] for r in mine})
+    assert {r["ekey"] for r in theirs}.isdisjoint({r["ekey"] for r in mine})
     # asking for the OTHER tenant's id while bound to ours must still give nothing of theirs
     await bind_tenant(db, tenant_ctx.tenant_id)
     crossed, _ = await ActivityService.feed(db, other.id)
@@ -214,3 +214,30 @@ async def test_a_partial_return_shows_the_money_handed_back_not_the_order_total(
     # the item is named for the cashier, and the cashier is the shift's holder
     assert by_kind["return"]["detail"]
     assert by_kind["sale"]["actor_id"] == by_kind["return"]["actor_id"]
+
+
+async def test_a_closed_shift_is_two_events_that_page_without_loss_or_repeat(
+    db, tenant_ctx
+) -> None:
+    """Opening and closing a shift share one ref_id. Paging by ref_id alone would treat them as the
+    same row and drop one at a page boundary (or repeat it); the event key tells them apart."""
+    for _ in range(3):
+        shift = await _shift(db, tenant_ctx)
+        await PosService.close_session(db, tenant_ctx.tenant_id, shift.id, counted_cash="100.00")
+    everything, _ = await ActivityService.feed(
+        db, tenant_ctx.tenant_id, kinds=("shift",), limit=200
+    )
+    assert len(everything) == 6
+    assert len({r["ekey"] for r in everything}) == 6, "open and close collapsed into one event"
+    assert len({r["ref_id"] for r in everything}) == 3
+    # a page size of 1 puts a boundary between every open/close pair
+    walked: list[str] = []
+    cursor = None
+    for _ in range(12):
+        rows, cursor = await ActivityService.feed(
+            db, tenant_ctx.tenant_id, kinds=("shift",), limit=1, cursor=cursor
+        )
+        walked += [r["ekey"] for r in rows]
+        if cursor is None:
+            break
+    assert sorted(walked) == sorted(r["ekey"] for r in everything)

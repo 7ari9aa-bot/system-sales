@@ -127,6 +127,10 @@ export const posApi = {
   voidExpense: async (id, { reason }, intent) =>
     post(`/expenses/${seg(id)}/void`, { reason: String(reason ?? "").trim() }, needIntent(intent)),
 
+  /* ---- activity (backend/app/modules/activity): a read-only timeline, never written ---- */
+  activityFeed: (query = "") => api(`/activity${query ? `?${query}` : ""}`),
+  activitySummary: (query = "") => api(`/activity/summary${query ? `?${query}` : ""}`),
+
   /* ---- purchasing (backend/app/modules/purchasing) ---- */
   listSuppliers: () => api("/suppliers"),
   getSupplier: (id) => api(`/suppliers/${seg(id)}`),

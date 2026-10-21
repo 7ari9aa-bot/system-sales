@@ -137,11 +137,10 @@ export const SHIFT_STATUS = {
 
 export const ACTIVITY_TYPES = {
   sale: { label: "فاتورة بيع", tone: "success" },
-  sale_hold: { label: "فاتورة معلقة", tone: "warning" },
   return: { label: "مرتجع عميل", tone: "danger" },
-  exchange: { label: "استبدال", tone: "violet" },
   purchase: { label: "توريد", tone: "info" },
   supplier_return: { label: "مرتجع مورد", tone: "primary" },
+  supplier_payment: { label: "دفعة مورد", tone: "violet" },
   expense: { label: "مصروف", tone: "warning" },
   inventory: { label: "حركة مخزون", tone: "neutral" },
   shift: { label: "وردية", tone: "info" },

@@ -1,8 +1,8 @@
 import StatusBadge from "@/cashier/components/ui-kit/StatusBadge";
 import { CELL_SUB, TD, TH } from "@/cashier/components/ui-kit/ledgerStyles";
-import { fmtDateTime } from "@/cashier/lib/format";
+import { fmtDateTime, fmtInt, fmtMoney } from "@/cashier/lib/format";
 
-// أعمدة سجل العمليات: العملية ومستندها، التفاصيل، الموظف، الفرع، والتاريخ.
+// أعمدة سجل العمليات: العملية ومستندها، التفاصيل، القيمة، الموظف، والتاريخ.
 export default function activityLogColumns() {
   return [
     {
@@ -24,8 +24,26 @@ export default function activityLogColumns() {
       className: TD,
       render: (r) => <span className="block max-w-[420px] text-xs text-[#33322E]">{r.details}</span>,
     },
-    { key: "employee", header: "الموظف", headerClassName: TH, className: TD, render: (r) => <span className="text-xs text-[#33322E]">{r.employee}</span> },
-    { key: "branch", header: "الفرع / المخزن", headerClassName: TH, className: TD, render: (r) => <span className={CELL_SUB}>{r.branch}</span> },
+    {
+      key: "amount",
+      header: "القيمة",
+      headerClassName: TH,
+      className: TD,
+      // حركة المخزون كمية قطع وليست فلوسًا، فلا تُعرض بعملة.
+      render: (r) =>
+        r.quantity != null ? (
+          <span className="num text-xs text-[#33322E]">{fmtInt(r.quantity)} قطعة</span>
+        ) : (
+          <span className="num text-xs text-[#33322E]">{fmtMoney(r.amount)}</span>
+        ),
+    },
+    {
+      key: "employee",
+      header: "الموظف",
+      headerClassName: TH,
+      className: TD,
+      render: (r) => <span className="text-xs text-[#33322E]">{r.employee || "—"}</span>,
+    },
     { key: "date", header: "التاريخ والوقت", headerClassName: TH, className: TD, render: (r) => <span className="num text-xs text-[#33322E]">{fmtDateTime(r.date)}</span> },
   ];
 }
