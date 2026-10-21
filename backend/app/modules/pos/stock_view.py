@@ -19,10 +19,10 @@ from uuid import UUID
 from sqlalchemy import column, func, select, table
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.sql import LIKE_ESCAPE, like_pattern
 from app.modules.catalog.models import Category, Product, ProductIdentifier, ProductVariant
 from app.modules.errors import ValidationError
-from app.modules.inventory.models import InventoryBalance, VariantStockSetting
-from app.modules.inventory.stock_view import stock_status
+from app.modules.inventory.stock_view import StockLevelService, stock_status
 from app.modules.orders.money import to_money
 
 # `variant_costs` is purchasing's table. Importing its model would add a pos -> purchasing edge and
@@ -36,11 +36,39 @@ VariantCost = table(  # noqa: N816
     column("avg_cost"),
 )
 
+# inventory's tables, declared light for the same reason: this read-model joins them with the
+# catalog, and importing inventory.models from here would be one more pos -> inventory edge for
+# four column names. inventory still owns the schema; the two tests below pin the shapes together.
+InventoryBalance = table(  # noqa: N816
+    "inventory_balances",
+    column("tenant_id"),
+    column("variant_id"),
+    column("on_hand"),
+    column("reserved"),
+)
+VariantStockSetting = table(  # noqa: N816
+    "variant_stock_settings",
+    column("tenant_id"),
+    column("variant_id"),
+    column("reorder_level"),
+)
+
 # A scan code a person would print on a label: prefer a retail code over an internal token.
 _BARCODE_PRIORITY = ("ean", "gtin", "upc", "barcode")
 
 
 class StockViewService:
+    @staticmethod
+    async def set_reorder_level(
+        session: AsyncSession, tenant_id: UUID, variant_id: UUID, level: int
+    ) -> int:
+        """Save a variant's reorder level and answer with what the database now holds.
+
+        The router goes through here so `pos` reaches `inventory.stock_view` from ONE file.
+        """
+        await StockLevelService.set_reorder_level(session, tenant_id, variant_id, level)
+        return await StockLevelService.get_reorder_level(session, tenant_id, variant_id)
+
     @staticmethod
     async def list_stock(
         session: AsyncSession,
@@ -60,15 +88,15 @@ class StockViewService:
 
         held = (
             select(
-                InventoryBalance.variant_id.label("variant_id"),
-                func.coalesce(func.sum(InventoryBalance.on_hand), 0).label("on_hand"),
-                func.coalesce(func.sum(InventoryBalance.reserved), 0).label("reserved"),
+                InventoryBalance.c.variant_id.label("variant_id"),
+                func.coalesce(func.sum(InventoryBalance.c.on_hand), 0).label("on_hand"),
+                func.coalesce(func.sum(InventoryBalance.c.reserved), 0).label("reserved"),
             )
-            .where(InventoryBalance.tenant_id == tenant_id)
-            .group_by(InventoryBalance.variant_id)
+            .where(InventoryBalance.c.tenant_id == tenant_id)
+            .group_by(InventoryBalance.c.variant_id)
             .subquery()
         )
-        level = func.coalesce(VariantStockSetting.reorder_level, 0)
+        level = func.coalesce(VariantStockSetting.c.reorder_level, 0)
         on_hand = func.coalesce(held.c.on_hand, 0)
         query = (
             select(
@@ -85,8 +113,8 @@ class StockViewService:
             .outerjoin(held, held.c.variant_id == ProductVariant.id)
             .outerjoin(
                 VariantStockSetting,
-                (VariantStockSetting.variant_id == ProductVariant.id)
-                & (VariantStockSetting.tenant_id == tenant_id),
+                (VariantStockSetting.c.variant_id == ProductVariant.id)
+                & (VariantStockSetting.c.tenant_id == tenant_id),
             )
             .outerjoin(
                 VariantCost,
@@ -99,18 +127,18 @@ class StockViewService:
         if category_id is not None:
             query = query.where(Product.category_id == category_id)
         if term and term.strip():
-            like = f"%{term.strip().lower()}%"
+            like = like_pattern(term.strip().lower())
             codes = (
                 select(ProductIdentifier.variant_id)
                 .where(
                     ProductIdentifier.tenant_id == tenant_id,
-                    func.lower(ProductIdentifier.value).like(like),
+                    func.lower(ProductIdentifier.value).like(like, escape=LIKE_ESCAPE),
                 )
                 .scalar_subquery()
             )
             query = query.where(
-                func.lower(Product.title).like(like)
-                | func.lower(func.coalesce(ProductVariant.sku, "")).like(like)
+                func.lower(Product.title).like(like, escape=LIKE_ESCAPE)
+                | func.lower(func.coalesce(ProductVariant.sku, "")).like(like, escape=LIKE_ESCAPE)
                 | ProductVariant.id.in_(codes)
             )
         if status == "out":

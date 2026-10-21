@@ -136,6 +136,31 @@ def positive_money(value: object, field: str = "amount") -> Decimal:
     return amount
 
 
+_MAX_EXACT_AMOUNT = Decimal("999999999.99")  # MONEY is Numeric(14, 2)
+
+
+def exact_money(value: object, field: str = "amount") -> Decimal:
+    """A strictly positive amount a PERSON typed, with at most 2 decimals. Never rounds.
+
+    ``to_money`` ROUNDS, which silently turns 10.005 into 10.01: money the user never typed.
+    Anything keyed in by hand (an expense, a supplier payment) goes through here, which REJECTS
+    a third decimal instead.
+    """
+    try:
+        amount = Decimal(str(value).strip())
+    except (InvalidOperation, ValueError, TypeError) as exc:
+        raise ValueError(f"{field} must be a valid number") from exc
+    if not amount.is_finite():
+        raise ValueError(f"{field} must be a finite number")
+    if amount != amount.quantize(MONEY_QUANTUM):
+        raise ValueError(f"{field} must have at most 2 decimal places")
+    if amount <= 0:
+        raise ValueError(f"{field} must be greater than zero")
+    if amount > _MAX_EXACT_AMOUNT:
+        raise ValueError(f"{field} is too large")
+    return amount.quantize(MONEY_QUANTUM)
+
+
 def net_collected(settled_gross: object, refunded: object) -> Decimal:
     """Money the merchant actually holds: settled gross minus refunds.
 

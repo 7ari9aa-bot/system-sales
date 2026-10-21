@@ -97,13 +97,13 @@ def _out(r: dict) -> ActivityOut:
 @router.get("", response_model=FeedOut)
 async def feed(
     ctx: ReadCtx,
-    kinds: str | None = Query(None, description="comma separated; default all"),
+    kinds: Annotated[str | None, Query(description="comma separated; default all")] = None,
     actor_id: uuid.UUID | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
-    q: str | None = Query(None, max_length=80),
-    cursor: str | None = Query(None, max_length=400),
-    limit: int = Query(50, ge=1, le=200),
+    q: Annotated[str | None, Query(max_length=80)] = None,
+    cursor: Annotated[str | None, Query(max_length=400)] = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ):
     start, end = await window_for(ctx.session, ctx.tenant_id, date_from, date_to)
     try:

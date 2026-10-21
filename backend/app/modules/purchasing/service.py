@@ -29,8 +29,8 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.money import exact_money
 from app.modules.errors import ConflictError, NotFoundError, ValidationError
+from app.modules.purchasing.catalog_lookup import existing_variant_ids
 from app.modules.purchasing.models import (
     PAYMENT_METHODS,
     PurchaseOrder,
@@ -41,6 +41,18 @@ from app.modules.purchasing.models import (
     VariantCost,
     VariantCostHistory,
 )
+
+
+def exact_money(value: object, field: str = "amount") -> Decimal:
+    """`orders.money.exact_money`, with its refusals surfaced as a 422 like every other input."""
+    # Function-scope on purpose: a module-load import would add an edge to `orders`.
+    from app.modules.orders.money import exact_money as _exact_money
+
+    try:
+        return _exact_money(value, field)
+    except ValueError as exc:
+        raise ValidationError(str(exc)) from exc
+
 
 _CENT = Decimal("0.01")
 _COST_PLACES = Decimal("0.0001")
@@ -67,12 +79,6 @@ def _numbering():
     from app.modules.expenses.service import NumberingService
 
     return NumberingService
-
-
-def _catalog_variant_model():
-    from app.modules.catalog.models import ProductVariant
-
-    return ProductVariant
 
 
 def money(value: object, field: str = "amount", *, allow_zero: bool = False) -> Decimal:
@@ -416,7 +422,6 @@ class PurchaseService:
         if note and len(note) > 255:
             raise ValidationError("note must be at most 255 characters")
 
-        Variant = _catalog_variant_model()
         clean: list[tuple[UUID, int, Decimal, Decimal]] = []
         seen: set[UUID] = set()
         for index, raw in enumerate(lines, start=1):
@@ -432,13 +437,7 @@ class PurchaseService:
             qty = positive_int(raw.get("quantity"), f"line {index} quantity")
             cost = money(raw.get("unit_cost"), f"line {index} unit_cost", allow_zero=True)
             clean.append((variant_id, qty, cost, (cost * qty).quantize(_CENT)))
-        found = set(
-            (
-                await session.execute(
-                    select(Variant.id).where(Variant.tenant_id == tenant_id, Variant.id.in_(seen))
-                )
-            ).scalars()
-        )
+        found = await existing_variant_ids(session, tenant_id, seen)
         missing = seen - found
         if missing:
             raise NotFoundError(f"variant not found: {sorted(str(m) for m in missing)[0]}")

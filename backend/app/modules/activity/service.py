@@ -24,6 +24,8 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.sql import like_pattern
+
 KINDS = (
     "sale",
     "return",
@@ -111,11 +113,6 @@ _SOURCES: dict[str, str] = {
 }
 
 
-def _like_literal(term: str) -> str:
-    """Make a typed search a literal: `%` and `_` are characters to find, not wildcards."""
-    return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-
-
 _COLS = "occurred_at, kind, ref_id, doc, amount, actor_id, detail"
 
 
@@ -183,7 +180,7 @@ class ActivityService:
                 "(f.doc ILIKE :q ESCAPE '\\' OR f.detail ILIKE :q ESCAPE '\\' "
                 "OR u.full_name ILIKE :q ESCAPE '\\')"
             )
-            params["q"] = f"%{_like_literal(search.strip())}%"
+            params["q"] = like_pattern(search.strip())
         if cursor:
             # Strictly after the last row seen, in (time desc, ref desc) order: no row is
             # skipped or repeated when several share the same instant.

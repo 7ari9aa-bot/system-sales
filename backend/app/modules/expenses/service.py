@@ -22,7 +22,6 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.money import exact_money
 from app.modules.errors import ConflictError, NotFoundError, ValidationError
 from app.modules.expenses.models import (
     EXPENSE_PAYMENT_METHODS,
@@ -44,6 +43,17 @@ DEFAULT_CATEGORIES: tuple[str, ...] = (
     "مصاريف إدارية",
     "أخرى",
 )
+
+
+def exact_money(value: object, field: str = "amount") -> Decimal:
+    """`orders.money.exact_money`, with its refusals surfaced as a 422 like every other input."""
+    # Function-scope on purpose: a module-load import would add an edge to `orders`.
+    from app.modules.orders.money import exact_money as _exact_money
+
+    try:
+        return _exact_money(value, field)
+    except ValueError as exc:
+        raise ValidationError(str(exc)) from exc
 
 
 def _pos_service():

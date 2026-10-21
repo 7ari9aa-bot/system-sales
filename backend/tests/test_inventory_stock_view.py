@@ -298,3 +298,15 @@ def test_the_cost_table_shape_matches_purchasing():
     assert light.name == real.__tablename__
     real_columns = {c.name for c in real.__table__.columns}
     assert {c.name for c in light.c} <= real_columns
+
+
+async def test_the_inventory_tables_pos_reads_match_inventory():
+    """pos reads inventory_balances / variant_stock_settings as light tables; keep them in step."""
+    from app.modules.inventory.models import InventoryBalance as balance
+    from app.modules.inventory.models import VariantStockSetting as setting
+    from app.modules.pos.stock_view import InventoryBalance as light_balance
+    from app.modules.pos.stock_view import VariantStockSetting as light_setting
+
+    for light, real in ((light_balance, balance), (light_setting, setting)):
+        assert light.name == real.__tablename__
+        assert {c.name for c in light.c} <= {c.name for c in real.__table__.columns}

@@ -16,7 +16,6 @@ from pydantic import BaseModel, Field
 
 from app.modules.errors import ValidationError
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
-from app.modules.inventory.stock_view import StockLevelService
 from app.modules.pos.profiles import PosProfileService
 from app.modules.pos.service import PosService
 from app.modules.pos.stock_view import StockViewService
@@ -138,9 +137,7 @@ async def update_profile(profile_id: UUID, body: UpdateProfileRequest, ctx: PosC
 
 @router.post("/profiles/{profile_id}/users", status_code=201)
 async def grant_profile_user(profile_id: UUID, body: GrantUserRequest, ctx: PosConfigCtx):
-    row = await PosProfileService.grant_user(
-        ctx.session, ctx.tenant_id, profile_id, body.user_id
-    )
+    row = await PosProfileService.grant_user(ctx.session, ctx.tenant_id, profile_id, body.user_id)
     return {"profile_id": str(row.profile_id), "user_id": str(row.user_id)}
 
 
@@ -450,9 +447,7 @@ async def get_close_preview(session_id: UUID, ctx: TenantCtxDep):
 async def sell(session_id: UUID, body: SellRequest, ctx: PosWriteCtx):
     """§189: the whole sell is one command chain in one transaction."""
     tenders = (
-        [{"method": t.method, "amount": t.amount} for t in body.tenders]
-        if body.tenders
-        else None
+        [{"method": t.method, "amount": t.amount} for t in body.tenders] if body.tenders else None
     )
     result = await PosService.sell(
         ctx.session,
@@ -583,9 +578,7 @@ async def get_receipt(receipt_id: UUID, ctx: TenantCtxDep):
             **payload["order"],
             "id": str(payload["order"]["id"]),
         },
-        "lines": [
-            {**line, "variant_id": str(line["variant_id"])} for line in payload["lines"]
-        ],
+        "lines": [{**line, "variant_id": str(line["variant_id"])} for line in payload["lines"]],
         "tenders": payload["tenders"],
     }
 
@@ -689,8 +682,7 @@ async def return_sale(session_id: UUID, body: ReturnRequest, ctx: PosWriteCtx):
         session_id,
         order_id=body.order_id,
         lines=[
-            {"variant_id": str(line.variant_id), "quantity": line.quantity}
-            for line in body.lines
+            {"variant_id": str(line.variant_id), "quantity": line.quantity} for line in body.lines
         ],
         restock=body.restock,
         actor_user_id=ctx.user.id,
@@ -707,9 +699,7 @@ async def exchange(session_id: UUID, body: ExchangeRequest, ctx: PosWriteCtx):
     """One-transaction exchange: the return funds its replacement, and only
     the net difference moves money — two receipts, one commit."""
     tenders = (
-        [{"method": t.method, "amount": t.amount} for t in body.tenders]
-        if body.tenders
-        else None
+        [{"method": t.method, "amount": t.amount} for t in body.tenders] if body.tenders else None
     )
     result = await PosService.exchange(
         ctx.session,
@@ -845,9 +835,8 @@ async def set_reorder_level(
     body: ReorderLevelRequest,
     ctx: TenantContext = Depends(require_permission("inventory:write")),
 ):
-    await StockLevelService.set_reorder_level(
+    # Answer with what the database now holds, not an echo of the request.
+    level = await StockViewService.set_reorder_level(
         ctx.session, ctx.tenant_id, variant_id, body.reorder_level
     )
-    # Answer with what the database now holds, not an echo of the request.
-    level = await StockLevelService.get_reorder_level(ctx.session, ctx.tenant_id, variant_id)
     return ReorderLevelRequest(reorder_level=level)
