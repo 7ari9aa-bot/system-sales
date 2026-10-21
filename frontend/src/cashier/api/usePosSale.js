@@ -13,6 +13,8 @@ import { rowFromDetail, saleReceipts } from "./salesLog";
 import { invoiceFromApi, returnsOf } from "./invoiceDetail";
 import { returnRows } from "./returnsLog";
 import { exchangeRows } from "./exchangesLog";
+import { salesRows } from "./salesReport";
+import { periodRange } from "@/cashier/lib/period";
 import { fromMinor } from "./money";
 import { discountMinor, latestOnly } from "./latest";
 
@@ -321,6 +323,16 @@ export async function fetchExchangesLog(client = posApi) {
 
 export function useExchangesLog() {
   return useQuery({ queryKey: ["cashier", "exchanges-log"], staleTime: 0, queryFn: () => fetchExchangesLog() });
+}
+
+/** Sales per shop day for a period (the backend counts each day from the receipts). */
+export function useSalesReport(period) {
+  const { since, until } = periodRange(period);
+  return useQuery({
+    queryKey: ["cashier", "sales-report", since, until],
+    staleTime: 0,
+    queryFn: async () => salesRows((await posApi.salesReport(since, until)) ?? []),
+  });
 }
 
 export function useReturnsLog() {

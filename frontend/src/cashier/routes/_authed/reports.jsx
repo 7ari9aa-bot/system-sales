@@ -5,16 +5,12 @@ import LedgerStats from "@/cashier/components/ui-kit/LedgerStats";
 import PageHero from "@/cashier/components/ui-kit/PageHero";
 import ReportsFilters from "@/cashier/components/reports/ReportsFilters";
 import SalesReportSection from "@/cashier/components/reports/SalesReportSection";
-import ProductsReportSection from "@/cashier/components/reports/ProductsReportSection";
-import ProfitReportSection from "@/cashier/components/reports/ProfitReportSection";
-import InventoryReportSection from "@/cashier/components/reports/InventoryReportSection";
-import ReturnsReportSection from "@/cashier/components/reports/ReturnsReportSection";
-import PurchasesReportSection from "@/cashier/components/reports/PurchasesReportSection";
 import ZReportSection from "@/cashier/components/reports/ZReportSection";
-import { categoryProfitRows, dailySalesRows, inventoryValueRows, PERIODS, returnsReportRows, topProductRows } from "@/cashier/lib/opsData";
-import { purchasesReportRows } from "@/cashier/lib/storeOpsData";
+import { PERIODS } from "@/cashier/lib/opsData";
 import { useAuth } from "@/lib/AuthContext";
 import { useShifts } from "@/cashier/api/useShifts";
+import { useSalesReport } from "@/cashier/api/usePosSale";
+import { summarizeSales } from "@/cashier/api/salesReport";
 import { inShopPeriod } from "@/cashier/lib/period";
 import { fmtInt, fmtMoney } from "@/cashier/lib/format";
 
@@ -22,32 +18,23 @@ import { fmtInt, fmtMoney } from "@/cashier/lib/format";
 const HERO_IMAGE = "https://media.base44.com/images/public/6ad5982c1b45f350e41ffe73/62d4eef78_generated_image.png";
 const HERO_ALT = "مكتب إدارة المحل مع تقارير مبيعات ودفتر حساب";
 
-// `wired: false` = still runs on sample data (src/cashier/lib/opsData.js), so it is NOT shown: a made-up
-// profit or stock figure next to a real Z report would be read as the shop's real numbers.
-// Flip a tab to `wired: true` only once it reads the backend.
-const ALL_REPORTS = [
-  { key: "sales", label: "المبيعات", wired: false },
-  { key: "products", label: "الأصناف", wired: false },
-  { key: "returns", label: "المرتجعات", wired: false },
-  { key: "purchases", label: "المشتريات", wired: false },
-  { key: "profit", label: "الأرباح", wired: false },
-  { key: "inventory", label: "تقييم المخزون", wired: false },
-  { key: "zreport", label: "إغلاق اليوم (Z)", wired: true },
+// Only reports that read the backend are listed. The others (top products, profit, inventory value,
+// returns by reason, purchases) return when they are built on real data: a made-up profit or stock
+// figure next to a real Z report would be read as the shop's real numbers.
+const REPORTS = [
+  { key: "sales", label: "المبيعات" },
+  { key: "zreport", label: "إغلاق اليوم (Z)" },
 ];
-const REPORTS = ALL_REPORTS.filter((r) => r.wired);
 
 const TAB_TRIGGER =
   "rounded-md px-3 py-1.5 text-[12px] font-normal text-[#7A766C] transition-colors hover:bg-[#FDEBD8] hover:text-[#33322E] data-[state=active]:bg-[#33322E] data-[state=active]:text-[#F7F5F0] data-[state=active]:shadow-none";
 
 export default function ReportsPage() {
   const [period, setPeriod] = useState("7d");
-  const [category, setCategory] = useState("");
   const [tab, setTab] = useState(REPORTS[0].key);
 
-  const daily = dailySalesRows(period);
-  const profitRows = category ? categoryProfitRows.filter((r) => r.category === category) : categoryProfitRows;
-  const productRows = category ? topProductRows.filter((r) => r.category === category) : topProductRows;
-  const inventoryRows = category ? inventoryValueRows.filter((r) => r.category === category) : inventoryValueRows;
+  const salesQuery = useSalesReport(period);
+  const daily = salesQuery.data ?? [];
 
   // ورديات نفس الفترة المختارة من الخادم (تقرير Z يتبع فلتر الفترة مثل باقي التقارير).
   const { user } = useAuth();
@@ -55,11 +42,7 @@ export default function ReportsPage() {
   const zRows = (shifts.data ?? []).filter((r) => inShopPeriod(r.date, period));
 
   const periodLabel = PERIODS.find((p) => p.key === period)?.label ?? "";
-  const salesTotal = daily.reduce((s, r) => s + r.net, 0);
-  const invoicesTotal = daily.reduce((s, r) => s + r.invoices, 0);
-  const piecesTotal = daily.reduce((s, r) => s + r.pieces, 0);
-  const returnsTotal = daily.reduce((s, r) => s + r.returns, 0);
-  const profitTotal = profitRows.reduce((s, r) => s + r.profit, 0);
+  const totals = summarizeSales(daily);
 
   return (
     <LedgerPage
@@ -68,19 +51,14 @@ export default function ReportsPage() {
           image={HERO_IMAGE}
           imageAlt={HERO_ALT}
           title="تقارير المحل"
-          description="سبعة تقارير في جدول واحد: المبيعات اليومية، الأصناف الأكثر مبيعًا، المرتجعات، المشتريات، الأرباح، تقييم المخزون، وإغلاق اليوم (Z)"
+          description="مبيعات كل يوم من الفواتير الفعلية، وتقرير إغلاق كل وردية"
         />
       }
     >
       <ReportsFilters
         period={period}
         onPeriod={setPeriod}
-        category={category}
-        onCategory={(value) => setCategory(value === "all" ? "" : value)}
-        onReset={() => {
-          setPeriod("7d");
-          setCategory("");
-        }}
+        onReset={() => setPeriod("7d")}
       />
 
       <Tabs value={tab} onValueChange={setTab} dir="rtl">
@@ -93,22 +71,13 @@ export default function ReportsPage() {
         </TabsList>
 
         <TabsContent value="sales" className="mt-0">
-          <SalesReportSection rows={daily} />
-        </TabsContent>
-        <TabsContent value="products" className="mt-0">
-          <ProductsReportSection rows={productRows} />
-        </TabsContent>
-        <TabsContent value="returns" className="mt-0">
-          <ReturnsReportSection rows={returnsReportRows} />
-        </TabsContent>
-        <TabsContent value="purchases" className="mt-0">
-          <PurchasesReportSection rows={purchasesReportRows} />
-        </TabsContent>
-        <TabsContent value="profit" className="mt-0">
-          <ProfitReportSection rows={profitRows} />
-        </TabsContent>
-        <TabsContent value="inventory" className="mt-0">
-          <InventoryReportSection rows={inventoryRows} />
+          {salesQuery.isLoading ? (
+            <p className="p-6 text-center text-sm text-muted-foreground" role="status">جارٍ تحميل المبيعات…</p>
+          ) : salesQuery.isError ? (
+            <p className="p-6 text-center text-sm font-semibold text-rose-600" role="alert">تعذّر تحميل تقرير المبيعات. حاول مرة أخرى.</p>
+          ) : (
+            <SalesReportSection rows={daily} />
+          )}
         </TabsContent>
         <TabsContent value="zreport" className="mt-0">
           {shifts.isLoading ? (
@@ -123,10 +92,10 @@ export default function ReportsPage() {
 
       <LedgerStats
         stats={[
-          { label: "صافي المبيعات", value: fmtMoney(salesTotal), hint: `${periodLabel} • محسوب من الفواتير الفعلية`, accent: true },
-          { label: "عدد الفواتير", value: fmtInt(invoicesTotal), hint: `${fmtInt(piecesTotal)} قطعة مباعة` },
-          { label: "المرتجعات", value: fmtMoney(returnsTotal), hint: "مطروحة من صافي المبيعات" },
-          { label: "إجمالي الربح", value: fmtMoney(profitTotal), hint: category || "كل التصنيفات" },
+          { label: "صافي المبيعات", value: fmtMoney(totals.net), hint: `${periodLabel} • من الفواتير الفعلية`, accent: true },
+          { label: "عدد الفواتير", value: fmtInt(totals.invoices), hint: `${fmtInt(totals.pieces)} قطعة مباعة` },
+          { label: "المرتجعات", value: fmtMoney(totals.returns), hint: "مطروحة من صافي المبيعات" },
+          { label: "الخصومات", value: fmtMoney(totals.discount), hint: "خصومات الفواتير في الفترة" },
         ]}
       />
     </LedgerPage>

@@ -102,6 +102,8 @@ export const posApi = {
   searchReceipts: (q, limit = 20) => api(`/pos/receipts/search?q=${encodeURIComponent(q)}&limit=${limit}`),
   heldCarts: (id) => api(`/pos/sessions/${seg(id)}/held-carts`),
   dailyReport: (query = "") => api(`/pos/reports/daily${query ? `?${query}` : ""}`),
+  /** Sales per shop day over [since, until] (YYYY-MM-DD, inclusive), newest first. */
+  salesReport: (since, until) => api(`/pos/reports/sales?since=${since}&until=${until}`),
 
   /* ---- shift ---- */
   openSession: async (registerId, { openingFloat = 0, floatsByMethod, profileId } = {}) =>

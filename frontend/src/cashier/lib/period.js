@@ -21,3 +21,11 @@ export function inShopPeriod(isoInstant, period = "7d", now = new Date(), tz = S
   const age = dayNumber(dayKey(now, tz)) - dayNumber(dayKey(when, tz));
   return age >= 0 && age < days;
 }
+
+/** [since, until] shop dates ("YYYY-MM-DD", inclusive) for a report period: today and the days before it. */
+export function periodRange(period = "7d", now = new Date(), tz = SHOP_TZ) {
+  const days = PERIOD_DAYS[period] ?? 7;
+  const until = dayKey(now, tz);
+  const since = new Date(Date.parse(`${until}T00:00:00Z`) - (days - 1) * 86_400_000).toISOString().slice(0, 10);
+  return { since, until };
+}
