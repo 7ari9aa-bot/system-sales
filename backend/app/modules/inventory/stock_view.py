@@ -74,3 +74,59 @@ class StockLevelService:
             )
         ).scalar_one_or_none()
         return 0 if stored is None else int(stored)
+
+
+class StocktakeGateway:
+    """What `pos` may do with a physical count, behind the one inventory file it already imports.
+
+    Every import is inside the method: a count is reached on demand, and importing the services
+    package at module scope here would add a module-scope service import (and a cycle risk) for
+    a feature most requests never touch.
+    """
+
+    @staticmethod
+    async def open_default(session: AsyncSession, tenant_id: UUID, *, user_id, note) -> dict:
+        from app.modules.inventory.service import InventoryService
+        from app.modules.inventory.services import StocktakeService
+
+        warehouse = await InventoryService.get_default_warehouse(session, tenant_id)
+        stocktake = await StocktakeService.open(
+            session, tenant_id, warehouse.id, user_id=user_id, note=note
+        )
+        return await StocktakeService.detail(session, tenant_id, stocktake.id)
+
+    @staticmethod
+    async def list_recent(session: AsyncSession, tenant_id: UUID, *, limit: int = 20):
+        from app.modules.inventory.services import StocktakeService
+
+        return await StocktakeService.list_recent(session, tenant_id, limit=limit)
+
+    @staticmethod
+    async def detail(session: AsyncSession, tenant_id: UUID, stocktake_id: UUID) -> dict:
+        from app.modules.inventory.services import StocktakeService
+
+        return await StocktakeService.detail(session, tenant_id, stocktake_id)
+
+    @staticmethod
+    async def record_counts(
+        session: AsyncSession, tenant_id: UUID, stocktake_id: UUID, counts: list[dict]
+    ) -> int:
+        from app.modules.inventory.services import StocktakeService
+
+        return await StocktakeService.record_counts(session, tenant_id, stocktake_id, counts)
+
+    @staticmethod
+    async def approve(
+        session: AsyncSession, tenant_id: UUID, stocktake_id: UUID, *, user_id
+    ) -> dict:
+        from app.modules.inventory.services import StocktakeService
+
+        return await StocktakeService.approve(session, tenant_id, stocktake_id, user_id=user_id)
+
+    @staticmethod
+    async def cancel(
+        session: AsyncSession, tenant_id: UUID, stocktake_id: UUID, *, user_id
+    ) -> None:
+        from app.modules.inventory.services import StocktakeService
+
+        await StocktakeService.cancel(session, tenant_id, stocktake_id, user_id=user_id)

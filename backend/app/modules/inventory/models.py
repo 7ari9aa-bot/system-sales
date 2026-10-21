@@ -24,6 +24,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -243,4 +244,79 @@ class VariantStockSetting(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMi
             "reorder_level >= 0 AND reorder_level <= 1000000",
             name="ck_variant_stock_settings_level",
         ),
+    )
+
+
+class Stocktake(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, Base):
+    """A physical count of one warehouse: OPEN while people count, then APPROVED or CANCELLED.
+
+    Opening takes a SNAPSHOT of every line's book quantity (`expected_qty`) because the shop keeps
+    selling while it is counted. Approving applies only the difference between what was counted and
+    what the book said WHEN COUNTING STARTED, as a relative movement on today's balance, so a sale
+    rung up during the count is never wiped out by a stale absolute figure.
+    """
+
+    __tablename__ = "stocktakes"
+
+    warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("warehouses.id", ondelete="RESTRICT")
+    )
+    # allowed: OPEN | APPROVED | CANCELLED
+    status: Mapped[str] = mapped_column(String(15), server_default="OPEN")
+    note: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    opened_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    closed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint("status IN ('OPEN', 'APPROVED', 'CANCELLED')", name="ck_stocktakes_status"),
+        # A closed count says who closed it and when; an open one says neither.
+        CheckConstraint(
+            "(status = 'OPEN') = (closed_at IS NULL)",
+            name="ck_stocktakes_closed_at",
+        ),
+        # One open count per warehouse: two people counting the same shelves would each "fix" the
+        # other's figures.
+        Index(
+            "uq_stocktakes_one_open_per_warehouse",
+            "tenant_id",
+            "warehouse_id",
+            unique=True,
+            postgresql_where=text("status = 'OPEN'"),
+        ),
+    )
+
+
+class StocktakeLine(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, Base):
+    """One variant in a count: the book quantity at the start and what was counted.
+
+    ``counted_qty`` NULL means "not counted yet", which is NOT zero: an uncounted line is never
+    adjusted. ``applied_delta`` is what approval actually moved (counted - expected), kept on the
+    line as the audit of what this count changed.
+    """
+
+    __tablename__ = "stocktake_lines"
+
+    stocktake_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stocktakes.id", ondelete="CASCADE")
+    )
+    variant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("product_variants.id", ondelete="RESTRICT")
+    )
+    expected_qty: Mapped[int] = mapped_column(Integer)
+    counted_qty: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    applied_delta: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("stocktake_id", "variant_id", name="uq_stocktake_lines_variant"),
+        CheckConstraint("expected_qty >= 0", name="ck_stocktake_lines_expected"),
+        CheckConstraint(
+            "counted_qty IS NULL OR (counted_qty >= 0 AND counted_qty <= 1000000)",
+            name="ck_stocktake_lines_counted",
+        ),
+        Index("ix_stocktake_lines_stocktake", "stocktake_id"),
     )

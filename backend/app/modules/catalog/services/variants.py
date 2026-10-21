@@ -301,6 +301,16 @@ class VariantServiceMixin:
         return variant_price
 
     @staticmethod
+    async def active_variant_ids(session: AsyncSession, tenant_id: UUID) -> list[UUID]:
+        """Ids of every active variant of the tenant (what a physical count walks through)."""
+        rows = await session.execute(
+            select(ProductVariant.id)
+            .where(ProductVariant.tenant_id == tenant_id, ProductVariant.is_active.is_(True))
+            .order_by(ProductVariant.id)
+        )
+        return list(rows.scalars().all())
+
+    @staticmethod
     async def list_variants(
         session: AsyncSession, tenant_id: UUID, product_id: UUID
     ) -> list[ProductVariant]:

@@ -20,6 +20,7 @@ from ._common import (
 from .balances import BalanceServiceMixin
 from .movements import MovementServiceMixin
 from .reservations import InventoryReservationService
+from .stocktakes import StocktakeService
 from .transfers import TransferServiceMixin
 
 
@@ -30,6 +31,7 @@ class InventoryService(BalanceServiceMixin, MovementServiceMixin, TransferServic
 __all__ = [
     "InventoryService",
     "InventoryReservationService",
+    "StocktakeService",
     "ConflictError",
     "NotFoundError",
     "ValidationError",

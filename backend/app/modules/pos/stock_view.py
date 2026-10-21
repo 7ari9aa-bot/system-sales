@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.sql import LIKE_ESCAPE, like_pattern
 from app.modules.catalog.models import Category, Product, ProductIdentifier, ProductVariant
 from app.modules.errors import ValidationError
-from app.modules.inventory.stock_view import StockLevelService, stock_status
+from app.modules.inventory.stock_view import StockLevelService, StocktakeGateway, stock_status
 from app.modules.orders.money import to_money
 
 # `variant_costs` is purchasing's table. Importing its model would add a pos -> purchasing edge and
@@ -68,6 +68,32 @@ class StockViewService:
         """
         await StockLevelService.set_reorder_level(session, tenant_id, variant_id, level)
         return await StockLevelService.get_reorder_level(session, tenant_id, variant_id)
+
+    # ---- physical stocktake: pos reaches inventory through THIS file only ---------------------
+
+    @staticmethod
+    async def list_stocktakes(session, tenant_id, *, limit=20):
+        return await StocktakeGateway.list_recent(session, tenant_id, limit=limit)
+
+    @staticmethod
+    async def open_default_stocktake(session, tenant_id, *, user_id, note):
+        return await StocktakeGateway.open_default(session, tenant_id, user_id=user_id, note=note)
+
+    @staticmethod
+    async def stocktake_detail(session, tenant_id, stocktake_id):
+        return await StocktakeGateway.detail(session, tenant_id, stocktake_id)
+
+    @staticmethod
+    async def record_stocktake_counts(session, tenant_id, stocktake_id, counts):
+        return await StocktakeGateway.record_counts(session, tenant_id, stocktake_id, counts)
+
+    @staticmethod
+    async def approve_stocktake(session, tenant_id, stocktake_id, *, user_id):
+        return await StocktakeGateway.approve(session, tenant_id, stocktake_id, user_id=user_id)
+
+    @staticmethod
+    async def cancel_stocktake(session, tenant_id, stocktake_id, *, user_id):
+        await StocktakeGateway.cancel(session, tenant_id, stocktake_id, user_id=user_id)
 
     @staticmethod
     async def list_stock(

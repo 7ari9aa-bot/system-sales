@@ -927,6 +927,82 @@ async def set_reorder_level(
     return ReorderLevelRequest(reorder_level=level)
 
 
+class OpenStocktakeRequest(BaseModel):
+    note: str | None = Field(default=None, max_length=255)
+
+
+class StocktakeCount(BaseModel):
+    variant_id: UUID
+    # strict: a JSON `true` or "3" must not become a count; null means "not counted".
+    counted_qty: int | None = Field(default=None, strict=True, ge=0, le=1_000_000)
+
+
+class StocktakeCountsRequest(BaseModel):
+    counts: list[StocktakeCount] = Field(min_length=1, max_length=5000)
+
+
+@router.get("/stocktakes")
+async def list_stocktakes(
+    ctx: TenantContext = Depends(require_permission("inventory:write")),
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+):
+    return await StockViewService.list_stocktakes(ctx.session, ctx.tenant_id, limit=limit)
+
+
+@router.post("/stocktakes", status_code=201)
+async def open_stocktake(
+    body: OpenStocktakeRequest,
+    ctx: TenantContext = Depends(require_permission("inventory:write")),
+):
+    """Start a count of the shop's warehouse. One open count at a time."""
+    return await StockViewService.open_default_stocktake(
+        ctx.session, ctx.tenant_id, user_id=ctx.user.id, note=body.note
+    )
+
+
+@router.get("/stocktakes/{stocktake_id}")
+async def get_stocktake(
+    stocktake_id: UUID,
+    ctx: TenantContext = Depends(require_permission("inventory:write")),
+):
+    return await StockViewService.stocktake_detail(ctx.session, ctx.tenant_id, stocktake_id)
+
+
+@router.put("/stocktakes/{stocktake_id}/counts")
+async def save_stocktake_counts(
+    stocktake_id: UUID,
+    body: StocktakeCountsRequest,
+    ctx: TenantContext = Depends(require_permission("inventory:write")),
+):
+    """Save counted quantities. Nothing in stock moves until a manager approves."""
+    saved = await StockViewService.record_stocktake_counts(
+        ctx.session,
+        ctx.tenant_id,
+        stocktake_id,
+        [{"variant_id": str(c.variant_id), "counted_qty": c.counted_qty} for c in body.counts],
+    )
+    return {"saved": saved}
+
+
+@router.post("/stocktakes/{stocktake_id}/approve")
+async def approve_stocktake(stocktake_id: UUID, ctx: PosManagerCtx):
+    """Apply the count to the ledger. Manager/owner only: this is what changes the balances."""
+    return await StockViewService.approve_stocktake(
+        ctx.session, ctx.tenant_id, stocktake_id, user_id=ctx.user.id
+    )
+
+
+@router.post("/stocktakes/{stocktake_id}/cancel")
+async def cancel_stocktake(
+    stocktake_id: UUID,
+    ctx: TenantContext = Depends(require_permission("inventory:write")),
+):
+    await StockViewService.cancel_stocktake(
+        ctx.session, ctx.tenant_id, stocktake_id, user_id=ctx.user.id
+    )
+    return {"status": "CANCELLED"}
+
+
 class SetManagerPinRequest(BaseModel):
     # Re-typing the password is what stops a borrowed, still-signed-in screen from minting a PIN.
     password: str = Field(min_length=1, max_length=256)

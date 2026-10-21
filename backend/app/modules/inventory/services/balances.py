@@ -134,16 +134,29 @@ class BalanceServiceMixin:
         ).scalar_one()
 
     @staticmethod
+    def _catalog():
+        """The catalog's service, imported on demand: inventory's ONE edge into the catalog (§8)."""
+        from app.modules.catalog.service import CatalogService
+
+        return CatalogService
+
+    @staticmethod
     async def _get_variant(session: AsyncSession, tenant_id: UUID, variant_id: UUID):
         """Existence + tenant check (inactive variants still hold stock).
 
         §8: delegates to CatalogService instead of importing catalog models.
         """
-        from app.modules.catalog.service import CatalogService
-
-        return await CatalogService.get_variant(
+        return await BalanceServiceMixin._catalog().get_variant(
             session, tenant_id, variant_id, include_inactive=True
         )
+
+    @staticmethod
+    async def _active_variant_ids(session: AsyncSession, tenant_id: UUID) -> list[UUID]:
+        """Every active variant of the tenant (what a physical count walks through).
+
+        §8: delegates to CatalogService, like `_get_variant` above (one inventory -> catalog edge).
+        """
+        return await BalanceServiceMixin._catalog().active_variant_ids(session, tenant_id)
 
     @staticmethod
     async def _get_warehouse(
