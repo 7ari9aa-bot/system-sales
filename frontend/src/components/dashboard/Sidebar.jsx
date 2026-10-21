@@ -6,11 +6,11 @@ import {
   Users,
   Package,
   Boxes,
-  Megaphone,
   Sparkles,
   BarChart3,
   Gauge,
   Globe,
+  Lock,
   ChevronDown,
   LogOut,
   PanelLeft,
@@ -88,12 +88,12 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
     {
       section: t("nav.grow"),
       items: [
-        { to: "/marketing", label: t("nav.marketing"), icon: Megaphone },
         { to: "/ai", label: t("nav.ai"), icon: Sparkles },
         { to: "/sales-assistant", label: t("nav.salesAssistant"), icon: MessageSquareText },
         { to: "/analytics", label: t("nav.analytics"), icon: BarChart3 },
-        { to: "/website", label: t("nav.website"), icon: Globe },
         { to: "/usage", label: t("nav.usage"), icon: Gauge },
+        // Last in the list on purpose, and locked: the website system is not finished for the first release.
+        { to: "/website", label: t("nav.website"), icon: Globe, locked: true },
       ],
     },
   ];
@@ -166,6 +166,12 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
                       >
                         <Icon className={cn("h-[17px] w-[17px] shrink-0", active ? "text-primary" : "text-muted-foreground group-hover:text-foreground")} />
                         {!collapsed && <span className="flex-1 min-w-0 truncate text-start">{item.label}</span>}
+                        {!collapsed && item.locked ? (
+                          <Lock className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-label={t("website.locked")} />
+                        ) : null}
+                        {collapsed && item.locked ? (
+                          <Lock className="absolute top-1 right-1 h-2.5 w-2.5 text-muted-foreground" aria-hidden="true" />
+                        ) : null}
                         {!collapsed && item.badge ? (
                           <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-md bg-pill text-pill-foreground tabular-nums">
                             {item.badge}

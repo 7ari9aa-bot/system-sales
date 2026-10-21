@@ -4,7 +4,7 @@ import NeedsAttention from "@/components/dashboard/sections/NeedsAttention";
 import SalesPerformance from "@/components/dashboard/sections/SalesPerformance";
 import YourAI from "@/components/dashboard/sections/YourAI";
 import BusinessInsights from "@/components/dashboard/sections/BusinessInsights";
-import { InventorySnapshot, MarketingSnapshot } from "@/components/dashboard/sections/Snapshots";
+import { InventorySnapshot } from "@/components/dashboard/sections/Snapshots";
 
 export default function Home() {
   return (
@@ -26,9 +26,8 @@ export default function Home() {
         <div className="xl:col-span-1 min-h-0">
           <BusinessInsights />
         </div>
-        <div className="xl:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="xl:col-span-2 grid grid-cols-1 gap-4">
           <InventorySnapshot />
-          <MarketingSnapshot />
         </div>
       </div>
     </div>

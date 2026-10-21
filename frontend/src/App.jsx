@@ -31,15 +31,11 @@ const CashierApp = lazy(() => import('@/cashier/CashierApp'));
 // وضع معاينة الكاشير: يفتح مسار /cashier/* فقط بدون تسجيل دخول، لمعاينة الواجهة (بيانات تجريبية) على Vercel Preview.
 // vite.config.js يمنع البناء تماماً لو اتفعّل مع بيئة الإنتاج، فلا يمكن أن يصل لمستخدمين حقيقيين.
 const CASHIER_PREVIEW = import.meta.env.VITE_CASHIER_PREVIEW === '1';
-const Marketing = lazy(() => import('@/pages/Marketing'));
-const MarketingCampaigns = lazy(() => import('@/pages/marketing/Campaigns'));
-const MarketingAudience = lazy(() => import('@/pages/marketing/Audience'));
-const MarketingAutomation = lazy(() => import('@/pages/marketing/Automation'));
 const AI = lazy(() => import('@/pages/AI'));
 const SalesAssistant = lazy(() => import('@/pages/SalesAssistant'));
 const Analytics = lazy(() => import('@/pages/Analytics'));
 const Usage = lazy(() => import('@/pages/Usage'));
-const Website = lazy(() => import('@/pages/Website'));
+const WebsiteComingSoon = lazy(() => import('@/pages/WebsiteComingSoon'));
 import SettingsLayout from '@/components/settings/SettingsLayout';
 const ProfileSettings = lazy(() => import('@/pages/settings/ProfileSettings'));
 const MembersSettings = lazy(() => import('@/pages/settings/MembersSettings'));
@@ -99,16 +95,13 @@ const DashboardRoutes = () => (
             instead of landing on the 404 screen. */}
         <Route path="/orders" element={<Navigate to="/cashier/pos" replace />} />
         <Route path="/orders/:rest" element={<Navigate to="/cashier/pos" replace />} />
-        <Route path="/marketing" element={<Marketing />}>
-          <Route index element={<MarketingCampaigns />} />
-          <Route path="audience" element={<MarketingAudience />} />
-          <Route path="automation" element={<MarketingAutomation />} />
-        </Route>
+        {/* Marketing is not part of the first release: the old links land on the dashboard, not on a 404. */}
+        <Route path="/marketing/*" element={<Navigate to="/dashboard" replace />} />
         <Route path="/ai" element={<AI />} />
         <Route path="/sales-assistant" element={<SalesAssistant />} />
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/usage" element={<Usage />} />
-        <Route path="/website" element={<Website />} />
+        <Route path="/website" element={<WebsiteComingSoon />} />
       </Route>
       <Route element={<ProtectedRoute />}>
         <Route element={<SettingsLayout />}>
