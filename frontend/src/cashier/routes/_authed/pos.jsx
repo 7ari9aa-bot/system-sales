@@ -22,7 +22,7 @@ import { searchCatalog } from "@/cashier/api/catalogAdapter";
 import { posApi } from "@/cashier/api/posApi";
 import { approvalFailure, approvalReason, needsApproval } from "@/cashier/api/approval";
 import ManagerApprovalDialog from "@/cashier/components/shifts/ManagerApprovalDialog";
-import { useSalesSettings } from "@/cashier/lib/salesSettings";
+import { ceilingPct } from "@/cashier/lib/discountCeiling";
 import { useAuth } from "@/lib/AuthContext";
 
 // Only methods the backend accepts; the profile's own list narrows this further once loaded.
@@ -60,7 +60,6 @@ export default function PosPage() {
 
 function PosScreen({ user, session }) {
   const qc = useQueryClient();
-  const salesSettings = useSalesSettings();
   const catalogQuery = useSessionCatalog(session.id); // this till's items, price and warehouse stock
   const catalog = useMemo(() => catalogQuery.data ?? [], [catalogQuery.data]);
   const [receipt, setReceipt] = useState(null);
@@ -90,6 +89,7 @@ function PosScreen({ user, session }) {
   const [pickedCustomer, setPickedCustomer] = useState(null); // a REAL customer; the typed name above is only a label
   const profile = useShiftProfile(session.profile_id);
   const requireCustomer = Boolean(profile.data?.require_customer);
+  const maxDiscountPct = ceilingPct(profile.data); // the number the server enforces; above it a manager PIN is asked
   const customerSearch = useCustomerSearch(pickedCustomer ? "" : customerName);
   const needCustomer = customerBlock({ requireCustomer, customerId: pickedCustomer?.id });
   const [activeLineId, setActiveLineId] = useState(null);
@@ -192,18 +192,22 @@ function PosScreen({ user, session }) {
     });
   }
 
+  // The server owns the ceiling. A discount above it is NOT blocked here: it is allowed up to 100% and the cashier is
+  // told the payment will ask for a manager's PIN (that approval flow is what lets a manager grant a bigger discount).
+  function warnIfOverCeiling(pct, what) {
+    if (pct > maxDiscountPct) toast.info(`${what} ${pct}% أعلى من حد الكاشير ${maxDiscountPct}%: سيُطلب رقم المدير السري عند الدفع`, { id: "discount-over-ceiling" });
+  }
+
   function applyLineDiscount(lineId, pct) {
-    const limit = salesSettings.maxDiscountPct;
-    const value = Math.max(0, Number(pct) || 0);
-    if (value > limit) toast.warning(`أقصى خصم مسموح ${limit}% — عدّل الحد من الإعدادات`);
-    sale.setLineDiscount(lineId, Math.min(limit, value));
+    const value = Math.min(100, Math.max(0, Number(pct) || 0));
+    warnIfOverCeiling(value, "خصم الصنف");
+    sale.setLineDiscount(lineId, value);
   }
 
   function applyInvoiceDiscount(value) {
-    const limit = salesSettings.maxDiscountPct;
-    const pct = Math.max(0, Number(value) || 0);
-    if (pct > limit) toast.warning(`أقصى خصم مسموح على الفاتورة ${limit}%`);
-    setInvoiceDiscountPct(Math.min(limit, pct));
+    const pct = Math.min(100, Math.max(0, Number(value) || 0));
+    warnIfOverCeiling(pct, "خصم الفاتورة");
+    setInvoiceDiscountPct(pct);
   }
 
   function applyInvoiceAmount(value) {
@@ -340,7 +344,6 @@ function PosScreen({ user, session }) {
         onQtyStep={sale.stepQty}
         onDiscount={applyLineDiscount}
         onRemove={removeLine}
-        maxDiscount={salesSettings.maxDiscountPct}
       >
         <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-2 border-t border-border bg-muted/30 px-3 py-2">
           {scanError || sale.quote.error || catalogQuery.isError ? (
@@ -355,7 +358,6 @@ function PosScreen({ user, session }) {
             onPctChange={applyInvoiceDiscount}
             amount={invoiceDiscountAmt}
             onAmountChange={applyInvoiceAmount}
-            maxDiscount={salesSettings.maxDiscountPct}
             disabled={!hasLines}
           />
 
