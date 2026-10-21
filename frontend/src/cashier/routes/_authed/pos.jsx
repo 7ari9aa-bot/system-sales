@@ -183,8 +183,10 @@ function PosScreen({ user, session }) {
           if (!removed) return;
           removedRef.current = null;
           const v = catalog.find((c) => c.id === removed.line.variantId);
-          if (v) sale.add(v);
+          const r = sale.restoreLine(removed.line, removed.index, v?.stock);
           toast.dismiss(UNDO_TOAST_ID);
+          if (!r.ok) toast.warning(r.reason);
+          else if (r.clamped) toast.warning(`المتاح من ${removed.line.name} أقل الآن، اتخفضت الكمية`);
         },
       },
     });

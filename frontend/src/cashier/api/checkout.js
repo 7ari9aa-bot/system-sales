@@ -16,6 +16,24 @@ export function clampQty(value, max) {
   return Math.min(n, max);
 }
 
+/**
+ * Undo a deleted line: the SAME line goes back at its old position with its quantity and discount.
+ * Stock is the live figure (it may have dropped since), so the quantity is clamped and the
+ * money-discount recomputed for the new quantity; never more than is on the shelf.
+ * Returns { ok:false, reason } or { ok:true, lines, clamped }.
+ */
+export function restoreRemovedLine(lines, line, index, liveStock) {
+  const stock = Number(liveStock ?? line.stock);
+  if (!Number.isFinite(stock) || stock <= 0) return { ok: false, reason: "نافد من المخزون" };
+  if (lines.some((l) => l.variantId === line.variantId)) return { ok: true, lines, clamped: false }; // added again meanwhile: keep that one
+  const qty = clampQty(line.qty, stock);
+  const clamped = qty < line.qty;
+  const discount = clamped ? +((line.price * qty * (line.discountPct || 0)) / 100).toFixed(2) : line.discount;
+  const next = [...lines];
+  next.splice(Math.min(Math.max(index, 0), next.length), 0, { ...line, qty, stock, discount });
+  return { ok: true, lines: next, clamped };
+}
+
 export function cartItems(cart) {
   return cart.map((l) => ({ variant_id: l.variantId, quantity: l.qty }));
 }

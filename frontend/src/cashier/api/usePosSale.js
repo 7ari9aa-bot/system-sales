@@ -4,7 +4,7 @@ import { BALANCES_LIMIT, posApi } from "./posApi";
 import { needsApproval } from "./approval";
 import { buildCatalog, searchCatalog } from "./catalogAdapter";
 import { fetchAllItems, mergeSessionItems } from "./sessionCatalog";
-import { clampQty } from "./checkout";
+import { clampQty, restoreRemovedLine } from "./checkout";
 import { createSaleSession } from "./saleSession";
 import { receiptFromApi } from "./receiptAdapter";
 import { sellableCustomers } from "./customerRule";
@@ -144,6 +144,15 @@ export function usePosSale({ sessionId, catalog = [], onSold, loadFreshCatalog }
   const stepQty = useCallback((lineId, delta) => setLines((prev) => prev.map((l) => (l.lineId === lineId ? { ...l, qty: clampQty(l.qty + delta, l.stock) || 1 } : l))), []);
   const setLineDiscount = useCallback((lineId, pct) => setLines((prev) => prev.map((l) => (l.lineId === lineId ? { ...l, discountPct: pct, discount: +((l.price * l.qty * pct) / 100).toFixed(2) } : l))), []);
   const remove = useCallback((lineId) => setLines((prev) => prev.filter((l) => l.lineId !== lineId)), []);
+  /**
+   * Undo a delete: put the SAME line back (its quantity and discount) where it was, not a fresh one-piece line at the end.
+   * Stock is re-read from the live catalog: it may have dropped since, so the quantity is clamped, never over-sold.
+   */
+  const restoreLine = useCallback((line, index, liveStock = line.stock) => {
+    const r = restoreRemovedLine(linesRef.current, line, index, liveStock);
+    if (r.ok) setLines(r.lines);
+    return { ok: r.ok, reason: r.reason, clamped: r.clamped };
+  }, []);
   const clear = useCallback(() => {
     setLines([]);
     setInvoiceDiscount("");
@@ -212,7 +221,7 @@ export function usePosSale({ sessionId, catalog = [], onSold, loadFreshCatalog }
 
   const scan = useCallback((value) => posApi.scan(sessionId, { identifierType: "barcode", value }), [sessionId]);
 
-  return { lines, scan, hold, restore, quote, discountTotal, invoiceDiscount, setInvoiceDiscount, add, setQty, stepQty, setLineDiscount, remove, clear, pay, paying, payError, searchCatalog };
+  return { lines, scan, hold, restore, quote, discountTotal, invoiceDiscount, setInvoiceDiscount, add, setQty, stepQty, setLineDiscount, remove, restoreLine, clear, pay, paying, payError, searchCatalog };
 }
 
 /**
