@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ITEMS_MAX_PAGES, ITEMS_PAGE, fetchAllItems, mergeSessionItems } from "./sessionCatalog";
+import { ITEMS_MAX_PAGES, ITEMS_PAGE, PRODUCTS_PAGE, fetchAllItems, fetchAllProducts, mergeSessionItems } from "./sessionCatalog";
 
 const v = (id, over = {}) => ({ id, productName: `P${id}`, sku: `S${id}`, barcode: `B${id}`, color: "red", size: "M", stock: 99, sellPrice: 1, ...over });
 const item = (id, over = {}) => ({ variant_id: id, title: `P${id}`, sku: `S${id}`, unit_price: "10.50", available: 4, ...over });
@@ -67,5 +67,27 @@ describe("fetchAllItems: pages until the server's total is reached", () => {
   it("surfaces a server error rather than returning a partial list", async () => {
     const f = vi.fn(async (offset) => { if (offset) throw new Error("boom"); return page(60, 120); });
     await expect(fetchAllItems(f)).rejects.toThrow("boom");
+  });
+});
+
+describe("fetchAllProducts: the list has no total, so it stops at the first short page", () => {
+  const rows = (n) => Array.from({ length: n }, (_, i) => ({ id: `p${i}` }));
+  it("one short page is the whole list", async () => {
+    const page = vi.fn().mockResolvedValue(rows(5));
+    expect(await fetchAllProducts(page)).toHaveLength(5);
+    expect(page).toHaveBeenCalledTimes(1);
+    expect(page).toHaveBeenCalledWith(0, PRODUCTS_PAGE);
+  });
+  it("keeps going while pages are full, and a full last page still ends on the empty one after it", async () => {
+    const page = vi.fn().mockResolvedValueOnce(rows(PRODUCTS_PAGE)).mockResolvedValueOnce(rows(PRODUCTS_PAGE)).mockResolvedValueOnce(rows(7));
+    expect(await fetchAllProducts(page)).toHaveLength(PRODUCTS_PAGE * 2 + 7);
+    expect(page).toHaveBeenNthCalledWith(2, PRODUCTS_PAGE, PRODUCTS_PAGE);
+    const exact = vi.fn().mockResolvedValueOnce(rows(PRODUCTS_PAGE)).mockResolvedValueOnce([]);
+    expect(await fetchAllProducts(exact)).toHaveLength(PRODUCTS_PAGE);
+  });
+  it("fails loudly on a list that never ends instead of selling from half of it", async () => {
+    const page = vi.fn().mockResolvedValue(rows(PRODUCTS_PAGE));
+    await expect(fetchAllProducts(page)).rejects.toThrow(/لا تنتهي/);
+    expect(page).toHaveBeenCalledTimes(ITEMS_MAX_PAGES);
   });
 });

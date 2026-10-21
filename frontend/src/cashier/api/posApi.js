@@ -93,6 +93,8 @@ export const posApi = {
   report: (id) => api(`/pos/sessions/${seg(id)}/report`),
   /* ---- catalog (read-only): products with variants, and stock per variant/warehouse ---- */
   products: () => api("/products?limit=500"),
+  // One window of the product list; the sales screen walks them all (fetchAllProducts).
+  productsPage: (offset, limit) => api(`/products?limit=${limit}&offset=${offset}`),
   // The backend lists 200 rows by default with NO ORDER BY: past 200 variants the rest would silently show
   // stock 0 and be unsellable. Ask for a big page and let fetchCatalog() refuse a full page (see BALANCES_LIMIT).
   stockBalances: () => api(`/inventory/balances?limit=${BALANCES_LIMIT}`),

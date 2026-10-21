@@ -42,3 +42,23 @@ export async function fetchAllItems(fetchPage) {
   }
   throw new Error("قائمة أصناف الدرج لا تنتهي. أبلغ الدعم الفني قبل البيع.");
 }
+
+/** Products per request when walking the whole product list. */
+export const PRODUCTS_PAGE = 200;
+
+/**
+ * Every product, page by page. The list endpoint has no `total`, so the last page is the first one
+ * shorter than the page size. A single capped request would silently drop every product past the
+ * cap, and the cashier could not sell it with no message; a list that never ends fails loudly.
+ * `fetchPage(offset, limit)` returns the array of products for that window.
+ */
+export async function fetchAllProducts(fetchPage) {
+  const all = [];
+  for (let page = 0; page < ITEMS_MAX_PAGES; page += 1) {
+    const res = await fetchPage(page * PRODUCTS_PAGE, PRODUCTS_PAGE);
+    const rows = Array.isArray(res) ? res : (res?.items ?? []);
+    all.push(...rows);
+    if (rows.length < PRODUCTS_PAGE) return all;
+  }
+  throw new Error("قائمة المنتجات لا تنتهي. أبلغ الدعم الفني قبل البيع.");
+}

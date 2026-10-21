@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { BALANCES_LIMIT, posApi } from "./posApi";
 import { needsApproval } from "./approval";
 import { buildCatalog, searchCatalog } from "./catalogAdapter";
-import { fetchAllItems, mergeSessionItems } from "./sessionCatalog";
+import { fetchAllItems, fetchAllProducts, mergeSessionItems } from "./sessionCatalog";
 import { clampQty, restoreRemovedLine } from "./checkout";
 import { createSaleSession } from "./saleSession";
 import { receiptFromApi } from "./receiptAdapter";
@@ -50,11 +50,16 @@ export async function fetchCatalog() {
  */
 export const SESSION_CATALOG_KEY = (sessionId) => ["cashier", "catalog", "session", sessionId];
 export async function fetchSessionCatalog(sessionId) {
-  const [catalog, items] = await Promise.all([
-    fetchCatalog(),
+  // Stock and price come from the till's own paged item list, so the shop-wide balances are NOT
+  // fetched here: they are not needed, and their 5,000-row cap would otherwise stop a shop with
+  // a big catalogue from selling at all. Only the looks (name, barcode, colour, size) come from
+  // the product list; `mergeSessionItems` replaces stock and price with the till's figures.
+  const [products, items] = await Promise.all([
+    fetchAllProducts((offset, limit) => posApi.productsPage(offset, limit)),
     fetchAllItems((offset, limit) => posApi.sessionItems(sessionId, offset, limit)),
   ]);
-  return mergeSessionItems(catalog, items);
+  const looks = buildCatalog(products, []);
+  return mergeSessionItems(looks, items);
 }
 export function useSessionCatalog(sessionId) {
   return useQuery({
