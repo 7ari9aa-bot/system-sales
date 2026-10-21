@@ -51,16 +51,16 @@ export default function ShiftsPage() {
   const preview = useClosePreview(closing?.id, Boolean(closing));
   const heldCount = useHeldCount(closing?.id, Boolean(closing));
 
-  const summary = shiftsSummary(rows);
+  const summary = shiftsSummary(rows, user?.id ?? null);
   const filtered = rows.filter((r) => {
     if (employeeFilter && r.employee !== employeeFilter) return false;
     if (statusFilter && r.status !== statusFilter) return false;
     return true;
   });
 
-  function submitOpen({ openingCash }) {
+  function submitOpen({ openingCash, registerId }) {
     openShift.mutate(
-      { openingCash },
+      { openingCash, registerId },
       {
         onSuccess: () => {
           setOpenDialog(false);

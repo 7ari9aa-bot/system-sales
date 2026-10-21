@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/AuthContext";
 import { posApi } from "./posApi";
-import { bootstrapPos, resolveShiftState } from "./shiftState";
+import { bootstrapPos, chooseRegister, pickMyShift, resolveShiftState } from "./shiftState";
 import { shiftsFromApi } from "./shiftAdapter";
 
 export const SHIFTS_KEY = ["cashier", "shifts"];
@@ -53,20 +53,50 @@ function useRefresh() {
   return () => Promise.all([qc.invalidateQueries({ queryKey: SHIFTS_KEY }), qc.invalidateQueries({ queryKey: SHIFT_STATE_KEY })]);
 }
 
-/** The Open Shift button, as a plain function so it can be tested without React. */
-export async function openShiftFlow({ openingCash }) {
-  const state = await resolveShiftState({ canConfigure: true });
-  if (state.status === "open") throw new Error("هناك وردية مفتوحة بالفعل");
-  let registerId;
-  if (state.status === "needs_setup") registerId = (await bootstrapPos()).id; // first use: warehouse -> profile -> register
-  else if (state.status === "no_open_shift") registerId = state.register.id;
-  else throw new Error(state.message || "تعذّر فتح الوردية. تأكد من الصلاحيات ثم حاول مرة أخرى.");
-  return posApi.openSession(registerId, { openingFloat: openingCash });
+const NONE_TEXT = {
+  all_busy: "كل أجهزة الكاشير عليها ورديات مفتوحة. أغلق وردية أو أضف جهازًا جديدًا.",
+  picked_unavailable: "الجهاز الذي اخترته لم يعد متاحًا. اختر جهازًا آخر.",
+  no_register: "لا يوجد جهاز كاشير نشط.",
+};
+
+/** What the Open Shift button needs to know before it can ask the server: which drawers are free right now. */
+export async function loadOpenChoice() {
+  const [registers, open] = await Promise.all([posApi.listRegisters(), posApi.listSessions("status=OPEN")]);
+  return chooseRegister(registers ?? [], open ?? []);
+}
+
+/** The Open Shift button, as a plain function so it can be tested without React. `registerId` is the cashier's explicit pick. */
+export async function openShiftFlow({ openingCash, registerId = null, userId = null }) {
+  let registers;
+  let open;
+  try {
+    [registers, open] = await Promise.all([posApi.listRegisters(), posApi.listSessions("status=OPEN")]);
+  } catch (err) {
+    throw new Error(err?.status === 403 ? "ليست لديك صلاحية فتح وردية." : err?.message || "تعذّر قراءة أجهزة الكاشير");
+  }
+  if (!(registers ?? []).some((r) => r?.is_active !== false)) {
+    const first = await bootstrapPos(); // first use: warehouse -> profile -> register
+    return posApi.openSession(first.id, { openingFloat: openingCash });
+  }
+  // One open shift per cashier: this person already has a drawer open.
+  if (pickMyShift(open ?? [], userId)) throw new Error("هناك وردية مفتوحة بالفعل");
+  // Read the shop's real situation instead of assuming "the first drawer is mine".
+  const choice = chooseRegister(registers ?? [], open ?? [], registerId);
+  if (choice.status === "choose") throw Object.assign(new Error("اختر جهاز الكاشير الذي ستعمل عليه"), { code: "register_required" });
+  if (choice.status === "none") throw new Error(NONE_TEXT[choice.reason] ?? "تعذّر اختيار جهاز الكاشير");
+  return posApi.openSession(choice.register.id, { openingFloat: openingCash });
 }
 
 export function useOpenShift() {
   const refresh = useRefresh();
-  return useMutation({ mutationFn: openShiftFlow, onSuccess: refresh });
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
+  return useMutation({ mutationFn: (args) => openShiftFlow({ ...args, userId }), onSuccess: refresh });
+}
+
+/** The drawers a cashier could open a shift on right now. Read only while the open-shift dialog is up. */
+export function useOpenChoice(enabled) {
+  return useQuery({ queryKey: ["cashier", "open-choice"], queryFn: loadOpenChoice, enabled, staleTime: 0, gcTime: 0 });
 }
 
 export function useCloseShift() {

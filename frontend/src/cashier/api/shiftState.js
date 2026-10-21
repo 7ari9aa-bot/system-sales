@@ -32,6 +32,27 @@ export function pickMyShift(openSessions, userId) {
   return (userId && open.find((s) => s.cashier_user_id === userId)) || null;
 }
 
+/**
+ * Which drawer may this person open a shift on? One that is active and has no open shift.
+ * Nothing is guessed when there is a real choice: with one free drawer it is taken (a one-till shop is never
+ * asked), with several the cashier must pick, and with none the answer says why.
+ *
+ * `registers` are the active ones, `openSessions` the OPEN shifts, `pickedId` the cashier's explicit pick.
+ * Returns { status: "ok", register } | { status: "choose", free } | { status: "none", reason }.
+ */
+export function chooseRegister(registers, openSessions, pickedId = null) {
+  const active = (registers ?? []).filter(isActive);
+  if (!active.length) return { status: "none", reason: "no_register" };
+  const busy = new Set((openSessions ?? []).filter((s) => s?.status === "OPEN").map((s) => s.register_id));
+  const free = active.filter((r) => !busy.has(r.id));
+  if (!free.length) return { status: "none", reason: "all_busy" };
+  if (pickedId) {
+    const picked = free.find((r) => r.id === pickedId);
+    return picked ? { status: "ok", register: picked } : { status: "none", reason: "picked_unavailable" };
+  }
+  return free.length === 1 ? { status: "ok", register: free[0] } : { status: "choose", free };
+}
+
 /** Resolve the state of the till for THIS person (`userId` picks their own open drawer first). */
 export async function resolveShiftState({ canConfigure = false, userId = null } = {}) {
   let registers;

@@ -158,6 +158,7 @@ describe("payment methods are no longer modelled, but no historical money disapp
 });
 
 import { shiftEmployees as _shiftEmployees, shiftsSummary as _shiftsSummary } from "./shiftAdapter";
+const shiftsSummary = _shiftsSummary;
 
 describe("shiftsSummary / shiftEmployees", () => {
   const rows = [
@@ -179,5 +180,23 @@ describe("shiftsSummary / shiftEmployees", () => {
   });
   it("lists each employee once, sorted", () => {
     expect(_shiftEmployees(rows)).toEqual(["أحمد", "منى"]);
+  });
+});
+
+describe("shiftsSummary: whose shift is `open`", () => {
+  const row = (id, employeeId, status = "open") => ({ id, employeeId, status, cashSales: 0, difference: 0, actual: 0 });
+  const rows = [row("a", "u-other"), row("b", "u-me"), row("c", "u-me", "closed")];
+
+  it("with a user it is THAT user's open shift, not the first one in the shop", () => {
+    expect(shiftsSummary(rows, "u-me").open.id).toBe("b");
+    expect(shiftsSummary(rows, "u-me").othersOpen).toBe(1);
+  });
+  it("a cashier with no shift of their own has none open, even though someone else's is running", () => {
+    const s = shiftsSummary([row("a", "u-other")], "u-me");
+    expect(s.open).toBeNull();
+    expect(s.othersOpen).toBe(1);
+  });
+  it("without a user it keeps the old behaviour", () => {
+    expect(shiftsSummary(rows).open.id).toBe("a");
   });
 });

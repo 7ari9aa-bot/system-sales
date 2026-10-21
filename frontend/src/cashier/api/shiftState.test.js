@@ -12,7 +12,7 @@ const { pos, api } = vi.hoisted(() => ({
 vi.mock("./posApi", () => ({ posApi: pos }));
 vi.mock("@/lib/api", () => ({ api }));
 
-import { bootstrapPos, pickMyShift, resolveShiftState } from "./shiftState";
+import { bootstrapPos, chooseRegister, pickMyShift, resolveShiftState } from "./shiftState";
 
 const REG = { id: "r1", code: "MAIN", name: "Main", is_active: true, warehouse_id: "w1", profile_id: "p1" };
 const SESSION = { id: "s1", register_id: "r1", status: "OPEN", opening_float: "100.00" };
@@ -167,5 +167,41 @@ describe("a drawer per cashier", () => {
     pos.listSessions.mockResolvedValueOnce([theirs]).mockResolvedValueOnce([]);
     const s = await resolveShiftState({ userId: "u-me" });
     expect(s).toMatchObject({ status: "no_open_shift", register: { id: "r1" } });
+  });
+});
+
+describe("chooseRegister (which drawer a cashier may open a shift on)", () => {
+  const R = (id, extra = {}) => ({ id, is_active: true, ...extra });
+  const S = (registerId, status = "OPEN") => ({ register_id: registerId, status });
+
+  it("no active drawer", () => {
+    expect(chooseRegister([], [])).toEqual({ status: "none", reason: "no_register" });
+    expect(chooseRegister([R("a", { is_active: false })], [])).toEqual({ status: "none", reason: "no_register" });
+    expect(chooseRegister(null, null)).toEqual({ status: "none", reason: "no_register" });
+  });
+  it("a single free drawer is taken without asking", () => {
+    expect(chooseRegister([R("a")], [])).toMatchObject({ status: "ok", register: { id: "a" } });
+  });
+  it("busy drawers are skipped; the one free drawer is taken", () => {
+    expect(chooseRegister([R("a"), R("b")], [S("a")])).toMatchObject({ status: "ok", register: { id: "b" } });
+  });
+  it("a closed shift does not make a drawer busy", () => {
+    expect(chooseRegister([R("a")], [S("a", "CLOSED")])).toMatchObject({ status: "ok", register: { id: "a" } });
+  });
+  it("several free drawers: the cashier must choose, listing only the free ones", () => {
+    const r = chooseRegister([R("a"), R("b"), R("c")], [S("b")]);
+    expect(r.status).toBe("choose");
+    expect(r.free.map((x) => x.id)).toEqual(["a", "c"]);
+  });
+  it("an explicit pick is honoured when free, refused when busy or unknown", () => {
+    expect(chooseRegister([R("a"), R("b")], [], "b")).toMatchObject({ status: "ok", register: { id: "b" } });
+    expect(chooseRegister([R("a"), R("b")], [S("b")], "b")).toEqual({ status: "none", reason: "picked_unavailable" });
+    expect(chooseRegister([R("a"), R("b")], [], "zzz")).toEqual({ status: "none", reason: "picked_unavailable" });
+  });
+  it("every drawer busy", () => {
+    expect(chooseRegister([R("a"), R("b")], [S("a"), S("b")])).toEqual({ status: "none", reason: "all_busy" });
+  });
+  it("an inactive drawer is never offered", () => {
+    expect(chooseRegister([R("a", { is_active: false }), R("b")], [])).toMatchObject({ status: "ok", register: { id: "b" } });
   });
 });
