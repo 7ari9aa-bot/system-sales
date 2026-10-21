@@ -22,18 +22,37 @@ function failure(err) {
   return { status: "error", message: err?.message ?? "unknown error", retryable: status === 0 || status >= 500 };
 }
 
-/** Resolve the state of the (single) shop's till. */
-export async function resolveShiftState({ canConfigure = false } = {}) {
+/**
+ * Of the open shifts, the one this person is working: their OWN drawer first. In a shop with a
+ * drawer per cashier, "the first active register" is somebody else's till, and every money call
+ * on it is (rightly) refused with "held by another cashier".
+ */
+export function pickMyShift(openSessions, userId) {
+  const open = (openSessions ?? []).filter((s) => s?.status === "OPEN");
+  return (userId && open.find((s) => s.cashier_user_id === userId)) || null;
+}
+
+/** Resolve the state of the till for THIS person (`userId` picks their own open drawer first). */
+export async function resolveShiftState({ canConfigure = false, userId = null } = {}) {
   let registers;
   try {
     registers = (await posApi.listRegisters()) ?? [];
   } catch (err) {
     return failure(err);
   }
-  const register = registers.find(isActive);
-  if (!register) return { status: "needs_setup", who: canConfigure ? "self" : "manager" };
+  const active = registers.filter(isActive);
+  if (!active.length) return { status: "needs_setup", who: canConfigure ? "self" : "manager" };
 
   try {
+    if (userId) {
+      const mineAnywhere = pickMyShift((await posApi.listSessions("status=OPEN")) ?? [], userId);
+      const myRegister = mineAnywhere && active.find((r) => r.id === mineAnywhere.register_id);
+      if (mineAnywhere && myRegister) {
+        const session = await posApi.getSession(mineAnywhere.id);
+        return { status: "open", register: myRegister, session };
+      }
+    }
+    const register = active[0];
     const open = (await posApi.listSessions(`status=OPEN&register_id=${encodeURIComponent(register.id)}`)) ?? [];
     // Trust the server filter, but never trust it blindly with money screens.
     const mine = open.find((s) => s.status === "OPEN" && s.register_id === register.id);

@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/lib/AuthContext";
 import { posApi } from "./posApi";
 import { bootstrapPos, resolveShiftState } from "./shiftState";
 import { shiftsFromApi } from "./shiftAdapter";
@@ -20,7 +21,9 @@ export function useShifts({ employees = {} } = {}) {
 
 /** needs_setup / no_open_shift / open / forbidden / error (see shiftState.js). */
 export function useShiftState({ canConfigure = false } = {}) {
-  return useQuery({ queryKey: [...SHIFT_STATE_KEY, canConfigure], queryFn: () => resolveShiftState({ canConfigure }) });
+  const { user } = useAuth();
+  const userId = user?.id ?? null; // so a cashier lands on THEIR drawer, not the shop's first one
+  return useQuery({ queryKey: [...SHIFT_STATE_KEY, canConfigure, userId], queryFn: () => resolveShiftState({ canConfigure, userId }) });
 }
 
 /** Live figures for the close dialog, computed by the backend from the ledger. */

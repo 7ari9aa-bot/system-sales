@@ -12,7 +12,7 @@ const { pos, api } = vi.hoisted(() => ({
 vi.mock("./posApi", () => ({ posApi: pos }));
 vi.mock("@/lib/api", () => ({ api }));
 
-import { bootstrapPos, resolveShiftState } from "./shiftState";
+import { bootstrapPos, pickMyShift, resolveShiftState } from "./shiftState";
 
 const REG = { id: "r1", code: "MAIN", name: "Main", is_active: true, warehouse_id: "w1", profile_id: "p1" };
 const SESSION = { id: "s1", register_id: "r1", status: "OPEN", opening_float: "100.00" };
@@ -138,5 +138,34 @@ describe("bootstrapPos (manager only, idempotent)", () => {
     expect(api.mock.calls.some(([p, o]) => p === "/pos/profiles" && o?.method === "POST")).toBe(false);
     const regPost = api.mock.calls.find(([p, o]) => p === "/pos/registers" && o?.method === "POST");
     expect(regPost[1].body.profile_id).toBe("p9");
+  });
+});
+
+describe("a drawer per cashier", () => {
+  const REG2 = { ...REG, id: "r2", code: "SECOND" };
+  const mine = { id: "s-mine", register_id: "r2", status: "OPEN", cashier_user_id: "u-me" };
+  const theirs = { id: "s-theirs", register_id: "r1", status: "OPEN", cashier_user_id: "u-other" };
+
+  it("pickMyShift never returns somebody else's shift", () => {
+    expect(pickMyShift([theirs, mine], "u-me")).toBe(mine);
+    expect(pickMyShift([theirs], "u-me")).toBeNull();
+    expect(pickMyShift([mine], null)).toBeNull();
+    expect(pickMyShift([{ ...mine, status: "CLOSED" }], "u-me")).toBeNull();
+  });
+
+  it("lands on MY open drawer even when another cashier's register comes first", async () => {
+    pos.listRegisters.mockResolvedValue([REG, REG2]);
+    pos.listSessions.mockResolvedValue([theirs, mine]);
+    pos.getSession.mockResolvedValue({ ...mine, expected_now: "0.00" });
+    const s = await resolveShiftState({ userId: "u-me" });
+    expect(s).toMatchObject({ status: "open", register: { id: "r2" }, session: { id: "s-mine" } });
+    expect(pos.getSession).toHaveBeenCalledWith("s-mine");
+  });
+
+  it("with no shift of my own it falls back to the first register, as before", async () => {
+    pos.listRegisters.mockResolvedValue([REG, REG2]);
+    pos.listSessions.mockResolvedValueOnce([theirs]).mockResolvedValueOnce([]);
+    const s = await resolveShiftState({ userId: "u-me" });
+    expect(s).toMatchObject({ status: "no_open_shift", register: { id: "r1" } });
   });
 });
