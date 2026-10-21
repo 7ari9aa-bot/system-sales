@@ -6,6 +6,7 @@ import { fetchAllItems, mergeSessionItems } from "./sessionCatalog";
 import { clampQty } from "./checkout";
 import { createSaleSession } from "./saleSession";
 import { receiptFromApi } from "./receiptAdapter";
+import { sellableCustomers } from "./customerRule";
 import { heldFromApi, holdPayload, restoreHeld } from "./heldCarts";
 import { rowFromDetail, saleReceipts } from "./salesLog";
 import { invoiceFromApi, returnsOf } from "./invoiceDetail";
@@ -187,9 +188,8 @@ export function usePosSale({ sessionId, catalog = [], onSold, loadFreshCatalog }
       setPaying(true);
       setPayError(null);
       try {
-        const sold = await sale.pay({ cart, total: quote.total, discountTotal, customerId, tenders });
+        const { detail } = await sale.pay({ cart, total: quote.total, discountTotal, customerId, tenders });
         const names = Object.fromEntries(catalog.map((v) => [v.id, v.productName]));
-        const detail = await posApi.receipt(sold.receipt_id);
         const receipt = receiptFromApi(detail, { cashier, customerName, names });
         setLines([]);
         setInvoiceDiscount("");
@@ -304,4 +304,25 @@ export async function fetchReturnsLog(client = posApi) {
 
 export function useReturnsLog() {
   return useQuery({ queryKey: ["cashier", "returns-log"], staleTime: 0, queryFn: () => fetchReturnsLog() });
+}
+
+/** The profile this shift runs under (null when the shift has none): the source of require_customer. */
+export function useShiftProfile(profileId) {
+  return useQuery({
+    queryKey: ["cashier", "profile", profileId],
+    enabled: Boolean(profileId),
+    staleTime: 60_000,
+    queryFn: async () => ((await posApi.listProfiles()) ?? []).find((p) => p.id === profileId) ?? null,
+  });
+}
+
+/** Customers matching what the cashier typed (name or phone). Off until there is something to search. */
+export function useCustomerSearch(term) {
+  const t = (term ?? "").trim();
+  return useQuery({
+    queryKey: ["cashier", "customer-search", t],
+    enabled: t.length >= 2,
+    staleTime: 15_000,
+    queryFn: async () => sellableCustomers(await posApi.searchCustomers(t)),
+  });
 }

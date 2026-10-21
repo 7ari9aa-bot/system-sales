@@ -15,7 +15,8 @@ import SuspendedDialog from "@/cashier/components/pos/SuspendedDialog";
 import HoldDialog from "@/cashier/components/pos/HoldDialog";
 import ConfirmDialog from "@/cashier/components/ui-kit/ConfirmDialog";
 import { Button } from "@/cashier/components/ui/button";
-import { CATALOG_KEY, HELD_KEY, SESSION_CATALOG_KEY, fetchSessionCatalog, useHeldCarts, usePosSale, useSessionCatalog } from "@/cashier/api/usePosSale";
+import { CATALOG_KEY, HELD_KEY, SESSION_CATALOG_KEY, fetchSessionCatalog, useCustomerSearch, useHeldCarts, usePosSale, useSessionCatalog, useShiftProfile } from "@/cashier/api/usePosSale";
+import { customerBlock } from "@/cashier/api/customerRule";
 import { useShiftState } from "@/cashier/api/useShifts";
 import { searchCatalog } from "@/cashier/api/catalogAdapter";
 import { posApi } from "@/cashier/api/posApi";
@@ -84,6 +85,11 @@ function PosScreen({ user, session }) {
   const [scanError, setScanError] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
+  const [pickedCustomer, setPickedCustomer] = useState(null); // a REAL customer; the typed name above is only a label
+  const profile = useShiftProfile(session.profile_id);
+  const requireCustomer = Boolean(profile.data?.require_customer);
+  const customerSearch = useCustomerSearch(pickedCustomer ? "" : customerName);
+  const needCustomer = customerBlock({ requireCustomer, customerId: pickedCustomer?.id });
   const [activeLineId, setActiveLineId] = useState(null);
   const [invoiceDiscountPct, setInvoiceDiscountPct] = useState(0);
   const [invoiceDiscountAmt, setInvoiceDiscountAmt] = useState(0);
@@ -92,8 +98,8 @@ function PosScreen({ user, session }) {
 
   const cashier = user?.full_name || user?.email || "";
   const hasLines = lines.length > 0;
-  const displayCustomer = customerName.trim() || "عميل نقدي";
-  const quoteReady = hasLines && !sale.quote.loading && !sale.quote.error;
+  const displayCustomer = pickedCustomer?.name || customerName.trim() || "عميل نقدي";
+  const quoteReady = hasLines && !sale.quote.loading && !sale.quote.error && !needCustomer;
 
   // Invoice discount = percentage of the subtotal + a fixed amount, sent to the backend as ONE amount.
   const subtotalNumber = Number(sale.quote.subtotal) || 0;
@@ -265,13 +271,14 @@ function PosScreen({ user, session }) {
 
   async function confirmSale(tenders) {
     try {
-      const r = await sale.pay({ tenders, cashier, customerName });
+      const r = await sale.pay({ tenders, cashier, customerName: displayCustomer === "عميل نقدي" ? "" : displayCustomer, customerId: pickedCustomer?.id });
       setDialog("receipt");
       toast.success(`تم إتمام البيع ${r.number} بمبلغ ${r.total.toFixed(2)} ج.م`);
       setInvoiceDiscountPct(0);
       setInvoiceDiscountAmt(0);
       setCustomerName("");
       setCustomerPhone("");
+      setPickedCustomer(null);
     } catch {
       /* the dialog shows sale.payError and stays open so the cashier can retry safely */
     }
@@ -333,7 +340,21 @@ function PosScreen({ user, session }) {
             disabled={!hasLines}
           />
 
-          <PosCustomerFields name={customerName} onNameChange={setCustomerName} phone={customerPhone} onPhoneChange={setCustomerPhone} customers={[]} />
+          <PosCustomerFields
+            name={customerName}
+            onNameChange={setCustomerName}
+            phone={customerPhone}
+            onPhoneChange={setCustomerPhone}
+            customer={pickedCustomer}
+            onPick={(c) => {
+              setPickedCustomer(c);
+              if (c) setCustomerName("");
+            }}
+            results={customerSearch.data ?? []}
+            searching={customerSearch.isFetching}
+            required={requireCustomer}
+          />
+          {hasLines && needCustomer ? <p role="alert" className="max-w-[230px] text-[11px] font-bold text-destructive">{needCustomer}</p> : null}
 
           <PosInvoiceSummary subTotal={finalTotals.subTotal} discount={finalTotals.invoiceDiscount} total={finalTotals.total} />
         </div>

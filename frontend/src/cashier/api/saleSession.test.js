@@ -1,13 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { pos } = vi.hoisted(() => ({ pos: { quote: vi.fn(), sell: vi.fn() } }));
+const { pos } = vi.hoisted(() => ({ pos: { quote: vi.fn(), sell: vi.fn(), receipt: vi.fn() } }));
 vi.mock("./posApi", async () => ({ posApi: pos, newIntent: (await vi.importActual("./posApi")).newIntent }));
 
 import { createSaleSession } from "./saleSession";
 
 const cart = [{ variantId: "v1", qty: 2 }];
 const pay = { total: "50.00", cart, tenders: [{ method: "cash", amount: "50" }] };
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  pos.receipt.mockResolvedValue({ id: "r" });
+});
 
 describe("createSaleSession: one payment intent = one Idempotency-Key", () => {
   it("a retry of the SAME payment re-sends the SAME key (so the server replays, not re-sells)", async () => {
@@ -17,6 +20,17 @@ describe("createSaleSession: one payment intent = one Idempotency-Key", () => {
     await sale.pay(pay);
     const keys = pos.sell.mock.calls.map((c) => c[2].key);
     expect(keys[0]).toBe(keys[1]);
+  });
+
+  it("sale OK but receipt read FAILS: the retry re-sends the SAME key (one sale, not two)", async () => {
+    pos.sell.mockResolvedValue({ receipt_id: "r1" });
+    pos.receipt.mockRejectedValueOnce(Object.assign(new Error("network"), { status: 0 })).mockResolvedValueOnce({ id: "r1" });
+    const sale = createSaleSession("sess-1");
+    await expect(sale.pay(pay)).rejects.toThrow();
+    const out = await sale.pay(pay);
+    const keys = pos.sell.mock.calls.map((c) => c[2].key);
+    expect(keys[0]).toBe(keys[1]);
+    expect(out.detail).toEqual({ id: "r1" });
   });
 
   it("a double tap while the first request is in flight sends ONE request", async () => {

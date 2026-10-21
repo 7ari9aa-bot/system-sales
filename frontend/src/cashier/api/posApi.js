@@ -67,6 +67,8 @@ function post(path, body, headers = {}) {
 export const posApi = {
   /* ---- setup / reads (no money, no intent) ---- */
   listProfiles: () => api("/pos/profiles"),
+  /** Customers by name / phone. The server needs at least one character; an empty term lists the newest. */
+  searchCustomers: (term = "", limit = 8) => api(`/customers?search=${encodeURIComponent(term)}&limit=${limit}`),
   listRegisters: () => api("/pos/registers"),
   listSessions: (query = "") => api(`/pos/sessions${query ? `?${query}` : ""}`),
   getSession: (id) => api(`/pos/sessions/${seg(id)}`),

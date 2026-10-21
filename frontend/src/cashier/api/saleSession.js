@@ -32,6 +32,12 @@ export function createSaleSession(sessionId) {
       return { subtotal: r.subtotal, discountTotal: r.discount_total, total: r.grand_total };
     },
 
+    /**
+     * Sell AND fetch the receipt as ONE unit. The key is released only after both succeeded:
+     * if the sale went through but the receipt read failed, the next tap on the same cart re-sends
+     * the SAME key, the server replays the first sale, and we retry only the read. Releasing the
+     * key right after /sell (as before) made that retry a second, separate sale.
+     */
     async pay({ cart, total, discountTotal, customerId, tenders }) {
       const payload = buildSellPayload({ cart, total, discountTotal, customerId, tenders }); // throws if unpaid/empty
       const fp = fingerprint({ cart, discountTotal, customerId, tenders });
@@ -45,10 +51,11 @@ export function createSaleSession(sessionId) {
       inflightFor = fp;
       inflight = posApi
         .sell(sessionId, payload, sent)
-        .then((receipt) => {
-          intent = null; // success: the next sale is a new intent
+        .then(async (sold) => {
+          const detail = await posApi.receipt(sold.receipt_id);
+          intent = null; // sale AND receipt are in hand: the next sale is a new intent
           intentFor = null;
-          return receipt;
+          return { sold, detail };
         })
         .finally(() => {
           inflight = null;
