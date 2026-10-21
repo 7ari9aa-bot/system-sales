@@ -3,7 +3,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/cashier/components/ui/textarea";
 import FormField from "@/cashier/components/products/FormField";
 import { DOT, GRID2, INPUT, SECTION, SECTION_HEAD, SECTION_TITLE, SELECT_TRIGGER, TEXTAREA } from "@/cashier/components/products/formStyles";
-import { brands, categories } from "@/cashier/lib/mockData";
+import NamedPicker from "@/cashier/components/products/NamedPicker";
+import { useBrands, useCategories, useCreateBrand, useCreateCategory } from "@/cashier/api/useCatalogWrite";
 
 const SIZE_PRESETS = [
   { key: "clothing", label: "ملابس (S — XXL)" },
@@ -14,6 +15,10 @@ const SIZE_PRESETS = [
 
 // بيانات الموديل الأساسية: الاسم والفئة والعلامة ونظام المقاسات والوصف.
 export default function ProductBasicsSection({ form, onPatch, sizePreset, onSizePresetChange }) {
+  const categories = useCategories();
+  const brands = useBrands();
+  const createCategory = useCreateCategory();
+  const createBrand = useCreateBrand();
   return (
     <div className={SECTION}>
       <div className={SECTION_HEAD}>
@@ -27,33 +32,29 @@ export default function ProductBasicsSection({ form, onPatch, sizePreset, onSize
         </FormField>
 
         <FormField label="الفئة">
-          <Select value={form.category} onValueChange={(v) => onPatch({ category: v })}>
-            <SelectTrigger className={SELECT_TRIGGER}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {categories.map((c) => (
-                <SelectItem key={c} value={c}>
-                  {c}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <NamedPicker
+            items={categories.data ?? []}
+            loading={categories.isLoading}
+            value={form.categoryId}
+            onChange={(id) => onPatch({ categoryId: id })}
+            onCreate={(name) => createCategory.mutateAsync(name)}
+            noneLabel="بدون فئة"
+            addLabel="+ فئة جديدة"
+            placeholder="اسم الفئة"
+          />
         </FormField>
 
         <FormField label="العلامة التجارية">
-          <Select value={form.brand} onValueChange={(v) => onPatch({ brand: v })}>
-            <SelectTrigger className={SELECT_TRIGGER}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {brands.map((b) => (
-                <SelectItem key={b} value={b}>
-                  {b}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <NamedPicker
+            items={brands.data ?? []}
+            loading={brands.isLoading}
+            value={form.brandId}
+            onChange={(id) => onPatch({ brandId: id })}
+            onCreate={(name) => createBrand.mutateAsync(name)}
+            noneLabel="بدون علامة"
+            addLabel="+ علامة جديدة"
+            placeholder="اسم العلامة"
+          />
         </FormField>
 
         <FormField label="نظام المقاسات">

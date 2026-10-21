@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { Button } from "@/cashier/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/cashier/components/ui/dialog";
 import { Input } from "@/cashier/components/ui/input";
@@ -8,6 +9,14 @@ import { cn } from "@/cashier/lib/utils";
 
 // إغلاق الوردية: مقارنة النقدية المتوقعة بالمبلغ الفعلي المعدود وحساب الفرق.
 // `preview` = the backend's close-preview (expected cash computed from the ledger, not on the client).
+/** Arabic number agreement: 1 = singular, 2 = dual, 3-10 = plural noun, 11+ = singular noun. */
+export function heldInvoicesPhrase(n) {
+  if (n === 1) return "توجد فاتورة معلقة";
+  if (n === 2) return "توجد فاتورتان معلقتان";
+  if (n >= 3 && n <= 10) return `توجد ${n} فواتير معلقة`;
+  return `توجد ${n} فاتورة معلقة`;
+}
+
 export default function ShiftCloseDialog({ open, onOpenChange, shift, heldCount = 0, preview, previewLoading = false, onSubmit, pending = false, error = null }) {
   const [actual, setActual] = useState("");
 
@@ -72,9 +81,20 @@ export default function ShiftCloseDialog({ open, onOpenChange, shift, heldCount 
           </div> : null}
 
           {heldCount > 0 ? (
-            <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
-              يوجد {heldCount} {heldCount === 1 ? "فاتورة معلقة" : "فواتير معلقة"} على هذه الوردية. بعد الإغلاق لا يمكن استعادتها، أكملها أو احذفها قبل الإغلاق.
-            </p>
+            <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900">
+              <p className="font-semibold">
+                {`تنبيه: ${heldInvoicesPhrase(heldCount)} على هذه الوردية.`}
+              </p>
+              <p className="mt-1 leading-relaxed">
+                عند تأكيد إغلاق الوردية {heldCount === 1 ? "تُصفَّر هذه الفاتورة" : heldCount === 2 ? "تُصفَّر الفاتورتان" : "تُصفَّر هذه الفواتير"} ولا يمكن استرجاعها. إن رغبت في إتمامها فراجعها قبل الإغلاق.
+              </p>
+              <Link
+                to="/cashier/pos?held=1"
+                className="mt-2 inline-flex h-8 items-center rounded-md border border-amber-300 bg-white px-3 text-xs font-bold text-amber-900 hover:bg-amber-100"
+              >
+                مراجعة الفواتير المعلقة
+              </Link>
+            </div>
           ) : null}
           {error ? <p role="alert" className="text-xs font-semibold text-rose-600">{error}</p> : null}
         </div>
@@ -88,7 +108,7 @@ export default function ShiftCloseDialog({ open, onOpenChange, shift, heldCount 
             disabled={!ready || pending}
             onClick={() => onSubmit({ actual: counted })}
           >
-            {pending ? "جارٍ الإغلاق…" : "تأكيد إغلاق الوردية"}
+            {pending ? "جارٍ الإغلاق…" : heldCount > 0 ? "تأكيد الإغلاق وتصفير المعلقة" : "تأكيد إغلاق الوردية"}
           </Button>
         </DialogFooter>
       </DialogContent>

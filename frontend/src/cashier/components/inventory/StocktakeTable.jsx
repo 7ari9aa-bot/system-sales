@@ -6,7 +6,7 @@ import { Input } from "@/cashier/components/ui/input";
 import SectionCard from "@/cashier/components/ui-kit/SectionCard";
 import StatusBadge from "@/cashier/components/ui-kit/StatusBadge";
 import ColorSwatch from "@/cashier/components/ui-kit/ColorSwatch";
-import { colorHex } from "@/cashier/lib/mockData";
+import { colorHex } from "@/cashier/lib/uiConstants";
 import { changedCounts, diffOf, parseCount, sheetTotals, stocktakeErrorMessage } from "@/cashier/api/stocktakeAdapter";
 import { useApproveStocktake, useCancelStocktake, useSaveCounts } from "@/cashier/api/useStocktake";
 import { fmtInt } from "@/cashier/lib/format";

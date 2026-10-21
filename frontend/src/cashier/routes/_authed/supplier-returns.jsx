@@ -13,7 +13,6 @@ import supplierReturnColumns from "@/cashier/components/supplier-returns/supplie
 import { BTN, BTN_PRIMARY, LEDGER, LEDGER_FOOTER, LEDGER_TOOLBAR } from "@/cashier/components/ui-kit/ledgerStyles";
 import { sumMoney } from "@/cashier/api/money";
 import {
-  RETURN_REASON_LABEL,
   RETURN_STATUS_LABEL,
   SETTLEMENT_LABEL,
   purchasingErrorMessage,
@@ -43,7 +42,6 @@ const EXPORT_COLUMNS = [
   { header: "الأصناف", value: (r) => r.items.map((i) => `${i.name} ${i.color} ${i.size} ×${i.qty}`.replace(/\s+/g, " ")).join(" ; ") },
   { header: "الكمية", key: "qty" },
   { header: "القيمة", key: "amount" },
-  { header: "السبب", value: (r) => RETURN_REASON_LABEL[r.reason] ?? r.reason },
   { header: "التسوية", value: (r) => SETTLEMENT_LABEL[r.settlement] ?? "—" },
   // A return under review or refused is not money: Excel must not sum it as such.
   { header: "قرار المورد", value: (r) => RETURN_STATUS_LABEL[r.status] ?? "—" },

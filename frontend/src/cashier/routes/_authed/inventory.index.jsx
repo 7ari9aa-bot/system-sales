@@ -9,7 +9,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import FilterPanel from "@/cashier/components/ui-kit/FilterPanel";
 import InventoryProductGrid from "@/cashier/components/inventory/InventoryProductGrid";
 import ProductDetailsDialog from "@/cashier/components/inventory/ProductDetailsDialog";
-import SystemProductsSection from "@/cashier/components/inventory/SystemProductsSection";
 import VariantMovementsDialog from "@/cashier/components/inventory/VariantMovementsDialog";
 import { costLabel } from "@/cashier/api/stockAdapter";
 import { useStock, useStockCategories, useStockSummary } from "@/cashier/api/useStock";
@@ -188,8 +187,6 @@ export default function InventoryPage() {
       ) : (
         <InventoryProductGrid rows={rows} onOpen={setDetailsOf} onShowLow={() => setStatus("low")} />
       )}
-
-      <SystemProductsSection onOpen={setDetailsOf} />
 
       <ProductDetailsDialog
         product={openProduct}

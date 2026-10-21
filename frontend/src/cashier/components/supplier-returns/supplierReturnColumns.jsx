@@ -2,7 +2,7 @@ import { Check, X } from "lucide-react";
 import { Button } from "@/cashier/components/ui/button";
 import { CELL_MAIN, CELL_NUM, CELL_SUB, TD, TH } from "@/cashier/components/ui-kit/ledgerStyles";
 import { toMinor } from "@/cashier/api/money";
-import { RETURN_REASON_LABEL, RETURN_STATUS_LABEL, SETTLEMENT_LABEL } from "@/cashier/api/purchasingAdapter";
+import { RETURN_STATUS_LABEL, SETTLEMENT_LABEL } from "@/cashier/api/purchasingAdapter";
 import { fmtDate, fmtInt, fmtMoney } from "@/cashier/lib/format";
 
 const STATUS_TONE = {
@@ -88,13 +88,6 @@ export default function supplierReturnColumns({ onAccept, onReject, busyId }) {
       ),
     },
     { key: "stockEffect", header: "أثر المخزون", headerClassName: TH, className: TD, sortable: false, align: "center", render: stockEffect },
-    {
-      key: "reason",
-      header: "السبب",
-      headerClassName: TH,
-      className: TD,
-      render: (r) => <span className={CELL_MAIN}>{RETURN_REASON_LABEL[r.reason] ?? r.reason}</span>,
-    },
     {
       key: "settlement",
       header: "التسوية",

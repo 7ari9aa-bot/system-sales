@@ -7,7 +7,7 @@ import ProductSummarySection from "@/cashier/components/products/ProductSummaryS
 import ProductImageCard from "@/cashier/components/products/ProductImageCard";
 import VariantsMatrix from "@/cashier/components/products/VariantsMatrix";
 import { CARD, CARD_PAD, DOT, MAIN_COL, SECTION_HEAD, SECTION_HINT, SECTION_TITLE, WRAP } from "@/cashier/components/products/formStyles";
-import { brands, categories, SIZE_SETS } from "@/cashier/lib/mockData";
+import { SIZE_SETS } from "@/cashier/lib/uiConstants";
 import { nextSkuBase } from "@/cashier/api/catalogApi";
 import { useExistingSkus } from "@/cashier/api/useCatalogWrite";
 
@@ -17,12 +17,11 @@ export default function ProductForm({ product, onSubmit, onCancel, onPrintLabels
   const { data: existingSkus = [] } = useExistingSkus();
   const [form, setForm] = useState({
     name: product?.name ?? "",
-    category: product?.category ?? categories[0],
-    brand: product?.brand ?? brands[0],
+    categoryId: product?.categoryId ?? "",
+    brandId: product?.brandId ?? "",
     description: product?.description ?? "",
-    buyPrice: product?.buyPrice ?? 200,
-    sellPrice: product?.sellPrice ?? 400,
-    threshold: product?.threshold ?? 5,
+    sellPrice: product?.sellPrice ?? "",
+    threshold: product?.threshold ?? "",
   });
   const [colors, setColors] = useState(product?.colors ?? []);
   const [sizePreset, setSizePreset] = useState("clothing");
@@ -30,7 +29,7 @@ export default function ProductForm({ product, onSubmit, onCancel, onPrintLabels
   const [image, setImage] = useState(null);
   const [rows, setRows] = useState(
     product
-      ? product.variants.map((v, i) => ({ id: `row-${i}`, color: v.color, size: v.size, sku: v.sku, barcode: v.barcode, buyPrice: v.buyPrice, sellPrice: v.sellPrice, stock: v.stock }))
+      ? product.variants.map((v) => ({ id: v.id, color: v.color, size: v.size, sku: v.sku, barcode: v.barcode, sellPrice: v.sellPrice, stock: 0 }))
       : [],
   );
 
@@ -67,7 +66,6 @@ export default function ProductForm({ product, onSubmit, onCancel, onPrintLabels
             size,
             sku: `${skuBase}-${String(ci + 1).padStart(2, "0")}${String(si + 1).padStart(2, "0")}`,
             barcode: "",
-            buyPrice: form.buyPrice,
             sellPrice: form.sellPrice,
             stock: 0,
           },
@@ -85,13 +83,13 @@ export default function ProductForm({ product, onSubmit, onCancel, onPrintLabels
     setRows((prev) => prev.map((r, i) => ({ ...r, barcode: `299${String(1000000000 + r.sku.length * 7919 + i * 137).slice(0, 10)}` })));
   }
 
-  const canSave = form.name.trim().length > 2 && rows.length > 0;
+  const canSave = form.name.trim().length > 2 && rows.length > 0 && rows.every((r) => Number(r.sellPrice) > 0);
 
   return (
     <>
       <ProductEditorHero
         title={isEdit ? `تعديل المنتج: ${product.name}` : "إضافة منتج"}
-        subtitle="سجل بيانات الموديل ومقاساته وألوانه وسعر الشراء والبيع والمخزون الافتتاحي."
+        subtitle="سجل بيانات الموديل ومقاساته وألوانه وسعر البيع والمخزون الافتتاحي. تكلفة الشراء تُحسب من فواتير الشراء."
         sku={product?.sku}
         canPrint={rows.length > 0}
         onPrintLabels={() => onPrintLabels?.(rows)}
@@ -126,7 +124,6 @@ export default function ProductForm({ product, onSubmit, onCancel, onPrintLabels
                 onChange={updateRow}
                 onGenerate={generateRows}
                 onGenerateBarcodes={generateBarcodes}
-                defaultBuy={form.buyPrice}
                 defaultSell={form.sellPrice}
               />
             </div>

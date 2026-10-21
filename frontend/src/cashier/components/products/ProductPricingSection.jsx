@@ -12,16 +12,12 @@ export default function ProductPricingSection({ form, onPatch }) {
       </div>
 
       <div className={GRID3}>
-        <FormField label="سعر الشراء الافتراضي">
-          <Input type="number" value={form.buyPrice} onChange={(e) => onPatch({ buyPrice: Number(e.target.value) })} className={`${INPUT} num`} />
-        </FormField>
-
         <FormField label="سعر البيع الافتراضي">
-          <Input type="number" value={form.sellPrice} onChange={(e) => onPatch({ sellPrice: Number(e.target.value) })} className={`${INPUT} num`} />
+          <Input type="number" value={form.sellPrice} min={0} step="0.01" placeholder="مثال: 450" onChange={(e) => onPatch({ sellPrice: e.target.value })} className={`${INPUT} num`} />
         </FormField>
 
         <FormField label="حد التنبيه عند انخفاض المخزون">
-          <Input type="number" value={form.threshold} onChange={(e) => onPatch({ threshold: Number(e.target.value) })} className={`${INPUT} num`} />
+          <Input type="number" value={form.threshold} min={0} step="1" onChange={(e) => onPatch({ threshold: e.target.value })} className={`${INPUT} num`} />
         </FormField>
       </div>
     </div>

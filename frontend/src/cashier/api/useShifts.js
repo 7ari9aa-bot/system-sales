@@ -70,10 +70,15 @@ export function useOpenShift() {
 }
 
 export function useCloseShift() {
+  const qc = useQueryClient();
   const refresh = useRefresh();
   return useMutation({
     mutationFn: ({ sessionId, countedCash }) => posApi.closeSession(sessionId, { countedCash }),
-    onSuccess: refresh,
+    // The server clears the shift's parked carts in the close; drop the cached lists so none shows stale.
+    onSuccess: (_closed, { sessionId }) => {
+      qc.removeQueries({ queryKey: ["cashier", "held", sessionId] });
+      return refresh();
+    },
   });
 }
 

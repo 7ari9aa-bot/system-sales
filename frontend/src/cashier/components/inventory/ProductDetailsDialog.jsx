@@ -5,7 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import ColorSwatch from "@/cashier/components/ui-kit/ColorSwatch";
 import EmptyState from "@/cashier/components/ui-kit/EmptyState";
 import StatusBadge from "@/cashier/components/ui-kit/StatusBadge";
-import { colorHex, shop, stockStatus } from "@/cashier/lib/mockData";
+import { colorHex, stockStatus } from "@/cashier/lib/uiConstants";
 import ReorderLevelCell from "@/cashier/components/inventory/ReorderLevelCell";
 import { fmtInt, fmtMoneyShort } from "@/cashier/lib/format";
 
@@ -13,7 +13,7 @@ import { fmtInt, fmtMoneyShort } from "@/cashier/lib/format";
 export default function ProductDetailsDialog({ product, open, onOpenChange, onMovements }) {
   if (!product) return null;
 
-  const threshold = product.threshold ?? shop.lowStockThreshold;
+  const threshold = product.threshold; // the reorder level comes from the backend; none set = no "low" state
   const variants = product.variants ?? [];
 
   return (

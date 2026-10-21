@@ -7,10 +7,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/cashier/components/ui/textarea";
 import { searchCatalog } from "@/cashier/api/catalogAdapter";
 import { toMinor, mulMoney } from "@/cashier/api/money";
-import { RETURN_REASONS, RETURN_REASON_LABEL, RETURN_SETTLEMENTS, SETTLEMENT_LABEL, buildReturn, parseCost, parseQuantity } from "@/cashier/api/purchasingAdapter";
+import { RETURN_SETTLEMENTS, SETTLEMENT_LABEL, buildReturn, parseCost, parseQuantity } from "@/cashier/api/purchasingAdapter";
 import { fmtMoney } from "@/cashier/lib/format";
 
-const EMPTY = { supplierId: "", orderId: "", variantId: "", search: "", qty: "1", unitCost: "", reason: "", settlement: "credit", note: "" };
+const EMPTY = { supplierId: "", orderId: "", variantId: "", search: "", qty: "1", unitCost: "", settlement: "credit", note: "" };
 
 const SETTLEMENT_HINT = {
   credit: "بتتخصم من حساب المورد لما يوافق على المرتجع.",
@@ -47,7 +47,6 @@ export default function SupplierReturnDialog({ open, onOpenChange, suppliers, or
     const built = buildReturn({
       supplierId: form.supplierId,
       orderId: form.orderId || null,
-      reason: form.reason,
       settlement: form.settlement,
       note: form.note,
       lines: form.variantId ? [{ variantId: form.variantId, qty: form.qty, unitCost: form.unitCost }] : [],
@@ -121,10 +120,6 @@ export default function SupplierReturnDialog({ open, onOpenChange, suppliers, or
             ) : (
               <Input inputMode="decimal" className="num" value={form.unitCost} onChange={(e) => set("unitCost", e.target.value)} placeholder="0.00" />
             )}
-          </div>
-          <div>
-            <Label className="mb-1.5 block text-xs text-muted-foreground">سبب الإرجاع</Label>
-            {sel(form.reason, (v) => set("reason", v), "اختر السبب", RETURN_REASONS.map((r) => [r, RETURN_REASON_LABEL[r]]))}
           </div>
           <div>
             <Label className="mb-1.5 block text-xs text-muted-foreground">التسوية</Label>

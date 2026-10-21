@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import StatusBadge from "@/cashier/components/ui-kit/StatusBadge";
 import EmptyState from "@/cashier/components/ui-kit/EmptyState";
 import ColorSwatch from "@/cashier/components/ui-kit/ColorSwatch";
-import { colorHex } from "@/cashier/lib/mockData";
+import { colorHex } from "@/cashier/lib/uiConstants";
 import { useVariantMovements } from "@/cashier/api/useMovements";
 import { fmtDateTime, fmtInt } from "@/cashier/lib/format";
 

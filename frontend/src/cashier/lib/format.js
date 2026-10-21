@@ -80,15 +80,6 @@ export const MOVEMENT_TYPES = {
   supplier_return_reversal: { label: "إلغاء مرتجع مورد", tone: "info" },
 };
 
-export const REASON_LABELS = [
-  "المقاس غير مناسب",
-  "اللون مختلف عن المتوقع",
-  "عيب في المنتج",
-  "العميل غيّر رأيه",
-  "استبدال بمقاس آخر",
-  "استبدال بموديل آخر",
-];
-
 export const RETURN_STATUS = {
   completed: { label: "مكتمل", tone: "success" },
   review: { label: "قيد المراجعة", tone: "warning" },
@@ -122,15 +113,6 @@ export const SUPPLIER_RETURN_SETTLEMENTS = {
   credit: { label: "خصم من الحساب", tone: "info" },
   replace: { label: "استبدال بضاعة", tone: "violet" },
 };
-
-export const SUPPLIER_RETURN_REASONS = [
-  "عيب تصنيع",
-  "بضاعة تالفة عند الاستلام",
-  "مقاسات خاطئة من المورد",
-  "لون مختلف عن المعروض",
-  "خامة أقل من الاتفاق",
-  "فائض عن الحاجة",
-];
 
 export const SHIFT_STATUS = {
   open: { label: "مفتوحة", tone: "success" },

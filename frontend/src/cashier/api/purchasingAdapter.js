@@ -14,20 +14,11 @@
 import { isWireMoney, mulMoney, sumMoney, toMinor, toWire } from "./money";
 
 export const PAYMENT_METHODS = ["cash", "card", "wallet", "bank_transfer"];
-export const RETURN_REASONS = ["manufacturing_defect", "damaged_on_receipt", "wrong_size", "wrong_color", "below_spec", "surplus"];
 export const RETURN_SETTLEMENTS = ["credit", "cash", "replace"];
 
 export const RECEIPT_LABEL = { draft: "مسودة", received: "مستلمة", cancelled: "ملغاة" };
 export const PAYMENT_LABEL = { unpaid: "غير مدفوعة", partial: "مدفوعة جزئيًا", paid: "مدفوعة بالكامل" };
 export const RETURN_STATUS_LABEL = { review: "بانتظار المورد", accepted: "مقبول", rejected: "مرفوض" };
-export const RETURN_REASON_LABEL = {
-  manufacturing_defect: "عيب تصنيع",
-  damaged_on_receipt: "تالف عند الاستلام",
-  wrong_size: "مقاس خاطئ",
-  wrong_color: "لون خاطئ",
-  below_spec: "أقل من المواصفات",
-  surplus: "فائض عن الحاجة",
-};
 export const SETTLEMENT_LABEL = { credit: "خصم من الحساب", cash: "استرداد نقدي", replace: "استبدال" };
 
 const WHOLE = /^\d+(\.0+)?$/;
@@ -139,7 +130,6 @@ export function buildPayment(form, { openSessionId = null, owed = null } = {}) {
 /** Validate a supplier return. Without an order the price must be typed; with one the order's price is used. */
 export function buildReturn(form) {
   if (!form.supplierId) return { ok: false, error: "اختر المورد" };
-  if (!RETURN_REASONS.includes(form.reason)) return { ok: false, error: "اختر سبب المرتجع" };
   if (!RETURN_SETTLEMENTS.includes(form.settlement)) return { ok: false, error: "اختر طريقة التسوية" };
   if (!form.lines?.length) return { ok: false, error: "أضف بندًا واحدًا على الأقل" };
   const lines = [];
@@ -159,7 +149,6 @@ export function buildReturn(form) {
     ok: true,
     payload: {
       supplier_id: form.supplierId,
-      reason: form.reason,
       settlement: form.settlement,
       lines,
       ...(form.orderId ? { purchase_order_id: form.orderId } : {}),
@@ -237,7 +226,6 @@ export function returnFromApi(r, { suppliers = {}, variants = {}, orders = {} } 
     supplierName: suppliers[r.supplier_id] ?? "—",
     orderId: r.purchase_order_id ?? null,
     poNumber: orders[r.purchase_order_id] ?? "—",
-    reason: r.reason,
     settlement: r.settlement,
     status: r.status,
     amount: r.total,

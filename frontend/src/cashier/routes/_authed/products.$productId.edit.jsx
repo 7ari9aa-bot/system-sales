@@ -4,14 +4,17 @@ import { Button } from "@/cashier/components/ui/button";
 import PageHeader from "@/cashier/components/ui-kit/PageHeader";
 import EmptyState from "@/cashier/components/ui-kit/EmptyState";
 import ProductEditor from "@/cashier/components/products/ProductEditor";
-import { products } from "@/cashier/lib/mockData";
-
+import { useProductForEdit } from "@/cashier/api/useCatalogWrite";
 
 export default function ProductEditPage() {
   const { productId } = useParams();
-  const product = products.find((p) => p.id === productId);
+  const { data: product, isPending, isError } = useProductForEdit(productId);
 
-  if (!product) {
+  if (isPending) {
+    return <p className="py-16 text-center text-[13px] text-[#7A766C]">جاري تحميل المنتج…</p>;
+  }
+
+  if (isError || !product) {
     return (
       <div className="animate-fade-up">
         <PageHeader title="تعديل منتج" description="لم يتم العثور على المنتج المطلوب" />

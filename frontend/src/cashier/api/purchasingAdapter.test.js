@@ -153,7 +153,7 @@ describe("buildPayment", () => {
 });
 
 describe("buildReturn", () => {
-  const base = { supplierId: "s1", reason: "surplus", settlement: "credit", lines: [{ variantId: V1, qty: "2" }] };
+  const base = { supplierId: "s1", settlement: "credit", lines: [{ variantId: V1, qty: "2" }] };
   it("against an order the price is the order's: no unit_cost is sent", () => {
     const r = buildReturn({ ...base, orderId: "po1" });
     expect(r.payload.lines).toEqual([{ variant_id: V1, quantity: "2" }]);
@@ -164,7 +164,7 @@ describe("buildReturn", () => {
     expect(buildReturn({ ...base, lines: [{ variantId: V1, qty: "2", unitCost: "12.5" }] }).payload.lines[0].unit_cost).toBe("12.50");
   });
   it.each([
-    [{ reason: "meh" }, /سبب/], [{ settlement: "gift" }, /التسوية/], [{ lines: [] }, /بندًا/],
+    [{ settlement: "gift" }, /التسوية/], [{ lines: [] }, /بندًا/],
     [{ lines: [{ variantId: V1, qty: "0" }] }, /الكمية/], [{ supplierId: "" }, /المورد/],
   ])("refuses %j", (patch, msg) => {
     const r = buildReturn({ ...base, orderId: "po1", ...patch });
@@ -205,7 +205,7 @@ describe("mapping", () => {
   });
   it("a return is mapped with its order number", () => {
     const r = returnFromApi(
-      { id: "r1", number: "SR-1", supplier_id: "s1", purchase_order_id: "o1", reason: "surplus", settlement: "credit", status: "review", total: "240.00", return_date: "2026-10-20", lines: [{ variant_id: V1, quantity: 3, unit_cost: "80.00", line_total: "240.00" }] },
+      { id: "r1", number: "SR-1", supplier_id: "s1", purchase_order_id: "o1", settlement: "credit", status: "review", total: "240.00", return_date: "2026-10-20", lines: [{ variant_id: V1, quantity: 3, unit_cost: "80.00", line_total: "240.00" }] },
       { suppliers: { s1: "النيل" }, orders: { o1: "PO-2026-0001" } },
     );
     expect(r).toMatchObject({ poNumber: "PO-2026-0001", supplierName: "النيل", qty: 3, amount: "240.00" });

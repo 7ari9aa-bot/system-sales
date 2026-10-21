@@ -16,6 +16,7 @@ import { api } from "@/lib/api";
 import { toWire } from "./money";
 
 const seg = (v) => encodeURIComponent(String(v));
+const text = (v) => String(v ?? "").trim();
 const post = (path, body) => api(path, { method: "POST", body });
 const patch = (path, body) => api(path, { method: "PATCH", body });
 
@@ -88,6 +89,45 @@ export const catalogApi = {
   createCategory: (name) => post("/categories", { name }),
   createBrand: (name) => post("/brands", { name }),
 
+  /** One product with its variants, plus each variant's barcode (the first "barcode" identifier). */
+  async productForEdit(productId) {
+    const product = await api(`/products/${seg(productId)}`);
+    const pairs = await Promise.all(
+      (product.variants ?? []).map(async (v) => {
+        const ids = (await api(`/variants/${seg(v.id)}/identifiers`).catch(() => [])) ?? [];
+        const list = Array.isArray(ids) ? ids : (ids.items ?? []);
+        return [v.id, list.find((i) => i.identifier_type === "barcode")?.value ?? ""];
+      }),
+    );
+    return { product, barcodes: Object.fromEntries(pairs) };
+  },
+
+  /** Apply a plan from planProductEdit. Each step names itself in its error, and nothing runs twice. */
+  async applyProductEdit(productId, plan) {
+    const done = [];
+    const step = async (name, fn) => {
+      try {
+        const out = await fn();
+        done.push(name);
+        return out;
+      } catch (e) {
+        const err = new Error(`تعذّر ${name}${done.length ? ` (تم حفظ: ${done.join("، ")})` : ""}: ${e?.message ?? e}`);
+        err.cause = e;
+        throw err;
+      }
+    };
+    if (Object.keys(plan.product).length) await step("حفظ بيانات المنتج", () => patch(`/products/${seg(productId)}`, plan.product));
+    for (const { id, patch: body } of plan.variantPatches) await step("تعديل تركيبة", () => patch(`/variants/${seg(id)}`, body));
+    for (const v of plan.newVariants) {
+      const made = await step(`إضافة التركيبة ${v.sku}`, () =>
+        post(`/products/${seg(productId)}/variants`, { sku: text(v.sku), price: toWire(v.sellPrice), option_values: optionValues(v) }),
+      );
+      if (text(v.barcode)) await step(`حفظ باركود ${v.sku}`, () => post(`/variants/${seg(made.id)}/identifiers`, { identifier_type: "barcode", value: text(v.barcode) }));
+    }
+    for (const b of plan.newBarcodes) await step("حفظ باركود", () => post(`/variants/${seg(b.variantId)}/identifiers`, { identifier_type: "barcode", value: b.value }));
+    return done;
+  },
+
   /**
    * Create a complete, SELLABLE product. Steps run in order; if one fails the error says which
    * step and what already exists, so nothing is silently half-saved.
@@ -146,7 +186,11 @@ export const catalogApi = {
       out.push(variant);
     }
 
-    await step("تفعيل المنتج", () => patch(`/products/${seg(product.id)}`, { status: "active" }));
+    // Category and brand are not accepted by the create call: they are set with the same PATCH that activates.
+    const classify = {};
+    if (input.categoryId) classify.category_id = input.categoryId;
+    if (input.brandId) classify.brand_id = input.brandId;
+    await step("تفعيل المنتج", () => patch(`/products/${seg(product.id)}`, { ...classify, status: "active" }));
     return { product: { ...product, status: "active" }, variants: out };
   },
 

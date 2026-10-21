@@ -1,7 +1,7 @@
 import StatusBadge from "@/cashier/components/ui-kit/StatusBadge";
 import ColorSwatch from "@/cashier/components/ui-kit/ColorSwatch";
 import { CELL_MAIN, CELL_SUB, TD, TH } from "@/cashier/components/ui-kit/ledgerStyles";
-import { colorHex } from "@/cashier/lib/mockData";
+import { colorHex } from "@/cashier/lib/uiConstants";
 import { fmtDateTime, fmtInt } from "@/cashier/lib/format";
 
 // أعمدة حركة الأصناف: التاريخ، المنتج بلونه ومقاسه ورمزه، نوع الحركة، داخل/خارج، الرصيد، المستند، والموظف.

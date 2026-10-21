@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import ColorSwatch from "@/cashier/components/ui-kit/ColorSwatch";
 import { toMinor } from "@/cashier/api/money";
 import { PAYMENT_LABEL, RECEIPT_LABEL } from "@/cashier/api/purchasingAdapter";
-import { colorHex } from "@/cashier/lib/mockData";
+import { colorHex } from "@/cashier/lib/uiConstants";
 import { fmtDate, fmtInt, fmtMoney } from "@/cashier/lib/format";
 
 // تفاصيل فاتورة توريد: البنود والتكاليف، حالة الاستلام وحالة الدفع منفصلتين، وإجراءاتها.

@@ -1,7 +1,7 @@
 import { Wand2 } from "lucide-react";
 import FormField from "@/cashier/components/products/FormField";
 import { CHIP, CHIP_ON, CHIPS, DOT, PRIMARY_BTN, SECTION, SECTION_HEAD, SECTION_TITLE, SWATCH_DOT } from "@/cashier/components/products/formStyles";
-import { COLORS } from "@/cashier/lib/mockData";
+import { COLORS } from "@/cashier/lib/uiConstants";
 import { cn } from "@/cashier/lib/utils";
 
 // اختيار الألوان والمقاسات ثم توليد جدول التركيبات.

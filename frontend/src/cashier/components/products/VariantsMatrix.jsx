@@ -3,10 +3,13 @@ import { Button } from "@/cashier/components/ui/button";
 import { Input } from "@/cashier/components/ui/input";
 import ColorSwatch from "@/cashier/components/ui-kit/ColorSwatch";
 import EmptyState from "@/cashier/components/ui-kit/EmptyState";
-import { colorHex } from "@/cashier/lib/mockData";
+import { colorHex } from "@/cashier/lib/uiConstants";
+
+/** A row that already exists in the backend (new rows get a local `row-` id). Its stock changes by count, not here. */
+const isSaved = (row) => !String(row.id).startsWith("row-");
 
 // جدول تركيبات اللون × المقاس مع SKU والباركود والرصيد الافتتاحي.
-export default function VariantsMatrix({ rows, onChange, onGenerate, onGenerateBarcodes, defaultSell, defaultBuy }) {
+export default function VariantsMatrix({ rows, onChange, onGenerate, onGenerateBarcodes, defaultSell }) {
   if (rows.length === 0) {
     return (
       <EmptyState
@@ -41,7 +44,6 @@ export default function VariantsMatrix({ rows, onChange, onGenerate, onGenerateB
               <th className="px-3 py-2 text-center font-semibold">المقاس</th>
               <th className="px-3 py-2 text-start font-semibold">SKU</th>
               <th className="px-3 py-2 text-start font-semibold">الباركود</th>
-              <th className="px-3 py-2 text-start font-semibold">سعر الشراء</th>
               <th className="px-3 py-2 text-start font-semibold">سعر البيع</th>
               <th className="px-3 py-2 text-center font-semibold">رصيد افتتاحي</th>
             </tr>
@@ -67,27 +69,23 @@ export default function VariantsMatrix({ rows, onChange, onGenerate, onGenerateB
                 <td className="px-3 py-2">
                   <Input
                     type="number"
-                    value={row.buyPrice}
-                    onChange={(e) => onChange(row.id, { buyPrice: Number(e.target.value) })}
-                    className="num h-8 w-24"
-                  />
-                </td>
-                <td className="px-3 py-2">
-                  <Input
-                    type="number"
                     value={row.sellPrice}
                     onChange={(e) => onChange(row.id, { sellPrice: Number(e.target.value) })}
                     className="num h-8 w-24"
                   />
                 </td>
                 <td className="px-3 py-2 text-center">
-                  <Input
-                    type="number"
-                    min={0}
-                    value={row.stock}
-                    onChange={(e) => onChange(row.id, { stock: Number(e.target.value) })}
-                    className="num mx-auto h-8 w-20 text-center"
-                  />
+                  {isSaved(row) ? (
+                    <span className="text-xs text-muted-foreground" title="الرصيد يتغيّر من الجرد أو حركات المخزون">من الجرد</span>
+                  ) : (
+                    <Input
+                      type="number"
+                      min={0}
+                      value={row.stock}
+                      onChange={(e) => onChange(row.id, { stock: Number(e.target.value) })}
+                      className="num mx-auto h-8 w-20 text-center"
+                    />
+                  )}
                 </td>
               </tr>
             ))}
@@ -96,7 +94,7 @@ export default function VariantsMatrix({ rows, onChange, onGenerate, onGenerateB
       </div>
 
       <p className="text-[11px] text-muted-foreground">
-        الأسعار الافتراضية: شراء {defaultBuy} ج.م • بيع {defaultSell} ج.م — يمكن تعديل أي تركيبة على حدة عند الحاجة فقط.
+        سعر البيع الافتراضي: {defaultSell || "—"} ج.م — يمكن تعديل أي تركيبة على حدة عند الحاجة فقط.
       </p>
     </div>
   );

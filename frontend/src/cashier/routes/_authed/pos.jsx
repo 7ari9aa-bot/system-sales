@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { TriangleAlert } from "lucide-react";
 import PosHeaderBar from "@/cashier/components/pos/PosHeaderBar";
 import PosCustomerFields from "@/cashier/components/pos/PosCustomerFields";
@@ -95,7 +95,12 @@ function PosScreen({ user, session }) {
   const [activeLineId, setActiveLineId] = useState(null);
   const [invoiceDiscountPct, setInvoiceDiscountPct] = useState(0);
   const [invoiceDiscountAmt, setInvoiceDiscountAmt] = useState(0);
-  const [dialog, setDialog] = useState(null); // payment | receipt | cancel
+  // The shift screen links here with ?held=1 to review parked invoices before closing: open that list once.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [dialog, setDialog] = useState(() => (searchParams.get("held") === "1" ? "held" : null)); // payment | receipt | cancel | held
+  useEffect(() => {
+    if (searchParams.get("held") === "1") setSearchParams({}, { replace: true });
+  }, [searchParams, setSearchParams]);
   const removedRef = useRef(null);
 
   const cashier = user?.full_name || user?.email || "";
