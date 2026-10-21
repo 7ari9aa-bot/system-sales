@@ -10,6 +10,9 @@ import { PERIODS } from "@/cashier/lib/opsData";
 import { useAuth } from "@/lib/AuthContext";
 import { useShifts } from "@/cashier/api/useShifts";
 import { useSalesReport } from "@/cashier/api/usePosSale";
+import { useStock } from "@/cashier/api/useStock";
+import { valuationByCategory } from "@/cashier/api/inventoryValuation";
+import InventoryReportSection from "@/cashier/components/reports/InventoryReportSection";
 import { summarizeSales } from "@/cashier/api/salesReport";
 import { inShopPeriod } from "@/cashier/lib/period";
 import { fmtInt, fmtMoney } from "@/cashier/lib/format";
@@ -23,6 +26,7 @@ const HERO_ALT = "مكتب إدارة المحل مع تقارير مبيعات 
 // figure next to a real Z report would be read as the shop's real numbers.
 const REPORTS = [
   { key: "sales", label: "المبيعات" },
+  { key: "inventory", label: "تقييم المخزون" },
   { key: "zreport", label: "إغلاق اليوم (Z)" },
 ];
 
@@ -33,6 +37,8 @@ export default function ReportsPage() {
   const [period, setPeriod] = useState("7d");
   const [tab, setTab] = useState(REPORTS[0].key);
 
+  const stockQuery = useStock({});
+  const valuation = valuationByCategory(stockQuery.data ?? []);
   const salesQuery = useSalesReport(period);
   const daily = salesQuery.data ?? [];
 
@@ -77,6 +83,15 @@ export default function ReportsPage() {
             <p className="p-6 text-center text-sm font-semibold text-rose-600" role="alert">تعذّر تحميل تقرير المبيعات. حاول مرة أخرى.</p>
           ) : (
             <SalesReportSection rows={daily} />
+          )}
+        </TabsContent>
+        <TabsContent value="inventory" className="mt-0">
+          {stockQuery.isLoading ? (
+            <p className="p-6 text-center text-sm text-muted-foreground" role="status">جارٍ تحميل المخزون…</p>
+          ) : stockQuery.isError ? (
+            <p className="p-6 text-center text-sm font-semibold text-rose-600" role="alert">تعذّر تحميل المخزون. حاول مرة أخرى.</p>
+          ) : (
+            <InventoryReportSection rows={valuation} />
           )}
         </TabsContent>
         <TabsContent value="zreport" className="mt-0">
