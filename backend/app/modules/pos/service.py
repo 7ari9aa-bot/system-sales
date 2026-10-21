@@ -2505,8 +2505,9 @@ class PosService:
         restock: bool = False,
         actor_user_id: UUID | None = None,
         shift_override: bool = False,
+        ceiling_override: bool = False,
     ) -> dict:
-        """Give money back on a POS sale, and optionally take the goods back.
+        """Give money back on a POS sale. This path moves MONEY ONLY.
 
         The refund itself is the orders ledger's job (ADR-054: a refund is a
         row against a captured payment, capped by what was captured), so this
@@ -2550,6 +2551,15 @@ class PosService:
             raise ValidationError(f"method must be one of {sorted(_SALE_METHODS)}")
 
         requested = _positive_amount(amount, "amount")
+
+        # The same owner limit /returns enforces: a money-only refund above the till's ceiling
+        # needs a manager, BEFORE any ledger row exists.
+        PosProfileService.ensure_within_money_ceiling(
+            await PosService.resolve_profile(session, tenant_id, pos_session),
+            requested,
+            kind="refund",
+            approved=ceiling_override,
+        )
 
         # Order the captured payments so a refund fills the cash leg first
         # (the drawer is where money physically leaves), then the oldest —
@@ -2630,23 +2640,29 @@ class PosService:
 
         refunded_total = sum((r.amount for r in written), Decimal("0"))
 
+        # A money-only refund never touches the shelf: it cannot know which goods (or how many)
+        # came back. Goods return through /returns, which is line-aware. ``restock`` is accepted
+        # for old callers but ignored.
         restocked = False
-        if restock:
-            restocked = await PosService._restock_pos_sale(
-                session,
-                tenant_id,
-                pos_session,
-                order_id,
-                actor_user_id=actor_user_id,
-            )
 
-        if method == "cash" and refunded_total > 0:
+        # What leaves the DRAWER is the cash legs that were actually refunded, not the ``method``
+        # the caller claimed: a sale paid half cash, half card refunds cash only for its cash leg.
+        cash_ids = {payment.id for payment, _ in plan if payment.method == "cash"}
+        cash_out = sum(
+            (
+                r.amount
+                for (payment, _), r in zip(plan, written, strict=True)
+                if payment.id in cash_ids
+            ),
+            Decimal("0"),
+        )
+        if cash_out > 0:
             await PosService._append_sale_cash(
                 session,
                 tenant_id,
                 pos_session.id,
                 reason="cash_refund",
-                amount=to_money(refunded_total, "cash_refund"),
+                amount=to_money(cash_out, "cash_refund"),
                 created_by=actor_user_id,
                 reference_id=order_id,
             )
@@ -2654,6 +2670,7 @@ class PosService:
         return {
             "order_id": order_id,
             "amount": str(to_money(refunded_total, "refunded")),
+            "cash_out": str(to_money(cash_out, "cash_refund")),
             "refunds": [str(r.id) for r in written],
             "restocked": restocked,
         }
@@ -3149,6 +3166,7 @@ class PosService:
         tendered_cash: object | None = None,
         actor_user_id: UUID | None = None,
         shift_override: bool = False,
+        ceiling_override: bool = False,
     ) -> dict:
         """The one-transaction exchange (§189 — beyond ERPNext and Odoo).
 
@@ -3318,6 +3336,14 @@ class PosService:
         return_total = to_money(
             sum((e["refund_total"] for e in return_entries), Decimal("0")),
             "return_total",
+        )
+        # An exchange hands value back too: the owner's refund ceiling applies to what the return
+        # half is worth, checked before the shelf, the drawer or any ledger is touched.
+        PosProfileService.ensure_within_money_ceiling(
+            await PosService.resolve_profile(session, tenant_id, pos_session),
+            return_total,
+            kind="refund",
+            approved=ceiling_override,
         )
 
         # ---------- the new half: the original order's own customer ----------

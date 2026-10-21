@@ -187,9 +187,7 @@ async def test_held_cart_cannot_be_parked_on_a_closed_session(db, tenant_ctx):
 
     warehouse, variant = await _sellable_variant(db, tenant_ctx, price="10.00", stock=3)
     pos_session = await _open_session(db, tenant_ctx, warehouse)
-    await PosService.close_session(
-        db, tenant_ctx.tenant_id, pos_session.id, counted_cash="0.00"
-    )
+    await PosService.close_session(db, tenant_ctx.tenant_id, pos_session.id, counted_cash="0.00")
     with pytest.raises(ConflictError):
         await PosService.hold_cart(
             db,
@@ -246,7 +244,8 @@ async def test_refund_is_a_ledger_row_capped_by_capture(db, tenant_ctx):
     assert detail["outflow"] == Decimal("20.00")
 
 
-async def test_refund_restock_returns_goods_to_the_shelf(db, tenant_ctx):
+async def test_money_only_refund_never_puts_goods_back_on_the_shelf(db, tenant_ctx):
+    """A money-only refund cannot know which goods came back, so ``restock`` is ignored."""
     from app.modules.inventory.service import InventoryService
     from app.modules.pos.service import PosService
 
@@ -264,10 +263,6 @@ async def test_refund_restock_returns_goods_to_the_shelf(db, tenant_ctx):
         amount="30.00",
     )
 
-    balances = await InventoryService.list_balances(db, tenant_ctx.tenant_id)
-    mine = [b for b in balances if b.variant_id == variant.id]
-    assert mine and mine[0].on_hand == 2  # 4 - 2 sold
-
     result = await PosService.refund(
         db,
         tenant_ctx.tenant_id,
@@ -277,11 +272,11 @@ async def test_refund_restock_returns_goods_to_the_shelf(db, tenant_ctx):
         method="cash",
         restock=True,
     )
-    assert result["restocked"] is True
+    assert result["restocked"] is False
 
     balances = await InventoryService.list_balances(db, tenant_ctx.tenant_id)
     mine = [b for b in balances if b.variant_id == variant.id]
-    assert mine and mine[0].on_hand == 4  # the two came back
+    assert mine and mine[0].on_hand == 2  # still the 4 - 2 sold; nothing came back
 
 
 async def test_refund_of_a_foreign_session_is_refused(db, tenant_ctx):
@@ -404,4 +399,3 @@ async def test_handover_refuses_the_current_holder(db, tenant_ctx):
             to_user_id=tenant_ctx.user.id,
             counted_cash="0.00",
         )
-

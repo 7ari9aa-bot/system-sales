@@ -263,8 +263,8 @@ class RefundRequest(BaseModel):
     amount: str = Field(pattern=_MONEY)
     method: str = Field(default="cash", pattern="^(cash|card|wallet|bank_transfer)$")
     reason: str = Field(default="customer_return", max_length=31)
-    # Put the goods back on the shelf (a counter return). Off by default: a
-    # refund can be money-only (goodwill) with the customer keeping the goods.
+    # Deprecated and ignored: a money-only refund never restocks (it cannot know which goods came
+    # back). Use /returns, which is line-aware. Kept so older clients still validate.
     restock: bool = False
 
 
@@ -747,9 +747,10 @@ async def refund(session_id: UUID, body: RefundRequest, ctx: PosWriteCtx, overri
         amount=body.amount,
         method=body.method,
         reason=body.reason,
-        restock=body.restock,
+        restock=False,
         actor_user_id=ctx.user.id,
         shift_override=override.active,
+        ceiling_override=override.active,
     )
 
 
@@ -806,6 +807,7 @@ async def exchange(
         tendered_cash=body.tendered_cash,
         actor_user_id=ctx.user.id,
         shift_override=override.active,
+        ceiling_override=override.active,
     )
     return {
         **result,
