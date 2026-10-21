@@ -253,6 +253,31 @@ class PosService:
         return pos_session
 
     @staticmethod
+    def _enforce_discount_ceiling(
+        profile: PosProfile | None,
+        discount_total: object,
+        subtotal: object,
+        *,
+        override: bool,
+    ) -> None:
+        """Refuse a discount above the till's ceiling unless the caller holds ``pos:override``.
+
+        A till with no profile has no configured ceiling; it gets the safe default (0, so every
+        discount needs the override) rather than a free pass, otherwise leaving the profile off
+        would switch the control off.
+        """
+        if override:
+            return
+        if profile is None:
+            if to_money(discount_total or "0", "discount_total") > 0:
+                raise ValidationError(
+                    "this till has no profile, so its discount ceiling is 0% and any discount "
+                    "needs an approval"
+                )
+            return
+        PosProfileService.ensure_discount_allowed(profile, discount_total, subtotal, approved=False)
+
+    @staticmethod
     def _ensure_session_current(
         pos_session: PosSession, *, tz: str | None = None, now: datetime | None = None
     ) -> None:
@@ -767,6 +792,7 @@ class PosService:
         tendered_cash: object | None = None,
         held_cart_id: UUID | None = None,
         actor_user_id: UUID | None = None,
+        discount_override: bool = False,
     ) -> dict:
         """One POS sale = one commerce command chain (§189).
 
@@ -858,6 +884,12 @@ class PosService:
             channel="pos",
             warehouse_id=register.warehouse_id,
             discount_total=discount_total,
+        )
+        # The ceiling is checked on what was actually PRICED onto the order (document discount plus
+        # every line discount), not on what the caller asked for, so a discount cannot be dodged
+        # by moving it between the two. A refusal rolls the sale back: no order, no stock.
+        PosService._enforce_discount_ceiling(
+            profile, order.discount_total, order.subtotal, override=discount_override
         )
 
         # Capture the tenders. A tender with no explicit amount settles the

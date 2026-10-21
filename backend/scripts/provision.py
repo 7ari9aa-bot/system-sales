@@ -360,17 +360,18 @@ RESOURCES = [
 ACTIONS = ["read", "write"]
 EXTRA_PERMISSIONS = [
     ("ai", "approve", "ai:approve"),
+    ("pos", "override", "pos:override"),
 ]
 
 ROLE_MATRIX: dict[str, list[str]] = {
-    "owner": [f"{r}:{a}" for r in RESOURCES for a in ACTIONS] + ["ai:approve"],
+    "owner": [f"{r}:{a}" for r in RESOURCES for a in ACTIONS] + ["ai:approve", "pos:override"],
     "manager": [
         f"{r}:{a}"
         for r in RESOURCES
         for a in ACTIONS
         if not (r in ("settings", "billing") and a == "write")
     ]
-    + ["ai:approve"],
+    + ["ai:approve", "pos:override"],
     "staff": [
         "customers:read",
         "customers:write",

@@ -464,6 +464,7 @@ async def sell(session_id: UUID, body: SellRequest, ctx: PosWriteCtx):
         tendered_cash=body.tendered_cash,
         held_cart_id=body.held_cart_id,
         actor_user_id=ctx.user.id,
+        discount_override="pos:override" in ctx.permission_codes,
     )
     return {k: str(v) for k, v in result.items()}
 

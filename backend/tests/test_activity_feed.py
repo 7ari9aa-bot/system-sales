@@ -195,6 +195,7 @@ async def test_a_partial_return_shows_the_money_handed_back_not_the_order_total(
         customer_id=customer.id,
         items=[{"variant_id": str(variant.id), "quantity": 2}],
         discount_total="10.00",
+        discount_override=True,  # about the the log's returned amount, not the ceiling policy
     )
     assert Decimal(sold["grand_total"]) == Decimal("40.00")
     back = await PosService.return_sale(

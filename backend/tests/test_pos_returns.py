@@ -204,6 +204,7 @@ async def test_discounted_return_takes_its_proportional_share(db, tenant_ctx):
         customer_id=customer.id,
         items=[{"variant_id": str(variant.id), "quantity": 2}],
         discount_total="10.00",
+        discount_override=True,  # about the proportional return share, not the ceiling policy
     )
     assert Decimal(sold["grand_total"]) == Decimal("40.00")
 

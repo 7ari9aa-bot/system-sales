@@ -116,6 +116,7 @@ async def test_line_discount_charges_the_net_and_persists(db, tenant_ctx):
                 "discount_pct": "20.00",
             }
         ],
+        discount_override=True,  # this test is about the net price, not the ceiling policy
     )
     # 2 × 25 = 50 gross; 20% off → 10 discounted; net 40 charged.
     assert Decimal(result["grand_total"]) == Decimal("40.00")
@@ -209,6 +210,7 @@ async def test_exchange_of_a_discounted_line_credits_its_net(db, tenant_ctx):
             {"variant_id": str(sold_variant.id), "quantity": 1, "discount_pct": "20.00"}
         ],
         method="cash",
+        discount_override=True,  # about crediting the net on exchange, not the ceiling policy
     )
 
     result = await PosService.exchange(
