@@ -73,6 +73,39 @@ def test_return_line_totals_price_at_the_original_sale() -> None:
     ]
 
 
+def test_return_refunds_what_was_paid_for_a_line_discounted_item() -> None:
+    """A 50%-off line paid 50 on a 100 price: returning it refunds 50, never 75.
+
+    The old rule treated the line discount as part of one basket-wide discount and shared it out
+    by gross, so the discounted item came back at 100 - 25 = 75 (and the plain item at less).
+    """
+    from app.modules.pos.service import PosService
+
+    settle = PosService._return_line_totals
+    d = Decimal
+    # A 100 at 50% off (pays 50) + B 100 at no discount (pays 100). Gross 200, discount 50.
+    kw = {"sold_net_subtotal": d("150.00")}
+    a = settle(d("200.00"), d("50.00"), [(d("100.00"), 1, d("50"))], **kw)
+    b = settle(d("200.00"), d("50.00"), [(d("100.00"), 1, d("0"))], **kw)
+    assert a == [d("50.00")] and b == [d("100.00")]
+    both_lines = [(d("100.00"), 1, d("50")), (d("100.00"), 1, d("0"))]
+    assert sum(settle(d("200.00"), d("50.00"), both_lines, **kw)) == d("150.00")
+
+
+def test_return_shares_only_the_invoice_discount_over_the_net_lines() -> None:
+    """Line 50% off + a fixed 30 off the invoice: the 30 is shared over the NET (150), not gross."""
+    from app.modules.pos.service import PosService
+
+    d = Decimal
+    # Gross 200, line discount 50, invoice discount 30 -> discount_total 80, paid 120.
+    lines = [(d("100.00"), 1, d("50")), (d("100.00"), 1, d("0"))]
+    got = PosService._return_line_totals(
+        d("200.00"), d("80.00"), lines, sold_net_subtotal=d("150.00")
+    )
+    assert got == [d("40.00"), d("80.00")]  # 50 - 30*50/150, 100 - 30*100/150
+    assert sum(got) == d("120.00")  # the customer's actual payment, to the cent
+
+
 # ----------------------------------------------------------- DB-backed -----
 
 
@@ -217,6 +250,41 @@ async def test_discounted_return_takes_its_proportional_share(db, tenant_ctx):
     )
     # Line gross 25 carries half of the 10 discount → 25 − 5 = 20.
     assert Decimal(result["refunded_total"]) == Decimal("20.00")
+
+
+async def test_returning_a_line_discounted_item_refunds_what_was_paid(db, tenant_ctx):
+    """Real sale: two items at 100, one at 50% off. Paid 150; each comes back at what it cost."""
+    from app.modules.pos.service import PosService
+
+    register = await _register(db, tenant_ctx)
+    pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
+    cheap = await _sellable_variant(db, tenant_ctx, price="100.00")
+    full = await _sellable_variant(db, tenant_ctx, price="100.00")
+    customer = await _customer(db, tenant_ctx)
+    sold = await PosService.sell(
+        db,
+        tenant_ctx.tenant_id,
+        pos_session.id,
+        customer_id=customer.id,
+        items=[
+            {"variant_id": str(cheap.id), "quantity": 1, "discount_pct": "50"},
+            {"variant_id": str(full.id), "quantity": 1},
+        ],
+        discount_override=True,
+    )
+    assert Decimal(sold["grand_total"]) == Decimal("150.00")
+
+    def give_back(variant):
+        return PosService.return_sale(
+            db,
+            tenant_ctx.tenant_id,
+            pos_session.id,
+            order_id=sold["order_id"],
+            lines=[{"variant_id": str(variant.id), "quantity": 1}],
+        )
+
+    assert Decimal((await give_back(cheap))["refunded_total"]) == Decimal("50.00")  # not 75
+    assert Decimal((await give_back(full))["refunded_total"]) == Decimal("100.00")
 
 
 async def test_return_is_capped_at_what_was_sold(db, tenant_ctx):

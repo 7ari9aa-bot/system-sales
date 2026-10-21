@@ -1121,6 +1121,10 @@ class PosService:
     ) -> UUID:
         if customer_id is not None:
             return customer_id
+        # The till says every sale needs a named customer: a walk-in is not one. Without this the
+        # flag was stored and shown but never enforced, and a sale with no customer went through.
+        if profile is not None and profile.require_customer:
+            raise ValidationError("this till requires a customer on every sale")
         if profile is not None and profile.default_customer_id is not None:
             return profile.default_customer_id
         # No profile (or one without a walk-in): a ground-shop till still
@@ -2489,24 +2493,36 @@ class PosService:
     def _return_line_totals(
         order_subtotal: Decimal,
         order_discount: Decimal,
-        lines: list[tuple[Decimal, int]],
+        lines: list[tuple[Decimal, int]] | list[tuple[Decimal, int, Decimal]],
+        *,
+        sold_net_subtotal: Decimal | None = None,
     ) -> list[Decimal]:
         """Each returned line's refund, in the original sale's prices (pure).
 
-        A line refunds its original gross minus its PROPORTIONAL share of the
-        order's discount, so a partly-returned discounted basket never refunds
-        more discount than it handed out. Rounding is per line, HALF_UP to the
-        money quantum — the same precision the sale priced with.
+        A line is ``(unit_price, quantity)``, or ``(unit_price, quantity, line_pct)`` when the
+        cashier typed a per-line discount. The refund starts from what the customer actually PAID
+        for the line: its gross minus ITS OWN line discount. Only the order-level discount (what is
+        left of ``order_discount`` after every line discount) is shared out in proportion, over the
+        NET of the lines. Treating the line discount as part of one basket-wide discount (the old
+        rule) refunded a 50%-off item at 75 when 50 was paid.
+
+        ``sold_net_subtotal`` is the order's gross minus ALL its line discounts. Without it every
+        line is assumed to carry no line discount (the pair form), exactly as before.
+        Rounding is per line, HALF_UP to the money quantum, the same precision the sale priced with.
         """
+        money = Decimal("0.01")
+        net_base = order_subtotal if sold_net_subtotal is None else sold_net_subtotal
+        order_level = max(order_discount - (order_subtotal - net_base), Decimal("0"))
         refunds: list[Decimal] = []
-        for unit_price, quantity in lines:
+        for entry in lines:
+            unit_price, quantity = entry[0], entry[1]
+            pct = Decimal(str(entry[2])) if len(entry) > 2 else Decimal("0")
             gross = to_money(unit_price, "unit_price") * quantity
+            net = (gross - gross * pct / Decimal("100")).quantize(money, rounding=ROUND_HALF_UP)
             share = Decimal("0")
-            if order_subtotal > 0 and order_discount > 0:
-                share = (order_discount * gross / order_subtotal).quantize(
-                    Decimal("0.01"), rounding=ROUND_HALF_UP
-                )
-            refunds.append(to_money(gross - share, "refund_total"))
+            if net_base > 0 and order_level > 0:
+                share = (order_level * net / net_base).quantize(money, rounding=ROUND_HALF_UP)
+            refunds.append(to_money(net - share, "refund_total"))
         return refunds
 
     @staticmethod
@@ -2594,6 +2610,7 @@ class PosService:
             raise NotFoundError(f"order {order_id} not found")
 
         sold: dict[UUID, dict] = {}
+        sold_net = Decimal("0")
         for item in (
             (
                 await session.execute(
@@ -2606,10 +2623,14 @@ class PosService:
             .scalars()
             .all()
         ):
-            entry = sold.setdefault(item.variant_id, {"quantity": 0, "unit_price": None})
+            entry = sold.setdefault(
+                item.variant_id, {"quantity": 0, "unit_price": None, "line_pct": Decimal("0")}
+            )
             entry["quantity"] += item.quantity
             if entry["unit_price"] is None:
                 entry["unit_price"] = to_money(item.unit_price, "unit_price")
+                entry["line_pct"] = Decimal(str(item.discount_pct or 0))
+            sold_net += Decimal(str(item.total))
 
         unknown = set(requested) - set(sold)
         if unknown:
@@ -2677,7 +2698,8 @@ class PosService:
         priced = PosService._return_line_totals(
             Decimal(str(order.subtotal)),
             Decimal(str(order.discount_total)),
-            [(sold[v]["unit_price"], requested[v]) for v in requested],
+            [(sold[v]["unit_price"], requested[v], sold[v]["line_pct"]) for v in requested],
+            sold_net_subtotal=sold_net,
         )
         refund_lines = [
             {
@@ -2960,6 +2982,7 @@ class PosService:
             raise NotFoundError(f"order {order_id} not found")
 
         sold: dict[UUID, dict] = {}
+        sold_net = Decimal("0")
         for item in (
             (
                 await session.execute(
@@ -2972,10 +2995,14 @@ class PosService:
             .scalars()
             .all()
         ):
-            entry = sold.setdefault(item.variant_id, {"quantity": 0, "unit_price": None})
+            entry = sold.setdefault(
+                item.variant_id, {"quantity": 0, "unit_price": None, "line_pct": Decimal("0")}
+            )
             entry["quantity"] += item.quantity
             if entry["unit_price"] is None:
                 entry["unit_price"] = to_money(item.unit_price, "unit_price")
+                entry["line_pct"] = Decimal(str(item.discount_pct or 0))
+            sold_net += Decimal(str(item.total))
 
         unknown = set(requested) - set(sold)
         if unknown:
@@ -3036,7 +3063,8 @@ class PosService:
         priced = PosService._return_line_totals(
             Decimal(str(order.subtotal)),
             Decimal(str(order.discount_total)),
-            [(sold[v]["unit_price"], requested[v]) for v in requested],
+            [(sold[v]["unit_price"], requested[v], sold[v]["line_pct"]) for v in requested],
+            sold_net_subtotal=sold_net,
         )
         return_entries = [
             {
