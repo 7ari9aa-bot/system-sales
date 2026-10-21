@@ -71,9 +71,7 @@ class PosProfile(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, Base
         JSONB, server_default='["cash", "card", "wallet", "bank_transfer"]'
     )
     # Percent, 0-100. A discount above this needs an approval (§plan 5.4).
-    discount_ceiling_pct: Mapped[Decimal] = mapped_column(
-        Numeric(5, 2), server_default="0"
-    )
+    discount_ceiling_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), server_default="0")
     require_customer: Mapped[bool] = mapped_column(Boolean, server_default="false")
     # Money limits a cashier can move on their own authority, in the shop's currency. NULL = no
     # limit (the owner has not set one); above it an action needs a manager's approval. The owner
@@ -216,9 +214,7 @@ class PosSessionFloat(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin
     amount: Mapped[Decimal] = mapped_column(MONEY)
 
     __table_args__ = (
-        UniqueConstraint(
-            "tenant_id", "session_id", "method", name="uq_pos_floats_session_method"
-        ),
+        UniqueConstraint("tenant_id", "session_id", "method", name="uq_pos_floats_session_method"),
     )
 
 
@@ -283,9 +279,7 @@ class PosReceipt(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, IdM
     # at insert (receipts are append-only). NULL = an ordinary sale, or a pre-link exchange.
     exchange_return_receipt_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey(
-            "pos_receipts.id", ondelete="RESTRICT", name="fk_pos_receipts_exchange_return"
-        ),
+        ForeignKey("pos_receipts.id", ondelete="RESTRICT", name="fk_pos_receipts_exchange_return"),
         nullable=True,
     )
 
@@ -321,9 +315,7 @@ class PosReturnLine(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, 
     # share of the order's discount.
     refund_total: Mapped[Decimal] = mapped_column(MONEY)
 
-    __table_args__ = (
-        Index("ix_pos_return_lines_tenant_order", "tenant_id", "order_id"),
-    )
+    __table_args__ = (Index("ix_pos_return_lines_tenant_order", "tenant_id", "order_id"),)
 
 
 class PosSessionReconciliation(
@@ -388,9 +380,7 @@ class PosHeldCart(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, Bas
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
 
-    __table_args__ = (
-        Index("ix_pos_held_carts_tenant_session", "tenant_id", "session_id"),
-    )
+    __table_args__ = (Index("ix_pos_held_carts_tenant_session", "tenant_id", "session_id"),)
 
 
 class PosSessionHandover(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, IdMixin, Base):
@@ -426,9 +416,7 @@ class PosSessionHandover(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMi
     variance: Mapped[Decimal] = mapped_column(MONEY)
     note: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
-    __table_args__ = (
-        Index("ix_pos_handovers_tenant_session", "tenant_id", "session_id"),
-    )
+    __table_args__ = (Index("ix_pos_handovers_tenant_session", "tenant_id", "session_id"),)
 
 
 class PosDailySales(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, Base):
@@ -459,7 +447,9 @@ class PosDailySales(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, B
 
     __table_args__ = (
         UniqueConstraint(
-            "tenant_id", "business_date", "register_id",
+            "tenant_id",
+            "business_date",
+            "register_id",
             name="uq_pos_daily_sales_date_register",
         ),
         Index("ix_pos_daily_tenant_date", "tenant_id", "business_date"),

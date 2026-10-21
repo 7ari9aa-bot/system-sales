@@ -343,13 +343,17 @@ class PosService:
         inflow, outflow = await PosService._cash_totals(session, tenant_id, pos_session.id)
         expected_now = Decimal(pos_session.opening_float) + inflow - outflow
         floats = (
-            await session.execute(
-                select(PosSessionFloat).where(
-                    PosSessionFloat.tenant_id == tenant_id,
-                    PosSessionFloat.session_id == pos_session.id,
+            (
+                await session.execute(
+                    select(PosSessionFloat).where(
+                        PosSessionFloat.tenant_id == tenant_id,
+                        PosSessionFloat.session_id == pos_session.id,
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return {
             "session": pos_session,
             "inflow": inflow,
@@ -513,9 +517,7 @@ class PosService:
         # does not serve — the scan and the grid see the same catalog.
         scope = await PosService._item_group_scope(session, tenant_id, pos_session)
         if scope is not None and (
-            product is None
-            or product.category_id is None
-            or str(product.category_id) not in scope
+            product is None or product.category_id is None or str(product.category_id) not in scope
         ):
             return {"found": False, "refusal": "this product is outside this terminal's catalog"}
 
@@ -740,9 +742,7 @@ class PosService:
             raise ValidationError("a quote must contain at least one item")
 
         await PosService._ensure_cart_in_scope(session, tenant_id, pos_session, items)
-        subtotal, _lines, line_discounts = await PosService._price_lines(
-            session, tenant_id, items
-        )
+        subtotal, _lines, line_discounts = await PosService._price_lines(session, tenant_id, items)
         composed = (
             None
             if discount_total is None and line_discounts == 0
@@ -910,9 +910,7 @@ class PosService:
             try:
                 held = await PosService.get_held_cart(session, tenant_id, held_cart_id)
             except NotFoundError:
-                raise ConflictError(
-                    "this held cart was already resumed or released"
-                ) from None
+                raise ConflictError("this held cart was already resumed or released") from None
             if held.session_id != pos_session.id:
                 raise ConflictError("this held cart belongs to a different session")
             items = list(held.items or [])
@@ -999,9 +997,7 @@ class PosService:
             )
             grand = to_money(order.grand_total, "grand_total")
             if tendered_total != grand:
-                raise ValidationError(
-                    f"tenders total {tendered_total} but the order is {grand}"
-                )
+                raise ValidationError(f"tenders total {tendered_total} but the order is {grand}")
         for tender in resolved_tenders:
             await OrderService.add_payment(
                 session,
@@ -1063,14 +1059,10 @@ class PosService:
         if cash_due <= 0:
             return None, None
         tendered = (
-            to_money(tendered_cash, "tendered_cash")
-            if tendered_cash is not None
-            else cash_due
+            to_money(tendered_cash, "tendered_cash") if tendered_cash is not None else cash_due
         )
         if tendered < cash_due:
-            raise ConflictError(
-                f"cash tendered {tendered} is less than the cash due {cash_due}"
-            )
+            raise ConflictError(f"cash tendered {tendered} is less than the cash due {cash_due}")
         return tendered, tendered - cash_due
 
     @staticmethod
@@ -1314,9 +1306,7 @@ class PosService:
                 # the ledgers (idempotent), the payload rides for consumers
                 # that never touch the database.
                 "business_date": (
-                    pos_session.closed_at.date().isoformat()
-                    if pos_session.closed_at
-                    else None
+                    pos_session.closed_at.date().isoformat() if pos_session.closed_at else None
                 ),
                 "invoice_count": int(sales_row[0]),
                 "sales_total": str(to_money(sales_row[1], "sales_total")),
@@ -1346,11 +1336,9 @@ class PosService:
         # sale and its return receipt, and joining payments on receipts would
         # count every payment once per receipt. The session's orders come from
         # an IN-subquery, so each payment is summed exactly once.
-        session_orders = (
-            select(PosReceipt.order_id).where(
-                PosReceipt.tenant_id == tenant_id,
-                PosReceipt.session_id == pos_session.id,
-            )
+        session_orders = select(PosReceipt.order_id).where(
+            PosReceipt.tenant_id == tenant_id,
+            PosReceipt.session_id == pos_session.id,
         )
         payment_totals = dict(
             (
@@ -1392,9 +1380,9 @@ class PosService:
         for method in set(payment_totals) | set(refund_totals):
             if method == "cash":
                 continue
-            expected[method] = to_money(
-                payment_totals.get(method, 0), "expected"
-            ) - to_money(refund_totals.get(method, 0), "refunded")
+            expected[method] = to_money(payment_totals.get(method, 0), "expected") - to_money(
+                refund_totals.get(method, 0), "refunded"
+            )
         return expected
 
     @staticmethod
@@ -1411,9 +1399,7 @@ class PosService:
         never took is still recorded (expected 0) — an unexplained surplus is
         a finding, never a silent correction (§188).
         """
-        expected_by_method = await PosService._expected_by_method(
-            session, tenant_id, pos_session
-        )
+        expected_by_method = await PosService._expected_by_method(session, tenant_id, pos_session)
         methods = set(expected_by_method) | set(counted_by_method)
         rows: list[PosSessionReconciliation] = []
         for method in sorted(methods):
@@ -1492,8 +1478,7 @@ class PosService:
             "session_id": pos_session.id,
             "status": pos_session.status,
             "by_method": [
-                {"method": method, "expected": str(expected[method])}
-                for method in sorted(expected)
+                {"method": method, "expected": str(expected[method])} for method in sorted(expected)
             ],
             "invoice_count": int(sales[0]),
             "sales_total": str(to_money(sales[1], "sales_total")),
@@ -1646,8 +1631,7 @@ class PosService:
                 for line in lines
             ]
         fully_returned = bool(lines) and all(
-            int(returned_by_variant.get(item.variant_id, 0)) >= item.quantity
-            for item in lines
+            int(returned_by_variant.get(item.variant_id, 0)) >= item.quantity for item in lines
         )
         return {
             "receipt": {
@@ -1657,9 +1641,7 @@ class PosService:
                 "exchange_return_receipt_id": receipt.exchange_return_receipt_id,
                 "issued_at": receipt.issued_at.isoformat(),
                 "tendered_amount": (
-                    str(receipt.tendered_amount)
-                    if receipt.tendered_amount is not None
-                    else None
+                    str(receipt.tendered_amount) if receipt.tendered_amount is not None else None
                 ),
                 "change_amount": (
                     str(receipt.change_amount) if receipt.change_amount is not None else None
@@ -1675,15 +1657,12 @@ class PosService:
             },
             "lines": lines_payload,
             "tenders": [
-                {"method": t.method, "amount": str(t.amount), "status": t.status}
-                for t in tenders
+                {"method": t.method, "amount": str(t.amount), "status": t.status} for t in tenders
             ],
         }
 
     @staticmethod
-    async def list_receipts(
-        session: AsyncSession, tenant_id: UUID, session_id: UUID
-    ) -> list[dict]:
+    async def list_receipts(session: AsyncSession, tenant_id: UUID, session_id: UUID) -> list[dict]:
         """The shift's receipts with their return state — the refund picker.
 
         ``returned_units``/``refunded_total`` come from the return lines of
@@ -1869,19 +1848,13 @@ class PosService:
             "session": {
                 "id": str(pos_session.id),
                 "register_id": str(pos_session.register_id),
-                "profile_id": (
-                    str(pos_session.profile_id) if pos_session.profile_id else None
-                ),
+                "profile_id": (str(pos_session.profile_id) if pos_session.profile_id else None),
                 "cashier_user_id": (
-                    str(pos_session.cashier_user_id)
-                    if pos_session.cashier_user_id
-                    else None
+                    str(pos_session.cashier_user_id) if pos_session.cashier_user_id else None
                 ),
                 "status": pos_session.status,
                 "opened_at": pos_session.opened_at.isoformat(),
-                "closed_at": (
-                    pos_session.closed_at.isoformat() if pos_session.closed_at else None
-                ),
+                "closed_at": (pos_session.closed_at.isoformat() if pos_session.closed_at else None),
             },
             "by_method": by_method,
             # Session-level rollups for the report header: expected sums every
@@ -1964,10 +1937,7 @@ class PosService:
                         # the SESSION's timezone (a Cairo-zone database then
                         # disagrees with the UTC date by one day after 22:00
                         # and the projection silently projects nothing).
-                        func.date(
-                            func.timezone("UTC", PosSession.closed_at)
-                        )
-                        == business_date,
+                        func.date(func.timezone("UTC", PosSession.closed_at)) == business_date,
                     )
                 )
             )
@@ -2021,12 +1991,8 @@ class PosService:
                 await session.execute(
                     select(
                         PosSessionReconciliation.method,
-                        func.coalesce(
-                            func.sum(PosSessionReconciliation.expected_amount), 0
-                        ),
-                        func.coalesce(
-                            func.sum(PosSessionReconciliation.counted_amount), 0
-                        ),
+                        func.coalesce(func.sum(PosSessionReconciliation.expected_amount), 0),
+                        func.coalesce(func.sum(PosSessionReconciliation.counted_amount), 0),
                         func.coalesce(func.sum(PosSessionReconciliation.variance), 0),
                     )
                     .where(
@@ -2068,6 +2034,97 @@ class PosService:
             written += 1
         await session.flush()
         return written
+
+    @staticmethod
+    async def top_products(
+        session: AsyncSession,
+        tenant_id: UUID,
+        *,
+        since: date,
+        until: date,
+        limit: int = 20,
+    ) -> list[dict]:
+        """Best sellers over ``[since, until]`` (shop days, inclusive), ranked by net revenue.
+
+        Per variant, straight from the order lines of ``sale`` receipts: quantity and revenue (the
+        line's NET after the cashier's discount), minus what was RETURNED in the same window, so a
+        product that sells and comes back does not rank as a hit. There is deliberately no cost or
+        profit here: an order line does not record the cost at the time of sale, and a profit
+        computed from today's average cost would be a guess presented as a fact.
+        """
+        from zoneinfo import ZoneInfo
+
+        from app.modules.orders.models import OrderItem
+        from app.modules.pos.stock_view import StockViewService
+
+        tz = (await PosService._shop_timezone(session, tenant_id) or "UTC").strip() or "UTC"
+        zone = ZoneInfo(tz)
+        lo = datetime(since.year, since.month, since.day, tzinfo=zone).astimezone(UTC)
+        nxt = until + timedelta(days=1)
+        hi = datetime(nxt.year, nxt.month, nxt.day, tzinfo=zone).astimezone(UTC)
+
+        sold = (
+            await session.execute(
+                select(
+                    OrderItem.variant_id,
+                    func.coalesce(func.sum(OrderItem.quantity), 0),
+                    func.coalesce(func.sum(OrderItem.total), 0),
+                )
+                .select_from(PosReceipt)
+                .join(OrderItem, OrderItem.order_id == PosReceipt.order_id)
+                .where(
+                    PosReceipt.tenant_id == tenant_id,
+                    PosReceipt.kind == "sale",
+                    PosReceipt.issued_at >= lo,
+                    PosReceipt.issued_at < hi,
+                )
+                .group_by(OrderItem.variant_id)
+            )
+        ).all()
+        returned = {
+            variant_id: (int(qty), to_money(amount, "returned"))
+            for variant_id, qty, amount in (
+                await session.execute(
+                    select(
+                        PosReturnLine.variant_id,
+                        func.coalesce(func.sum(PosReturnLine.quantity), 0),
+                        func.coalesce(func.sum(PosReturnLine.refund_total), 0),
+                    )
+                    .select_from(PosReturnLine)
+                    .join(PosReceipt, PosReceipt.id == PosReturnLine.receipt_id)
+                    .where(
+                        PosReturnLine.tenant_id == tenant_id,
+                        PosReceipt.issued_at >= lo,
+                        PosReceipt.issued_at < hi,
+                    )
+                    .group_by(PosReturnLine.variant_id)
+                )
+            ).all()
+        }
+        ranked = []
+        for variant_id, qty, revenue in sold:
+            r_qty, r_amount = returned.get(variant_id, (0, Decimal("0")))
+            net_qty = int(qty) - r_qty
+            net_revenue = to_money(revenue, "revenue") - r_amount
+            ranked.append((variant_id, int(qty), r_qty, net_qty, net_revenue))
+        ranked.sort(key=lambda t: (t[4], t[3]), reverse=True)
+        ranked = ranked[: max(1, min(limit, 100))]
+        names = await StockViewService.names_for(session, tenant_id, [t[0] for t in ranked])
+        out = []
+        for variant_id, qty, r_qty, net_qty, net_revenue in ranked:
+            title, sku = names.get(variant_id, (None, None))
+            out.append(
+                {
+                    "variant_id": str(variant_id),
+                    "product_title": title,
+                    "sku": sku,
+                    "sold_qty": qty,
+                    "returned_qty": r_qty,
+                    "net_qty": net_qty,
+                    "net_revenue": str(to_money(net_revenue, "net_revenue")),
+                }
+            )
+        return out
 
     @staticmethod
     async def sales_by_day(
@@ -2216,9 +2273,7 @@ class PosService:
         if register_id is not None:
             query = query.where(PosDailySales.register_id == register_id)
         rows = (
-            (await session.execute(query.order_by(PosDailySales.register_id.asc())))
-            .scalars()
-            .all()
+            (await session.execute(query.order_by(PosDailySales.register_id.asc()))).scalars().all()
         )
         return list(rows)
 
@@ -2315,9 +2370,7 @@ class PosService:
             items=clean_items,
             customer_id=customer_id,
             discount_total=(
-                to_money(discount_total, "discount_total")
-                if discount_total is not None
-                else None
+                to_money(discount_total, "discount_total") if discount_total is not None else None
             ),
             label=(str(label).strip() or None) if label is not None else None,
             held_by_user_id=held_by,
@@ -2363,9 +2416,7 @@ class PosService:
         return held
 
     @staticmethod
-    async def release_held_cart(
-        session: AsyncSession, tenant_id: UUID, held_cart_id: UUID
-    ) -> None:
+    async def release_held_cart(session: AsyncSession, tenant_id: UUID, held_cart_id: UUID) -> None:
         """Drop a parked cart — the customer left, or it became a sale."""
         held = await PosService.get_held_cart(session, tenant_id, held_cart_id)
         await session.delete(held)
@@ -2831,9 +2882,7 @@ class PosService:
                 ).all()
             )
             for variant_id, quantity in requested.items():
-                goods_cap = sold[variant_id]["quantity"] - int(
-                    restocked_already.get(variant_id, 0)
-                )
+                goods_cap = sold[variant_id]["quantity"] - int(restocked_already.get(variant_id, 0))
                 if quantity > goods_cap:
                     raise ConflictError(
                         f"variant {variant_id}: only {goods_cap} unit(s) of this sale "
@@ -2933,8 +2982,7 @@ class PosService:
             refused = {payment.method for payment, _leg in plan} - allowed_return_methods
             if refused:
                 raise ValidationError(
-                    f"refund methods {sorted(refused)} are not enabled for "
-                    "returns on this profile"
+                    f"refund methods {sorted(refused)} are not enabled for returns on this profile"
                 )
 
         written: list[Refund] = []
@@ -2950,9 +2998,7 @@ class PosService:
                     by_user_id=actor_user_id,
                 )
             )
-        cash_legs = sum(
-            (leg for payment, leg in plan if payment.method == "cash"), Decimal("0")
-        )
+        cash_legs = sum((leg for payment, leg in plan if payment.method == "cash"), Decimal("0"))
         if cash_legs > 0:
             await PosService._append_sale_cash(
                 session,
@@ -2966,9 +3012,7 @@ class PosService:
 
         restocked = False
         if restock:
-            register = await PosService._get_register(
-                session, tenant_id, pos_session.register_id
-            )
+            register = await PosService._get_register(session, tenant_id, pos_session.register_id)
             for entry in refund_lines:
                 await InventoryService.move(
                     session,
@@ -3018,8 +3062,7 @@ class PosService:
                 "receipt_id": str(return_receipt.id),
                 "refunded_total": str(refund_total),
                 "by_method": [
-                    {"method": payment.method, "amount": str(leg)}
-                    for payment, leg in plan
+                    {"method": payment.method, "amount": str(leg)} for payment, leg in plan
                 ],
                 "restocked": restocked,
             },
@@ -3029,9 +3072,7 @@ class PosService:
             "receipt_id": return_receipt.id,
             "receipt_number": return_receipt.number,
             "refunded_total": str(refund_total),
-            "by_method": [
-                {"method": payment.method, "amount": str(leg)} for payment, leg in plan
-            ],
+            "by_method": [{"method": payment.method, "amount": str(leg)} for payment, leg in plan],
             "lines": [
                 {
                     "variant_id": str(entry["variant_id"]),
@@ -3205,9 +3246,7 @@ class PosService:
                 ).all()
             )
             for variant_id, quantity in requested.items():
-                goods_cap = sold[variant_id]["quantity"] - int(
-                    restocked_already.get(variant_id, 0)
-                )
+                goods_cap = sold[variant_id]["quantity"] - int(restocked_already.get(variant_id, 0))
                 if quantity > goods_cap:
                     raise ConflictError(
                         f"variant {variant_id}: only {goods_cap} unit(s) of this sale "
@@ -3322,8 +3361,13 @@ class PosService:
         # per-method reconciliation describing money that never flowed.
         for payment, leg in plan:
             await OrderService.register_refund(
-                session, tenant_id, order_id, payment.id,
-                amount=leg, reason="pos_exchange", by_user_id=actor_user_id,
+                session,
+                tenant_id,
+                order_id,
+                payment.id,
+                amount=leg,
+                reason="pos_exchange",
+                by_user_id=actor_user_id,
             )
         cash_out = sum(
             (leg for payment, leg in plan if payment.method == "cash"),
@@ -3331,9 +3375,13 @@ class PosService:
         )
         if cash_out > 0:
             await PosService._append_sale_cash(
-                session, tenant_id, pos_session.id,
-                reason="cash_refund", amount=to_money(cash_out, "cash_refund"),
-                created_by=actor_user_id, reference_id=order_id,
+                session,
+                tenant_id,
+                pos_session.id,
+                reason="cash_refund",
+                amount=to_money(cash_out, "cash_refund"),
+                created_by=actor_user_id,
+                reference_id=order_id,
             )
         funding: list[tuple[str, Decimal]] = []
         remaining_new = new_grand_total
@@ -3350,10 +3398,11 @@ class PosService:
         caller_tenders: list[dict] = []
         if remaining_new > 0:
             caller_tenders = PosService._normalise_tenders(
-                tenders, method, amount,
-                default_method=(
-                    profile.default_payment_method if profile is not None else None
-                ) or "cash",
+                tenders,
+                method,
+                amount,
+                default_method=(profile.default_payment_method if profile is not None else None)
+                or "cash",
             )
             if profile is not None:
                 PosService._ensure_methods_allowed(profile, caller_tenders)
@@ -3373,9 +3422,7 @@ class PosService:
                     )
 
         # ---------- commit: order, payments, receipts ------------------------
-        register = await PosService._get_register(
-            session, tenant_id, pos_session.register_id
-        )
+        register = await PosService._get_register(session, tenant_id, pos_session.register_id)
         new_order = await OrderService.create_order(
             session,
             tenant_id,
@@ -3393,25 +3440,35 @@ class PosService:
         ]
         for t_method, t_amount in funding:
             await OrderService.add_payment(
-                session, tenant_id, new_order.id, method=t_method, amount=t_amount,
+                session,
+                tenant_id,
+                new_order.id,
+                method=t_method,
+                amount=t_amount,
             )
         for t in resolved:
             await OrderService.add_payment(
-                session, tenant_id, new_order.id, method=t["method"], amount=t["amount"],
+                session,
+                tenant_id,
+                new_order.id,
+                method=t["method"],
+                amount=t["amount"],
             )
         funding_cash = sum((amt for m, amt in funding if m == "cash"), Decimal("0"))
-        caller_cash = sum(
-            (t["amount"] for t in resolved if t["method"] == "cash"), Decimal("0")
-        )
+        caller_cash = sum((t["amount"] for t in resolved if t["method"] == "cash"), Decimal("0"))
         # The drawer books BOTH the funding echo and the caller's physical
         # cash — but tendered/change describe the CUSTOMER's handover only:
         # the funding leg is ledger conversion, never money the till counted.
         cash_in = funding_cash + caller_cash
         if cash_in > 0:
             await PosService._append_sale_cash(
-                session, tenant_id, pos_session.id,
-                reason="cash_sale", amount=to_money(cash_in, "cash_in"),
-                created_by=actor_user_id, reference_id=new_order.id,
+                session,
+                tenant_id,
+                pos_session.id,
+                reason="cash_sale",
+                amount=to_money(cash_in, "cash_in"),
+                created_by=actor_user_id,
+                reference_id=new_order.id,
             )
         tendered, change = (
             PosService._settle_change(caller_cash, tendered_cash)
@@ -3422,14 +3479,24 @@ class PosService:
         if restock:
             for entry in return_entries:
                 await InventoryService.move(
-                    session, tenant_id, entry["variant_id"], register.warehouse_id,
-                    direction="in", quantity=entry["quantity"],
-                    reason="return", reference_type="order", reference_id=order_id,
+                    session,
+                    tenant_id,
+                    entry["variant_id"],
+                    register.warehouse_id,
+                    direction="in",
+                    quantity=entry["quantity"],
+                    reason="return",
+                    reference_type="order",
+                    reference_id=order_id,
                 )
 
         return_receipt = await PosService._issue_receipt(
-            session, tenant_id, pos_session, order,
-            number_prefix="POS-RET", kind="return",
+            session,
+            tenant_id,
+            pos_session,
+            order,
+            number_prefix="POS-RET",
+            kind="return",
         )
         for entry in return_entries:
             session.add(
@@ -3444,8 +3511,12 @@ class PosService:
                 )
             )
         new_receipt = await PosService._issue_receipt(
-            session, tenant_id, pos_session, new_order,
-            tendered_amount=tendered, change_amount=change,
+            session,
+            tenant_id,
+            pos_session,
+            new_order,
+            tendered_amount=tendered,
+            change_amount=change,
             exchange_return_receipt_id=return_receipt.id,  # the stored pairing
         )
         await session.flush()
@@ -3479,13 +3550,8 @@ class PosService:
             "return_total": str(return_total),
             "new_total": str(new_grand_total),
             "net": str(net),
-            "by_method": [
-                {"method": payment.method, "amount": str(leg)}
-                for payment, leg in plan
-            ] or [
-                {"method": t["method"], "amount": str(t["amount"])}
-                for t in resolved
-            ],
+            "by_method": [{"method": payment.method, "amount": str(leg)} for payment, leg in plan]
+            or [{"method": t["method"], "amount": str(t["amount"])} for t in resolved],
             "restocked": restock,
         }
 
@@ -3578,14 +3644,10 @@ class PosService:
                         PosSessionHandover.tenant_id == tenant_id,
                         PosSessionHandover.session_id == session_id,
                     )
-                    .order_by(
-                        PosSessionHandover.created_at.asc(), PosSessionHandover.id.asc()
-                    )
+                    .order_by(PosSessionHandover.created_at.asc(), PosSessionHandover.id.asc())
                 )
             )
             .scalars()
             .all()
         )
         return list(rows)
-
-

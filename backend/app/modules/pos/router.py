@@ -556,6 +556,26 @@ async def list_receipts(session_id: UUID, ctx: TenantCtxDep):
     ]
 
 
+@router.get("/reports/top-products")
+async def top_products_report(ctx: TenantCtxDep, since: str, until: str, limit: int = 20):
+    """Best sellers over ``[since, until]`` (YYYY-MM-DD, inclusive).
+
+    Quantity and net revenue, less what came back in the window. No cost or profit: an order line
+    does not keep the cost at the time of sale.
+    """
+    try:
+        lo, hi = date.fromisoformat(since), date.fromisoformat(until)
+    except ValueError:
+        raise ValidationError("since and until must be YYYY-MM-DD") from None
+    if hi < lo:
+        raise ValidationError("until must not be before since")
+    if (hi - lo).days > 366:
+        raise ValidationError("the range is limited to 366 days")
+    return await PosService.top_products(
+        ctx.session, ctx.tenant_id, since=lo, until=hi, limit=limit
+    )
+
+
 @router.get("/reports/sales")
 async def sales_report(ctx: TenantCtxDep, since: str, until: str):
     """Sales per shop day over ``[since, until]`` (YYYY-MM-DD, inclusive), newest day first.

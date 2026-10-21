@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 413,
-    "sha256": "cc4f4b2a28ce6683f12f36ad9eb34adc9eb64dcf2612757bb477395e96b3282a",
+    "operations": 414,
+    "sha256": "cd608a61b5eb60d407ff6f190c0f32d8656726232d386c581ad9d4b1aedfa857",
     "typed_operations": 254
   },
   "spec": {
@@ -51568,6 +51568,130 @@
             }
           },
           "summary": "Sales Report",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
+      "/api/v1/pos/reports/top-products": {
+        "get": {
+          "description": "Best sellers over ``[since, until]`` (YYYY-MM-DD, inclusive).\n\nQuantity and net revenue, less what came back in the window. No cost or profit: an order line\ndoes not keep the cost at the time of sale.",
+          "operationId": "top_products_report_api_v1_pos_reports_top_products_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "since",
+              "required": true,
+              "schema": {
+                "title": "Since",
+                "type": "string"
+              }
+            },
+            {
+              "in": "query",
+              "name": "until",
+              "required": true,
+              "schema": {
+                "title": "Until",
+                "type": "string"
+              }
+            },
+            {
+              "in": "query",
+              "name": "limit",
+              "required": false,
+              "schema": {
+                "default": 20,
+                "title": "Limit",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Top Products Report",
           "tags": [
             "pos"
           ]

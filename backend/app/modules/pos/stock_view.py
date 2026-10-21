@@ -152,6 +152,22 @@ class StockViewService:
         return [StockViewService._row(r, barcodes.get(r[0].id)) for r in rows]
 
     @staticmethod
+    async def names_for(
+        session: AsyncSession, tenant_id: UUID, variant_ids: list[UUID]
+    ) -> dict[UUID, tuple[str | None, str | None]]:
+        """``{variant_id: (product title, sku)}``: the labels a report row shows."""
+        if not variant_ids:
+            return {}
+        found = (
+            await session.execute(
+                select(ProductVariant.id, Product.title, ProductVariant.sku)
+                .join(Product, Product.id == ProductVariant.product_id)
+                .where(ProductVariant.tenant_id == tenant_id, ProductVariant.id.in_(variant_ids))
+            )
+        ).all()
+        return {vid: (title, sku) for vid, title, sku in found}
+
+    @staticmethod
     async def _barcodes(session: AsyncSession, tenant_id: UUID, ids: list[UUID]) -> dict:
         if not ids:
             return {}
