@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Download, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/cashier/components/ui/button";
@@ -11,10 +11,26 @@ import SupplierReturnFilters from "@/cashier/components/supplier-returns/Supplie
 import SupplierReturnDialog from "@/cashier/components/supplier-returns/SupplierReturnDialog";
 import supplierReturnColumns from "@/cashier/components/supplier-returns/supplierReturnColumns";
 import { BTN, BTN_PRIMARY, LEDGER, LEDGER_FOOTER, LEDGER_TOOLBAR } from "@/cashier/components/ui-kit/ledgerStyles";
-import { supplierReturnRecords, supplierReturnsSummary } from "@/cashier/lib/storeOpsData";
-import { SUPPLIER_RETURN_SETTLEMENTS, fmtDate, fmtInt, fmtMoney } from "@/cashier/lib/format";
+import { sumMoney } from "@/cashier/api/money";
+import {
+  RETURN_REASON_LABEL,
+  RETURN_STATUS_LABEL,
+  SETTLEMENT_LABEL,
+  purchasingErrorMessage,
+  returnsSummary,
+} from "@/cashier/api/purchasingAdapter";
+import { useCatalog } from "@/cashier/api/usePosSale";
+import { useShiftState } from "@/cashier/api/useShifts";
+import {
+  useAcceptSupplierReturn,
+  useCreateSupplierReturn,
+  usePurchaseOrders,
+  useRejectSupplierReturn,
+  useSupplierReturns,
+  useSuppliers,
+} from "@/cashier/api/usePurchasing";
+import { fmtDate, fmtInt, fmtMoney } from "@/cashier/lib/format";
 import { exportCsv } from "@/cashier/lib/exportCsv";
-
 
 const HERO_IMAGE = "https://media.base44.com/images/public/6ad5982c1b45f350e41ffe73/933844b43_generated_image.png";
 const HERO_ALT = "صندوق مرتجع مغلق على منضدة المخزن";
@@ -24,51 +40,74 @@ const EXPORT_COLUMNS = [
   { header: "التاريخ", value: (r) => fmtDate(r.date) },
   { header: "المورد", key: "supplierName" },
   { header: "فاتورة التوريد", key: "poNumber" },
-  { header: "الصنف", key: "productName" },
-  { header: "اللون", key: "color" },
-  { header: "المقاس", key: "size" },
+  { header: "الأصناف", value: (r) => r.items.map((i) => `${i.name} ${i.color} ${i.size} ×${i.qty}`.replace(/\s+/g, " ")).join(" ; ") },
   { header: "الكمية", key: "qty" },
-  { header: "التكلفة", key: "unitCost" },
   { header: "القيمة", key: "amount" },
-  { header: "السبب", key: "reason" },
-  { header: "التسوية", value: (r) => SUPPLIER_RETURN_SETTLEMENTS[r.settlement]?.label ?? "—" },
+  { header: "السبب", value: (r) => RETURN_REASON_LABEL[r.reason] ?? r.reason },
+  { header: "التسوية", value: (r) => SETTLEMENT_LABEL[r.settlement] ?? "—" },
+  // A return under review or refused is not money: Excel must not sum it as such.
+  { header: "قرار المورد", value: (r) => RETURN_STATUS_LABEL[r.status] ?? "—" },
 ];
 
 export default function SupplierReturnsPage() {
-  const [records, setRecords] = useState(supplierReturnRecords);
+  const suppliers = useSuppliers();
+  const names = useMemo(() => Object.fromEntries((suppliers.data ?? []).map((s) => [s.id, s.name])), [suppliers.data]);
+  const catalog = useCatalog();
+  const variants = useMemo(() => Object.fromEntries((catalog.data ?? []).map((v) => [v.id, v])), [catalog.data]);
+  const orders = usePurchaseOrders({ suppliers: names, variants });
+  const orderNumbers = useMemo(() => Object.fromEntries((orders.data ?? []).map((o) => [o.id, o.number])), [orders.data]);
+  const returns = useSupplierReturns({ suppliers: names, variants, orders: orderNumbers });
+  const shiftState = useShiftState();
+  const openSessionId = shiftState.data?.status === "open" ? shiftState.data.session.id : null;
+  const create = useCreateSupplierReturn();
+  const accept = useAcceptSupplierReturn();
+  const reject = useRejectSupplierReturn();
+
   const [term, setTerm] = useState("");
   const [supplierId, setSupplierId] = useState("");
   const [settlement, setSettlement] = useState("");
+  const [status, setStatus] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  const summary = supplierReturnsSummary(records);
+  const records = returns.data ?? [];
   const rows = records.filter((r) => {
     const t = term.trim().toLowerCase();
-    if (t && !(r.number.toLowerCase().includes(t) || r.supplierName.toLowerCase().includes(t) || r.productName.toLowerCase().includes(t) || r.sku.toLowerCase().includes(t)))
-      return false;
+    if (t && !(r.number.toLowerCase().includes(t) || r.supplierName.toLowerCase().includes(t) || r.items.some((i) => i.name.toLowerCase().includes(t)))) return false;
     if (supplierId && r.supplierId !== supplierId) return false;
     if (settlement && r.settlement !== settlement) return false;
+    if (status && r.status !== status) return false;
     return true;
   });
+  const summary = returnsSummary(records);
+  const decision = accept.isPending ? accept.variables?.id : reject.isPending ? reject.variables?.id : null;
+  const decisionError = [accept.error, reject.error].find(Boolean);
 
-  const rowsAmount = rows.reduce((s, r) => s + r.amount, 0);
-  const rowsQty = rows.reduce((s, r) => s + r.qty, 0);
-  const columns = supplierReturnColumns();
-
-  function addRecord(record) {
-    const nextNumber = `SR-2026-${String(107 + records.length).padStart(4, "0")}`;
-    setRecords((prev) => [
+  function submit(payload) {
+    create.mutate(
+      { slot: "create", payload },
       {
-        ...record,
-        id: `sr-new-${prev.length + 1}`,
-        number: nextNumber,
-        date: new Date().toISOString(),
-        status: "completed",
+        onSuccess: (ret) => {
+          setDialogOpen(false);
+          toast.success(`تم تسجيل المرتجع ${ret.number}: البضاعة خرجت من المخزن وبانتظار قرار المورد`);
+        },
       },
-      ...prev,
-    ]);
-    toast.success(`تم تسجيل المرتجع ${nextNumber} — ${record.productName}`);
+    );
   }
+
+  function decide(ret, accepted) {
+    if (accepted && ret.settlement === "cash" && !openSessionId) {
+      toast.error("الاسترداد النقدي بيدخل درج الوردية: افتح وردية الأول");
+      return;
+    }
+    const slot = `${accepted ? "accept" : "reject"}:${ret.id}`;
+    const done = { onSuccess: () => toast.success(accepted ? `تم قبول المرتجع ${ret.number}` : `تم رفض المرتجع ${ret.number}: البضاعة رجعت للمخزن`) };
+    if (accepted) accept.mutate({ slot, id: ret.id, sessionId: ret.settlement === "cash" ? openSessionId : null }, done);
+    else reject.mutate({ slot, id: ret.id }, done);
+  }
+
+  const columns = supplierReturnColumns({ onAccept: (r) => decide(r, true), onReject: (r) => decide(r, false), busyId: decision });
+  const shownAmount = sumMoney(rows.filter((r) => r.status === "accepted").map((r) => r.amount));
+  const shownQty = rows.reduce((s, r) => s + r.qty, 0);
 
   return (
     <LedgerPage
@@ -76,8 +115,8 @@ export default function SupplierReturnsPage() {
         <PageHero
           image={HERO_IMAGE}
           imageAlt={HERO_ALT}
-          title="جدول مرتجعات الموردين"
-          description="الأصناف المرتجعة وكمياتها، أثرها على المخزون، وطريقة تسوية الحساب مع كل مورد"
+          title="مرتجعات الموردين"
+          description="البضاعة اللي رجعت للمورد: بتخرج من المخزن فورًا، والفلوس بتتحرك بس لما المورد يوافق"
         >
           <Button
             className={BTN}
@@ -87,26 +126,50 @@ export default function SupplierReturnsPage() {
             }}
           >
             <Download />
-            تصدير القائمة
+            تصدير Excel
           </Button>
-          <Button className={BTN_PRIMARY} onClick={() => setDialogOpen(true)}>
+          <Button
+            className={BTN_PRIMARY}
+            onClick={() => {
+              create.reset();
+              setDialogOpen(true);
+            }}
+          >
             <Plus />
             تسجيل مرتجع للمورد
           </Button>
         </PageHero>
       }
     >
+      {returns.error ? (
+        <div role="alert" className="mb-3 flex items-center justify-between rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+          <span>تعذّر تحميل المرتجعات: {purchasingErrorMessage(returns.error)}</span>
+          <Button variant="outline" onClick={() => returns.refetch()}>
+            إعادة المحاولة
+          </Button>
+        </div>
+      ) : null}
+      {decisionError ? (
+        <div role="alert" className="mb-3 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+          {purchasingErrorMessage(decisionError)}
+        </div>
+      ) : null}
+
       <SupplierReturnFilters
         term={term}
         onTerm={setTerm}
         supplierId={supplierId}
-        onSupplier={(value) => setSupplierId(value === "all" ? "" : value)}
+        onSupplier={setSupplierId}
         settlement={settlement}
-        onSettlement={(value) => setSettlement(value === "all" ? "" : value)}
+        onSettlement={setSettlement}
+        status={status}
+        onStatus={setStatus}
+        suppliers={suppliers.data ?? []}
         onReset={() => {
           setTerm("");
           setSupplierId("");
           setSettlement("");
+          setStatus("");
         }}
       />
 
@@ -117,13 +180,13 @@ export default function SupplierReturnsPage() {
         columns={columns}
         rows={rows}
         pageSize={8}
-        emptyTitle="لا توجد مرتجعات مطابقة"
-        emptyDescription="جرّب تغيير المورد أو طريقة التسوية أو كلمة البحث."
+        emptyTitle={returns.isLoading ? "جارٍ التحميل…" : records.length === 0 ? "لسه مفيش مرتجعات للموردين" : "لا توجد مرتجعات مطابقة"}
+        emptyDescription="سجّل مرتجعًا جديدًا، أو غيّر الفلاتر."
         toolbar={
           <div className="num flex items-center gap-3 text-[12px] text-[#7A766C]">
             <Image src={HERO_IMAGE} alt={HERO_ALT} className="h-[34px] w-[34px] overflow-hidden rounded-[4px] border border-[#DED8CD]" />
             <span>
-              {fmtInt(rows.length)} مرتجعًا معروضًا • القيمة {fmtMoney(rowsAmount)} • {fmtInt(rowsQty)} قطعة خرجت من المخزون
+              {fmtInt(rows.length)} مرتجعًا معروضًا • مقبول بقيمة {fmtMoney(shownAmount)} • {fmtInt(shownQty)} قطعة
             </span>
           </div>
         }
@@ -131,22 +194,23 @@ export default function SupplierReturnsPage() {
 
       <LedgerStats
         stats={[
-          {
-            label: "عدد المرتجعات",
-            value: fmtInt(summary.count),
-            hint: `${fmtInt(summary.qty)} قطعة خرجت من المخزون`,
-          },
-          {
-            label: "قيمة المرتجعات",
-            value: fmtMoney(summary.amount),
-            hint: `${fmtInt(summary.suppliersCount)} مورد • خصم من الحساب ${fmtMoney(summary.credit)}`,
-          },
-          { label: "مسترد نقدًا", value: fmtMoney(summary.cash), hint: "استرداد نقدي من الموردين" },
-          { label: "قيد المراجعة", value: fmtInt(summary.review), hint: "بانتظار موافقة المورد", accent: true },
+          { label: "عدد المرتجعات", value: fmtInt(summary.count), hint: `${fmtInt(summary.qty)} قطعة خرجت من المخزن` },
+          { label: "خصم من الحساب", value: fmtMoney(summary.credit), hint: "مرتجعات المورد قبلها" },
+          { label: "مسترد نقدًا", value: fmtMoney(summary.cash), hint: "دخل درج الوردية" },
+          { label: "بانتظار المورد", value: fmtInt(summary.review), hint: `قيمتها ${fmtMoney(summary.pendingAmount)} (لسه مش فلوس)`, accent: true },
         ]}
       />
 
-      <SupplierReturnDialog open={dialogOpen} onOpenChange={setDialogOpen} onSubmit={addRecord} />
+      <SupplierReturnDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        suppliers={(suppliers.data ?? []).filter((s) => s.status === "active")}
+        orders={orders.data ?? []}
+        catalog={catalog.data ?? []}
+        onSubmit={submit}
+        pending={create.isPending}
+        error={create.error ? purchasingErrorMessage(create.error) : ""}
+      />
     </LedgerPage>
   );
 }
