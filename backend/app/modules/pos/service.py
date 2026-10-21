@@ -1174,6 +1174,7 @@ class PosService:
         change_amount: Decimal | None = None,
         number_prefix: str = "POS",
         kind: str = "sale",
+        exchange_return_receipt_id: UUID | None = None,
     ) -> PosReceipt:
         last_exc: IntegrityError | None = None
         for _attempt in range(_NUMBER_ATTEMPTS):
@@ -1186,6 +1187,7 @@ class PosService:
                 kind=kind,
                 tendered_amount=tendered_amount,
                 change_amount=change_amount,
+                exchange_return_receipt_id=exchange_return_receipt_id,
             )
             try:
                 async with session.begin_nested():
@@ -1652,6 +1654,7 @@ class PosService:
                 "id": receipt.id,
                 "number": receipt.number,
                 "kind": receipt.kind,
+                "exchange_return_receipt_id": receipt.exchange_return_receipt_id,
                 "issued_at": receipt.issued_at.isoformat(),
                 "tendered_amount": (
                     str(receipt.tendered_amount)
@@ -1773,6 +1776,7 @@ class PosService:
                     "id": r.id,
                     "number": r.number,
                     "kind": r.kind,
+                    "exchange_return_receipt_id": r.exchange_return_receipt_id,
                     "order_id": r.order_id,
                     "session_id": r.session_id,
                     "issued_at": r.issued_at.isoformat(),
@@ -3311,6 +3315,7 @@ class PosService:
         new_receipt = await PosService._issue_receipt(
             session, tenant_id, pos_session, new_order,
             tendered_amount=tendered, change_amount=change,
+            exchange_return_receipt_id=return_receipt.id,  # the stored pairing
         )
         await session.flush()
 

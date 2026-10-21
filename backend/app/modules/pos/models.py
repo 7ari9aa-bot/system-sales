@@ -279,6 +279,15 @@ class PosReceipt(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, IdM
     issued_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    # Set on the NEW SALE receipt of an exchange: the return receipt it was paired with. Written
+    # at insert (receipts are append-only). NULL = an ordinary sale, or a pre-link exchange.
+    exchange_return_receipt_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            "pos_receipts.id", ondelete="RESTRICT", name="fk_pos_receipts_exchange_return"
+        ),
+        nullable=True,
+    )
 
     __table_args__ = (
         UniqueConstraint("tenant_id", "number", name="uq_pos_receipts_tenant_number"),
