@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 403,
-    "sha256": "699186e3f2a538f789c57969f043eeacb034677cc322389f3de87d529ae2416b",
-    "typed_operations": 249
+    "operations": 405,
+    "sha256": "5ee8c7d684476fd314c99dbfbee2cad49fe8c7d3e17bd5078634a413223008b5",
+    "typed_operations": 251
   },
   "spec": {
     "components": {
@@ -141,6 +141,75 @@
             "created_at"
           ],
           "title": "AccountOut",
+          "type": "object"
+        },
+        "ActivityOut": {
+          "properties": {
+            "actor_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Actor Id"
+            },
+            "actor_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Actor Name"
+            },
+            "amount": {
+              "title": "Amount",
+              "type": "string"
+            },
+            "detail": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Detail"
+            },
+            "doc": {
+              "title": "Doc",
+              "type": "string"
+            },
+            "kind": {
+              "title": "Kind",
+              "type": "string"
+            },
+            "occurred_at": {
+              "title": "Occurred At",
+              "type": "string"
+            },
+            "ref_id": {
+              "title": "Ref Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "occurred_at",
+            "kind",
+            "ref_id",
+            "doc",
+            "amount",
+            "actor_id",
+            "actor_name",
+            "detail"
+          ],
+          "title": "ActivityOut",
           "type": "object"
         },
         "AddIdentifierRequest": {
@@ -8255,6 +8324,34 @@
           "title": "FairnessCheckResult",
           "type": "object"
         },
+        "FeedOut": {
+          "properties": {
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/ActivityOut"
+              },
+              "title": "Items",
+              "type": "array"
+            },
+            "next_cursor": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Next Cursor"
+            }
+          },
+          "required": [
+            "items",
+            "next_cursor"
+          ],
+          "title": "FeedOut",
+          "type": "object"
+        },
         "Finding": {
           "description": "§9.1 — confidence is SYSTEM-computed (§9.3); the model never fills it.",
           "properties": {
@@ -15656,6 +15753,22 @@
           "title": "StreamTokenOut",
           "type": "object"
         },
+        "SummaryOut": {
+          "properties": {
+            "counts": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "title": "Counts",
+              "type": "object"
+            }
+          },
+          "required": [
+            "counts"
+          ],
+          "title": "SummaryOut",
+          "type": "object"
+        },
         "SupplierIn": {
           "properties": {
             "address": {
@@ -19387,6 +19500,349 @@
     },
     "openapi": "3.1.0",
     "paths": {
+      "/api/v1/activity": {
+        "get": {
+          "operationId": "feed_api_v1_activity_get",
+          "parameters": [
+            {
+              "description": "comma separated; default all",
+              "in": "query",
+              "name": "kinds",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "comma separated; default all",
+                "title": "Kinds"
+              }
+            },
+            {
+              "in": "query",
+              "name": "actor_id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Actor Id"
+              }
+            },
+            {
+              "in": "query",
+              "name": "date_from",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Date From"
+              }
+            },
+            {
+              "in": "query",
+              "name": "date_to",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Date To"
+              }
+            },
+            {
+              "in": "query",
+              "name": "q",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "maxLength": 80,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Q"
+              }
+            },
+            {
+              "in": "query",
+              "name": "cursor",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "maxLength": 400,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Cursor"
+              }
+            },
+            {
+              "in": "query",
+              "name": "limit",
+              "required": false,
+              "schema": {
+                "default": 50,
+                "maximum": 200,
+                "minimum": 1,
+                "title": "Limit",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/FeedOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Feed",
+          "tags": [
+            "activity"
+          ]
+        }
+      },
+      "/api/v1/activity/summary": {
+        "get": {
+          "operationId": "summary_api_v1_activity_summary_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "date_from",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Date From"
+              }
+            },
+            {
+              "in": "query",
+              "name": "date_to",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Date To"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SummaryOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Summary",
+          "tags": [
+            "activity"
+          ]
+        }
+      },
       "/api/v1/ai/agent-kinds": {
         "get": {
           "description": "List all registered agent kinds and their definitions.\n\nThis is the platform's extensibility surface: a new agent kind added\nto the registry appears here automatically.",
