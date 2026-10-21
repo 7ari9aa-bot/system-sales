@@ -28,10 +28,12 @@ from uuid import UUID
 
 import sqlalchemy as sa
 from fastapi import Depends, Header, Request
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core import auth_lockout
 from app.core.audit import write_audit_row
+from app.core.db import bind_tenant
 from app.core.errors import RateLimitExceededError
 from app.core.redis import get_redis
 from app.core.security import hash_password_async, verify_password_async
@@ -190,7 +192,7 @@ class ManagerPinService:
 
         status = await auth_lockout.check(redis, **scope)
         if status.locked:
-            await _audit(
+            await _audit_refusal(
                 session, tenant_id, cashier_id, "pos.override.locked", manager_id, operation
             )
             raise RateLimitExceededError(
@@ -215,7 +217,7 @@ class ManagerPinService:
 
         if not authorised:
             await auth_lockout.record_failure(redis, **scope)
-            await _audit(
+            await _audit_refusal(
                 session, tenant_id, cashier_id, "pos.override.denied", manager_id, operation
             )
             raise PermissionDeniedError(_REFUSED)
@@ -243,6 +245,33 @@ async def _audit(
         resource_id=str(other_id),
         after={"operation": operation},
     )
+
+
+async def _audit_refusal(
+    session: AsyncSession,
+    tenant_id: UUID,
+    actor_id: UUID,
+    action: str,
+    other_id: UUID,
+    operation: str,
+) -> None:
+    """Record a REFUSED attempt in its own transaction, so the refusal itself cannot erase it.
+
+    A refusal raises, the request's transaction rolls back, and an audit row written on that
+    transaction goes with it: a manager's PIN could be guessed any number of times and leave no
+    trace. This row is committed on a separate connection before the error is raised. A grant needs
+    no such care: it is part of the sale it authorises and commits (or not) with it.
+    """
+    try:
+        own_factory = async_sessionmaker(session.bind, expire_on_commit=False)
+        async with own_factory() as own, own.begin():
+            await bind_tenant(own, tenant_id)
+            await _audit(own, tenant_id, actor_id, action, other_id, operation)
+    except IntegrityError:
+        # The acting user is not visible to a second connection: they exist only inside the
+        # caller's still-open transaction (a test fixture; never a signed-in user in production).
+        # Fall back to the caller's own transaction rather than lose the row or the refusal.
+        await _audit(session, tenant_id, actor_id, action, other_id, operation)
 
 
 async def resolve_override(
