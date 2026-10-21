@@ -759,3 +759,23 @@ async def test_si_social_comments_reads_ingested_comments(db, tenant_ctx) -> Non
     }
     assert totals[("comments_total", "facebook")] == "3"
     assert totals[("comments_total", "instagram")] == "1"
+
+
+@pytest.fixture(autouse=True)
+def _window_includes_today(monkeypatch):
+    """The tools analyse a trailing window that ENDS at the start of today (today is immature).
+
+    These tests write rows stamped "now", so against the real clock every row sits just outside
+    the window and the tests pass or fail depending on nothing but the day they run. Resolve the
+    window as of tomorrow instead, so rows written now are inside it, whatever day it is.
+    """
+    from app.modules.ai.agents.sales_intelligence import tools as si_tools
+
+    original = si_tools._resolve_window
+
+    async def tomorrow(session, tenant_id, days, *, reference=None):
+        return await original(
+            session, tenant_id, days, reference=reference or datetime.now(UTC) + timedelta(days=1)
+        )
+
+    monkeypatch.setattr(si_tools, "_resolve_window", tomorrow)
