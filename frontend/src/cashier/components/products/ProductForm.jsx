@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { toast } from "sonner";
 import ProductEditorHero from "@/cashier/components/products/ProductEditorHero";
 import ProductBasicsSection from "@/cashier/components/products/ProductBasicsSection";
 import ProductPricingSection from "@/cashier/components/products/ProductPricingSection";
@@ -10,6 +11,9 @@ import { CARD, CARD_PAD, DOT, MAIN_COL, SECTION_HEAD, SECTION_HINT, SECTION_TITL
 import { SIZE_SETS } from "@/cashier/lib/uiConstants";
 import { nextSkuBase } from "@/cashier/api/catalogApi";
 import { useExistingSkus } from "@/cashier/api/useCatalogWrite";
+import { imageProblem, imagesOf } from "@/cashier/api/productImage";
+
+const MAX_PRODUCT_IMAGES = 4;
 
 // نموذج إضافة / تعديل منتج مع مولّد متغيرات اللون والمقاس.
 export default function ProductForm({ product, onSubmit, onCancel, onPrintLabels }) {
@@ -26,7 +30,9 @@ export default function ProductForm({ product, onSubmit, onCancel, onPrintLabels
   const [colors, setColors] = useState(product?.colors ?? []);
   const [sizePreset, setSizePreset] = useState("clothing");
   const [sizes, setSizes] = useState(product?.sizes ?? []);
-  const [image, setImage] = useState(null);
+  // صور المنتج: المحفوظة في الباك (للعرض) + ملفات جديدة اختارها المستخدم (تُرفع بعد حفظ المنتج).
+  const [picked, setPicked] = useState([]);
+  const saved = imagesOf(product);
   const [rows, setRows] = useState(
     product
       ? product.variants.map((v) => ({ id: v.id, color: v.color, size: v.size, sku: v.sku, barcode: v.barcode, sellPrice: v.sellPrice, stock: 0 }))
@@ -47,8 +53,25 @@ export default function ProductForm({ product, onSubmit, onCancel, onPrintLabels
     setSizes((prev) => (prev.includes(size) ? prev.filter((s) => s !== size) : [...prev, size]));
   }
 
-  function pickImage(file) {
-    if (file) setImage(URL.createObjectURL(file));
+  function pickImages(files) {
+    const list = Array.from(files ?? []);
+    if (list.length === 0) return;
+    const room = MAX_PRODUCT_IMAGES - saved.length - picked.length;
+    const next = [];
+    for (const file of list.slice(0, Math.max(room, 0))) {
+      const problem = imageProblem(file);
+      if (problem) toast.error(`${file.name}: ${problem}`);
+      else next.push({ file, url: URL.createObjectURL(file) });
+    }
+    if (list.length > room) toast.error(`الحد الأقصى ${MAX_PRODUCT_IMAGES} صور للمنتج`);
+    if (next.length) setPicked((prev) => [...prev, ...next]);
+  }
+
+  function removePicked(index) {
+    setPicked((prev) => {
+      URL.revokeObjectURL(prev[index]?.url);
+      return prev.filter((_, i) => i !== index);
+    });
   }
 
   function generateRows() {
@@ -131,10 +154,13 @@ export default function ProductForm({ product, onSubmit, onCancel, onPrintLabels
         </div>
 
         <ProductImageCard
-          preview={image}
-          onPickImage={pickImage}
+          saved={saved}
+          picked={picked}
+          maxImages={MAX_PRODUCT_IMAGES}
+          onPickImages={pickImages}
+          onRemovePicked={removePicked}
           canSave={canSave}
-          onSave={() => onSubmit({ ...form, colors, sizes, variants: rows, image })}
+          onSave={() => onSubmit({ ...form, colors, sizes, variants: rows, imageFiles: picked.map((p) => p.file) })}
           onCancel={onCancel}
         />
       </div>

@@ -27,6 +27,7 @@ export function productToForm(product, identifiersByVariant = {}) {
     colors: uniq(variants.map((v) => v.color)),
     sizes: uniq(variants.map((v) => v.size)),
     variants,
+    images: product.images ?? [],
   };
 }
 

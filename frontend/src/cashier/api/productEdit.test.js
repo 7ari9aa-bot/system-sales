@@ -10,6 +10,16 @@ const backend = {
 };
 const before = productToForm(backend, { v1: "2990000000011" });
 
+describe("productToForm images", () => {
+  it("carries the product's stored photos to the form", () => {
+    const f = productToForm({ ...backend, images: [{ id: "i1", url: "https://x/1.png", position: 0 }] });
+    expect(f.images).toEqual([{ id: "i1", url: "https://x/1.png", position: 0 }]);
+  });
+  it("is an empty list when the product has none", () => {
+    expect(productToForm({ ...backend, images: undefined }).images).toEqual([]);
+  });
+});
+
 describe("productToForm", () => {
   it("reads colours, sizes, barcodes and ids from the backend shape", () => {
     expect(before.name).toBe("فستان");
