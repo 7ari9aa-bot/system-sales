@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { discountMinor, latestOnly } from "./latest";
+import { discountMinor, invoiceDiscountMinor, latestOnly } from "./latest";
 
 describe("latestOnly: a slow old answer must never overwrite a newer one", () => {
   it("only the most recent call's result is delivered", async () => {
@@ -46,5 +46,19 @@ describe("discountMinor", () => {
   it("a blank or junk invoice discount counts as zero", () => {
     expect(discountMinor([], "abc")).toBe(0);
     expect(discountMinor([], undefined)).toBe(0);
+  });
+});
+
+describe("invoiceDiscountMinor", () => {
+  it("is the invoice discount alone: line percentages are NOT in it (the server adds those itself)", () => {
+    const lines = [{ price: 100, qty: 1, discountPct: 50 }];
+    expect(discountMinor(lines, "")).toBe(5000); // what the screen shows
+    expect(invoiceDiscountMinor("")).toBe(0); // what is sent as discount_total: nothing, the line carries its own
+    expect(invoiceDiscountMinor("2.50")).toBe(250);
+  });
+  it("never goes negative and ignores junk", () => {
+    expect(invoiceDiscountMinor("-5")).toBe(0);
+    expect(invoiceDiscountMinor("abc")).toBe(0);
+    expect(invoiceDiscountMinor(undefined)).toBe(0);
   });
 });

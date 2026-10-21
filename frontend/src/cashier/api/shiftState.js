@@ -108,7 +108,7 @@ export async function bootstrapPos() {
         name: "Main",
         code: MAIN_CODE,
         warehouse_id: warehouse.id,
-        allowed_payment_methods: ["cash", "card", "wallet", "bank_transfer"],
+        allowed_payment_methods: ["cash"],
         default_payment_method: "cash",
       },
     });

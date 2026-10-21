@@ -17,6 +17,20 @@ describe("cartItems", () => {
   it("sends exactly variant + quantity (the server prices it, not the screen)", () => {
     expect(cartItems([{ variantId: "v1", qty: 2, price: 999 }])).toEqual([{ variant_id: "v1", quantity: 2 }]);
   });
+
+  it("a line's own discount travels WITH the line, so the server can store it per line", () => {
+    expect(
+      cartItems([
+        { variantId: "a", qty: 1, discountPct: 50 },
+        { variantId: "b", qty: 1, discountPct: 0 },
+        { variantId: "c", qty: 2, discountPct: 12.5 },
+      ]),
+    ).toEqual([
+      { variant_id: "a", quantity: 1, discount_pct: "50.00" },
+      { variant_id: "b", quantity: 1 },
+      { variant_id: "c", quantity: 2, discount_pct: "12.50" },
+    ]);
+  });
 });
 
 describe("settle: tenders must equal the order total to the cent", () => {

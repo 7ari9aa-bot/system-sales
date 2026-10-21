@@ -27,7 +27,12 @@ export function heldFromApi(carts, catalog) {
 export function restoreHeld(cart, catalog) {
   const byId = new Map(catalog.map((v) => [v.id, v]));
   const wanted = new Map();
-  for (const i of cart.items) wanted.set(i.variant_id, (wanted.get(i.variant_id) ?? 0) + i.quantity);
+  const pctOf = new Map(); // the per-line discount the cashier typed travels with the held cart
+  for (const i of cart.items) {
+    wanted.set(i.variant_id, (wanted.get(i.variant_id) ?? 0) + i.quantity);
+    const pct = Number(i.discount_pct);
+    if (Number.isFinite(pct) && pct > 0) pctOf.set(i.variant_id, Math.min(100, pct));
+  }
 
   const lines = [];
   const dropped = [];
@@ -55,8 +60,8 @@ export function restoreHeld(cart, catalog) {
       stock: v.stock,
       price: v.sellPrice,
       qty: got,
-      discountPct: 0,
-      discount: 0,
+      discountPct: pctOf.get(variantId) ?? 0,
+      discount: +((v.sellPrice * got * (pctOf.get(variantId) ?? 0)) / 100).toFixed(2),
     });
   }
   return { lines, dropped, adjusted, discount: Number(cart.discount_total) || 0, canRelease: lines.length > 0 };

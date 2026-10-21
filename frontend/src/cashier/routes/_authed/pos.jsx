@@ -110,12 +110,16 @@ function PosScreen({ user, session }) {
 
   // Invoice discount = percentage of the subtotal + a fixed amount, sent to the backend as ONE amount.
   const subtotalNumber = Number(sale.quote.subtotal) || 0;
+  // The lines' own discounts are priced first; the invoice discount (percentage + fixed) can only
+  // take what is left of the invoice, whatever order the cashier typed things in.
+  const lineDiscountsTotal = lines.reduce((sum, l) => sum + (Number(l.discount) || 0), 0);
   useEffect(() => {
+    const room = Math.max(0, +(subtotalNumber - lineDiscountsTotal).toFixed(2));
     const fromPct = (subtotalNumber * (Number(invoiceDiscountPct) || 0)) / 100;
-    const amount = +(fromPct + (Number(invoiceDiscountAmt) || 0)).toFixed(2);
+    const amount = Math.min(room, +(fromPct + (Number(invoiceDiscountAmt) || 0)).toFixed(2));
     sale.setInvoiceDiscount(amount > 0 ? String(amount) : "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [invoiceDiscountPct, invoiceDiscountAmt, subtotalNumber]);
+  }, [invoiceDiscountPct, invoiceDiscountAmt, subtotalNumber, lineDiscountsTotal]);
 
   const finalTotals = {
     pieces: lines.reduce((s, l) => s + l.qty, 0),
@@ -212,8 +216,12 @@ function PosScreen({ user, session }) {
 
   function applyInvoiceAmount(value) {
     const amount = Math.max(0, Number(value) || 0);
-    // a fixed discount can never exceed the subtotal (the total must not go negative)
-    setInvoiceDiscountAmt(Math.min(amount, subtotalNumber));
+    // A fixed discount can only take what is LEFT: the subtotal minus the lines' own discounts and
+    // the invoice percentage. Capping at the bare subtotal let the three add up past the invoice,
+    // which the server then refuses, so the sale got stuck instead of the box refusing the number.
+    const pctDiscount = (subtotalNumber * (Number(invoiceDiscountPct) || 0)) / 100;
+    const left = Math.max(0, +(subtotalNumber - lineDiscountsTotal - pctDiscount).toFixed(2));
+    setInvoiceDiscountAmt(Math.min(amount, left));
   }
 
   function resetInvoice() {

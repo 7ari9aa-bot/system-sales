@@ -12,14 +12,20 @@ import SettingsShell, { SettingCard } from "@/components/settings/SettingsShell"
 
 const METHODS = ["cash", "card", "wallet", "bank_transfer"];
 
-function Toggle({ checked, onChange, label }) {
+function Toggle({ checked, onChange, label, disabled = false, hint }) {
   return (
-    <label className="inline-flex items-center gap-2 text-[13px] text-foreground">
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+    <label className="inline-flex items-center gap-2 text-[13px] text-foreground" title={hint}>
+      <input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
       {label}
     </label>
   );
 }
+
+// The till sells and refunds in cash only for now, so a profile can never switch cash off: that
+// would leave a till that can only send a payment method the profile forbids.
+const CASH_ALWAYS_ON = "cash";
+const CASH_LOCK_HINT = "الكاشير يعمل بالنقدية فقط حاليًا، لذلك لا يمكن إيقافها";
+const withCash = (methods) => (methods.includes(CASH_ALWAYS_ON) ? methods : [CASH_ALWAYS_ON, ...methods]);
 
 function CeilingFields({ value, onChange, t }) {
   const field = (key, labelKey, fallback) => (
@@ -74,8 +80,8 @@ export default function PosSettings() {
     warehouse_id: "",
     default_customer_id: "",
     default_payment_method: "cash",
-    allowed_payment_methods: ["cash", "card", "wallet", "bank_transfer"],
-    discount_ceiling_pct: "100.00",
+    allowed_payment_methods: ["cash"],
+    discount_ceiling_pct: "0",
     refund_ceiling: "",
     cash_out_ceiling: "",
     require_customer: false,
@@ -166,8 +172,8 @@ export default function PosSettings() {
         warehouse_id: profileForm.warehouse_id,
         default_customer_id: "",
         default_payment_method: "cash",
-        allowed_payment_methods: ["cash", "card", "wallet", "bank_transfer"],
-        discount_ceiling_pct: "100.00",
+        allowed_payment_methods: ["cash"],
+        discount_ceiling_pct: "0",
         refund_ceiling: "",
         cash_out_ceiling: "",
         require_customer: false,
@@ -209,9 +215,11 @@ export default function PosSettings() {
         row.id === profile.id
           ? {
               ...row,
-              allowed_payment_methods: row.allowed_payment_methods.includes(method)
-                ? row.allowed_payment_methods.filter((m) => m !== method)
-                : [...row.allowed_payment_methods, method],
+              allowed_payment_methods: withCash(
+                row.allowed_payment_methods.includes(method)
+                  ? row.allowed_payment_methods.filter((m) => m !== method)
+                  : [...row.allowed_payment_methods, method],
+              ),
             }
           : row
       )
@@ -352,6 +360,8 @@ export default function PosSettings() {
                               key={m}
                               checked={p.allowed_payment_methods.includes(m)}
                               onChange={() => toggleMethod(p, m)}
+                              disabled={m === CASH_ALWAYS_ON}
+                              hint={m === CASH_ALWAYS_ON ? CASH_LOCK_HINT : undefined}
                               label={t(`pos.method.${m}`)}
                             />
                           ))}
@@ -510,12 +520,16 @@ export default function PosSettings() {
                     <Toggle
                       key={m}
                       checked={profileForm.allowed_payment_methods.includes(m)}
+                      disabled={m === CASH_ALWAYS_ON}
+                      hint={m === CASH_ALWAYS_ON ? CASH_LOCK_HINT : undefined}
                       onChange={() =>
                         setProfileForm((prev) => ({
                           ...prev,
-                          allowed_payment_methods: prev.allowed_payment_methods.includes(m)
-                            ? prev.allowed_payment_methods.filter((x) => x !== m)
-                            : [...prev.allowed_payment_methods, m],
+                          allowed_payment_methods: withCash(
+                            prev.allowed_payment_methods.includes(m)
+                              ? prev.allowed_payment_methods.filter((x) => x !== m)
+                              : [...prev.allowed_payment_methods, m],
+                          ),
                         }))
                       }
                       label={t(`pos.method.${m}`)}

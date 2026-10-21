@@ -34,8 +34,18 @@ export function restoreRemovedLine(lines, line, index, liveStock) {
   return { ok: true, lines: next, clamped };
 }
 
+/**
+ * The cart as the server prices it. A line's own percentage discount travels WITH the line
+ * (`discount_pct`): the server stores it on the sale line and a later return refunds what that
+ * line actually paid. Folding it into one invoice-wide amount would make the server spread the
+ * discount over every line, so returning the discounted item alone would refund the wrong sum.
+ */
 export function cartItems(cart) {
-  return cart.map((l) => ({ variant_id: l.variantId, quantity: l.qty }));
+  return cart.map((l) => {
+    const pct = Number(l.discountPct) || 0;
+    const item = { variant_id: l.variantId, quantity: l.qty };
+    return pct > 0 ? { ...item, discount_pct: pct.toFixed(2) } : item;
+  });
 }
 
 function minorOf(value) {

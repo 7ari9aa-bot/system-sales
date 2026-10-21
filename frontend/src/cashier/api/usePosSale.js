@@ -16,7 +16,7 @@ import { exchangeRows } from "./exchangesLog";
 import { salesRows, topProductRows } from "./salesReport";
 import { periodRange } from "@/cashier/lib/period";
 import { fromMinor } from "./money";
-import { discountMinor, latestOnly } from "./latest";
+import { invoiceDiscountMinor, latestOnly } from "./latest";
 
 export const CATALOG_KEY = ["cashier", "catalog"];
 export const HELD_KEY = (sessionId) => ["cashier", "held", sessionId];
@@ -99,11 +99,14 @@ export function usePosSale({ sessionId, catalog = [], onSold, loadFreshCatalog }
   const [payError, setPayError] = useState(null);
   const sale = useMemo(() => (sessionId ? createSaleSession(sessionId) : null), [sessionId]);
 
-  const cart = useMemo(() => lines.map((l) => ({ variantId: l.variantId, qty: l.qty })), [lines]);
+  // Each line carries its own discount percentage to the server (stored on the sale line, so a
+  // return refunds what THAT line paid).
+  const cart = useMemo(() => lines.map((l) => ({ variantId: l.variantId, qty: l.qty, discountPct: l.discountPct })), [lines]);
 
-  // Line discounts and the invoice discount reach the backend as ONE discount total.
-  const discountCents = useMemo(() => discountMinor(lines, invoiceDiscount), [lines, invoiceDiscount]);
-  const discountTotal = discountCents > 0 ? fromMinor(discountCents) : undefined;
+  // `discountTotal` is the INVOICE-level discount only: the server adds the lines' own discounts,
+  // so sending the combined figure would count them twice. The screen shows the server's quote.
+  const invoiceCents = useMemo(() => invoiceDiscountMinor(invoiceDiscount), [invoiceDiscount]);
+  const discountTotal = invoiceCents > 0 ? fromMinor(invoiceCents) : undefined;
 
   const runQuote = useMemo(
     () =>
