@@ -4,12 +4,10 @@ import { Label } from "@/cashier/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/cashier/components/ui/select";
 import FilterPanel from "@/cashier/components/ui-kit/FilterPanel";
 import { BTN, FIELD, FIELD_HINT, FIELD_LABEL, FIELD_SELECT, FILTER_PANEL, FILTER_PANEL_CONTENT, FILTER_PANEL_HEADER } from "@/cashier/components/ui-kit/ledgerStyles";
-import { categories } from "@/cashier/lib/mockData";
-import { purchaseOrders } from "@/cashier/lib/purchasesData";
 import { fmtDate } from "@/cashier/lib/format";
 
 // فلاتر شاشة الملصقات: بحث، تصنيف، سحب كميات فاتورة توريد، وتعبئة سريعة.
-export default function LabelFilters({ term, onTerm, category, onCategory, poNumber, onPo, onQuickFill, onReset }) {
+export default function LabelFilters({ categories = [], orders = [], term, onTerm, category, onCategory, poNumber, onPo, onQuickFill, onReset }) {
   const activeCount = [category, poNumber].filter(Boolean).length + (term ? 1 : 0);
 
   return (
@@ -56,7 +54,7 @@ export default function LabelFilters({ term, onTerm, category, onCategory, poNum
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="none">إدخال يدوي</SelectItem>
-              {purchaseOrders.map((o) => (
+              {orders.map((o) => (
                 <SelectItem key={o.id} value={o.number}>
                   {o.number} • {o.supplierName} • {fmtDate(o.date)}
                 </SelectItem>

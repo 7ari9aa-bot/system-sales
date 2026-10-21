@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Image } from "@/cashier/components/ui/image";
 import DataTable from "@/cashier/components/ui-kit/DataTable";
@@ -9,8 +9,10 @@ import LedgerStats from "@/cashier/components/ui-kit/LedgerStats";
 import LabelsHero from "@/cashier/components/labels/LabelsHero";
 import labelColumns from "@/cashier/components/labels/labelColumns";
 import { LEDGER, LEDGER_FOOTER, LEDGER_TOOLBAR } from "@/cashier/components/ui-kit/ledgerStyles";
-import { categories, products } from "@/cashier/lib/mockData";
-import { purchaseOrders } from "@/cashier/lib/purchasesData";
+import { Button } from "@/cashier/components/ui/button";
+import { useStock } from "@/cashier/api/useStock";
+import { usePurchaseOrders, useSuppliers } from "@/cashier/api/usePurchasing";
+import { clampLabelQty, countsFromOrder, labelProducts } from "@/cashier/api/labelsAdapter";
 import { fmtInt } from "@/cashier/lib/format";
 
 
@@ -23,9 +25,21 @@ export default function LabelsPage() {
   const [poNumber, setPoNumber] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
 
+  // Every active variant with its real barcode, price and stock. Search and category narrow it on screen.
+  const stock = useStock({});
+  const products = useMemo(() => labelProducts(stock.data ?? []), [stock.data]);
+  const variantsById = useMemo(() => new Map(products.flatMap((p) => p.variants).map((v) => [v.id, v])), [products]);
+  const categories = useMemo(() => [...new Set(products.map((p) => p.category).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ar")), [products]);
+
+  const suppliers = useSuppliers();
+  const supplierNames = useMemo(() => Object.fromEntries((suppliers.data ?? []).map((x) => [x.id, x.name])), [suppliers.data]);
+  const variantInfo = useMemo(() => Object.fromEntries((stock.data ?? []).map((v) => [v.id, v])), [stock.data]);
+  const orders = usePurchaseOrders({ suppliers: supplierNames, variants: variantInfo });
+  const receivedOrders = (orders.data ?? []).filter((o) => o.receipt === "received");
+
   const filtered = products.filter((p) => {
     const t = term.trim().toLowerCase();
-    if (t && !(p.name.toLowerCase().includes(t) || p.sku.toLowerCase().includes(t) || p.brand.toLowerCase().includes(t) || p.variants.some((v) => v.barcode.includes(t))))
+    if (t && !(p.name.toLowerCase().includes(t) || p.sku.toLowerCase().includes(t) || p.variants.some((v) => v.barcode.includes(t))))
       return false;
     if (category && p.category !== category) return false;
     return true;
@@ -55,10 +69,9 @@ export default function LabelsPage() {
       })),
   );
 
-  const clampQty = (value) => Math.max(0, Math.min(99, Number(value) || 0));
 
   function setProductQty(product, value) {
-    const qty = clampQty(value);
+    const qty = clampLabelQty(value);
     setCounts((prev) => {
       const next = { ...prev };
       product.variants.forEach((v) => {
@@ -84,18 +97,12 @@ export default function LabelsPage() {
 
   // سحب الكميات اللي دخلت المحل من فاتورة توريد — لكل لون ومقاس على حدة.
   function fillFromPurchase(number) {
-    const order = purchaseOrders.find((o) => o.number === number);
+    const order = receivedOrders.find((o) => o.number === number);
     if (!order) return;
-    setCounts((prev) => {
-      const next = { ...prev };
-      order.items.forEach((line) => {
-        const product = products.find((p) => p.name === line.name);
-        const variant = product?.variants.find((v) => v.color === line.color && v.size === line.size);
-        if (variant) next[variant.id] = Math.min(99, line.qty);
-      });
-      return next;
-    });
-    toast.success(`تم سحب ${fmtInt(order.pieces)} قطعة من الفاتورة ${order.number}`);
+    const { counts: fromOrder, skipped, pieces } = countsFromOrder(order, variantsById);
+    setCounts((prev) => ({ ...prev, ...fromOrder }));
+    toast.success(`تم سحب ${fmtInt(pieces)} ملصقًا من الفاتورة ${order.number}`);
+    if (skipped.length) toast.warning(`${fmtInt(skipped.length)} صنفًا في الفاتورة بلا باركود، فلم يُسحب له ملصق`);
   }
 
   function handlePurchaseOrder(value) {
@@ -111,11 +118,19 @@ export default function LabelsPage() {
 
   return (
     <LedgerPage hero={<LabelsHero totalLabels={totalLabels} onPreview={() => setPreviewOpen(true)} />}>
+        {stock.error ? (
+          <div role="alert" className="mb-3 flex items-center justify-between rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+            <span>تعذّر تحميل المنتجات.</span>
+            <Button variant="outline" onClick={() => stock.refetch()}>إعادة المحاولة</Button>
+          </div>
+        ) : null}
         <LabelFilters
           term={term}
           onTerm={setTerm}
           category={category}
           onCategory={(value) => setCategory(value === "all" ? "" : value)}
+          categories={categories}
+          orders={receivedOrders}
           poNumber={poNumber}
           onPo={handlePurchaseOrder}
           onQuickFill={fillFiltered}
@@ -134,8 +149,8 @@ export default function LabelsPage() {
           columns={columns}
           rows={filtered}
           pageSize={8}
-          emptyTitle="لا توجد منتجات مطابقة"
-          emptyDescription="جرّب تغيير التصنيف أو كلمة البحث."
+          emptyTitle={stock.isPending ? "جاري التحميل…" : "لا توجد منتجات مطابقة"}
+          emptyDescription={stock.isPending ? "" : "جرّب تغيير التصنيف أو كلمة البحث."}
           toolbar={
             <div className="num flex items-center gap-3 text-[12px] text-[#7A766C]">
               <Image
