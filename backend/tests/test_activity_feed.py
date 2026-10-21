@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -241,3 +241,51 @@ async def test_a_closed_shift_is_two_events_that_page_without_loss_or_repeat(
         if cursor is None:
             break
     assert sorted(walked) == sorted(r["ekey"] for r in everything)
+
+
+# ------------------------------------------------- the day is the merchant's -----
+
+
+async def test_the_day_filter_uses_the_tenants_own_zone(db, tenant_ctx) -> None:
+    """The same calendar date is a different window for a Cairo shop and a Dubai shop."""
+    import sqlalchemy as sa
+
+    from app.modules.activity.router import window_for
+
+    async def zone(tz):
+        await db.execute(
+            sa.text("UPDATE tenants SET timezone = :z WHERE id = :t"),
+            {"z": tz, "t": tenant_ctx.tenant_id},
+        )
+
+    day = date(2026, 1, 10)
+    await zone("Africa/Cairo")  # UTC+2 in winter
+    start, end = await window_for(db, tenant_ctx.tenant_id, day, day)
+    assert start.astimezone(UTC) == datetime(2026, 1, 9, 22, 0, tzinfo=UTC)
+    assert end.astimezone(UTC) == datetime(2026, 1, 10, 22, 0, tzinfo=UTC)
+
+    await zone("Asia/Dubai")  # UTC+4
+    start, end = await window_for(db, tenant_ctx.tenant_id, day, day)
+    assert start.astimezone(UTC) == datetime(2026, 1, 9, 20, 0, tzinfo=UTC)
+
+
+async def test_a_tenant_with_no_zone_still_gets_a_window(db, tenant_ctx) -> None:
+    import sqlalchemy as sa
+
+    from app.modules.activity.router import window_for
+
+    await db.execute(
+        sa.text("UPDATE tenants SET timezone = NULL WHERE id = :t"), {"t": tenant_ctx.tenant_id}
+    )
+    start, end = await window_for(db, tenant_ctx.tenant_id, date(2026, 1, 10), None)
+    assert start is not None and end is None
+
+
+async def test_a_backwards_range_is_still_refused(db, tenant_ctx) -> None:
+    from fastapi import HTTPException
+
+    from app.modules.activity.router import window_for
+
+    with pytest.raises(HTTPException) as err:
+        await window_for(db, tenant_ctx.tenant_id, date(2026, 1, 10), date(2026, 1, 9))
+    assert err.value.status_code == 422

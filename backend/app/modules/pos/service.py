@@ -253,18 +253,36 @@ class PosService:
         return pos_session
 
     @staticmethod
-    def _ensure_session_current(pos_session: PosSession) -> None:
+    def _ensure_session_current(
+        pos_session: PosSession, *, tz: str | None = None, now: datetime | None = None
+    ) -> None:
         """A shift belongs to a day (ERPNext's ``Outdated POS Opening Entry``).
 
         A session opened yesterday and never closed may not keep selling: the
-        close would reconcile two trading days into one report. Refused in UTC
-        until ``tenants.timezone`` lands; the UI warns before the refusal does.
+        close would reconcile two trading days into one report. "Yesterday" is
+        the MERCHANT's day (``tenants.timezone``), never UTC's: a Cairo till
+        opened at 23:30 must be stale at 00:30, not at 02:00. ``tz`` falls back
+        through the same chain analytics uses (deployment zone, then UTC).
         """
+        from app.modules.analytics.timekit import merchant_day
+
         opened = pos_session.opened_at
-        if opened is not None and opened.date() != datetime.now(UTC).date():
+        if opened is None:
+            return
+        today = merchant_day(now or datetime.now(UTC), tz)
+        if merchant_day(opened, tz) != today:
             raise ConflictError(
                 "this session was opened on a previous day; close it and open a new one"
             )
+
+    @staticmethod
+    async def _shop_timezone(session: AsyncSession, tenant_id: UUID) -> str | None:
+        """The zone this merchant counts its days in (``tenants.timezone``), or None."""
+        from app.modules.identity.models import Tenant
+
+        return (
+            await session.execute(select(Tenant.timezone).where(Tenant.id == tenant_id))
+        ).scalar_one_or_none()
 
     @staticmethod
     async def get_session(session: AsyncSession, tenant_id: UUID, session_id: UUID) -> dict:
@@ -338,7 +356,9 @@ class PosService:
         pos_session = await PosService._get_session(session, tenant_id, session_id)
         if pos_session.status != "OPEN":
             raise ConflictError("cash rows are booked on the open session only")
-        PosService._ensure_session_current(pos_session)
+        PosService._ensure_session_current(
+            pos_session, tz=await PosService._shop_timezone(session, tenant_id)
+        )
         row = PosCashMovement(
             tenant_id=tenant_id,
             session_id=session_id,
@@ -411,7 +431,9 @@ class PosService:
         pos_session = await PosService._get_session(session, tenant_id, session_id)
         if pos_session.status != "OPEN":
             raise ConflictError("this session is closed; open a new one to scan")
-        PosService._ensure_session_current(pos_session)
+        PosService._ensure_session_current(
+            pos_session, tz=await PosService._shop_timezone(session, tenant_id)
+        )
         register = await PosService._get_register(session, tenant_id, pos_session.register_id)
 
         variant = await CatalogService.resolve_identifier(
@@ -483,7 +505,9 @@ class PosService:
         pos_session = await PosService._get_session(session, tenant_id, session_id)
         if pos_session.status != "OPEN":
             raise ConflictError("this session is closed; open a new one to browse")
-        PosService._ensure_session_current(pos_session)
+        PosService._ensure_session_current(
+            pos_session, tz=await PosService._shop_timezone(session, tenant_id)
+        )
         register = await PosService._get_register(session, tenant_id, pos_session.register_id)
         if limit < 1 or limit > 60:
             raise ValidationError("limit must be between 1 and 60")
@@ -602,7 +626,9 @@ class PosService:
         pos_session = await PosService._get_session(session, tenant_id, session_id)
         if pos_session.status != "OPEN":
             raise ConflictError("this session is closed; open a new one to quote")
-        PosService._ensure_session_current(pos_session)
+        PosService._ensure_session_current(
+            pos_session, tz=await PosService._shop_timezone(session, tenant_id)
+        )
         if not items:
             raise ValidationError("a quote must contain at least one item")
 
@@ -762,7 +788,9 @@ class PosService:
         pos_session = await PosService._get_session(session, tenant_id, session_id)
         if pos_session.status != "OPEN":
             raise ConflictError("this session is closed; open a new one to sell")
-        PosService._ensure_session_current(pos_session)
+        PosService._ensure_session_current(
+            pos_session, tz=await PosService._shop_timezone(session, tenant_id)
+        )
         if held_cart_id is not None:
             # The cart's lines BECOME this sale; its customer and discount fill
             # in when the caller did not name their own. A cart that is already
@@ -1970,7 +1998,9 @@ class PosService:
         pos_session = await PosService._get_session(session, tenant_id, session_id)
         if pos_session.status != "OPEN":
             raise ConflictError("carts are held on the open session only")
-        PosService._ensure_session_current(pos_session)
+        PosService._ensure_session_current(
+            pos_session, tz=await PosService._shop_timezone(session, tenant_id)
+        )
         clean_items = PosService._clean_held_items(items)
         if discount_total is not None:
             # Validated for shape now, so a bad discount is refused at hold
@@ -2096,7 +2126,9 @@ class PosService:
         pos_session = await PosService._get_session(session, tenant_id, session_id)
         if pos_session.status != "OPEN":
             raise ConflictError("this session is closed; refunds ride the open drawer")
-        PosService._ensure_session_current(pos_session)
+        PosService._ensure_session_current(
+            pos_session, tz=await PosService._shop_timezone(session, tenant_id)
+        )
 
         receipt = (
             await session.execute(
@@ -2352,7 +2384,9 @@ class PosService:
         pos_session = await PosService._get_session(session, tenant_id, session_id)
         if pos_session.status != "OPEN":
             raise ConflictError("this session is closed; returns ride the open drawer")
-        PosService._ensure_session_current(pos_session)
+        PosService._ensure_session_current(
+            pos_session, tz=await PosService._shop_timezone(session, tenant_id)
+        )
         if not lines:
             raise ValidationError("a return must contain at least one line")
 
@@ -2716,7 +2750,9 @@ class PosService:
         pos_session = await PosService._get_session(session, tenant_id, session_id)
         if pos_session.status != "OPEN":
             raise ConflictError("this session is closed; exchanges ride the open drawer")
-        PosService._ensure_session_current(pos_session)
+        PosService._ensure_session_current(
+            pos_session, tz=await PosService._shop_timezone(session, tenant_id)
+        )
         if not return_lines:
             raise ValidationError("an exchange must return at least one line")
         if not new_lines:
