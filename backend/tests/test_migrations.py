@@ -383,6 +383,20 @@ def _declared_columns() -> dict[str, set[str]]:
 
     for path in _all_migrations():
         tree = _ast.parse(path.read_text(encoding="utf-8"))
+        # A migration may share columns between tables through a local helper that
+        # returns a list of sa.Column(...) and splat it into create_table(*helper()).
+        helpers: dict[str, set[str]] = {}
+        for fn in tree.body:
+            if isinstance(fn, _ast.FunctionDef):
+                cols = {
+                    name
+                    for sub in _ast.walk(fn)
+                    if isinstance(sub, _ast.Call)
+                    for name in [_column_name(sub)]
+                    if name
+                }
+                if cols:
+                    helpers[fn.name] = cols
         for node in _ast.walk(tree):
             if not isinstance(node, _ast.Call) or not node.args:
                 continue
@@ -397,6 +411,13 @@ def _declared_columns() -> dict[str, set[str]]:
                     col = _column_name(arg)
                     if col:
                         _add(table, col)
+                    elif (
+                        isinstance(arg, _ast.Starred)
+                        and isinstance(arg.value, _ast.Call)
+                        and isinstance(arg.value.func, _ast.Name)
+                    ):
+                        for shared in helpers.get(arg.value.func.id, ()):
+                            _add(table, shared)
             elif func.attr == "add_column" and len(node.args) > 1:
                 col = _column_name(node.args[1])
                 if col:
