@@ -140,15 +140,28 @@ class TenantCtx:
         return self.tenant.id
 
 
+@pytest.fixture(scope="session")
+def owner_password_hash() -> str:
+    """One real bcrypt hash of the shared test password, computed once per run.
+
+    bcrypt is slow ON PURPOSE (~220 ms). tenant_ctx used to pay that for every one
+    of the ~900 tests that ask for it, which was ~80% of each test's setup time and
+    roughly a quarter hour of a serial CI run. The hash is still a genuine
+    hash_password() output for the same password, so login tests keep verifying
+    against the real algorithm; only the redundant recomputation is gone.
+    """
+    return hash_password("secret-password")
+
+
 @pytest.fixture
-async def tenant_ctx(db: AsyncSession) -> AsyncIterator[TenantCtx]:
+async def tenant_ctx(db: AsyncSession, owner_password_hash: str) -> AsyncIterator[TenantCtx]:
     """Create tenant + owner (owner role) and bind tenant for RLS."""
     role = (await db.execute(sa.select(Role).where(Role.code == "owner"))).scalar_one()
 
     tenant = Tenant(slug=f"t-{uuid.uuid4().hex[:10]}", name="Test Tenant")
     user = User(
         email=f"owner-{uuid.uuid4().hex[:10]}@test.local",
-        password_hash=hash_password("secret-password"),
+        password_hash=owner_password_hash,
         full_name="Test Owner",
     )
     db.add_all([tenant, user])
