@@ -20,6 +20,8 @@ import { customerBlock } from "@/cashier/api/customerRule";
 import { useShiftState } from "@/cashier/api/useShifts";
 import { searchCatalog } from "@/cashier/api/catalogAdapter";
 import { posApi } from "@/cashier/api/posApi";
+import { approvalFailure, approvalReason, needsApproval } from "@/cashier/api/approval";
+import ManagerApprovalDialog from "@/cashier/components/shifts/ManagerApprovalDialog";
 import { useSalesSettings } from "@/cashier/lib/salesSettings";
 import { useAuth } from "@/lib/AuthContext";
 
@@ -269,9 +271,13 @@ function PosScreen({ user, session }) {
     }
   }
 
-  async function confirmSale(tenders) {
+  // A discount above the till's limit waits here for a manager; the tenders are kept so the retry is the same sale.
+  const [approval, setApproval] = useState(null);
+
+  async function confirmSale(tenders, managerOk) {
     try {
-      const r = await sale.pay({ tenders, cashier, customerName: displayCustomer === "عميل نقدي" ? "" : displayCustomer, customerId: pickedCustomer?.id });
+      const r = await sale.pay({ tenders, approval: managerOk, cashier, customerName: displayCustomer === "عميل نقدي" ? "" : displayCustomer, customerId: pickedCustomer?.id });
+      setApproval(null);
       setDialog("receipt");
       toast.success(`تم إتمام البيع ${r.number} بمبلغ ${r.total.toFixed(2)} ج.م`);
       setInvoiceDiscountPct(0);
@@ -279,8 +285,14 @@ function PosScreen({ user, session }) {
       setCustomerName("");
       setCustomerPhone("");
       setPickedCustomer(null);
-    } catch {
-      /* the dialog shows sale.payError and stays open so the cashier can retry safely */
+    } catch (e) {
+      if (needsApproval(e) && !managerOk) {
+        setDialog(null); // the payment box gives way to the manager box
+        setApproval({ tenders, reason: approvalReason(e), error: null });
+      } else if (managerOk) {
+        setApproval((a) => ({ ...(a ?? { tenders }), error: approvalFailure(e) }));
+      }
+      /* otherwise the payment dialog shows sale.payError and stays open so the cashier can retry safely */
     }
   }
 
@@ -380,6 +392,15 @@ function PosScreen({ user, session }) {
           setDialog("receipt");
         }}
         onNote={() => toast.info("الملاحظات على الفاتورة غير متاحة بعد")}
+      />
+
+      <ManagerApprovalDialog
+        open={Boolean(approval)}
+        reason={approval?.reason}
+        pending={sale.paying}
+        error={approval?.error}
+        onCancel={() => setApproval(null)}
+        onApprove={(ok) => confirmSale(approval.tenders, ok)}
       />
 
       <PaymentDialog

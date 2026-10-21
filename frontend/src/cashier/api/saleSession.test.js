@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { pos } = vi.hoisted(() => ({ pos: { quote: vi.fn(), sell: vi.fn(), receipt: vi.fn() } }));
-vi.mock("./posApi", async () => ({ posApi: pos, newIntent: (await vi.importActual("./posApi")).newIntent }));
+vi.mock("./posApi", async () => {
+  const real = await vi.importActual("./posApi");
+  return { posApi: pos, newIntent: real.newIntent, withApproval: real.withApproval };
+});
 
 import { createSaleSession } from "./saleSession";
 
@@ -88,5 +91,29 @@ describe("quote", () => {
     const q = await createSaleSession("sess-1").quote({ cart: [] });
     expect(q.total).toBe("0.00");
     expect(pos.quote).not.toHaveBeenCalled();
+  });
+});
+
+describe("a manager's approval on a sale", () => {
+  it("is sent on the SAME Idempotency-Key as the refused attempt, and does not change the cart's identity", async () => {
+    const asked = Object.assign(new Error("needs a manager"), { code: "approval_required", status: 400 });
+    pos.sell.mockRejectedValueOnce(asked).mockResolvedValueOnce({ receipt_id: "r1" });
+    const sale = createSaleSession("sess-1");
+    await expect(sale.pay(pay)).rejects.toBe(asked);
+    await sale.pay({ ...pay, approval: { managerId: "m1", pin: "4821" } });
+    const [first, second] = pos.sell.mock.calls.map((c) => c[2]);
+    expect(second.key).toBe(first.key);
+    expect(first.approval).toBeUndefined();
+    expect(second.approval).toEqual({ managerId: "m1", pin: "4821" });
+  });
+
+  it("a CHANGED cart after a refusal is a new sale: new key, and the old approval does not carry over", async () => {
+    pos.sell.mockRejectedValueOnce(Object.assign(new Error("x"), { code: "approval_required" })).mockResolvedValueOnce({ receipt_id: "r2" });
+    const sale = createSaleSession("sess-1");
+    await expect(sale.pay(pay)).rejects.toThrow();
+    await sale.pay({ ...pay, cart: [{ variantId: "v1", qty: 3 }], total: "75.00", tenders: [{ method: "cash", amount: "75" }] });
+    const [first, second] = pos.sell.mock.calls.map((c) => c[2]);
+    expect(second.key).not.toBe(first.key);
+    expect(second.approval).toBeUndefined();
   });
 });
