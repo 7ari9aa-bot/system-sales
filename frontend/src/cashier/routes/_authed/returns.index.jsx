@@ -18,7 +18,7 @@ import useFillRowCount from "@/cashier/hooks/use-fill-row-count";
 import { fmtMoney } from "@/cashier/lib/format";
 import { newIntent, posApi } from "@/cashier/api/posApi";
 import { useShiftState } from "@/cashier/api/useShifts";
-import { useReturnableSales } from "@/cashier/api/usePosSale";
+import { RECEIPT_SEARCH_MIN, useReceiptSearch, useReturnableSales } from "@/cashier/api/usePosSale";
 import { estimateRefund, returnErrorMessage, returnRequest, returnableLines, sendReturn, setQty, tableLine } from "@/cashier/api/returnPlan";
 
 const asInvoice = (d) => ({
@@ -36,7 +36,7 @@ function NoShift() {
   return (
     <div className="animate-fade-up mx-auto mt-16 flex max-w-md flex-col items-center gap-3 rounded-2xl border border-border bg-card p-8 text-center">
       <TriangleAlert className="h-7 w-7 text-amber-600" aria-hidden="true" />
-      <p className="text-sm font-semibold" role="status">لا توجد وردية مفتوحة. المرتجع يتم على الوردية المفتوحة التي بيعت فيها الفاتورة.</p>
+      <p className="text-sm font-semibold" role="status">لا توجد وردية مفتوحة. افتح وردية أولًا، فالمرتجع يُسجَّل على الوردية المفتوحة حتى لو كانت الفاتورة من وردية سابقة.</p>
       <Button asChild><Link to="/cashier/shifts">الذهاب إلى الورديات</Link></Button>
     </div>
   );
@@ -70,7 +70,17 @@ function ReturnScreen({ session }) {
   const fillRows = useFillRowCount({ areaRef: gridRef, bottomRef: actionsRef });
 
   const key = term.trim().toLowerCase();
-  const matches = (key ? sales.filter((s) => s.number.toLowerCase().includes(key) || s.detail.lines.some((l) => String(l.sku ?? "").toLowerCase().includes(key))) : sales).slice(0, 6);
+  // The server finds a sale on ANY shift; wait for a pause in typing so each keystroke is not a request.
+  const [searchTerm, setSearchTerm] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setSearchTerm(term), 300);
+    return () => clearTimeout(t);
+  }, [term]);
+  const remote = useReceiptSearch(searchTerm);
+  const remoteSales = useMemo(() => (remote.data ?? []).map(asInvoice), [remote.data]);
+  const local = key ? sales.filter((s) => s.number.toLowerCase().includes(key) || s.detail.lines.some((l) => String(l.sku ?? "").toLowerCase().includes(key))) : sales;
+  const seen = new Set(local.map((s) => s.id));
+  const matches = [...local, ...(key ? remoteSales.filter((s) => !seen.has(s.id)) : [])].slice(0, 6);
   const quickPicks = sales.filter((s) => s.detail.lines.some((l) => Number(l.quantity) - Number(l.returned_qty ?? 0) > 0)).slice(0, 3);
 
   const tableLines = useMemo(() => lines.map(tableLine), [lines]);
@@ -98,10 +108,13 @@ function ReturnScreen({ session }) {
   function submitSearch() {
     const clean = term.trim().toLowerCase();
     if (!clean) return setError("اكتب رقم الفاتورة أو كود الصنف أولًا");
-    const exact = sales.find((s) => s.number.toLowerCase() === clean);
+    const exact = [...sales, ...remoteSales].find((s) => s.number.toLowerCase() === clean);
     if (exact) return selectInvoice(exact);
     if (matches.length === 1) return selectInvoice(matches[0]);
-    setError(matches.length ? "أكثر من فاتورة مطابقة. اختر من القائمة" : "لا توجد فاتورة بهذا الرقم في الوردية المفتوحة. المرتجع يتم على نفس وردية البيع.");
+    if (matches.length) return setError("أكثر من فاتورة مطابقة. اختر من القائمة");
+    if (clean.length < RECEIPT_SEARCH_MIN) return setError(`اكتب ${RECEIPT_SEARCH_MIN} أحرف على الأقل من رقم الفاتورة`);
+    if (remote.isFetching || searchTerm.trim().toLowerCase() !== clean) return setError("جارٍ البحث… أعد المحاولة بعد لحظة");
+    setError("لا توجد فاتورة بيع بهذا الرقم");
   }
   const start = (k) => setLines((p) => setQty(p, k, 1));
   const cancelLine = (k) => setLines((p) => setQty(p, k, 0));
@@ -128,13 +141,17 @@ function ReturnScreen({ session }) {
     }
   }
 
+  // A link from the sales log carries an invoice number that may belong to an earlier shift.
+  const paramSearch = useReceiptSearch(invoiceParam && !invoice ? invoiceParam : "");
   useEffect(() => {
-    if (!invoiceParam || invoice || !sales.length) return;
-    const found = sales.find((s) => s.number.toLowerCase() === invoiceParam.toLowerCase());
+    if (!invoiceParam || invoice || salesQuery.isLoading || paramSearch.isLoading) return;
+    const wanted = invoiceParam.toLowerCase();
+    const pool = [...sales, ...(paramSearch.data ?? []).map(asInvoice)];
+    const found = pool.find((s) => s.number.toLowerCase() === wanted);
     if (found) selectInvoice(found);
-    else setError(`الفاتورة ${invoiceParam} ليست ضمن الوردية المفتوحة. المرتجع يتم على نفس وردية البيع.`);
+    else setError(`لم نجد فاتورة بيع بالرقم ${invoiceParam}`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [invoiceParam, sales]);
+  }, [invoiceParam, sales, paramSearch.data, paramSearch.isLoading, salesQuery.isLoading]);
 
   useEffect(() => {
     function onKey(e) {

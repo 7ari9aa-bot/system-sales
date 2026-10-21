@@ -216,6 +216,17 @@ async def _stranger_ctx(db, tenant_ctx, stranger, role_code):
     return ctx
 
 
+
+async def _grant(ctx, method="POST", path="/pos/test"):
+    """What the real dependency makes of this caller (a manager is a grant, a cashier is not)."""
+    from types import SimpleNamespace
+
+    from app.modules.pos.override import resolve_override
+
+    request = SimpleNamespace(method=method, url=SimpleNamespace(path=path))
+    return await resolve_override(request, ctx)
+
+
 async def test_on_the_routes_a_cashier_is_refused_and_a_manager_is_not(db, tenant_ctx):
     from app.modules.pos.router import (
         CashMovementRequest,
@@ -235,13 +246,17 @@ async def test_on_the_routes_a_cashier_is_refused_and_a_manager_is_not(db, tenan
     move = CashMovementRequest(direction="out", reason="pay_out", amount="5.00")
 
     with pytest.raises(PermissionDeniedError):
-        await sell(shift.id, sale, staff)
+        await sell(shift.id, sale, staff, await _grant(staff))
     with pytest.raises(PermissionDeniedError):
-        await record_cash_movement(shift.id, move, staff)
+        await record_cash_movement(shift.id, move, staff, await _grant(staff))
     with pytest.raises(PermissionDeniedError):
-        await close_session(shift.id, CloseSessionRequest(counted_cash="0.00"), staff)
+        await close_session(
+            shift.id, CloseSessionRequest(counted_cash="0.00"), staff, await _grant(staff)
+        )
 
-    assert (await sell(shift.id, sale, manager))["grand_total"] == "50.00"
-    await record_cash_movement(shift.id, move, manager)
-    closed = await close_session(shift.id, CloseSessionRequest(counted_cash="45.00"), manager)
+    assert (await sell(shift.id, sale, manager, await _grant(manager)))["grand_total"] == "50.00"
+    await record_cash_movement(shift.id, move, manager, await _grant(manager))
+    closed = await close_session(
+        shift.id, CloseSessionRequest(counted_cash="45.00"), manager, await _grant(manager)
+    )
     assert closed["status"] == "CLOSED"

@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.errors import ConflictError, NotFoundError, ValidationError
 from app.modules.orders.money import to_money
-from app.modules.pos.models import PosProfile, PosProfileUser, PosSession
+from app.modules.pos.models import PosProfile, PosProfileUser, PosRegister, PosSession
 
 #: The closed payment vocabulary — must match ``orders/service._PAYMENT_METHODS``.
 PAYMENT_METHODS = ("cash", "card", "wallet", "bank_transfer")
@@ -223,6 +223,24 @@ class PosProfileService:
             profile.name = cleaned
         if warehouse_id is not None:
             await InventoryService.get_warehouse(session, tenant_id, warehouse_id)
+            # The till's own warehouse is what a sale draws from, so a profile cannot quietly
+            # point somewhere else: moving a till's stock pool is a decision about that till.
+            stranded = (
+                await session.execute(
+                    select(func.count())
+                    .select_from(PosRegister)
+                    .where(
+                        PosRegister.tenant_id == tenant_id,
+                        PosRegister.profile_id == profile.id,
+                        PosRegister.warehouse_id != warehouse_id,
+                    )
+                )
+            ).scalar_one()
+            if stranded:
+                raise ConflictError(
+                    f"{stranded} register(s) on this profile sell from a different warehouse; "
+                    "move or detach them first"
+                )
             profile.warehouse_id = warehouse_id
         if default_customer_id is not None:
             await CustomerService.get(session, tenant_id, default_customer_id)

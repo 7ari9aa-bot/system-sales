@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 408,
-    "sha256": "b68efffc144beb954d2a27951fa19de84d3a5e07d21f2e8b0a74ad602818fc57",
+    "operations": 411,
+    "sha256": "92cc072d59c415ce0b2347e0bb30ded2dc37740eb1553beb8382b7ddbab01fda",
     "typed_operations": 254
   },
   "spec": {
@@ -15432,6 +15432,29 @@
             "items"
           ],
           "title": "SetListOut",
+          "type": "object"
+        },
+        "SetManagerPinRequest": {
+          "properties": {
+            "password": {
+              "maxLength": 256,
+              "minLength": 1,
+              "title": "Password",
+              "type": "string"
+            },
+            "pin": {
+              "maxLength": 8,
+              "minLength": 4,
+              "pattern": "^[0-9]{4,8}$",
+              "title": "Pin",
+              "type": "string"
+            }
+          },
+          "required": [
+            "password",
+            "pin"
+          ],
+          "title": "SetManagerPinRequest",
           "type": "object"
         },
         "SetOut": {
@@ -35071,6 +35094,38 @@
                 ],
                 "title": "Authorization"
               }
+            },
+            {
+              "in": "header",
+              "name": "x-manager-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Manager-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-manager-pin",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Manager-Pin"
+              }
             }
           ],
           "requestBody": {
@@ -35500,6 +35555,38 @@
                   }
                 ],
                 "title": "Authorization"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-manager-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Manager-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-manager-pin",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Manager-Pin"
               }
             }
           ],
@@ -49508,6 +49595,206 @@
           ]
         }
       },
+      "/api/v1/pos/manager-pin": {
+        "get": {
+          "description": "Whether the signed-in manager has a PIN. The PIN itself is never readable.",
+          "operationId": "manager_pin_status_api_v1_pos_manager_pin_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Manager Pin Status",
+          "tags": [
+            "pos"
+          ]
+        },
+        "put": {
+          "description": "Set or change your own PIN. Only yours, and only with your password.",
+          "operationId": "set_manager_pin_api_v1_pos_manager_pin_put",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetManagerPinRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Set Manager Pin",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
       "/api/v1/pos/profiles": {
         "get": {
           "operationId": "list_profiles_api_v1_pos_profiles_get",
@@ -50247,6 +50534,125 @@
             }
           },
           "summary": "Revoke Profile User",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
+      "/api/v1/pos/receipts/search": {
+        "get": {
+          "description": "Find an original sale receipt on ANY shift — a return need not be on the sale's shift.",
+          "operationId": "search_receipts_api_v1_pos_receipts_search_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "q",
+              "required": true,
+              "schema": {
+                "maxLength": 40,
+                "minLength": 3,
+                "title": "Q",
+                "type": "string"
+              }
+            },
+            {
+              "in": "query",
+              "name": "limit",
+              "required": false,
+              "schema": {
+                "default": 20,
+                "maximum": 50,
+                "minimum": 1,
+                "title": "Limit",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Search Receipts",
           "tags": [
             "pos"
           ]
@@ -51220,6 +51626,38 @@
                 ],
                 "title": "Authorization"
               }
+            },
+            {
+              "in": "header",
+              "name": "x-manager-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Manager-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-manager-pin",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Manager-Pin"
+              }
             }
           ],
           "requestBody": {
@@ -51334,6 +51772,38 @@
                   }
                 ],
                 "title": "Authorization"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-manager-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Manager-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-manager-pin",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Manager-Pin"
               }
             }
           ],
@@ -51556,6 +52026,38 @@
                   }
                 ],
                 "title": "Authorization"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-manager-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Manager-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-manager-pin",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Manager-Pin"
               }
             }
           ],
@@ -52582,6 +53084,38 @@
                 ],
                 "title": "Authorization"
               }
+            },
+            {
+              "in": "header",
+              "name": "x-manager-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Manager-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-manager-pin",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Manager-Pin"
+              }
             }
           ],
           "requestBody": {
@@ -52803,6 +53337,38 @@
                   }
                 ],
                 "title": "Authorization"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-manager-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Manager-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-manager-pin",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Manager-Pin"
               }
             }
           ],
@@ -53035,6 +53601,38 @@
                   }
                 ],
                 "title": "Authorization"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-manager-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Manager-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-manager-pin",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Manager-Pin"
               }
             }
           ],

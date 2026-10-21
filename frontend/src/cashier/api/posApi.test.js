@@ -124,3 +124,17 @@ describe("posApi stock", () => {
     }
   });
 });
+
+describe("receipt search", () => {
+  it("asks the cross-shift endpoint and escapes what the cashier typed", async () => {
+    await posApi.searchReceipts("POS 1&limit=500%");
+    expect(calls[0].path).toBe("/pos/receipts/search?q=POS%201%26limit%3D500%25&limit=20");
+  });
+
+  it("never lets the typed text add or override a query parameter", async () => {
+    await posApi.searchReceipts("x&limit=500", 5);
+    const url = new URL(calls[0].path, "http://x");
+    expect(url.searchParams.getAll("limit")).toEqual(["5"]);
+    expect(url.searchParams.get("q")).toBe("x&limit=500");
+  });
+});

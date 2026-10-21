@@ -161,6 +161,16 @@ async def _ctx_for(db, tenant_ctx, role_code):
     )
 
 
+async def _grant(ctx, method="POST", path="/pos/test"):
+    """What the real dependency makes of this caller (a manager is a grant, a cashier is not)."""
+    from types import SimpleNamespace
+
+    from app.modules.pos.override import resolve_override
+
+    request = SimpleNamespace(method=method, url=SimpleNamespace(path=path))
+    return await resolve_override(request, ctx)
+
+
 def _body(variant, customer):
     from app.modules.pos.router import SellRequest
 
@@ -188,7 +198,7 @@ async def test_a_cashier_on_the_route_cannot_sell_past_the_ceiling(db, tenant_ct
     shift, variant, customer = await _till(db, tenant_ctx, ceiling="10")
     staff = await _ctx_for(db, tenant_ctx, "staff")
     with pytest.raises(ValidationError, match="ceiling"):
-        await sell(shift.id, _body(variant, customer), staff)
+        await sell(shift.id, _body(variant, customer), staff, await _grant(staff))
 
 
 async def test_a_manager_on_the_route_can(db, tenant_ctx):
@@ -196,7 +206,7 @@ async def test_a_manager_on_the_route_can(db, tenant_ctx):
 
     shift, variant, customer = await _till(db, tenant_ctx, ceiling="10")
     manager = await _ctx_for(db, tenant_ctx, "manager")
-    out = await sell(shift.id, _body(variant, customer), manager)
+    out = await sell(shift.id, _body(variant, customer), manager, await _grant(manager))
     assert Decimal(out["grand_total"]) == Decimal("60.00")
 
 

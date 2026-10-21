@@ -90,7 +90,14 @@ class PosService:
             raise ValidationError("register code must be 1-31 characters")
         await InventoryService.get_warehouse(session, tenant_id, warehouse_id)
         if profile_id is not None:
-            await PosProfileService.get(session, tenant_id, profile_id)
+            profile = await PosProfileService.get(session, tenant_id, profile_id)
+            # One rule: the register's warehouse is the one it sells from, and a profile's
+            # register must agree with the profile, so the grid, the scan and the sale all see
+            # the same stock.
+            if profile.warehouse_id != warehouse_id:
+                raise ValidationError(
+                    "this register's warehouse must be the warehouse of its POS profile"
+                )
         register = PosRegister(
             tenant_id=tenant_id,
             name=str(name).strip() or cleaned_code,
@@ -530,6 +537,49 @@ class PosService:
         return {str(i) for i in ids} or None
 
     @staticmethod
+    async def _ensure_cart_in_scope(
+        session: AsyncSession,
+        tenant_id: UUID,
+        pos_session: PosSession,
+        items: list[dict],
+    ) -> None:
+        """Refuse a cart line the till's profile does not serve (ERPNext `POS Item Group`).
+
+        ``scan`` and ``browse`` already hide what a scoped terminal does not carry, but a client
+        can name a variant id directly. Quote, sell and the new half of an exchange all take ids
+        from the wire, so the same rule is applied to them here, in one read: a product with no
+        category counts as outside any scope, exactly as in ``scan``.
+        """
+        scope = await PosService._item_group_scope(session, tenant_id, pos_session)
+        if scope is None:
+            return
+        from app.modules.catalog.service import CatalogService
+
+        wanted: set[UUID] = set()
+        for item in items:
+            try:
+                wanted.add(UUID(str(item["variant_id"])))
+            except (KeyError, ValueError):
+                continue  # the pricing step reports a malformed id with the proper message
+        if not wanted:
+            return
+        variants = await CatalogService.get_variants_by_ids(session, tenant_id, wanted)
+        products = await CatalogService.get_products_by_ids(
+            session, tenant_id, sorted({v.product_id for v in variants.values()})
+        )
+        outside = sorted(
+            str(variant.id)
+            for variant in variants.values()
+            if (product := products.get(variant.product_id)) is None
+            or product.category_id is None
+            or str(product.category_id) not in scope
+        )
+        if outside:
+            raise ValidationError(
+                "this product is outside this terminal's catalog: " + ", ".join(outside)
+            )
+
+    @staticmethod
     async def browse(
         session: AsyncSession,
         tenant_id: UUID,
@@ -679,6 +729,7 @@ class PosService:
         if not items:
             raise ValidationError("a quote must contain at least one item")
 
+        await PosService._ensure_cart_in_scope(session, tenant_id, pos_session, items)
         subtotal, _lines, line_discounts = await PosService._price_lines(
             session, tenant_id, items
         )
@@ -869,6 +920,7 @@ class PosService:
         profile = await PosService.resolve_profile(session, tenant_id, pos_session)
         if profile is not None and not profile.is_active:
             raise ConflictError("this POS profile is not active")
+        await PosService._ensure_cart_in_scope(session, tenant_id, pos_session, items)
 
         # A sale that names no tender charges the profile's preselected method
         # (ERPNext `set_grand_total_to_default_mop`); cash stays the fallback.
@@ -1637,6 +1689,50 @@ class PosService:
             .scalars()
             .all()
         )
+        return await PosService._receipt_rows(session, tenant_id, list(rows))
+
+    @staticmethod
+    async def search_receipts(
+        session: AsyncSession, tenant_id: UUID, *, q: str, limit: int = 20
+    ) -> list[dict]:
+        """Find an original SALE receipt across every shift, by number — the refund picker's search.
+
+        A return does not have to happen on the shift that made the sale, so the picker cannot be
+        limited to the open drawer. The return state (``returned_units`` / ``refunded_total``) is
+        read from the order's whole return history, never from one shift, so the quantity still
+        returnable is right whichever drawer took the earlier returns. The refund itself is still
+        settled on the CURRENT shift by ``return_sale``.
+        """
+        term = (q or "").strip()
+        if len(term) < 3:
+            raise ValidationError("search needs at least 3 characters")
+        if limit < 1 or limit > 50:
+            raise ValidationError("limit must be between 1 and 50")
+        from app.core.sql import LIKE_ESCAPE, like_pattern
+
+        rows = (
+            (
+                await session.execute(
+                    select(PosReceipt)
+                    .where(
+                        PosReceipt.tenant_id == tenant_id,
+                        PosReceipt.kind == "sale",
+                        PosReceipt.number.ilike(like_pattern(term), escape=LIKE_ESCAPE),
+                    )
+                    .order_by(PosReceipt.issued_at.desc(), PosReceipt.id.desc())
+                    .limit(limit)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return await PosService._receipt_rows(session, tenant_id, list(rows))
+
+    @staticmethod
+    async def _receipt_rows(
+        session: AsyncSession, tenant_id: UUID, rows: list[PosReceipt]
+    ) -> list[dict]:
+        """Receipts as picker rows, with return state from the order's whole return history."""
         order_ids = [r.order_id for r in rows]
         returned: dict[UUID, tuple[int, Decimal]] = {}
         if order_ids:
@@ -2957,6 +3053,7 @@ class PosService:
         )
 
         # ---------- the new half: the original order's own customer ----------
+        await PosService._ensure_cart_in_scope(session, tenant_id, pos_session, new_lines)
         new_subtotal, _prepared, new_line_discounts = await PosService._price_lines(
             session, tenant_id, new_lines
         )

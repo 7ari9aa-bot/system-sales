@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 
 from app.modules.errors import ValidationError
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
+from app.modules.pos.override import ManagerPinService, OverrideDep
 from app.modules.pos.profiles import PosProfileService
 from app.modules.pos.service import PosService
 from app.modules.pos.stock_view import StockViewService
@@ -23,6 +24,7 @@ from app.modules.pos.stock_view import StockViewService
 router = APIRouter(prefix="/pos", tags=["pos"])
 
 PosWriteCtx = Annotated[TenantContext, Depends(require_permission("orders:write"))]
+PosManagerCtx = Annotated[TenantContext, Depends(require_permission("pos:override"))]
 PosConfigCtx = Annotated[TenantContext, Depends(require_permission("settings:write"))]
 
 _MONEY = r"^\d+(\.\d{1,2})?$"
@@ -416,7 +418,9 @@ async def quote(session_id: UUID, body: QuoteRequest, ctx: PosWriteCtx):
 
 
 @router.post("/sessions/{session_id}/cash-movements", status_code=201)
-async def record_cash_movement(session_id: UUID, body: CashMovementRequest, ctx: PosWriteCtx):
+async def record_cash_movement(
+    session_id: UUID, body: CashMovementRequest, ctx: PosWriteCtx, override: OverrideDep
+):
     row = await PosService.record_cash_movement(
         ctx.session,
         ctx.tenant_id,
@@ -426,7 +430,7 @@ async def record_cash_movement(session_id: UUID, body: CashMovementRequest, ctx:
         amount=body.amount,
         created_by=ctx.user.id,
         reference_id=body.reference_id,
-        shift_override="pos:override" in ctx.permission_codes,
+        shift_override=override.active,
     )
     return {
         "id": str(row.id),
@@ -444,7 +448,7 @@ async def get_close_preview(session_id: UUID, ctx: TenantCtxDep):
 
 
 @router.post("/sessions/{session_id}/sell")
-async def sell(session_id: UUID, body: SellRequest, ctx: PosWriteCtx):
+async def sell(session_id: UUID, body: SellRequest, ctx: PosWriteCtx, override: OverrideDep):
     """§189: the whole sell is one command chain in one transaction."""
     tenders = (
         [{"method": t.method, "amount": t.amount} for t in body.tenders] if body.tenders else None
@@ -462,14 +466,16 @@ async def sell(session_id: UUID, body: SellRequest, ctx: PosWriteCtx):
         tendered_cash=body.tendered_cash,
         held_cart_id=body.held_cart_id,
         actor_user_id=ctx.user.id,
-        discount_override="pos:override" in ctx.permission_codes,
-        shift_override="pos:override" in ctx.permission_codes,
+        discount_override=override.active,
+        shift_override=override.active,
     )
     return {k: str(v) for k, v in result.items()}
 
 
 @router.post("/sessions/{session_id}/close")
-async def close_session(session_id: UUID, body: CloseSessionRequest, ctx: PosWriteCtx):
+async def close_session(
+    session_id: UUID, body: CloseSessionRequest, ctx: PosWriteCtx, override: OverrideDep
+):
     pos_session = await PosService.close_session(
         ctx.session,
         ctx.tenant_id,
@@ -477,7 +483,7 @@ async def close_session(session_id: UUID, body: CloseSessionRequest, ctx: PosWri
         counted_cash=body.counted_cash,
         counted_by_method=body.counted_by_method,
         closed_by=ctx.user.id,
-        shift_override="pos:override" in ctx.permission_codes,
+        shift_override=override.active,
     )
     return _session_out(pos_session)
 
@@ -497,6 +503,25 @@ async def get_reconciliation(session_id: UUID, ctx: TenantCtxDep):
 
 
 # ------------------------------------------------------------- receipts ----
+
+
+@router.get("/receipts/search")
+async def search_receipts(
+    ctx: TenantCtxDep,
+    q: Annotated[str, Query(min_length=3, max_length=40)],
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+):
+    """Find an original sale receipt on ANY shift — a return need not be on the sale's shift."""
+    rows = await PosService.search_receipts(ctx.session, ctx.tenant_id, q=q, limit=limit)
+    return [
+        {
+            **row,
+            "id": str(row["id"]),
+            "order_id": str(row["order_id"]),
+            "session_id": str(row["session_id"]),
+        }
+        for row in rows
+    ]
 
 
 @router.get("/sessions/{session_id}/receipts")
@@ -653,7 +678,7 @@ async def release_held_cart(held_cart_id: UUID, ctx: PosWriteCtx):
 
 
 @router.post("/sessions/{session_id}/refunds", status_code=201)
-async def refund(session_id: UUID, body: RefundRequest, ctx: PosWriteCtx):
+async def refund(session_id: UUID, body: RefundRequest, ctx: PosWriteCtx, override: OverrideDep):
     """Refund a POS sale by AMOUNT — the money-only path (goodwill, adjust).
 
     For returning goods, use ``/returns``: it is line-aware, priced at the
@@ -669,12 +694,14 @@ async def refund(session_id: UUID, body: RefundRequest, ctx: PosWriteCtx):
         reason=body.reason,
         restock=body.restock,
         actor_user_id=ctx.user.id,
-        shift_override="pos:override" in ctx.permission_codes,
+        shift_override=override.active,
     )
 
 
 @router.post("/sessions/{session_id}/returns", status_code=201)
-async def return_sale(session_id: UUID, body: ReturnRequest, ctx: PosWriteCtx):
+async def return_sale(
+    session_id: UUID, body: ReturnRequest, ctx: PosWriteCtx, override: OverrideDep
+):
     """Line-level return of a POS sale, with its own POS-RET receipt."""
     result = await PosService.return_sale(
         ctx.session,
@@ -686,7 +713,7 @@ async def return_sale(session_id: UUID, body: ReturnRequest, ctx: PosWriteCtx):
         ],
         restock=body.restock,
         actor_user_id=ctx.user.id,
-        shift_override="pos:override" in ctx.permission_codes,
+        shift_override=override.active,
     )
     return {
         **result,
@@ -695,7 +722,9 @@ async def return_sale(session_id: UUID, body: ReturnRequest, ctx: PosWriteCtx):
 
 
 @router.post("/sessions/{session_id}/exchanges", status_code=201)
-async def exchange(session_id: UUID, body: ExchangeRequest, ctx: PosWriteCtx):
+async def exchange(
+    session_id: UUID, body: ExchangeRequest, ctx: PosWriteCtx, override: OverrideDep
+):
     """One-transaction exchange: the return funds its replacement, and only
     the net difference moves money — two receipts, one commit."""
     tenders = (
@@ -720,7 +749,7 @@ async def exchange(session_id: UUID, body: ExchangeRequest, ctx: PosWriteCtx):
         amount=body.amount,
         tendered_cash=body.tendered_cash,
         actor_user_id=ctx.user.id,
-        shift_override="pos:override" in ctx.permission_codes,
+        shift_override=override.active,
     )
     return {
         **result,
@@ -840,3 +869,24 @@ async def set_reorder_level(
         ctx.session, ctx.tenant_id, variant_id, body.reorder_level
     )
     return ReorderLevelRequest(reorder_level=level)
+
+
+class SetManagerPinRequest(BaseModel):
+    # Re-typing the password is what stops a borrowed, still-signed-in screen from minting a PIN.
+    password: str = Field(min_length=1, max_length=256)
+    pin: str = Field(min_length=4, max_length=8, pattern=r"^[0-9]{4,8}$")
+
+
+@router.get("/manager-pin")
+async def manager_pin_status(ctx: PosManagerCtx):
+    """Whether the signed-in manager has a PIN. The PIN itself is never readable."""
+    return {"has_pin": await ManagerPinService.has_pin(ctx.session, ctx.tenant_id, ctx.user.id)}
+
+
+@router.put("/manager-pin")
+async def set_manager_pin(body: SetManagerPinRequest, ctx: PosManagerCtx):
+    """Set or change your own PIN. Only yours, and only with your password."""
+    await ManagerPinService.set_own_pin(
+        ctx.session, ctx.tenant_id, ctx.user.id, password=body.password, pin=body.pin
+    )
+    return {"has_pin": True}

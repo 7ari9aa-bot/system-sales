@@ -242,6 +242,28 @@ export function useReturnableSales(sessionId) {
   });
 }
 
+/** Fewest characters the server accepts for a receipt search (it answers 422 below this). */
+export const RECEIPT_SEARCH_MIN = 3;
+
+/**
+ * Find an original sale on ANY shift by its number. A return does not have to be made on the
+ * shift that sold the goods; the refund is settled on the shift that is open now. The server
+ * counts units already returned across every shift, so each result carries a detail the
+ * return screen can use exactly like one from the open shift's own list.
+ */
+export function useReceiptSearch(term) {
+  const q = String(term ?? "").trim();
+  return useQuery({
+    queryKey: ["cashier", "receipt-search", q],
+    enabled: q.length >= RECEIPT_SEARCH_MIN,
+    staleTime: 0,
+    queryFn: async () => {
+      const found = saleReceipts((await posApi.searchReceipts(q)) ?? []);
+      return Promise.all(found.map((r) => posApi.receipt(r.id)));
+    },
+  });
+}
+
 /** Every return receipt of every shift (list endpoint only), linked to its original invoice. */
 export async function fetchReturnsLog(client = posApi) {
   const sessions = (await client.listSessions()) ?? [];

@@ -450,3 +450,31 @@ class PosDailySales(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, B
         ),
         Index("ix_pos_daily_tenant_date", "tenant_id", "business_date"),
     )
+
+
+class ManagerPin(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, Base):
+    """A manager's counter PIN: the short secret that lets them approve ONE action at a till.
+
+    The cashier stays signed in as themself. A manager types their PIN into the till to approve a
+    single discount, return or cash movement that is above the cashier's own authority; the
+    approval covers that one request and the audit row names the manager, not the cashier.
+
+    Only the hash is stored (the same bcrypt as passwords, never the digits). A 4-8 digit PIN is
+    a tiny search space, so the hash alone does not protect it: PosOverrideService counts failures
+    in Redis and locks the manager out, and refuses a PIN whose owner no longer holds
+    ``pos:override``. One row per (tenant, manager): the same person can have a different PIN in
+    each shop they manage.
+    """
+
+    __tablename__ = "manager_pins"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE")
+    )
+    pin_hash: Mapped[str] = mapped_column(String(255))
+    # When the PIN was last set or changed, so a manager can see how old theirs is.
+    set_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (UniqueConstraint("tenant_id", "user_id", name="uq_manager_pins_user"),)
