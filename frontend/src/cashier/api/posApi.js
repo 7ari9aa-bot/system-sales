@@ -15,6 +15,7 @@ import { api } from "@/lib/api";
 import { toWire } from "./money";
 
 export const BALANCES_LIMIT = 5000;
+export const MAX_REORDER_LEVEL = 1_000_000;
 const METHODS = ["cash", "card", "wallet", "bank_transfer"];
 const DIRECTIONS = ["in", "out"];
 const REASONS = ["pay_in", "pay_out", "cash_drop", "float_adjust"];
@@ -126,6 +127,19 @@ export const posApi = {
   createExpense: async (payload, intent) => post("/expenses", payload, needIntent(intent)),
   voidExpense: async (id, { reason }, intent) =>
     post(`/expenses/${seg(id)}/void`, { reason: String(reason ?? "").trim() }, needIntent(intent)),
+
+  /* ---- stock screen read model (backend/app/modules/pos/stock_view.py) ---- */
+  stock: (query = "") => api(`/pos/stock${query ? `?${query}` : ""}`),
+  stockSummary: () => api("/pos/stock/summary"),
+  // A PUT that SETS a value is idempotent by nature (sending it twice leaves the same level), so it
+  // carries no Idempotency-Key. The level is checked here first: the server rejects a bad one too,
+  // but a typo should not cost a round trip.
+  setReorderLevel: (variantId, level) => {
+    if (!Number.isInteger(level) || level < 0 || level > MAX_REORDER_LEVEL) {
+      throw new RangeError(`posApi: reorder level must be a whole number from 0 to ${MAX_REORDER_LEVEL}`);
+    }
+    return api(`/pos/stock/${seg(variantId)}/reorder-level`, { method: "PUT", body: { reorder_level: level } });
+  },
 
   /* ---- activity (backend/app/modules/activity): a read-only timeline, never written ---- */
   activityFeed: (query = "") => api(`/activity${query ? `?${query}` : ""}`),

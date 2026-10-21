@@ -6,6 +6,7 @@ import ColorSwatch from "@/cashier/components/ui-kit/ColorSwatch";
 import EmptyState from "@/cashier/components/ui-kit/EmptyState";
 import StatusBadge from "@/cashier/components/ui-kit/StatusBadge";
 import { colorHex, shop, stockStatus } from "@/cashier/lib/mockData";
+import ReorderLevelCell from "@/cashier/components/inventory/ReorderLevelCell";
 import { fmtInt, fmtMoneyShort } from "@/cashier/lib/format";
 
 // تفاصيل منتج مفتوح من بطاقة: بياناته الأساسية مع كل تركيبات اللون والمقاس وأرصدتها.
@@ -47,7 +48,7 @@ export default function ProductDetailsDialog({ product, open, onOpenChange, onMo
                 <TableRow className="bg-[#F4F1EC] hover:bg-[#F4F1EC]">
                   <TableHead>اللون / المقاس</TableHead>
                   <TableHead>الباركود</TableHead>
-                  <TableHead>الفرع</TableHead>
+                  <TableHead className="text-center">حد الطلب</TableHead>
                   <TableHead className="text-center">الرصيد</TableHead>
                   <TableHead>الحالة</TableHead>
                   {onMovements && <TableHead className="text-center">الإجراءات</TableHead>}
@@ -63,10 +64,16 @@ export default function ProductDetailsDialog({ product, open, onOpenChange, onMo
                       </span>
                     </TableCell>
                     <TableCell className="num text-xs">{v.barcode || "—"}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{v.branch || "—"}</TableCell>
+                    <TableCell className="text-center">
+                      {v.status ? (
+                        <ReorderLevelCell variantId={v.id} value={v.threshold} />
+                      ) : (
+                        <span className="num text-xs text-muted-foreground">{v.threshold ?? "—"}</span>
+                      )}
+                    </TableCell>
                     <TableCell className="num text-center font-semibold">{fmtInt(v.stock)}</TableCell>
                     <TableCell>
-                      <StatusBadge kind="inventory" value={stockStatus(v.stock, v.threshold ?? threshold)} />
+                      <StatusBadge kind="inventory" value={v.status ?? stockStatus(v.stock, v.threshold ?? threshold)} />
                     </TableCell>
                     {onMovements && (
                       <TableCell className="text-center">

@@ -116,3 +116,11 @@ describe("routes", () => {
     expect(calls[0].path).toBe("/pos/sessions/a%2Fb%3Fc/close-preview");
   });
 });
+
+describe("posApi stock", () => {
+  it("setReorderLevel refuses a level the server would reject, before any request", () => {
+    for (const bad of [-1, 2.5, "3", null, NaN, 1_000_001]) {
+      expect(() => posApi.setReorderLevel("v1", bad)).toThrow(RangeError);
+    }
+  });
+});

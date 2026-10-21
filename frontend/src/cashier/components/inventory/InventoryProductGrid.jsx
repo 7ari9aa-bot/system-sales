@@ -34,7 +34,7 @@ export default function InventoryProductGrid({ rows, onOpen, onShowLow }) {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {products.map((p) => (
-            <ProductCard key={p.id} product={p} onOpen={onOpen} />
+            <ProductCard key={p.id} product={p} onOpen={(product) => onOpen(product.id)} />
           ))}
         </div>
       )}

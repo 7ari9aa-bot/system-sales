@@ -11,8 +11,10 @@ import InventoryProductGrid from "@/cashier/components/inventory/InventoryProduc
 import ProductDetailsDialog from "@/cashier/components/inventory/ProductDetailsDialog";
 import SystemProductsSection from "@/cashier/components/inventory/SystemProductsSection";
 import VariantMovementsDialog from "@/cashier/components/inventory/VariantMovementsDialog";
-import { allVariants, branches, categories, shop, stockStatus } from "@/cashier/lib/mockData";
+import { costLabel } from "@/cashier/api/stockAdapter";
+import { useStock, useStockCategories, useStockSummary } from "@/cashier/api/useStock";
 import { INVENTORY_STATUS, fmtInt, fmtMoneyShort } from "@/cashier/lib/format";
+import { resolveOpenProduct } from "@/cashier/lib/inventoryGroups";
 import { exportCsv } from "@/cashier/lib/exportCsv";
 
 
@@ -22,10 +24,10 @@ const EXPORT_COLUMNS = [
   { header: "الباركود", key: "barcode" },
   { header: "اللون", key: "color" },
   { header: "المقاس", key: "size" },
-  { header: "الفرع", key: "branch" },
   { header: "الرصيد", key: "stock" },
   { header: "حد الطلب", key: "threshold" },
-  { header: "الحالة", value: (v) => INVENTORY_STATUS[stockStatus(v.stock, v.threshold)]?.label ?? "—" },
+  { header: "متوسط التكلفة", value: (v) => costLabel(v.buyPrice, (n) => n.toFixed(2)) },
+  { header: "الحالة", value: (v) => INVENTORY_STATUS[v.status]?.label ?? "—" },
 ];
 
 const BTN =
@@ -39,26 +41,19 @@ const FIELD_LABEL = "mb-1.5 block text-[11px] font-medium text-[#7A766C]";
 export default function InventoryPage() {
   const [term, setTerm] = useState("");
   const [category, setCategory] = useState("");
-  const [branch, setBranch] = useState("");
   const [status, setStatus] = useState("");
   const [movementsOf, setMovementsOf] = useState(null);
   const [detailsOf, setDetailsOf] = useState(null);
 
-  const rows = allVariants.filter((v) => {
-    const t = term.trim().toLowerCase();
-    if (t && !(v.productName.toLowerCase().includes(t) || v.sku.toLowerCase().includes(t) || v.barcode.includes(t))) return false;
-    if (category && v.category !== category) return false;
-    if (branch && v.branch !== branch) return false;
-    if (status && stockStatus(v.stock, v.threshold) !== status) return false;
-    return true;
-  });
-
-  const totals = {
-    pieces: rows.reduce((s, v) => s + v.stock, 0),
-    cost: rows.reduce((s, v) => s + v.buyPrice * v.stock, 0),
-    retail: rows.reduce((s, v) => s + v.sellPrice * v.stock, 0),
-    alerts: rows.filter((v) => stockStatus(v.stock, v.threshold) !== "in").length,
-  };
+  // Search and status are filtered ON THE SERVER, so they reach every variant and the status can
+  // never disagree with the backend rule. The totals below come from the summary endpoint, which
+  // covers all active variants, not just the rows that happen to be on screen.
+  const stock = useStock({ term, categoryId: category, status });
+  const summary = useStockSummary();
+  const categories = useStockCategories();
+  const rows = stock.data ?? [];
+  const totals = summary.data;
+  const openProduct = resolveOpenProduct(detailsOf, rows);
 
   return (
     <div className="-mx-2 -my-2 flex min-h-[calc(100vh-1rem)] flex-col gap-5 bg-[#F4F1EC] px-6 py-6 text-[#3B3A36] sm:-mx-3 sm:px-9 sm:py-8">
@@ -97,27 +92,42 @@ export default function InventoryPage() {
       </header>
 
       <div className="animate-inv-rise grid gap-3.5 [animation-delay:.1s] sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="القطع المتوفرة" value={fmtInt(totals.pieces)} hint={`${fmtInt(rows.length)} متغيرًا في النتائج`} />
-        <Stat label="قيمة المخزون بالتكلفة" value={fmtMoneyShort(totals.cost)} hint="حسب أسعار الشراء" />
-        <Stat label="قيمة البيع المتوقعة" value={fmtMoneyShort(totals.retail)} hint="حسب أسعار البيع" />
+        <Stat
+          label="القطع المتوفرة"
+          value={totals ? fmtInt(totals.pieces) : "…"}
+          hint={`${fmtInt(rows.length)} متغيرًا في النتائج`}
+        />
+        <Stat
+          label="قيمة المخزون بالتكلفة"
+          value={totals ? fmtMoneyShort(totals.costValue) : "…"}
+          hint={
+            totals?.unknownCost
+              ? `ناقصة: ${fmtInt(totals.unknownCost)} صنفًا بلا تكلفة مسجلة`
+              : "حسب متوسط تكلفة الشراء"
+          }
+        />
+        <Stat
+          label="قيمة البيع المتوقعة"
+          value={totals ? fmtMoneyShort(totals.retailValue) : "…"}
+          hint="حسب أسعار البيع"
+        />
         <Stat
           label="أصناف تحت حد الطلب"
-          value={fmtInt(totals.alerts)}
-          hint={`${fmtInt(rows.filter((v) => v.stock === 0).length)} صنفًا نافدًا • الحد ${shop.lowStockThreshold} قطع`}
+          value={totals ? fmtInt(totals.alerts) : "…"}
+          hint={totals ? `${fmtInt(totals.out)} صنفًا نافدًا • ${fmtInt(totals.low)} منخفضًا` : ""}
         />
       </div>
 
       <FilterPanel
         className="animate-inv-rise rounded-[14px] border-[#E3DED4] bg-white [animation-delay:.2s]"
-        activeCount={[category, branch, status].filter(Boolean).length + (term ? 1 : 0)}
+        activeCount={[category, status].filter(Boolean).length + (term ? 1 : 0)}
         onReset={() => {
           setTerm("");
           setCategory("");
-          setBranch("");
           setStatus("");
         }}
       >
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <div>
             <Label className={FIELD_LABEL}>بحث بالمنتج أو الكود أو الباركود</Label>
             <div className="relative">
@@ -138,25 +148,9 @@ export default function InventoryPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">كل التصنيفات</SelectItem>
-                {categories.map((c) => (
-                  <SelectItem key={c} value={c}>
-                    {c}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className={FIELD_LABEL}>الفرع</Label>
-            <Select value={branch || "all"} onValueChange={(v) => setBranch(v === "all" ? "" : v)}>
-              <SelectTrigger className={FIELD}>
-                <SelectValue placeholder="كل الفروع" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">كل الفروع</SelectItem>
-                {branches.map((b) => (
-                  <SelectItem key={b} value={b}>
-                    {b}
+                {(categories.data ?? []).map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -181,13 +175,25 @@ export default function InventoryPage() {
         </div>
       </FilterPanel>
 
-      <InventoryProductGrid rows={rows} onOpen={setDetailsOf} onShowLow={() => setStatus("low")} />
+      {stock.isError ? (
+        <div role="alert" className="rounded-2xl border border-[#E3DED4] bg-white p-6 text-center text-[13px]">
+          <p className="font-medium">تعذّر تحميل المخزون</p>
+          <p className="mt-1 text-[#7A766C]">لم تُعرض أي أرقام لأنها قد تكون غير صحيحة. تحقق من الاتصال وأعد المحاولة.</p>
+          <Button variant="outline" size="sm" className="mt-3" onClick={() => stock.refetch()}>
+            إعادة المحاولة
+          </Button>
+        </div>
+      ) : stock.isPending ? (
+        <p className="py-10 text-center text-[13px] text-[#7A766C]">جاري تحميل المخزون…</p>
+      ) : (
+        <InventoryProductGrid rows={rows} onOpen={setDetailsOf} onShowLow={() => setStatus("low")} />
+      )}
 
       <SystemProductsSection onOpen={setDetailsOf} />
 
       <ProductDetailsDialog
-        product={detailsOf}
-        open={!!detailsOf}
+        product={openProduct}
+        open={!!openProduct}
         onOpenChange={(open) => !open && setDetailsOf(null)}
         onMovements={setMovementsOf}
       />
