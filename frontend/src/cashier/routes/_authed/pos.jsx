@@ -15,7 +15,7 @@ import SuspendedDialog from "@/cashier/components/pos/SuspendedDialog";
 import HoldDialog from "@/cashier/components/pos/HoldDialog";
 import ConfirmDialog from "@/cashier/components/ui-kit/ConfirmDialog";
 import { Button } from "@/cashier/components/ui/button";
-import { CATALOG_KEY, HELD_KEY, fetchCatalog, useCatalog, useHeldCarts, usePosSale } from "@/cashier/api/usePosSale";
+import { CATALOG_KEY, HELD_KEY, SESSION_CATALOG_KEY, fetchSessionCatalog, useHeldCarts, usePosSale, useSessionCatalog } from "@/cashier/api/usePosSale";
 import { useShiftState } from "@/cashier/api/useShifts";
 import { searchCatalog } from "@/cashier/api/catalogAdapter";
 import { posApi } from "@/cashier/api/posApi";
@@ -58,14 +58,14 @@ export default function PosPage() {
 function PosScreen({ user, session }) {
   const qc = useQueryClient();
   const salesSettings = useSalesSettings();
-  const catalogQuery = useCatalog();
+  const catalogQuery = useSessionCatalog(session.id); // this till's items, price and warehouse stock
   const catalog = useMemo(() => catalogQuery.data ?? [], [catalogQuery.data]);
   const [receipt, setReceipt] = useState(null);
   const [lastReceipt, setLastReceipt] = useState(null);
   const sale = usePosSale({
     sessionId: session.id,
     catalog,
-    loadFreshCatalog: async () => (await qc.fetchQuery({ queryKey: CATALOG_KEY, queryFn: () => fetchCatalog(), staleTime: 0 })) ?? [],
+    loadFreshCatalog: async () => (await qc.fetchQuery({ queryKey: SESSION_CATALOG_KEY(session.id), queryFn: () => fetchSessionCatalog(session.id), staleTime: 0 })) ?? [],
     onSold: (r) => {
       setReceipt(r);
       setLastReceipt(r);

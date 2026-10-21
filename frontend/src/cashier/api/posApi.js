@@ -80,6 +80,7 @@ export const posApi = {
   stockBalances: () => api(`/inventory/balances?limit=${BALANCES_LIMIT}`),
   receipts: (id) => api(`/pos/sessions/${seg(id)}/receipts`),
   receipt: (id) => api(`/pos/receipts/${seg(id)}`),
+  sessionItems: (id, offset = 0, limit = 60) => api(`/pos/sessions/${seg(id)}/items?limit=${limit}&offset=${offset}`),
   searchReceipts: (q, limit = 20) => api(`/pos/receipts/search?q=${encodeURIComponent(q)}&limit=${limit}`),
   heldCarts: (id) => api(`/pos/sessions/${seg(id)}/held-carts`),
   dailyReport: (query = "") => api(`/pos/reports/daily${query ? `?${query}` : ""}`),

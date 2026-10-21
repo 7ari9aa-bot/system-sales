@@ -57,6 +57,7 @@ describe("cashier client <-> committed OpenAPI lock", () => {
     await posApi.receipts("s1");
     await posApi.receipt("s1");
     await posApi.searchReceipts("POS-001");
+    await posApi.sessionItems("s1");
     await posApi.heldCarts("s1");
     await posApi.dailyReport();
     await posApi.openSession("r1", { openingFloat: 1 });

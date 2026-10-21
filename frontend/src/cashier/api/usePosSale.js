@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { BALANCES_LIMIT, posApi } from "./posApi";
 import { buildCatalog, searchCatalog } from "./catalogAdapter";
+import { fetchAllItems, mergeSessionItems } from "./sessionCatalog";
 import { clampQty } from "./checkout";
 import { createSaleSession } from "./saleSession";
 import { receiptFromApi } from "./receiptAdapter";
@@ -35,6 +36,28 @@ export async function fetchCatalog() {
     throw new Error(`قائمة الأرصدة وصلت للحد الأقصى (${BALANCES_LIMIT}) وقد تكون ناقصة. أبلغ الدعم الفني قبل البيع.`);
   }
   return buildCatalog(Array.isArray(products) ? products : products?.items, rows);
+}
+
+/**
+ * What THIS shift's till may sell: item groups, warehouse stock and ladder price from the server,
+ * looks (barcode/colour/size) from the catalog. Use this on the sales screen; the plain
+ * `useCatalog` is for screens that really mean "everything, every warehouse".
+ */
+export const SESSION_CATALOG_KEY = (sessionId) => ["cashier", "catalog", "session", sessionId];
+export async function fetchSessionCatalog(sessionId) {
+  const [catalog, items] = await Promise.all([
+    fetchCatalog(),
+    fetchAllItems((offset, limit) => posApi.sessionItems(sessionId, offset, limit)),
+  ]);
+  return mergeSessionItems(catalog, items);
+}
+export function useSessionCatalog(sessionId) {
+  return useQuery({
+    queryKey: SESSION_CATALOG_KEY(sessionId),
+    queryFn: () => fetchSessionCatalog(sessionId),
+    enabled: Boolean(sessionId),
+    staleTime: 30_000,
+  });
 }
 
 /** Refetched after every sale, and on demand where stock must be exact (restoring a held cart). */
