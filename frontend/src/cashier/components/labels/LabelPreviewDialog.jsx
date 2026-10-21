@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/cashier/components/ui/switch";
 import BarcodeBars from "@/cashier/components/ui-kit/BarcodeBars";
 import { BTN, BTN_PRIMARY, FIELD_SELECT, SWITCH } from "@/cashier/components/labels/labelStyles";
-import { shop } from "@/cashier/lib/mockData";
+import { useShopName } from "@/cashier/lib/useShopName";
 import { fmtInt, fmtMoney } from "@/cashier/lib/format";
 import { cn } from "@/cashier/lib/utils";
 
@@ -26,6 +26,7 @@ const MAX_PREVIEW = 60;
 
 // معاينة وطباعة ملصقات الباركود: المقاس، محتوى الملصق، ثم الطباعة.
 export default function LabelPreviewDialog({ open, onOpenChange, rows }) {
+  const shopName = useShopName();
   const [paper, setPaper] = useState("38x25");
   const [showShop, setShowShop] = useState(true);
   const [showPrice, setShowPrice] = useState(true);
@@ -72,7 +73,7 @@ export default function LabelPreviewDialog({ open, onOpenChange, rows }) {
           <div className={cn("grid gap-2 rounded-lg border border-dashed border-[#DED8CD] bg-[#F7F5F0] p-2.5", PAPER_GRID[paper] ?? PAPER_GRID["38x25"])}>
             {visible.map((label) => (
               <div key={label.key} className="rounded-md border border-[#DED8CD] bg-white p-2 text-black">
-                {showShop && <p className="truncate text-[11px] font-bold">{shop.name}</p>}
+                {showShop && <p className="truncate text-[11px] font-bold">{shopName}</p>}
                 <p className="truncate text-[10px] text-[#555555]">{label.productName}</p>
                 <p className="text-[10px] text-[#555555]">
                   {label.color} / {label.size}

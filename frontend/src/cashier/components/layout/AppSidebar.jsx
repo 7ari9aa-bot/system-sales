@@ -5,7 +5,8 @@ import { Avatar, AvatarFallback } from "@/cashier/components/ui/avatar";
 import { Button } from "@/cashier/components/ui/button";
 import { Sheet, SheetContent } from "@/cashier/components/ui/sheet";
 import { navGroups } from "@/cashier/components/layout/navItems";
-import { shop } from "@/cashier/lib/mockData";
+import { useShopName } from "@/cashier/lib/useShopName";
+import { useAuth } from "@/lib/AuthContext";
 import { cn } from "@/cashier/lib/utils";
 
 const STORAGE_KEY = "boutique-sidebar-collapsed";
@@ -39,8 +40,9 @@ function SidebarLink({ item, pathname, onNavigate, collapsed }) {
 function SidebarContent({ onNavigate, collapsed = false, onToggleCollapse }) {
   // الكاشير مركّب تحت /cashier داخل النظام الرئيسي، فنقارن بالمسار بعد البادئة.
   const pathname = useLocation().pathname.replace(/^\/cashier/, "") || "/";
-  // الحساب يأتي من النظام الرئيسي لاحقاً؛ حالياً اسم ثابت للعرض فقط.
-  const displayName = "مستخدم النظام";
+  const shopName = useShopName();
+  const { user } = useAuth();
+  const displayName = String(user?.full_name || user?.email || "").trim() || "مستخدم النظام";
   const initials = displayName
     .split(" ")
     .map((p) => p[0])
@@ -55,7 +57,7 @@ function SidebarContent({ onNavigate, collapsed = false, onToggleCollapse }) {
         </span>
         {!collapsed && (
           <div className="min-w-0">
-            <p className="truncate font-heading text-sm font-extrabold">{shop.name}</p>
+            <p className="truncate font-heading text-sm font-extrabold">{shopName}</p>
             <p className="truncate text-[11px] text-muted-foreground">نظام المبيعات والمخزون</p>
           </div>
         )}

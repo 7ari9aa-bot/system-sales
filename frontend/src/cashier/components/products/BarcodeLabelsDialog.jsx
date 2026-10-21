@@ -3,11 +3,12 @@ import { Button } from "@/cashier/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/cashier/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/cashier/components/ui/select";
 import BarcodeBars from "@/cashier/components/ui-kit/BarcodeBars";
-import { shop } from "@/cashier/lib/mockData";
+import { useShopName } from "@/cashier/lib/useShopName";
 import { fmtMoney } from "@/cashier/lib/format";
 
 // معاينة ملصقات الباركود بمقاسات ورق مختلفة.
 export default function BarcodeLabelsDialog({ open, onOpenChange, rows, productName }) {
+  const shopName = useShopName();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent dir="rtl" className="max-w-2xl">
@@ -36,7 +37,7 @@ export default function BarcodeLabelsDialog({ open, onOpenChange, rows, productN
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {rows.map((row) => (
               <div key={row.id} className="rounded-lg border border-black/10 bg-white p-2.5 text-black">
-                <p className="truncate text-[11px] font-bold">{shop.name}</p>
+                <p className="truncate text-[11px] font-bold">{shopName}</p>
                 <p className="truncate text-[10px] text-black/70">{productName}</p>
                 <p className="text-[10px] text-black/70">
                   {row.color} / {row.size}
