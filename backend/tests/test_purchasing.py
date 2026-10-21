@@ -510,7 +510,6 @@ async def test_a_return_takes_goods_off_the_shelf_at_once_and_credits_the_order_
         t,
         supplier_id=sup.id,
         purchase_order_id=po.id,
-        reason="manufacturing_defect",
         settlement="credit",
         lines=[{"variant_id": str(var.id), "quantity": 3}],
     )
@@ -535,7 +534,6 @@ async def test_the_return_price_is_the_order_price_not_todays_average(db, tenant
         t,
         supplier_id=sup.id,
         purchase_order_id=first.id,
-        reason="surplus",
         settlement="credit",
         lines=[{"variant_id": str(var.id), "quantity": 1}],
     )
@@ -554,7 +552,6 @@ async def test_you_cannot_return_more_than_you_bought_or_more_than_you_hold(db, 
             t,
             supplier_id=sup.id,
             purchase_order_id=po.id,
-            reason="surplus",
             settlement="credit",
             lines=line(6),
         )
@@ -563,7 +560,6 @@ async def test_you_cannot_return_more_than_you_bought_or_more_than_you_hold(db, 
         t,
         supplier_id=sup.id,
         purchase_order_id=po.id,
-        reason="surplus",
         settlement="credit",
         lines=line(3),
     )
@@ -573,7 +569,6 @@ async def test_you_cannot_return_more_than_you_bought_or_more_than_you_hold(db, 
             t,
             supplier_id=sup.id,
             purchase_order_id=po.id,
-            reason="surplus",
             settlement="credit",
             lines=line(3),
         )
@@ -585,7 +580,6 @@ async def test_you_cannot_return_more_than_you_bought_or_more_than_you_hold(db, 
             t,
             supplier_id=sup.id,
             purchase_order_id=po.id,
-            reason="surplus",
             settlement="credit",
             lines=line(1),
         )
@@ -603,7 +597,6 @@ async def test_rejecting_a_return_puts_the_goods_back_and_frees_the_quantity(
         t,
         supplier_id=sup.id,
         purchase_order_id=po.id,
-        reason="wrong_size",
         settlement="credit",
         lines=[{"variant_id": str(var.id), "quantity": 5}],
     )
@@ -630,7 +623,6 @@ async def test_rejecting_a_return_puts_the_goods_back_and_frees_the_quantity(
         t,
         supplier_id=sup.id,
         purchase_order_id=po.id,
-        reason="wrong_size",
         settlement="credit",
         lines=[{"variant_id": str(var.id), "quantity": 5}],
     )
@@ -647,7 +639,6 @@ async def test_a_return_is_decided_once(db, tenant_ctx) -> None:
         t,
         supplier_id=sup.id,
         purchase_order_id=po.id,
-        reason="surplus",
         settlement="credit",
         lines=[{"variant_id": str(var.id), "quantity": 1}],
     )
@@ -673,7 +664,6 @@ async def test_a_cash_refund_enters_the_drawer_only_on_acceptance(db, tenant_ctx
         t,
         supplier_id=sup.id,
         purchase_order_id=po.id,
-        reason="damaged_on_receipt",
         settlement="cash",
         lines=[{"variant_id": str(var.id), "quantity": 2}],
     )
@@ -698,7 +688,6 @@ async def test_a_replacement_return_moves_no_money(db, tenant_ctx) -> None:
         t,
         supplier_id=sup.id,
         purchase_order_id=po.id,
-        reason="wrong_color",
         settlement="replace",
         lines=[{"variant_id": str(var.id), "quantity": 1}],
     )
@@ -712,7 +701,6 @@ async def test_a_replacement_return_moves_no_money(db, tenant_ctx) -> None:
             t,
             supplier_id=sup.id,
             purchase_order_id=po.id,
-            reason="surplus",
             settlement="credit",
             lines=[{"variant_id": str(var.id), "quantity": 1}],
         )
@@ -727,7 +715,6 @@ async def test_a_return_without_an_order_needs_an_explicit_price(db, tenant_ctx)
         db,
         t,
         supplier_id=sup.id,
-        reason="surplus",
         settlement="credit",
         lines=[{"variant_id": str(var.id), "quantity": 1, "unit_cost": "12.50"}],
     )
@@ -737,35 +724,23 @@ async def test_a_return_without_an_order_needs_an_explicit_price(db, tenant_ctx)
             db,
             t,
             supplier_id=sup.id,
-            reason="surplus",
             settlement="credit",
             lines=[{"variant_id": str(var.id), "quantity": 1}],
         )
 
 
-async def test_return_reason_settlement_and_foreign_orders_are_validated(db, tenant_ctx) -> None:
+async def test_return_settlement_and_foreign_orders_are_validated(db, tenant_ctx) -> None:
     t = tenant_ctx.tenant_id
     a, b = await _supplier(db, tenant_ctx), await _supplier(db, tenant_ctx)
     var = await _variant(db, tenant_ctx)
     po = await _po(db, tenant_ctx, a, var, qty=3, cost="10.00")
     ln = [{"variant_id": str(var.id), "quantity": 1}]
-    with pytest.raises(ValidationError, match="reason"):
-        await SupplierReturnService.create(
-            db,
-            t,
-            supplier_id=a.id,
-            purchase_order_id=po.id,
-            reason="meh",
-            settlement="credit",
-            lines=ln,
-        )
     with pytest.raises(ValidationError, match="settlement"):
         await SupplierReturnService.create(
             db,
             t,
             supplier_id=a.id,
             purchase_order_id=po.id,
-            reason="surplus",
             settlement="gift",
             lines=ln,
         )
@@ -775,7 +750,6 @@ async def test_return_reason_settlement_and_foreign_orders_are_validated(db, ten
             t,
             supplier_id=b.id,
             purchase_order_id=po.id,
-            reason="surplus",
             settlement="credit",
             lines=ln,
         )
@@ -786,7 +760,6 @@ async def test_return_reason_settlement_and_foreign_orders_are_validated(db, ten
             t,
             supplier_id=a.id,
             purchase_order_id=draft.id,
-            reason="surplus",
             settlement="credit",
             lines=ln,
         )

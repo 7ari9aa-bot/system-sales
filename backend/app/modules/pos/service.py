@@ -1244,6 +1244,15 @@ class PosService:
         pos_session.variance = variance
         pos_session.closed_by_user_id = closed_by
         pos_session.closed_at = datetime.now(UTC)
+        # A parked cart is a basket, not a sale: it books no money and reserves no stock.
+        # Left behind it would be an orphan nobody can resume (a held cart resumes only on its
+        # own OPEN session), so the close clears them in the SAME transaction.
+        # The shop is told how many before it confirms.
+        await session.execute(
+            delete(PosHeldCart).where(
+                PosHeldCart.tenant_id == tenant_id, PosHeldCart.session_id == pos_session.id
+            )
+        )
         await session.flush()
 
         # The close is a business event: analytics reconciles cash from the

@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 420,
-    "sha256": "47e74157885b418849ae2d90cd7143531e63e06ff32ff3ededa86e2001f50cb1",
+    "sha256": "b0cda963d7a2d4ba636f1449eff7c01401473eb68d53f4082af22dbbf38dd2b8",
     "typed_operations": 254
   },
   "spec": {
@@ -13790,11 +13790,6 @@
               ],
               "title": "Purchase Order Id"
             },
-            "reason": {
-              "pattern": "^(manufacturing_defect|damaged_on_receipt|wrong_size|wrong_color|below_spec|surplus)$",
-              "title": "Reason",
-              "type": "string"
-            },
             "return_date": {
               "anyOf": [
                 {
@@ -13821,7 +13816,6 @@
           "required": [
             "supplier_id",
             "lines",
-            "reason",
             "settlement"
           ],
           "title": "ReturnIn",
@@ -13958,10 +13952,6 @@
               ],
               "title": "Purchase Order Id"
             },
-            "reason": {
-              "title": "Reason",
-              "type": "string"
-            },
             "return_date": {
               "title": "Return Date",
               "type": "string"
@@ -13988,7 +13978,6 @@
             "number",
             "supplier_id",
             "purchase_order_id",
-            "reason",
             "settlement",
             "status",
             "total",

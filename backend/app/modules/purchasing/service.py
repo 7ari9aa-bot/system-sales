@@ -773,7 +773,6 @@ class SupplierReturnService:
         *,
         supplier_id: UUID,
         lines: list[dict],
-        reason: str,
         settlement: str,
         purchase_order_id: UUID | None = None,
         return_date: date | None = None,
@@ -781,14 +780,11 @@ class SupplierReturnService:
         created_by: UUID | None = None,
     ) -> SupplierReturn:
         from app.modules.purchasing.models import (
-            RETURN_REASONS,
             RETURN_SETTLEMENTS,
             SupplierReturnLine,
         )
 
         await SupplierService.get(session, tenant_id, supplier_id)
-        if reason not in RETURN_REASONS:
-            raise ValidationError(f"reason must be one of {sorted(RETURN_REASONS)}")
         if settlement not in RETURN_SETTLEMENTS:
             raise ValidationError(f"settlement must be one of {sorted(RETURN_SETTLEMENTS)}")
         if not lines:
@@ -856,7 +852,6 @@ class SupplierReturnService:
             supplier_id=supplier_id,
             purchase_order_id=purchase_order_id,
             warehouse_id=warehouse.id,
-            reason=reason,
             settlement=settlement,
             status="review",
             total=sum((c[3] for c in clean), Decimal("0")).quantize(_CENT),

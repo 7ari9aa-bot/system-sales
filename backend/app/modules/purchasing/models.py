@@ -49,16 +49,6 @@ PO_STATUSES: frozenset[str] = frozenset({"draft", "received", "cancelled"})
 PAYMENT_METHODS: frozenset[str] = frozenset({"cash", "card", "wallet", "bank_transfer"})
 RETURN_STATUSES: frozenset[str] = frozenset({"review", "accepted", "rejected"})
 RETURN_SETTLEMENTS: frozenset[str] = frozenset({"cash", "credit", "replace"})
-RETURN_REASONS: frozenset[str] = frozenset(
-    {
-        "manufacturing_defect",
-        "damaged_on_receipt",
-        "wrong_size",
-        "wrong_color",
-        "below_spec",
-        "surplus",
-    }
-)
 
 # Cost is kept with 4 places: an average of 10.00 and 12.00 over odd quantities is not a clean cent,
 # and rounding it to 2 places at every receipt would drift. Totals shown to people are rounded once.
@@ -213,9 +203,8 @@ class SupplierReturn(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, 
     warehouse_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("warehouses.id", ondelete="RESTRICT")
     )
-    # allowed: manufacturing_defect | damaged_on_receipt | wrong_size | wrong_color | below_spec |
-    # surplus
-    reason: Mapped[str] = mapped_column(String(31))
+    # Retired: the shop does not record why goods go back. Rows written before keep their value.
+    reason: Mapped[str | None] = mapped_column(String(31), nullable=True)
     # allowed: cash | credit | replace
     settlement: Mapped[str] = mapped_column(String(15))
     # allowed: review | accepted | rejected. Goods leave the shelf at registration; the MONEY effect

@@ -363,9 +363,6 @@ class ReturnLineIn(BaseModel):
 class ReturnIn(BaseModel):
     supplier_id: uuid.UUID
     lines: list[ReturnLineIn] = Field(min_length=1, max_length=200)
-    reason: str = Field(
-        pattern="^(manufacturing_defect|damaged_on_receipt|wrong_size|wrong_color|below_spec|surplus)$"
-    )
     settlement: str = Field(pattern="^(cash|credit|replace)$")
     purchase_order_id: uuid.UUID | None = None
     return_date: date | None = None
@@ -389,7 +386,6 @@ class ReturnOut(BaseModel):
     number: str
     supplier_id: str
     purchase_order_id: str | None
-    reason: str
     settlement: str
     status: str  # review | accepted | rejected
     total: str
@@ -406,7 +402,6 @@ async def _return_out(ctx, ret) -> ReturnOut:
         number=ret.number,
         supplier_id=str(ret.supplier_id),
         purchase_order_id=_id(ret.purchase_order_id),
-        reason=ret.reason,
         settlement=ret.settlement,
         status=ret.status,
         total=_m(ret.total),
@@ -451,7 +446,6 @@ async def create_supplier_return(body: ReturnIn, ctx: WriteCtx):
         ctx.tenant_id,
         supplier_id=body.supplier_id,
         lines=[ln.model_dump(mode="json", exclude_none=True) for ln in body.lines],
-        reason=body.reason,
         settlement=body.settlement,
         purchase_order_id=body.purchase_order_id,
         return_date=body.return_date,

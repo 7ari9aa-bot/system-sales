@@ -90,9 +90,7 @@ def test_stale_session_is_refused_fresh_one_is_not() -> None:
     fresh = PosSession(register_id=uuid.uuid4(), opened_at=datetime.now(UTC))
     PosService._ensure_session_current(fresh)
 
-    stale = PosSession(
-        register_id=uuid.uuid4(), opened_at=datetime.now(UTC) - timedelta(days=2)
-    )
+    stale = PosSession(register_id=uuid.uuid4(), opened_at=datetime.now(UTC) - timedelta(days=2))
     with pytest.raises(ConflictError):
         PosService._ensure_session_current(stale)
 
@@ -392,9 +390,7 @@ async def test_profile_cannot_be_disabled_with_open_session(db, tenant_ctx):
         opened_by=tenant_ctx.user.id,
     )
     with pytest.raises(ConflictError):
-        await PosProfileService.update(
-            db, tenant_ctx.tenant_id, profile.id, is_active=False
-        )
+        await PosProfileService.update(db, tenant_ctx.tenant_id, profile.id, is_active=False)
     # After the close, disabling is fine.
     sessions = await PosService.list_sessions(
         db, tenant_ctx.tenant_id, status="OPEN", register_id=register.id
@@ -406,9 +402,7 @@ async def test_profile_cannot_be_disabled_with_open_session(db, tenant_ctx):
         counted_cash="0.00",
         closed_by=tenant_ctx.user.id,
     )
-    updated = await PosProfileService.update(
-        db, tenant_ctx.tenant_id, profile.id, is_active=False
-    )
+    updated = await PosProfileService.update(db, tenant_ctx.tenant_id, profile.id, is_active=False)
     assert updated.is_active is False
 
 
@@ -446,11 +440,7 @@ async def test_profile_default_method_charges_the_whole_total(db, tenant_ctx):
         actor_user_id=tenant_ctx.user.id,
     )
     payment = (
-        (
-            await db.execute(
-                select(OrderPayment).where(OrderPayment.order_id == result["order_id"])
-            )
-        )
+        (await db.execute(select(OrderPayment).where(OrderPayment.order_id == result["order_id"])))
         .scalars()
         .one()
     )
@@ -494,3 +484,33 @@ async def test_tenders_must_settle_the_whole_order(db, tenant_ctx):
             items=[{"variant_id": str(variant.id), "quantity": 1}],  # 25.00
             tenders=[{"method": "card", "amount": "20.00"}],  # short
         )
+
+
+async def test_closing_a_shift_clears_its_parked_carts_and_only_its_own(db, tenant_ctx):
+    """A parked cart is a basket, not a sale. It cannot outlive its shift.
+
+    After the close nobody could resume it, so the close deletes it in the same transaction.
+    Another drawer's carts are not touched.
+    """
+    from app.modules.errors import NotFoundError
+    from app.modules.pos.service import PosService
+
+    register = await _register(db, tenant_ctx)
+    other_register = await _register(db, tenant_ctx)
+    mine = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
+    theirs = await PosService.open_session(db, tenant_ctx.tenant_id, other_register.id)
+    variant = await _sellable_variant(db, tenant_ctx)
+    line = [{"variant_id": str(variant.id), "quantity": 1}]
+    a = await PosService.hold_cart(db, tenant_ctx.tenant_id, mine.id, items=line)
+    await PosService.hold_cart(db, tenant_ctx.tenant_id, mine.id, items=line)
+    survivor = await PosService.hold_cart(db, tenant_ctx.tenant_id, theirs.id, items=line)
+
+    assert len(await PosService.list_held_carts(db, tenant_ctx.tenant_id, mine.id)) == 2
+    await PosService.close_session(db, tenant_ctx.tenant_id, mine.id, counted_cash="0")
+
+    assert await PosService.list_held_carts(db, tenant_ctx.tenant_id, mine.id) == []
+    with pytest.raises(NotFoundError):
+        await PosService.get_held_cart(db, tenant_ctx.tenant_id, a.id)
+    assert [
+        h.id for h in await PosService.list_held_carts(db, tenant_ctx.tenant_id, theirs.id)
+    ] == [survivor.id]
