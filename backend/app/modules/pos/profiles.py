@@ -41,6 +41,20 @@ def _clean_ceiling(value: object) -> Decimal:
     return ceiling
 
 
+#: "the caller did not send this field" - distinct from None, which means "remove the limit".
+_UNSET: object = object()
+
+
+def _clean_money_ceiling(value: object, field: str) -> Decimal | None:
+    """A money ceiling: None/blank = no limit, otherwise a non-negative amount (2 places)."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    ceiling = to_money(value, field)
+    if ceiling < 0:
+        raise ValidationError(f"{field} cannot be negative")
+    return ceiling
+
+
 def _clean_methods(methods: object) -> list[str]:
     if methods is None:
         return list(PAYMENT_METHODS)
@@ -128,6 +142,8 @@ class PosProfileService:
         default_payment_method: object = None,
         returns_allowed_methods: object = None,
         item_group_ids: object = None,
+        refund_ceiling: object = None,
+        cash_out_ceiling: object = None,
     ) -> PosProfile:
         from app.modules.customers.service import CustomerService
         from app.modules.inventory.service import InventoryService
@@ -154,6 +170,8 @@ class PosProfileService:
             allowed_payment_methods=_clean_methods(allowed_payment_methods),
             discount_ceiling_pct=_clean_ceiling(discount_ceiling_pct),
             require_customer=bool(require_customer),
+            refund_ceiling=_clean_money_ceiling(refund_ceiling, "refund_ceiling"),
+            cash_out_ceiling=_clean_money_ceiling(cash_out_ceiling, "cash_out_ceiling"),
             default_payment_method=_clean_default_method(default_payment_method),
             returns_allowed_methods=_clean_return_methods(returns_allowed_methods),
             item_group_ids=cleaned_groups,
@@ -211,6 +229,8 @@ class PosProfileService:
         default_payment_method: object = None,
         returns_allowed_methods: object = None,
         item_group_ids: object = None,
+        refund_ceiling: object = _UNSET,
+        cash_out_ceiling: object = _UNSET,
     ) -> PosProfile:
         from app.modules.customers.service import CustomerService
         from app.modules.inventory.service import InventoryService
@@ -251,6 +271,10 @@ class PosProfileService:
             profile.discount_ceiling_pct = _clean_ceiling(discount_ceiling_pct)
         if require_customer is not None:
             profile.require_customer = bool(require_customer)
+        if refund_ceiling is not _UNSET:
+            profile.refund_ceiling = _clean_money_ceiling(refund_ceiling, "refund_ceiling")
+        if cash_out_ceiling is not _UNSET:
+            profile.cash_out_ceiling = _clean_money_ceiling(cash_out_ceiling, "cash_out_ceiling")
         if default_payment_method is not None:
             profile.default_payment_method = _clean_default_method(default_payment_method)
         if returns_allowed_methods is not None:
@@ -422,4 +446,29 @@ class PosProfileService:
             raise ValidationError(
                 f"discount exceeds this profile's ceiling of "
                 f"{profile.discount_ceiling_pct}% and needs an approval"
+            )
+
+    @staticmethod
+    def ensure_within_money_ceiling(
+        profile: PosProfile | None,
+        amount: object,
+        *,
+        kind: str,
+        approved: bool,
+    ) -> None:
+        """Refuse a return or a cash pay-out above the profile's ceiling unless a manager approved.
+
+        ``kind`` is ``"refund"`` or ``"cash_out"``. No profile, or a NULL ceiling, means the owner
+        set no limit: nothing is refused. An amount equal to the ceiling passes; only more needs
+        a manager.
+        """
+        if approved or profile is None:
+            return
+        ceiling = profile.refund_ceiling if kind == "refund" else profile.cash_out_ceiling
+        if ceiling is None:
+            return
+        if to_money(amount, "amount") > to_money(ceiling, "ceiling"):
+            what = "a return" if kind == "refund" else "cash out of the drawer"
+            raise ValidationError(
+                f"{what} above {ceiling} needs a manager's approval on this till"
             )

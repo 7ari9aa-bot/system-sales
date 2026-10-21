@@ -41,6 +41,8 @@ class CreateProfileRequest(BaseModel):
     allowed_payment_methods: list[str] | None = None
     discount_ceiling_pct: str = Field(default="0", pattern=_MONEY)
     require_customer: bool = False
+    refund_ceiling: str | None = Field(default=None, pattern=_MONEY)
+    cash_out_ceiling: str | None = Field(default=None, pattern=_MONEY)
     default_payment_method: str | None = Field(
         default=None, pattern="^(cash|card|wallet|bank_transfer)$"
     )
@@ -55,6 +57,8 @@ class UpdateProfileRequest(BaseModel):
     allowed_payment_methods: list[str] | None = None
     discount_ceiling_pct: str | None = Field(default=None, pattern=_MONEY)
     require_customer: bool | None = None
+    refund_ceiling: str | None = Field(default=None, pattern=_MONEY)
+    cash_out_ceiling: str | None = Field(default=None, pattern=_MONEY)
     is_active: bool | None = None
     default_payment_method: str | None = Field(
         default=None, pattern="^(cash|card|wallet|bank_transfer)$"
@@ -79,6 +83,10 @@ def _profile_out(profile) -> dict:
         "allowed_payment_methods": list(profile.allowed_payment_methods or []),
         "discount_ceiling_pct": str(profile.discount_ceiling_pct),
         "require_customer": profile.require_customer,
+        "refund_ceiling": None if profile.refund_ceiling is None else str(profile.refund_ceiling),
+        "cash_out_ceiling": (
+            None if profile.cash_out_ceiling is None else str(profile.cash_out_ceiling)
+        ),
         "is_active": profile.is_active,
         "default_payment_method": profile.default_payment_method,
         "returns_allowed_methods": list(profile.returns_allowed_methods or []),
@@ -98,6 +106,8 @@ async def create_profile(body: CreateProfileRequest, ctx: PosConfigCtx):
         allowed_payment_methods=body.allowed_payment_methods,
         discount_ceiling_pct=body.discount_ceiling_pct,
         require_customer=body.require_customer,
+        refund_ceiling=body.refund_ceiling,
+        cash_out_ceiling=body.cash_out_ceiling,
         default_payment_method=body.default_payment_method,
         returns_allowed_methods=body.returns_allowed_methods,
         item_group_ids=body.item_group_ids,
@@ -133,6 +143,12 @@ async def update_profile(profile_id: UUID, body: UpdateProfileRequest, ctx: PosC
         default_payment_method=body.default_payment_method,
         returns_allowed_methods=body.returns_allowed_methods,
         item_group_ids=body.item_group_ids,
+        # A ceiling the caller did not send stays as it is; an explicit null removes the limit.
+        **{
+            name: getattr(body, name)
+            for name in ("refund_ceiling", "cash_out_ceiling")
+            if name in body.model_fields_set
+        },
     )
     return _profile_out(profile)
 
@@ -431,6 +447,7 @@ async def record_cash_movement(
         created_by=ctx.user.id,
         reference_id=body.reference_id,
         shift_override=override.active,
+        ceiling_override=override.active,
     )
     return {
         "id": str(row.id),
@@ -714,6 +731,7 @@ async def return_sale(
         restock=body.restock,
         actor_user_id=ctx.user.id,
         shift_override=override.active,
+        ceiling_override=override.active,
     )
     return {
         **result,

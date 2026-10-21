@@ -75,6 +75,11 @@ class PosProfile(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, Base
         Numeric(5, 2), server_default="0"
     )
     require_customer: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    # Money limits a cashier can move on their own authority, in the shop's currency. NULL = no
+    # limit (the owner has not set one); above it an action needs a manager's approval. The owner
+    # sets these, the code assumes no number.
+    refund_ceiling: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
+    cash_out_ceiling: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, server_default="true")
     # The till's preselected tender (ERPNext `set_grand_total_to_default_mop`):
     # a sale that names no tender charges this method with the whole total.

@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 411,
-    "sha256": "92cc072d59c415ce0b2347e0bb30ded2dc37740eb1553beb8382b7ddbab01fda",
+    "sha256": "4e4a1b065cc2095da75db728e02a0ad08e7f95c5c167d5ce3a59d3a62b148886",
     "typed_operations": 254
   },
   "spec": {
@@ -4244,6 +4244,18 @@
               ],
               "title": "Allowed Payment Methods"
             },
+            "cash_out_ceiling": {
+              "anyOf": [
+                {
+                  "pattern": "^\\d+(\\.\\d{1,2})?$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cash Out Ceiling"
+            },
             "code": {
               "maxLength": 31,
               "minLength": 1,
@@ -4299,6 +4311,18 @@
               "minLength": 1,
               "title": "Name",
               "type": "string"
+            },
+            "refund_ceiling": {
+              "anyOf": [
+                {
+                  "pattern": "^\\d+(\\.\\d{1,2})?$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refund Ceiling"
             },
             "require_customer": {
               "default": false,
@@ -18543,6 +18567,18 @@
               ],
               "title": "Allowed Payment Methods"
             },
+            "cash_out_ceiling": {
+              "anyOf": [
+                {
+                  "pattern": "^\\d+(\\.\\d{1,2})?$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cash Out Ceiling"
+            },
             "default_customer_id": {
               "anyOf": [
                 {
@@ -18616,6 +18652,18 @@
                 }
               ],
               "title": "Name"
+            },
+            "refund_ceiling": {
+              "anyOf": [
+                {
+                  "pattern": "^\\d+(\\.\\d{1,2})?$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refund Ceiling"
             },
             "require_customer": {
               "anyOf": [

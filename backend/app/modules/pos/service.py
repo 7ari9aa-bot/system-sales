@@ -392,6 +392,7 @@ class PosService:
         amount: object,
         created_by: UUID | None = None,
         shift_override: bool = False,
+        ceiling_override: bool = False,
         reference_type: str | None = None,
         reference_id: UUID | None = None,
     ) -> PosCashMovement:
@@ -413,12 +414,21 @@ class PosService:
         PosService._ensure_session_current(
             pos_session, tz=await PosService._shop_timezone(session, tenant_id)
         )
+        cleaned_amount = _positive_amount(amount, "amount")
+        if direction == "out" and reason in {"pay_out", "cash_drop"}:
+            # Cash leaving the drawer by hand: the owner's limit on what a cashier may take alone.
+            PosProfileService.ensure_within_money_ceiling(
+                await PosService.resolve_profile(session, tenant_id, pos_session),
+                cleaned_amount,
+                kind="cash_out",
+                approved=ceiling_override,
+            )
         row = PosCashMovement(
             tenant_id=tenant_id,
             session_id=session_id,
             direction=direction,
             reason=reason,
-            amount=_positive_amount(amount, "amount"),
+            amount=cleaned_amount,
             reference_type=reference_type,
             reference_id=reference_id,
             created_by_user_id=created_by,
@@ -2536,6 +2546,7 @@ class PosService:
         restock: bool = False,
         actor_user_id: UUID | None = None,
         shift_override: bool = False,
+        ceiling_override: bool = False,
     ) -> dict:
         """Give goods AND money back, line by line (ERPNext's POS return).
 
@@ -2713,6 +2724,14 @@ class PosService:
         refund_total = to_money(
             sum((entry["refund_total"] for entry in refund_lines), Decimal("0")),
             "refund_total",
+        )
+        # The owner's limit on what a cashier may hand back alone. Checked once the amount is known
+        # and BEFORE the drawer, the shelf or any ledger is touched.
+        PosProfileService.ensure_within_money_ceiling(
+            await PosService.resolve_profile(session, tenant_id, pos_session),
+            refund_total,
+            kind="refund",
+            approved=ceiling_override,
         )
 
         # Allocate the money across the ORIGINAL captured tenders — cash
