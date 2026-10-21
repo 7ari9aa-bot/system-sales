@@ -21,6 +21,37 @@ function Toggle({ checked, onChange, label }) {
   );
 }
 
+function CeilingFields({ value, onChange, t }) {
+  const field = (key, labelKey, fallback) => (
+    <label className="flex flex-col gap-1 text-[12px] text-muted-foreground">
+      {t(labelKey, fallback)}
+      <input
+        value={value[key] ?? ""}
+        onChange={(e) => onChange({ ...value, [key]: e.target.value })}
+        dir="ltr"
+        inputMode="decimal"
+        placeholder={key === "discount_ceiling_pct" ? "0" : "∞"}
+        className="h-9 rounded-xl border border-border bg-surface px-3 text-[13px] tabular-nums text-foreground"
+      />
+    </label>
+  );
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        {field("discount_ceiling_pct", "posSettings.discountCeiling", "Max discount without a manager (%)")}
+        {field("refund_ceiling", "posSettings.refundCeiling", "Max return without a manager (EGP)")}
+        {field("cash_out_ceiling", "posSettings.cashOutCeiling", "Max cash out without a manager (EGP)")}
+      </div>
+      <span className="text-[11px] text-muted-foreground">
+        {t(
+          "posSettings.ceilingHint",
+          "Leave empty for no limit: the cashier can do any amount. Above the limit a manager PIN is needed."
+        )}
+      </span>
+    </div>
+  );
+}
+
 export default function PosSettings() {
   const t = useT();
 
@@ -45,6 +76,8 @@ export default function PosSettings() {
     default_payment_method: "cash",
     allowed_payment_methods: ["cash", "card", "wallet", "bank_transfer"],
     discount_ceiling_pct: "100.00",
+    refund_ceiling: "",
+    cash_out_ceiling: "",
     require_customer: false,
   });
   const [registerForm, setRegisterForm] = React.useState({
@@ -53,8 +86,8 @@ export default function PosSettings() {
     warehouse_id: "",
     profile_id: "",
   });
-  const [grantByProfile, setGrantByProfile] = useState({});
-  const [grantUser, setGrantUser] = useState({});
+  const [grantByProfile, setGrantByProfile] = React.useState({});
+  const [grantUser, setGrantUser] = React.useState({});
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -121,6 +154,8 @@ export default function PosSettings() {
           default_payment_method: profileForm.default_payment_method,
           allowed_payment_methods: profileForm.allowed_payment_methods,
           discount_ceiling_pct: profileForm.discount_ceiling_pct,
+          refund_ceiling: profileForm.refund_ceiling || null,
+          cash_out_ceiling: profileForm.cash_out_ceiling || null,
           require_customer: profileForm.require_customer,
         },
       });
@@ -133,6 +168,8 @@ export default function PosSettings() {
         default_payment_method: "cash",
         allowed_payment_methods: ["cash", "card", "wallet", "bank_transfer"],
         discount_ceiling_pct: "100.00",
+        refund_ceiling: "",
+        cash_out_ceiling: "",
         require_customer: false,
       });
       await load();
@@ -153,6 +190,8 @@ export default function PosSettings() {
           default_payment_method: p.default_payment_method || undefined,
           allowed_payment_methods: p.allowed_payment_methods,
           discount_ceiling_pct: p.discount_ceiling_pct,
+          refund_ceiling: p.refund_ceiling || null,
+          cash_out_ceiling: p.cash_out_ceiling || null,
           require_customer: p.require_customer,
         },
       });
@@ -299,14 +338,12 @@ export default function PosSettings() {
                               </option>
                             ))}
                           </select>
-                          <input
-                            value={p.discount_ceiling_pct}
-                            onChange={(e) =>
-                              setProfiles((prev) => prev.map((row) => (row.id === p.id ? { ...row, discount_ceiling_pct: e.target.value } : row)))
+                          <CeilingFields
+                            t={t}
+                            value={p}
+                            onChange={(next) =>
+                              setProfiles((prev) => prev.map((row) => (row.id === p.id ? { ...row, ...next } : row)))
                             }
-                            dir="ltr"
-                            inputMode="decimal"
-                            className="h-9 rounded-xl border border-border bg-surface px-3 text-[13px] tabular-nums"
                           />
                         </div>
                         <div className="flex flex-wrap gap-3">
@@ -467,6 +504,7 @@ export default function PosSettings() {
                     ))}
                   </select>
                 </div>
+                <CeilingFields t={t} value={profileForm} onChange={setProfileForm} />
                 <div className="flex flex-wrap gap-3">
                   {METHODS.map((m) => (
                     <Toggle
