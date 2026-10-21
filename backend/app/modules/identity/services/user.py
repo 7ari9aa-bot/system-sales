@@ -23,6 +23,15 @@ class UserService:
         return user
 
     @staticmethod
+    async def names(session, user_ids) -> dict[uuid.UUID, str | None]:
+        """full_name per user id, in ONE query. A removed user is simply absent."""
+        ids = set(user_ids)
+        if not ids:
+            return {}
+        rows = await session.execute(select(User.id, User.full_name).where(User.id.in_(ids)))
+        return {row.id: row.full_name for row in rows}
+
+    @staticmethod
     async def update_profile(session, user_id: uuid.UUID, *, full_name: str | None = None) -> User:
         user = await UserService.get(session, user_id)
         if full_name is not None:

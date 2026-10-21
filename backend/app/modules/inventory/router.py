@@ -69,6 +69,9 @@ async def list_movements(
         reservation_id=reservation_id,
         limit=limit,
     )
+    from app.modules.identity.service import UserService
+
+    actor_names = await UserService.names(ctx.session, {m.actor_user_id for m in rows} - {None})
     return [
         {
             "id": str(m.id),
@@ -81,6 +84,8 @@ async def list_movements(
             "reference_id": str(m.reference_id) if m.reference_id else None,
             "balance_after": m.balance_after,
             "created_at": m.created_at.isoformat(),
+            "actor_user_id": str(m.actor_user_id) if m.actor_user_id else None,
+            "actor_name": actor_names.get(m.actor_user_id),
         }
         for m in rows
     ]

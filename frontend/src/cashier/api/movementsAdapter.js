@@ -70,6 +70,9 @@ export function movementsFromApi(raw) {
       balance: availability ? null : Number(m.balance_after),
       docType: m.reference_type ?? null,
       docId: m.reference_id ?? null,
+      // Who made it. null = unknown (rows from before this was recorded, or a system action);
+      // never a guess, and never the logged-in user's name.
+      staff: m.actor_name || null,
     };
   });
 }

@@ -4,7 +4,7 @@ import { CELL_MAIN, CELL_SUB, TD, TH } from "@/cashier/components/ui-kit/ledgerS
 import { colorHex } from "@/cashier/lib/uiConstants";
 import { fmtDateTime, fmtInt } from "@/cashier/lib/format";
 
-// أعمدة حركة الأصناف: التاريخ، المنتج بلونه ومقاسه ورمزه، نوع الحركة، داخل/خارج، الرصيد، والمستند.
+// أعمدة حركة الأصناف: التاريخ، المنتج بلونه ومقاسه ورمزه، نوع الحركة، داخل/خارج، الرصيد، والمستند، والموظف.
 export default function movementColumns() {
   return [
     {
@@ -56,5 +56,7 @@ export default function movementColumns() {
       render: (m) => <span className="num font-bold text-[#33322E]">{m.balance === null ? "—" : fmtInt(m.balance)}</span>,
     },
     { key: "doc", header: "المستند", headerClassName: TH, className: TD, render: (m) => <span className="num text-[11px] text-[#7A766C]">{m.doc}</span> },
+    // Blank (a dash) when nobody was recorded: older rows and system actions, never a guess.
+    { key: "staff", header: "الموظف", headerClassName: TH, className: TD, render: (m) => <span className={CELL_SUB}>{m.staff ?? "—"}</span> },
   ];
 }

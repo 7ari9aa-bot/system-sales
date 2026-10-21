@@ -7,6 +7,20 @@ const row = (over = {}) => ({
 });
 
 describe("movementsFromApi", () => {
+  it("shows who made a movement, and null (never a guess) when nobody was recorded", () => {
+    const [named, anonymous] = movementsFromApi([
+      row({ id: "2", actor_user_id: "u1", actor_name: "منى" }),
+      row({ id: "1", actor_user_id: null, actor_name: null }),
+    ]);
+    expect(named.staff).toBe("منى");
+    expect(anonymous.staff).toBeNull();
+  });
+
+  it("treats a removed user (id kept, no name) as unknown, not blank text", () => {
+    const [m] = movementsFromApi([row({ actor_user_id: "gone", actor_name: "" })]);
+    expect(m.staff).toBeNull();
+  });
+
   it("signs in and out", () => {
     const [out, inn] = movementsFromApi([row({ id: "2", direction: "out", quantity: 2, reason: "sale", balance_after: 3 }), row({ id: "1" })]);
     expect(out).toMatchObject({ delta: -2, qtyIn: 0, qtyOut: 2, balance: 3 });

@@ -33,6 +33,7 @@ const EXPORT_COLUMNS = [
   { header: "خارج", key: "qtyOut" },
   { header: "الرصيد", key: "balance" },
   { header: "المستند", key: "doc" },
+  { header: "الموظف", value: (m) => m.staff ?? "" },
 ];
 
 export default function MovementsPage() {

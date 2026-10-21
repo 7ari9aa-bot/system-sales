@@ -123,3 +123,23 @@ async def test_sale_and_return_record_the_cashier(db, tenant_ctx):
     )
     (return_row,) = await _rows(db, tenant_ctx, variant, "return")
     assert return_row.actor_user_id == cashier
+
+
+async def test_movements_list_names_the_actor(db, tenant_ctx):
+    from app.modules.identity.service import UserService
+
+    _, variant, wh = await _variant(db, tenant_ctx, stock=0)
+    await InventoryService.move(
+        db, tenant_ctx.tenant_id, variant.id, wh.id,
+        direction="in", quantity=3, reason="purchase",
+        actor_user_id=tenant_ctx.user.id,
+    )  # fmt: skip
+    await InventoryService.move(
+        db, tenant_ctx.tenant_id, variant.id, wh.id,
+        direction="out", quantity=1, reason="damage",
+    )  # fmt: skip
+    rows = await InventoryService.list_movements(db, tenant_ctx.tenant_id, variant_id=variant.id)
+    names = await UserService.names(db, {m.actor_user_id for m in rows} - {None})
+    # one name, resolved for the one row that has an actor; the anonymous row has none
+    assert names == {tenant_ctx.user.id: tenant_ctx.user.full_name}
+    assert await UserService.names(db, set()) == {}
