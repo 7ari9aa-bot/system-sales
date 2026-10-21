@@ -2384,9 +2384,16 @@ class PosService:
                 ) from None
             requested[variant_id] = requested.get(variant_id, 0) + quantity
 
+        # Serialise returns of ONE sale. The cap below is "sold minus already returned": read,
+        # decide, write. Without a lock two returns of the last unit both read "0 returned" and
+        # both pass; the money is only saved later by the payment-row cap, which fires late
+        # (after the drawer and the shelf were touched). The row lock makes the second one wait,
+        # then see the first one's lines and refuse on the quantity.
         order = (
             await session.execute(
-                select(Order).where(Order.tenant_id == tenant_id, Order.id == order_id)
+                select(Order)
+                .where(Order.tenant_id == tenant_id, Order.id == order_id)
+                .with_for_update()
             )
         ).scalar_one_or_none()
         if order is None:
@@ -2739,9 +2746,16 @@ class PosService:
                 ) from None
             requested[variant_id] = requested.get(variant_id, 0) + quantity
 
+        # Serialise returns of ONE sale. The cap below is "sold minus already returned": read,
+        # decide, write. Without a lock two returns of the last unit both read "0 returned" and
+        # both pass; the money is only saved later by the payment-row cap, which fires late
+        # (after the drawer and the shelf were touched). The row lock makes the second one wait,
+        # then see the first one's lines and refuse on the quantity.
         order = (
             await session.execute(
-                select(Order).where(Order.tenant_id == tenant_id, Order.id == order_id)
+                select(Order)
+                .where(Order.tenant_id == tenant_id, Order.id == order_id)
+                .with_for_update()
             )
         ).scalar_one_or_none()
         if order is None:
