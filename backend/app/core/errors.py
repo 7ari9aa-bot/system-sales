@@ -48,6 +48,9 @@ class DomainError(Exception):
     # Transient failures (rate limits, circuit open, provider blips) may be
     # retried; set True per-class or per-instance.
     retryable: bool = False
+    # ``details`` is internal by default (budgets, ids, reasons for logs). A class whose details
+    # are written for the client - the till needs to know WHICH limit was crossed - opts in.
+    expose_details: bool = False
 
     def __init__(
         self,
@@ -153,6 +156,7 @@ def build_error_envelope(
     *,
     retryable: bool = False,
     request_id: str | None = None,
+    details: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The one writer of the v2 envelope's key set.
 
@@ -160,7 +164,7 @@ def build_error_envelope(
     unhandled crash) carry no ``DomainError``, so they build the same body
     through here rather than hand-assembling a fifth shape.
     """
-    return {
+    body: dict[str, Any] = {
         "error": {
             "code": code,
             "message": message,
@@ -168,10 +172,18 @@ def build_error_envelope(
             "request_id": request_id,
         }
     }
+    # Only when there is something to say, so every error that has none keeps its exact old shape.
+    if details:
+        body["error"]["details"] = details
+    return body
 
 
 def build_error_body(exc: DomainError, request_id: str | None = None) -> dict[str, Any]:
-    """Unified error contract body: ``{error: {code, message, retryable, request_id}}``."""
+    """Unified error body: ``{error: {code, message, retryable, request_id}}`` plus ``details``."""
     return build_error_envelope(
-        exc.code, exc.message, retryable=exc.retryable, request_id=request_id
+        exc.code,
+        exc.message,
+        retryable=exc.retryable,
+        request_id=request_id,
+        details=exc.details if exc.expose_details else None,
     )

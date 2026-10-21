@@ -14,7 +14,7 @@ import sqlalchemy as sa
 
 from app.modules.errors import ValidationError
 from app.modules.pos.models import PosCashMovement
-from app.modules.pos.profiles import PosProfileService
+from app.modules.pos.profiles import ApprovalRequiredError, PosProfileService
 from app.modules.pos.service import PosService
 from tests.test_pos_returns import _customer, _register, _sellable_variant, _warehouse
 
@@ -180,3 +180,26 @@ async def test_the_owner_can_set_change_and_remove_a_ceiling(db, tenant_ctx):
     assert (await change(refund_ceiling=None)).refund_ceiling is None
     with pytest.raises(ValidationError, match="negative"):
         await change(cash_out_ceiling="-1")
+
+
+# ---------------------------------------------------- the till can tell why ----
+
+
+async def test_a_refused_return_says_approval_is_required_and_which_limit(db, tenant_ctx):
+    shift, _ = await _till(db, tenant_ctx, refund_ceiling="40.00")
+    variant, order_id = await _sold_order(db, tenant_ctx, shift)
+    with pytest.raises(ApprovalRequiredError) as exc:
+        await _return(db, tenant_ctx, shift, variant, order_id)
+    assert exc.value.code == "approval_required"
+    assert exc.value.http_status == 400
+    assert exc.value.details == {"limit": "refund", "ceiling": "40.00"}
+    assert isinstance(exc.value, ValidationError)  # nothing that catches these changes
+
+
+async def test_a_refused_pay_out_names_the_cash_out_limit(db, tenant_ctx):
+    shift, _ = await _till(db, tenant_ctx, cash_out_ceiling="10.00")
+    with pytest.raises(ApprovalRequiredError) as exc:
+        await PosService.record_cash_movement(
+            db, tenant_ctx.tenant_id, shift.id, direction="out", reason="pay_out", amount="11.00"
+        )
+    assert exc.value.details == {"limit": "cash_out", "ceiling": "10.00"}

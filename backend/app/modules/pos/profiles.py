@@ -33,6 +33,19 @@ def _clean_code(code: object) -> str:
     return cleaned
 
 
+class ApprovalRequiredError(ValidationError):
+    """The action is above the cashier's own limit and a manager must approve it.
+
+    Still a 400 and still a ``ValidationError`` (nothing that catches those changes), but with a
+    stable ``code`` so the till can open the manager-PIN dialog instead of showing a red message.
+    ``details`` says which limit was crossed: ``{"limit": "refund" | "cash_out" | "discount",
+    "ceiling": "<amount>"}``.
+    """
+
+    code = "approval_required"
+    expose_details = True  # {"limit", "ceiling"}: written for the till, nothing internal
+
+
 def _clean_ceiling(value: object) -> Decimal:
     """A discount ceiling is a percentage in [0, 100], quantized to 2 places."""
     ceiling = to_money(value, "discount_ceiling_pct")
@@ -63,8 +76,7 @@ def _clean_methods(methods: object) -> list[str]:
     unknown = [m for m in methods if m not in PAYMENT_METHODS]
     if unknown:
         raise ValidationError(
-            f"unknown payment methods {sorted(set(unknown))}; "
-            f"allowed {sorted(PAYMENT_METHODS)}"
+            f"unknown payment methods {sorted(set(unknown))}; allowed {sorted(PAYMENT_METHODS)}"
         )
     # Deduplicate while preserving the caller's order.
     seen: list[str] = []
@@ -80,9 +92,7 @@ def _clean_default_method(value: object) -> str | None:
         return None
     method = str(value)
     if method not in PAYMENT_METHODS:
-        raise ValidationError(
-            f"default_payment_method must be one of {sorted(PAYMENT_METHODS)}"
-        )
+        raise ValidationError(f"default_payment_method must be one of {sorted(PAYMENT_METHODS)}")
     return method
 
 
@@ -157,9 +167,7 @@ class PosProfileService:
 
         cleaned_groups = _clean_item_groups(item_group_ids)
         if cleaned_groups:
-            await PosProfileService._ensure_categories_exist(
-                session, tenant_id, cleaned_groups
-            )
+            await PosProfileService._ensure_categories_exist(session, tenant_id, cleaned_groups)
 
         profile = PosProfile(
             tenant_id=tenant_id,
@@ -278,15 +286,11 @@ class PosProfileService:
         if default_payment_method is not None:
             profile.default_payment_method = _clean_default_method(default_payment_method)
         if returns_allowed_methods is not None:
-            profile.returns_allowed_methods = _clean_return_methods(
-                returns_allowed_methods
-            )
+            profile.returns_allowed_methods = _clean_return_methods(returns_allowed_methods)
         if item_group_ids is not None:
             cleaned_groups = _clean_item_groups(item_group_ids)
             if cleaned_groups:
-                await PosProfileService._ensure_categories_exist(
-                    session, tenant_id, cleaned_groups
-                )
+                await PosProfileService._ensure_categories_exist(session, tenant_id, cleaned_groups)
             profile.item_group_ids = cleaned_groups
         if is_active is not None:
             if not bool(is_active) and profile.is_active:
@@ -403,13 +407,9 @@ class PosProfileService:
         rides the catalog's own service, never its tables."""
         from app.modules.catalog.service import CatalogService
 
-        ok = await CatalogService.categories_exist(
-            session, tenant_id, [UUID(g) for g in group_ids]
-        )
+        ok = await CatalogService.categories_exist(session, tenant_id, [UUID(g) for g in group_ids])
         if not ok:
-            raise ValidationError(
-                "item_group_ids contains a category this tenant does not have"
-            )
+            raise ValidationError("item_group_ids contains a category this tenant does not have")
 
     # --------------------------------------------------------- policy -----
 
@@ -443,9 +443,10 @@ class PosProfileService:
         if approved:
             return
         if PosProfileService.discount_needs_approval(profile, discount_total, subtotal):
-            raise ValidationError(
+            raise ApprovalRequiredError(
                 f"discount exceeds this profile's ceiling of "
-                f"{profile.discount_ceiling_pct}% and needs an approval"
+                f"{profile.discount_ceiling_pct}% and needs an approval",
+                details={"limit": "discount", "ceiling": str(profile.discount_ceiling_pct)},
             )
 
     @staticmethod
@@ -469,6 +470,7 @@ class PosProfileService:
             return
         if to_money(amount, "amount") > to_money(ceiling, "ceiling"):
             what = "a return" if kind == "refund" else "cash out of the drawer"
-            raise ValidationError(
-                f"{what} above {ceiling} needs a manager's approval on this till"
+            raise ApprovalRequiredError(
+                f"{what} above {ceiling} needs a manager's approval on this till",
+                details={"limit": kind, "ceiling": str(ceiling)},
             )

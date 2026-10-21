@@ -34,7 +34,21 @@ function needIntent(intent) {
   if (!intent || typeof intent.key !== "string" || intent.key.length < 8) {
     throw new TypeError("posApi: a money call needs an intent (use newIntent()) so a retry cannot double-charge");
   }
-  return { "Idempotency-Key": intent.key };
+  const headers = { "Idempotency-Key": intent.key };
+  // A manager's approval rides on the SAME intent, so the retry of one tap carries the same PIN and
+  // no call site changes. The server reads these two headers (resolve_override) and never stores the PIN.
+  if (intent.approval) {
+    const { managerId, pin } = intent.approval;
+    if (!managerId || !pin) throw new TypeError("posApi: an approval needs both managerId and pin");
+    headers["X-Manager-Id"] = String(managerId);
+    headers["X-Manager-Pin"] = String(pin);
+  }
+  return headers;
+}
+
+/** The same intent (so the same Idempotency-Key) with a manager's approval attached. */
+export function withApproval(intent, { managerId, pin }) {
+  return { ...intent, approval: { managerId, pin } };
 }
 
 function method(m) {
