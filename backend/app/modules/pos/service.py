@@ -2368,8 +2368,10 @@ class PosService:
         ).scalar_one_or_none()
         if receipt is None:
             raise NotFoundError(f"no POS sale receipt for order {order_id}")
-        if receipt.session_id != pos_session.id:
-            raise ConflictError("this sale belongs to a different session")
+        # The sale may have been rung on an EARLIER shift, even one already counted and closed: the
+        # customer comes back tomorrow. Quantities and prices are checked against the ORIGINAL sale
+        # (below); the money leaves the drawer that is open NOW. Booking it on the old shift would
+        # change a closed, counted report after the fact.
 
         # Requested quantities, merged per variant (a customer may hand back
         # the same SKU twice in one return).
@@ -2732,8 +2734,8 @@ class PosService:
         ).scalar_one_or_none()
         if receipt is None:
             raise NotFoundError(f"no POS sale receipt for order {order_id}")
-        if receipt.session_id != pos_session.id:
-            raise ConflictError("this sale belongs to a different session")
+        # As in return_sale: the original sale may be on an earlier, closed shift. The goods are
+        # checked against that sale; the money moves on the shift that is open now.
 
         requested: dict[UUID, int] = {}
         for line in return_lines:
