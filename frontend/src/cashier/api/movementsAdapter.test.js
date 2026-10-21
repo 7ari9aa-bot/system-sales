@@ -75,3 +75,31 @@ describe("labels and query", () => {
     expect(q.get("limit")).toBe("500");
   });
 });
+
+import { describeMovements as _describe, movementTotals as _totals } from "./movementsAdapter";
+
+describe("describeMovements / movementTotals", () => {
+  const rows = [
+    { id: "1", variantId: "v1", availabilityOnly: false, qtyIn: 5, qtyOut: 0, docId: "d1", docType: "purchase" },
+    { id: "2", variantId: "v1", availabilityOnly: true, qtyIn: 0, qtyOut: 0, docId: "r1", docType: "reservation" },
+    { id: "3", variantId: "gone", availabilityOnly: false, qtyIn: 0, qtyOut: 2, docId: "d1", docType: "sale" },
+    { id: "4", variantId: "v1", availabilityOnly: false, qtyIn: 0, qtyOut: 1, docId: null, docType: null },
+  ];
+  const variants = new Map([["v1", { productName: "قميص", color: "أسود", size: "M", sku: "SH-1" }]]);
+  const out = _describe(rows, variants);
+
+  it("drops availability-only rows and names the variant", () => {
+    expect(out.map((m) => m.id)).toEqual(["1", "3", "4"]);
+    expect(out[0]).toMatchObject({ productName: "قميص", color: "أسود", size: "M", sku: "SH-1" });
+  });
+  it("keeps a movement whose variant left the stock list", () => {
+    expect(out[1].productName).toBe("منتج غير معروض");
+    expect(out[1].sku).toBe("");
+  });
+  it("shows a dash when there is no source document", () => {
+    expect(out[2].doc).toBe("—");
+  });
+  it("totals in/out and counts distinct documents once", () => {
+    expect(_totals(out)).toEqual({ in: 5, out: 3, docs: 1 });
+  });
+});

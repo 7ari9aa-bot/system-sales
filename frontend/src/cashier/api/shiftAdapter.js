@@ -78,3 +78,22 @@ export function shiftsFromApi(sessions, reports = {}, opts = {}) {
     .sort((a, b) => String(b.opened_at).localeCompare(String(a.opened_at)))
     .map((s) => shiftFromApi(s, reports[s.id] ?? null, opts));
 }
+
+/** Totals for the shifts screen, computed from the real rows. `open` is the drawer that is still running. */
+export function shiftsSummary(rows = []) {
+  const open = rows.find((r) => r.status === "open") ?? null;
+  const closed = rows.filter((r) => r.status === "closed");
+  return {
+    open,
+    count: rows.length,
+    closedCount: closed.length,
+    cashSales: +rows.reduce((s, r) => s + (r.cashSales ?? 0), 0).toFixed(2),
+    differences: +closed.reduce((s, r) => s + Math.abs(r.difference ?? 0), 0).toFixed(2),
+    collected: +closed.reduce((s, r) => s + (r.actual ?? 0), 0).toFixed(2),
+  };
+}
+
+/** The distinct employees who actually worked a shift, for the filter. */
+export function shiftEmployees(rows = []) {
+  return [...new Set(rows.map((r) => r.employee).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ar"));
+}

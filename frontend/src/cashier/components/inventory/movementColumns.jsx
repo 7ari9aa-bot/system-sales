@@ -4,7 +4,7 @@ import { CELL_MAIN, CELL_SUB, TD, TH } from "@/cashier/components/ui-kit/ledgerS
 import { colorHex } from "@/cashier/lib/uiConstants";
 import { fmtDateTime, fmtInt } from "@/cashier/lib/format";
 
-// أعمدة حركة الأصناف: التاريخ، المنتج بلونه ومقاسه ورمزه، نوع الحركة، داخل/خارج، الرصيد، المستند، والموظف.
+// أعمدة حركة الأصناف: التاريخ، المنتج بلونه ومقاسه ورمزه، نوع الحركة، داخل/خارج، الرصيد، والمستند.
 export default function movementColumns() {
   return [
     {
@@ -23,14 +23,14 @@ export default function movementColumns() {
         <span className="block max-w-[230px]">
           <span className={`block truncate ${CELL_MAIN} font-medium`}>{m.productName}</span>
           <span className="mt-0.5 flex items-center gap-2 text-[11px] text-[#7A766C]">
-            <ColorSwatch color={m.variant.split(" / ")[0]} hex={colorHex(m.variant.split(" / ")[0])} showLabel={false} />
-            <span>مقاس {m.variant.split(" / ")[1]}</span>
+            {m.color ? <ColorSwatch color={m.color} hex={colorHex(m.color)} showLabel={false} /> : null}
+            {m.size ? <span>مقاس {m.size}</span> : null}
             <span className="num">{m.sku}</span>
           </span>
         </span>
       ),
     },
-    { key: "type", header: "نوع الحركة", headerClassName: TH, className: TD, render: (m) => <StatusBadge kind="movement" value={m.type} /> },
+    { key: "type", header: "نوع الحركة", headerClassName: TH, className: TD, render: (m) => <StatusBadge kind="movement" value={m.reason} /> },
     {
       key: "qtyIn",
       header: "داخل",
@@ -53,9 +53,8 @@ export default function movementColumns() {
       headerClassName: TH,
       className: TD,
       align: "center",
-      render: (m) => <span className="num font-bold text-[#33322E]">{fmtInt(m.balance)}</span>,
+      render: (m) => <span className="num font-bold text-[#33322E]">{m.balance === null ? "—" : fmtInt(m.balance)}</span>,
     },
     { key: "doc", header: "المستند", headerClassName: TH, className: TD, render: (m) => <span className="num text-[11px] text-[#7A766C]">{m.doc}</span> },
-    { key: "employee", header: "الموظف", headerClassName: TH, className: TD, render: (m) => <span className={CELL_SUB}>{m.employee}</span> },
   ];
 }

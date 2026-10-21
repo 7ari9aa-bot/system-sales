@@ -82,3 +82,34 @@ export function movementsQuery({ variantId, reason, limit = 200 } = {}) {
   q.set("limit", String(Math.max(1, Math.min(Number(limit) || 200, 500))));
   return q.toString();
 }
+
+/**
+ * Attach the product name, colour/size and SKU of each movement's variant. `variants` maps variant id to
+ * a stock row (see stockRowFromApi). A variant that is no longer in the stock list (archived) keeps its
+ * movement, labelled as unknown, instead of the row being dropped. Availability-only rows (a hold on
+ * stock that did not move on_hand) are left out of the ledger screen: they are not stock movements.
+ */
+export function describeMovements(rows, variants) {
+  return rows
+    .filter((m) => !m.availabilityOnly)
+    .map((m) => {
+      const v = variants.get(m.variantId);
+      return {
+        ...m,
+        productName: v?.productName ?? "منتج غير معروض",
+        color: v?.color ?? "",
+        size: v?.size ?? "",
+        sku: v?.sku ?? "",
+        doc: m.docId ? `${m.docType ?? ""} ${String(m.docId).slice(0, 8)}`.trim() : "—",
+      };
+    });
+}
+
+/** Ledger-wide totals for the stats strip. `docs` counts distinct source documents, not rows. */
+export function movementTotals(rows) {
+  return {
+    in: rows.reduce((s, m) => s + (m.qtyIn || 0), 0),
+    out: rows.reduce((s, m) => s + (m.qtyOut || 0), 0),
+    docs: new Set(rows.filter((m) => m.docId).map((m) => m.docId)).size,
+  };
+}

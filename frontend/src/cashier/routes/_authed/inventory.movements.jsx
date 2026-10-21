@@ -11,25 +11,28 @@ import PageHero from "@/cashier/components/ui-kit/PageHero";
 import MovementFilters from "@/cashier/components/inventory/MovementFilters";
 import movementColumns from "@/cashier/components/inventory/movementColumns";
 import { BTN, LEDGER, LEDGER_FOOTER, LEDGER_TOOLBAR } from "@/cashier/components/ui-kit/ledgerStyles";
-import { stockMovements } from "@/cashier/lib/mockData";
-import { MOVEMENT_TYPES, fmtDateTime, fmtInt } from "@/cashier/lib/format";
+import { useAllMovements } from "@/cashier/api/useMovements";
+import { movementTotals } from "@/cashier/api/movementsAdapter";
+import { MOVEMENT_TYPES, fmtDateTime, fmtInt, localDay } from "@/cashier/lib/format";
 import { exportCsv } from "@/cashier/lib/exportCsv";
 
 
 const HERO_IMAGE = "https://media.base44.com/images/public/6ad5982c1b45f350e41ffe73/3dfcc7412_generated_image.png";
 const HERO_ALT = "صناديق وملابس على رفوف المخزن مع سجل جرد";
 
+const LEDGER_WINDOW = 500; // matches the limit asked of the server
+
 const EXPORT_COLUMNS = [
   { header: "التاريخ", value: (m) => fmtDateTime(m.date) },
   { header: "المنتج", key: "productName" },
-  { header: "اللون / المقاس", key: "variant" },
+  { header: "اللون", key: "color" },
+  { header: "المقاس", key: "size" },
   { header: "SKU", key: "sku" },
-  { header: "نوع الحركة", value: (m) => MOVEMENT_TYPES[m.type]?.label ?? m.type },
+  { header: "نوع الحركة", value: (m) => MOVEMENT_TYPES[m.reason]?.label ?? m.label },
   { header: "داخل", key: "qtyIn" },
   { header: "خارج", key: "qtyOut" },
   { header: "الرصيد", key: "balance" },
   { header: "المستند", key: "doc" },
-  { header: "الموظف", key: "employee" },
 ];
 
 export default function MovementsPage() {
@@ -38,21 +41,19 @@ export default function MovementsPage() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
 
-  const rows = stockMovements.filter((m) => {
+  // The type filter runs on the server so it reaches movements beyond the loaded window; search and
+  // dates narrow what is loaded.
+  const { data: loaded = [], isPending, error: loadError, refetch } = useAllMovements({ reason: type });
+  const rows = loaded.filter((m) => {
     const t = term.trim().toLowerCase();
     if (t && !(m.productName.toLowerCase().includes(t) || m.sku.toLowerCase().includes(t) || m.doc.toLowerCase().includes(t))) return false;
-    if (type && m.type !== type) return false;
-    const day = m.date.slice(0, 10);
+    const day = localDay(m.date);
     if (from && day < from) return false;
     if (to && day > to) return false;
     return true;
   });
 
-  const totals = {
-    in: rows.reduce((s, m) => s + (m.qtyIn || 0), 0),
-    out: rows.reduce((s, m) => s + (m.qtyOut || 0), 0),
-    docs: new Set(rows.map((m) => m.doc)).size,
-  };
+  const totals = movementTotals(rows);
 
   const columns = movementColumns();
 
@@ -79,6 +80,18 @@ export default function MovementsPage() {
         </PageHero>
       }
     >
+      {loadError ? (
+        <div role="alert" className="mb-3 flex items-center justify-between rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+          <span>تعذّر تحميل حركة الأصناف.</span>
+          <Button variant="outline" onClick={() => refetch()}>إعادة المحاولة</Button>
+        </div>
+      ) : null}
+      {!loadError && loaded.length >= LEDGER_WINDOW ? (
+        <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+          المعروض آخر {fmtInt(LEDGER_WINDOW)} حركة فقط. للأقدم استخدم حركة منتج واحد من شاشة المخزون.
+        </div>
+      ) : null}
+
       <MovementFilters
         term={term}
         onTerm={setTerm}
@@ -103,8 +116,8 @@ export default function MovementsPage() {
         columns={columns}
         rows={rows}
         pageSize={10}
-        emptyTitle="لا توجد حركات مطابقة"
-        emptyDescription="جرّب تغيير نوع الحركة أو نطاق التاريخ."
+        emptyTitle={isPending ? "جاري التحميل…" : "لا توجد حركات مطابقة"}
+        emptyDescription={isPending ? "" : "جرّب تغيير نوع الحركة أو نطاق التاريخ."}
         emptyAction={
           <Button variant="outline" size="sm" onClick={() => setType("")}>
             مسح الفلاتر

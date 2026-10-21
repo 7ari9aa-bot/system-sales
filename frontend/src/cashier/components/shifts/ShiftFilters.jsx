@@ -2,10 +2,9 @@ import { Label } from "@/cashier/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/cashier/components/ui/select";
 import FilterPanel from "@/cashier/components/ui-kit/FilterPanel";
 import { FIELD_LABEL, FIELD_SELECT, FILTER_PANEL, FILTER_PANEL_CONTENT, FILTER_PANEL_HEADER } from "@/cashier/components/ui-kit/ledgerStyles";
-import { employees } from "@/cashier/lib/mockData";
 
 // فلاتر جدول الورديات: الموظف وحالة الوردية.
-export default function ShiftFilters({ employee, onEmployee, status, onStatus, onReset }) {
+export default function ShiftFilters({ employees = [], employee, onEmployee, status, onStatus, onReset }) {
   const activeCount = [employee, status].filter(Boolean).length;
 
   return (
@@ -25,9 +24,9 @@ export default function ShiftFilters({ employee, onEmployee, status, onStatus, o
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">كل الموظفين</SelectItem>
-              {employees.map((e) => (
-                <SelectItem key={e.id} value={e.name}>
-                  {e.name}
+              {employees.map((name) => (
+                <SelectItem key={name} value={name}>
+                  {name}
                 </SelectItem>
               ))}
             </SelectContent>

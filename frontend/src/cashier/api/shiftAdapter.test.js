@@ -156,3 +156,28 @@ describe("payment methods are no longer modelled, but no historical money disapp
     for (const k of ["cardSales", "walletSales", "creditSales", "otherSales"]) expect(row).not.toHaveProperty(k);
   });
 });
+
+import { shiftEmployees as _shiftEmployees, shiftsSummary as _shiftsSummary } from "./shiftAdapter";
+
+describe("shiftsSummary / shiftEmployees", () => {
+  const rows = [
+    { status: "open", employee: "منى", cashSales: 100, difference: 0, actual: 0 },
+    { status: "closed", employee: "أحمد", cashSales: 300, difference: -5, actual: 295 },
+    { status: "closed", employee: "منى", cashSales: 200, difference: 2.5, actual: 202.5 },
+  ];
+  it("totals only closed shifts for differences and collected", () => {
+    const s = _shiftsSummary(rows);
+    expect(s.count).toBe(3);
+    expect(s.closedCount).toBe(2);
+    expect(s.open.employee).toBe("منى");
+    expect(s.cashSales).toBe(600);
+    expect(s.differences).toBe(7.5);
+    expect(s.collected).toBe(497.5);
+  });
+  it("is safe on no shifts", () => {
+    expect(_shiftsSummary([])).toMatchObject({ open: null, count: 0, cashSales: 0 });
+  });
+  it("lists each employee once, sorted", () => {
+    expect(_shiftEmployees(rows)).toEqual(["أحمد", "منى"]);
+  });
+});

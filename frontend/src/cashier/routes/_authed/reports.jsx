@@ -6,7 +6,7 @@ import PageHero from "@/cashier/components/ui-kit/PageHero";
 import ReportsFilters from "@/cashier/components/reports/ReportsFilters";
 import SalesReportSection from "@/cashier/components/reports/SalesReportSection";
 import ZReportSection from "@/cashier/components/reports/ZReportSection";
-import { PERIODS } from "@/cashier/lib/opsData";
+import { PERIODS } from "@/cashier/lib/uiConstants";
 import { useAuth } from "@/lib/AuthContext";
 import { useShifts } from "@/cashier/api/useShifts";
 import { useSalesReport, useTopProducts } from "@/cashier/api/usePosSale";

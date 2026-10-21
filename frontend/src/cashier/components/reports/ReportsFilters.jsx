@@ -2,7 +2,7 @@ import { Label } from "@/cashier/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/cashier/components/ui/select";
 import FilterPanel from "@/cashier/components/ui-kit/FilterPanel";
 import { FIELD_LABEL, FIELD_SELECT, FILTER_PANEL, FILTER_PANEL_CONTENT, FILTER_PANEL_HEADER } from "@/cashier/components/ui-kit/ledgerStyles";
-import { PERIODS } from "@/cashier/lib/opsData";
+import { PERIODS } from "@/cashier/lib/uiConstants";
 
 // فلاتر التقارير: الفترة الزمنية. (فلتر التصنيف يعود مع تقارير الأصناف والأرباح والمخزون حين تُربط بالخادم.)
 export default function ReportsFilters({ period, onPeriod, onReset }) {

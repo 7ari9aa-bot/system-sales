@@ -17,7 +17,7 @@ import ShiftDetailsDialog from "@/cashier/components/shifts/ShiftDetailsDialog";
 import ShiftFilters from "@/cashier/components/shifts/ShiftFilters";
 import shiftColumns from "@/cashier/components/shifts/shiftColumns";
 import { BTN, BTN_PRIMARY, LEDGER, LEDGER_FOOTER, LEDGER_TOOLBAR } from "@/cashier/components/ui-kit/ledgerStyles";
-import { shiftsSummary } from "@/cashier/lib/storeOpsData";
+import { shiftEmployees, shiftsSummary } from "@/cashier/api/shiftAdapter";
 import { useCashMovement, useClosePreview, useCloseShift, useHeldCount, useOpenShift, useShifts } from "@/cashier/api/useShifts";
 import { useAuth } from "@/lib/AuthContext";
 import { fmtInt, fmtMoney, fmtTime } from "@/cashier/lib/format";
@@ -135,6 +135,7 @@ export default function ShiftsPage() {
       ) : null}
 
       <ShiftFilters
+        employees={shiftEmployees(rows)}
         employee={employeeFilter}
         onEmployee={(value) => setEmployeeFilter(value === "all" ? "" : value)}
         status={statusFilter}

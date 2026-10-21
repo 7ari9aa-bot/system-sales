@@ -4,7 +4,7 @@ import PageHeader from "@/cashier/components/ui-kit/PageHeader";
 import ShopProfileForm from "@/cashier/components/settings/ShopProfileForm";
 import SalesSettings from "@/cashier/components/settings/SalesSettings";
 import PrintAndBarcodeSettings from "@/cashier/components/settings/PrintAndBarcodeSettings";
-import VocabularyLists from "@/cashier/components/settings/VocabularyLists";
+import CategoriesSettings from "@/cashier/components/settings/CategoriesSettings";
 import UsersSettings from "@/cashier/components/settings/UsersSettings";
 import BackupTab from "@/cashier/components/settings/BackupTab";
 
@@ -13,7 +13,7 @@ const TABS = [
   { value: "shop", label: "بيانات المحل", icon: Store },
   { value: "sales", label: "المبيعات والخصم", icon: Wallet },
   { value: "print", label: "الطباعة والباركود", icon: Printer },
-  { value: "lists", label: "القوائم", icon: Tags },
+  { value: "lists", label: "الفئات", icon: Tags },
   { value: "users", label: "المستخدمون", icon: Users },
   { value: "backup", label: "النسخ الاحتياطي", icon: DatabaseBackup },
 ];
@@ -50,7 +50,7 @@ export default function SettingsPage() {
           <PrintAndBarcodeSettings />
         </TabsContent>
         <TabsContent value="lists" className="mt-4">
-          <VocabularyLists />
+          <CategoriesSettings />
         </TabsContent>
         <TabsContent value="users" className="mt-4">
           <UsersSettings />

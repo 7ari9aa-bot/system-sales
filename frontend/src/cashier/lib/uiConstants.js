@@ -32,3 +32,10 @@ export function stockStatus(qty, threshold) {
   if (Number.isFinite(threshold) && qty <= threshold) return "low";
   return "in";
 }
+
+/** The report period choices. Labels only: the period itself is applied by the backend. */
+export const PERIODS = [
+  { key: "today", label: "اليوم" },
+  { key: "7d", label: "آخر ٧ أيام" },
+  { key: "30d", label: "آخر ٣٠ يومًا" },
+];

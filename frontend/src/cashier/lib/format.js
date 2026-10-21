@@ -35,6 +35,13 @@ export function fmtDate(iso) {
   return d.toLocaleDateString("ar-EG", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
+/** The calendar day (YYYY-MM-DD) of an instant in the viewer's local time, for the date filters. */
+export function localDay(iso) {
+  const d = new Date(iso);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 export function fmtTime(iso) {
   if (!iso) return "—";
   return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
@@ -72,12 +79,13 @@ export const PRODUCT_STATUS = {
 export const MOVEMENT_TYPES = {
   purchase: { label: "توريد", tone: "info" },
   sale: { label: "بيع", tone: "success" },
-  return: { label: "مرتجع", tone: "danger" },
-  exchange: { label: "استبدال", tone: "violet" },
-  transfer: { label: "تحويل مخزن", tone: "neutral" },
+  return: { label: "مرتجع عميل", tone: "danger" },
   adjustment: { label: "تسوية جرد", tone: "warning" },
   supplier_return: { label: "مرتجع لمورد", tone: "danger" },
   supplier_return_reversal: { label: "إلغاء مرتجع مورد", tone: "info" },
+  transfer_in: { label: "تحويل وارد", tone: "neutral" },
+  transfer_out: { label: "تحويل صادر", tone: "neutral" },
+  damage: { label: "تالف", tone: "danger" },
 };
 
 export const RETURN_STATUS = {
