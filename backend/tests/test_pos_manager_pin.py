@@ -504,3 +504,17 @@ async def test_a_right_pin_still_grants_when_the_counter_cannot_be_reset(
     monkeypatch.setattr(override.auth_lockout, "reset", cannot_reset)
     assert (await _resolve(ctx, str(manager.id), "4821")).active
     assert "pos.override.granted" in await _override_audit_names(db, tenant_ctx)
+
+
+# ------------------------------------------------------------- who can I ask? --
+
+
+async def test_the_till_lists_only_managers_who_can_actually_approve(db, tenant_ctx):
+    manager, cashier, _ = await _setup(db, tenant_ctx)  # manager has a PIN, cashier does not
+    no_pin = await _member(db, tenant_ctx, "manager", "nopin")  # a manager who never set one
+    listed = await ManagerPinService.list_approvers(db, tenant_ctx.tenant_id)
+    ids = {a["id"] for a in listed}
+    assert str(manager.id) in ids
+    assert str(no_pin.id) not in ids  # cannot approve without a PIN
+    assert str(cashier.id) not in ids  # a cashier is never an approver
+    assert all(set(a) == {"id", "name"} for a in listed)  # nothing but who to ask

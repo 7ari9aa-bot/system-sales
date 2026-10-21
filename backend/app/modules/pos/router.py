@@ -895,6 +895,12 @@ class SetManagerPinRequest(BaseModel):
     pin: str = Field(min_length=4, max_length=8, pattern=r"^[0-9]{4,8}$")
 
 
+@router.get("/approvers")
+async def list_approvers(ctx: PosWriteCtx):
+    """Managers a cashier can ask for approval (PIN set, active): id and name only."""
+    return await ManagerPinService.list_approvers(ctx.session, ctx.tenant_id)
+
+
 @router.get("/manager-pin")
 async def manager_pin_status(ctx: PosManagerCtx):
     """Whether the signed-in manager has a PIN. The PIN itself is never readable."""

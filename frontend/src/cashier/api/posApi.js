@@ -81,6 +81,8 @@ function post(path, body, headers = {}) {
 export const posApi = {
   /* ---- setup / reads (no money, no intent) ---- */
   listProfiles: () => api("/pos/profiles"),
+  /** Managers a cashier can ask for approval: `[{ id, name }]`, PIN set and active. */
+  approvers: () => api("/pos/approvers"),
   /** Customers by name / phone. The server needs at least one character; an empty term lists the newest. */
   searchCustomers: (term = "", limit = 8) => api(`/customers?search=${encodeURIComponent(term)}&limit=${limit}`),
   listRegisters: () => api("/pos/registers"),

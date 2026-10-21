@@ -162,6 +162,28 @@ class ManagerPinService:
         ).first() is not None
 
     @staticmethod
+    async def list_approvers(session: AsyncSession, tenant_id: UUID) -> list[dict[str, str]]:
+        """The managers a cashier can ask: active here, role grants ``pos:override``, PIN set.
+
+        Same test as ``_holds_override`` (so nobody is listed who could not approve), and only
+        id + name come back: a cashier needs to pick a person, not to read an address book.
+        """
+        rows = await session.execute(
+            sa.text(
+                "SELECT DISTINCT u.id, COALESCE(NULLIF(u.full_name, ''), u.email) AS name "
+                "FROM manager_pins mp "
+                "JOIN tenant_users tu ON tu.user_id = mp.user_id AND tu.tenant_id = mp.tenant_id "
+                "JOIN users u ON u.id = tu.user_id "
+                "JOIN role_permissions rp ON rp.role_id = tu.role_id "
+                "JOIN permissions p ON p.id = rp.permission_id "
+                "WHERE mp.tenant_id = :t AND u.is_active AND p.code = :code "
+                "ORDER BY name"
+            ),
+            {"t": tenant_id, "code": OVERRIDE_PERMISSION},
+        )
+        return [{"id": str(r.id), "name": r.name} for r in rows]
+
+    @staticmethod
     async def _holds_override(session: AsyncSession, tenant_id: UUID, user_id: UUID) -> bool:
         """The manager is an active member of THIS shop and their role grants ``pos:override``."""
         row = await session.execute(

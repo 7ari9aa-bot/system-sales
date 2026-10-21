@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 411,
-    "sha256": "4e4a1b065cc2095da75db728e02a0ad08e7f95c5c167d5ce3a59d3a62b148886",
+    "operations": 412,
+    "sha256": "f1f40d24f154c2ac9420f91b04cf111ecdaf6fcb8fc0cd6555cb0bd2fae33c2e",
     "typed_operations": 254
   },
   "spec": {
@@ -49437,6 +49437,102 @@
           "summary": "Admin Retry Webhook Event",
           "tags": [
             "platform"
+          ]
+        }
+      },
+      "/api/v1/pos/approvers": {
+        "get": {
+          "description": "Managers a cashier can ask for approval (PIN set, active): id and name only.",
+          "operationId": "list_approvers_api_v1_pos_approvers_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Approvers",
+          "tags": [
+            "pos"
           ]
         }
       },
