@@ -76,6 +76,8 @@ export const MOVEMENT_TYPES = {
   exchange: { label: "استبدال", tone: "violet" },
   transfer: { label: "تحويل مخزن", tone: "neutral" },
   adjustment: { label: "تسوية جرد", tone: "warning" },
+  supplier_return: { label: "مرتجع لمورد", tone: "danger" },
+  supplier_return_reversal: { label: "إلغاء مرتجع مورد", tone: "info" },
 };
 
 export const REASON_LABELS = [

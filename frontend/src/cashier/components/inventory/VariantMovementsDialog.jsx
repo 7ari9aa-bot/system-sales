@@ -3,13 +3,25 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import StatusBadge from "@/cashier/components/ui-kit/StatusBadge";
 import EmptyState from "@/cashier/components/ui-kit/EmptyState";
 import ColorSwatch from "@/cashier/components/ui-kit/ColorSwatch";
-import { colorHex, stockMovements } from "@/cashier/lib/mockData";
+import { colorHex } from "@/cashier/lib/mockData";
+import { useVariantMovements } from "@/cashier/api/useMovements";
 import { fmtDateTime, fmtInt } from "@/cashier/lib/format";
+
+const DOC_LABEL = { order: "فاتورة", purchase_order: "فاتورة شراء", supplier_return: "مرتجع مورد" };
+
+// What the movement hangs off. A manual adjustment names no document, so say so instead of a dash.
+function docLabel(m) {
+  if (m.docType) return DOC_LABEL[m.docType] ?? m.docType;
+  return m.reason === "adjustment" ? "تسوية يدوية" : null;
+}
 
 // حركات متغير واحد (لون / مقاس) مع الرصيد بعد كل حركة.
 export default function VariantMovementsDialog({ open, onOpenChange, variant }) {
+  const ledger = useVariantMovements(open ? variant?.id : null);
   if (!variant) return null;
-  const rows = stockMovements.filter((m) => m.sku === variant.sku);
+  // Reservation hold/release rows are availability bookkeeping, not goods moving: keep them out of
+  // the in/out table so the running balance reads cleanly.
+  const rows = (ledger.data ?? []).filter((m) => !m.availabilityOnly);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -24,7 +36,16 @@ export default function VariantMovementsDialog({ open, onOpenChange, variant }) 
           </DialogDescription>
         </DialogHeader>
 
-        {rows.length === 0 ? (
+        {ledger.isError ? (
+          <div role="alert" className="p-6 text-center text-sm">
+            <p className="font-medium">تعذّر تحميل الحركات</p>
+            <button type="button" className="mt-2 text-xs underline" onClick={() => ledger.refetch()}>
+              إعادة المحاولة
+            </button>
+          </div>
+        ) : ledger.isPending ? (
+          <p className="py-8 text-center text-sm text-muted-foreground">جاري تحميل الحركات…</p>
+        ) : rows.length === 0 ? (
           <EmptyState icon={History} title="لا توجد حركات مسجلة" description="لم تُسجَّل أي حركة على هذا المتغير حتى الآن." compact />
         ) : (
           <div className="max-h-[55vh] overflow-y-auto scroll-slim rounded-xl border border-border">
@@ -44,12 +65,15 @@ export default function VariantMovementsDialog({ open, onOpenChange, variant }) 
                   <tr key={m.id}>
                     <td className="num px-3 py-2 text-xs text-muted-foreground">{fmtDateTime(m.date)}</td>
                     <td className="px-3 py-2">
-                      <StatusBadge kind="movement" value={m.type} />
+                      <StatusBadge kind="movement" value={m.reason} />
                     </td>
                     <td className="num px-3 py-2 text-center text-emerald-600">{m.qtyIn || "—"}</td>
                     <td className="num px-3 py-2 text-center text-rose-600">{m.qtyOut || "—"}</td>
                     <td className="num px-3 py-2 text-center font-bold">{m.balance}</td>
-                    <td className="num px-3 py-2 text-xs">{m.doc}</td>
+                    <td className="num px-3 py-2 text-xs">
+                      {m.isCount ? `جرد: العدّ ${m.counted}` : (docLabel(m) ?? "—")}
+                      {m.isCount && m.delta === null ? " (الفرق غير معروف)" : ""}
+                    </td>
                   </tr>
                 ))}
               </tbody>

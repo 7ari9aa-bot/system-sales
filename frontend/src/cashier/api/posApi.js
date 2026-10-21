@@ -141,6 +141,9 @@ export const posApi = {
     return api(`/pos/stock/${seg(variantId)}/reorder-level`, { method: "PUT", body: { reorder_level: level } });
   },
 
+  /* ---- stock ledger (backend/app/modules/inventory, GET /inventory/movements): read-only here ---- */
+  movements: (query = "") => api(`/inventory/movements${query ? `?${query}` : ""}`),
+
   /* ---- activity (backend/app/modules/activity): a read-only timeline, never written ---- */
   activityFeed: (query = "") => api(`/activity${query ? `?${query}` : ""}`),
   activitySummary: (query = "") => api(`/activity/summary${query ? `?${query}` : ""}`),
