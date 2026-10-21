@@ -25,6 +25,16 @@ describe("createSaleSession: one payment intent = one Idempotency-Key", () => {
     expect(keys[0]).toBe(keys[1]);
   });
 
+  it("changing ONLY a line's own discount is a different payment: new key (the server would replay the old receipt)", async () => {
+    pos.sell.mockRejectedValueOnce(Object.assign(new Error("network"), { status: 0 })).mockResolvedValueOnce({ receipt_id: "r1" });
+    const sale = createSaleSession("sess-1");
+    const withPct = (discountPct) => ({ ...pay, cart: [{ variantId: "v1", qty: 2, discountPct }] });
+    await expect(sale.pay(withPct(10))).rejects.toThrow();
+    await sale.pay(withPct(50)); // same item, same quantity, same totals typed: only the line discount differs
+    const keys = pos.sell.mock.calls.map((c) => c[2].key);
+    expect(keys[0]).not.toBe(keys[1]);
+  });
+
   it("sale OK but receipt read FAILS: the retry re-sends the SAME key (one sale, not two)", async () => {
     pos.sell.mockResolvedValue({ receipt_id: "r1" });
     pos.receipt.mockRejectedValueOnce(Object.assign(new Error("network"), { status: 0 })).mockResolvedValueOnce({ id: "r1" });

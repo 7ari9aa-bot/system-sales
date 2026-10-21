@@ -347,3 +347,61 @@ test("a fixed invoice discount can only take what the line discounts left, and t
   const pay = main.getByRole("button", { name: /\(F2\)/ });
   await expect(pay, "the cashier is not stuck: the sale can still be paid").toBeEnabled();
 });
+
+test("a return retried with a different quantity gets a new Idempotency-Key (never the failed attempt's)", async ({ page }) => {
+  const errs = []; page.on("pageerror", (e) => errs.push(e.message));
+  const sfx = `${Date.now()}`.slice(-8); const email = `ld-${sfx}@example.com`; const pw = `Ld-${sfx}-pass!`;
+  await page.goto("/register");
+  await page.getByLabel(/البريد الإلكتروني|email/i).fill(email);
+  await page.getByLabel(/^كلمة المرور$|^password$/i).fill(pw);
+  await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
+  await page.getByRole("button", { name: /إنشاء الحساب|create account/i }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+  const api = (method, path, body) => page.evaluate(async ({ method, path, body }) => {
+    const raw = JSON.parse(localStorage.getItem("fihrist_tokens") || "null");
+    const csrf = (document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/) || [])[1];
+    const h = { "Content-Type": "application/json", ...(csrf ? { "X-CSRF-Token": csrf } : {}), ...(raw?.access_token ? { Authorization: `Bearer ${raw.access_token}` } : {}) };
+    const r = await fetch(`/api/v1${path}`, { method, headers: h, credentials: "include", body: body ? JSON.stringify(body) : undefined });
+    const t = await r.text(); if (!r.ok) throw new Error(`${method} ${path} -> ${r.status} ${t.slice(0, 200)}`); return t ? JSON.parse(t) : null;
+  }, { method, path, body });
+  const wh = await api("POST", "/warehouses/ensure-default");
+  const mk = async (tag, bc) => {
+    const p = await api("POST", "/products", { title: `Item${tag} ${sfx}`, slug: `item-${tag}-${sfx}`, description: null });
+    const v = await api("POST", `/products/${p.id}/variants`, { sku: `LD${tag}-${sfx}`, price: "100.00", option_values: {} });
+    await api("POST", `/variants/${v.id}/identifiers`, { identifier_type: "barcode", value: bc });
+    await api("POST", "/inventory/movements", { variant_id: v.id, warehouse_id: wh.id, direction: "in", quantity: 10, reason: "adjustment" });
+    await api("PATCH", `/products/${p.id}`, { status: "active" }); return v;
+  };
+  const bcA = `630${sfx}1`, bcB = `630${sfx}2`;
+  const vA = await mk("A", bcA);
+  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash", discount_ceiling_pct: "100.00" });
+  const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
+  const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "0.00" });
+
+  const sale = await api("POST", `/pos/sessions/${shift.id}/sell`, { items: [{ variant_id: vA.id, quantity: 3 }], tenders: [{ method: "cash", amount: "300.00" }], tenderedCash: "300.00" });
+  await page.goto("/cashier/returns", { waitUntil: "networkidle" });
+  const main = page.locator("main:has(.cashier-root)");
+  const seen = [];
+  let failNext = true;
+  await page.route(/\/pos\/sessions\/[^/]+\/returns$/, async (route) => {
+    const req = route.request();
+    if (req.method() !== "POST") return route.continue();
+    seen.push({ key: req.headers()["idempotency-key"], body: req.postData() });
+    if (failNext) { failNext = false; return route.abort("connectionreset"); }
+    return route.continue();
+  });
+  const search = main.getByRole("textbox").first();
+  await search.fill(sale.invoice_number ?? sale.receipt_number ?? ""); await search.press("Enter");
+  await expect(main).toContainText(`ItemA ${sfx}`);
+  await main.getByRole("button", { name: /^إرجاع Item/ }).first().click();
+  const plus = main.getByRole("button", { name: /^زيادة كمية/ }).first();
+  await plus.click(); await plus.click(); // return all 3
+  await main.getByRole("button", { name: /اعتماد المرتجع/ }).first().click();
+  await expect.poll(() => seen.length).toBe(1); // the network dropped this one
+  // the cashier lowers the quantity and tries again
+  await main.getByRole("button", { name: /^تقليل كمية/ }).first().click();
+  await main.getByRole("button", { name: /اعتماد المرتجع/ }).first().click();
+  await expect.poll(() => seen.length).toBe(2);
+  expect(seen[0].body, "the cashier changed the quantity, so it is a different return").not.toBe(seen[1].body);
+  expect(seen[0].key, "a different return must not reuse the failed attempt's key").not.toBe(seen[1].key);
+});

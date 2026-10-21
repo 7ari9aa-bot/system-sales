@@ -13,7 +13,8 @@ import { fromMinor, toMinor } from "./money";
 
 const fingerprint = ({ cart, discountTotal, customerId, tenders }) =>
   JSON.stringify([
-    cart.map((l) => [l.variantId, l.qty]),
+    // the line's own discount is part of the payment: same item and quantity with another discount is another sale
+    cart.map((l) => [l.variantId, l.qty, (Number(l.discountPct) || 0).toFixed(2)]),
     discountTotal ? fromMinor(toMinor(discountTotal)) : "",
     customerId ?? "",
     (tenders ?? []).map((t) => [t.method, fromMinor(toMinor(t.amount || 0))]),

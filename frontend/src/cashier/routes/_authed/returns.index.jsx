@@ -68,6 +68,7 @@ function ReturnScreen({ session }) {
   const [approval, setApproval] = useState(null); // { reason, error }: a refund above the till limit waits for a manager
   const [cancelOpen, setCancelOpen] = useState(false);
   const intentRef = useRef(null); // one intent per deliberate return: a retry after a network drop replays, never double-refunds
+  const intentFor = useRef("");
   const gridRef = useRef(null);
   const actionsRef = useRef(null);
   const fillRows = useFillRowCount({ areaRef: gridRef, bottomRef: actionsRef });
@@ -92,6 +93,16 @@ function ReturnScreen({ session }) {
   const totals = { pieces: pickedLines.reduce((s, l) => s + l.returnQty, 0), value: Number(refund) };
   const hasDraft = !!invoice || pickedLines.length > 0;
   const canComplete = !!invoice && pickedLines.length > 0 && !busy;
+
+  // A return with other quantities (or the restock switch flipped) is another return: it must never
+  // reuse the key of an earlier, failed attempt, or the server would replay that attempt's answer.
+  const fingerprint = JSON.stringify([invoice?.id, lines.map((l) => [l.variantId, l.returnQty]), restock]);
+  useEffect(() => {
+    if (intentFor.current !== fingerprint) {
+      intentRef.current = null;
+      intentFor.current = fingerprint;
+    }
+  }, [fingerprint]);
 
   function selectInvoice(inv) {
     setInvoice(inv);
