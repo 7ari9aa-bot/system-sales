@@ -354,6 +354,10 @@ async def test_parallel_receive_of_existing_orders_averages_correctly(committed_
     on_hand, avg, seen = await _in_tx(factory, tenant_id, read)
     assert on_hand == RACERS * qty
     assert seen == [qty * i for i in range(RACERS)], f"receipts read the same stale stock: {seen}"
-    assert avg == (sum(prices) / RACERS).quantize(D("0.0001")), (
-        f"average {avg}: a receipt used a stale quantity"
-    )
+    # The average is rounded to 4 places after EVERY receipt, and the receipts land in a
+    # different order each run, so the final figure can sit a rounding step or two away from
+    # the exact mean (155.0001 / 154.9999 were both seen). A receipt that read a stale quantity
+    # misses by whole units, so a 0.001 tolerance still catches it. `seen` above is the exact
+    # proof that the lock serialised the receipts.
+    expected = sum(prices) / RACERS
+    assert abs(avg - expected) <= D("0.001"), f"average {avg}: a receipt used a stale quantity"
