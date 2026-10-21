@@ -340,7 +340,8 @@ async def _si_top_products(
                 "SELECT oi.variant_id::text AS variant_id, "
                 "MAX(oi.title) AS title, MAX(oi.sku) AS sku, "
                 "SUM(oi.quantity) AS units, SUM(oi.total) AS revenue, "
-                "MAX(v.option_values) AS option_values "
+                # a plain column: it is already in the GROUP BY, and PostgreSQL has no MAX(jsonb)
+                "v.option_values AS option_values "
                 "FROM order_items oi "
                 "JOIN orders o ON o.id = oi.order_id AND o.tenant_id = oi.tenant_id "
                 "LEFT JOIN product_variants v "
