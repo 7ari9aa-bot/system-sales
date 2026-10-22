@@ -34,21 +34,7 @@ function needIntent(intent) {
   if (!intent || typeof intent.key !== "string" || intent.key.length < 8) {
     throw new TypeError("posApi: a money call needs an intent (use newIntent()) so a retry cannot double-charge");
   }
-  const headers = { "Idempotency-Key": intent.key };
-  // A manager's approval rides on the SAME intent, so the retry of one tap carries the same PIN and
-  // no call site changes. The server reads these two headers (resolve_override) and never stores the PIN.
-  if (intent.approval) {
-    const { managerId, pin } = intent.approval;
-    if (!managerId || !pin) throw new TypeError("posApi: an approval needs both managerId and pin");
-    headers["X-Manager-Id"] = String(managerId);
-    headers["X-Manager-Pin"] = String(pin);
-  }
-  return headers;
-}
-
-/** The same intent (so the same Idempotency-Key) with a manager's approval attached. */
-export function withApproval(intent, { managerId, pin }) {
-  return { ...intent, approval: { managerId, pin } };
+  return { "Idempotency-Key": intent.key };
 }
 
 function method(m) {
@@ -81,8 +67,6 @@ function post(path, body, headers = {}) {
 export const posApi = {
   /* ---- setup / reads (no money, no intent) ---- */
   listProfiles: () => api("/pos/profiles"),
-  /** Managers a cashier can ask for approval: `[{ id, name }]`, PIN set and active. */
-  approvers: () => api("/pos/approvers"),
   /** Customers by name / phone. The server needs at least one character; an empty term lists the newest. */
   searchCustomers: (term = "", limit = 8) => api(`/customers?search=${encodeURIComponent(term)}&limit=${limit}`),
   listRegisters: () => api("/pos/registers"),

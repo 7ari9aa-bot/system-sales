@@ -591,3 +591,23 @@ async def test_idempotency_replies_answer_in_the_contract() -> None:
     assert _envelope(json.loads(sent[3]["body"]), retryable=True)["code"] == (
         "idempotency_unavailable"
     )
+
+
+def test_internal_error_details_are_not_leaked_to_clients() -> None:
+    """Only an error that opts in shows its details; the rest keep the exact old four keys."""
+    from app.core.errors import ConflictError, build_error_body
+
+    quiet = ConflictError("nope", details={"spend": "123.45", "cap": "200"})
+    assert build_error_body(quiet, "r1") == {
+        "error": {"code": "conflict", "message": "nope", "retryable": False, "request_id": "r1"}
+    }
+
+
+def test_an_error_that_opts_in_does_show_its_details() -> None:
+    from app.core.errors import ConflictError, build_error_body
+
+    class _Open(ConflictError):
+        expose_details = True
+
+    body = build_error_body(_Open("nope", details={"field": "qty"}), "r2")
+    assert body["error"]["details"] == {"field": "qty"}

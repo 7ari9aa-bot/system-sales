@@ -280,31 +280,6 @@ class PosService:
         raise PermissionDeniedError("this drawer is held by another cashier")
 
     @staticmethod
-    def _enforce_discount_ceiling(
-        profile: PosProfile | None,
-        discount_total: object,
-        subtotal: object,
-        *,
-        override: bool,
-    ) -> None:
-        """Refuse a discount above the till's ceiling unless the caller holds ``pos:override``.
-
-        A till with no profile has no configured ceiling; it gets the safe default (0, so every
-        discount needs the override) rather than a free pass, otherwise leaving the profile off
-        would switch the control off.
-        """
-        if override:
-            return
-        if profile is None:
-            if to_money(discount_total or "0", "discount_total") > 0:
-                raise ValidationError(
-                    "this till has no profile, so its discount ceiling is 0% and any discount "
-                    "needs an approval"
-                )
-            return
-        PosProfileService.ensure_discount_allowed(profile, discount_total, subtotal, approved=False)
-
-    @staticmethod
     def _ensure_session_current(
         pos_session: PosSession, *, tz: str | None = None, now: datetime | None = None
     ) -> None:
@@ -396,7 +371,6 @@ class PosService:
         amount: object,
         created_by: UUID | None = None,
         shift_override: bool = False,
-        ceiling_override: bool = False,
         reference_type: str | None = None,
         reference_id: UUID | None = None,
     ) -> PosCashMovement:
@@ -419,14 +393,6 @@ class PosService:
             pos_session, tz=await PosService._shop_timezone(session, tenant_id)
         )
         cleaned_amount = _positive_amount(amount, "amount")
-        if direction == "out" and reason in {"pay_out", "cash_drop"}:
-            # Cash leaving the drawer by hand: the owner's limit on what a cashier may take alone.
-            PosProfileService.ensure_within_money_ceiling(
-                await PosService.resolve_profile(session, tenant_id, pos_session),
-                cleaned_amount,
-                kind="cash_out",
-                approved=ceiling_override,
-            )
         row = PosCashMovement(
             tenant_id=tenant_id,
             session_id=session_id,
@@ -883,7 +849,6 @@ class PosService:
         held_cart_id: UUID | None = None,
         actor_user_id: UUID | None = None,
         shift_override: bool = False,
-        discount_override: bool = False,
     ) -> dict:
         """One POS sale = one commerce command chain (§189).
 
@@ -976,13 +941,6 @@ class PosService:
             warehouse_id=register.warehouse_id,
             discount_total=discount_total,
         )
-        # The ceiling is checked on what was actually PRICED onto the order (document discount plus
-        # every line discount), not on what the caller asked for, so a discount cannot be dodged
-        # by moving it between the two. A refusal rolls the sale back: no order, no stock.
-        PosService._enforce_discount_ceiling(
-            profile, order.discount_total, order.subtotal, override=discount_override
-        )
-
         # Capture the tenders. A tender with no explicit amount settles the
         # whole order — the exact behaviour of the old single-payment route,
         # where ``amount`` defaulted to ``order.grand_total``.
@@ -2513,7 +2471,6 @@ class PosService:
         restock: bool = False,
         actor_user_id: UUID | None = None,
         shift_override: bool = False,
-        ceiling_override: bool = False,
     ) -> dict:
         """Give money back on a POS sale. This path moves MONEY ONLY.
 
@@ -2559,15 +2516,6 @@ class PosService:
             raise ValidationError(f"method must be one of {sorted(_SALE_METHODS)}")
 
         requested = _positive_amount(amount, "amount")
-
-        # The same owner limit /returns enforces: a money-only refund above the till's ceiling
-        # needs a manager, BEFORE any ledger row exists.
-        PosProfileService.ensure_within_money_ceiling(
-            await PosService.resolve_profile(session, tenant_id, pos_session),
-            requested,
-            kind="refund",
-            approved=ceiling_override,
-        )
 
         # Order the captured payments so a refund fills the cash leg first
         # (the drawer is where money physically leaves), then the oldest —
@@ -2803,7 +2751,6 @@ class PosService:
         restock: bool = False,
         actor_user_id: UUID | None = None,
         shift_override: bool = False,
-        ceiling_override: bool = False,
     ) -> dict:
         """Give goods AND money back, line by line (ERPNext's POS return).
 
@@ -2980,15 +2927,6 @@ class PosService:
             sum((entry["refund_total"] for entry in refund_lines), Decimal("0")),
             "refund_total",
         )
-        # The owner's limit on what a cashier may hand back alone. Checked once the amount is known
-        # and BEFORE the drawer, the shelf or any ledger is touched.
-        PosProfileService.ensure_within_money_ceiling(
-            await PosService.resolve_profile(session, tenant_id, pos_session),
-            refund_total,
-            kind="refund",
-            approved=ceiling_override,
-        )
-
         # Allocate the money across the ORIGINAL captured tenders — cash
         # absorbs first (the drawer is where a refund physically leaves from),
         # then oldest first. created_at alone cannot order rows written in ONE
@@ -3044,17 +2982,6 @@ class PosService:
                 f"return exceeds what this sale captured; "
                 f"{remaining} could not be placed against its payments"
             )
-
-        profile = await PosService.resolve_profile(session, tenant_id, pos_session)
-        allowed_return_methods = (
-            set(profile.returns_allowed_methods or []) if profile is not None else set()
-        )
-        if allowed_return_methods:
-            refused = {payment.method for payment, _leg in plan} - allowed_return_methods
-            if refused:
-                raise ValidationError(
-                    f"refund methods {sorted(refused)} are not enabled for returns on this profile"
-                )
 
         written: list[Refund] = []
         for payment, leg in plan:
@@ -3174,7 +3101,6 @@ class PosService:
         tendered_cash: object | None = None,
         actor_user_id: UUID | None = None,
         shift_override: bool = False,
-        ceiling_override: bool = False,
     ) -> dict:
         """The one-transaction exchange (§189 — beyond ERPNext and Odoo).
 
@@ -3345,15 +3271,6 @@ class PosService:
             sum((e["refund_total"] for e in return_entries), Decimal("0")),
             "return_total",
         )
-        # An exchange hands value back too: the owner's refund ceiling applies to what the return
-        # half is worth, checked before the shelf, the drawer or any ledger is touched.
-        PosProfileService.ensure_within_money_ceiling(
-            await PosService.resolve_profile(session, tenant_id, pos_session),
-            return_total,
-            kind="refund",
-            approved=ceiling_override,
-        )
-
         # ---------- the new half: the original order's own customer ----------
         await PosService._ensure_cart_in_scope(session, tenant_id, pos_session, new_lines)
         new_subtotal, _prepared, new_line_discounts = await PosService._price_lines(
@@ -3421,15 +3338,6 @@ class PosService:
             )
 
         profile = await PosService.resolve_profile(session, tenant_id, pos_session)
-        allowed_return_methods = (
-            set(profile.returns_allowed_methods or []) if profile is not None else set()
-        )
-        refund_methods = {payment.method for payment, _leg in plan}
-        if allowed_return_methods and refund_methods - allowed_return_methods:
-            raise ValidationError(
-                f"refund methods {sorted(refund_methods - allowed_return_methods)} "
-                "are not enabled for returns on this profile"
-            )
 
         # ---------- double-entry conversion of the credit --------------------
         # The FULL return value is refunded across the original tenders

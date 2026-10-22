@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { BALANCES_LIMIT, posApi } from "./posApi";
-import { needsApproval } from "./approval";
 import { buildCatalog, searchCatalog } from "./catalogAdapter";
 import { fetchAllItems, fetchAllProducts, fetchAllStock, mergeSessionItems, withBarcodes } from "./sessionCatalog";
 import { clampQty, restoreRemovedLine } from "./checkout";
@@ -214,12 +213,12 @@ export function usePosSale({ sessionId, catalog = [], onSold, loadFreshCatalog }
   );
 
   const pay = useCallback(
-    async ({ tenders, customerId, cashier, customerName, approval }) => {
+    async ({ tenders, customerId, cashier, customerName }) => {
       if (!sale) throw new Error("لا توجد وردية مفتوحة");
       setPaying(true);
       setPayError(null);
       try {
-        const { detail } = await sale.pay({ cart, total: quote.total, discountTotal, customerId, tenders, approval });
+        const { detail } = await sale.pay({ cart, total: quote.total, discountTotal, customerId, tenders });
         const names = Object.fromEntries(catalog.map((v) => [v.id, v.productName]));
         const receipt = receiptFromApi(detail, { cashier, customerName, names });
         setLines([]);
@@ -227,8 +226,7 @@ export function usePosSale({ sessionId, catalog = [], onSold, loadFreshCatalog }
         onSold?.(receipt);
         return receipt;
       } catch (e) {
-        // "Needs a manager" is not a payment failure: the screen opens the approval box instead.
-        setPayError(needsApproval(e) ? null : e?.message || "تعذّر إتمام البيع");
+        setPayError(e?.message || "تعذّر إتمام البيع");
         throw e;
       } finally {
         setPaying(false);

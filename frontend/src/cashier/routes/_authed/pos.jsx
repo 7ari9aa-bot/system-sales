@@ -20,9 +20,6 @@ import { customerBlock } from "@/cashier/api/customerRule";
 import { useShiftState } from "@/cashier/api/useShifts";
 import { searchCatalog } from "@/cashier/api/catalogAdapter";
 import { posApi } from "@/cashier/api/posApi";
-import { approvalFailure, approvalReason, needsApproval } from "@/cashier/api/approval";
-import ManagerApprovalDialog from "@/cashier/components/shifts/ManagerApprovalDialog";
-import { ceilingPct } from "@/cashier/lib/discountCeiling";
 import { useAuth } from "@/lib/AuthContext";
 
 // Only methods the backend accepts; the profile's own list narrows this further once loaded.
@@ -89,7 +86,6 @@ function PosScreen({ user, session }) {
   const [pickedCustomer, setPickedCustomer] = useState(null); // a REAL customer; the typed name above is only a label
   const profile = useShiftProfile(session.profile_id);
   const requireCustomer = Boolean(profile.data?.require_customer);
-  const maxDiscountPct = ceilingPct(profile.data); // the number the server enforces; above it a manager PIN is asked
   const customerSearch = useCustomerSearch(pickedCustomer ? "" : customerName);
   const needCustomer = customerBlock({ requireCustomer, customerId: pickedCustomer?.id });
   const [activeLineId, setActiveLineId] = useState(null);
@@ -196,21 +192,13 @@ function PosScreen({ user, session }) {
     });
   }
 
-  // The server owns the ceiling. A discount above it is NOT blocked here: it is allowed up to 100% and the cashier is
-  // told the payment will ask for a manager's PIN (that approval flow is what lets a manager grant a bigger discount).
-  function warnIfOverCeiling(pct, what) {
-    if (pct > maxDiscountPct) toast.info(`${what} ${pct}% أعلى من حد الكاشير ${maxDiscountPct}%: سيُطلب رقم المدير السري عند الدفع`, { id: "discount-over-ceiling" });
-  }
-
   function applyLineDiscount(lineId, pct) {
     const value = Math.min(100, Math.max(0, Number(pct) || 0));
-    warnIfOverCeiling(value, "خصم الصنف");
     sale.setLineDiscount(lineId, value);
   }
 
   function applyInvoiceDiscount(value) {
     const pct = Math.min(100, Math.max(0, Number(value) || 0));
-    warnIfOverCeiling(pct, "خصم الفاتورة");
     setInvoiceDiscountPct(pct);
   }
 
@@ -290,13 +278,9 @@ function PosScreen({ user, session }) {
     }
   }
 
-  // A discount above the till's limit waits here for a manager; the tenders are kept so the retry is the same sale.
-  const [approval, setApproval] = useState(null);
-
-  async function confirmSale(tenders, managerOk) {
+  async function confirmSale(tenders) {
     try {
-      const r = await sale.pay({ tenders, approval: managerOk, cashier, customerName: displayCustomer === "عميل نقدي" ? "" : displayCustomer, customerId: pickedCustomer?.id });
-      setApproval(null);
+      const r = await sale.pay({ tenders, cashier, customerName: displayCustomer === "عميل نقدي" ? "" : displayCustomer, customerId: pickedCustomer?.id });
       setDialog("receipt");
       toast.success(`تم إتمام البيع ${r.number} بمبلغ ${r.total.toFixed(2)} ج.م`);
       setInvoiceDiscountPct(0);
@@ -304,14 +288,8 @@ function PosScreen({ user, session }) {
       setCustomerName("");
       setCustomerPhone("");
       setPickedCustomer(null);
-    } catch (e) {
-      if (needsApproval(e) && !managerOk) {
-        setDialog(null); // the payment box gives way to the manager box
-        setApproval({ tenders, reason: approvalReason(e), error: null });
-      } else if (managerOk) {
-        setApproval((a) => ({ ...(a ?? { tenders }), error: approvalFailure(e) }));
-      }
-      /* otherwise the payment dialog shows sale.payError and stays open so the cashier can retry safely */
+    } catch {
+      /* the payment dialog shows sale.payError and stays open so the cashier can retry safely */
     }
   }
 
@@ -409,15 +387,6 @@ function PosScreen({ user, session }) {
           setDialog("receipt");
         }}
         onNote={() => toast.info("الملاحظات على الفاتورة غير متاحة بعد")}
-      />
-
-      <ManagerApprovalDialog
-        open={Boolean(approval)}
-        reason={approval?.reason}
-        pending={sale.paying}
-        error={approval?.error}
-        onCancel={() => setApproval(null)}
-        onApprove={(ok) => confirmSale(approval.tenders, ok)}
       />
 
       <PaymentDialog

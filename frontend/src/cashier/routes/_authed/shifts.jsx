@@ -9,9 +9,6 @@ import LedgerStats from "@/cashier/components/ui-kit/LedgerStats";
 import PageHero from "@/cashier/components/ui-kit/PageHero";
 import ShiftOpenDialog from "@/cashier/components/shifts/ShiftOpenDialog";
 import CashMovementDialog from "@/cashier/components/shifts/CashMovementDialog";
-import ManagerApprovalDialog from "@/cashier/components/shifts/ManagerApprovalDialog";
-import { approvalFailure, approvalReason, needsApproval } from "@/cashier/api/approval";
-import { withApproval } from "@/cashier/api/posApi";
 import ShiftCloseDialog from "@/cashier/components/shifts/ShiftCloseDialog";
 import ShiftDetailsDialog from "@/cashier/components/shifts/ShiftDetailsDialog";
 import ShiftFilters from "@/cashier/components/shifts/ShiftFilters";
@@ -42,7 +39,6 @@ export default function ShiftsPage() {
   const [movementOpen, setMovementOpen] = useState(false);
   // A cash-out above the till's limit waits here for a manager. The request is kept as it was sent
   // (same intent), so the approved retry is the same tap, not a second movement.
-  const [pendingApproval, setPendingApproval] = useState(null);
   const [employeeFilter, setEmployeeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [openDialog, setOpenDialog] = useState(false);
@@ -70,26 +66,17 @@ export default function ShiftsPage() {
     );
   }
 
-  function sendMovement(request, approval) {
+  function submitMovement(request) {
     const shift = summary.open;
-    const intent = approval ? withApproval(request.intent, approval) : request.intent;
     cashMovement.mutate(
-      { sessionId: shift.id, direction: request.direction, reason: request.reason, amount: request.amount, intent },
+      { sessionId: shift.id, direction: request.direction, reason: request.reason, amount: request.amount, intent: request.intent },
       {
         onSuccess: () => {
-          setPendingApproval(null);
           setMovementOpen(false);
           toast.success(`تم تسجيل الحركة ${fmtMoney(Number(request.amount))} على الوردية ${shift.number}`);
         },
-        onError: (error) => {
-          if (needsApproval(error) && !approval) setPendingApproval({ request, reason: approvalReason(error) });
-        },
       },
     );
-  }
-
-  function submitMovement(request) {
-    sendMovement(request);
   }
 
   function submitClose({ actual }) {
@@ -185,15 +172,7 @@ export default function ShiftsPage() {
         expectedCash={summary.open?.expected}
         onSubmit={submitMovement}
         pending={cashMovement.isPending}
-        error={needsApproval(cashMovement.error) ? null : messageOf(cashMovement.error)}
-      />
-      <ManagerApprovalDialog
-        open={Boolean(pendingApproval)}
-        reason={pendingApproval?.reason}
-        pending={cashMovement.isPending}
-        error={pendingApproval && cashMovement.error && !needsApproval(cashMovement.error) ? approvalFailure(cashMovement.error) : null}
-        onCancel={() => { setPendingApproval(null); cashMovement.reset(); }}
-        onApprove={(approval) => sendMovement(pendingApproval.request, approval)}
+        error={messageOf(cashMovement.error)}
       />
       <ShiftOpenDialog open={openDialog} onOpenChange={(v) => { setOpenDialog(v); if (!v) openShift.reset(); }} onSubmit={submitOpen} pending={openShift.isPending} error={messageOf(openShift.error)} />
       <ShiftCloseDialog open={Boolean(closing)} onOpenChange={(v) => { if (!v) { setClosing(null); closeShift.reset(); } }} shift={closing} heldCount={heldCount.data ?? 0} preview={preview.data} previewLoading={preview.isLoading} onSubmit={submitClose} pending={closeShift.isPending} error={messageOf(closeShift.error) || (preview.error ? messageOf(preview.error) : null)} />

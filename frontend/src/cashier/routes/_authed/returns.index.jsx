@@ -16,9 +16,7 @@ import ReturnActionsBar from "@/cashier/components/returns/ReturnActionsBar";
 import ConfirmDialog from "@/cashier/components/ui-kit/ConfirmDialog";
 import useFillRowCount from "@/cashier/hooks/use-fill-row-count";
 import { fmtMoney } from "@/cashier/lib/format";
-import { newIntent, posApi, withApproval } from "@/cashier/api/posApi";
-import { approvalFailure, approvalReason, needsApproval } from "@/cashier/api/approval";
-import ManagerApprovalDialog from "@/cashier/components/shifts/ManagerApprovalDialog";
+import { newIntent, posApi } from "@/cashier/api/posApi";
 import { useShiftState } from "@/cashier/api/useShifts";
 import { RECEIPT_SEARCH_MIN, useReceiptSearch, useReturnableSales } from "@/cashier/api/usePosSale";
 import { estimateRefund, returnErrorMessage, returnRequest, returnableLines, sendReturn, setQty, tableLine } from "@/cashier/api/returnPlan";
@@ -65,7 +63,6 @@ function ReturnScreen({ session }) {
   const [error, setError] = useState("");
   const [restock, setRestock] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [approval, setApproval] = useState(null); // { reason, error }: a refund above the till limit waits for a manager
   const [cancelOpen, setCancelOpen] = useState(false);
   const intentRef = useRef(null); // one intent per deliberate return: a retry after a network drop replays, never double-refunds
   const intentFor = useRef("");
@@ -135,28 +132,20 @@ function ReturnScreen({ session }) {
   const setLineQty = (k, v) => setLines((p) => setQty(p, k, Math.max(1, Number(v) || 1)));
   const step = (k, d) => setLines((p) => setQty(p, k, Math.max(1, (p.find((l) => l.variantId === k)?.returnQty ?? 1) + d)));
 
-  async function confirmReturn(managerOk) {
+  async function confirmReturn() {
     if (!canComplete || busy) return;
     setBusy(true);
     try {
       const req = returnRequest(invoice.detail, lines, { restock });
       intentRef.current ??= newIntent();
-      const intent = managerOk ? withApproval(intentRef.current, managerOk) : intentRef.current;
-      const res = await sendReturn(() => posApi.returnSale(session.id, req, intent));
+      const res = await sendReturn(() => posApi.returnSale(session.id, req, intentRef.current));
       toast.success(`تم اعتماد المرتجع ${res.receipt_number}. رد ${fmtMoney(Number(res.refunded_total))} للعميل`);
       intentRef.current = null;
-      setApproval(null);
       await Promise.all([qc.invalidateQueries({ queryKey: ["cashier"] })]);
       resetDraft();
     } catch (e) {
-      if (needsApproval(e) && !managerOk) {
-        setApproval({ reason: approvalReason(e), error: null }); // same intent kept: the retry is the same tap
-      } else if (managerOk) {
-        setApproval((a) => ({ ...(a ?? {}), error: approvalFailure(e) }));
-      } else {
-        setError(returnErrorMessage(e));
-        toast.error(returnErrorMessage(e));
-      }
+      setError(returnErrorMessage(e));
+      toast.error(returnErrorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -213,14 +202,6 @@ function ReturnScreen({ session }) {
       <div ref={actionsRef}>
         <ReturnActionsBar canComplete={canComplete} hasDraft={hasDraft} onComplete={() => confirmReturn()} onCancel={() => setCancelOpen(true)} />
       </div>
-      <ManagerApprovalDialog
-        open={Boolean(approval)}
-        reason={approval?.reason}
-        pending={busy}
-        error={approval?.error}
-        onCancel={() => setApproval(null)}
-        onApprove={(ok) => confirmReturn(ok)}
-      />
       <ConfirmDialog
         open={cancelOpen}
         onOpenChange={setCancelOpen}

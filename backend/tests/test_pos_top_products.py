@@ -144,7 +144,6 @@ async def test_an_invoice_level_discount_is_shared_over_the_lines_and_the_total_
             {"variant_id": str(c.id), "quantity": 1},
         ],
         discount_total="10.00",
-        discount_override=True,
         tenders=[{"method": "cash", "amount": "90.00"}],
     )
     assert sold is not None

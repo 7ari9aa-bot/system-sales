@@ -11,7 +11,6 @@ Services are flush-only; the caller owns the transaction (§186).
 
 from __future__ import annotations
 
-from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -19,7 +18,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.errors import ConflictError, NotFoundError, ValidationError
-from app.modules.orders.money import to_money
 from app.modules.pos.models import PosProfile, PosProfileUser, PosRegister, PosSession
 
 #: The closed payment vocabulary — must match ``orders/service._PAYMENT_METHODS``.
@@ -31,41 +29,6 @@ def _clean_code(code: object) -> str:
     if not cleaned or len(cleaned) > 31:
         raise ValidationError("profile code must be 1-31 characters")
     return cleaned
-
-
-class ApprovalRequiredError(ValidationError):
-    """The action is above the cashier's own limit and a manager must approve it.
-
-    Still a 400 and still a ``ValidationError`` (nothing that catches those changes), but with a
-    stable ``code`` so the till can open the manager-PIN dialog instead of showing a red message.
-    ``details`` says which limit was crossed: ``{"limit": "refund" | "cash_out" | "discount",
-    "ceiling": "<amount>"}``.
-    """
-
-    code = "approval_required"
-    expose_details = True  # {"limit", "ceiling"}: written for the till, nothing internal
-
-
-def _clean_ceiling(value: object) -> Decimal:
-    """A discount ceiling is a percentage in [0, 100], quantized to 2 places."""
-    ceiling = to_money(value, "discount_ceiling_pct")
-    if ceiling < 0 or ceiling > 100:
-        raise ValidationError("discount_ceiling_pct must be between 0 and 100")
-    return ceiling
-
-
-#: "the caller did not send this field" - distinct from None, which means "remove the limit".
-_UNSET: object = object()
-
-
-def _clean_money_ceiling(value: object, field: str) -> Decimal | None:
-    """A money ceiling: None/blank = no limit, otherwise a non-negative amount (2 places)."""
-    if value is None or (isinstance(value, str) and not value.strip()):
-        return None
-    ceiling = to_money(value, field)
-    if ceiling < 0:
-        raise ValidationError(f"{field} cannot be negative")
-    return ceiling
 
 
 def _clean_methods(methods: object) -> list[str]:
@@ -96,24 +59,6 @@ def _clean_default_method(value: object) -> str | None:
     return method
 
 
-def _clean_return_methods(value: object) -> list[str]:
-    """Methods a refund may travel through (ERPNext `allow_in_returns`)."""
-    if value is None:
-        return []
-    if not isinstance(value, (list, tuple)):
-        raise ValidationError("returns_allowed_methods must be a list")
-    cleaned: list[str] = []
-    for raw in value:
-        method = str(raw)
-        if method not in PAYMENT_METHODS:
-            raise ValidationError(
-                f"unknown refund method {method!r}; allowed {sorted(PAYMENT_METHODS)}"
-            )
-        if method not in cleaned:
-            cleaned.append(method)
-    return cleaned
-
-
 def _clean_item_groups(value: object) -> list[str]:
     """Category ids this terminal serves (ERPNext `POS Item Group`); empty
     list = the tenant's whole catalog."""
@@ -133,7 +78,7 @@ def _clean_item_groups(value: object) -> list[str]:
 
 
 class PosProfileService:
-    """Profile CRUD, access grants, and the discount-ceiling policy."""
+    """Profile CRUD and access grants."""
 
     # ------------------------------------------------------------ CRUD ----
 
@@ -147,13 +92,9 @@ class PosProfileService:
         warehouse_id: UUID,
         default_customer_id: UUID | None = None,
         allowed_payment_methods: object = None,
-        discount_ceiling_pct: object = "0",
         require_customer: bool = False,
         default_payment_method: object = None,
-        returns_allowed_methods: object = None,
         item_group_ids: object = None,
-        refund_ceiling: object = None,
-        cash_out_ceiling: object = None,
     ) -> PosProfile:
         from app.modules.customers.service import CustomerService
         from app.modules.inventory.service import InventoryService
@@ -176,12 +117,8 @@ class PosProfileService:
             warehouse_id=warehouse_id,
             default_customer_id=default_customer_id,
             allowed_payment_methods=_clean_methods(allowed_payment_methods),
-            discount_ceiling_pct=_clean_ceiling(discount_ceiling_pct),
             require_customer=bool(require_customer),
-            refund_ceiling=_clean_money_ceiling(refund_ceiling, "refund_ceiling"),
-            cash_out_ceiling=_clean_money_ceiling(cash_out_ceiling, "cash_out_ceiling"),
             default_payment_method=_clean_default_method(default_payment_method),
-            returns_allowed_methods=_clean_return_methods(returns_allowed_methods),
             item_group_ids=cleaned_groups,
         )
         session.add(profile)
@@ -231,14 +168,10 @@ class PosProfileService:
         warehouse_id: UUID | None = None,
         default_customer_id: UUID | None = None,
         allowed_payment_methods: object = None,
-        discount_ceiling_pct: object = None,
         require_customer: bool | None = None,
         is_active: bool | None = None,
         default_payment_method: object = None,
-        returns_allowed_methods: object = None,
         item_group_ids: object = None,
-        refund_ceiling: object = _UNSET,
-        cash_out_ceiling: object = _UNSET,
     ) -> PosProfile:
         from app.modules.customers.service import CustomerService
         from app.modules.inventory.service import InventoryService
@@ -275,18 +208,10 @@ class PosProfileService:
             profile.default_customer_id = default_customer_id
         if allowed_payment_methods is not None:
             profile.allowed_payment_methods = _clean_methods(allowed_payment_methods)
-        if discount_ceiling_pct is not None:
-            profile.discount_ceiling_pct = _clean_ceiling(discount_ceiling_pct)
         if require_customer is not None:
             profile.require_customer = bool(require_customer)
-        if refund_ceiling is not _UNSET:
-            profile.refund_ceiling = _clean_money_ceiling(refund_ceiling, "refund_ceiling")
-        if cash_out_ceiling is not _UNSET:
-            profile.cash_out_ceiling = _clean_money_ceiling(cash_out_ceiling, "cash_out_ceiling")
         if default_payment_method is not None:
             profile.default_payment_method = _clean_default_method(default_payment_method)
-        if returns_allowed_methods is not None:
-            profile.returns_allowed_methods = _clean_return_methods(returns_allowed_methods)
         if item_group_ids is not None:
             cleaned_groups = _clean_item_groups(item_group_ids)
             if cleaned_groups:
@@ -412,65 +337,3 @@ class PosProfileService:
             raise ValidationError("item_group_ids contains a category this tenant does not have")
 
     # --------------------------------------------------------- policy -----
-
-    @staticmethod
-    def discount_needs_approval(
-        profile: PosProfile, discount_total: object, subtotal: object
-    ) -> bool:
-        """Whether a discount exceeds the profile's ceiling (pure, no session).
-
-        The ceiling is a percentage of the cart subtotal. A ceiling of 0 means
-        every discount needs approval — the safe default.
-        """
-        sub = to_money(subtotal, "subtotal")
-        if sub <= 0:
-            return False
-        discount = to_money(discount_total or "0", "discount_total")
-        if discount <= 0:
-            return False
-        pct = (discount / sub * Decimal("100")).quantize(Decimal("0.01"))
-        return pct > to_money(profile.discount_ceiling_pct, "discount_ceiling_pct")
-
-    @staticmethod
-    def ensure_discount_allowed(
-        profile: PosProfile,
-        discount_total: object,
-        subtotal: object,
-        *,
-        approved: bool,
-    ) -> None:
-        """The raising half of the pair: refuse an unapproved over-ceiling discount."""
-        if approved:
-            return
-        if PosProfileService.discount_needs_approval(profile, discount_total, subtotal):
-            raise ApprovalRequiredError(
-                f"discount exceeds this profile's ceiling of "
-                f"{profile.discount_ceiling_pct}% and needs an approval",
-                details={"limit": "discount", "ceiling": str(profile.discount_ceiling_pct)},
-            )
-
-    @staticmethod
-    def ensure_within_money_ceiling(
-        profile: PosProfile | None,
-        amount: object,
-        *,
-        kind: str,
-        approved: bool,
-    ) -> None:
-        """Refuse a return or a cash pay-out above the profile's ceiling unless a manager approved.
-
-        ``kind`` is ``"refund"`` or ``"cash_out"``. No profile, or a NULL ceiling, means the owner
-        set no limit: nothing is refused. An amount equal to the ceiling passes; only more needs
-        a manager.
-        """
-        if approved or profile is None:
-            return
-        ceiling = profile.refund_ceiling if kind == "refund" else profile.cash_out_ceiling
-        if ceiling is None:
-            return
-        if to_money(amount, "amount") > to_money(ceiling, "ceiling"):
-            what = "a return" if kind == "refund" else "cash out of the drawer"
-            raise ApprovalRequiredError(
-                f"{what} above {ceiling} needs a manager's approval on this till",
-                details={"limit": kind, "ceiling": str(ceiling)},
-            )

@@ -272,7 +272,7 @@ test("a per-line discount is stored on its line, so returning that one item refu
   };
   const bcA = `630${sfx}1`, bcB = `630${sfx}2`;
   await mk("A", bcA); await mk("B", bcB);
-  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash", discount_ceiling_pct: "100.00" });
+  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash" });
   const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
   const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "0.00" });
 
@@ -331,7 +331,7 @@ test("a fixed invoice discount can only take what the line discounts left, and t
   };
   const bcA = `630${sfx}1`, bcB = `630${sfx}2`;
   await mk("A", bcA); await mk("B", bcB);
-  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash", discount_ceiling_pct: "100.00" });
+  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash" });
   const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
   const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "0.00" });
 
@@ -375,7 +375,7 @@ test("a return retried with a different quantity gets a new Idempotency-Key (nev
   };
   const bcA = `630${sfx}1`, bcB = `630${sfx}2`;
   const vA = await mk("A", bcA);
-  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash", discount_ceiling_pct: "100.00" });
+  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash" });
   const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
   const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "0.00" });
 
@@ -433,7 +433,7 @@ test("closing a shift on the screen: the expected cash is the ledger's (float + 
   };
   const bcA = `630${sfx}1`, bcB = `630${sfx}2`;
   const vA = await mk("A", bcA);
-  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash", discount_ceiling_pct: "100.00" });
+  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash" });
   const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
   const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "500.00" });
 
@@ -493,7 +493,7 @@ test("an exchange on the screen: one A comes back, one B (price 150) goes out, t
   };
   const bcA = `630${sfx}1`, bcB = `630${sfx}2`;
   const vA = await mk("A", bcA); const vB = await mk("B", bcB);
-  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash", discount_ceiling_pct: "100.00" });
+  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash" });
   const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
   const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "0.00" });
 
@@ -558,7 +558,7 @@ test("a supplier return on the screen: the goods leave the shelf at once, and a 
   };
   const bcA = `630${sfx}1`, bcB = `630${sfx}2`;
   const vA = await mk("A", bcA);
-  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash", discount_ceiling_pct: "100.00" });
+  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash" });
   const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
   const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "0.00" });
 
@@ -632,7 +632,7 @@ test("a purchase on the screen: scanned barcode, 5 x 30 received, the shelf grow
   };
   const bcA = `630${sfx}1`, bcB = `630${sfx}2`;
   const vA = await mk("A", bcA);
-  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash", discount_ceiling_pct: "100.00" });
+  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash" });
   const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
   const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "0.00" });
 
@@ -688,7 +688,7 @@ test("paying a supplier on the screen: 180 owed, 100 paid in cash leaves the dra
   };
   const bcA = `630${sfx}1`, bcB = `630${sfx}2`;
   const vA = await mk("A", bcA);
-  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash", discount_ceiling_pct: "100.00" });
+  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash" });
   const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
   const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "0.00" });
 
@@ -740,7 +740,7 @@ test("a stocktake on the screen: counted 7 of the 10 it started with is 3 missin
   };
   const bcA = `630${sfx}1`, bcB = `630${sfx}2`;
   const vA = await mk("A", bcA);
-  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash", discount_ceiling_pct: "100.00" });
+  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash" });
   const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
   const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "0.00" });
 
@@ -795,7 +795,7 @@ test("the reports on the screen: 3 sold, 1 returned, 25 spent in cash gives net 
   };
   const bcA = `630${sfx}1`, bcB = `630${sfx}2`;
   const vA = await mk("A", bcA);
-  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash", discount_ceiling_pct: "100.00" });
+  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash" });
   const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
   const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "500.00" });
 
@@ -842,7 +842,7 @@ test("the activity log on the screen: a sale, a return and an expense all appear
   };
   const bcA = `630${sfx}1`, bcB = `630${sfx}2`;
   const vA = await mk("A", bcA);
-  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash", discount_ceiling_pct: "100.00" });
+  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash" });
   const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
   const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "500.00" });
 
@@ -874,49 +874,6 @@ test("the activity log on the screen: a sale, a return and an expense all appear
   expect(errs).toEqual([]);
 });
 
-test("sales settings on the screen show the till profile's real discount ceiling, and follow it when it is changed (15% then 25%)", async ({ page }) => {
-  const errs = []; page.on("pageerror", (e) => errs.push(e.message));
-  const sfx = `${Date.now()}`.slice(-8); const email = `ld-${sfx}@example.com`; const pw = `Ld-${sfx}-pass!`;
-  await page.goto("/register");
-  await page.getByLabel(/البريد الإلكتروني|email/i).fill(email);
-  await page.getByLabel(/^كلمة المرور$|^password$/i).fill(pw);
-  await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
-  await page.getByRole("button", { name: /إنشاء الحساب|create account/i }).click();
-  await expect(page).toHaveURL(/\/dashboard$/);
-  const api = (method, path, body) => page.evaluate(async ({ method, path, body }) => {
-    const raw = JSON.parse(localStorage.getItem("fihrist_tokens") || "null");
-    const csrf = (document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/) || [])[1];
-    const h = { "Content-Type": "application/json", ...(csrf ? { "X-CSRF-Token": csrf } : {}), ...(raw?.access_token ? { Authorization: `Bearer ${raw.access_token}` } : {}) };
-    const r = await fetch(`/api/v1${path}`, { method, headers: h, credentials: "include", body: body ? JSON.stringify(body) : undefined });
-    const t = await r.text(); if (!r.ok) throw new Error(`${method} ${path} -> ${r.status} ${t.slice(0, 200)}`); return t ? JSON.parse(t) : null;
-  }, { method, path, body });
-  const wh = await api("POST", "/warehouses/ensure-default");
-  const mk = async (tag, bc) => {
-    const p = await api("POST", "/products", { title: `Item${tag} ${sfx}`, slug: `item-${tag}-${sfx}`, description: null });
-    const v = await api("POST", `/products/${p.id}/variants`, { sku: `LD${tag}-${sfx}`, price: "100.00", option_values: {} });
-    await api("POST", `/variants/${v.id}/identifiers`, { identifier_type: "barcode", value: bc });
-    await api("POST", "/inventory/movements", { variant_id: v.id, warehouse_id: wh.id, direction: "in", quantity: 10, reason: "adjustment" });
-    await api("PATCH", `/products/${p.id}`, { status: "active" }); return v;
-  };
-  const bcA = `630${sfx}1`, bcB = `630${sfx}2`;
-  const vA = await mk("A", bcA);
-  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash", discount_ceiling_pct: "15.00" });
-  const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
-  const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "500.00" });
-
-  await page.goto("/cashier/settings", { waitUntil: "networkidle" });
-  const main = page.locator("main:has(.cashier-root)");
-  await main.getByRole("tab", { name: /المبيعات/ }).click();
-  await expect(main.getByTestId("ceiling-MAIN"), "the screen shows the profile's real ceiling").toHaveText("15%", { timeout: 10000 });
-
-  // the limit is the profile's own number: change it on the server and the screen follows
-  await api("PATCH", `/pos/profiles/${profile.id}`, { discount_ceiling_pct: "25.00" });
-  await page.reload({ waitUntil: "networkidle" });
-  await main.getByRole("tab", { name: /المبيعات/ }).click();
-  await expect(main.getByTestId("ceiling-MAIN"), "after the change the screen shows 25%").toHaveText("25%", { timeout: 10000 });
-  expect(errs).toEqual([]);
-});
-
 test("labels on the screen: 3 labels for an item show its real barcode and price, and the preview counts exactly 3", async ({ page }) => {
   const errs = []; page.on("pageerror", (e) => errs.push(e.message));
   const sfx = `${Date.now()}`.slice(-8); const email = `ld-${sfx}@example.com`; const pw = `Ld-${sfx}-pass!`;
@@ -943,7 +900,7 @@ test("labels on the screen: 3 labels for an item show its real barcode and price
   };
   const bcA = `630${sfx}1`, bcB = `630${sfx}2`;
   const vA = await mk("A", bcA);
-  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash", discount_ceiling_pct: "100.00" });
+  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash" });
   const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
   const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "500.00" });
 
@@ -986,7 +943,7 @@ test("backup export on the screen: the downloaded file holds the real expense an
   };
   const bcA = `630${sfx}1`, bcB = `630${sfx}2`;
   const vA = await mk("A", bcA);
-  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash", discount_ceiling_pct: "100.00" });
+  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash" });
   const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
   const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "500.00" });
 
@@ -1034,7 +991,7 @@ test("print settings on the screen do not pretend to save: no save button, no ed
   };
   const bcA = `630${sfx}1`, bcB = `630${sfx}2`;
   const vA = await mk("A", bcA);
-  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash", discount_ceiling_pct: "100.00" });
+  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash" });
   const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
   const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "500.00" });
 

@@ -55,22 +55,16 @@ def test_return_line_totals_price_at_the_original_sale() -> None:
 
     settle = PosService._return_line_totals
     # No discount: the line refunds its original gross.
-    assert settle(Decimal("50.00"), Decimal("0"), [(Decimal("25.00"), 2)]) == [
-        Decimal("50.00")
-    ]
+    assert settle(Decimal("50.00"), Decimal("0"), [(Decimal("25.00"), 2)]) == [Decimal("50.00")]
     # Discounted basket: the line takes its proportional share of the discount.
     # gross 60 of subtotal 100 with a 10 discount → 60 − 6 = 54.
     assert settle(Decimal("100.00"), Decimal("10.00"), [(Decimal("60.00"), 1)]) == [
         Decimal("54.00")
     ]
     # A fully-discounted order has no share to hand back.
-    assert settle(Decimal("0"), Decimal("10.00"), [(Decimal("25.00"), 1)]) == [
-        Decimal("25.00")
-    ]
+    assert settle(Decimal("0"), Decimal("10.00"), [(Decimal("25.00"), 1)]) == [Decimal("25.00")]
     # Per-line rounding is HALF_UP to the money quantum.
-    assert settle(Decimal("3.00"), Decimal("1.00"), [(Decimal("1.00"), 1)]) == [
-        Decimal("0.67")
-    ]
+    assert settle(Decimal("3.00"), Decimal("1.00"), [(Decimal("1.00"), 1)]) == [Decimal("0.67")]
 
 
 def test_return_refunds_what_was_paid_for_a_line_discounted_item() -> None:
@@ -197,11 +191,7 @@ async def test_line_return_refunds_through_the_original_tenders(db, tenant_ctx):
     assert result["receipt_number"].startswith("POS-RET-")
 
     return_receipt = (
-        (
-            await db.execute(
-                select(PosReceipt).where(PosReceipt.id == result["receipt_id"])
-            )
-        )
+        (await db.execute(select(PosReceipt).where(PosReceipt.id == result["receipt_id"])))
         .scalars()
         .one()
     )
@@ -237,7 +227,6 @@ async def test_discounted_return_takes_its_proportional_share(db, tenant_ctx):
         customer_id=customer.id,
         items=[{"variant_id": str(variant.id), "quantity": 2}],
         discount_total="10.00",
-        discount_override=True,  # about the proportional return share, not the ceiling policy
     )
     assert Decimal(sold["grand_total"]) == Decimal("40.00")
 
@@ -270,7 +259,6 @@ async def test_returning_a_line_discounted_item_refunds_what_was_paid(db, tenant
             {"variant_id": str(cheap.id), "quantity": 1, "discount_pct": "50"},
             {"variant_id": str(full.id), "quantity": 1},
         ],
-        discount_override=True,
     )
     assert Decimal(sold["grand_total"]) == Decimal("150.00")
 

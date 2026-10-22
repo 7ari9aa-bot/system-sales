@@ -7,7 +7,7 @@
  * changed the cart) gets a NEW key, otherwise the server would replay a receipt for another cart.
  * A second tap while a request is still in flight joins that request instead of sending another.
  */
-import { newIntent, posApi, withApproval } from "./posApi";
+import { newIntent, posApi } from "./posApi";
 import { buildSellPayload, cartItems } from "./checkout";
 import { fromMinor, toMinor } from "./money";
 
@@ -39,7 +39,7 @@ export function createSaleSession(sessionId) {
      * the SAME key, the server replays the first sale, and we retry only the read. Releasing the
      * key right after /sell (as before) made that retry a second, separate sale.
      */
-    async pay({ cart, total, discountTotal, customerId, tenders, approval }) {
+    async pay({ cart, total, discountTotal, customerId, tenders }) {
       const payload = buildSellPayload({ cart, total, discountTotal, customerId, tenders }); // throws if unpaid/empty
       const fp = fingerprint({ cart, discountTotal, customerId, tenders });
       if (inflight && inflightFor === fp) return inflight;
@@ -51,7 +51,7 @@ export function createSaleSession(sessionId) {
       const sent = intent;
       inflightFor = fp;
       inflight = posApi
-        .sell(sessionId, payload, approval ? withApproval(sent, approval) : sent) // the manager's OK rides on the SAME key
+        .sell(sessionId, payload, sent)
         .then(async (sold) => {
           const detail = await posApi.receipt(sold.receipt_id);
           intent = null; // sale AND receipt are in hand: the next sale is a new intent

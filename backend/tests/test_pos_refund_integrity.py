@@ -1,8 +1,7 @@
 """The money-only refund and the exchange obey the same safety rules as /returns.
 
-Three gaps an audit found: a refund could restock the whole basket, the drawer movement followed
-the ``method`` the caller sent rather than the cash legs actually refunded, and neither the refund
-nor the exchange honoured the owner's refund ceiling.
+Two gaps an audit found: a refund could restock the whole basket, and the drawer movement followed
+the ``method`` the caller sent rather than the cash legs actually refunded.
 """
 
 from __future__ import annotations
@@ -15,9 +14,9 @@ import sqlalchemy as sa
 
 from app.modules.inventory.service import InventoryService
 from app.modules.pos.models import PosCashMovement
-from app.modules.pos.profiles import ApprovalRequiredError, PosProfileService
+from app.modules.pos.profiles import PosProfileService
 from app.modules.pos.service import PosService
-from tests.test_pos_money_ceilings import _till
+from tests._pos_helpers import till
 from tests.test_pos_returns import _customer, _register, _sellable_variant, _warehouse
 
 pytestmark = pytest.mark.asyncio
@@ -33,7 +32,6 @@ async def _mixed_till(db, tenant_ctx):
         name="mixed",
         code=f"M{uuid.uuid4().hex[:6]}",
         warehouse_id=wh.id,
-        discount_ceiling_pct="100",
         allowed_payment_methods=["cash", "card"],
     )
     return await PosService.open_session(
@@ -77,7 +75,7 @@ async def _cash_refund_total(db, shift) -> Decimal:
 
 
 async def test_a_partial_money_refund_with_restock_flag_leaves_the_shelf_alone(db, tenant_ctx):
-    shift, _ = await _till(db, tenant_ctx)
+    shift, _, _ = await till(db, tenant_ctx)
     variant, order_id = await _sale(db, tenant_ctx, shift, price="10.00", qty=5)
     before = await _on_hand(db, tenant_ctx, variant)
 
@@ -126,61 +124,3 @@ async def test_a_card_only_sale_takes_nothing_from_the_drawer_even_if_cash_is_cl
 
     assert Decimal(done["cash_out"]) == Decimal("0")
     assert await _cash_refund_total(db, shift) == Decimal("0")
-
-
-async def test_refund_above_the_ceiling_needs_a_manager(db, tenant_ctx):
-    shift, _ = await _till(db, tenant_ctx, refund_ceiling="50.00")
-    _, order_id = await _sale(db, tenant_ctx, shift)
-
-    with pytest.raises(ApprovalRequiredError):
-        await PosService.refund(
-            db, tenant_ctx.tenant_id, shift.id, order_id=order_id, amount="60.00"
-        )
-    assert await _cash_refund_total(db, shift) == Decimal("0")  # nothing was written
-
-    done = await PosService.refund(
-        db,
-        tenant_ctx.tenant_id,
-        shift.id,
-        order_id=order_id,
-        amount="60.00",
-        ceiling_override=True,
-    )
-    assert Decimal(done["amount"]) == Decimal("60.00")
-
-
-async def test_refund_at_the_ceiling_and_with_no_ceiling_goes_through(db, tenant_ctx):
-    shift, _ = await _till(db, tenant_ctx, refund_ceiling="50.00")
-    _, order_id = await _sale(db, tenant_ctx, shift)
-    done = await PosService.refund(
-        db, tenant_ctx.tenant_id, shift.id, order_id=order_id, amount="50.00"
-    )
-    assert Decimal(done["amount"]) == Decimal("50.00")
-
-    free, _ = await _till(db, tenant_ctx)  # no ceiling set
-    _, order_2 = await _sale(db, tenant_ctx, free)
-    done = await PosService.refund(
-        db, tenant_ctx.tenant_id, free.id, order_id=order_2, amount="100.00"
-    )
-    assert Decimal(done["amount"]) == Decimal("100.00")
-
-
-async def test_exchange_above_the_ceiling_needs_a_manager_and_writes_nothing(db, tenant_ctx):
-    shift, _ = await _till(db, tenant_ctx, refund_ceiling="50.00")
-    variant, order_id = await _sale(db, tenant_ctx, shift)
-    other = await _sellable_variant(db, tenant_ctx, price="100.00", stock=50)
-    before = await _on_hand(db, tenant_ctx, variant)
-
-    kwargs = dict(
-        order_id=order_id,
-        return_lines=[{"variant_id": str(variant.id), "quantity": 1}],
-        new_lines=[{"variant_id": str(other.id), "quantity": 1}],
-    )
-    with pytest.raises(ApprovalRequiredError):
-        await PosService.exchange(db, tenant_ctx.tenant_id, shift.id, **kwargs)
-    assert await _on_hand(db, tenant_ctx, variant) == before  # shelf untouched
-
-    done = await PosService.exchange(
-        db, tenant_ctx.tenant_id, shift.id, ceiling_override=True, **kwargs
-    )
-    assert done["return_receipt_id"] and done["new_receipt_id"]

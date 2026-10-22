@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 
 from app.modules.errors import ValidationError
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
-from app.modules.pos.override import ManagerPinService, OverrideDep
+from app.modules.pos.override import OverrideDep
 from app.modules.pos.profiles import PosProfileService
 from app.modules.pos.service import PosService
 from app.modules.pos.stock_view import StockViewService
@@ -39,14 +39,10 @@ class CreateProfileRequest(BaseModel):
     warehouse_id: UUID
     default_customer_id: UUID | None = None
     allowed_payment_methods: list[str] | None = None
-    discount_ceiling_pct: str = Field(default="0", pattern=_MONEY)
     require_customer: bool = False
-    refund_ceiling: str | None = Field(default=None, pattern=_MONEY)
-    cash_out_ceiling: str | None = Field(default=None, pattern=_MONEY)
     default_payment_method: str | None = Field(
         default=None, pattern="^(cash|card|wallet|bank_transfer)$"
     )
-    returns_allowed_methods: list[str] | None = None
     item_group_ids: list[str] | None = None
 
 
@@ -55,15 +51,11 @@ class UpdateProfileRequest(BaseModel):
     warehouse_id: UUID | None = None
     default_customer_id: UUID | None = None
     allowed_payment_methods: list[str] | None = None
-    discount_ceiling_pct: str | None = Field(default=None, pattern=_MONEY)
     require_customer: bool | None = None
-    refund_ceiling: str | None = Field(default=None, pattern=_MONEY)
-    cash_out_ceiling: str | None = Field(default=None, pattern=_MONEY)
     is_active: bool | None = None
     default_payment_method: str | None = Field(
         default=None, pattern="^(cash|card|wallet|bank_transfer)$"
     )
-    returns_allowed_methods: list[str] | None = None
     item_group_ids: list[str] | None = None
 
 
@@ -81,15 +73,9 @@ def _profile_out(profile) -> dict:
             str(profile.default_customer_id) if profile.default_customer_id else None
         ),
         "allowed_payment_methods": list(profile.allowed_payment_methods or []),
-        "discount_ceiling_pct": str(profile.discount_ceiling_pct),
         "require_customer": profile.require_customer,
-        "refund_ceiling": None if profile.refund_ceiling is None else str(profile.refund_ceiling),
-        "cash_out_ceiling": (
-            None if profile.cash_out_ceiling is None else str(profile.cash_out_ceiling)
-        ),
         "is_active": profile.is_active,
         "default_payment_method": profile.default_payment_method,
-        "returns_allowed_methods": list(profile.returns_allowed_methods or []),
         "item_group_ids": [str(g) for g in (profile.item_group_ids or [])],
     }
 
@@ -104,12 +90,8 @@ async def create_profile(body: CreateProfileRequest, ctx: PosConfigCtx):
         warehouse_id=body.warehouse_id,
         default_customer_id=body.default_customer_id,
         allowed_payment_methods=body.allowed_payment_methods,
-        discount_ceiling_pct=body.discount_ceiling_pct,
         require_customer=body.require_customer,
-        refund_ceiling=body.refund_ceiling,
-        cash_out_ceiling=body.cash_out_ceiling,
         default_payment_method=body.default_payment_method,
-        returns_allowed_methods=body.returns_allowed_methods,
         item_group_ids=body.item_group_ids,
     )
     return _profile_out(profile)
@@ -137,18 +119,10 @@ async def update_profile(profile_id: UUID, body: UpdateProfileRequest, ctx: PosC
         warehouse_id=body.warehouse_id,
         default_customer_id=body.default_customer_id,
         allowed_payment_methods=body.allowed_payment_methods,
-        discount_ceiling_pct=body.discount_ceiling_pct,
         require_customer=body.require_customer,
         is_active=body.is_active,
         default_payment_method=body.default_payment_method,
-        returns_allowed_methods=body.returns_allowed_methods,
         item_group_ids=body.item_group_ids,
-        # A ceiling the caller did not send stays as it is; an explicit null removes the limit.
-        **{
-            name: getattr(body, name)
-            for name in ("refund_ceiling", "cash_out_ceiling")
-            if name in body.model_fields_set
-        },
     )
     return _profile_out(profile)
 
@@ -447,7 +421,6 @@ async def record_cash_movement(
         created_by=ctx.user.id,
         reference_id=body.reference_id,
         shift_override=override.active,
-        ceiling_override=override.active,
     )
     return {
         "id": str(row.id),
@@ -483,7 +456,6 @@ async def sell(session_id: UUID, body: SellRequest, ctx: PosWriteCtx, override: 
         tendered_cash=body.tendered_cash,
         held_cart_id=body.held_cart_id,
         actor_user_id=ctx.user.id,
-        discount_override=override.active,
         shift_override=override.active,
     )
     return {k: str(v) for k, v in result.items()}
@@ -750,7 +722,6 @@ async def refund(session_id: UUID, body: RefundRequest, ctx: PosWriteCtx, overri
         restock=False,
         actor_user_id=ctx.user.id,
         shift_override=override.active,
-        ceiling_override=override.active,
     )
 
 
@@ -770,7 +741,6 @@ async def return_sale(
         restock=body.restock,
         actor_user_id=ctx.user.id,
         shift_override=override.active,
-        ceiling_override=override.active,
     )
     return {
         **result,
@@ -807,7 +777,6 @@ async def exchange(
         tendered_cash=body.tendered_cash,
         actor_user_id=ctx.user.id,
         shift_override=override.active,
-        ceiling_override=override.active,
     )
     return {
         **result,
@@ -1003,30 +972,3 @@ async def cancel_stocktake(
         ctx.session, ctx.tenant_id, stocktake_id, user_id=ctx.user.id
     )
     return {"status": "CANCELLED"}
-
-
-class SetManagerPinRequest(BaseModel):
-    # Re-typing the password is what stops a borrowed, still-signed-in screen from minting a PIN.
-    password: str = Field(min_length=1, max_length=256)
-    pin: str = Field(min_length=4, max_length=8, pattern=r"^[0-9]{4,8}$")
-
-
-@router.get("/approvers")
-async def list_approvers(ctx: PosWriteCtx):
-    """Managers a cashier can ask for approval (PIN set, active): id and name only."""
-    return await ManagerPinService.list_approvers(ctx.session, ctx.tenant_id)
-
-
-@router.get("/manager-pin")
-async def manager_pin_status(ctx: PosManagerCtx):
-    """Whether the signed-in manager has a PIN. The PIN itself is never readable."""
-    return {"has_pin": await ManagerPinService.has_pin(ctx.session, ctx.tenant_id, ctx.user.id)}
-
-
-@router.put("/manager-pin")
-async def set_manager_pin(body: SetManagerPinRequest, ctx: PosManagerCtx):
-    """Set or change your own PIN. Only yours, and only with your password."""
-    await ManagerPinService.set_own_pin(
-        ctx.session, ctx.tenant_id, ctx.user.id, password=body.password, pin=body.pin
-    )
-    return {"has_pin": True}

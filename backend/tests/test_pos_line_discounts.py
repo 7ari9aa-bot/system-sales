@@ -82,8 +82,13 @@ async def _sellable_variant(db, tenant_ctx, price="25.00", stock=10):
         db, tenant_ctx.tenant_id, product.id, title="وحدة", price=price
     )
     await InventoryService.move(
-        db, tenant_ctx.tenant_id, variant.id, warehouse.id,
-        direction="in", quantity=stock, reason="purchase",
+        db,
+        tenant_ctx.tenant_id,
+        variant.id,
+        warehouse.id,
+        direction="in",
+        quantity=stock,
+        reason="purchase",
     )
     return variant
 
@@ -116,17 +121,12 @@ async def test_line_discount_charges_the_net_and_persists(db, tenant_ctx):
                 "discount_pct": "20.00",
             }
         ],
-        discount_override=True,  # this test is about the net price, not the ceiling policy
     )
     # 2 × 25 = 50 gross; 20% off → 10 discounted; net 40 charged.
     assert Decimal(result["grand_total"]) == Decimal("40.00")
 
     item = (
-        (
-            await db.execute(
-                select(OrderItem).where(OrderItem.order_id == result["order_id"])
-            )
-        )
+        (await db.execute(select(OrderItem).where(OrderItem.order_id == result["order_id"])))
         .scalars()
         .one()
     )
@@ -134,13 +134,7 @@ async def test_line_discount_charges_the_net_and_persists(db, tenant_ctx):
     assert Decimal(str(item.unit_price)) == Decimal("25.00")  # ladder price intact
     assert Decimal(str(item.total)) == Decimal("40.00")
 
-    order = (
-        (
-            await db.execute(select(Order).where(Order.id == result["order_id"]))
-        )
-        .scalars()
-        .one()
-    )
+    order = (await db.execute(select(Order).where(Order.id == result["order_id"]))).scalars().one()
     assert Decimal(str(order.subtotal)) == Decimal("50.00")
     assert Decimal(str(order.discount_total)) == Decimal("10.00")
 
@@ -206,11 +200,8 @@ async def test_exchange_of_a_discounted_line_credits_its_net(db, tenant_ctx):
         tenant_ctx.tenant_id,
         pos_session.id,
         customer_id=customer.id,
-        items=[
-            {"variant_id": str(sold_variant.id), "quantity": 1, "discount_pct": "20.00"}
-        ],
+        items=[{"variant_id": str(sold_variant.id), "quantity": 1, "discount_pct": "20.00"}],
         method="cash",
-        discount_override=True,  # about crediting the net on exchange, not the ceiling policy
     )
 
     result = await PosService.exchange(

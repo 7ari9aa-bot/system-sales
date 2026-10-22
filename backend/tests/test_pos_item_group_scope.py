@@ -133,7 +133,7 @@ async def test_sell_refuses_a_variant_with_no_category(db, tenant_ctx):
 
 
 async def test_a_manager_override_does_not_open_the_catalog(db, tenant_ctx):
-    """pos:override lifts the discount ceiling and the drawer lock. It is not a catalog key."""
+    """pos:override lifts the drawer lock. It is not a catalog key."""
     shift, _in, v_out, _none = await _scoped_till(db, tenant_ctx)
     customer = await _customer(db, tenant_ctx)
     with pytest.raises(ValidationError, match=OUTSIDE):
@@ -146,7 +146,6 @@ async def test_a_manager_override_does_not_open_the_catalog(db, tenant_ctx):
             items=[_line(v_out)],
             tenders=[{"method": "cash", "amount": "50.00"}],
             shift_override=True,
-            discount_override=True,
         )
 
 

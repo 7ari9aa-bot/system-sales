@@ -99,7 +99,7 @@ describe("bootstrapPos (manager only, idempotent)", () => {
     expect(bodyOf("/pos/registers")).toMatchObject({ code: "MAIN", warehouse_id: "w1", profile_id: "p1" });
   });
 
-  it("the till it sets up sells in cash only and never opens the discount ceiling to 100%", async () => {
+  it("the till it sets up sells in cash only", async () => {
     pos.listProfiles.mockResolvedValue([]);
     pos.listRegisters.mockResolvedValue([]);
     api.mockImplementation(async (path, opts = {}) => {
@@ -111,8 +111,6 @@ describe("bootstrapPos (manager only, idempotent)", () => {
     await bootstrapPos();
     const body = api.mock.calls.find(([p, o]) => p === "/pos/profiles" && o?.method === "POST")[1].body;
     expect(body.allowed_payment_methods).toEqual(["cash"]);
-    // not sent at all: the server's own default (0%, every discount needs a manager) applies
-    expect(body.discount_ceiling_pct).toBeUndefined();
   });
 
   it("works on a brand-new shop: the warehouse comes from ensure-default, not from a list", async () => {

@@ -3,7 +3,7 @@
 Two test classes, per AGENT_BRIEF §7:
 
 * **DB-free guards** run everywhere: the new routes are mounted, the new wire
-  fields exist, the tender/change arithmetic and the discount-ceiling policy
+  fields exist and the tender/change arithmetic
   are pure functions that can be exercised without a database.
 * **DB-backed** tests run only where a database URL is configured (CI); conftest
   skips them locally. They are reported as UNVERIFIED when only local runs were
@@ -16,7 +16,6 @@ import uuid
 from decimal import Decimal
 
 import pytest
-from pydantic import ValidationError as PydanticValidationError
 
 from app.main import create_app
 from app.modules.errors import ConflictError, ValidationError
@@ -79,15 +78,6 @@ def test_close_wire_accepts_per_method_counts() -> None:
     assert body.counted_by_method == {"cash": "100.00"}
 
 
-def test_profile_wire_refuses_bad_ceiling() -> None:
-    from app.modules.pos.router import CreateProfileRequest
-
-    with pytest.raises(PydanticValidationError):
-        CreateProfileRequest(
-            name="Till", code="T1", warehouse_id=uuid.uuid4(), discount_ceiling_pct="abc"
-        )
-
-
 def test_change_arithmetic_is_exact() -> None:
     from app.modules.pos.service import PosService
 
@@ -105,34 +95,6 @@ def test_change_refuses_under_tender() -> None:
 
     with pytest.raises(ConflictError):
         PosService._settle_change(Decimal("50.00"), "30.00")
-
-
-def test_discount_ceiling_predicate() -> None:
-    from app.modules.pos.profiles import PosProfileService
-
-    class _P:
-        discount_ceiling_pct = Decimal("10.00")
-
-    # 5% of 100 == 5.00 → under a 10% ceiling.
-    assert PosProfileService.discount_needs_approval(_P(), "5.00", "100.00") is False
-    # 20% of 100 == 20.00 → over the ceiling.
-    assert PosProfileService.discount_needs_approval(_P(), "20.00", "100.00") is True
-    # No discount never needs approval.
-    assert PosProfileService.discount_needs_approval(_P(), None, "100.00") is False
-
-
-def test_discount_ceiling_raises_when_unapproved() -> None:
-    from app.modules.pos.profiles import PosProfileService
-
-    class _P:
-        discount_ceiling_pct = Decimal("10.00")
-
-    # Approved → never raises.
-    PosProfileService.ensure_discount_allowed(_P(), "20.00", "100.00", approved=True)
-    with pytest.raises(ValidationError):
-        PosProfileService.ensure_discount_allowed(_P(), "20.00", "100.00", approved=False)
-    # Within the ceiling → never raises even without approval.
-    PosProfileService.ensure_discount_allowed(_P(), "5.00", "100.00", approved=False)
 
 
 def test_tender_shapes_are_mutually_exclusive() -> None:
@@ -159,7 +121,6 @@ def _profile_payload(warehouse_id):
         "name": "كاشير المحل",
         "code": f"P-{uuid.uuid4().hex[:6]}",
         "warehouse_id": str(warehouse_id),
-        "discount_ceiling_pct": "10.00",
     }
 
 
@@ -174,7 +135,6 @@ async def test_profile_created_and_listed(db, tenant_ctx):
         name="كاشير المحل",
         code=f"P-{uuid.uuid4().hex[:6]}",
         warehouse_id=warehouse.id,
-        discount_ceiling_pct="10.00",
     )
     assert profile.id is not None
     listed = await PosProfileService.list_profiles(db, tenant_ctx.tenant_id)

@@ -8,7 +8,7 @@ vi.mock("@/lib/api", () => ({
   }),
 }));
 
-import { newIntent, posApi, withApproval } from "./posApi";
+import { newIntent, posApi } from "./posApi";
 
 beforeEach(() => {
   calls.length = 0;
@@ -136,36 +136,5 @@ describe("receipt search", () => {
     const url = new URL(calls[0].path, "http://x");
     expect(url.searchParams.getAll("limit")).toEqual(["5"]);
     expect(url.searchParams.get("q")).toBe("x&limit=500");
-  });
-});
-
-describe("a manager's approval rides on the intent", () => {
-  const ret = { orderId: "o1", lines: [{ variant_id: "v", quantity: 1 }] };
-
-  it("without an approval no manager header is sent", async () => {
-    await posApi.returnSale("s1", ret, newIntent());
-    expect(calls[0].headers["X-Manager-Id"]).toBeUndefined();
-    expect(calls[0].headers["X-Manager-Pin"]).toBeUndefined();
-  });
-
-  it("with one, the same call carries the manager id and PIN and keeps the SAME idempotency key", async () => {
-    const intent = newIntent();
-    await posApi.returnSale("s1", ret, intent);
-    await posApi.returnSale("s1", ret, withApproval(intent, { managerId: "m1", pin: "4821" }));
-    expect(calls[1].headers["X-Manager-Id"]).toBe("m1");
-    expect(calls[1].headers["X-Manager-Pin"]).toBe("4821");
-    expect(calls[1].headers["Idempotency-Key"]).toBe(calls[0].headers["Idempotency-Key"]);
-  });
-
-  it("works for every money call, including cash out", async () => {
-    const ok = withApproval(newIntent(), { managerId: "m1", pin: "4821" });
-    await posApi.cashMovement("s1", { direction: "out", reason: "pay_out", amount: 500 }, ok);
-    expect(calls[0].headers["X-Manager-Pin"]).toBe("4821");
-  });
-
-  it("an approval missing the id or the PIN is refused before anything is sent", async () => {
-    const bad = withApproval(newIntent(), { managerId: "m1", pin: "" });
-    await expect(posApi.returnSale("s1", ret, bad)).rejects.toThrow(/managerId and pin/);
-    expect(calls).toHaveLength(0);
   });
 });

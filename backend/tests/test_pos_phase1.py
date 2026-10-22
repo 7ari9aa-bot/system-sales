@@ -54,7 +54,7 @@ def test_sell_wire_accepts_held_cart_resume() -> None:
     assert body.held_cart_id is not None
 
 
-def test_profile_wire_accepts_default_and_return_methods() -> None:
+def test_profile_wire_accepts_default_method() -> None:
     from app.modules.pos.router import CreateProfileRequest
 
     body = CreateProfileRequest(
@@ -62,10 +62,8 @@ def test_profile_wire_accepts_default_and_return_methods() -> None:
         code="P1",
         warehouse_id=uuid.uuid4(),
         default_payment_method="card",
-        returns_allowed_methods=["cash", "card"],
     )
     assert body.default_payment_method == "card"
-    assert body.returns_allowed_methods == ["cash", "card"]
 
 
 def test_profile_wire_refuses_unknown_default_method() -> None:

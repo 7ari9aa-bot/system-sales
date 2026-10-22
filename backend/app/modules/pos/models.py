@@ -7,8 +7,8 @@ is arithmetic over rows — expected cash is computed, never remembered.
 Enum-like columns are String with closed vocabularies enforced in the service.
 
 The Profile is the ERPNext `POS Profile` idea (§2 of the plan): a terminal
-configuration — default warehouse, walk-in customer, allowed payment methods and
-a discount ceiling — so a cashier's station is preconfigured instead of invented
+configuration — default warehouse, walk-in customer and allowed payment methods —
+so a cashier's station is preconfigured instead of invented
 per sale.
 """
 
@@ -24,7 +24,6 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
-    Numeric,
     String,
     UniqueConstraint,
     func,
@@ -47,9 +46,7 @@ class PosProfile(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, Base
     """A cashier station's preconfiguration (§189, ERPNext `POS Profile`).
 
     One profile drives many registers: the config changes without touching the
-    hardware. ``discount_ceiling_pct`` is the policy line — a discount above it
-    needs an approval grant, and the refusal lives both on the wire and in the
-    service.
+    hardware.
     """
 
     __tablename__ = "pos_profiles"
@@ -70,22 +67,12 @@ class PosProfile(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, Base
     allowed_payment_methods: Mapped[list] = mapped_column(
         JSONB, server_default='["cash", "card", "wallet", "bank_transfer"]'
     )
-    # Percent, 0-100. A discount above this needs an approval (§plan 5.4).
-    discount_ceiling_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), server_default="0")
     require_customer: Mapped[bool] = mapped_column(Boolean, server_default="false")
-    # Money limits a cashier can move on their own authority, in the shop's currency. NULL = no
-    # limit (the owner has not set one); above it an action needs a manager's approval. The owner
-    # sets these, the code assumes no number.
-    refund_ceiling: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
-    cash_out_ceiling: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, server_default="true")
     # The till's preselected tender (ERPNext `set_grand_total_to_default_mop`):
     # a sale that names no tender charges this method with the whole total.
     # NULL = the service falls back to cash.
     default_payment_method: Mapped[str | None] = mapped_column(String(31), nullable=True)
-    # Methods a refund may travel through (ERPNext `allow_in_returns`). An
-    # empty list means every method the sale captured is refundable.
-    returns_allowed_methods: Mapped[list] = mapped_column(JSONB, server_default="[]")
     # Category ids this terminal serves (ERPNext `POS Item Group`). Empty list
     # = the tenant's whole catalog; the browse grid and the scan both refuse
     # outside it.
@@ -454,31 +441,3 @@ class PosDailySales(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, B
         ),
         Index("ix_pos_daily_tenant_date", "tenant_id", "business_date"),
     )
-
-
-class ManagerPin(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, Base):
-    """A manager's counter PIN: the short secret that lets them approve ONE action at a till.
-
-    The cashier stays signed in as themself. A manager types their PIN into the till to approve a
-    single discount, return or cash movement that is above the cashier's own authority; the
-    approval covers that one request and the audit row names the manager, not the cashier.
-
-    Only the hash is stored (the same bcrypt as passwords, never the digits). A 4-8 digit PIN is
-    a tiny search space, so the hash alone does not protect it: PosOverrideService counts failures
-    in Redis and locks the manager out, and refuses a PIN whose owner no longer holds
-    ``pos:override``. One row per (tenant, manager): the same person can have a different PIN in
-    each shop they manage.
-    """
-
-    __tablename__ = "manager_pins"
-
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE")
-    )
-    pin_hash: Mapped[str] = mapped_column(String(255))
-    # When the PIN was last set or changed, so a manager can see how old theirs is.
-    set_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
-
-    __table_args__ = (UniqueConstraint("tenant_id", "user_id", name="uq_manager_pins_user"),)

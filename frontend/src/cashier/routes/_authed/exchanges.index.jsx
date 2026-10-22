@@ -17,9 +17,7 @@ import ConfirmDialog from "@/cashier/components/ui-kit/ConfirmDialog";
 import useFillRowCount from "@/cashier/hooks/use-fill-row-count";
 import { fmtMoney } from "@/cashier/lib/format";
 import { fromMinor, toMinor } from "@/cashier/api/money";
-import { newIntent, posApi, withApproval } from "@/cashier/api/posApi";
-import { approvalFailure, approvalReason, needsApproval } from "@/cashier/api/approval";
-import ManagerApprovalDialog from "@/cashier/components/shifts/ManagerApprovalDialog";
+import { newIntent, posApi } from "@/cashier/api/posApi";
 import { useShiftState } from "@/cashier/api/useShifts";
 import { RECEIPT_SEARCH_MIN, useReceiptSearch, useReturnableSales, useSessionCatalog } from "@/cashier/api/usePosSale";
 import { searchCatalog } from "@/cashier/api/catalogAdapter";
@@ -75,7 +73,6 @@ function ExchangeScreen({ session }) {
   const [restock, setRestock] = useState(true);
   const [busy, setBusy] = useState(false);
   const [payError, setPayError] = useState(null);
-  const [approval, setApproval] = useState(null); // { payment, reason, error }: waits for a manager, then re-sends the SAME request
   const [dialog, setDialog] = useState(null); // payment | cancel
   const intentRef = useRef(null); // one intent per deliberate exchange (+ its payment): a retry replays, never double-charges
   const intentFor = useRef("");
@@ -178,36 +175,27 @@ function ExchangeScreen({ session }) {
     setNewLines((p) => setReplacementQty(p, id, l.qty + d));
   };
 
-  async function send(payment, managerOk) {
+  async function send(payment) {
     if (busy) return;
     setBusy(true);
     setPayError(null);
     try {
       const req = exchangeRequest(invoice.detail, lines, newLines, { restock, tenders: payment.tenders, tenderedCash: payment.tenderedCash });
       intentRef.current ??= newIntent();
-      const intent = managerOk ? withApproval(intentRef.current, managerOk) : intentRef.current;
-      const res = await sendReturn(() => posApi.exchange(session.id, req, intent)); // same intent re-sent while the first is still running -> wait, then replay
+      const res = await sendReturn(() => posApi.exchange(session.id, req, intentRef.current)); // same intent re-sent while the first is still running -> wait, then replay
       const net = Number(res.net);
       toast.success(
         net > 0 ? `تم الاستبدال ${res.new_receipt_number}. تم تحصيل ${fmtMoney(net)}` : net < 0 ? `تم الاستبدال ${res.new_receipt_number}. رد ${fmtMoney(Math.abs(net))} للعميل` : `تم الاستبدال ${res.new_receipt_number} بدون فرق`,
       );
       intentRef.current = null;
-      setApproval(null);
       setDialog(null);
       await qc.invalidateQueries({ queryKey: ["cashier"] });
       resetDraft();
     } catch (e) {
-      if (needsApproval(e) && !managerOk) {
-        setDialog(null); // the payment box gives way to the manager box; the request is kept as it was
-        setApproval({ payment, reason: approvalReason(e), error: null });
-      } else if (managerOk) {
-        setApproval((a) => ({ ...(a ?? { payment }), error: approvalFailure(e) }));
-      } else {
-        const m = exchangeErrorMessage(e);
-        setPayError(m);
-        setError(m);
-        toast.error(m);
-      }
+      const m = exchangeErrorMessage(e);
+      setPayError(m);
+      setError(m);
+      toast.error(m);
     } finally {
       setBusy(false);
     }
@@ -303,14 +291,6 @@ function ExchangeScreen({ session }) {
         onConfirm={onPay}
         pending={busy}
         error={payError}
-      />
-      <ManagerApprovalDialog
-        open={Boolean(approval)}
-        reason={approval?.reason}
-        pending={busy}
-        error={approval?.error}
-        onCancel={() => setApproval(null)}
-        onApprove={(ok) => send(approval.payment, ok)}
       />
       <ConfirmDialog
         open={dialog === "cancel"}

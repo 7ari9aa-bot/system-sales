@@ -190,7 +190,7 @@ async def test_a_variant_nobody_configured_is_never_reported_low(db, tenant_ctx)
 
 
 async def _ctx(db, tenant_ctx, role_code):
-    from tests.test_pos_discount_ceiling import _ctx_for
+    from tests._pos_helpers import ctx_for as _ctx_for
 
     return await _ctx_for(db, tenant_ctx, role_code)
 

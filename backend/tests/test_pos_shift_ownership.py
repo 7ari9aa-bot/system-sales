@@ -209,22 +209,18 @@ async def test_the_holder_can_book_and_a_manager_can_void_it_on_their_drawer(db,
 
 
 async def _stranger_ctx(db, tenant_ctx, stranger, role_code):
-    from tests.test_pos_discount_ceiling import _ctx_for
+    from tests._pos_helpers import ctx_for as _ctx_for
 
     ctx = await _ctx_for(db, tenant_ctx, role_code)
     ctx.user = stranger
     return ctx
 
 
-
 async def _grant(ctx, method="POST", path="/pos/test"):
     """What the real dependency makes of this caller (a manager is a grant, a cashier is not)."""
-    from types import SimpleNamespace
-
     from app.modules.pos.override import resolve_override
 
-    request = SimpleNamespace(method=method, url=SimpleNamespace(path=path))
-    return await resolve_override(request, ctx)
+    return await resolve_override(ctx)
 
 
 async def test_on_the_routes_a_cashier_is_refused_and_a_manager_is_not(db, tenant_ctx):
