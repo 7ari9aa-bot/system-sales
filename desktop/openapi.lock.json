@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 419,
-    "sha256": "68bd8ffc3bb1dec8c594aa45e19e6795a09bd546fe81baabb0b4f4e9ce5558e3",
+    "sha256": "ccf8a8c387575bc19f5dc9d722810777862e88c8f51048f0f2661b7e26b5a31d",
     "typed_operations": 256
   },
   "spec": {
@@ -13248,6 +13248,18 @@
               "minItems": 1,
               "title": "Items",
               "type": "array"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
             }
           },
           "required": [
