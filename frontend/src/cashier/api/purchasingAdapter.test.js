@@ -133,10 +133,11 @@ describe("buildPayment", () => {
   it("a cash payment is tied to the open shift", () => {
     expect(buildPayment({ ...base, method: "cash" }, { openSessionId: "sess" }).payload.session_id).toBe("sess");
   });
-  it("a cash payment with no open shift is stopped here with something the cashier can act on", () => {
+  it("a cash payment with no open shift is accepted: it is a record, and it carries no shift", () => {
     const r = buildPayment({ ...base, method: "cash" }, { openSessionId: null });
-    expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/وردية/);
+    expect(r.ok).toBe(true);
+    expect("session_id" in r.payload).toBe(false);
+    expect(r.payload.method).toBe("cash");
   });
   it("cannot pay more than what is owed, to the cent", () => {
     expect(buildPayment({ ...base, amount: "600.01" }, { owed: "600.00" }).ok).toBe(false);

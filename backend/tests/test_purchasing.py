@@ -475,14 +475,17 @@ async def test_a_cash_payment_leaves_the_drawer_by_exactly_its_amount(db, tenant
     )
 
 
-async def test_cash_payment_needs_an_open_shift_and_non_cash_must_not_have_one(
-    db, tenant_ctx
-) -> None:
+async def test_cash_payment_needs_no_shift_and_non_cash_must_not_have_one(db, tenant_ctx) -> None:
     t = tenant_ctx.tenant_id
     sup = await _supplier(db, tenant_ctx)
-    with pytest.raises(ConflictError, match="open a shift"):
-        await SupplierPaymentService.create(db, t, supplier_id=sup.id, amount="5", method="cash")
     shift = await _shift(db, tenant_ctx)
+    in0, out0 = await _cash_totals(db, tenant_ctx, shift)
+    # no shift named: the payment is recorded and no drawer moves
+    recorded = await SupplierPaymentService.create(
+        db, t, supplier_id=sup.id, amount="5", method="cash"
+    )
+    assert recorded.method == "cash" and recorded.session_id is None
+    assert await _cash_totals(db, tenant_ctx, shift) == (in0, out0)
     with pytest.raises(ValidationError, match="only a cash payment"):
         await SupplierPaymentService.create(
             db, t, supplier_id=sup.id, amount="5", method="card", session_id=shift.id
@@ -668,9 +671,6 @@ async def test_a_cash_refund_enters_the_drawer_only_on_acceptance(db, tenant_ctx
         lines=[{"variant_id": str(var.id), "quantity": 2}],
     )
     in0, _ = await _cash_totals(db, tenant_ctx, shift)
-    with pytest.raises(ConflictError, match="open a shift"):
-        await SupplierReturnService.accept(db, t, ret.id)
-    assert ret.status == "review"  # a refused acceptance leaves it waiting
     await SupplierReturnService.accept(db, t, ret.id, session_id=shift.id)
     in1, _ = await _cash_totals(db, tenant_ctx, shift)
     assert in1 - in0 == D("80.00") and ret.refund_session_id == shift.id
@@ -811,10 +811,18 @@ async def test_database_refuses_inconsistent_lines_and_states(db, tenant_ctx) ->
     for amount, method in [
         ("0", "card"),
         ("-3", "card"),
-        ("5", "cash"),
         ("5", "barter"),
-    ]:  # cash with no shift is refused too
+    ]:
         await _must_fail(db, pay, {"t": t, "s": sup.id, "a": amount, "m": method})
+    # a shift tied to a card payment is refused: the drawer never paid it
+    shift = await _shift(db, tenant_ctx)
+    with_shift = text(
+        "insert into supplier_payments (id, tenant_id, supplier_id, amount, method, paid_on, "
+        "session_id) values (gen_random_uuid(), :t, :s, 5, 'card', current_date, :x)"
+    )
+    await _must_fail(db, with_shift, {"t": t, "s": sup.id, "x": shift.id})
+    # a cash payment with no shift is accepted: it is a record
+    await db.execute(pay, {"t": t, "s": sup.id, "a": "5", "m": "cash"})
 
 
 async def test_a_supplier_with_history_cannot_be_deleted_and_the_ledger_cannot_be_rewritten(
@@ -885,3 +893,25 @@ async def test_cost_history_reads_back_what_receiving_wrote(db, tenant_ctx) -> N
     )
     assert by_po[po2.id].on_hand_before == 10 and by_po[po2.id].unit_cost == D("120.00")
     assert await CostService.history(db, t, uuid.uuid4()) == []
+
+
+async def test_cash_refund_accepted_with_no_shift_is_a_record_and_moves_no_drawer(
+    db, tenant_ctx
+) -> None:
+    t = tenant_ctx.tenant_id
+    sup = await _supplier(db, tenant_ctx)
+    var = await _variant(db, tenant_ctx)
+    po = await _po(db, tenant_ctx, sup, var, qty=10, cost="40.00")
+    shift = await _shift(db, tenant_ctx)
+    ret = await SupplierReturnService.create(
+        db,
+        t,
+        supplier_id=sup.id,
+        purchase_order_id=po.id,
+        settlement="cash",
+        lines=[{"variant_id": str(var.id), "quantity": 2}],
+    )
+    before = await _cash_totals(db, tenant_ctx, shift)
+    await SupplierReturnService.accept(db, t, ret.id)
+    assert ret.status == "accepted" and ret.refund_session_id is None
+    assert await _cash_totals(db, tenant_ctx, shift) == before

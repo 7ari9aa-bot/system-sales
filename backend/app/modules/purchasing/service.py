@@ -671,13 +671,14 @@ class SupplierPaymentService:
                     f"the payment ({value}) is more than what is still owed on the order ({owed})"
                 )
 
+        # A payment is a record first: a cash one needs no shift. Only when a shift is named does
+        # the money also leave that drawer, so the (non-blind) close still balances.
         drawer = None
         if method == "cash":
-            if session_id is None:
-                raise ConflictError("a cash payment comes out of an open shift: open a shift first")
-            drawer = await _pos()._get_session(session, tenant_id, session_id)
-            if drawer.status != "OPEN":
-                raise ConflictError("a cash payment needs an OPEN shift; this one is closed")
+            if session_id is not None:
+                drawer = await _pos()._get_session(session, tenant_id, session_id)
+                if drawer.status != "OPEN":
+                    raise ConflictError("a cash payment needs an OPEN shift; this one is closed")
         elif session_id is not None:
             raise ValidationError("only a cash payment is tied to a shift")
 
@@ -909,25 +910,23 @@ class SupplierReturnService:
         if ret.status != "review":
             raise ConflictError(f"this return was already {ret.status}")
         if ret.settlement == "cash":
-            if session_id is None:
-                raise ConflictError(
-                    "a cash refund goes into an open shift's drawer: open a shift first"
+            # The refund is a record first; it enters a drawer only when a shift is named.
+            if session_id is not None:
+                drawer = await _pos()._get_session(session, tenant_id, session_id)
+                if drawer.status != "OPEN":
+                    raise ConflictError("a cash refund needs an OPEN shift; this one is closed")
+                await _pos().record_cash_movement(
+                    session,
+                    tenant_id,
+                    drawer.id,
+                    direction="in",
+                    reason="pay_in",
+                    amount=Decimal(ret.total),
+                    created_by=decided_by,
+                    reference_type="supplier_return",
+                    reference_id=ret.id,
                 )
-            drawer = await _pos()._get_session(session, tenant_id, session_id)
-            if drawer.status != "OPEN":
-                raise ConflictError("a cash refund needs an OPEN shift; this one is closed")
-            await _pos().record_cash_movement(
-                session,
-                tenant_id,
-                drawer.id,
-                direction="in",
-                reason="pay_in",
-                amount=Decimal(ret.total),
-                created_by=decided_by,
-                reference_type="supplier_return",
-                reference_id=ret.id,
-            )
-            ret.refund_session_id = drawer.id
+                ret.refund_session_id = drawer.id
         elif session_id is not None:
             raise ValidationError("only a cash refund is tied to a shift")
         # settlement 'credit': nothing to write, the supplier statement counts accepted credit

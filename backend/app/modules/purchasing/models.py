@@ -180,8 +180,8 @@ class SupplierPayment(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin
             "method IN ('cash','card','wallet','bank_transfer')", name="ck_supplier_payments_method"
         ),
         CheckConstraint(
-            "(method = 'cash') = (session_id IS NOT NULL)",
-            name="ck_supplier_payments_cash_has_session",
+            "session_id IS NULL OR method = 'cash'",
+            name="ck_supplier_payments_shift_only_cash",
         ),
         # one payment can be reversed at most once
         UniqueConstraint("tenant_id", "reverses_payment_id", name="uq_supplier_payments_reversal"),

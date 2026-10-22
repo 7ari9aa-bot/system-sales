@@ -110,9 +110,6 @@ export function buildPayment(form, { openSessionId = null, owed = null } = {}) {
   if (owed !== null && toMinor(amount) > toMinor(owed)) {
     return { ok: false, error: `المبلغ أكبر من المتبقي على الفاتورة (${owed})` };
   }
-  if (form.method === "cash" && !openSessionId) {
-    return { ok: false, error: "الدفع النقدي بيطلع من درج الوردية: افتح وردية الأول أو اختر طريقة دفع تانية" };
-  }
   const note = String(form.note ?? "").trim();
   return {
     ok: true,
@@ -121,7 +118,8 @@ export function buildPayment(form, { openSessionId = null, owed = null } = {}) {
       amount,
       method: form.method,
       ...(form.orderId ? { purchase_order_id: form.orderId } : {}),
-      ...(form.method === "cash" ? { session_id: openSessionId } : {}),
+      // A cash payment needs no shift: it is a record. With a shift open it also leaves that drawer.
+      ...(form.method === "cash" && openSessionId ? { session_id: openSessionId } : {}),
       ...(note ? { note } : {}),
     },
   };

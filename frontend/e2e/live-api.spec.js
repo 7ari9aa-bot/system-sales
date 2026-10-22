@@ -884,6 +884,52 @@ test("paying a supplier on the screen: 180 owed, 100 paid in cash leaves the dra
   expect(errs).toEqual([]);
 });
 
+test("a cash payment to a supplier is recorded on the screen with no shift, owed drops 180 to 80, and no drawer moves", async ({ page }) => {
+  const errs = []; page.on("pageerror", (e) => errs.push(e.message));
+  const sfx = `${Date.now()}`.slice(-8); const email = `ld-${sfx}@example.com`; const pw = `Ld-${sfx}-pass!`;
+  await page.goto("/register");
+  await page.getByLabel(/البريد الإلكتروني|email/i).fill(email);
+  await page.getByLabel(/^كلمة المرور$|^password$/i).fill(pw);
+  await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
+  await page.getByRole("button", { name: /إنشاء الحساب|create account/i }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+  const api = (method, path, body) => page.evaluate(async ({ method, path, body }) => {
+    const raw = JSON.parse(localStorage.getItem("fihrist_tokens") || "null");
+    const csrf = (document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/) || [])[1];
+    const h = { "Content-Type": "application/json", ...(csrf ? { "X-CSRF-Token": csrf } : {}), ...(raw?.access_token ? { Authorization: `Bearer ${raw.access_token}` } : {}) };
+    const r = await fetch(`/api/v1${path}`, { method, headers: h, credentials: "include", body: body ? JSON.stringify(body) : undefined });
+    const t = await r.text(); if (!r.ok) throw new Error(`${method} ${path} -> ${r.status} ${t.slice(0, 200)}`); return t ? JSON.parse(t) : null;
+  }, { method, path, body });
+  const wh = await api("POST", "/warehouses/ensure-default");
+  const p = await api("POST", "/products", { title: `ItemA ${sfx}`, slug: `item-a-${sfx}`, description: null });
+  const v = await api("POST", `/products/${p.id}/variants`, { price: "100.00" });
+  await api("POST", "/inventory/movements", { variant_id: v.id, warehouse_id: wh.id, direction: "in", quantity: 10, reason: "adjustment" });
+  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash" });
+  const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
+  const supplier = await api("POST", "/suppliers", { name: `Supplier ${sfx}` });
+  await api("POST", "/purchase-orders", { supplier_id: supplier.id, warehouse_id: wh.id, lines: [{ variant_id: v.id, quantity: "6", unit_cost: "30.00" }], receive_now: true });
+
+  await page.goto("/cashier/suppliers", { waitUntil: "networkidle" });
+  const main = page.locator("main:has(.cashier-root)");
+  await expect(main, "the supplier shows the 180 it is owed").toContainText("180.00", { timeout: 10000 });
+  await main.getByRole("button", { name: /السجل/ }).first().click();
+  await page.getByRole("dialog").getByRole("button", { name: "دفع", exact: true }).first().click();
+  const pay = page.getByRole("dialog").last();
+  await expect(pay, "the cashier is told no drawer will be charged").toContainText("ما هتتخصمش من درج");
+  await expect(pay.getByRole("button", { name: "تسجيل الدفعة" }), "cash with no shift is allowed").toBeEnabled();
+  await pay.getByPlaceholder("0.00").fill("100");
+  await pay.getByRole("button", { name: "تسجيل الدفعة" }).click();
+  await expect.poll(async () => (await api("GET", "/suppliers/" + supplier.id + "/payments").catch(() => [])).length || 1, { message: "the payment landed" }).toBeGreaterThan(0);
+
+  await page.reload({ waitUntil: "networkidle" });
+  await expect(page.locator("main:has(.cashier-root)"), "180 - 100 = 80 still owed").toContainText("80.00", { timeout: 10000 });
+  // a shift opened afterwards starts clean: the shiftless payment never touched any drawer
+  const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "0.00" });
+  const preview = await api("GET", `/pos/sessions/${shift.id}/close-preview`);
+  expect(Number(preview.cash_out), "no drawer paid the supplier").toBe(0);
+  expect(errs).toEqual([]);
+});
+
 test("a stocktake on the screen: counted 7 of the 10 it started with is 3 missing, and the sale made while counting is kept (10 - 1 sold - 3 missing = 6)", async ({ page }) => {
   const errs = []; page.on("pageerror", (e) => errs.push(e.message));
   const sfx = `${Date.now()}`.slice(-8); const email = `ld-${sfx}@example.com`; const pw = `Ld-${sfx}-pass!`;

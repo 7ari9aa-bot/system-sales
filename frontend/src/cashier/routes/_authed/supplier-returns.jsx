@@ -93,10 +93,6 @@ export default function SupplierReturnsPage() {
   }
 
   function decide(ret, accepted) {
-    if (accepted && ret.settlement === "cash" && !openSessionId) {
-      toast.error("الاسترداد النقدي بيدخل درج الوردية: افتح وردية الأول");
-      return;
-    }
     const slot = `${accepted ? "accept" : "reject"}:${ret.id}`;
     const done = { onSuccess: () => toast.success(accepted ? `تم قبول المرتجع ${ret.number}` : `تم رفض المرتجع ${ret.number}: البضاعة رجعت للمخزن`) };
     if (accepted) accept.mutate({ slot, id: ret.id, sessionId: ret.settlement === "cash" ? openSessionId : null }, done);
