@@ -1,0 +1,54 @@
+# Render Blueprint: the same two services .railway/railway.ts declares.
+#  - api:     uvicorn (2 HTTP workers), runs migrations once per deploy, never hosts a worker pool
+#  - workers: python -m app.workers.run (outbox relay + every pool), no HTTP
+# Redis is a Render Key Value instance. Postgres stays on Supabase (DATABASE_URL*).
+# Every `sync: false` value is entered once in the Render dashboard (never committed).
+services:
+  - type: web
+    name: api
+    runtime: docker
+    dockerfilePath: ./infra/Dockerfile.backend
+    dockerContext: .
+    plan: starter
+    healthCheckPath: /healthz
+    preDeployCommand: alembic upgrade head
+    envVars: &appenv
+      - { key: ENVIRONMENT, value: production }
+      - { key: PORT, value: "8000" }
+      - { key: FEATURE_FLAGS, value: "voice.enabled=false,ai.new_router.enabled=true,new_search.enabled=false" }
+      - { key: TRUSTED_PROXY_COUNT, value: "1" }
+      - { key: REDIS_URL, fromService: { type: keyvalue, name: sales-redis, property: connectionString } }
+      - { key: DATABASE_URL, sync: false }
+      - { key: DATABASE_URL_ADMIN, sync: false }
+      - { key: JWT_SECRET, sync: false }
+      - { key: SECRETS_MASTER_KEY, sync: false }
+      - { key: SERVICE_TOKEN_INTERNAL, sync: false }
+      - { key: CORS_ORIGINS, sync: false }
+      - { key: FRONTEND_PUBLIC_URL, sync: false }
+      - { key: RESEND_API_KEY, sync: false }
+      - { key: EMAIL_FROM, sync: false }
+      - { key: EMAIL_DELIVERY_ENABLED, sync: false }
+      - { key: S3_ENDPOINT, sync: false }
+      - { key: S3_REGION, sync: false }
+      - { key: S3_BUCKET, sync: false }
+      - { key: S3_ACCESS_KEY_ID, sync: false }
+      - { key: S3_SECRET_ACCESS_KEY, sync: false }
+      - { key: S3_SIGNED_URL_TTL_SECONDS, sync: false }
+      - { key: SUPABASE_URL, sync: false }
+      - { key: SUPABASE_ANON_KEY, sync: false }
+      - { key: SUPABASE_SERVICE_ROLE_KEY, sync: false }
+      - { key: OPENAI_API_KEY, sync: false }
+      - { key: WHATSAPP_APP_SECRET, sync: false }
+  - type: worker
+    name: workers
+    runtime: docker
+    dockerfilePath: ./infra/Dockerfile.backend
+    dockerContext: .
+    plan: starter
+    dockerCommand: python -m app.workers.run
+    envVars: *appenv
+databases: []
+keyValues:
+  - name: sales-redis
+    plan: starter
+    ipAllowList: []
