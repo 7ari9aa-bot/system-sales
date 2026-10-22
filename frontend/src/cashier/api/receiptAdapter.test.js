@@ -98,3 +98,14 @@ describe("a sale recorded without any payment", () => {
     expect(receiptFromApi(api, ctx).hasPayment).toBe(true);
   });
 });
+
+describe("receiptFromApi invoice note", () => {
+  it("shows the note the server kept on the order", () => {
+    const r = receiptFromApi({ ...api, order: { ...api.order, note: "هدية" } }, ctx);
+    expect(r.note).toBe("هدية");
+  });
+  it("is empty when the order has none", () => {
+    expect(receiptFromApi(api, ctx).note).toBe("");
+    expect(receiptFromApi({ ...api, order: { ...api.order, note: null } }, ctx).note).toBe("");
+  });
+});

@@ -108,6 +108,8 @@ const lineOf = (v) => ({
 export function usePosSale({ sessionId, registerId, catalog = [], onSold, loadFreshCatalog }) {
   const [lines, setLines] = useState([]);
   const [invoiceDiscount, setInvoiceDiscount] = useState("");
+  // A free-text remark on the invoice; it travels with the sale and is emptied when the invoice is.
+  const [note, setNote] = useState("");
   const [quote, setQuote] = useState({ subtotal: "0.00", discountTotal: "0.00", total: "0.00", loading: false, error: null });
   const [paying, setPaying] = useState(false);
   const [payError, setPayError] = useState(null);
@@ -173,6 +175,7 @@ export function usePosSale({ sessionId, registerId, catalog = [], onSold, loadFr
   const clear = useCallback(() => {
     setLines([]);
     setInvoiceDiscount("");
+    setNote("");
     setPayError(null);
   }, []);
 
@@ -219,11 +222,12 @@ export function usePosSale({ sessionId, registerId, catalog = [], onSold, loadFr
       setPaying(true);
       setPayError(null);
       try {
-        const { detail } = await sale.confirm({ cart, discountTotal, customerId });
+        const { detail } = await sale.confirm({ cart, discountTotal, customerId, note });
         const names = Object.fromEntries(catalog.map((v) => [v.id, v.productName]));
         const receipt = receiptFromApi(detail, { cashier, customerName, names });
         setLines([]);
         setInvoiceDiscount("");
+        setNote("");
         onSold?.(receipt);
         return receipt;
       } catch (e) {
@@ -233,12 +237,12 @@ export function usePosSale({ sessionId, registerId, catalog = [], onSold, loadFr
         setPaying(false);
       }
     },
-    [sale, cart, discountTotal, catalog, onSold],
+    [sale, cart, discountTotal, catalog, onSold, note],
   );
 
   const scan = useCallback((value) => posApi.scan(sessionId, { identifierType: "barcode", value }), [sessionId]);
 
-  return { lines, scan, hold, restore, quote, discountTotal, invoiceDiscount, setInvoiceDiscount, add, setQty, stepQty, setLineDiscount, remove, restoreLine, clear, confirm, paying, payError, searchCatalog };
+  return { lines, scan, hold, restore, quote, discountTotal, invoiceDiscount, setInvoiceDiscount, note, setNote, add, setQty, stepQty, setLineDiscount, remove, restoreLine, clear, confirm, paying, payError, searchCatalog };
 }
 
 /**
@@ -301,7 +305,7 @@ export const RECEIPT_SEARCH_MIN = 3;
 
 /**
  * Find an original sale on ANY shift by its number. A return does not have to be made on the
- * shift that sold the goods; the refund is settled on the shift that is open now. The server
+ * shift that sold the goods, and needs no shift to be open at all. The server
  * counts units already returned across every shift, so each result carries a detail the
  * return screen can use exactly like one from the open shift's own list.
  */

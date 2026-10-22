@@ -11,11 +11,13 @@ import { newIntent, posApi } from "./posApi";
 import { buildSellPayload, cartItems } from "./checkout";
 import { fromMinor, toMinor } from "./money";
 
-const saleFingerprint = ({ cart, discountTotal, customerId }) =>
+const saleFingerprint = ({ cart, discountTotal, customerId, note }) =>
   JSON.stringify([
     cart.map((l) => [l.variantId, l.qty, (Number(l.discountPct) || 0).toFixed(2)]),
     discountTotal ? fromMinor(toMinor(discountTotal)) : "",
     customerId ?? "",
+    // another remark is another invoice: a retry must replay the SAME sale, never a different one
+    String(note ?? "").trim(),
   ]);
 
 const fingerprint = ({ cart, discountTotal, customerId, tenders }) =>
@@ -45,9 +47,9 @@ export function createSaleSession(sessionId, registerId) {
      * Same retry rule as `pay`: the key lives until sale AND receipt are in hand, a changed cart
      * (or a changed line discount) is a new sale, and a second tap joins the request in flight.
      */
-    async confirm({ cart, discountTotal, customerId }) {
+    async confirm({ cart, discountTotal, customerId, note }) {
       if (!cart?.length) throw new RangeError("checkout: the cart is empty");
-      const fp = saleFingerprint({ cart, discountTotal, customerId });
+      const fp = saleFingerprint({ cart, discountTotal, customerId, note });
       if (inflight && inflightFor === fp) return inflight;
       if (!intent || intentFor !== fp) {
         intent = newIntent();
@@ -56,7 +58,11 @@ export function createSaleSession(sessionId, registerId) {
       const sent = intent;
       inflightFor = fp;
       inflight = posApi
-        .recordSale(registerId, { items: cartItems(cart), customerId: customerId || undefined, discountTotal: discountTotal || undefined }, sent)
+        .recordSale(
+          registerId,
+          { items: cartItems(cart), customerId: customerId || undefined, discountTotal: discountTotal || undefined, note },
+          sent,
+        )
         .then(async (sold) => {
           const detail = await posApi.receipt(sold.receipt_id);
           intent = null;

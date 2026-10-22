@@ -138,3 +138,19 @@ describe("receipt search", () => {
     expect(url.searchParams.get("q")).toBe("x&limit=500");
   });
 });
+
+describe("recordSale note", () => {
+  const items = [{ variant_id: "v1", quantity: 1 }];
+
+  it("sends the trimmed note as `note`", async () => {
+    await posApi.recordSale("r1", { items, note: "  هدية  " }, newIntent());
+    expect(calls[0].body.note).toBe("هدية");
+  });
+
+  it("leaves `note` out when it is missing or only spaces", async () => {
+    await posApi.recordSale("r1", { items }, newIntent());
+    await posApi.recordSale("r1", { items, note: "   " }, newIntent());
+    expect(calls[0].body).not.toHaveProperty("note");
+    expect(calls[1].body).not.toHaveProperty("note");
+  });
+});

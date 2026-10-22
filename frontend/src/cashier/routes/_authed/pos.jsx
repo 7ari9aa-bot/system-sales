@@ -12,6 +12,7 @@ import ConfirmSaleDialog from "@/cashier/components/pos/ConfirmSaleDialog";
 import ReceiptDialog from "@/cashier/components/pos/ReceiptDialog";
 import SuspendedDialog from "@/cashier/components/pos/SuspendedDialog";
 import HoldDialog from "@/cashier/components/pos/HoldDialog";
+import NoteDialog from "@/cashier/components/pos/NoteDialog";
 import ConfirmDialog from "@/cashier/components/ui-kit/ConfirmDialog";
 import { Button } from "@/cashier/components/ui/button";
 import { CATALOG_KEY, HELD_KEY, SESSION_CATALOG_KEY, fetchSessionCatalog, useCustomerSearch, useHeldCarts, usePosSale, useSessionCatalog, useShiftProfile } from "@/cashier/api/usePosSale";
@@ -71,7 +72,7 @@ function PosScreen({ user, session }) {
   const [invoiceDiscountAmt, setInvoiceDiscountAmt] = useState(0);
   // The shift screen links here with ?held=1 to review parked invoices before closing: open that list once.
   const [searchParams, setSearchParams] = useSearchParams();
-  const [dialog, setDialog] = useState(() => (searchParams.get("held") === "1" ? "held" : null)); // payment | receipt | cancel | held
+  const [dialog, setDialog] = useState(() => (searchParams.get("held") === "1" ? "held" : null)); // payment | receipt | cancel | held | note
   useEffect(() => {
     if (searchParams.get("held") === "1") setSearchParams({}, { replace: true });
   }, [searchParams, setSearchParams]);
@@ -358,7 +359,7 @@ function PosScreen({ user, session }) {
       <PosActionsBar
         hasLines={quoteReady}
         hasLastReceipt={!!lastReceipt}
-        hasNote={false}
+        hasNote={Boolean(sale.note)}
         payLabel="دفع وطباعة"
         onPay={() => setDialog("payment")}
         onSuspend={() => {
@@ -374,7 +375,7 @@ function PosScreen({ user, session }) {
           setReceipt(lastReceipt);
           setDialog("receipt");
         }}
-        onNote={() => toast.info("الملاحظات على الفاتورة غير متاحة بعد")}
+        onNote={() => setDialog("note")}
       />
 
       <ConfirmSaleDialog
@@ -385,6 +386,16 @@ function PosScreen({ user, session }) {
         onConfirm={confirmSale}
         pending={sale.paying}
         error={sale.payError}
+      />
+
+      <NoteDialog
+        open={dialog === "note"}
+        onOpenChange={(open) => setDialog(open ? "note" : null)}
+        value={sale.note}
+        onSave={(text) => {
+          sale.setNote(text);
+          setDialog(null);
+        }}
       />
 
       <HoldDialog open={dialog === "hold"} onOpenChange={(open) => setDialog(open ? "hold" : null)} defaultLabel={customerName.trim()} pending={holding} error={heldError} onConfirm={confirmHold} />

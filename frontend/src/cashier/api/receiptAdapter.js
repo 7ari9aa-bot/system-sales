@@ -70,7 +70,7 @@ export function receiptFromApi(data, { cashier = "", customerName = "", names = 
     payments,
     hasPayment: payments.length > 0,
     paymentLabel: payments.map((p) => p.label).join(" + "),
-    note: "",
+    note: String(order.note ?? ""),
     status: statusOf(order, items),
   };
 }

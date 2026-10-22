@@ -902,6 +902,7 @@ class PosService:
         items: list[dict] | None,
         customer_id: UUID | None = None,
         discount_total: object = None,
+        note: str | None = None,
         actor_user_id: UUID | None = None,
     ) -> dict:
         """RECORD a counter sale: what was sold, at what price, by whom. No payment, no shift.
@@ -939,6 +940,7 @@ class PosService:
             channel="pos",
             warehouse_id=register.warehouse_id,
             discount_total=discount_total,
+            note=note,
         )
         await OrderService.confirm_sale(session, tenant_id, order.id, actor_user_id=actor_user_id)
         receipt = await PosService._issue_receipt(
@@ -1757,6 +1759,7 @@ class PosService:
                 "grand_total": str(order.grand_total) if order else None,
                 "discount_total": str(order.discount_total) if order else None,
                 "currency": order.currency if order else None,
+                "note": (order.extra or {}).get("note") if order else None,
                 "fully_returned": fully_returned if receipt.kind == "sale" else None,
             },
             "lines": lines_payload,

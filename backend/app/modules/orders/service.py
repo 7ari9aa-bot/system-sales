@@ -406,6 +406,7 @@ class OrderService:
         discount_total: object = None,
         shipping_total: object = None,
         tax_total: object = None,
+        note: str | None = None,
         # §8: function-scope imports — avoids module-scope service coupling.
     ) -> Order:
         from app.core.tenancy import resolve_tenant_currency
@@ -506,9 +507,7 @@ class OrderService:
                 discount_pct = to_money(raw_pct, "discount_pct")
                 if discount_pct < 0 or discount_pct > 100:
                     raise ValidationError("discount_pct must be between 0 and 100")
-            prepared.append(
-                (variant, quantity, to_money(unit_price, "unit_price"), discount_pct)
-            )
+            prepared.append((variant, quantity, to_money(unit_price, "unit_price"), discount_pct))
 
         # A variant being active is not the whole question: the product above
         # it decides whether anything is being offered at all (§M4). Checked on
@@ -585,7 +584,9 @@ class OrderService:
             channel=channel,
             shipping_address=shipping_address,
             placed_at=_now(),
-            extra={"warehouse_id": str(warehouse.id)},
+            # The invoice remark rides in `extra` beside the warehouse: it is a label on the
+            # order, not a queryable column, so it needs no schema change.
+            extra={"warehouse_id": str(warehouse.id), **({"note": note} if note else {})},
         )
 
         # §140: durable reservation rows next to the balance hold — one per

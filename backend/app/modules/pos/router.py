@@ -232,6 +232,8 @@ class RecordSaleRequest(BaseModel):
     items: list[dict] = Field(min_length=1)
     customer_id: UUID | None = None
     discount_total: str | None = Field(default=None, pattern=_MONEY)
+    # A free-text remark on the invoice (e.g. "gift", "deliver tomorrow"); blank counts as none.
+    note: str | None = Field(default=None, max_length=512)
 
 
 class WorkingSessionOut(BaseModel):
@@ -492,6 +494,7 @@ async def record_sale(register_id: UUID, body: RecordSaleRequest, ctx: PosWriteC
         items=body.items,
         customer_id=body.customer_id,
         discount_total=body.discount_total,
+        note=(body.note or "").strip() or None,
         actor_user_id=ctx.user.id,
     )
 

@@ -160,6 +160,26 @@ describe("confirm: a sale is recorded, never paid", () => {
     expect(calls[3][2].key).not.toBe(calls[2][2].key);
   });
 
+  it("the invoice note travels with the sale, and is left out when there is none", async () => {
+    const sale = createSaleSession("sess-1", "reg-1");
+    await sale.confirm({ ...sale0, note: "هدية" });
+    await sale.confirm(sale0);
+    expect(pos.recordSale.mock.calls[0][1].note).toBe("هدية");
+    expect(pos.recordSale.mock.calls[1][1].note).toBeUndefined();
+  });
+
+  it("another note after a failure is a different invoice (new key); the same note replays the same key", async () => {
+    const down = () => Object.assign(new Error("network"), { status: 0 });
+    pos.recordSale.mockRejectedValueOnce(down()).mockRejectedValueOnce(down()).mockRejectedValueOnce(down());
+    const sale = createSaleSession("sess-1", "reg-1");
+    await expect(sale.confirm({ ...sale0, note: "a" })).rejects.toThrow();
+    await expect(sale.confirm({ ...sale0, note: "a" })).rejects.toThrow();
+    await expect(sale.confirm({ ...sale0, note: "b" })).rejects.toThrow();
+    const keys = pos.recordSale.mock.calls.map((c) => c[2].key);
+    expect(keys[1]).toBe(keys[0]);
+    expect(keys[2]).not.toBe(keys[0]);
+  });
+
   it("a double tap sends ONE request, and an empty cart never reaches the backend", async () => {
     let release;
     pos.recordSale.mockImplementation(() => new Promise((r) => (release = () => r({ receipt_id: "r1" }))));

@@ -220,10 +220,15 @@ export const posApi = {
     );
   },
   /** Record a sale: what was sold, to whom, at what discount. There is no payment in this call. */
-  recordSale: async (registerId, { items, customerId, discountTotal }, intent) =>
+  recordSale: async (registerId, { items, customerId, discountTotal, note }, intent) =>
     post(
       `/pos/registers/${seg(registerId)}/sales`,
-      compact({ items: lines(items), customer_id: customerId, discount_total: opt(discountTotal) }),
+      compact({
+        items: lines(items),
+        customer_id: customerId,
+        discount_total: opt(discountTotal),
+        note: String(note ?? "").trim() || undefined,
+      }),
       needIntent(intent),
     ),
   refund: async (id, { orderId, amount, method: m = "cash", reason, restock = false }, intent) =>
