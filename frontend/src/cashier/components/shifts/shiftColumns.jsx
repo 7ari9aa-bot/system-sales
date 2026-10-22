@@ -1,4 +1,4 @@
-import { Eye, LockKeyhole } from "lucide-react";
+import { Eye, FileText, LockKeyhole } from "lucide-react";
 import { Button } from "@/cashier/components/ui/button";
 import StatusBadge from "@/cashier/components/ui-kit/StatusBadge";
 import { BTN, BTN_PRIMARY, CELL_ACCENT, CELL_EMPTY, CELL_MAIN, CELL_NUM, CELL_SUB, TD, TH } from "@/cashier/components/ui-kit/ledgerStyles";
@@ -12,7 +12,7 @@ function differenceTone(value) {
 }
 
 // أعمدة جدول الورديات: الفتح والإغلاق، الأرصدة، المتوقع والفعلي والفرق.
-export default function shiftColumns({ onClose, onDetails }) {
+export default function shiftColumns({ onClose, onDetails, onReport }) {
   return [
     {
       key: "number",
@@ -100,6 +100,10 @@ export default function shiftColumns({ onClose, onDetails }) {
       align: "center",
       render: (r) => (
         <span className="flex items-center justify-center gap-1.5">
+          <Button className={BTN} onClick={() => onReport(r)}>
+            <FileText />
+            تقرير اليوم
+          </Button>
           {r.status === "open" ? (
             <Button className={BTN_PRIMARY} onClick={() => onClose(r)}>
               <LockKeyhole />

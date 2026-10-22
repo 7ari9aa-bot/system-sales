@@ -11,6 +11,7 @@ import ShiftOpenDialog from "@/cashier/components/shifts/ShiftOpenDialog";
 import CashMovementDialog from "@/cashier/components/shifts/CashMovementDialog";
 import ShiftCloseDialog from "@/cashier/components/shifts/ShiftCloseDialog";
 import ShiftDetailsDialog from "@/cashier/components/shifts/ShiftDetailsDialog";
+import DayReport from "@/cashier/components/shifts/DayReport";
 import ShiftFilters from "@/cashier/components/shifts/ShiftFilters";
 import shiftColumns from "@/cashier/components/shifts/shiftColumns";
 import { BTN, BTN_PRIMARY, LEDGER, LEDGER_FOOTER, LEDGER_TOOLBAR } from "@/cashier/components/ui-kit/ledgerStyles";
@@ -44,6 +45,7 @@ export default function ShiftsPage() {
   const [openDialog, setOpenDialog] = useState(false);
   const [closing, setClosing] = useState(null);
   const [details, setDetails] = useState(null);
+  const [report, setReport] = useState(null);
   const preview = useClosePreview(closing?.id, Boolean(closing));
   const heldCount = useHeldCount(closing?.id, Boolean(closing));
 
@@ -88,12 +90,14 @@ export default function ShiftsPage() {
           const diff = Number(closed?.variance ?? 0);
           setClosing(null);
           toast.success(`تم إغلاق الوردية ${shift.number} — ${diff === 0 ? "الخزنة مطابقة" : `فرق ${fmtMoney(diff)}`}`);
+          // The day's report opens right after closing: sales, invoice count and every invoice.
+          setReport({ ...shift, status: "closed", closedAt: closed?.closed_at ?? new Date().toISOString(), actual: Number(closed?.counted_cash ?? shift.actual ?? 0) });
         },
       },
     );
   }
 
-  const columns = shiftColumns({ onClose: setClosing, onDetails: setDetails });
+  const columns = shiftColumns({ onClose: setClosing, onDetails: setDetails, onReport: setReport });
 
   return (
     <LedgerPage
@@ -177,6 +181,7 @@ export default function ShiftsPage() {
       <ShiftOpenDialog open={openDialog} onOpenChange={(v) => { setOpenDialog(v); if (!v) openShift.reset(); }} onSubmit={submitOpen} pending={openShift.isPending} error={messageOf(openShift.error)} />
       <ShiftCloseDialog open={Boolean(closing)} onOpenChange={(v) => { if (!v) { setClosing(null); closeShift.reset(); } }} shift={closing} heldCount={heldCount.data ?? 0} preview={preview.data} previewLoading={preview.isLoading} onSubmit={submitClose} pending={closeShift.isPending} error={messageOf(closeShift.error) || (preview.error ? messageOf(preview.error) : null)} />
       <ShiftDetailsDialog open={Boolean(details)} onOpenChange={(open) => !open && setDetails(null)} shift={details} />
+      <DayReport open={Boolean(report)} onOpenChange={(open) => !open && setReport(null)} shift={report} />
     </LedgerPage>
   );
 }
