@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 
 test.skip(process.env.E2E_LIVE_API !== "1", "requires the ephemeral API/Postgres/Redis CI stack");
@@ -956,5 +957,92 @@ test("labels on the screen: 3 labels for an item show its real barcode and price
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByText(bcA, { exact: true }), "3 labels, each with the item's real barcode").toHaveCount(3, { timeout: 10000 });
   await expect(dialog.getByText("100.00", { exact: false }), "each label carries the real price").toHaveCount(3);
+  expect(errs).toEqual([]);
+});
+
+test("backup export on the screen: the downloaded file holds the real expense and product, and says nothing is truncated", async ({ page }) => {
+  const errs = []; page.on("pageerror", (e) => errs.push(e.message));
+  const sfx = `${Date.now()}`.slice(-8); const email = `ld-${sfx}@example.com`; const pw = `Ld-${sfx}-pass!`;
+  await page.goto("/register");
+  await page.getByLabel(/البريد الإلكتروني|email/i).fill(email);
+  await page.getByLabel(/^كلمة المرور$|^password$/i).fill(pw);
+  await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
+  await page.getByRole("button", { name: /إنشاء الحساب|create account/i }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+  const api = (method, path, body) => page.evaluate(async ({ method, path, body }) => {
+    const raw = JSON.parse(localStorage.getItem("fihrist_tokens") || "null");
+    const csrf = (document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/) || [])[1];
+    const h = { "Content-Type": "application/json", ...(csrf ? { "X-CSRF-Token": csrf } : {}), ...(raw?.access_token ? { Authorization: `Bearer ${raw.access_token}` } : {}) };
+    const r = await fetch(`/api/v1${path}`, { method, headers: h, credentials: "include", body: body ? JSON.stringify(body) : undefined });
+    const t = await r.text(); if (!r.ok) throw new Error(`${method} ${path} -> ${r.status} ${t.slice(0, 200)}`); return t ? JSON.parse(t) : null;
+  }, { method, path, body });
+  const wh = await api("POST", "/warehouses/ensure-default");
+  const mk = async (tag, bc) => {
+    const p = await api("POST", "/products", { title: `Item${tag} ${sfx}`, slug: `item-${tag}-${sfx}`, description: null });
+    const v = await api("POST", `/products/${p.id}/variants`, { sku: `LD${tag}-${sfx}`, price: "100.00", option_values: {} });
+    await api("POST", `/variants/${v.id}/identifiers`, { identifier_type: "barcode", value: bc });
+    await api("POST", "/inventory/movements", { variant_id: v.id, warehouse_id: wh.id, direction: "in", quantity: 10, reason: "adjustment" });
+    await api("PATCH", `/products/${p.id}`, { status: "active" }); return v;
+  };
+  const bcA = `630${sfx}1`, bcB = `630${sfx}2`;
+  const vA = await mk("A", bcA);
+  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash", discount_ceiling_pct: "100.00" });
+  const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
+  const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "500.00" });
+
+  const categories = await api("GET", "/expenses/categories");
+  const category = (Array.isArray(categories) ? categories : categories.items ?? [])[0];
+  const note = `Bk${sfx}`;
+  await api("POST", "/expenses", { category_id: category.id, description: note, amount: "25.00", payment_method: "cash", session_id: shift.id });
+
+  await page.goto("/cashier/settings", { waitUntil: "networkidle" });
+  const main = page.locator("main:has(.cashier-root)");
+  await main.getByRole("tab", { name: /النسخ|الاحتياطي/ }).click();
+  const [download] = await Promise.all([page.waitForEvent("download"), main.getByRole("button", { name: /تصدير الآن/ }).click()]);
+  const file = JSON.parse(readFileSync(await download.path(), "utf8"));
+  expect(file.failed_tables, "no table failed to export").toEqual([]);
+  expect(file.truncated_tables, "a small shop is nowhere near the export caps").toEqual([]);
+  expect(JSON.stringify(file.tables.expenses), "the real expense is in the file").toContain(note);
+  expect(JSON.stringify(file.tables.stock), "the real item is in the stock").toContain(bcA);
+  await expect(main.getByTestId("export-truncated")).toHaveCount(0);
+  expect(errs).toEqual([]);
+});
+
+test("print settings on the screen do not pretend to save: no save button, no editable fields, and a clear notice", async ({ page }) => {
+  const errs = []; page.on("pageerror", (e) => errs.push(e.message));
+  const sfx = `${Date.now()}`.slice(-8); const email = `ld-${sfx}@example.com`; const pw = `Ld-${sfx}-pass!`;
+  await page.goto("/register");
+  await page.getByLabel(/البريد الإلكتروني|email/i).fill(email);
+  await page.getByLabel(/^كلمة المرور$|^password$/i).fill(pw);
+  await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
+  await page.getByRole("button", { name: /إنشاء الحساب|create account/i }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+  const api = (method, path, body) => page.evaluate(async ({ method, path, body }) => {
+    const raw = JSON.parse(localStorage.getItem("fihrist_tokens") || "null");
+    const csrf = (document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/) || [])[1];
+    const h = { "Content-Type": "application/json", ...(csrf ? { "X-CSRF-Token": csrf } : {}), ...(raw?.access_token ? { Authorization: `Bearer ${raw.access_token}` } : {}) };
+    const r = await fetch(`/api/v1${path}`, { method, headers: h, credentials: "include", body: body ? JSON.stringify(body) : undefined });
+    const t = await r.text(); if (!r.ok) throw new Error(`${method} ${path} -> ${r.status} ${t.slice(0, 200)}`); return t ? JSON.parse(t) : null;
+  }, { method, path, body });
+  const wh = await api("POST", "/warehouses/ensure-default");
+  const mk = async (tag, bc) => {
+    const p = await api("POST", "/products", { title: `Item${tag} ${sfx}`, slug: `item-${tag}-${sfx}`, description: null });
+    const v = await api("POST", `/products/${p.id}/variants`, { sku: `LD${tag}-${sfx}`, price: "100.00", option_values: {} });
+    await api("POST", `/variants/${v.id}/identifiers`, { identifier_type: "barcode", value: bc });
+    await api("POST", "/inventory/movements", { variant_id: v.id, warehouse_id: wh.id, direction: "in", quantity: 10, reason: "adjustment" });
+    await api("PATCH", `/products/${p.id}`, { status: "active" }); return v;
+  };
+  const bcA = `630${sfx}1`, bcB = `630${sfx}2`;
+  const vA = await mk("A", bcA);
+  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash", discount_ceiling_pct: "100.00" });
+  const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
+  const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "500.00" });
+
+  await page.goto("/cashier/settings", { waitUntil: "networkidle" });
+  const main = page.locator("main:has(.cashier-root)");
+  await main.getByRole("tab", { name: /الفاتورة|الباركود|الطباعة/ }).click();
+  await expect(main.getByTestId("print-not-stored"), "it says plainly that nothing is stored").toBeVisible({ timeout: 10000 });
+  await expect(main.getByRole("button", { name: /^حفظ$/ }), "no save button that would claim a save that never happens").toHaveCount(0);
+  await expect(main.getByRole("textbox"), "no editable receipt field that is thrown away").toHaveCount(0);
   expect(errs).toEqual([]);
 });

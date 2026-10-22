@@ -26,4 +26,21 @@ describe("collectExport", () => {
     const r = await collectExport({ now: NOW, tables: [T("a", async () => null), T("b", async () => "x")] });
     expect(r.payload.tables).toEqual({ a: [], b: [] });
   });
+
+  it("flags a table that came back exactly at its cap: the file may be missing rows past it", async () => {
+    const full = Array.from({ length: 3 }, (_, i) => i);
+    const r = await collectExport({
+      now: NOW,
+      tables: [{ ...T("capped", async () => full), cap: 3 }, { ...T("roomy", async () => [1, 2]), cap: 3 }, T("nocap", async () => full)],
+    });
+    expect(r.truncated.map((t) => t.key)).toEqual(["capped"]);
+    expect(r.payload.truncated_tables).toEqual(["capped"]);
+    expect(r.failed).toEqual([]);
+  });
+
+  it("reports nothing truncated when every table is under its cap", async () => {
+    const r = await collectExport({ now: NOW, tables: [{ ...T("a", async () => [1]), cap: 500 }] });
+    expect(r.truncated).toEqual([]);
+    expect(r.payload.truncated_tables).toEqual([]);
+  });
 });

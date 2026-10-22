@@ -17,11 +17,12 @@ export default function BackupTab() {
   async function run() {
     setBusy(true);
     try {
-      const { payload, counts, failed } = await collectExport();
+      const { payload, counts, failed, truncated } = await collectExport();
       const stamp = payload.exported_at.slice(0, 10);
       exportJson(`بيانات-المحل-${stamp}.json`, payload);
-      setLast({ at: payload.exported_at, counts, failed });
+      setLast({ at: payload.exported_at, counts, failed, truncated });
       if (failed.length) toast.warning(`تعذّر تصدير: ${failed.map((f) => f.label).join("، ")}. الملف ناقص.`);
+      else if (truncated.length) toast.warning(`وصل ${truncated.map((t) => t.label).join("، ")} إلى حد التصدير، وقد يكون الملف ناقصًا.`);
       else toast.success(`تم تصدير ${fmtInt(totalRows(counts))} سجلًا`);
     } catch (e) {
       toast.error(e?.message ?? "تعذّر التصدير");
@@ -56,6 +57,11 @@ export default function BackupTab() {
           {last.failed.length ? (
             <div role="alert" className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
               لم يُصدَّر: {last.failed.map((f) => f.label).join("، ")}. أعد المحاولة قبل الاعتماد على الملف.
+            </div>
+          ) : null}
+          {last.truncated?.length ? (
+            <div role="alert" data-testid="export-truncated" className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              وصل إلى الحد الأقصى للتصدير وقد توجد سجلات أقدم لم تدخل الملف: {last.truncated.map((t) => `${t.label} (${fmtInt(t.cap)})`).join("، ")}. لا تعتمد عليه كنسخة كاملة.
             </div>
           ) : null}
           <SectionCard title="محتوى الملف">
