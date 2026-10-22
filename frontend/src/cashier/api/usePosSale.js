@@ -34,7 +34,8 @@ export function useHeldCarts(sessionId, catalog) {
 /** Sellable variants with live stock, straight from the backend. */
 export async function fetchCatalog() {
   const [products, balances, stock] = await Promise.all([
-    posApi.products(),
+    // Every page: a single capped request dropped every product past 500 with no message.
+    fetchAllProducts((offset, limit) => posApi.productsPage(offset, limit)),
     posApi.stockBalances(),
     fetchAllStock((offset, limit) => posApi.stockPage(offset, limit)),
   ]);
@@ -46,7 +47,7 @@ export async function fetchCatalog() {
   }
   // The product list carries no barcode; the stock view does (purchases, suppliers and supplier returns
   // search this catalog by scanned code).
-  return withBarcodes(buildCatalog(Array.isArray(products) ? products : products?.items, rows), stock);
+  return withBarcodes(buildCatalog(products, rows), stock);
 }
 
 /**

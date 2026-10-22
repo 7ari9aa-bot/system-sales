@@ -123,3 +123,13 @@ describe("the shop-wide catalog (purchases, suppliers, supplier returns) also ca
     expect(out.map((v) => v.barcode)).toEqual(["7001", "7002"]);
   });
 });
+
+describe("the shop-wide catalog is not cut at 500 products", () => {
+  it("a product past the 500th is still found by the purchases/suppliers screens", async () => {
+    productRows = Array.from({ length: 1300 }, (_, i) => product(i));
+    stockRows = [];
+    const out = await fetchCatalog();
+    expect(out).toHaveLength(1300);
+    expect(out.at(-1).id).toBe("v1299");
+  });
+});
