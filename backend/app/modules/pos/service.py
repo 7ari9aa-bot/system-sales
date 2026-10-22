@@ -884,6 +884,16 @@ class PosService:
         raise ConflictError("could not open a working session for this register")
 
     @staticmethod
+    async def working_session(
+        session: AsyncSession, tenant_id: UUID, register_id: UUID
+    ) -> PosSession:
+        """Today's working session for a register, opened on first ask."""
+        register = await PosService._get_register(session, tenant_id, register_id)
+        if not register.is_active:
+            raise ConflictError(f"register {register.code} is not active")
+        return await PosService._working_session(session, tenant_id, register)
+
+    @staticmethod
     async def record_sale(
         session: AsyncSession,
         tenant_id: UUID,

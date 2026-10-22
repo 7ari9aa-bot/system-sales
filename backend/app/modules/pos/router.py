@@ -234,6 +234,18 @@ class RecordSaleRequest(BaseModel):
     discount_total: str | None = Field(default=None, pattern=_MONEY)
 
 
+class WorkingSessionOut(BaseModel):
+    """The few session fields the till needs; extra keys of the legacy shape are kept."""
+
+    model_config = ConfigDict(extra="allow")
+
+    id: UUID
+    register_id: UUID
+    profile_id: UUID | None = None
+    status: str
+    opened_at: str
+
+
 class RecordSaleOut(BaseModel):
     order_id: UUID
     order_number: str
@@ -458,6 +470,16 @@ async def get_close_preview(session_id: UUID, ctx: TenantCtxDep):
     """The close screen's target: per-method expected + sales summary."""
     preview = await PosService.close_preview(ctx.session, ctx.tenant_id, session_id)
     return {k: (str(v) if isinstance(v, UUID) else v) for k, v in preview.items()}
+
+
+@router.post("/registers/{register_id}/working-session", response_model=WorkingSessionOut)
+async def working_session(register_id: UUID, ctx: PosWriteCtx):
+    """Today's session for this register: opened on the first call, the same one after that.
+
+    The till's quote / items / scan / held-cart calls are keyed by a session id. The cashier opens
+    no shift, so the screen asks for the session here instead. Idempotent, and safe to race.
+    """
+    return _session_out(await PosService.working_session(ctx.session, ctx.tenant_id, register_id))
 
 
 @router.post("/registers/{register_id}/sales", status_code=201, response_model=RecordSaleOut)

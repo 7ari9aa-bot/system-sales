@@ -178,3 +178,44 @@ async def test_overselling_over_http_is_a_clear_conflict_not_a_500(db, tenant_ct
     )
     assert r.status_code in (409, 422), r.text
     assert r.status_code != 500
+
+
+async def test_working_session_is_opened_on_demand_and_is_the_same_one_every_time(
+    db, tenant_ctx
+) -> None:
+    """The till needs a session id for quote/items/scan/held; the cashier opens no shift."""
+    from app.modules.pos.models import PosSession
+
+    register_id, _variant, _customer = await _shop(db, tenant_ctx)
+    ctx = await ctx_for(db, tenant_ctx, "owner")
+
+    first = await _post(ctx, f"/api/v1/pos/registers/{register_id}/working-session", {})
+    second = await _post(ctx, f"/api/v1/pos/registers/{register_id}/working-session", {})
+
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+    assert first.json()["id"] == second.json()["id"], "asking twice must not open a second session"
+    assert first.json()["status"] == "OPEN"
+    assert first.json()["register_id"] == str(register_id)
+    open_now = (
+        await db.execute(
+            select(func.count())
+            .select_from(PosSession)
+            .where(PosSession.register_id == register_id, PosSession.status == "OPEN")
+        )
+    ).scalar_one()
+    assert open_now == 1
+
+
+async def test_working_session_needs_orders_write_and_a_real_register(db, tenant_ctx) -> None:
+    import uuid
+
+    register_id, _variant, _customer = await _shop(db, tenant_ctx)
+    ctx = await ctx_for(db, tenant_ctx, "staff")
+    ctx.permission_codes.discard("orders:write")
+    denied = await _post(ctx, f"/api/v1/pos/registers/{register_id}/working-session", {})
+    assert denied.status_code == 403, denied.text
+
+    owner = await ctx_for(db, tenant_ctx, "owner")
+    ghost = await _post(owner, f"/api/v1/pos/registers/{uuid.uuid4()}/working-session", {})
+    assert ghost.status_code == 404, ghost.text

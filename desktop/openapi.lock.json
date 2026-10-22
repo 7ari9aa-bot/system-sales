@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 418,
-    "sha256": "3176b0521f8c51b303a2fb428c0a0e71ae0fe0c3bfea72477478077fd588f84a",
-    "typed_operations": 255
+    "operations": 419,
+    "sha256": "68bd8ffc3bb1dec8c594aa45e19e6795a09bd546fe81baabb0b4f4e9ce5558e3",
+    "typed_operations": 256
   },
   "spec": {
     "components": {
@@ -19631,6 +19631,50 @@
             "definition"
           ],
           "title": "WorkflowVersionCreate",
+          "type": "object"
+        },
+        "WorkingSessionOut": {
+          "additionalProperties": true,
+          "description": "The few session fields the till needs; extra keys of the legacy shape are kept.",
+          "properties": {
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "opened_at": {
+              "title": "Opened At",
+              "type": "string"
+            },
+            "profile_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Profile Id"
+            },
+            "register_id": {
+              "format": "uuid",
+              "title": "Register Id",
+              "type": "string"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "register_id",
+            "status",
+            "opened_at"
+          ],
+          "title": "WorkingSessionOut",
           "type": "object"
         },
         "WorkspaceCreate": {
@@ -51104,6 +51148,114 @@
             }
           },
           "summary": "Open Session",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
+      "/api/v1/pos/registers/{register_id}/working-session": {
+        "post": {
+          "description": "Today's session for this register: opened on the first call, the same one after that.\n\nThe till's quote / items / scan / held-cart calls are keyed by a session id. The cashier opens\nno shift, so the screen asks for the session here instead. Idempotent, and safe to race.",
+          "operationId": "working_session_api_v1_pos_registers__register_id__working_session_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "register_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Register Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/WorkingSessionOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Working Session",
           "tags": [
             "pos"
           ]
