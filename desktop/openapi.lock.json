@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 417,
-    "sha256": "417ef80af17eb48ea3ca1d25d37b0bed18c10ddb6a9ef89d2403a51f3a667089",
-    "typed_operations": 254
+    "operations": 418,
+    "sha256": "3176b0521f8c51b303a2fb428c0a0e71ae0fe0c3bfea72477478077fd588f84a",
+    "typed_operations": 255
   },
   "spec": {
     "components": {
@@ -13175,6 +13175,85 @@
             "email"
           ],
           "title": "ReceiptEmailRequest",
+          "type": "object"
+        },
+        "RecordSaleOut": {
+          "properties": {
+            "grand_total": {
+              "title": "Grand Total",
+              "type": "string"
+            },
+            "order_id": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            },
+            "order_number": {
+              "title": "Order Number",
+              "type": "string"
+            },
+            "receipt_id": {
+              "format": "uuid",
+              "title": "Receipt Id",
+              "type": "string"
+            },
+            "receipt_number": {
+              "title": "Receipt Number",
+              "type": "string"
+            }
+          },
+          "required": [
+            "order_id",
+            "order_number",
+            "receipt_id",
+            "receipt_number",
+            "grand_total"
+          ],
+          "title": "RecordSaleOut",
+          "type": "object"
+        },
+        "RecordSaleRequest": {
+          "additionalProperties": false,
+          "description": "A counter sale. The cashier records WHAT was sold; how it was paid is not part of it.\n\n``extra=\"forbid\"``: a client that still sends ``method``/``amount``/``tenders`` or a seller\nid is refused rather than ignored. Ignoring a payment field would let the client believe\nmoney was handled; the seller is always the authenticated caller, never a body field.",
+          "properties": {
+            "customer_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Customer Id"
+            },
+            "discount_total": {
+              "anyOf": [
+                {
+                  "pattern": "^\\d+(\\.\\d{1,2})?$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Discount Total"
+            },
+            "items": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "minItems": 1,
+              "title": "Items",
+              "type": "array"
+            }
+          },
+          "required": [
+            "items"
+          ],
+          "title": "RecordSaleRequest",
           "type": "object"
         },
         "RefreshRequest": {
@@ -50792,6 +50871,124 @@
             }
           },
           "summary": "Create Register",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
+      "/api/v1/pos/registers/{register_id}/sales": {
+        "post": {
+          "description": "Record a sale: no shift to open, no payment to take. Stock comes off the shelf.",
+          "operationId": "record_sale_api_v1_pos_registers__register_id__sales_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "register_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Register Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordSaleRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/RecordSaleOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Record Sale",
           "tags": [
             "pos"
           ]

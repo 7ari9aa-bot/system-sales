@@ -12,7 +12,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.modules.errors import ValidationError
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
@@ -217,6 +217,29 @@ class SellRequest(BaseModel):
     tendered_cash: str | None = Field(default=None, pattern=_MONEY)
     # Atomic resume: the cart's lines become this sale inside one transaction.
     held_cart_id: UUID | None = None
+
+
+class RecordSaleRequest(BaseModel):
+    """A counter sale. The cashier records WHAT was sold; how it was paid is not part of it.
+
+    ``extra="forbid"``: a client that still sends ``method``/``amount``/``tenders`` or a seller
+    id is refused rather than ignored. Ignoring a payment field would let the client believe
+    money was handled; the seller is always the authenticated caller, never a body field.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[dict] = Field(min_length=1)
+    customer_id: UUID | None = None
+    discount_total: str | None = Field(default=None, pattern=_MONEY)
+
+
+class RecordSaleOut(BaseModel):
+    order_id: UUID
+    order_number: str
+    receipt_id: UUID
+    receipt_number: str
+    grand_total: str
 
 
 class CloseSessionRequest(BaseModel):
@@ -435,6 +458,20 @@ async def get_close_preview(session_id: UUID, ctx: TenantCtxDep):
     """The close screen's target: per-method expected + sales summary."""
     preview = await PosService.close_preview(ctx.session, ctx.tenant_id, session_id)
     return {k: (str(v) if isinstance(v, UUID) else v) for k, v in preview.items()}
+
+
+@router.post("/registers/{register_id}/sales", status_code=201, response_model=RecordSaleOut)
+async def record_sale(register_id: UUID, body: RecordSaleRequest, ctx: PosWriteCtx):
+    """Record a sale: no shift to open, no payment to take. Stock comes off the shelf."""
+    return await PosService.record_sale(
+        ctx.session,
+        ctx.tenant_id,
+        register_id,
+        items=body.items,
+        customer_id=body.customer_id,
+        discount_total=body.discount_total,
+        actor_user_id=ctx.user.id,
+    )
 
 
 @router.post("/sessions/{session_id}/sell")
