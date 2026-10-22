@@ -206,7 +206,11 @@ async def test_parallel_receipts_of_one_variant_average_as_if_they_happened_one_
     expected = (sum(prices) / RACERS).quantize(
         D("0.0001")
     )  # equal quantities: the mean of the prices
-    assert avg == expected, (
+    # The average is rounded to 4 places after EVERY receipt and the receipts land in a different
+    # order each run, so the last digit can drift by a couple of units (155.0001 vs 155.0000).
+    # A receipt averaged against a stale quantity misses by whole money units, so a 0.001
+    # tolerance still catches it.
+    assert abs(avg - expected) <= D("0.001"), (
         f"average {avg} != {expected}: a receipt averaged against a stale quantity"
     )
 
