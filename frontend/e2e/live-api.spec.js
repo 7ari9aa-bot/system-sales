@@ -405,3 +405,62 @@ test("a return retried with a different quantity gets a new Idempotency-Key (nev
   expect(seen[0].body, "the cashier changed the quantity, so it is a different return").not.toBe(seen[1].body);
   expect(seen[0].key, "a different return must not reuse the failed attempt's key").not.toBe(seen[1].key);
 });
+
+test("closing a shift on the screen: the expected cash is the ledger's (float + cash sales - cash expenses), a short count is recorded as a shortage, and the shift closes once", async ({ page }) => {
+  const errs = []; page.on("pageerror", (e) => errs.push(e.message));
+  const sfx = `${Date.now()}`.slice(-8); const email = `ld-${sfx}@example.com`; const pw = `Ld-${sfx}-pass!`;
+  await page.goto("/register");
+  await page.getByLabel(/البريد الإلكتروني|email/i).fill(email);
+  await page.getByLabel(/^كلمة المرور$|^password$/i).fill(pw);
+  await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
+  await page.getByRole("button", { name: /إنشاء الحساب|create account/i }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+  const api = (method, path, body) => page.evaluate(async ({ method, path, body }) => {
+    const raw = JSON.parse(localStorage.getItem("fihrist_tokens") || "null");
+    const csrf = (document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/) || [])[1];
+    const h = { "Content-Type": "application/json", ...(csrf ? { "X-CSRF-Token": csrf } : {}), ...(raw?.access_token ? { Authorization: `Bearer ${raw.access_token}` } : {}) };
+    const r = await fetch(`/api/v1${path}`, { method, headers: h, credentials: "include", body: body ? JSON.stringify(body) : undefined });
+    const t = await r.text(); if (!r.ok) throw new Error(`${method} ${path} -> ${r.status} ${t.slice(0, 200)}`); return t ? JSON.parse(t) : null;
+  }, { method, path, body });
+  const wh = await api("POST", "/warehouses/ensure-default");
+  const mk = async (tag, bc) => {
+    const p = await api("POST", "/products", { title: `Item${tag} ${sfx}`, slug: `item-${tag}-${sfx}`, description: null });
+    const v = await api("POST", `/products/${p.id}/variants`, { sku: `LD${tag}-${sfx}`, price: "100.00", option_values: {} });
+    await api("POST", `/variants/${v.id}/identifiers`, { identifier_type: "barcode", value: bc });
+    await api("POST", "/inventory/movements", { variant_id: v.id, warehouse_id: wh.id, direction: "in", quantity: 10, reason: "adjustment" });
+    await api("PATCH", `/products/${p.id}`, { status: "active" }); return v;
+  };
+  const bcA = `630${sfx}1`, bcB = `630${sfx}2`;
+  const vA = await mk("A", bcA);
+  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash", discount_ceiling_pct: "100.00" });
+  const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
+  const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "500.00" });
+
+  // cash in: one sale of 100; cash out: one expense of 25. Expected in the drawer = 500 + 100 - 25 = 575.
+  await api("POST", `/pos/sessions/${shift.id}/sell`, { items: [{ variant_id: vA.id, quantity: 1 }], tenders: [{ method: "cash", amount: "100.00" }], tenderedCash: "100.00" });
+  const categories = await api("GET", "/expenses/categories");
+  const category = (Array.isArray(categories) ? categories : categories.items ?? [])[0];
+  await api("POST", "/expenses", { category_id: category.id, description: `Close ${sfx}`, amount: "25.00", payment_method: "cash", session_id: shift.id });
+  const preview = await api("GET", `/pos/sessions/${shift.id}/close-preview`);
+  const cashRow = preview.by_method.find((m) => m.method === "cash");
+  expect(Number(cashRow.expected), "the ledger's expected cash: 500 float + 100 sale - 25 expense").toBe(575);
+
+  await page.goto("/cashier/shifts", { waitUntil: "networkidle" });
+  const main = page.locator("main:has(.cashier-root)");
+  await main.getByRole("button", { name: "إغلاق الوردية" }).first().click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog, "the dialog shows the ledger's expected cash, not a client guess").toContainText("575.00", { timeout: 10000 });
+  await dialog.locator('input[type="number"]').fill("570"); // 5 short
+  const shortage = dialog.locator("div", { hasText: /^فرق عجز/ }).last();
+  await expect(shortage, "the screen names the gap a shortage of exactly 5.00").toContainText("-5.00");
+  await expect(dialog).not.toContainText("فرق زيادة");
+  await dialog.getByRole("button", { name: /تأكيد إغلاق الوردية/ }).click();
+  await expect(page.getByText(/تم إغلاق الوردية/)).toBeVisible({ timeout: 10000 });
+
+  const closed = await api("GET", `/pos/sessions/${shift.id}`);
+  expect(String(closed.status).toLowerCase(), "the shift is closed on the server").toBe("closed");
+  expect(Number(closed.counted_cash ?? closed.closing_cash), "the count we typed was stored").toBe(570);
+  expect(Number(closed.variance ?? closed.cash_variance), "the shortage was stored as -5").toBe(-5);
+  // a closed shift takes no more sales
+  await expect(api("POST", `/pos/sessions/${shift.id}/sell`, { items: [{ variant_id: vA.id, quantity: 1 }], tenders: [{ method: "cash", amount: "100.00" }], tenderedCash: "100.00" })).rejects.toThrow();
+});
