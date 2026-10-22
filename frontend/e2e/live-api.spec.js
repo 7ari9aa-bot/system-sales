@@ -767,3 +767,50 @@ test("a stocktake on the screen: counted 7 of the 10 it started with is 3 missin
   await expect.poll(onHand, { message: "the sale is kept and the 3 missing come off: 9 - 3 = 6, never 7 (which would erase the sale)" }).toBe(6);
   expect(errs).toEqual([]);
 });
+
+test("the reports on the screen: 3 sold, 1 returned, 25 spent in cash gives net sales 200 and 675 expected in the drawer", async ({ page }) => {
+  const errs = []; page.on("pageerror", (e) => errs.push(e.message));
+  const sfx = `${Date.now()}`.slice(-8); const email = `ld-${sfx}@example.com`; const pw = `Ld-${sfx}-pass!`;
+  await page.goto("/register");
+  await page.getByLabel(/البريد الإلكتروني|email/i).fill(email);
+  await page.getByLabel(/^كلمة المرور$|^password$/i).fill(pw);
+  await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
+  await page.getByRole("button", { name: /إنشاء الحساب|create account/i }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+  const api = (method, path, body) => page.evaluate(async ({ method, path, body }) => {
+    const raw = JSON.parse(localStorage.getItem("fihrist_tokens") || "null");
+    const csrf = (document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/) || [])[1];
+    const h = { "Content-Type": "application/json", ...(csrf ? { "X-CSRF-Token": csrf } : {}), ...(raw?.access_token ? { Authorization: `Bearer ${raw.access_token}` } : {}) };
+    const r = await fetch(`/api/v1${path}`, { method, headers: h, credentials: "include", body: body ? JSON.stringify(body) : undefined });
+    const t = await r.text(); if (!r.ok) throw new Error(`${method} ${path} -> ${r.status} ${t.slice(0, 200)}`); return t ? JSON.parse(t) : null;
+  }, { method, path, body });
+  const wh = await api("POST", "/warehouses/ensure-default");
+  const mk = async (tag, bc) => {
+    const p = await api("POST", "/products", { title: `Item${tag} ${sfx}`, slug: `item-${tag}-${sfx}`, description: null });
+    const v = await api("POST", `/products/${p.id}/variants`, { sku: `LD${tag}-${sfx}`, price: "100.00", option_values: {} });
+    await api("POST", `/variants/${v.id}/identifiers`, { identifier_type: "barcode", value: bc });
+    await api("POST", "/inventory/movements", { variant_id: v.id, warehouse_id: wh.id, direction: "in", quantity: 10, reason: "adjustment" });
+    await api("PATCH", `/products/${p.id}`, { status: "active" }); return v;
+  };
+  const bcA = `630${sfx}1`, bcB = `630${sfx}2`;
+  const vA = await mk("A", bcA);
+  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash", discount_ceiling_pct: "100.00" });
+  const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
+  const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "500.00" });
+
+  // cash in: 3 x 100 sold; cash out: 1 x 100 returned, 25 spent. Net sales 200; drawer = 500 + 300 - 100 - 25 = 675.
+  const sale = await api("POST", `/pos/sessions/${shift.id}/sell`, { items: [{ variant_id: vA.id, quantity: 3 }], tenders: [{ method: "cash", amount: "300.00" }], tenderedCash: "300.00" });
+  const detail = sale.order_id ? null : sale;
+  await api("POST", `/pos/sessions/${shift.id}/returns`, { order_id: sale.order_id ?? detail.order.id, lines: [{ variant_id: vA.id, quantity: 1 }], restock: true });
+  const categories = await api("GET", "/expenses/categories");
+  const category = (Array.isArray(categories) ? categories : categories.items ?? [])[0];
+  await api("POST", "/expenses", { category_id: category.id, description: `Rep ${sfx}`, amount: "25.00", payment_method: "cash", session_id: shift.id });
+
+  await page.goto("/cashier/reports", { waitUntil: "networkidle" });
+  const main = page.locator("main:has(.cashier-root)");
+  await expect(main, "net sales = 300 sold - 100 returned").toContainText("200.00", { timeout: 10000 });
+  await expect(main, "3 pieces were sold").toContainText("3 قطعة");
+  await main.getByRole("tab", { name: /إغلاق اليوم/ }).click();
+  await expect(main, "the Z report expects 500 + 300 - 100 - 25 in the drawer").toContainText("675.00", { timeout: 10000 });
+  expect(errs).toEqual([]);
+});
