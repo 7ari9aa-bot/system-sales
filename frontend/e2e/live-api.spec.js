@@ -712,3 +712,58 @@ test("paying a supplier on the screen: 180 owed, 100 paid in cash leaves the dra
   await expect(page.locator("main:has(.cashier-root)"), "180 - 100 = 80 still owed").toContainText("80.00", { timeout: 10000 });
   expect(errs).toEqual([]);
 });
+
+test("a stocktake on the screen: counted 7 of the 10 it started with is 3 missing, and the sale made while counting is kept (10 - 1 sold - 3 missing = 6)", async ({ page }) => {
+  const errs = []; page.on("pageerror", (e) => errs.push(e.message));
+  const sfx = `${Date.now()}`.slice(-8); const email = `ld-${sfx}@example.com`; const pw = `Ld-${sfx}-pass!`;
+  await page.goto("/register");
+  await page.getByLabel(/البريد الإلكتروني|email/i).fill(email);
+  await page.getByLabel(/^كلمة المرور$|^password$/i).fill(pw);
+  await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
+  await page.getByRole("button", { name: /إنشاء الحساب|create account/i }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+  const api = (method, path, body) => page.evaluate(async ({ method, path, body }) => {
+    const raw = JSON.parse(localStorage.getItem("fihrist_tokens") || "null");
+    const csrf = (document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/) || [])[1];
+    const h = { "Content-Type": "application/json", ...(csrf ? { "X-CSRF-Token": csrf } : {}), ...(raw?.access_token ? { Authorization: `Bearer ${raw.access_token}` } : {}) };
+    const r = await fetch(`/api/v1${path}`, { method, headers: h, credentials: "include", body: body ? JSON.stringify(body) : undefined });
+    const t = await r.text(); if (!r.ok) throw new Error(`${method} ${path} -> ${r.status} ${t.slice(0, 200)}`); return t ? JSON.parse(t) : null;
+  }, { method, path, body });
+  const wh = await api("POST", "/warehouses/ensure-default");
+  const mk = async (tag, bc) => {
+    const p = await api("POST", "/products", { title: `Item${tag} ${sfx}`, slug: `item-${tag}-${sfx}`, description: null });
+    const v = await api("POST", `/products/${p.id}/variants`, { sku: `LD${tag}-${sfx}`, price: "100.00", option_values: {} });
+    await api("POST", `/variants/${v.id}/identifiers`, { identifier_type: "barcode", value: bc });
+    await api("POST", "/inventory/movements", { variant_id: v.id, warehouse_id: wh.id, direction: "in", quantity: 10, reason: "adjustment" });
+    await api("PATCH", `/products/${p.id}`, { status: "active" }); return v;
+  };
+  const bcA = `630${sfx}1`, bcB = `630${sfx}2`;
+  const vA = await mk("A", bcA);
+  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash", discount_ceiling_pct: "100.00" });
+  const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
+  const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "0.00" });
+
+  const onHand = async () => {
+    const stock = await api("GET", "/pos/stock?limit=100");
+    const row = (Array.isArray(stock) ? stock : stock.items ?? []).find((r) => r.variant_id === vA.id);
+    return row ? Number(row.on_hand ?? row.quantity) : 0;
+  };
+  expect(await onHand(), "mk() put 10 on the shelf").toBe(10);
+
+  await page.goto("/cashier/inventory/stocktake", { waitUntil: "networkidle" });
+  const main = page.locator("main:has(.cashier-root)");
+  await main.getByRole("button", { name: "بدء جرد جديد" }).click();
+  await expect(main.getByText(`ItemA ${sfx}`).first(), "the count sheet lists the item").toBeVisible({ timeout: 10000 });
+
+  // a customer buys one while the shop is counting
+  await api("POST", `/pos/sessions/${shift.id}/sell`, { items: [{ variant_id: vA.id, quantity: 1 }], method: "cash", amount: "100.00" });
+  expect(await onHand(), "the sale took one off the shelf").toBe(9);
+
+  const row = main.locator("tr", { hasText: `ItemA ${sfx}` }).first();
+  await row.getByPlaceholder("لم يُعدّ").fill("7");
+  // the difference is against the 10 the sheet started with, not against the 9 left after the sale
+  await expect(row, "3 missing against the sheet's opening 10").toContainText("-3");
+  await main.getByRole("button", { name: /اعتماد التسوية/ }).click();
+  await expect.poll(onHand, { message: "the sale is kept and the 3 missing come off: 9 - 3 = 6, never 7 (which would erase the sale)" }).toBe(6);
+  expect(errs).toEqual([]);
+});
