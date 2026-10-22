@@ -834,6 +834,115 @@ class PosService:
     # --------------------------------------------------------------- sell ----
 
     @staticmethod
+    async def _working_session(
+        session: AsyncSession, tenant_id: UUID, register: PosRegister
+    ) -> PosSession:
+        """The register's session for today, opened on the first sale and reused after it.
+
+        The cashier layer has no cash drawer, so there is no shift to open or count. A session
+        still exists because receipts, returns and reports hang off it, but here it only means
+        "this register, today": no opening float, no count, and no per-cashier rule (who sold is
+        on the receipt, so two people can sell on one register). A session left over from a
+        previous merchant day is closed with no cash figures and a new one is opened. Concurrent
+        first sales race on the ``uq_pos_sessions_open_per_register`` index; the loser re-reads
+        the winner's row.
+        """
+        tz = await PosService._shop_timezone(session, tenant_id)
+        for _attempt in range(3):
+            current = (
+                await session.execute(
+                    select(PosSession).where(
+                        PosSession.tenant_id == tenant_id,
+                        PosSession.register_id == register.id,
+                        PosSession.status == "OPEN",
+                    )
+                )
+            ).scalar_one_or_none()
+            if current is not None:
+                try:
+                    PosService._ensure_session_current(current, tz=tz)
+                    return current
+                except ConflictError:
+                    # Yesterday's session: close it (no cash was ever counted) and open today's.
+                    current.status = "CLOSED"
+                    current.closed_at = datetime.now(UTC)
+                    await session.flush()
+            try:
+                async with session.begin_nested():
+                    fresh = PosSession(
+                        tenant_id=tenant_id,
+                        register_id=register.id,
+                        profile_id=register.profile_id,
+                        status="OPEN",
+                        opening_float=Decimal("0.00"),
+                    )
+                    session.add(fresh)
+                    await session.flush()
+                return fresh
+            except IntegrityError:
+                continue  # another sale opened it first: read theirs
+        raise ConflictError("could not open a working session for this register")
+
+    @staticmethod
+    async def record_sale(
+        session: AsyncSession,
+        tenant_id: UUID,
+        register_id: UUID,
+        *,
+        items: list[dict] | None,
+        customer_id: UUID | None = None,
+        discount_total: object = None,
+        actor_user_id: UUID | None = None,
+    ) -> dict:
+        """RECORD a counter sale: what was sold, at what price, by whom. No payment, no shift.
+
+        How the customer paid is not this system's business, so there is no tender, no method, no
+        amount, no change and no drawer. The order is created (stock reserved), confirmed (the
+        reservation becomes a real sale) and a receipt is issued with the seller on it, all in the
+        caller's one transaction. It never writes an ``OrderPayment``, a ``Refund`` or a
+        ``PosCashMovement``. ``sell`` (the paid, shift-bound flow) is left as it was.
+        """
+        from app.modules.orders.service import OrderService
+
+        register = await PosService._get_register(session, tenant_id, register_id)
+        if not register.is_active:
+            raise ConflictError(f"register {register.code} is not active")
+        if not items:
+            raise ValidationError("a sale must contain at least one item")
+        for item in items:
+            PosService._positive_qty(item.get("quantity"))
+
+        pos_session = await PosService._working_session(session, tenant_id, register)
+        profile = await PosService.resolve_profile(session, tenant_id, pos_session)
+        if profile is not None and not profile.is_active:
+            raise ConflictError("this POS profile is not active")
+        await PosService._ensure_cart_in_scope(session, tenant_id, pos_session, items)
+        resolved_customer_id = await PosService._resolve_customer(
+            session, tenant_id, profile, customer_id
+        )
+
+        order = await OrderService.create_order(
+            session,
+            tenant_id,
+            resolved_customer_id,
+            items,
+            channel="pos",
+            warehouse_id=register.warehouse_id,
+            discount_total=discount_total,
+        )
+        await OrderService.confirm_sale(session, tenant_id, order.id, actor_user_id=actor_user_id)
+        receipt = await PosService._issue_receipt(
+            session, tenant_id, pos_session, order, sold_by_user_id=actor_user_id
+        )
+        return {
+            "order_id": order.id,
+            "order_number": order.number,
+            "receipt_id": receipt.id,
+            "receipt_number": receipt.number,
+            "grand_total": str(order.grand_total),
+        }
+
+    @staticmethod
     async def sell(
         session: AsyncSession,
         tenant_id: UUID,
@@ -1133,6 +1242,7 @@ class PosService:
         number_prefix: str = "POS",
         kind: str = "sale",
         exchange_return_receipt_id: UUID | None = None,
+        sold_by_user_id: UUID | None = None,
     ) -> PosReceipt:
         last_exc: IntegrityError | None = None
         for _attempt in range(_NUMBER_ATTEMPTS):
@@ -1146,6 +1256,7 @@ class PosService:
                 tendered_amount=tendered_amount,
                 change_amount=change_amount,
                 exchange_return_receipt_id=exchange_return_receipt_id,
+                sold_by_user_id=sold_by_user_id,
             )
             try:
                 async with session.begin_nested():
@@ -1619,6 +1730,9 @@ class PosService:
                 "number": receipt.number,
                 "kind": receipt.kind,
                 "exchange_return_receipt_id": receipt.exchange_return_receipt_id,
+                "sold_by_user_id": (
+                    str(receipt.sold_by_user_id) if receipt.sold_by_user_id else None
+                ),
                 "issued_at": receipt.issued_at.isoformat(),
                 "tendered_amount": (
                     str(receipt.tendered_amount) if receipt.tendered_amount is not None else None

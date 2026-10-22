@@ -262,6 +262,9 @@ class PosReceipt(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, IdM
     issued_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    # Who sold. No FK on purpose: receipts are append-only, and SET NULL would rewrite history
+    # when a user is removed. NULL on receipts issued before this column (the shift names them).
+    sold_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     # Set on the NEW SALE receipt of an exchange: the return receipt it was paired with. Written
     # at insert (receipts are append-only). NULL = an ordinary sale, or a pre-link exchange.
     exchange_return_receipt_id: Mapped[uuid.UUID | None] = mapped_column(

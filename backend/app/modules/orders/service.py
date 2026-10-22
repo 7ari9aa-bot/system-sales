@@ -942,9 +942,7 @@ class OrderService:
 
         # §140: a captured payment converts the order's stock reservations
         # into a sale (ACTIVE -> CONVERTED).
-        from app.modules.inventory.service import InventoryReservationService as _IRS2
-
-        await _IRS2.convert(session, tenant_id, order.id, actor_user_id)
+        await OrderService._convert_reservations(session, tenant_id, order.id, actor_user_id)
 
         # §139: money really arrived, so the saga says so.
         if OrderService._saga_move(order, "paid"):
@@ -958,6 +956,51 @@ class OrderService:
         # Money arrived, so the customer's worth is recomputed from the rows.
         await OrderService._recompute_lifetime_value(session, tenant_id, order.id)
         return payment
+
+    @staticmethod
+    async def _convert_reservations(
+        session: AsyncSession, tenant_id: UUID, order_id: UUID, actor_user_id: UUID | None
+    ) -> None:
+        """ACTIVE stock reservations -> CONVERTED (a real sale); the one inventory call here."""
+        from app.modules.inventory.service import InventoryReservationService as _IRS
+
+        await _IRS.convert(session, tenant_id, order_id, actor_user_id)
+
+    @staticmethod
+    async def confirm_sale(
+        session: AsyncSession,
+        tenant_id: UUID,
+        order_id: UUID,
+        *,
+        actor_user_id: UUID | None = None,
+    ) -> Order:
+        """Record a counter sale as DONE, without recording any payment.
+
+        The cashier layer does not handle money: it notes what was sold, at what price, and takes
+        the stock off the shelf. ``add_payment`` also does that, but only as a side effect of
+        capturing a payment, so a sale with no payment row could not complete. This runs the same
+        three effects and never writes an ``OrderPayment``:
+
+        1. the order's ACTIVE stock reservations become a real sale (ACTIVE -> CONVERTED);
+        2. a pending order is confirmed (the history row says the sale was recorded, not "paid");
+        3. the customer's lifetime value is recomputed from the rows.
+
+        Idempotent: ``convert`` only touches ACTIVE reservations, and a confirmed order is not moved
+        again, so a retry never takes the stock off the shelf twice. ``add_payment`` is untouched.
+        """
+        order = await OrderService.get(
+            session, tenant_id, order_id, with_items=False, for_update=True
+        )
+        if order.status in ("cancelled", "refunded"):
+            raise ConflictError(f"cannot confirm a {order.status} order")
+
+        await OrderService._convert_reservations(session, tenant_id, order.id, actor_user_id)
+        if order.status == "pending":
+            await OrderService._transition(
+                session, tenant_id, order, "confirmed", note="sale recorded"
+            )
+        await OrderService._recompute_lifetime_value(session, tenant_id, order.id)
+        return order
 
     @staticmethod
     async def reconcile_payment(
