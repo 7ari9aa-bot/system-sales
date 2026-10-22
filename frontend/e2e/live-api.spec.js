@@ -288,7 +288,8 @@ test("a per-line discount is stored on its line, so returning that one item refu
   await mk("A", bcA); await mk("B", bcB);
   const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash" });
   const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
-  const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "0.00" });
+  // No shift is opened: the sale rides today's working session, and so does the return below.
+  const shift = await api("POST", `/pos/registers/${reg.id}/working-session`);
 
   await page.goto("/cashier/pos", { waitUntil: "networkidle" });
   const main = page.locator("main:has(.cashier-root)");
@@ -316,6 +317,11 @@ test("a per-line discount is stored on its line, so returning that one item refu
   const lineA = detail.lines.find((l) => l.title.includes("ItemA"));
   const ret = await api("POST", `/pos/sessions/${shift.id}/returns`, { order_id: sale.order_id ?? detail.order.id, lines: [{ variant_id: lineA.variant_id, quantity: 1 }], restock: true });
   expect(Number(ret.refunded_total), "returning the discounted item refunds what it paid").toBe(50);
+  expect(ret.by_method, "nothing was paid, so no tender is named").toEqual([]);
+  // The whole day (sale + return) never opened a shift and never moved money.
+  const day = await api("GET", `/pos/sessions/${shift.id}`);
+  expect(Number(day.inflow ?? 0), "no money came in").toBe(0);
+  expect(Number(day.outflow ?? 0), "no money went out").toBe(0);
   expect(errs).toEqual([]);
 });
 
@@ -543,6 +549,95 @@ test("an exchange on the screen: one A comes back, one B (price 150) goes out, t
 
   await expect.poll(() => onHand(vA.id), { message: "the returned A goes back on the shelf: 8 -> 9" }).toBe(9);
   await expect.poll(() => onHand(vB.id), { message: "the new B leaves the shelf: 10 -> 9" }).toBe(9);
+  expect(errs).toEqual([]);
+});
+
+test("sell, return and exchange from the screens with no shift and no payment: the shelves follow and no money moves", async ({ page }) => {
+  const errs = []; page.on("pageerror", (e) => errs.push(e.message));
+  const sfx = `${Date.now()}`.slice(-8); const email = `ld-${sfx}@example.com`; const pw = `Ld-${sfx}-pass!`;
+  await page.goto("/register");
+  await page.getByLabel(/البريد الإلكتروني|email/i).fill(email);
+  await page.getByLabel(/^كلمة المرور$|^password$/i).fill(pw);
+  await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
+  await page.getByRole("button", { name: /إنشاء الحساب|create account/i }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+  const api = (method, path, body) => page.evaluate(async ({ method, path, body }) => {
+    const raw = JSON.parse(localStorage.getItem("fihrist_tokens") || "null");
+    const csrf = (document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/) || [])[1];
+    const h = { "Content-Type": "application/json", ...(csrf ? { "X-CSRF-Token": csrf } : {}), ...(raw?.access_token ? { Authorization: `Bearer ${raw.access_token}` } : {}) };
+    const r = await fetch(`/api/v1${path}`, { method, headers: h, credentials: "include", body: body ? JSON.stringify(body) : undefined });
+    const t = await r.text(); if (!r.ok) throw new Error(`${method} ${path} -> ${r.status} ${t.slice(0, 200)}`); return t ? JSON.parse(t) : null;
+  }, { method, path, body });
+  const wh = await api("POST", "/warehouses/ensure-default");
+  const mk = async (tag, bc, price) => {
+    const p = await api("POST", "/products", { title: `Item${tag} ${sfx}`, slug: `item-${tag}-${sfx}`, description: null });
+    const v = await api("POST", `/products/${p.id}/variants`, { sku: `LD${tag}-${sfx}`, price, option_values: {} });
+    await api("POST", `/variants/${v.id}/identifiers`, { identifier_type: "barcode", value: bc });
+    await api("POST", "/inventory/movements", { variant_id: v.id, warehouse_id: wh.id, direction: "in", quantity: 10, reason: "adjustment" });
+    await api("PATCH", `/products/${p.id}`, { status: "active" }); return v;
+  };
+  const bcA = `640${sfx}1`, bcB = `640${sfx}2`;
+  const vA = await mk("A", bcA, "100.00"); const vB = await mk("B", bcB, "150.00");
+  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash" });
+  await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
+  // NO shift is opened anywhere in this test.
+  const onHand = async (variantId) => {
+    const body = await api("GET", "/pos/stock?limit=100");
+    const rows = Array.isArray(body) ? body : body.items ?? [];
+    const row = rows.find((r) => r.variant_id === variantId);
+    return row ? Number(row.on_hand ?? row.quantity) : 0;
+  };
+
+  // 1. SELL two A from the sales screen.
+  await page.goto("/cashier/pos", { waitUntil: "networkidle" });
+  const main = page.locator("main:has(.cashier-root)");
+  const field = page.getByLabel("باركود المنتج").first();
+  await field.fill(bcA); await field.press("Enter");
+  await expect(main).toContainText(`ItemA ${sfx}`);
+  await field.fill(bcA); await field.press("Enter"); // a second scan of the same item adds one to its line
+  await expect(main.getByRole("button", { name: /\(F2\)/ }), "the sale button wakes once the scans are quoted").toBeEnabled({ timeout: 10000 });
+  await expect(main).toContainText("200.00", { timeout: 10000 }); // two A at 100: the server's quote, not the first scan's
+  await main.getByRole("button", { name: /\(F2\)/ }).click();
+  const dlg = page.getByRole("dialog");
+  await dlg.getByRole("button", { name: /تأكيد البيع/ }).click();
+  await expect(dlg.getByText("معاينة الفاتورة")).toBeVisible();
+  const invoiceNo = ((await dlg.innerText()).match(/POS-\d{8}-[A-Z0-9]+/) || [""])[0];
+  expect(invoiceNo).toMatch(/^POS-/);
+  await page.keyboard.press("Escape");
+  expect(await onHand(vA.id), "two A left the shelf").toBe(8);
+
+  // 2. RETURN one A from the returns screen: no shift is open, and the screen still works.
+  await page.goto("/cashier/returns", { waitUntil: "networkidle" });
+  await expect(page.getByText(/لا توجد وردية مفتوحة/), "the returns screen no longer asks for a shift").toHaveCount(0);
+  const search = main.getByRole("textbox").first();
+  await search.fill(invoiceNo); await search.press("Enter");
+  await expect(main).toContainText(`ItemA ${sfx}`, { timeout: 10000 });
+  await main.getByRole("button", { name: /^إرجاع Item/ }).first().click();
+  await main.getByRole("button", { name: /اعتماد المرتجع/ }).first().click();
+  await expect.poll(() => onHand(vA.id), { timeout: 10000 }).toBe(9);
+
+  // 3. EXCHANGE one A for one B (B costs 150): the 50 difference is shown, never asked for.
+  await page.goto("/cashier/exchanges", { waitUntil: "networkidle" });
+  const find = page.getByLabel("بحث عن الفاتورة الأصلية");
+  await find.fill(invoiceNo); await find.press("Enter");
+  await expect(main).toContainText(`ItemA ${sfx}`, { timeout: 10000 });
+  await main.getByRole("button", { name: /^إرجاع Item/ }).first().click();
+  const repl = page.getByLabel("بحث عن المنتج البديل");
+  await repl.fill(bcB); await repl.press("Enter");
+  await expect(main).toContainText(`ItemB ${sfx}`, { timeout: 10000 });
+  await expect(main, "the server quote: B 150 - A 100 = 50").toContainText("50.00", { timeout: 10000 });
+  await main.getByRole("button", { name: /إتمام الاستبدال/ }).click();
+  await expect(page.getByLabel("المبلغ المدفوع"), "no payment box: nothing is collected").toHaveCount(0);
+  await expect(page.getByText(/الفرق لصالح المحل/).first()).toBeVisible({ timeout: 10000 });
+  await expect.poll(() => onHand(vB.id), { timeout: 10000 }).toBe(9);
+  await expect.poll(() => onHand(vA.id), { timeout: 10000 }).toBe(10 - 2 + 1 + 1);
+
+  // The backend is the witness: one working session, no money in or out.
+  const open = await api("GET", "/pos/sessions?status=OPEN");
+  expect(open.length, "one working session, never a shift the cashier opened").toBe(1);
+  const day = await api("GET", `/pos/sessions/${open[0].id}`);
+  expect(Number(day.inflow ?? 0), "no money came in").toBe(0);
+  expect(Number(day.outflow ?? 0), "no money went out").toBe(0);
   expect(errs).toEqual([]);
 });
 

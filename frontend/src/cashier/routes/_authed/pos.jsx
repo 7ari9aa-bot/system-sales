@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useSearchParams } from "react-router-dom";
-import { TriangleAlert } from "lucide-react";
 import PosHeaderBar from "@/cashier/components/pos/PosHeaderBar";
 import PosCustomerFields from "@/cashier/components/pos/PosCustomerFields";
 import PosInvoiceTable from "@/cashier/components/pos/PosInvoiceTable";
@@ -17,7 +16,7 @@ import ConfirmDialog from "@/cashier/components/ui-kit/ConfirmDialog";
 import { Button } from "@/cashier/components/ui/button";
 import { CATALOG_KEY, HELD_KEY, SESSION_CATALOG_KEY, fetchSessionCatalog, useCustomerSearch, useHeldCarts, usePosSale, useSessionCatalog, useShiftProfile } from "@/cashier/api/usePosSale";
 import { customerBlock } from "@/cashier/api/customerRule";
-import { useWorkingSession } from "@/cashier/api/useShifts";
+import WorkingSessionGate from "@/cashier/components/pos/WorkingSessionGate";
 import { searchCatalog } from "@/cashier/api/catalogAdapter";
 import { posApi } from "@/cashier/api/posApi";
 import { useAuth } from "@/lib/AuthContext";
@@ -28,46 +27,9 @@ import { clearedIfStill, createScanQueue } from "@/cashier/lib/scanQueue";
 // مُعرّف ثابت لرسالة الحذف: كل حذف جديد يستبدل الرسالة السابقة، فيكون التراجع لأحدث حذف.
 const UNDO_TOAST_ID = "pos-undo-remove";
 
-function NoShift({ state }) {
-  const text =
-    state.status === "needs_setup"
-      ? "لم يتم تجهيز الكاشير بعد. اطلب من المدير تجهيزه من الإعدادات."
-      : state.status === "forbidden"
-        ? "ليست لديك صلاحية استخدام الكاشير."
-        : state.status === "error"
-          ? state.message || "تعذّر تحميل الكاشير."
-          : "تعذّر تحميل الكاشير.";
-  return (
-    <div className="animate-fade-up mx-auto mt-16 flex max-w-md flex-col items-center gap-3 rounded-2xl border border-border bg-card p-8 text-center">
-      <TriangleAlert className="h-7 w-7 text-amber-600" aria-hidden="true" />
-      <p className="text-sm font-semibold" role="status">{text}</p>
-    </div>
-  );
-}
-
-/** Several active tills and none picked yet: ask once, never guess the first one. */
-function ChooseRegister({ registers, onPick }) {
-  return (
-    <div className="animate-fade-up mx-auto mt-16 flex max-w-md flex-col items-center gap-3 rounded-2xl border border-border bg-card p-8 text-center">
-      <p className="text-sm font-semibold" role="status">اختر جهاز الكاشير الذي ستعمل عليه</p>
-      <div className="flex w-full flex-col gap-2">
-        {registers.map((r) => (
-          <Button key={r.id} variant="outline" onClick={() => onPick(r.id)}>{r.name || r.code}</Button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export default function PosPage() {
   const { user } = useAuth?.() ?? {};
-  const [registerId, setRegisterId] = useState(null);
-  const till = useWorkingSession({ registerId });
-  if (till.isLoading) return <p className="p-8 text-center text-sm text-muted-foreground" role="status">جارٍ التحميل…</p>;
-  const state = till.data ?? { status: "error", message: till.error?.message };
-  if (state.status === "choose") return <ChooseRegister registers={state.registers} onPick={setRegisterId} />;
-  if (state.status !== "open") return <NoShift state={state} />;
-  return <PosScreen user={user} session={state.session} />;
+  return <WorkingSessionGate>{({ session }) => <PosScreen user={user} session={session} />}</WorkingSessionGate>;
 }
 
 function PosScreen({ user, session }) {

@@ -1,10 +1,7 @@
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Link } from "react-router-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { TriangleAlert } from "lucide-react";
-import { Button } from "@/cashier/components/ui/button";
 import { useAuth } from "@/lib/AuthContext";
 import ReturnHeaderBar from "@/cashier/components/returns/ReturnHeaderBar";
 import ExchangeInvoiceSearch from "@/cashier/components/exchanges/ExchangeInvoiceSearch";
@@ -17,7 +14,7 @@ import ConfirmDialog from "@/cashier/components/ui-kit/ConfirmDialog";
 import useFillRowCount from "@/cashier/hooks/use-fill-row-count";
 import { fmtMoney } from "@/cashier/lib/format";
 import { newIntent, posApi } from "@/cashier/api/posApi";
-import { useShiftState } from "@/cashier/api/useShifts";
+import WorkingSessionGate from "@/cashier/components/pos/WorkingSessionGate";
 import { RECEIPT_SEARCH_MIN, useReceiptSearch, useReturnableSales } from "@/cashier/api/usePosSale";
 import { estimateRefund, returnErrorMessage, returnRequest, returnableLines, sendReturn, setQty, tableLine } from "@/cashier/api/returnPlan";
 
@@ -32,21 +29,8 @@ const asInvoice = (d) => ({
   detail: d,
 });
 
-function NoShift() {
-  return (
-    <div className="animate-fade-up mx-auto mt-16 flex max-w-md flex-col items-center gap-3 rounded-2xl border border-border bg-card p-8 text-center">
-      <TriangleAlert className="h-7 w-7 text-amber-600" aria-hidden="true" />
-      <p className="text-sm font-semibold" role="status">لا توجد وردية مفتوحة. افتح وردية أولًا، فالمرتجع يُسجَّل على الوردية المفتوحة حتى لو كانت الفاتورة من وردية سابقة.</p>
-      <Button asChild><Link to="/cashier/shifts">الذهاب إلى الورديات</Link></Button>
-    </div>
-  );
-}
-
 export default function NewReturnPage() {
-  const shift = useShiftState({ canConfigure: false });
-  if (shift.isLoading) return <p className="p-8 text-center text-sm text-muted-foreground" role="status">جارٍ التحميل…</p>;
-  if (shift.data?.status !== "open") return <NoShift />;
-  return <ReturnScreen session={shift.data.session} />;
+  return <WorkingSessionGate>{({ session }) => <ReturnScreen session={session} />}</WorkingSessionGate>;
 }
 
 function ReturnScreen({ session }) {

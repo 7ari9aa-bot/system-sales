@@ -1,9 +1,7 @@
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { TriangleAlert } from "lucide-react";
-import { Button } from "@/cashier/components/ui/button";
 import { useAuth } from "@/lib/AuthContext";
 import ReturnHeaderBar from "@/cashier/components/returns/ReturnHeaderBar";
 import ExchangeInvoiceSearch from "@/cashier/components/exchanges/ExchangeInvoiceSearch";
@@ -18,12 +16,12 @@ import useFillRowCount from "@/cashier/hooks/use-fill-row-count";
 import { fmtMoney } from "@/cashier/lib/format";
 import { fromMinor, toMinor } from "@/cashier/api/money";
 import { newIntent, posApi } from "@/cashier/api/posApi";
-import { useShiftState } from "@/cashier/api/useShifts";
+import WorkingSessionGate from "@/cashier/components/pos/WorkingSessionGate";
 import { RECEIPT_SEARCH_MIN, useReceiptSearch, useReturnableSales, useSessionCatalog } from "@/cashier/api/usePosSale";
 import { searchCatalog } from "@/cashier/api/catalogAdapter";
 import { estimateRefund, returnableLines, sendReturn, setQty, tableLine } from "@/cashier/api/returnPlan";
 import { addReplacement, previewTotal, removeReplacement, setReplacementQty, useExchangeQuote } from "@/cashier/api/exchangeCart";
-import { differenceMinor, exchangeErrorMessage, exchangePayment, exchangeRequest, settlementKind } from "@/cashier/api/exchangePlan";
+import { differenceMinor, exchangeErrorMessage, exchangePayment, exchangeRequest, needsPayment } from "@/cashier/api/exchangePlan";
 
 
 const asInvoice = (d) => ({
@@ -37,21 +35,8 @@ const asInvoice = (d) => ({
   detail: d,
 });
 
-function NoShift() {
-  return (
-    <div className="animate-fade-up mx-auto mt-16 flex max-w-md flex-col items-center gap-3 rounded-2xl border border-border bg-card p-8 text-center">
-      <TriangleAlert className="h-7 w-7 text-amber-600" aria-hidden="true" />
-      <p className="text-sm font-semibold" role="status">لا توجد وردية مفتوحة. الاستبدال يتم على الوردية المفتوحة التي بيعت فيها الفاتورة.</p>
-      <Button asChild><Link to="/cashier/shifts">الذهاب إلى الورديات</Link></Button>
-    </div>
-  );
-}
-
 export default function ExchangePage() {
-  const shift = useShiftState({ canConfigure: false });
-  if (shift.isLoading) return <p className="p-8 text-center text-sm text-muted-foreground" role="status">جارٍ التحميل…</p>;
-  if (shift.data?.status !== "open") return <NoShift />;
-  return <ExchangeScreen session={shift.data.session} />;
+  return <WorkingSessionGate>{({ session }) => <ExchangeScreen session={session} />}</WorkingSessionGate>;
 }
 
 function ExchangeScreen({ session }) {
@@ -104,7 +89,9 @@ function ExchangeScreen({ session }) {
   const quote = useExchangeQuote(session.id, newLines);
   const quoteReady = newLines.length > 0 && !quote.loading && !quote.error;
   const diffMinor = invoice && quoteReady ? differenceMinor(invoice.detail, lines, quote.total) : 0;
-  const kind = settlementKind(diffMinor);
+  // Only an old sale that took payments settles a difference. A sale recorded with no payment never
+  // asks for one: the difference is shown, not charged.
+  const takesPayment = invoice ? needsPayment(invoice.detail, diffMinor) : false;
   const shownNew = newLines.length ? Number(quote.total) : 0;
   const hasDraft = !!invoice || newLines.length > 0;
   const canComplete = !!invoice && backTotals.pieces > 0 && newLines.length > 0 && quoteReady && !busy;
@@ -185,7 +172,7 @@ function ExchangeScreen({ session }) {
       const res = await sendReturn(() => posApi.exchange(session.id, req, intentRef.current)); // same intent re-sent while the first is still running -> wait, then replay
       const net = Number(res.net);
       toast.success(
-        net > 0 ? `تم الاستبدال ${res.new_receipt_number}. تم تحصيل ${fmtMoney(net)}` : net < 0 ? `تم الاستبدال ${res.new_receipt_number}. رد ${fmtMoney(Math.abs(net))} للعميل` : `تم الاستبدال ${res.new_receipt_number} بدون فرق`,
+        res.by_method?.length ? (net > 0 ? `تم الاستبدال ${res.new_receipt_number}. تم تحصيل ${fmtMoney(net)}` : net < 0 ? `تم الاستبدال ${res.new_receipt_number}. رد ${fmtMoney(Math.abs(net))} للعميل` : `تم الاستبدال ${res.new_receipt_number} بدون فرق`) : (net > 0 ? `تم الاستبدال ${res.new_receipt_number}. الفرق لصالح المحل ${fmtMoney(net)}` : net < 0 ? `تم الاستبدال ${res.new_receipt_number}. الفرق لصالح العميل ${fmtMoney(Math.abs(net))}` : `تم الاستبدال ${res.new_receipt_number} بدون فرق`),
       );
       intentRef.current = null;
       setDialog(null);
@@ -202,7 +189,7 @@ function ExchangeScreen({ session }) {
   }
   function onComplete() {
     if (!canComplete) return;
-    if (kind === "pay") return setDialog("payment");
+    if (takesPayment) return setDialog("payment");
     send({});
   }
   function onPay(rows) {
@@ -281,7 +268,7 @@ function ExchangeScreen({ session }) {
         </div>
       </div>
       <div ref={actionsRef}>
-        <ExchangeActionsBar canComplete={canComplete} hasDraft={hasDraft} busy={busy} label={kind === "pay" ? "الدفع وإتمام الاستبدال" : "إتمام الاستبدال"} onComplete={onComplete} onCancel={() => setDialog("cancel")} />
+        <ExchangeActionsBar canComplete={canComplete} hasDraft={hasDraft} busy={busy} label={takesPayment ? "الدفع وإتمام الاستبدال" : "إتمام الاستبدال"} onComplete={onComplete} onCancel={() => setDialog("cancel")} />
       </div>
       <PaymentDialog
         open={dialog === "payment"}

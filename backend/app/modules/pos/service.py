@@ -3082,6 +3082,21 @@ class PosService:
         )
         plan: list[tuple[OrderPayment, Decimal]] = []
         remaining = refund_total
+        # A sale recorded WITHOUT a payment (the cashier layer does not move money) has no tender to
+        # refund against: the return records the goods and the invoice value only. The test is "this
+        # order never had ANY payment row", not "no captured one": a paid sale whose payments were
+        # fully refunded still has rows, and must keep failing loudly rather than slip into
+        # this path.
+        never_paid = (
+            await session.execute(
+                select(func.count())
+                .select_from(OrderPayment)
+                .where(OrderPayment.tenant_id == tenant_id, OrderPayment.order_id == order_id)
+            )
+        ).scalar_one() == 0
+        if never_paid:
+            captured = []
+            remaining = Decimal("0")
         for payment in captured:
             if remaining <= 0:
                 break
@@ -3436,6 +3451,18 @@ class PosService:
         )
         plan: list[tuple[OrderPayment, Decimal]] = []
         remaining = return_total
+        # Same rule as return_sale: an order that never had ANY payment row has no tender to credit.
+        # The exchange then records the goods and the values, and the difference is only reported.
+        never_paid = (
+            await session.execute(
+                select(func.count())
+                .select_from(OrderPayment)
+                .where(OrderPayment.tenant_id == tenant_id, OrderPayment.order_id == order_id)
+            )
+        ).scalar_one() == 0
+        if never_paid:
+            captured = []
+            remaining = Decimal("0")
         for payment in captured:
             if remaining <= 0:
                 break
@@ -3514,7 +3541,7 @@ class PosService:
         # tenders, which must total it exactly — the exchange's own variant of
         # the settle-the-whole-order rule.
         caller_tenders: list[dict] = []
-        if remaining_new > 0:
+        if remaining_new > 0 and not never_paid:
             caller_tenders = PosService._normalise_tenders(
                 tenders,
                 method,
@@ -3556,6 +3583,11 @@ class PosService:
             }
             for t in caller_tenders
         ]
+        if never_paid:
+            funding = []  # no credit was taken from any tender, so nothing funds the replacement
+            await OrderService.confirm_sale(
+                session, tenant_id, new_order.id, actor_user_id=actor_user_id
+            )
         for t_method, t_amount in funding:
             await OrderService.add_payment(
                 session,

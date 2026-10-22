@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { api } from "@/lib/api";
 import { newIntent, posApi } from "./posApi";
 import { setQty, returnableLines } from "./returnPlan";
-import { differenceMinor, exchangeErrorMessage, exchangePayment, exchangeRequest, sendExchange, settlementKind } from "./exchangePlan";
+import { differenceMinor, exchangeErrorMessage, exchangePayment, exchangeRequest, needsPayment, sendExchange, settlementKind } from "./exchangePlan";
 
 vi.mock("@/lib/api", () => ({ api: vi.fn(async () => ({ ok: true })) }));
 
@@ -78,5 +78,23 @@ describe("sendExchange", () => {
     const send = vi.fn().mockRejectedValue(new Error("tenders total 100.00 but the exchange difference is 230.00"));
     await expect(sendExchange(send, { sleep: async () => {} })).rejects.toThrow(/difference/);
     expect(send).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("needsPayment", () => {
+  const paid = { tenders: [{ method: "cash", amount: "100.00" }] };
+  const unpaid = { tenders: [] };
+
+  it("an old sale that took payments still settles a difference the customer owes", () => {
+    expect(needsPayment(paid, 5000)).toBe(true);
+  });
+  it("a sale recorded with no payment never asks for one: the difference is only shown", () => {
+    expect(needsPayment(unpaid, 5000)).toBe(false);
+    expect(needsPayment({}, 5000)).toBe(false);
+    expect(needsPayment(undefined, 5000)).toBe(false);
+  });
+  it("nothing is asked when the customer owes nothing or the shop owes the customer", () => {
+    expect(needsPayment(paid, 0)).toBe(false);
+    expect(needsPayment(paid, -4000)).toBe(false);
   });
 });

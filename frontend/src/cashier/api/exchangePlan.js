@@ -13,6 +13,15 @@ export function differenceMinor(saleDetail, returnLines, newTotal) {
   return toMinor(newTotal ?? "0") - estimateRefundMinor(saleDetail, returnLines);
 }
 
+/**
+ * Does this exchange need the customer's payment recorded? Only when the customer owes a difference
+ * AND the original sale took payments (an old sale: the backend still settles it through tenders).
+ * A sale recorded with no payment has nothing to settle: the difference is shown, never charged.
+ */
+export function needsPayment(detail, diffMinor) {
+  return settlementKind(diffMinor) === "pay" && (detail?.tenders?.length ?? 0) > 0;
+}
+
 export function settlementKind(diffMinor) {
   return diffMinor > 0 ? "pay" : diffMinor < 0 ? "refund" : "even";
 }
