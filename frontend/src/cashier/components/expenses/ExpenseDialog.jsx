@@ -12,16 +12,16 @@ const today = () => shopToday();
 const blank = () => ({ categoryId: "", description: "", amount: "", payment: "cash", date: today() });
 
 // تسجيل مصروف جديد. المصروف المسجَّل ما بيتعدّلش: التصحيح بإلغائه وتسجيل مصروف صحيح.
-// النقدي بيطلع من درج الوردية المفتوحة، فبيتمنع هنا لو مفيش وردية.
+// النقدي مسجَّل بدون وردية. لو فيه وردية مفتوحة بيتحسب على درجها، وإلا بيتسجَّل فقط.
 export default function ExpenseDialog({ open, onOpenChange, categories, methods, openSessionId, onSubmit, pending, error }) {
   const [form, setForm] = useState(blank);
   const [localError, setLocalError] = useState("");
 
   useEffect(() => {
     if (!open) return;
-    setForm({ ...blank(), payment: openSessionId ? "cash" : "bank_transfer" });
+    setForm({ ...blank(), payment: "cash" });
     setLocalError("");
-  }, [open, openSessionId]);
+  }, [open]);
 
   const set = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
   const amount = normalizeAmountInput(form.amount);
@@ -45,7 +45,7 @@ export default function ExpenseDialog({ open, onOpenChange, categories, methods,
         <DialogHeader>
           <DialogTitle className="font-heading text-base">تسجيل مصروف جديد</DialogTitle>
           <DialogDescription>
-            المصروف النقدي بيطلع من درج الوردية المفتوحة. وبعد التسجيل ما بيتعدّلش: لو غلطت، ألغيه وسجّله صح.
+            المصروف النقدي بيتسجّل حتى من غير وردية. وبعد التسجيل ما بيتعدّلش: لو غلطت، ألغيه وسجّله صح.
           </DialogDescription>
         </DialogHeader>
 
@@ -97,7 +97,7 @@ export default function ExpenseDialog({ open, onOpenChange, categories, methods,
 
         {cashWithoutShift && (
           <p role="status" className="rounded-md border border-[#EBD9A8] bg-[#FFF8E5] px-3 py-2 text-xs font-semibold text-[#8A6100]">
-            مفيش وردية مفتوحة، والمصروف النقدي بيطلع من الدرج. افتح وردية الأول أو اختر طريقة دفع تانية.
+            مفيش وردية مفتوحة: المصروف هيتسجّل، لكن ما هيتخصمش من درج. لو دفعته من درج وردية، افتحها الأول.
           </p>
         )}
         {shown && (
@@ -114,7 +114,7 @@ export default function ExpenseDialog({ open, onOpenChange, categories, methods,
             <Button variant="outline" disabled={pending} onClick={() => onOpenChange(false)}>
               رجوع
             </Button>
-            <Button className="font-bold" disabled={pending || cashWithoutShift} onClick={submit}>
+            <Button className="font-bold" disabled={pending} onClick={submit}>
               {pending ? "جارٍ التسجيل..." : "تسجيل المصروف"}
             </Button>
           </div>

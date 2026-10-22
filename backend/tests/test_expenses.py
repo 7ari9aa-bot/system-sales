@@ -6,12 +6,13 @@ import uuid
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 
 from app.main import create_app
 from app.modules.errors import ConflictError, NotFoundError, ValidationError
 from app.modules.expenses.service import ExpenseService, NumberingService, exact_money
+from app.modules.pos.models import PosCashMovement
 from app.modules.pos.service import PosService
 
 
@@ -133,17 +134,52 @@ async def test_non_cash_expense_never_touches_the_drawer(db, tenant_ctx) -> None
     assert await _drawer(db, tenant_ctx, shift.id) == before
 
 
-async def test_cash_expense_without_a_shift_is_refused(db, tenant_ctx) -> None:
+async def test_cash_expense_without_a_shift_is_recorded_with_no_drawer_movement(
+    db, tenant_ctx
+) -> None:
+    """No shift, no drawer: the expense is a record. Nothing is refused and no cash moves."""
     cat = await _category(db, tenant_ctx)
-    with pytest.raises(ConflictError, match="open a shift"):
-        await ExpenseService.create(
-            db,
-            tenant_ctx.tenant_id,
-            category_id=cat.id,
-            description="x",
-            amount="5",
-            payment_method="cash",
+    expense = await ExpenseService.create(
+        db,
+        tenant_ctx.tenant_id,
+        category_id=cat.id,
+        description="كهرباء",
+        amount="200",
+        payment_method="cash",
+    )
+    assert expense.status == "posted"
+    assert expense.payment_method == "cash"
+    assert expense.session_id is None
+    moves = (
+        await db.execute(
+            select(func.count())
+            .select_from(PosCashMovement)
+            .where(PosCashMovement.tenant_id == tenant_ctx.tenant_id)
         )
+    ).scalar_one()
+    assert moves == 0
+
+
+async def test_voiding_a_shiftless_cash_expense_moves_no_cash(db, tenant_ctx) -> None:
+    cat = await _category(db, tenant_ctx)
+    expense = await ExpenseService.create(
+        db,
+        tenant_ctx.tenant_id,
+        category_id=cat.id,
+        description="كهرباء",
+        amount="200",
+        payment_method="cash",
+    )
+    voided = await ExpenseService.void(db, tenant_ctx.tenant_id, expense.id, reason="سُجّل بالخطأ")
+    assert voided.status == "voided"
+    moves = (
+        await db.execute(
+            select(func.count())
+            .select_from(PosCashMovement)
+            .where(PosCashMovement.tenant_id == tenant_ctx.tenant_id)
+        )
+    ).scalar_one()
+    assert moves == 0
 
 
 async def test_cash_expense_on_a_closed_shift_is_refused(db, tenant_ctx) -> None:
@@ -295,7 +331,8 @@ async def test_listing_totals_exclude_voided_and_filter(db, tenant_ctx) -> None:
 
 
 async def test_database_itself_refuses_bad_rows(db, tenant_ctx) -> None:
-    """Even a service written wrong cannot store a zero amount or a cash expense with no drawer."""
+    """Even a service written wrong cannot store a zero amount, an unknown method, or a shift tied
+    to a non-cash expense. A cash expense with no shift is valid: it is a record."""
     cat = await _category(db, tenant_ctx)
     base = dict(t=tenant_ctx.tenant_id, c=cat.id)
     sql = text(
@@ -304,10 +341,20 @@ async def test_database_itself_refuses_bad_rows(db, tenant_ctx) -> None:
         "expense_date, status) values "
         "(gen_random_uuid(), :t, :n, :c, 'x', :a, :m, current_date, 'posted')"
     )
-    for amount, method in [("0", "card"), ("-1", "card"), ("5", "cash"), ("5", "crypto")]:
+    for amount, method in [("0", "card"), ("-1", "card"), ("5", "crypto")]:
         await _must_fail(
             db, sql, {**base, "n": f"X-{uuid.uuid4().hex[:6]}", "a": amount, "m": method}
         )
+    # a shift tied to a card expense: the drawer never paid it
+    shift = await _open_shift(db, tenant_ctx)
+    with_shift = text(
+        "insert into expenses (id, tenant_id, number, category_id, description, amount, "
+        "payment_method, expense_date, status, session_id) values "
+        "(gen_random_uuid(), :t, :n, :c, 'x', 5, 'card', current_date, 'posted', :s)"
+    )
+    await _must_fail(db, with_shift, {**base, "n": f"X-{uuid.uuid4().hex[:6]}", "s": shift.id})
+    # a cash expense with no shift is accepted
+    await db.execute(sql, {**base, "n": f"X-{uuid.uuid4().hex[:6]}", "a": "5", "m": "cash"})
 
 
 async def test_duplicate_document_number_is_refused_by_the_database(db, tenant_ctx) -> None:

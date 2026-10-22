@@ -552,6 +552,67 @@ test("an exchange on the screen: one A comes back, one B (price 150) goes out, t
   expect(errs).toEqual([]);
 });
 
+test("a cash expense is recorded on the screen with no shift and moves no drawer; with a shift open the same expense leaves that drawer", async ({ page }) => {
+  const errs = []; page.on("pageerror", (e) => errs.push(e.message));
+  const sfx = `${Date.now()}`.slice(-8); const email = `ld-${sfx}@example.com`; const pw = `Ld-${sfx}-pass!`;
+  await page.goto("/register");
+  await page.getByLabel(/البريد الإلكتروني|email/i).fill(email);
+  await page.getByLabel(/^كلمة المرور$|^password$/i).fill(pw);
+  await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
+  await page.getByRole("button", { name: /إنشاء الحساب|create account/i }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+  const api = (method, path, body) => page.evaluate(async ({ method, path, body }) => {
+    const raw = JSON.parse(localStorage.getItem("fihrist_tokens") || "null");
+    const csrf = (document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/) || [])[1];
+    const h = { "Content-Type": "application/json", ...(csrf ? { "X-CSRF-Token": csrf } : {}), ...(raw?.access_token ? { Authorization: `Bearer ${raw.access_token}` } : {}) };
+    const r = await fetch(`/api/v1${path}`, { method, headers: h, credentials: "include", body: body ? JSON.stringify(body) : undefined });
+    const t = await r.text(); if (!r.ok) throw new Error(`${method} ${path} -> ${r.status} ${t.slice(0, 200)}`); return t ? JSON.parse(t) : null;
+  }, { method, path, body });
+  const wh = await api("POST", "/warehouses/ensure-default");
+  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash" });
+  const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
+  const categories = await api("GET", "/expenses/categories");
+  const category = (Array.isArray(categories) ? categories : categories.items ?? [])[0];
+
+  const record = async (main, text, amount) => {
+    await main.getByRole("button", { name: /^تسجيل مصروف$/ }).first().click();
+    const dlg = page.getByRole("dialog");
+    await dlg.getByRole("combobox").first().click();
+    await page.getByRole("option", { name: category.name }).first().click();
+    await dlg.getByPlaceholder("0.00").fill(amount);
+    await dlg.getByPlaceholder(/فاتورة الكهرباء/).fill(text);
+    await dlg.getByRole("button", { name: /تسجيل المصروف/ }).click();
+    await expect(dlg).toBeHidden({ timeout: 10000 });
+  };
+
+  // 1. No shift anywhere: a cash expense is accepted and the screen says so.
+  await page.goto("/cashier/expenses", { waitUntil: "networkidle" });
+  const main = page.locator("main:has(.cashier-root)");
+  await main.getByRole("button", { name: /^تسجيل مصروف$/ }).first().click();
+  await expect(page.getByRole("dialog"), "the cashier is told no drawer will be charged").toContainText("ما هيتخصمش من درج");
+  await expect(page.getByRole("dialog").getByRole("button", { name: /تسجيل المصروف/ }), "cash with no shift is allowed").toBeEnabled();
+  await page.keyboard.press("Escape");
+  await record(main, `Electric ${sfx}`, "200");
+  await expect(main).toContainText(`Electric ${sfx}`, { timeout: 10000 });
+  const list = await api("GET", "/expenses");
+  const rows = Array.isArray(list) ? list : list.items ?? [];
+  const mine = rows.find((r) => r.description === `Electric ${sfx}`);
+  expect(mine.payment_method).toBe("cash");
+  expect(mine.session_id, "no shift: it is a record only").toBeNull();
+
+  // 2. A shift opened later is untouched by the earlier expense, and an expense made with it open leaves its drawer.
+  const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "500.00" });
+  let preview = await api("GET", `/pos/sessions/${shift.id}/close-preview`);
+  let cash = preview.by_method.find((m) => m.method === "cash");
+  expect(Number(cash.expected), "the shiftless 200 never touched this drawer").toBe(500);
+  await page.reload({ waitUntil: "networkidle" });
+  await record(main, `Bags ${sfx}`, "25");
+  preview = await api("GET", `/pos/sessions/${shift.id}/close-preview`);
+  cash = preview.by_method.find((m) => m.method === "cash");
+  expect(Number(cash.expected), "with a shift open the 25 leaves the drawer: 500 - 25").toBe(475);
+  expect(errs).toEqual([]);
+});
+
 test("sell, return and exchange from the screens with no shift and no payment: the shelves follow and no money moves", async ({ page }) => {
   const errs = []; page.on("pageerror", (e) => errs.push(e.message));
   const sfx = `${Date.now()}`.slice(-8); const email = `ld-${sfx}@example.com`; const pw = `Ld-${sfx}-pass!`;

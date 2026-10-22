@@ -73,9 +73,6 @@ export function buildExpense(form, { openSessionId = null } = {}) {
   if (!amount) return { ok: false, error: "المبلغ لازم يكون رقمًا أكبر من صفر وبحد أقصى خانتين عشريتين" };
   if (!EXPENSE_METHODS.includes(form.payment)) return { ok: false, error: "اختر طريقة الدفع" };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(form.date ?? ""))) return { ok: false, error: "اختر تاريخ المصروف" };
-  if (form.payment === "cash" && !openSessionId) {
-    return { ok: false, error: "المصروف النقدي بيطلع من درج الوردية: افتح وردية الأول أو اختر طريقة دفع تانية" };
-  }
   return {
     ok: true,
     payload: {
@@ -84,8 +81,9 @@ export function buildExpense(form, { openSessionId = null } = {}) {
       amount,
       payment_method: form.payment,
       expense_date: form.date,
-      // Only a cash expense is tied to a shift; the backend refuses the other combinations.
-      ...(form.payment === "cash" ? { session_id: openSessionId } : {}),
+      // A cash expense needs no shift: it is a record. With a shift open it also leaves that drawer
+      // (so the close balances); with none, nothing moves. Only cash ever carries a shift.
+      ...(form.payment === "cash" && openSessionId ? { session_id: openSessionId } : {}),
     },
   };
 }

@@ -87,8 +87,8 @@ class Expense(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, Base):
         ),
         # A cash expense must name the drawer that paid it; any other method must not.
         CheckConstraint(
-            "(payment_method = 'cash') = (session_id IS NOT NULL)",
-            name="ck_expenses_cash_has_session",
+            "session_id IS NULL OR payment_method = 'cash'",
+            name="ck_expenses_shift_only_cash",
         ),
         Index("ix_expenses_tenant_date", "tenant_id", "expense_date"),
         Index("ix_expenses_tenant_category", "tenant_id", "category_id"),

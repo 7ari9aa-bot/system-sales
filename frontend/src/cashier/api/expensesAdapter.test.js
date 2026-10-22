@@ -47,10 +47,11 @@ describe("buildExpense", () => {
   it("a CASH expense is tied to the open shift", () => {
     expect(buildExpense({ ...ok, payment: "cash" }, { openSessionId: "s9" }).payload.session_id).toBe("s9");
   });
-  it("a CASH expense with no open shift is stopped here, with a reason the cashier can act on", () => {
+  it("a CASH expense with no open shift is accepted: it is a record, and it carries no shift", () => {
     const r = buildExpense({ ...ok, payment: "cash" }, { openSessionId: null });
-    expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/وردية/);
+    expect(r.ok).toBe(true);
+    expect("session_id" in r.payload).toBe(false);
+    expect(r.payload.payment_method).toBe("cash");
   });
   it("a non-cash expense never carries a shift even if one is open", () => {
     expect("session_id" in buildExpense(ok, { openSessionId: "s9" }).payload).toBe(false);

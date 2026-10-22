@@ -189,14 +189,17 @@ class ExpenseService:
         if not category.is_active:
             raise ConflictError("this expense category is inactive")
 
+        # A cash expense is a record first: it needs no shift. Only when the caller names a shift
+        # (an open drawer paid it) does the money also leave that drawer, so the close balances.
         cash_session = None
         if payment_method == "cash":
-            if session_id is None:
-                raise ConflictError("a cash expense is paid from an open shift: open a shift first")
-            cash_session = await _pos_service()._get_session(session, tenant_id, session_id)
-            _pos_service()._ensure_holds_shift(cash_session, created_by, override=shift_override)
-            if cash_session.status != "OPEN":
-                raise ConflictError("a cash expense needs an OPEN shift; this one is closed")
+            if session_id is not None:
+                cash_session = await _pos_service()._get_session(session, tenant_id, session_id)
+                _pos_service()._ensure_holds_shift(
+                    cash_session, created_by, override=shift_override
+                )
+                if cash_session.status != "OPEN":
+                    raise ConflictError("a cash expense needs an OPEN shift; this one is closed")
         elif session_id is not None:
             raise ValidationError("only a cash expense is tied to a shift")
 
