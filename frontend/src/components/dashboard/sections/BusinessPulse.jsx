@@ -48,14 +48,14 @@ export default function BusinessPulse() {
         value={netSales == null ? "—" : formatCurrency(netSales)}
         sub={orders == null ? undefined : t("home.xOrders", { n: orders })}
         delta={live.netSalesDelta}
-        to="/pos"
+        to="/cashier/pos"
         accent={{ icon: <DollarSign />, bg: "bg-primary/10", color: "text-primary" }}
       />
       <KpiCard
         label={t("home.orders")}
         value={orders == null ? "—" : orders.toLocaleString()}
         delta={live.ordersDelta}
-        to="/pos"
+        to="/cashier/pos"
         accent={{ icon: <ShoppingBag />, bg: "bg-accent/10", color: "text-accent" }}
       />
       <KpiCard

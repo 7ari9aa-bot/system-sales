@@ -952,7 +952,7 @@ test("backup export on the screen: the downloaded file holds the real expense an
   const note = `Bk${sfx}`;
   await api("POST", "/expenses", { category_id: category.id, description: note, amount: "25.00", payment_method: "cash", session_id: shift.id });
 
-  await page.goto("/cashier/settings", { waitUntil: "networkidle" });
+  await page.goto("/settings/pos", { waitUntil: "networkidle" });
   const main = page.locator("main:has(.cashier-root)");
   await main.getByRole("tab", { name: /النسخ|الاحتياطي/ }).click();
   const [download] = await Promise.all([page.waitForEvent("download"), main.getByRole("button", { name: /تصدير الآن/ }).click()]);
@@ -995,7 +995,7 @@ test("print settings on the screen do not pretend to save: no save button, no ed
   const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
   const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "500.00" });
 
-  await page.goto("/cashier/settings", { waitUntil: "networkidle" });
+  await page.goto("/settings/pos", { waitUntil: "networkidle" });
   const main = page.locator("main:has(.cashier-root)");
   await main.getByRole("tab", { name: /الفاتورة|الباركود|الطباعة/ }).click();
   await expect(main.getByTestId("print-not-stored"), "it says plainly that nothing is stored").toBeVisible({ timeout: 10000 });

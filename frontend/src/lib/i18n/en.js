@@ -23,9 +23,6 @@ export default {
   "nav.home": "Home",
   "nav.inbox": "Inbox",
   "nav.customers": "Customers",
-  "nav.products": "Products",
-  "nav.inventory": "Inventory",
-  "nav.addProduct": "Add product",
   "nav.pos": "Cashier",
 
   // Cashier (POS) — /api/v1/pos

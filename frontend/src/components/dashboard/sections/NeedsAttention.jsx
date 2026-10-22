@@ -47,7 +47,7 @@ export default function NeedsAttention() {
       id: "ap3", type: "inventory", tone: "destructive",
       title: t("home.attention.outOfStock.title", { n: out }),
       detailKey: t("home.attention.outOfStock.detail"),
-      actionKey: t("home.attention.outOfStock.action"), to: "/inventory",
+      actionKey: t("home.attention.outOfStock.action"), to: "/cashier/inventory",
     });
   }
   const low = live?.lowStock ?? 0;
@@ -56,7 +56,7 @@ export default function NeedsAttention() {
       id: "ap4", type: "inventory", tone: "warning",
       title: t("home.attention.lowStock.title", { n: low }),
       detailKey: t("home.attention.lowStock.detail"),
-      actionKey: t("home.attention.lowStock.action"), to: "/inventory",
+      actionKey: t("home.attention.lowStock.action"), to: "/cashier/inventory",
     });
   }
 

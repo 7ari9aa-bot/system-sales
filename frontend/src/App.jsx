@@ -23,9 +23,6 @@ const AcceptInvitation = lazy(() => import('@/pages/AcceptInvitation'));
 const Home = lazy(() => import('@/pages/Home'));
 const Inbox = lazy(() => import('@/pages/Inbox'));
 const Customers = lazy(() => import('@/pages/Customers'));
-const Products = lazy(() => import('@/pages/Products'));
-const AddProduct = lazy(() => import('@/pages/AddProduct'));
-const Inventory = lazy(() => import('@/pages/Inventory'));
 const CashierApp = lazy(() => import('@/cashier/CashierApp'));
 
 // وضع معاينة الكاشير: يفتح مسار /cashier/* فقط بدون تسجيل دخول، لمعاينة الواجهة (بيانات تجريبية) على Vercel Preview.
@@ -86,9 +83,10 @@ const DashboardRoutes = () => (
         <Route path="/dashboard" element={<Home />} />
         <Route path="/inbox" element={<Inbox />} />
         <Route path="/customers" element={<Customers />} />
-        <Route path="/products" element={<Products />} />
-        <Route path="/products/new" element={<AddProduct />} />
-        <Route path="/inventory" element={<Inventory />} />
+        {/* المنتجات والمخزون انتقلوا للكاشير: الروابط القديمة تحوّل للصفحات الجديدة. */}
+        <Route path="/products" element={<Navigate to="/cashier/inventory" replace />} />
+        <Route path="/products/new" element={<Navigate to="/cashier/products/new" replace />} />
+        <Route path="/inventory" element={<Navigate to="/cashier/inventory" replace />} />
         <Route path="/pos" element={<Navigate to="/cashier/pos" replace />} />
         {/* The manual sales workspace is gone; the cashier took its place. Old
             links (bookmarks, cached ?s=new|returns|exchanges) redirect there

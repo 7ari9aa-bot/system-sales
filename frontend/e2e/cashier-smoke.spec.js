@@ -7,7 +7,7 @@ const SCREENS = [
   "/cashier/exchanges", "/cashier/exchanges/log", "/cashier/products", "/cashier/products/new",
   "/cashier/products/p-1/edit", "/cashier/inventory", "/cashier/inventory/movements", "/cashier/inventory/stocktake",
   "/cashier/labels", "/cashier/suppliers", "/cashier/purchases", "/cashier/supplier-returns", "/cashier/shifts",
-  "/cashier/expenses", "/cashier/reports", "/cashier/activity-log", "/cashier/settings",
+  "/cashier/expenses", "/cashier/reports", "/cashier/activity-log",
 ];
 
 async function signIn(page) {

@@ -36,7 +36,7 @@ export default function BusinessInsights() {
       id: "i2", tone: "warning",
       title: t("insight.stock.title", { n: low }),
       body: t("insight.stock.body", { m: out }),
-      actionKey: t("home.attention.lowStock.action"), to: "/inventory",
+      actionKey: t("home.attention.lowStock.action"), to: "/cashier/inventory",
     });
   }
   const aiOrders = live?.aiOrders ?? 0;

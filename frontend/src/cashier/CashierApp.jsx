@@ -22,7 +22,6 @@ const Page14 = lazy(() => import("./routes/_authed/returns.index.jsx"));
 const Page15 = lazy(() => import("./routes/_authed/returns.log.jsx"));
 const Page16 = lazy(() => import("./routes/_authed/sales.$invoiceId.jsx"));
 const Page17 = lazy(() => import("./routes/_authed/sales.index.jsx"));
-const Page18 = lazy(() => import("./routes/_authed/settings.jsx"));
 const Page19 = lazy(() => import("./routes/_authed/shifts.jsx"));
 const Page20 = lazy(() => import("./routes/_authed/supplier-returns.jsx"));
 const Page21 = lazy(() => import("./routes/_authed/suppliers.jsx"));
@@ -64,7 +63,8 @@ export default function CashierApp() {
         <Route path="returns/log" element={<Page15 />} />
         <Route path="sales/:invoiceId" element={<Page16 />} />
         <Route path="sales" element={<Page17 />} />
-        <Route path="settings" element={<Page18 />} />
+        {/* إعدادات الكاشير انتقلت لقسم الإعدادات الرئيسي (قسم إعدادات واحد). */}
+        <Route path="settings" element={<Navigate to="/settings/pos" replace />} />
         <Route path="shifts" element={<Page19 />} />
         <Route path="supplier-returns" element={<Page20 />} />
         <Route path="suppliers" element={<Page21 />} />

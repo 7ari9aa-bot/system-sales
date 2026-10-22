@@ -18,7 +18,7 @@ export function InventorySnapshot() {
         </span>
       }
       action={t("common.review")}
-      actionTo="/inventory"
+      actionTo="/cashier/inventory"
       className="h-full"
     >
       {live?.dashboardError && (

@@ -55,7 +55,7 @@ export default function Analytics() {
   // "What to do next" — إجراءات مشتقة من أرقام حقيقية فقط، وبتظهر لما يكون سببها موجود
   const next = [];
   if ((live?.lowStock ?? 0) + (live?.outOfStock ?? 0) > 0) {
-    next.push({ icon: Package, tone: "warning", title: t("insight.stock.title", { n: live.lowStock }), action: t("common.review"), to: "/inventory" });
+    next.push({ icon: Package, tone: "warning", title: t("insight.stock.title", { n: live.lowStock }), action: t("common.review"), to: "/cashier/inventory" });
   }
   if ((live?.unread ?? 0) > 0) {
     next.push({ icon: Clock, tone: "primary", title: t("home.attention.inbox.title", { n: live.unread }), action: t("home.attention.inbox.action"), to: "/inbox" });

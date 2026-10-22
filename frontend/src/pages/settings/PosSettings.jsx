@@ -3,6 +3,15 @@ import { Loader2, Plus, ScanLine, Trash2 } from "lucide-react";
 import { useT } from "@/lib/i18n";
 import { api } from "@/lib/api";
 import SettingsShell, { SettingCard } from "@/components/settings/SettingsShell";
+import { DatabaseBackup, Printer, Store, Tags, Users, MonitorSmartphone } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/cashier/components/ui/tabs";
+import { Toaster } from "@/cashier/components/ui/sonner";
+import "@/cashier/cashier.css";
+import ShopProfileForm from "@/cashier/components/settings/ShopProfileForm";
+import PrintAndBarcodeSettings from "@/cashier/components/settings/PrintAndBarcodeSettings";
+import CategoriesSettings from "@/cashier/components/settings/CategoriesSettings";
+import UsersSettings from "@/cashier/components/settings/UsersSettings";
+import BackupTab from "@/cashier/components/settings/BackupTab";
 
 /** إعدادات الكاشير — البروفايلات والكاشيرات وسماحيات الموظفين.
  *
@@ -27,38 +36,7 @@ const CASH_ALWAYS_ON = "cash";
 const CASH_LOCK_HINT = "الكاشير يعمل بالنقدية فقط حاليًا، لذلك لا يمكن إيقافها";
 const withCash = (methods) => (methods.includes(CASH_ALWAYS_ON) ? methods : [CASH_ALWAYS_ON, ...methods]);
 
-function CeilingFields({ value, onChange, t }) {
-  const field = (key, labelKey, fallback) => (
-    <label className="flex flex-col gap-1 text-[12px] text-muted-foreground">
-      {t(labelKey, fallback)}
-      <input
-        value={value[key] ?? ""}
-        onChange={(e) => onChange({ ...value, [key]: e.target.value })}
-        dir="ltr"
-        inputMode="decimal"
-        placeholder={key === "discount_ceiling_pct" ? "0" : "∞"}
-        className="h-9 rounded-xl border border-border bg-surface px-3 text-[13px] tabular-nums text-foreground"
-      />
-    </label>
-  );
-  return (
-    <div className="flex flex-col gap-1">
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-        {field("discount_ceiling_pct", "posSettings.discountCeiling", "Max discount without a manager (%)")}
-        {field("refund_ceiling", "posSettings.refundCeiling", "Max return without a manager (EGP)")}
-        {field("cash_out_ceiling", "posSettings.cashOutCeiling", "Max cash out without a manager (EGP)")}
-      </div>
-      <span className="text-[11px] text-muted-foreground">
-        {t(
-          "posSettings.ceilingHint",
-          "Leave empty for no limit: the cashier can do any amount. Above the limit a manager PIN is needed."
-        )}
-      </span>
-    </div>
-  );
-}
-
-export default function PosSettings() {
+function ProfilesAndRegistersTab() {
   const t = useT();
 
   const [loading, setLoading] = React.useState(true);
@@ -81,9 +59,6 @@ export default function PosSettings() {
     default_customer_id: "",
     default_payment_method: "cash",
     allowed_payment_methods: ["cash"],
-    discount_ceiling_pct: "0",
-    refund_ceiling: "",
-    cash_out_ceiling: "",
     require_customer: false,
   });
   const [registerForm, setRegisterForm] = React.useState({
@@ -159,9 +134,6 @@ export default function PosSettings() {
           default_customer_id: profileForm.default_customer_id || undefined,
           default_payment_method: profileForm.default_payment_method,
           allowed_payment_methods: profileForm.allowed_payment_methods,
-          discount_ceiling_pct: profileForm.discount_ceiling_pct,
-          refund_ceiling: profileForm.refund_ceiling || null,
-          cash_out_ceiling: profileForm.cash_out_ceiling || null,
           require_customer: profileForm.require_customer,
         },
       });
@@ -173,9 +145,6 @@ export default function PosSettings() {
         default_customer_id: "",
         default_payment_method: "cash",
         allowed_payment_methods: ["cash"],
-        discount_ceiling_pct: "0",
-        refund_ceiling: "",
-        cash_out_ceiling: "",
         require_customer: false,
       });
       await load();
@@ -195,9 +164,6 @@ export default function PosSettings() {
           default_customer_id: p.default_customer_id || undefined,
           default_payment_method: p.default_payment_method || undefined,
           allowed_payment_methods: p.allowed_payment_methods,
-          discount_ceiling_pct: p.discount_ceiling_pct,
-          refund_ceiling: p.refund_ceiling || null,
-          cash_out_ceiling: p.cash_out_ceiling || null,
           require_customer: p.require_customer,
         },
       });
@@ -346,13 +312,6 @@ export default function PosSettings() {
                               </option>
                             ))}
                           </select>
-                          <CeilingFields
-                            t={t}
-                            value={p}
-                            onChange={(next) =>
-                              setProfiles((prev) => prev.map((row) => (row.id === p.id ? { ...row, ...next } : row)))
-                            }
-                          />
                         </div>
                         <div className="flex flex-wrap gap-3">
                           {METHODS.map((m) => (
@@ -514,7 +473,6 @@ export default function PosSettings() {
                     ))}
                   </select>
                 </div>
-                <CeilingFields t={t} value={profileForm} onChange={setProfileForm} />
                 <div className="flex flex-wrap gap-3">
                   {METHODS.map((m) => (
                     <Toggle
@@ -623,5 +581,47 @@ export default function PosSettings() {
         </button>
       </SettingCard>
     </SettingsShell>
+  );
+}
+
+// قسم إعدادات واحد للنظام: إعدادات الكاشير (بيانات المحل، الطباعة، الفئات، المستخدمون،
+// النسخ الاحتياطي) + أجهزة الكاشير والبروفايلات. مكوّنات الكاشير تحتاج ثيمها فتُغلَّف بـ cashier-root.
+const TABS = [
+  { value: "shop", label: "بيانات المحل", icon: Store },
+  { value: "print", label: "الطباعة والباركود", icon: Printer },
+  { value: "lists", label: "الفئات", icon: Tags },
+  { value: "users", label: "المستخدمون", icon: Users },
+  { value: "backup", label: "النسخ الاحتياطي", icon: DatabaseBackup },
+  { value: "devices", label: "الأجهزة والبروفايلات", icon: MonitorSmartphone },
+];
+
+export default function PosSettings() {
+  return (
+    <div className="cashier-root" dir="rtl">
+      <Tabs defaultValue="shop" className="w-full">
+        <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 rounded-xl border border-border bg-card p-1.5">
+          {TABS.map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <TabsTrigger
+                key={tab.value}
+                value={tab.value}
+                className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-medium data-[state=active]:bg-[#E8761A] data-[state=active]:text-white"
+              >
+                <Icon className="h-4 w-4" />
+                {tab.label}
+              </TabsTrigger>
+            );
+          })}
+        </TabsList>
+        <TabsContent value="shop" className="mt-4"><ShopProfileForm /></TabsContent>
+        <TabsContent value="print" className="mt-4"><PrintAndBarcodeSettings /></TabsContent>
+        <TabsContent value="lists" className="mt-4"><CategoriesSettings /></TabsContent>
+        <TabsContent value="users" className="mt-4"><UsersSettings /></TabsContent>
+        <TabsContent value="backup" className="mt-4"><BackupTab /></TabsContent>
+        <TabsContent value="devices" className="mt-4"><ProfilesAndRegistersTab /></TabsContent>
+      </Tabs>
+      <Toaster position="top-center" dir="rtl" />
+    </div>
   );
 }

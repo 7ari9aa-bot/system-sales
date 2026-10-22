@@ -9,8 +9,8 @@ const ENTITY_ICONS = { customer: Users, order: ShoppingBag, product: Package };
 
 const HREF_BY_TYPE = {
   customer: "/customers",
-  order: "/pos",
-  product: "/products",
+  order: "/cashier/pos",
+  product: "/cashier/inventory",
 };
 
 /** البحث الشامل — بحث الـbackend الحقيقي (GET /search) بدل البحث

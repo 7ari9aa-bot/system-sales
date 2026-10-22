@@ -1,5 +1,5 @@
-// بنية التنقل: خمس مجموعات ثابتة حسب رحلة العمل في المحل
-// (البيع | المنتجات والمخزون | المشتريات والموردون | تشغيل المحل | المتابعة والإدارة)
+// بنية التنقل: صفحات الكاشير كبنود رئيسية مباشرة في السايدبار الرئيسي (بدون مجموعات متداخلة).
+// الإعدادات ليست هنا: قسم الإعدادات واحد فقط في النظام الرئيسي.
 
 import {
   BarChart3,
@@ -11,7 +11,6 @@ import {
   RefreshCw,
   RotateCcw,
   ScanBarcode,
-  Settings,
   Shirt,
   ShoppingBag,
   Truck,
@@ -32,7 +31,7 @@ export const navGroups = [
   {
     title: "المنتجات والمخزون",
     items: [
-      { to: "/products", label: "إضافة منتج", icon: Shirt },
+      { to: "/products/new", label: "إضافة منتج", icon: Shirt },
       { to: "/labels", label: "طباعة الملصقات", icon: Printer },
       { to: "/inventory", label: "المخزون والجرد", icon: Boxes },
     ],
@@ -57,8 +56,6 @@ export const navGroups = [
     items: [
       { to: "/reports", label: "التقارير", icon: BarChart3 },
       { to: "/activity-log", label: "سجل العمليات", icon: ClipboardList },
-      // الإعدادات آخر بند في القائمة
-      { to: "/settings", label: "الإعدادات", icon: Settings },
     ],
   },
 ];
@@ -80,3 +77,5 @@ export function pageTitle(pathname) {
 }
 // اسم صريح للاستخدام من سايدبار النظام الرئيسي.
 export const cashierNavGroups = navGroups;
+/** الـ14 بند الرئيسية للكاشير بترتيبها، مباشرة في السايدبار. */
+export const cashierNavItems = flatNav;

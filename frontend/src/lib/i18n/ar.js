@@ -23,9 +23,6 @@ export default {
   "nav.home": "الرئيسية",
   "nav.inbox": "الرسائل",
   "nav.customers": "العملاء",
-  "nav.products": "المنتجات",
-  "nav.inventory": "المخزون",
-  "nav.addProduct": "إضافة منتج",
   "nav.pos": "الكاشير",
 
   // الكاشير (POS) — /api/v1/pos
