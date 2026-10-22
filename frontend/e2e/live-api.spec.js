@@ -814,3 +814,61 @@ test("the reports on the screen: 3 sold, 1 returned, 25 spent in cash gives net 
   await expect(main, "the Z report expects 500 + 300 - 100 - 25 in the drawer").toContainText("675.00", { timeout: 10000 });
   expect(errs).toEqual([]);
 });
+
+test("the activity log on the screen: a sale, a return and an expense all appear, search isolates the expense, and the return filter hides the sale", async ({ page }) => {
+  const errs = []; page.on("pageerror", (e) => errs.push(e.message));
+  const sfx = `${Date.now()}`.slice(-8); const email = `ld-${sfx}@example.com`; const pw = `Ld-${sfx}-pass!`;
+  await page.goto("/register");
+  await page.getByLabel(/البريد الإلكتروني|email/i).fill(email);
+  await page.getByLabel(/^كلمة المرور$|^password$/i).fill(pw);
+  await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
+  await page.getByRole("button", { name: /إنشاء الحساب|create account/i }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+  const api = (method, path, body) => page.evaluate(async ({ method, path, body }) => {
+    const raw = JSON.parse(localStorage.getItem("fihrist_tokens") || "null");
+    const csrf = (document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/) || [])[1];
+    const h = { "Content-Type": "application/json", ...(csrf ? { "X-CSRF-Token": csrf } : {}), ...(raw?.access_token ? { Authorization: `Bearer ${raw.access_token}` } : {}) };
+    const r = await fetch(`/api/v1${path}`, { method, headers: h, credentials: "include", body: body ? JSON.stringify(body) : undefined });
+    const t = await r.text(); if (!r.ok) throw new Error(`${method} ${path} -> ${r.status} ${t.slice(0, 200)}`); return t ? JSON.parse(t) : null;
+  }, { method, path, body });
+  const wh = await api("POST", "/warehouses/ensure-default");
+  const mk = async (tag, bc) => {
+    const p = await api("POST", "/products", { title: `Item${tag} ${sfx}`, slug: `item-${tag}-${sfx}`, description: null });
+    const v = await api("POST", `/products/${p.id}/variants`, { sku: `LD${tag}-${sfx}`, price: "100.00", option_values: {} });
+    await api("POST", `/variants/${v.id}/identifiers`, { identifier_type: "barcode", value: bc });
+    await api("POST", "/inventory/movements", { variant_id: v.id, warehouse_id: wh.id, direction: "in", quantity: 10, reason: "adjustment" });
+    await api("PATCH", `/products/${p.id}`, { status: "active" }); return v;
+  };
+  const bcA = `630${sfx}1`, bcB = `630${sfx}2`;
+  const vA = await mk("A", bcA);
+  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash", discount_ceiling_pct: "100.00" });
+  const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
+  const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "500.00" });
+
+  const sale = await api("POST", `/pos/sessions/${shift.id}/sell`, { items: [{ variant_id: vA.id, quantity: 2 }], tenders: [{ method: "cash", amount: "200.00" }], tenderedCash: "200.00" });
+  await api("POST", `/pos/sessions/${shift.id}/returns`, { order_id: sale.order_id ?? sale.order.id, lines: [{ variant_id: vA.id, quantity: 1 }], restock: true });
+  const categories = await api("GET", "/expenses/categories");
+  const category = (Array.isArray(categories) ? categories : categories.items ?? [])[0];
+  const note = `Zq${sfx}`;
+  await api("POST", "/expenses", { category_id: category.id, description: note, amount: "25.00", payment_method: "cash", session_id: shift.id });
+
+  await page.goto("/cashier/activity-log", { waitUntil: "networkidle" });
+  const main = page.locator("main:has(.cashier-root)");
+  await expect(main.getByText(note).first(), "the expense is in the timeline").toBeVisible({ timeout: 10000 });
+  await expect(main.getByText("فاتورة بيع").first(), "the sale invoice is in the timeline").toBeVisible();
+  await expect(main.getByText("مرتجع عميل").first(), "the return is in the timeline").toBeVisible();
+
+  // searching the expense's own text leaves only that row
+  await main.getByPlaceholder(/POS-RET/).fill(note);
+  await expect(main.getByText(note).first()).toBeVisible();
+  await expect(main.getByText("مرتجع عميل"), "search hides the return").toHaveCount(0, { timeout: 10000 });
+  await main.getByPlaceholder(/POS-RET/).fill("");
+
+  // the type filter: only customer returns
+  await main.getByRole("combobox").first().click();
+  await page.getByRole("option", { name: "مرتجع عميل" }).click();
+  await expect(main.getByText("مرتجع عميل").first()).toBeVisible({ timeout: 10000 });
+  await expect(main.getByText(note), "the return filter hides the expense").toHaveCount(0, { timeout: 10000 });
+  await expect(main.getByText("فاتورة بيع"), "the return filter hides the sale invoice").toHaveCount(0);
+  expect(errs).toEqual([]);
+});
