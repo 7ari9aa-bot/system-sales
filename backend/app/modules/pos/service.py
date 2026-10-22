@@ -316,8 +316,9 @@ class PosService:
         """The session plus its live cash position — what the closing screen shows."""
         pos_session = await PosService._get_session(session, tenant_id, session_id)
         inflow, outflow = await PosService._cash_totals(session, tenant_id, pos_session.id)
-        recorded = await PosService._unbooked_sales_total(session, tenant_id, pos_session.id)
-        expected_now = Decimal(pos_session.opening_float) + inflow - outflow + recorded
+        expected_now = (await PosService._expected_by_method(session, tenant_id, pos_session))[
+            "cash"
+        ]
         floats = (
             (
                 await session.execute(
@@ -339,49 +340,6 @@ class PosService:
         }
 
     # -------------------------------------------------------------- cash ----
-
-    @staticmethod
-    async def _unbooked_sales_total(
-        session: AsyncSession, tenant_id: UUID, session_id: UUID
-    ) -> Decimal:
-        """Sales of this session that carry no payment at all: the "record only" sales.
-
-        A sale taken through ``record_sale`` books no money (no ``OrderPayment``, no drawer row),
-        so the drawer arithmetic cannot see it. The shop is cash only, so the expected drawer is
-        opening + the day's sales, and this is that sales figure. An order that DOES carry a
-        payment came from the older paid flow: its cash already sits in the drawer rows and its
-        card money is tracked per method, so it is excluded here and never counted twice or as
-        cash. Returns are subtracted by the order's own return lines, on the same orders only.
-        """
-        from app.modules.orders.models import Order, OrderPayment
-
-        paid = select(OrderPayment.order_id).where(OrderPayment.tenant_id == tenant_id)
-        sold = (
-            await session.execute(
-                select(func.coalesce(func.sum(Order.grand_total), 0))
-                .select_from(PosReceipt)
-                .join(Order, Order.id == PosReceipt.order_id)
-                .where(
-                    PosReceipt.tenant_id == tenant_id,
-                    PosReceipt.session_id == session_id,
-                    PosReceipt.kind == "sale",
-                    PosReceipt.order_id.not_in(paid),
-                )
-            )
-        ).scalar_one()
-        returned = (
-            await session.execute(
-                select(func.coalesce(func.sum(PosReturnLine.refund_total), 0))
-                .select_from(PosReturnLine)
-                .join(PosReceipt, PosReceipt.id == PosReturnLine.receipt_id)
-                .where(
-                    PosReturnLine.tenant_id == tenant_id,
-                    PosReceipt.session_id == session_id,
-                    PosReceipt.order_id.not_in(paid),
-                )
-            )
-        ).scalar_one()
-        return to_money(Decimal(sold) - Decimal(returned), "unbooked_sales")
 
     @staticmethod
     async def _cash_totals(
@@ -1356,9 +1314,7 @@ class PosService:
         counted = to_money(counted_cash, "counted_cash")
         if counted < 0:
             raise ValidationError("counted_cash must not be negative")
-        inflow, outflow = await PosService._cash_totals(session, tenant_id, pos_session.id)
-        recorded = await PosService._unbooked_sales_total(session, tenant_id, pos_session.id)
-        expected = Decimal(pos_session.opening_float) + inflow - outflow + recorded
+        expected = (await PosService._expected_by_method(session, tenant_id, pos_session))["cash"]
         variance = counted - expected
 
         # Per-method reconciliation, written BEFORE the status flips so the rows
@@ -1473,7 +1429,7 @@ class PosService:
         so a refunded card sale no longer makes the close report lie. Cash is
         always present: the drawer holds its float even on a card-only shift.
         """
-        from app.modules.orders.models import OrderPayment, Refund
+        from app.modules.orders.models import Order, OrderPayment, Refund
 
         # Semi-join, never a row-multiplying join: an order carries BOTH its
         # sale and its return receipt, and joining payments on receipts would
@@ -1517,7 +1473,37 @@ class PosService:
             ).all()
         )
         inflow, outflow = await PosService._cash_totals(session, tenant_id, pos_session.id)
-        recorded = await PosService._unbooked_sales_total(session, tenant_id, pos_session.id)
+        # The shop is cash only and a recorded sale books no money, so the day's expected drawer
+        # is opening + the day's sales. An order that carries a payment came from the older paid
+        # flow (its cash is already in the drawer rows, its card money is tracked per method), so
+        # only orders with NO payment count here: never twice, never card money as cash.
+        unpaid = PosReceipt.order_id.not_in(select(OrderPayment.order_id))
+        unpaid_sold = (
+            await session.execute(
+                select(func.coalesce(func.sum(Order.grand_total), 0))
+                .select_from(PosReceipt)
+                .join(Order, Order.id == PosReceipt.order_id)
+                .where(
+                    PosReceipt.tenant_id == tenant_id,
+                    PosReceipt.session_id == pos_session.id,
+                    PosReceipt.kind == "sale",
+                    unpaid,
+                )
+            )
+        ).scalar_one()
+        unpaid_returned = (
+            await session.execute(
+                select(func.coalesce(func.sum(PosReturnLine.refund_total), 0))
+                .select_from(PosReturnLine)
+                .join(PosReceipt, PosReceipt.id == PosReturnLine.receipt_id)
+                .where(
+                    PosReturnLine.tenant_id == tenant_id,
+                    PosReceipt.session_id == pos_session.id,
+                    unpaid,
+                )
+            )
+        ).scalar_one()
+        recorded = to_money(Decimal(unpaid_sold) - Decimal(unpaid_returned), "recorded_sales")
         expected: dict[str, Decimal] = {
             "cash": Decimal(pos_session.opening_float) + inflow - outflow + recorded
         }
@@ -3814,9 +3800,7 @@ class PosService:
         counted = to_money(counted_cash, "counted_cash")
         if counted < 0:
             raise ValidationError("counted_cash must not be negative")
-        inflow, outflow = await PosService._cash_totals(session, tenant_id, pos_session.id)
-        recorded = await PosService._unbooked_sales_total(session, tenant_id, pos_session.id)
-        expected = Decimal(pos_session.opening_float) + inflow - outflow + recorded
+        expected = (await PosService._expected_by_method(session, tenant_id, pos_session))["cash"]
 
         from_user_id = pos_session.cashier_user_id or by_user_id
         row = PosSessionHandover(
