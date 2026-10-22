@@ -111,3 +111,15 @@ describe("the barcode comes from the stock view, because the product list has no
     expect(out.map((v) => v.barcode)).toEqual(["BC0", "BC2299"]);
   });
 });
+
+describe("the shop-wide catalog (purchases, suppliers, supplier returns) also carries barcodes", () => {
+  it("a scanned code can be matched against it", async () => {
+    productRows = [product(1), product(2)];
+    stockRows = [
+      { variant_id: "v1", barcode: "7001" },
+      { variant_id: "v2", barcode: "7002" },
+    ];
+    const out = await fetchCatalog();
+    expect(out.map((v) => v.barcode)).toEqual(["7001", "7002"]);
+  });
+});

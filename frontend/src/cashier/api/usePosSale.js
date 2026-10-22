@@ -33,14 +33,20 @@ export function useHeldCarts(sessionId, catalog) {
 
 /** Sellable variants with live stock, straight from the backend. */
 export async function fetchCatalog() {
-  const [products, balances] = await Promise.all([posApi.products(), posApi.stockBalances()]);
+  const [products, balances, stock] = await Promise.all([
+    posApi.products(),
+    posApi.stockBalances(),
+    fetchAllStock((offset, limit) => posApi.stockPage(offset, limit)),
+  ]);
   const rows = Array.isArray(balances) ? balances : balances?.items;
   // A page exactly as big as the limit means the list was probably cut: selling from it would show real
   // stock as 0. Fail loudly instead of letting the cashier lose sales without any message.
   if (Array.isArray(rows) && rows.length >= BALANCES_LIMIT) {
     throw new Error(`قائمة الأرصدة وصلت للحد الأقصى (${BALANCES_LIMIT}) وقد تكون ناقصة. أبلغ الدعم الفني قبل البيع.`);
   }
-  return buildCatalog(Array.isArray(products) ? products : products?.items, rows);
+  // The product list carries no barcode; the stock view does (purchases, suppliers and supplier returns
+  // search this catalog by scanned code).
+  return withBarcodes(buildCatalog(Array.isArray(products) ? products : products?.items, rows), stock);
 }
 
 /**

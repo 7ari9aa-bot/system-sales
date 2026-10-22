@@ -530,3 +530,185 @@ test("an exchange on the screen: one A comes back, one B (price 150) goes out, t
   await expect.poll(() => onHand(vB.id), { message: "the new B leaves the shelf: 10 -> 9" }).toBe(9);
   expect(errs).toEqual([]);
 });
+
+test("a supplier return on the screen: the goods leave the shelf at once, and a refusal by the supplier puts them back", async ({ page }) => {
+  const errs = []; page.on("pageerror", (e) => errs.push(e.message));
+  const sfx = `${Date.now()}`.slice(-8); const email = `ld-${sfx}@example.com`; const pw = `Ld-${sfx}-pass!`;
+  await page.goto("/register");
+  await page.getByLabel(/البريد الإلكتروني|email/i).fill(email);
+  await page.getByLabel(/^كلمة المرور$|^password$/i).fill(pw);
+  await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
+  await page.getByRole("button", { name: /إنشاء الحساب|create account/i }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+  const api = (method, path, body) => page.evaluate(async ({ method, path, body }) => {
+    const raw = JSON.parse(localStorage.getItem("fihrist_tokens") || "null");
+    const csrf = (document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/) || [])[1];
+    const h = { "Content-Type": "application/json", ...(csrf ? { "X-CSRF-Token": csrf } : {}), ...(raw?.access_token ? { Authorization: `Bearer ${raw.access_token}` } : {}) };
+    const r = await fetch(`/api/v1${path}`, { method, headers: h, credentials: "include", body: body ? JSON.stringify(body) : undefined });
+    const t = await r.text(); if (!r.ok) throw new Error(`${method} ${path} -> ${r.status} ${t.slice(0, 200)}`); return t ? JSON.parse(t) : null;
+  }, { method, path, body });
+  const wh = await api("POST", "/warehouses/ensure-default");
+  const mk = async (tag, bc) => {
+    const p = await api("POST", "/products", { title: `Item${tag} ${sfx}`, slug: `item-${tag}-${sfx}`, description: null });
+    const v = await api("POST", `/products/${p.id}/variants`, { sku: `LD${tag}-${sfx}`, price: "100.00", option_values: {} });
+    await api("POST", `/variants/${v.id}/identifiers`, { identifier_type: "barcode", value: bc });
+    await api("POST", "/inventory/movements", { variant_id: v.id, warehouse_id: wh.id, direction: "in", quantity: 10, reason: "adjustment" });
+    await api("PATCH", `/products/${p.id}`, { status: "active" }); return v;
+  };
+  const bcA = `630${sfx}1`, bcB = `630${sfx}2`;
+  const vA = await mk("A", bcA);
+  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash", discount_ceiling_pct: "100.00" });
+  const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
+  const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "0.00" });
+
+  const onHand = async () => {
+    const stock = await api("GET", "/pos/stock?limit=100");
+    const row = (Array.isArray(stock) ? stock : stock.items ?? []).find((r) => r.variant_id === vA.id);
+    return row ? Number(row.on_hand ?? row.quantity) : 0;
+  };
+  const supplier = await api("POST", "/suppliers", { name: `Supplier ${sfx}` });
+  expect(await onHand(), "mk() put 10 on the shelf").toBe(10);
+
+  await page.goto("/cashier/supplier-returns", { waitUntil: "networkidle" });
+  const main = page.locator("main:has(.cashier-root)");
+  await main.getByRole("button", { name: /تسجيل مرتجع للمورد/ }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("combobox").first().click(); // the supplier
+  await page.getByRole("option", { name: `Supplier ${sfx}` }).click();
+  await dialog.getByPlaceholder("ابحث بالاسم أو الباركود أو الكود").fill(bcA); // by barcode: the shop scans, it does not type names
+  await dialog.getByRole("button", { name: new RegExp(`ItemA ${sfx}`) }).first().click();
+  await dialog.locator('input[inputmode="numeric"]').fill("2"); // الكمية المرتجعة
+  await dialog.getByPlaceholder("0.00").fill("40");
+  await dialog.getByRole("button", { name: "تسجيل المرتجع" }).click();
+  await expect(page.getByText(/تم تسجيل|تم/).first()).toBeVisible({ timeout: 10000 });
+
+  await expect.poll(onHand, { message: "the goods left the shelf the moment the return was recorded: 10 -> 8" }).toBe(8);
+  await expect(main, "the return waits for the supplier's decision").toContainText("قبول", { timeout: 10000 });
+
+  await main.getByRole("button", { name: "رفض" }).first().click();
+  await expect.poll(onHand, { message: "a refusal puts the goods back on the shelf: 8 -> 10" }).toBe(10);
+
+  // A second return, this time the supplier ACCEPTS: the goods stay gone and the money moves.
+  await main.getByRole("button", { name: /تسجيل مرتجع للمورد/ }).click();
+  const second = page.getByRole("dialog");
+  await second.getByRole("combobox").first().click();
+  await page.getByRole("option", { name: `Supplier ${sfx}` }).click();
+  await second.getByPlaceholder("ابحث بالاسم أو الباركود أو الكود").fill(`ItemA ${sfx}`);
+  await second.getByRole("button", { name: new RegExp(`ItemA ${sfx}`) }).first().click();
+  await second.locator('input[inputmode="numeric"]').fill("3");
+  await second.getByPlaceholder("0.00").fill("40");
+  await second.getByRole("button", { name: "تسجيل المرتجع" }).click();
+  await expect.poll(onHand, { message: "3 more left the shelf: 10 -> 7" }).toBe(7);
+  await main.getByRole("button", { name: "قبول" }).first().click();
+  await expect(main, "accepted: the supplier owes 3 x 40 = 120").toContainText("120.00", { timeout: 10000 });
+  expect(await onHand(), "an acceptance must NOT put the goods back").toBe(7);
+  expect(errs).toEqual([]);
+});
+
+test("a purchase on the screen: scanned barcode, 5 x 30 received, the shelf grows by 5 and the invoice total is 150", async ({ page }) => {
+  const errs = []; page.on("pageerror", (e) => errs.push(e.message));
+  const sfx = `${Date.now()}`.slice(-8); const email = `ld-${sfx}@example.com`; const pw = `Ld-${sfx}-pass!`;
+  await page.goto("/register");
+  await page.getByLabel(/البريد الإلكتروني|email/i).fill(email);
+  await page.getByLabel(/^كلمة المرور$|^password$/i).fill(pw);
+  await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
+  await page.getByRole("button", { name: /إنشاء الحساب|create account/i }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+  const api = (method, path, body) => page.evaluate(async ({ method, path, body }) => {
+    const raw = JSON.parse(localStorage.getItem("fihrist_tokens") || "null");
+    const csrf = (document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/) || [])[1];
+    const h = { "Content-Type": "application/json", ...(csrf ? { "X-CSRF-Token": csrf } : {}), ...(raw?.access_token ? { Authorization: `Bearer ${raw.access_token}` } : {}) };
+    const r = await fetch(`/api/v1${path}`, { method, headers: h, credentials: "include", body: body ? JSON.stringify(body) : undefined });
+    const t = await r.text(); if (!r.ok) throw new Error(`${method} ${path} -> ${r.status} ${t.slice(0, 200)}`); return t ? JSON.parse(t) : null;
+  }, { method, path, body });
+  const wh = await api("POST", "/warehouses/ensure-default");
+  const mk = async (tag, bc) => {
+    const p = await api("POST", "/products", { title: `Item${tag} ${sfx}`, slug: `item-${tag}-${sfx}`, description: null });
+    const v = await api("POST", `/products/${p.id}/variants`, { sku: `LD${tag}-${sfx}`, price: "100.00", option_values: {} });
+    await api("POST", `/variants/${v.id}/identifiers`, { identifier_type: "barcode", value: bc });
+    await api("POST", "/inventory/movements", { variant_id: v.id, warehouse_id: wh.id, direction: "in", quantity: 10, reason: "adjustment" });
+    await api("PATCH", `/products/${p.id}`, { status: "active" }); return v;
+  };
+  const bcA = `630${sfx}1`, bcB = `630${sfx}2`;
+  const vA = await mk("A", bcA);
+  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash", discount_ceiling_pct: "100.00" });
+  const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
+  const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "0.00" });
+
+  const onHand = async () => {
+    const stock = await api("GET", "/pos/stock?limit=100");
+    const row = (Array.isArray(stock) ? stock : stock.items ?? []).find((r) => r.variant_id === vA.id);
+    return row ? Number(row.on_hand ?? row.quantity) : 0;
+  };
+  await api("POST", "/suppliers", { name: `Supplier ${sfx}` });
+  expect(await onHand(), "mk() put 10 on the shelf").toBe(10);
+
+  await page.goto("/cashier/purchases", { waitUntil: "networkidle" });
+  const main = page.locator("main:has(.cashier-root)");
+  await main.getByRole("button", { name: /تسجيل توريد جديد/ }).first().click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("combobox").first().click();
+  await page.getByRole("option", { name: `Supplier ${sfx}` }).click();
+  await dialog.getByPlaceholder("ابحث بالاسم أو الباركود أو الكود").fill(bcA); // the shop scans the box
+  await dialog.getByRole("button", { name: new RegExp(`ItemA ${sfx}`) }).first().click();
+  await dialog.getByPlaceholder("الكمية").fill("5");
+  await dialog.getByPlaceholder("سعر الشراء").fill("30");
+  await dialog.getByRole("button", { name: "إضافة" }).click();
+  await expect(dialog, "the invoice total is 5 x 30").toContainText("150.00");
+  await dialog.getByRole("button", { name: "حفظ واستلام البضاعة" }).click();
+  await expect.poll(onHand, { message: "receiving the invoice puts the 5 on the shelf: 10 -> 15" }).toBe(15);
+  await expect(main, "the new invoice is listed").toContainText(`Supplier ${sfx}`, { timeout: 10000 });
+  expect(errs).toEqual([]);
+});
+
+test("paying a supplier on the screen: 180 owed, 100 paid in cash leaves the drawer and 80 stays owed", async ({ page }) => {
+  const errs = []; page.on("pageerror", (e) => errs.push(e.message));
+  const sfx = `${Date.now()}`.slice(-8); const email = `ld-${sfx}@example.com`; const pw = `Ld-${sfx}-pass!`;
+  await page.goto("/register");
+  await page.getByLabel(/البريد الإلكتروني|email/i).fill(email);
+  await page.getByLabel(/^كلمة المرور$|^password$/i).fill(pw);
+  await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
+  await page.getByRole("button", { name: /إنشاء الحساب|create account/i }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+  const api = (method, path, body) => page.evaluate(async ({ method, path, body }) => {
+    const raw = JSON.parse(localStorage.getItem("fihrist_tokens") || "null");
+    const csrf = (document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/) || [])[1];
+    const h = { "Content-Type": "application/json", ...(csrf ? { "X-CSRF-Token": csrf } : {}), ...(raw?.access_token ? { Authorization: `Bearer ${raw.access_token}` } : {}) };
+    const r = await fetch(`/api/v1${path}`, { method, headers: h, credentials: "include", body: body ? JSON.stringify(body) : undefined });
+    const t = await r.text(); if (!r.ok) throw new Error(`${method} ${path} -> ${r.status} ${t.slice(0, 200)}`); return t ? JSON.parse(t) : null;
+  }, { method, path, body });
+  const wh = await api("POST", "/warehouses/ensure-default");
+  const mk = async (tag, bc) => {
+    const p = await api("POST", "/products", { title: `Item${tag} ${sfx}`, slug: `item-${tag}-${sfx}`, description: null });
+    const v = await api("POST", `/products/${p.id}/variants`, { sku: `LD${tag}-${sfx}`, price: "100.00", option_values: {} });
+    await api("POST", `/variants/${v.id}/identifiers`, { identifier_type: "barcode", value: bc });
+    await api("POST", "/inventory/movements", { variant_id: v.id, warehouse_id: wh.id, direction: "in", quantity: 10, reason: "adjustment" });
+    await api("PATCH", `/products/${p.id}`, { status: "active" }); return v;
+  };
+  const bcA = `630${sfx}1`, bcB = `630${sfx}2`;
+  const vA = await mk("A", bcA);
+  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash", discount_ceiling_pct: "100.00" });
+  const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
+  const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "0.00" });
+
+  const supplier = await api("POST", "/suppliers", { name: `Supplier ${sfx}` });
+  const po = await api("POST", "/purchase-orders", { supplier_id: supplier.id, warehouse_id: wh.id, lines: [{ variant_id: vA.id, quantity: "6", unit_cost: "30.00" }], receive_now: true });
+  expect(po.id, "the 180 invoice exists and is received").toBeTruthy();
+  const cashOut = async () => Number((await api("GET", `/pos/sessions/${shift.id}/close-preview`)).cash_out);
+  expect(await cashOut(), "nothing has left the drawer yet").toBe(0);
+
+  await page.goto("/cashier/suppliers", { waitUntil: "networkidle" });
+  const main = page.locator("main:has(.cashier-root)");
+  await expect(main, "the supplier shows the 180 it is owed").toContainText("180.00", { timeout: 10000 });
+  await main.getByRole("button", { name: /السجل/ }).first().click();
+  const history = page.getByRole("dialog");
+  await history.getByRole("button", { name: "دفع", exact: true }).first().click();
+  const pay = page.getByRole("dialog").last();
+  await pay.getByPlaceholder("0.00").fill("100");
+  await pay.getByRole("button", { name: "تسجيل الدفعة" }).click();
+  await expect.poll(cashOut, { message: "100 cash paid to the supplier leaves the drawer" }).toBe(100);
+
+  await page.reload({ waitUntil: "networkidle" });
+  await expect(page.locator("main:has(.cashier-root)"), "180 - 100 = 80 still owed").toContainText("80.00", { timeout: 10000 });
+  expect(errs).toEqual([]);
+});
