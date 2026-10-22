@@ -22,7 +22,7 @@ export const navGroups = [
   {
     title: "البيع",
     items: [
-      { to: "/pos", label: "الكاشير / المبيعات", icon: ScanBarcode },
+      { to: "/pos", label: "الكاشير", icon: ScanBarcode },
       { to: "/sales", label: "سجل المبيعات", icon: Receipt },
       { to: "/returns", label: "مرتجعات العملاء", icon: RotateCcw },
       { to: "/exchanges", label: "الاستبدال", icon: RefreshCw },
@@ -32,7 +32,7 @@ export const navGroups = [
     title: "المنتجات والمخزون",
     items: [
       { to: "/products/new", label: "إضافة منتج", icon: Shirt },
-      { to: "/labels", label: "طباعة الملصقات", icon: Printer },
+      { to: "/labels", label: "طباعة الباركود", icon: Printer },
       { to: "/inventory", label: "المخزون والجرد", icon: Boxes },
     ],
   },
@@ -63,7 +63,7 @@ export const navGroups = [
 export const flatNav = navGroups.flatMap((g) => g.items);
 
 export function pageTitle(pathname) {
-  if (pathname === "/pos") return "المبيعات";
+  if (pathname === "/pos") return "الكاشير";
   if (pathname === "/products/new") return "إضافة منتج";
   if (pathname.startsWith("/products/") && pathname.endsWith("/edit")) return "تعديل منتج";
   if (pathname === "/inventory/movements") return "حركة الأصناف";
