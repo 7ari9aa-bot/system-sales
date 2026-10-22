@@ -213,7 +213,7 @@ async def whatsapp_signup_complete(
 ):
     """Finish the popup: exchange → subscribe → verify → store the channel."""
     from app.modules.billing.service import EntitlementService
-    from app.modules.customers.router import (
+    from app.modules.customers.routers.integrations import (
         _activate_verified_channel,
         _verification_metadata,
     )

@@ -126,6 +126,8 @@ DOMAIN_EVENT_TYPES: tuple[str, ...] = (
     # Sales Intelligence analysis lifecycle (analytics/events.py) — real
     # runtime events for the dashboard stream (spec §12.3).
     "ai.analysis.completed",
+    # A run that raised: pairs the started event so nothing reads as stuck forever.
+    "ai.analysis.failed",
     "ai.analysis.started",
     "ai.canary_rolled_back",
     "ai.canary_started",

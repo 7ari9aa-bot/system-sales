@@ -10,6 +10,9 @@ the page's webhooks. The Graph API is scripted per test.
 
 from __future__ import annotations
 
+import json
+import re
+
 import httpx
 from httpx import ASGITransport, AsyncClient
 
@@ -139,6 +142,22 @@ def _config_patch(monkeypatch, **kwargs):
     return fake
 
 
+
+def _popup_result(response) -> dict:
+    """The outcome the callback posts back to the opener window.
+
+    The callback no longer redirects: it answers with a small self-closing page whose script carries
+    ``var msg = {...}`` (what ``window.opener.postMessage`` delivers). That JSON is the contract the
+    settings screen reads, so the tests read it instead of a ``Location`` header.
+    """
+    assert response.status_code == 200, response.text[:200]
+    assert response.headers["content-type"].startswith("text/html")
+    found = re.search(r"var msg = (\{.*?\});", response.text)
+    assert found, "the popup page must carry the result for the opener window"
+    msg = json.loads(found.group(1))
+    assert msg["type"] == "META_OAUTH_RESULT"
+    return msg
+
 async def test_start_requires_settings_write(db, tenant_ctx):
     app = _app(db, tenant_ctx, permission=False)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
@@ -251,9 +270,8 @@ async def test_callback_connects_the_page_and_subscribes_its_webhook(
         )
 
     # The outcome lands back on the settings page, never a bare error page.
-    assert response.status_code == 302
-    assert "/settings/channels?meta_connected=" in response.headers["location"]
-    assert "messenger" in response.headers["location"]
+    result = _popup_result(response)
+    assert result["connected"].startswith("messenger:")
 
     # The page token is stored as the channel credential (encrypted at rest).
     row = (await db.execute(sa_select_integration())).scalar_one()
@@ -284,8 +302,7 @@ async def test_callback_exchanges_for_a_long_lived_token(
             params={"code": "auth-code-1", "state": state},
             follow_redirects=False,
         )
-    assert response.status_code == 302
-    assert "meta_connected=" in response.headers["location"]
+    assert "connected" in _popup_result(response)
     # The fb_exchange_token grant ran and the PAGE listing then used the
     # LONG-LIVED token — page tokens minted from it do not expire.
     exchange = next(u for u in calls if "fb_exchange_token" in u)
@@ -313,8 +330,7 @@ async def test_callback_connects_instagram_via_the_ig_account(
             params={"code": "auth-code-1", "state": state},
             follow_redirects=False,
         )
-    assert response.status_code == 302
-    assert "meta_connected=" in response.headers["location"]
+    assert "connected" in _popup_result(response)
     # Webhook routing AND the gateway's send both key on the IG account id:
     # it must ride the config (routing) AND the encrypted credentials (send).
     row = (await db.execute(sa_select_integration())).scalar_one()
@@ -345,9 +361,10 @@ async def test_callback_reports_when_no_ig_account_is_linked(
             params={"code": "auth-code-1", "state": state},
             follow_redirects=False,
         )
-    assert response.status_code == 302
-    assert "meta_error=" in response.headers["location"]
-    assert "Instagram" in response.headers["location"]
+    result = _popup_result(response)
+    # the failure is tagged with the provider and names the missing professional Instagram account
+    assert result["error"].startswith("instagram:")
+    assert "إنستجرام" in result["error"]
 
 
 async def test_callback_surfaces_meta_page_listing_errors(
@@ -367,12 +384,8 @@ async def test_callback_surfaces_meta_page_listing_errors(
             params={"code": "auth-code-1", "state": state},
             follow_redirects=False,
         )
-    assert response.status_code == 302
-    # The Meta error message rides the redirect — never swallowed into a
-    # generic "no page" failure. The redirect is quote_plus-encoded, so the
-    # spaces arrive as '+' (URLSearchParams on the frontend decodes both
-    # forms to spaces; asserting the wire form keeps the contract exact).
-    assert "Session+has+expired" in response.headers["location"]
+    # The Meta error message rides the popup result, never swallowed into a generic failure.
+    assert "Session has expired" in _popup_result(response)["error"]
 
 
 async def test_callback_surfaces_a_rejected_code(
@@ -392,8 +405,7 @@ async def test_callback_surfaces_a_rejected_code(
             params={"code": "dead-code", "state": state},
             follow_redirects=False,
         )
-    assert response.status_code == 302
-    assert "meta_error=" in response.headers["location"]
+    assert "error" in _popup_result(response)
 
 
 async def test_callback_surfaces_meta_dialog_errors(
@@ -416,9 +428,9 @@ async def test_callback_surfaces_meta_dialog_errors(
             },
             follow_redirects=False,
         )
-    assert response.status_code == 302
-    assert "meta_error=access_denied" in response.headers["location"]
-    assert "Permissions" in response.headers["location"]
+    result = _popup_result(response)
+    assert result["error"].startswith("access_denied:")
+    assert "Permissions" in result["error"]
     assert calls == [], "a dialog error must never reach the Graph API"
 
 
@@ -438,8 +450,7 @@ async def test_callback_refuses_a_tampered_state(
             params={"code": "x", "state": "forged-state"},
             follow_redirects=False,
         )
-    assert response.status_code == 302
-    assert "meta_error=invalid_state" in response.headers["location"]
+    assert _popup_result(response)["error"] == "invalid_state"
     assert calls == [], "a forged state must never reach the Graph API"
 
 
@@ -461,8 +472,7 @@ async def test_callback_refuses_an_expired_state(
             params={"code": "x", "state": expired},
             follow_redirects=False,
         )
-    assert response.status_code == 302
-    assert "meta_error=invalid_state" in response.headers["location"]
+    assert _popup_result(response)["error"] == "invalid_state"
     assert calls == []
 
 
@@ -483,8 +493,7 @@ async def test_callback_refuses_state_with_a_foreign_provider(
             params={"code": "x", "state": state},
             follow_redirects=False,
         )
-    assert response.status_code == 302
-    assert "meta_error=invalid_provider" in response.headers["location"]
+    assert _popup_result(response)["error"] == "invalid_provider"
     assert calls == []
 
 
@@ -524,8 +533,7 @@ async def test_callback_reports_when_no_messaging_page_was_authorized(
             params={"code": "auth-code-1", "state": state},
             follow_redirects=False,
         )
-    assert response.status_code == 302
-    assert "meta_error=" in response.headers["location"]
+    assert "error" in _popup_result(response)
 
 
 def sa_select_integration():

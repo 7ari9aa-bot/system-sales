@@ -240,13 +240,17 @@ async def test_ingest_is_idempotent_and_edits_update(db, tenant_ctx) -> None:
         }
     )[0]
     await SocialCommentService.ingest(db, tenant_id, platform="facebook", comment=edited)
+    # The upsert is a Core statement, so the row the first read put in the session is stale:
+    # ``populate_existing`` re-reads what the database now holds.
     (row,) = (
         (
             await db.execute(
-                select(SocialComment).where(
+                select(SocialComment)
+                .where(
                     SocialComment.tenant_id == tenant_id,
                     SocialComment.comment_id == "c-100",
                 )
+                .execution_options(populate_existing=True)
             )
         )
         .scalars()

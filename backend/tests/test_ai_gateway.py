@@ -17,9 +17,13 @@ from app.core.errors import (
     RateLimitExceededError,
     ValidationError,
 )
+from app.modules.ai import budget as ai_budget
 from app.modules.ai import gateway as ai_gateway
 from app.modules.ai.gateway import AIGateway, reserve_budget, resolve_model_config
 from app.modules.ai.models import AIBudgetReservation, AIUsage, ModelCall, ModelConfig
+from app.modules.customers import (
+    models as _customers_models,  # noqa: F401  (notifications.customer_id FK target)
+)
 
 
 class _StubSettings:
@@ -157,7 +161,9 @@ async def test_monthly_budget_cap_blocks_chat(db, tenant_ctx, monkeypatch):
     # Patch the CAP SOURCE, not the old MONTHLY_BUDGET_CAP constant: the default
     # cap is now the `ai_monthly_budget_cap_default` setting (review N-06), so
     # patching the constant no longer changes what `_resolve_cap` returns.
-    monkeypatch.setattr(ai_gateway, "_default_cap", lambda: Decimal("1.0"))
+    # ``gateway._default_cap`` is only an alias bound at import time; ``_resolve_cap`` reads the
+    # one in ``budget``, so that is the one to patch or the real 50.0 default stays in force.
+    monkeypatch.setattr(ai_budget, "_default_cap", lambda: Decimal("1.0"))
     db.add(
         AIUsage(
             tenant_id=tenant_id,
@@ -325,7 +331,7 @@ async def test_a_second_reservation_waits_bounded_then_requeues(
                 text("SELECT pg_try_advisory_xact_lock(:k)"),
                 {"k": ai_gateway._tenant_budget_lock_id(tenant_id)},
             )
-            monkeypatch.setattr(ai_gateway, "BUDGET_LOCK_WAIT_SECONDS", 0.15)
+            monkeypatch.setattr(ai_budget, "BUDGET_LOCK_WAIT_SECONDS", 0.15)  # read by budget
             started = time.monotonic()
             with pytest.raises(RateLimitExceededError, match="budget lock"):
                 await reserve_budget(db, tenant_id, estimated_cost=Decimal("0.01"))
@@ -347,7 +353,7 @@ async def test_reserve_budget_sweeps_reservations_no_run_will_ever_settle(
     its TTL passed and then sat in the table as a lie. The reserve path now
     marks those expired before reading the spend."""
     tenant_id = tenant_ctx.tenant_id
-    monkeypatch.setattr(ai_gateway, "_default_cap", lambda: Decimal("50.0"))
+    monkeypatch.setattr(ai_budget, "_default_cap", lambda: Decimal("50.0"))
     zombie = AIBudgetReservation(
         tenant_id=tenant_id,
         amount=Decimal("5.00"),

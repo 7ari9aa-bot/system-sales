@@ -171,7 +171,7 @@ async def _meta_exchange_and_connect(
 
     from app.core.db import bind_tenant
     from app.modules.billing.service import EntitlementService
-    from app.modules.customers.router import (
+    from app.modules.customers.routers.integrations import (
         _activate_verified_channel,
         _verification_metadata,
     )

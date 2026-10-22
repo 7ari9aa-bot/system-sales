@@ -33,18 +33,20 @@ def _patch_gateway(monkeypatch, results) -> dict:
 
 
 async def _seed(db, tenant_id, agent_with_tools: bool = True):
+    # The agent always exists (the run is addressed to it); ``agent_with_tools`` only decides
+    # whether the si_* tools are granted to it.
+    agent = Agent(
+        tenant_id=tenant_id,
+        name="SI Agent",
+        model="fast",
+        system_prompt="analyze",
+        # The registry gates si_* tools by agent kind; the server default
+        # ("customer") is fail-closed for them — 'denied', not 'error'.
+        kind="sales_intelligence",
+    )
+    db.add(agent)
+    await db.flush()
     if agent_with_tools:
-        agent = Agent(
-            tenant_id=tenant_id,
-            name="SI Agent",
-            model="fast",
-            system_prompt="analyze",
-            # The registry gates si_* tools by agent kind; the server default
-            # ("customer") is fail-closed for them — 'denied', not 'error'.
-            kind="sales_intelligence",
-        )
-        db.add(agent)
-        await db.flush()
         for name in (
             "si_get_metric",
             "si_compare_periods",
@@ -258,9 +260,10 @@ async def test_failed_run_emits_the_failed_analysis_event(db, tenant_ctx):
     rows = (
         (
             await db.execute(
+                # The outbox table has no tenant/type columns: both ride inside the JSONB.
                 sa_select(OutboxEvent).where(
-                    OutboxEvent.tenant_id == tenant_id,
-                    OutboxEvent.event_type == "ai.analysis.failed",
+                    OutboxEvent.meta["tenant_id"].astext == str(tenant_id),
+                    OutboxEvent.payload["event_type"].astext == "ai.analysis.failed",
                 )
             )
         )

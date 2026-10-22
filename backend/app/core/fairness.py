@@ -131,6 +131,7 @@ DOMAIN_PRIORITIES: dict[str, EventPriority] = {
     # watching the stream — interactive-tier, not bulk.
     "ai.analysis.started": EventPriority.AI_RESPONSE,
     "ai.analysis.completed": EventPriority.AI_RESPONSE,
+    "ai.analysis.failed": EventPriority.AI_RESPONSE,
     # §37/§150: a handover is the AI conversation path handing a waiting customer
     # to a human. The queue row is written in the same transaction, so this event
     # is the notification that tells the merchant — and the SLA clocks — someone

@@ -235,7 +235,9 @@ async def test_failed_recheck_demotes_to_reauth_required_and_audits(
     async def reject(_provider, _credentials, _config, *, client=None):
         raise DomainValidationError("The provider rejected these credentials.")
 
-    monkeypatch.setattr("app.modules.customers.router.verify_channel_credentials", reject)
+    monkeypatch.setattr(
+        "app.modules.customers.routers.integrations.verify_channel_credentials", reject
+    )
 
     async with AsyncClient(
         transport=ASGITransport(app=_sync_app(db, tenant_ctx)), base_url="http://test"
@@ -276,7 +278,9 @@ async def test_successful_recheck_rearms_the_channel_without_credential_writes(
         assert credentials == {"access_token": "live-provider-secret"}
         return VerifiedChannel({"phone_number_id": "201008888888"}, "Shop")
 
-    monkeypatch.setattr("app.modules.customers.router.verify_channel_credentials", approve)
+    monkeypatch.setattr(
+        "app.modules.customers.routers.integrations.verify_channel_credentials", approve
+    )
 
     async with AsyncClient(
         transport=ASGITransport(app=_sync_app(db, tenant_ctx)), base_url="http://test"
