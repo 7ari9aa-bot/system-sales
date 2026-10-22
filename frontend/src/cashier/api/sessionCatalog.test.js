@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ITEMS_MAX_PAGES, ITEMS_PAGE, PRODUCTS_PAGE, fetchAllItems, fetchAllProducts, mergeSessionItems } from "./sessionCatalog";
+import { ITEMS_MAX_PAGES, ITEMS_PAGE, PRODUCTS_PAGE, STOCK_PAGE, fetchAllItems, fetchAllProducts, fetchAllStock, mergeSessionItems, withBarcodes } from "./sessionCatalog";
 
 const v = (id, over = {}) => ({ id, productName: `P${id}`, sku: `S${id}`, barcode: `B${id}`, color: "red", size: "M", stock: 99, sellPrice: 1, ...over });
 const item = (id, over = {}) => ({ variant_id: id, title: `P${id}`, sku: `S${id}`, unit_price: "10.50", available: 4, ...over });
@@ -89,5 +89,19 @@ describe("fetchAllProducts: the list has no total, so it stops at the first shor
     const page = vi.fn().mockResolvedValue(rows(PRODUCTS_PAGE));
     await expect(fetchAllProducts(page)).rejects.toThrow(/لا تنتهي/);
     expect(page).toHaveBeenCalledTimes(ITEMS_MAX_PAGES);
+  });
+});
+
+describe("fetchAllStock / withBarcodes", () => {
+  const rows = (n) => Array.from({ length: n }, (_, i) => ({ variant_id: `v${i}`, barcode: `B${i}` }));
+  it("stops at the first short page and fails loudly on a list that never ends", async () => {
+    const page = vi.fn().mockResolvedValueOnce(rows(STOCK_PAGE)).mockResolvedValueOnce(rows(3));
+    expect(await fetchAllStock(page)).toHaveLength(STOCK_PAGE + 3);
+    const endless = vi.fn().mockResolvedValue(rows(STOCK_PAGE));
+    await expect(fetchAllStock(endless)).rejects.toThrow(/لا تنتهي/);
+  });
+  it("fills barcodes by variant id and leaves the others alone", () => {
+    const out = withBarcodes([{ id: "a", barcode: "" }, { id: "b", barcode: "keep" }], [{ variant_id: "a", barcode: "111" }]);
+    expect(out.map((v) => v.barcode)).toEqual(["111", "keep"]);
   });
 });

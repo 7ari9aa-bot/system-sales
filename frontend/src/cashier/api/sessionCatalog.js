@@ -62,3 +62,33 @@ export async function fetchAllProducts(fetchPage) {
   }
   throw new Error("قائمة المنتجات لا تنتهي. أبلغ الدعم الفني قبل البيع.");
 }
+
+/** Stock rows per request when walking the whole stock view (the endpoint accepts up to 1,000). */
+export const STOCK_PAGE = 1000;
+
+/**
+ * Every row of the stock view, page by page. It is the only list that carries each variant's
+ * barcode (the product list does not), so the sales and exchange screens read their barcodes from
+ * it. Like the product list it has no `total`: the last page is the first one shorter than a page.
+ * `fetchPage(offset, limit)` returns the rows of that window.
+ */
+export async function fetchAllStock(fetchPage) {
+  const all = [];
+  for (let page = 0; page < ITEMS_MAX_PAGES; page += 1) {
+    const res = await fetchPage(page * STOCK_PAGE, STOCK_PAGE);
+    const rows = Array.isArray(res) ? res : (res?.items ?? []);
+    all.push(...rows);
+    if (rows.length < STOCK_PAGE) return all;
+  }
+  throw new Error("قائمة المخزون لا تنتهي. أبلغ الدعم الفني قبل البيع.");
+}
+
+/** Fill each catalog variant's barcode from the stock rows. A variant with none keeps an empty one. */
+export function withBarcodes(catalog, stockRows) {
+  const byVariant = new Map();
+  for (const r of stockRows ?? []) {
+    const code = String(r?.barcode ?? "").trim();
+    if (code && r.variant_id) byVariant.set(r.variant_id, code);
+  }
+  return (catalog ?? []).map((v) => (byVariant.has(v.id) ? { ...v, barcode: byVariant.get(v.id) } : v));
+}

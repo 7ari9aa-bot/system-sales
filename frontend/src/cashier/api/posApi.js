@@ -156,6 +156,8 @@ export const posApi = {
 
   /* ---- stock screen read model (backend/app/modules/pos/stock_view.py) ---- */
   stock: (query = "") => api(`/pos/stock${query ? `?${query}` : ""}`),
+  // One window of the stock view (it carries the barcodes the product list lacks); see fetchAllStock.
+  stockPage: (offset, limit) => api(`/pos/stock?limit=${limit}&offset=${offset}`),
   stockSummary: () => api("/pos/stock/summary"),
   // A PUT that SETS a value is idempotent by nature (sending it twice leaves the same level), so it
   // carries no Idempotency-Key. The level is checked here first: the server rejects a bad one too,

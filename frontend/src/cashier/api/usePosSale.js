@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { BALANCES_LIMIT, posApi } from "./posApi";
 import { needsApproval } from "./approval";
 import { buildCatalog, searchCatalog } from "./catalogAdapter";
-import { fetchAllItems, fetchAllProducts, mergeSessionItems } from "./sessionCatalog";
+import { fetchAllItems, fetchAllProducts, fetchAllStock, mergeSessionItems, withBarcodes } from "./sessionCatalog";
 import { clampQty, restoreRemovedLine } from "./checkout";
 import { createSaleSession } from "./saleSession";
 import { receiptFromApi } from "./receiptAdapter";
@@ -54,11 +54,14 @@ export async function fetchSessionCatalog(sessionId) {
   // fetched here: they are not needed, and their 5,000-row cap would otherwise stop a shop with
   // a big catalogue from selling at all. Only the looks (name, barcode, colour, size) come from
   // the product list; `mergeSessionItems` replaces stock and price with the till's figures.
-  const [products, items] = await Promise.all([
+  const [products, items, stock] = await Promise.all([
     fetchAllProducts((offset, limit) => posApi.productsPage(offset, limit)),
     fetchAllItems((offset, limit) => posApi.sessionItems(sessionId, offset, limit)),
+    fetchAllStock((offset, limit) => posApi.stockPage(offset, limit)),
   ]);
-  const looks = buildCatalog(products, []);
+  // The product list carries no barcode; the stock view does. Without it a scanned code finds nothing
+  // on the exchange screen (and the invoice table prints a blank cell).
+  const looks = withBarcodes(buildCatalog(products, []), stock);
   return mergeSessionItems(looks, items);
 }
 export function useSessionCatalog(sessionId) {
