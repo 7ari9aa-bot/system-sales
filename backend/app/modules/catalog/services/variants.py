@@ -329,3 +329,34 @@ class VariantServiceMixin:
             .all()
         )
         return list(rows)
+
+    @staticmethod
+    async def list_variants_for_products(
+        session: AsyncSession, tenant_id: UUID, product_ids: list[UUID]
+    ) -> dict[UUID, list[ProductVariant]]:
+        """Batch-load the variants of products already scoped by the caller.
+
+        One query for the whole page instead of one per product: listing 500 products used to
+        cost 501 round trips. Each product's variants keep the order `list_variants` gives
+        (oldest first), and a product with none maps to nothing, so use `.get(id, [])`.
+        """
+        if not product_ids:
+            return {}
+        rows = (
+            (
+                await session.execute(
+                    select(ProductVariant)
+                    .where(
+                        ProductVariant.tenant_id == tenant_id,
+                        ProductVariant.product_id.in_(product_ids),
+                    )
+                    .order_by(ProductVariant.created_at)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        grouped: dict[UUID, list[ProductVariant]] = {}
+        for variant in rows:
+            grouped.setdefault(variant.product_id, []).append(variant)
+        return grouped

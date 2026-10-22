@@ -28,13 +28,15 @@ async def list_products(ctx: TenantCtxDep, limit: int = 100, offset: int = 0):
     images_by_product = await CatalogService.list_images_for_products(
         ctx.session, ctx.tenant_id, [product.id for product in products]
     )
+    variants_by_product = await CatalogService.list_variants_for_products(
+        ctx.session, ctx.tenant_id, [product.id for product in products]
+    )
     result = []
     for product in products:
-        variants = await CatalogService.list_variants(ctx.session, ctx.tenant_id, product.id)
         result.append(
             _product_out(
                 product,
-                variants,
+                variants_by_product.get(product.id, []),
                 images_by_product.get(product.id, []),
                 tenant_id=ctx.tenant_id,
             )
