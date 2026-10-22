@@ -1600,6 +1600,11 @@ class PosService:
                     "sku": line.sku,
                     "quantity": line.quantity,
                     "unit_price": str(line.unit_price),
+                    # The line's own discount: a client prices a return the way the server does
+                    # (the customer paid gross minus THIS, not a share of the basket discount).
+                    "discount_pct": str(
+                        Decimal(str(line.discount_pct or 0)).quantize(Decimal("0.01"))
+                    ),
                     "total": str(line.total),
                     "returned_qty": int(returned_by_variant.get(line.variant_id, 0)),
                 }

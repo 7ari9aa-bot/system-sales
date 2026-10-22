@@ -2,7 +2,9 @@
  * A counter return, planned in the browser and settled by the backend.
  * The backend decides the truth (caps, prices, which tender the money goes back to); this file
  * only builds the request and an ESTIMATE of the refund that follows the backend's own formula:
- *   refund(line) = gross(line) - round_half_up(order_discount * gross(line) / order_subtotal)
+ *   net(line)    = gross(line) - round_half_up(gross(line) * line_pct / 100)       (what the customer paid)
+ *   refund(line) = net(line) - round_half_up(order_level_discount * net(line) / sold_net_subtotal)
+ * where order_level_discount is what is left of the order discount after every line discount.
  * Money is integer cents throughout. After the call, the server's refunded_total is what we show.
  */
 import { fromMinor, toMinor } from "./money";
@@ -17,6 +19,7 @@ export function returnableLines(saleDetail) {
       name: l.title ?? l.sku ?? "—",
       sku: l.sku ?? "",
       unitPriceMinor: toMinor(l.unit_price),
+      linePct: Number(l.discount_pct ?? 0) || 0,
       sold,
       alreadyReturned: returned,
       maxQty: Math.max(0, sold - returned),
@@ -25,7 +28,7 @@ export function returnableLines(saleDetail) {
   });
 }
 
-/** order_subtotal is not on the receipt; it is what the lines sum to before the discount. */
+/** Gross of a sold line, in cents: what the lines sum to before ANY discount. */
 export function orderSubtotalMinor(saleDetail) {
   return (saleDetail.lines ?? []).reduce((s, l) => s + toMinor(l.unit_price) * Number(l.quantity), 0);
 }
@@ -34,16 +37,36 @@ function roundHalfUpDiv(numer, denom) {
   return Math.floor((2 * numer + denom) / (2 * denom));
 }
 
-/** Estimated refund for the chosen lines, in cents, per the backend's proportional-discount rule. */
+/** A line's own discount in cents: gross * pct / 100, rounded half up (pct has at most 2 decimals). */
+function lineDiscountMinor(grossMinor, pct) {
+  const pctHundredths = Math.round((Number(pct) || 0) * 100); // 50.00 -> 5000
+  return pctHundredths > 0 ? roundHalfUpDiv(grossMinor * pctHundredths, 10000) : 0;
+}
+
+/** What one sold line was actually charged, in cents (gross minus its own discount). */
+function soldNetMinor(l) {
+  const gross = toMinor(l.unit_price) * Number(l.quantity);
+  return gross - lineDiscountMinor(gross, l.discount_pct);
+}
+
+/**
+ * Estimated refund for the chosen lines, in cents, mirroring the backend's `_return_line_totals`:
+ * the line's own discount comes off first; only the order-level discount (the part of the order
+ * discount beyond all the line discounts) is shared out, in proportion to the NET of the lines.
+ */
 export function estimateRefundMinor(saleDetail, lines) {
-  const subtotal = orderSubtotalMinor(saleDetail);
-  const discount = toMinor(saleDetail.order?.discount_total ?? "0");
+  const sold = saleDetail.lines ?? [];
+  const gross = orderSubtotalMinor(saleDetail);
+  const netBase = sold.reduce((s, l) => s + soldNetMinor(l), 0);
+  const orderDiscount = toMinor(saleDetail.order?.discount_total ?? "0");
+  const orderLevel = Math.max(orderDiscount - (gross - netBase), 0);
   return lines
     .filter((l) => l.returnQty > 0)
     .reduce((sum, l) => {
-      const gross = l.unitPriceMinor * l.returnQty;
-      const share = subtotal > 0 && discount > 0 ? roundHalfUpDiv(discount * gross, subtotal) : 0;
-      return sum + (gross - share);
+      const lineGross = l.unitPriceMinor * l.returnQty;
+      const net = lineGross - lineDiscountMinor(lineGross, l.linePct);
+      const share = netBase > 0 && orderLevel > 0 ? roundHalfUpDiv(orderLevel * net, netBase) : 0;
+      return sum + (net - share);
     }, 0);
 }
 

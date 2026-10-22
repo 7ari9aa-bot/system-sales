@@ -11,116 +11,19 @@ import uuid
 
 import pytest
 import sqlalchemy as sa
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.db import bind_tenant
-from app.core.security import hash_password
-from app.modules.identity.models import Role, Tenant, TenantUser, User
 from app.modules.pos.service import PosService
+from tests._pos_helpers import in_tx as _in_tx
+from tests._pos_helpers import make_tenant as _make_tenant
+from tests._pos_helpers import purge_test_tenant as _purge_test_tenant
 
 RACERS = 2
 
 # The append-only tables (the stock ledger, cost history) refuse DELETE for the app role BY DESIGN,
 # so a throw-away tenant is removed through the OWNER connection, behind a guard that makes it
 # unable to touch anything but the tenant this module created. Children first.
-_TENANT_TABLES = (
-    "pos_return_lines",
-    "pos_receipts",
-    "pos_cash_movements",
-    "pos_session_floats",
-    "pos_session_reconciliations",
-    "pos_session_handovers",
-    "order_payments",
-    "order_status_history",
-    "inventory_reservations",
-    "order_items",
-    "orders",
-    "inventory_movements",
-    "inventory_balances",
-    "variant_cost_history",
-    "variant_costs",
-    "product_prices",
-    "product_identifiers",
-    "product_variants",
-    "products",
-    "document_counters",
-    "pos_sessions",
-    "pos_registers",
-    "warehouses",
-)
 _TENANT_NAME = "IsoRace"
-
-
-@pytest.fixture
-def admin_url() -> str:
-    from app.core.config import get_settings
-
-    url = get_settings().database_url_admin
-    if not url:
-        pytest.skip(
-            "no owner database URL (DATABASE_URL_ADMIN): cannot clean up a committed test tenant "
-            "safely"
-        )
-    return url
-
-
-async def _purge_test_tenant(admin_url: str, tenant_id: uuid.UUID, user_id: uuid.UUID) -> None:
-    engine = create_async_engine(admin_url, connect_args={"statement_cache_size": 0})
-    try:
-        async with engine.begin() as conn:
-            name = (
-                await conn.execute(
-                    sa.text("SELECT name FROM tenants WHERE id = :t"), {"t": tenant_id}
-                )
-            ).scalar()
-            if name != _TENANT_NAME:
-                raise AssertionError(
-                    f"refusing to purge tenant {tenant_id}: its name is {name!r}, not "
-                    f"{_TENANT_NAME!r}"
-                )
-            await conn.execute(sa.text("SET LOCAL session_replication_role = replica"))
-            for table in _TENANT_TABLES:
-                await conn.execute(
-                    sa.text(f"DELETE FROM {table} WHERE tenant_id = :t"),  # noqa: S608
-                    {"t": tenant_id},
-                )
-            await conn.execute(
-                sa.text("DELETE FROM tenant_users WHERE tenant_id = :t"), {"t": tenant_id}
-            )
-            await conn.execute(sa.text("DELETE FROM users WHERE id = :u"), {"u": user_id})
-            await conn.execute(
-                sa.text("DELETE FROM tenants WHERE id = :t AND name = :n"),
-                {"t": tenant_id, "n": _TENANT_NAME},
-            )
-            gone = (
-                await conn.execute(
-                    sa.text("SELECT count(*) FROM tenants WHERE id = :t"), {"t": tenant_id}
-                )
-            ).scalar_one()
-            assert gone == 0, "cleanup failed: the throw-away tenant is still there"
-    finally:
-        await engine.dispose()
-
-
-async def _make_tenant(db_url, label):
-    engine = create_async_engine(db_url, pool_size=4, connect_args={"statement_cache_size": 0})
-    factory = async_sessionmaker(engine, expire_on_commit=False)
-    tenant_id = uuid.uuid4()
-    async with factory() as s:
-        role = (await s.execute(sa.select(Role).where(Role.code == "owner"))).scalar_one()
-        user = User(
-            email=f"{label}-{uuid.uuid4().hex[:8]}@test.local",
-            password_hash=hash_password("x-secret-pw"),
-            full_name=label,
-        )
-        tenant = Tenant(id=tenant_id, slug=f"{label}-{uuid.uuid4().hex[:8]}", name=_TENANT_NAME)
-        s.add_all([tenant, user])
-        await s.flush()
-        await s.execute(sa.text("SELECT set_config('app.user_id', :u, true)"), {"u": str(user.id)})
-        s.add(TenantUser(tenant_id=tenant_id, user_id=user.id, role_id=role.id))
-        await s.commit()
-        user_id = user.id
-    return engine, factory, tenant_id, user_id
 
 
 @pytest.fixture
@@ -134,18 +37,6 @@ async def two_tenants(db_url, admin_url):
         await eb.dispose()
         await _purge_test_tenant(admin_url, ta, ua)
         await _purge_test_tenant(admin_url, tb, ub)
-
-
-async def _in_tx(factory, tenant_id, fn):
-    async with factory() as s:
-        await bind_tenant(s, tenant_id)
-        try:
-            result = await fn(s)
-            await s.commit()
-            return result
-        except Exception as exc:
-            await s.rollback()
-            return exc
 
 
 async def _a_shop(factory, tenant_id):

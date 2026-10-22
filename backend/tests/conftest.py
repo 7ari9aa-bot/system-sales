@@ -176,3 +176,16 @@ async def tenant_ctx(db: AsyncSession, owner_password_hash: str) -> AsyncIterato
     ctx = TenantCtx(db, tenant, user, role)
     yield ctx
     # rollback handled by the db fixture
+
+
+@pytest.fixture
+def admin_url() -> str:
+    from app.core.config import get_settings
+
+    url = get_settings().database_url_admin
+    if not url:
+        pytest.skip(
+            "no owner database URL (DATABASE_URL_ADMIN): cannot clean up a committed test tenant "
+            "safely"
+        )
+    return url

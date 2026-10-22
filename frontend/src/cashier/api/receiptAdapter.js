@@ -24,6 +24,10 @@ export function receiptFromApi(data, { cashier = "", customerName = "", names = 
   const tenderedCash = receipt.tendered_amount === null || receipt.tendered_amount === undefined ? cashPaid : num(receipt.tendered_amount);
   const items = lines.map((l) => {
     const price = num(l.unit_price);
+    // The item's own discount, in money: gross (price x qty) minus what the line was charged. Taken from the
+    // server's `total`, so it is exactly what was applied, whatever pct/rounding produced it.
+    const lineTotal = num(l.total);
+    const itemDiscount = Math.max(0, +(price * l.quantity - lineTotal).toFixed(2));
     return {
       lineId: l.variant_id,
       variantId: l.variant_id,
@@ -33,12 +37,18 @@ export function receiptFromApi(data, { cashier = "", customerName = "", names = 
       color: "",
       qty: l.quantity,
       price,
-      discount: 0,
-      total: num(l.total),
+      discount: itemDiscount,
+      total: lineTotal,
       returnedQty: l.returned_qty ?? 0,
     };
   });
-  const subTotal = items.reduce((s, i) => s + i.total, 0);
+  // Gross before ANY discount, the sum of the item discounts, and what is left of the order's discount
+  // after them: that remainder is the invoice-level discount. `order.discount_total` holds BOTH, so showing
+  // it as the invoice discount (and the post-discount lines as the sub-total) double-counted the items'.
+  const subTotal = items.reduce((s, i) => s + i.price * i.qty, 0);
+  const lineDiscount = items.reduce((s, i) => s + i.discount, 0);
+  const allDiscount = num(order.discount_total);
+  const invoiceDiscount = Math.max(0, +(allDiscount - lineDiscount).toFixed(2));
   return {
     id: receipt.id,
     orderId: order.id,
@@ -51,9 +61,9 @@ export function receiptFromApi(data, { cashier = "", customerName = "", names = 
     items,
     pieces: items.reduce((s, i) => s + i.qty, 0),
     subTotal: +subTotal.toFixed(2),
-    lineDiscount: 0,
-    invoiceDiscount: num(order.discount_total),
-    discount: num(order.discount_total),
+    lineDiscount: +lineDiscount.toFixed(2),
+    invoiceDiscount,
+    discount: allDiscount,
     total: num(order.grand_total),
     paid: +(tenderedCash + nonCash).toFixed(2),
     change,

@@ -128,3 +128,38 @@ describe("sendReturn", () => {
     expect(send).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("estimateRefundMinor with per-item discounts (report example)", () => {
+  // A: 100 at 50% off = 50 paid. B: 100 no discount. Invoice total 150.
+  const sale = (extra = {}) => ({
+    order: { discount_total: "50.00", grand_total: "150.00", ...extra },
+    lines: [
+      { variant_id: "A", title: "A", quantity: 1, unit_price: "100.00", discount_pct: "50.00", returned_qty: 0 },
+      { variant_id: "B", title: "B", quantity: 1, unit_price: "100.00", discount_pct: "0.00", returned_qty: 0 },
+    ],
+  });
+  const pick = (d, id, qty) => returnableLines(d).map((l) => (l.variantId === id ? { ...l, returnQty: qty } : l));
+
+  it("returning the 50%-off item refunds 50, not 75 or 100", () => {
+    const d = sale();
+    expect(estimateRefund(d, pick(d, "A", 1))).toBe("50.00");
+  });
+  it("returning the full-price item refunds 100", () => {
+    const d = sale();
+    expect(estimateRefund(d, pick(d, "B", 1))).toBe("100.00");
+  });
+  it("exchange difference: A (50 paid) swapped for a 60 item is +10", () => {
+    const d = sale();
+    expect(Number(estimateRefund(d, pick(d, "A", 1))) - 60).toBe(-10);
+  });
+  it("an invoice-level discount on top is shared over the NET of the lines, per the backend", () => {
+    // gross 200, A has 50% off (net 150). Invoice discount 15 beyond the line discount.
+    const d = sale({ discount_total: "65.00" });
+    // order_level = 65 - (200-150) = 15 ; A net 50 -> share 15*50/150 = 5.00 -> refund 45.00
+    expect(estimateRefund(d, pick(d, "A", 1))).toBe("45.00");
+  });
+  it("partial quantity rounds half up to cents", () => {
+    const d = { order: { discount_total: "0.00" }, lines: [{ variant_id: "C", title: "C", quantity: 3, unit_price: "33.33", discount_pct: "0.00", returned_qty: 0 }] };
+    expect(estimateRefund(d, pick(d, "C", 2))).toBe("66.66");
+  });
+});
