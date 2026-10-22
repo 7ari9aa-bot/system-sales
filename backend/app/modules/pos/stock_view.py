@@ -19,7 +19,7 @@ from uuid import UUID
 from sqlalchemy import column, func, select, table
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.sql import LIKE_ESCAPE, like_pattern
+from app.core.sql import arabic_regex
 from app.modules.catalog.models import Category, Product, ProductIdentifier, ProductVariant
 from app.modules.errors import ValidationError
 from app.modules.inventory.stock_view import StockLevelService, StocktakeGateway, stock_status
@@ -153,18 +153,18 @@ class StockViewService:
         if category_id is not None:
             query = query.where(Product.category_id == category_id)
         if term and term.strip():
-            like = like_pattern(term.strip().lower())
+            spelled = arabic_regex(term)
             codes = (
                 select(ProductIdentifier.variant_id)
                 .where(
                     ProductIdentifier.tenant_id == tenant_id,
-                    func.lower(ProductIdentifier.value).like(like, escape=LIKE_ESCAPE),
+                    ProductIdentifier.value.op("~*")(spelled),
                 )
                 .scalar_subquery()
             )
             query = query.where(
-                func.lower(Product.title).like(like, escape=LIKE_ESCAPE)
-                | func.lower(func.coalesce(ProductVariant.sku, "")).like(like, escape=LIKE_ESCAPE)
+                Product.title.op("~*")(spelled)
+                | func.coalesce(ProductVariant.sku, "").op("~*")(spelled)
                 | ProductVariant.id.in_(codes)
             )
         if status == "out":

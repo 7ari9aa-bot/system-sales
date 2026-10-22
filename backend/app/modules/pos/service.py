@@ -608,7 +608,7 @@ class PosService:
         catalog's own tier rules. The grid never writes — every mutation still
         goes through ``sell``.
         """
-        from app.modules.catalog.models import Product, ProductVariant
+        from app.modules.catalog.models import Product, ProductIdentifier, ProductVariant
         from app.modules.inventory.models import InventoryBalance
 
         pos_session = await PosService._get_session(session, tenant_id, session_id)
@@ -637,14 +637,21 @@ class PosService:
             conditions.append(Product.category_id.in_([UUID(s) for s in scope]))
         needle = (q or "").strip()
         if needle:
-            from app.core.sql import LIKE_ESCAPE, like_pattern
+            from app.core.sql import arabic_regex
 
-            like = like_pattern(needle)
+            # Arabic-tolerant: "احمر" finds "أحمر", "حقيبه" finds "حقيبة" (see core.sql).
+            spelled = arabic_regex(needle)
             conditions.append(
                 or_(
-                    ProductVariant.title.ilike(like, escape=LIKE_ESCAPE),
-                    ProductVariant.sku.ilike(like, escape=LIKE_ESCAPE),
-                    Product.title.ilike(like, escape=LIKE_ESCAPE),
+                    ProductVariant.title.op("~*")(spelled),
+                    ProductVariant.sku.op("~*")(spelled),
+                    Product.title.op("~*")(spelled),
+                    ProductVariant.id.in_(
+                        select(ProductIdentifier.variant_id).where(
+                            ProductIdentifier.tenant_id == tenant_id,
+                            ProductIdentifier.value.op("~*")(spelled),
+                        )
+                    ),
                 )
             )
 
@@ -1714,7 +1721,7 @@ class PosService:
             raise ValidationError("search needs at least 3 characters")
         if limit < 1 or limit > 50:
             raise ValidationError("limit must be between 1 and 50")
-        from app.core.sql import LIKE_ESCAPE, like_pattern
+        from app.core.sql import arabic_regex
 
         rows = (
             (
@@ -1723,7 +1730,8 @@ class PosService:
                     .where(
                         PosReceipt.tenant_id == tenant_id,
                         PosReceipt.kind == "sale",
-                        PosReceipt.number.ilike(like_pattern(term), escape=LIKE_ESCAPE),
+                        # Arabic-Indic digits and a missing dash still find the receipt.
+                        PosReceipt.number.op("~*")(arabic_regex(term)),
                     )
                     .order_by(PosReceipt.issued_at.desc(), PosReceipt.id.desc())
                     .limit(limit)

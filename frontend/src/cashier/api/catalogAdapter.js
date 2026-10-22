@@ -5,6 +5,7 @@
  * /quote does NOT check stock (only /sell does), so the screen must stop over-selling itself
  * instead of letting the cashier discover it at payment time.
  */
+import { foldedIncludes } from "@/cashier/lib/searchText";
 import { parseMoney } from "./money";
 
 const price = (wire) => parseMoney(wire).minor / 100;
@@ -40,9 +41,10 @@ export function buildCatalog(products, balances) {
 }
 
 export function searchCatalog(catalog, term, limit = 20) {
-  const q = String(term ?? "").trim().toLowerCase();
+  const q = String(term ?? "").trim();
   if (!q) return [];
+  // Forgiving on Arabic spelling and digits ("احمر" finds "أحمر"); see lib/searchText.js.
   return catalog
-    .filter((v) => [v.productName, v.sku, v.barcode, v.color, v.size].some((f) => String(f ?? "").toLowerCase().includes(q)))
+    .filter((v) => [v.productName, v.sku, v.barcode, v.color, v.size].some((f) => foldedIncludes(f ?? "", q)))
     .slice(0, limit);
 }

@@ -61,4 +61,12 @@ describe("searchCatalog", () => {
     expect(searchCatalog(cat, "  ")).toEqual([]);
     expect(searchCatalog(cat, "قميص", 1)).toHaveLength(1);
   });
+  it("finds the item however the cashier spells it (hamza, taa marbuta, tashkeel)", () => {
+    expect(searchCatalog(cat, "احمر").map((v) => v.id)).toEqual(["v1"]); // typed ا for أ
+    expect(searchCatalog(cat, "ازرق").map((v) => v.id)).toEqual(["v2"]);
+    expect(searchCatalog(cat, "قَميص").map((v) => v.id)).toEqual(["v1", "v2"]); // tashkeel typed
+  });
+  it("a word that is not in the catalogue still finds nothing", () => {
+    expect(searchCatalog(cat, "اخضر")).toEqual([]);
+  });
 });
