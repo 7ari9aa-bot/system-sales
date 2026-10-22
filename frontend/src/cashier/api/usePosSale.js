@@ -105,13 +105,13 @@ const lineOf = (v) => ({
  * and never sums prices itself. A newer quote request wins: a slow earlier answer cannot
  * overwrite the total of a cart that has changed since.
  */
-export function usePosSale({ sessionId, catalog = [], onSold, loadFreshCatalog }) {
+export function usePosSale({ sessionId, registerId, catalog = [], onSold, loadFreshCatalog }) {
   const [lines, setLines] = useState([]);
   const [invoiceDiscount, setInvoiceDiscount] = useState("");
   const [quote, setQuote] = useState({ subtotal: "0.00", discountTotal: "0.00", total: "0.00", loading: false, error: null });
   const [paying, setPaying] = useState(false);
   const [payError, setPayError] = useState(null);
-  const sale = useMemo(() => (sessionId ? createSaleSession(sessionId) : null), [sessionId]);
+  const sale = useMemo(() => (sessionId ? createSaleSession(sessionId, registerId) : null), [sessionId, registerId]);
 
   // Each line carries its own discount percentage to the server (stored on the sale line, so a
   // return refunds what THAT line paid).
@@ -212,13 +212,14 @@ export function usePosSale({ sessionId, catalog = [], onSold, loadFreshCatalog }
     [catalog, loadFreshCatalog],
   );
 
-  const pay = useCallback(
-    async ({ tenders, customerId, cashier, customerName }) => {
-      if (!sale) throw new Error("لا توجد وردية مفتوحة");
+  /** Record the sale. There is no payment step: no tender, no change, no method. */
+  const confirm = useCallback(
+    async ({ customerId, cashier, customerName } = {}) => {
+      if (!sale) throw new Error("لا توجد جلسة بيع");
       setPaying(true);
       setPayError(null);
       try {
-        const { detail } = await sale.pay({ cart, total: quote.total, discountTotal, customerId, tenders });
+        const { detail } = await sale.confirm({ cart, discountTotal, customerId });
         const names = Object.fromEntries(catalog.map((v) => [v.id, v.productName]));
         const receipt = receiptFromApi(detail, { cashier, customerName, names });
         setLines([]);
@@ -232,12 +233,12 @@ export function usePosSale({ sessionId, catalog = [], onSold, loadFreshCatalog }
         setPaying(false);
       }
     },
-    [sale, cart, quote.total, discountTotal, catalog, onSold],
+    [sale, cart, discountTotal, catalog, onSold],
   );
 
   const scan = useCallback((value) => posApi.scan(sessionId, { identifierType: "barcode", value }), [sessionId]);
 
-  return { lines, scan, hold, restore, quote, discountTotal, invoiceDiscount, setInvoiceDiscount, add, setQty, stepQty, setLineDiscount, remove, restoreLine, clear, pay, paying, payError, searchCatalog };
+  return { lines, scan, hold, restore, quote, discountTotal, invoiceDiscount, setInvoiceDiscount, add, setQty, stepQty, setLineDiscount, remove, restoreLine, clear, confirm, paying, payError, searchCatalog };
 }
 
 /**

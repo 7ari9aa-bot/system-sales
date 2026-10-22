@@ -124,8 +124,8 @@ test("a real sale: scan -> confirm -> receipt -> two sales get two invoice numbe
     await call("PATCH", `/products/${product.id}`, { status: "active" });
     const profile = await call("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash", "card", "wallet", "bank_transfer"], default_payment_method: "cash" });
     const register = await call("POST", "/pos/registers", { name: "Main till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
-    await call("POST", `/pos/registers/${register.id}/sessions`, { opening_float: "0.00" });
-    return { variantId: variant.id, warehouseId: wh.id };
+    // No shift is opened here on purpose: the sales screen must work without one.
+    return { variantId: variant.id, warehouseId: wh.id, registerId: register.id };
   }, { sfx: suffix.replace(/[^a-z0-9]/gi, "").toLowerCase(), barcode });
 
   await page.goto("/cashier/pos", { waitUntil: "networkidle" });
@@ -140,7 +140,9 @@ test("a real sale: scan -> confirm -> receipt -> two sales get two invoice numbe
     await expect(main).toContainText(/Live item/);
     await main.getByRole("button", { name: /\(F2\)/ }).click();
     const dialog = page.getByRole("dialog");
-    await expect(dialog.getByText("إتمام عملية البيع")).toBeVisible();
+    await expect(dialog.getByText("تأكيد عملية البيع")).toBeVisible();
+    // Nothing to pay: the dialog asks for no amount, no change and no method.
+    await expect(dialog.getByLabel("المبلغ المدفوع")).toHaveCount(0);
     await dialog.getByRole("button", { name: /تأكيد البيع/ }).click();
     await expect(dialog.getByText("معاينة الفاتورة")).toBeVisible();
     const number = ((await dialog.innerText()).match(/POS-\d{8}-[A-Z0-9]+/) || [""])[0];
@@ -164,6 +166,18 @@ test("a real sale: scan -> confirm -> receipt -> two sales get two invoice numbe
     return rows.find((r) => r.variant_id === variantId || r.id === variantId)?.on_hand ?? rows.find((r) => r.variant_id === variantId)?.quantity ?? null;
   }, { variantId: setup.variantId });
   expect(Number(onHand)).toBe(8);
+
+  // The backend is the witness that no money was recorded: both sales exist, none carries a tender.
+  const witness = await page.evaluate(async () => {
+    const raw = JSON.parse(localStorage.getItem("fihrist_tokens") || "null");
+    const h = raw?.access_token ? { Authorization: `Bearer ${raw.access_token}` } : {};
+    const get = async (p) => (await fetch(`/api/v1${p}`, { credentials: "include", headers: h })).json();
+    const sessions = await get("/pos/sessions?status=OPEN");
+    const receipts = await get(`/pos/sessions/${sessions[0].id}/receipts`);
+    const details = await Promise.all(receipts.filter((r) => r.kind === "sale").map((r) => get(`/pos/receipts/${r.id}`)));
+    return { openSessions: sessions.length, sales: details.length, tenders: details.flatMap((d) => d.tenders ?? []).length };
+  });
+  expect(witness).toEqual({ openSessions: 1, sales: 2, tenders: 0 });
   expect(pageErrors).toEqual([]);
 });
 
@@ -285,7 +299,7 @@ test("a per-line discount is stored on its line, so returning that one item refu
   await expect(main).toContainText("150.00", { timeout: 8000 }); // 200 - 50 = 150 is the quote the server gave
   await main.getByRole("button", { name: /\(F2\)/ }).click();
   const dlg = page.getByRole("dialog");
-  await expect(dlg.getByText("إتمام عملية البيع")).toBeVisible();
+  await expect(dlg.getByText("تأكيد عملية البيع")).toBeVisible();
   await dlg.getByRole("button", { name: /تأكيد البيع/ }).click();
   await expect(dlg.getByText("معاينة الفاتورة")).toBeVisible();
   await page.keyboard.press("Escape");

@@ -86,6 +86,34 @@ export async function resolveShiftState({ canConfigure = false, userId = null } 
 }
 
 /**
+ * The till WITHOUT a shift: which register, and its working session for today.
+ *
+ *   needs_setup | forbidden | unauthorized | error
+ *   choose (several active registers, none picked: `registers`)
+ *   open   (register, session)
+ *
+ * The cashier opens and closes nothing; the server opens today's session on the first ask and
+ * returns the same one afterwards. With more than one active register nothing is guessed: the
+ * old "first active register" meant every sale landed on whichever till happened to sort first.
+ */
+export async function resolveWorkingSession({ canConfigure = false, registerId = null } = {}) {
+  let registers;
+  try {
+    registers = ((await posApi.listRegisters()) ?? []).filter(isActive);
+  } catch (err) {
+    return failure(err);
+  }
+  if (!registers.length) return { status: "needs_setup", who: canConfigure ? "self" : "manager" };
+  const register = registers.length === 1 ? registers[0] : registers.find((r) => r.id === registerId);
+  if (!register) return { status: "choose", registers };
+  try {
+    return { status: "open", register, session: await posApi.workingSession(register.id) };
+  } catch (err) {
+    return failure(err);
+  }
+}
+
+/**
  * Manager-only, idempotent first-use setup: default warehouse -> profile MAIN -> register MAIN.
  * Safe to call twice: returns the existing register without writing anything.
  * (Codes are unique per tenant in the DB, so even a race converges on one row.)

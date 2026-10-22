@@ -6,13 +6,14 @@ const { pos, api } = vi.hoisted(() => ({
     listProfiles: vi.fn(),
     listSessions: vi.fn(),
     getSession: vi.fn(),
+    workingSession: vi.fn(),
   },
   api: vi.fn(),
 }));
 vi.mock("./posApi", () => ({ posApi: pos }));
 vi.mock("@/lib/api", () => ({ api }));
 
-import { bootstrapPos, chooseRegister, pickMyShift, resolveShiftState } from "./shiftState";
+import { bootstrapPos, chooseRegister, pickMyShift, resolveShiftState, resolveWorkingSession } from "./shiftState";
 
 const REG = { id: "r1", code: "MAIN", name: "Main", is_active: true, warehouse_id: "w1", profile_id: "p1" };
 const SESSION = { id: "s1", register_id: "r1", status: "OPEN", opening_float: "100.00" };
@@ -217,5 +218,59 @@ describe("chooseRegister (which drawer a cashier may open a shift on)", () => {
   });
   it("an inactive drawer is never offered", () => {
     expect(chooseRegister([R("a", { is_active: false }), R("b")], [])).toMatchObject({ status: "ok", register: { id: "b" } });
+  });
+});
+
+describe("resolveWorkingSession: the till without a shift", () => {
+  it("one active register => its working session, asked from the server (never a shift screen)", async () => {
+    pos.listRegisters.mockResolvedValue([REG]);
+    pos.workingSession.mockResolvedValue(SESSION);
+    const s = await resolveWorkingSession({ canConfigure: false });
+    expect(s).toEqual({ status: "open", register: REG, session: SESSION });
+    expect(pos.workingSession).toHaveBeenCalledWith("r1");
+    expect(pos.listSessions).not.toHaveBeenCalled();
+  });
+
+  it("no register => needs_setup, and nothing is opened", async () => {
+    pos.listRegisters.mockResolvedValue([]);
+    expect(await resolveWorkingSession({ canConfigure: false })).toMatchObject({ status: "needs_setup", who: "manager" });
+    expect(await resolveWorkingSession({ canConfigure: true })).toMatchObject({ status: "needs_setup", who: "self" });
+    expect(pos.workingSession).not.toHaveBeenCalled();
+  });
+
+  it("several active registers => the cashier is asked to choose; the first one is NEVER guessed", async () => {
+    const r2 = { ...REG, id: "r2", code: "B" };
+    pos.listRegisters.mockResolvedValue([REG, r2]);
+    const s = await resolveWorkingSession({});
+    expect(s).toMatchObject({ status: "choose" });
+    expect(s.registers.map((r) => r.id)).toEqual(["r1", "r2"]);
+    expect(pos.workingSession).not.toHaveBeenCalled();
+  });
+
+  it("an explicit pick among several is honoured; an unknown pick is refused, not replaced", async () => {
+    const r2 = { ...REG, id: "r2", code: "B" };
+    pos.listRegisters.mockResolvedValue([REG, r2]);
+    pos.workingSession.mockResolvedValue({ ...SESSION, id: "s2", register_id: "r2" });
+    expect(await resolveWorkingSession({ registerId: "r2" })).toMatchObject({ status: "open", register: { id: "r2" } });
+    expect(pos.workingSession).toHaveBeenCalledWith("r2");
+    pos.workingSession.mockClear();
+    expect(await resolveWorkingSession({ registerId: "gone" })).toMatchObject({ status: "choose" });
+    expect(pos.workingSession).not.toHaveBeenCalled();
+  });
+
+  it("inactive registers are ignored", async () => {
+    pos.listRegisters.mockResolvedValue([{ ...REG, id: "old", is_active: false }, REG]);
+    pos.workingSession.mockResolvedValue(SESSION);
+    expect(await resolveWorkingSession({})).toMatchObject({ status: "open", register: { id: "r1" } });
+  });
+
+  it("403 => forbidden, 401 => unauthorized, network => retryable error", async () => {
+    pos.listRegisters.mockResolvedValue([REG]);
+    pos.workingSession.mockRejectedValueOnce(Object.assign(new Error("no"), { status: 403 }));
+    expect(await resolveWorkingSession({})).toEqual({ status: "forbidden" });
+    pos.workingSession.mockRejectedValueOnce(Object.assign(new Error("no"), { status: 401 }));
+    expect(await resolveWorkingSession({})).toEqual({ status: "unauthorized" });
+    pos.workingSession.mockRejectedValueOnce(Object.assign(new Error("down"), { status: 0 }));
+    expect(await resolveWorkingSession({})).toMatchObject({ status: "error", retryable: true });
   });
 });

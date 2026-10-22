@@ -85,3 +85,16 @@ describe("receipt discounts: line discount vs invoice discount (report example)"
     expect(receiptFromApi(old)).toMatchObject({ subTotal: 200, lineDiscount: 0, invoiceDiscount: 20 });
   });
 });
+
+describe("a sale recorded without any payment", () => {
+  const free = receiptFromApi({ ...api, receipt: { ...api.receipt, tendered_amount: null, change_amount: "0.00" }, tenders: [] }, ctx);
+
+  it("says so: there is nothing paid to print, and the total is still the invoice total", () => {
+    expect(free.hasPayment).toBe(false);
+    expect(free.payments).toEqual([]);
+    expect(free.total).toBe(42.5);
+  });
+  it("an old sale that carries tenders still prints its payment", () => {
+    expect(receiptFromApi(api, ctx).hasPayment).toBe(true);
+  });
+});

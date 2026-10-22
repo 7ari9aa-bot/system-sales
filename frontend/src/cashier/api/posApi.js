@@ -93,6 +93,9 @@ export const posApi = {
   /** Best sellers over [since, until] by net revenue (returns taken off). No cost or profit. */
   topProducts: (since, until, limit = 20) => api(`/pos/reports/top-products?since=${since}&until=${until}&limit=${limit}`),
 
+  /** Today's session for a register, opened on the first call. No shift screen, no float, no count. */
+  workingSession: async (registerId) => post(`/pos/registers/${seg(registerId)}/working-session`, {}),
+
   /* ---- shift ---- */
   openSession: async (registerId, { openingFloat = 0, floatsByMethod, profileId } = {}) =>
     post(
@@ -216,6 +219,13 @@ export const posApi = {
       headers,
     );
   },
+  /** Record a sale: what was sold, to whom, at what discount. There is no payment in this call. */
+  recordSale: async (registerId, { items, customerId, discountTotal }, intent) =>
+    post(
+      `/pos/registers/${seg(registerId)}/sales`,
+      compact({ items: lines(items), customer_id: customerId, discount_total: opt(discountTotal) }),
+      needIntent(intent),
+    ),
   refund: async (id, { orderId, amount, method: m = "cash", reason, restock = false }, intent) =>
     post(
       `/pos/sessions/${seg(id)}/refunds`,

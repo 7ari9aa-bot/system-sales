@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { TriangleAlert } from "lucide-react";
 import PosHeaderBar from "@/cashier/components/pos/PosHeaderBar";
 import PosCustomerFields from "@/cashier/components/pos/PosCustomerFields";
@@ -9,7 +9,7 @@ import PosInvoiceTable from "@/cashier/components/pos/PosInvoiceTable";
 import PosActionsBar from "@/cashier/components/pos/PosActionsBar";
 import PosInvoiceDiscounts from "@/cashier/components/pos/PosInvoiceDiscounts";
 import PosInvoiceSummary from "@/cashier/components/pos/PosInvoiceSummary";
-import PaymentDialog from "@/cashier/components/pos/PaymentDialog";
+import ConfirmSaleDialog from "@/cashier/components/pos/ConfirmSaleDialog";
 import ReceiptDialog from "@/cashier/components/pos/ReceiptDialog";
 import SuspendedDialog from "@/cashier/components/pos/SuspendedDialog";
 import HoldDialog from "@/cashier/components/pos/HoldDialog";
@@ -17,7 +17,7 @@ import ConfirmDialog from "@/cashier/components/ui-kit/ConfirmDialog";
 import { Button } from "@/cashier/components/ui/button";
 import { CATALOG_KEY, HELD_KEY, SESSION_CATALOG_KEY, fetchSessionCatalog, useCustomerSearch, useHeldCarts, usePosSale, useSessionCatalog, useShiftProfile } from "@/cashier/api/usePosSale";
 import { customerBlock } from "@/cashier/api/customerRule";
-import { useShiftState } from "@/cashier/api/useShifts";
+import { useWorkingSession } from "@/cashier/api/useShifts";
 import { searchCatalog } from "@/cashier/api/catalogAdapter";
 import { posApi } from "@/cashier/api/posApi";
 import { useAuth } from "@/lib/AuthContext";
@@ -31,29 +31,43 @@ const UNDO_TOAST_ID = "pos-undo-remove";
 function NoShift({ state }) {
   const text =
     state.status === "needs_setup"
-      ? "لم يتم تجهيز الكاشير بعد. افتح أول وردية من شاشة الورديات لتجهيزه."
+      ? "لم يتم تجهيز الكاشير بعد. اطلب من المدير تجهيزه من الإعدادات."
       : state.status === "forbidden"
         ? "ليست لديك صلاحية استخدام الكاشير."
         : state.status === "error"
-          ? state.message || "تعذّر تحميل حالة الوردية."
-          : "لا توجد وردية مفتوحة. افتح وردية لتبدأ البيع.";
+          ? state.message || "تعذّر تحميل الكاشير."
+          : "تعذّر تحميل الكاشير.";
   return (
     <div className="animate-fade-up mx-auto mt-16 flex max-w-md flex-col items-center gap-3 rounded-2xl border border-border bg-card p-8 text-center">
       <TriangleAlert className="h-7 w-7 text-amber-600" aria-hidden="true" />
       <p className="text-sm font-semibold" role="status">{text}</p>
-      <Button asChild>
-        <Link to="/cashier/shifts">الذهاب إلى الورديات</Link>
-      </Button>
+    </div>
+  );
+}
+
+/** Several active tills and none picked yet: ask once, never guess the first one. */
+function ChooseRegister({ registers, onPick }) {
+  return (
+    <div className="animate-fade-up mx-auto mt-16 flex max-w-md flex-col items-center gap-3 rounded-2xl border border-border bg-card p-8 text-center">
+      <p className="text-sm font-semibold" role="status">اختر جهاز الكاشير الذي ستعمل عليه</p>
+      <div className="flex w-full flex-col gap-2">
+        {registers.map((r) => (
+          <Button key={r.id} variant="outline" onClick={() => onPick(r.id)}>{r.name || r.code}</Button>
+        ))}
+      </div>
     </div>
   );
 }
 
 export default function PosPage() {
   const { user } = useAuth?.() ?? {};
-  const shift = useShiftState({ canConfigure: false });
-  if (shift.isLoading) return <p className="p-8 text-center text-sm text-muted-foreground" role="status">جارٍ التحميل…</p>;
-  if (shift.data?.status !== "open") return <NoShift state={shift.data ?? { status: "error", message: shift.error?.message }} />;
-  return <PosScreen user={user} session={shift.data.session} />;
+  const [registerId, setRegisterId] = useState(null);
+  const till = useWorkingSession({ registerId });
+  if (till.isLoading) return <p className="p-8 text-center text-sm text-muted-foreground" role="status">جارٍ التحميل…</p>;
+  const state = till.data ?? { status: "error", message: till.error?.message };
+  if (state.status === "choose") return <ChooseRegister registers={state.registers} onPick={setRegisterId} />;
+  if (state.status !== "open") return <NoShift state={state} />;
+  return <PosScreen user={user} session={state.session} />;
 }
 
 function PosScreen({ user, session }) {
@@ -64,6 +78,7 @@ function PosScreen({ user, session }) {
   const [lastReceipt, setLastReceipt] = useState(null);
   const sale = usePosSale({
     sessionId: session.id,
+    registerId: session.register_id,
     catalog,
     loadFreshCatalog: async () => (await qc.fetchQuery({ queryKey: SESSION_CATALOG_KEY(session.id), queryFn: () => fetchSessionCatalog(session.id), staleTime: 0 })) ?? [],
     onSold: (r) => {
@@ -289,9 +304,9 @@ function PosScreen({ user, session }) {
     }
   }
 
-  async function confirmSale(tenders) {
+  async function confirmSale() {
     try {
-      const r = await sale.pay({ tenders, cashier, customerName: displayCustomer === "عميل نقدي" ? "" : displayCustomer, customerId: pickedCustomer?.id });
+      const r = await sale.confirm({ cashier, customerName: displayCustomer === "عميل نقدي" ? "" : displayCustomer, customerId: pickedCustomer?.id });
       setDialog("receipt");
       toast.success(`تم إتمام البيع ${r.number} بمبلغ ${r.total.toFixed(2)} ج.م`);
       setInvoiceDiscountPct(0);
@@ -300,7 +315,7 @@ function PosScreen({ user, session }) {
       setCustomerPhone("");
       setPickedCustomer(null);
     } catch {
-      /* the payment dialog shows sale.payError and stays open so the cashier can retry safely */
+      /* the confirm dialog shows sale.payError and stays open so the cashier can retry safely */
     }
   }
 
@@ -400,7 +415,7 @@ function PosScreen({ user, session }) {
         onNote={() => toast.info("الملاحظات على الفاتورة غير متاحة بعد")}
       />
 
-      <PaymentDialog
+      <ConfirmSaleDialog
         open={dialog === "payment"}
         onOpenChange={(open) => setDialog(open ? "payment" : null)}
         total={sale.quote.total}

@@ -11,6 +11,13 @@ import { newIntent, posApi } from "./posApi";
 import { buildSellPayload, cartItems } from "./checkout";
 import { fromMinor, toMinor } from "./money";
 
+const saleFingerprint = ({ cart, discountTotal, customerId }) =>
+  JSON.stringify([
+    cart.map((l) => [l.variantId, l.qty, (Number(l.discountPct) || 0).toFixed(2)]),
+    discountTotal ? fromMinor(toMinor(discountTotal)) : "",
+    customerId ?? "",
+  ]);
+
 const fingerprint = ({ cart, discountTotal, customerId, tenders }) =>
   JSON.stringify([
     // the line's own discount is part of the payment: same item and quantity with another discount is another sale
@@ -20,7 +27,7 @@ const fingerprint = ({ cart, discountTotal, customerId, tenders }) =>
     (tenders ?? []).map((t) => [t.method, fromMinor(toMinor(t.amount || 0))]),
   ]);
 
-export function createSaleSession(sessionId) {
+export function createSaleSession(sessionId, registerId) {
   let intent = null;
   let intentFor = null;
   let inflight = null;
@@ -31,6 +38,36 @@ export function createSaleSession(sessionId) {
       if (!cart?.length) return { subtotal: "0.00", discountTotal: "0.00", total: "0.00" };
       const r = await posApi.quote(sessionId, { items: cartItems(cart), discountTotal });
       return { subtotal: r.subtotal, discountTotal: r.discount_total, total: r.grand_total };
+    },
+
+    /**
+     * Record the sale and read its receipt as ONE unit: no tender, no change, no payment method.
+     * Same retry rule as `pay`: the key lives until sale AND receipt are in hand, a changed cart
+     * (or a changed line discount) is a new sale, and a second tap joins the request in flight.
+     */
+    async confirm({ cart, discountTotal, customerId }) {
+      if (!cart?.length) throw new RangeError("checkout: the cart is empty");
+      const fp = saleFingerprint({ cart, discountTotal, customerId });
+      if (inflight && inflightFor === fp) return inflight;
+      if (!intent || intentFor !== fp) {
+        intent = newIntent();
+        intentFor = fp;
+      }
+      const sent = intent;
+      inflightFor = fp;
+      inflight = posApi
+        .recordSale(registerId, { items: cartItems(cart), customerId: customerId || undefined, discountTotal: discountTotal || undefined }, sent)
+        .then(async (sold) => {
+          const detail = await posApi.receipt(sold.receipt_id);
+          intent = null;
+          intentFor = null;
+          return { sold, detail };
+        })
+        .finally(() => {
+          inflight = null;
+          inflightFor = null;
+        });
+      return inflight;
     },
 
     /**

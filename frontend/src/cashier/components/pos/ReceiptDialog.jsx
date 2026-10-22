@@ -93,10 +93,12 @@ export default function ReceiptDialog({ open, onOpenChange, receipt, onNewSale, 
                 <span>الإجمالي النهائي</span>
                 <span className="num">{receipt.total.toFixed(2)} ج.م</span>
               </div>
-              <div className="flex justify-between">
-                <span>المدفوع ({receipt.paymentLabel})</span>
-                <span className="num">{receipt.paid.toFixed(2)}</span>
-              </div>
+              {receipt.hasPayment !== false && (
+                <div className="flex justify-between">
+                  <span>المدفوع ({receipt.paymentLabel})</span>
+                  <span className="num">{receipt.paid.toFixed(2)}</span>
+                </div>
+              )}
             </div>
             {receipt.note && (
               <p className="mt-2 border-t border-dashed border-black/40 pt-2 text-[11px]">ملاحظة: {receipt.note}</p>

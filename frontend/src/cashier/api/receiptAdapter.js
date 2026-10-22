@@ -68,6 +68,7 @@ export function receiptFromApi(data, { cashier = "", customerName = "", names = 
     paid: +(tenderedCash + nonCash).toFixed(2),
     change,
     payments,
+    hasPayment: payments.length > 0,
     paymentLabel: payments.map((p) => p.label).join(" + "),
     note: "",
     status: statusOf(order, items),

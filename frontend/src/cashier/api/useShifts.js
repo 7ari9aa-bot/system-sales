@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/AuthContext";
 import { posApi } from "./posApi";
-import { bootstrapPos, chooseRegister, pickMyShift, resolveShiftState } from "./shiftState";
+import { bootstrapPos, chooseRegister, pickMyShift, resolveShiftState, resolveWorkingSession } from "./shiftState";
 import { shiftsFromApi } from "./shiftAdapter";
 
 export const SHIFTS_KEY = ["cashier", "shifts"];
@@ -24,6 +24,17 @@ export function useShiftState({ canConfigure = false } = {}) {
   const { user } = useAuth();
   const userId = user?.id ?? null; // so a cashier lands on THEIR drawer, not the shop's first one
   return useQuery({ queryKey: [...SHIFT_STATE_KEY, canConfigure, userId], queryFn: () => resolveShiftState({ canConfigure, userId }) });
+}
+
+export const WORKING_SESSION_KEY = ["cashier", "working-session"];
+
+/** The sales screen's till: today's session from the server, no shift to open. See resolveWorkingSession. */
+export function useWorkingSession({ registerId = null } = {}) {
+  return useQuery({
+    queryKey: [...WORKING_SESSION_KEY, registerId],
+    queryFn: () => resolveWorkingSession({ registerId }),
+    staleTime: 60_000,
+  });
 }
 
 /** Live figures for the close dialog, computed by the backend from the ledger. */
