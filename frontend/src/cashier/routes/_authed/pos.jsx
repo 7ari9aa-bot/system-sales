@@ -21,6 +21,7 @@ import { useShiftState } from "@/cashier/api/useShifts";
 import { searchCatalog } from "@/cashier/api/catalogAdapter";
 import { posApi } from "@/cashier/api/posApi";
 import { useAuth } from "@/lib/AuthContext";
+import { clearedIfStill, createScanQueue } from "@/cashier/lib/scanQueue";
 
 // Only methods the backend accepts; the profile's own list narrows this further once loaded.
 
@@ -136,9 +137,19 @@ function PosScreen({ user, session }) {
     return true;
   }
 
-  async function submitBarcode() {
+  // A scanner fires the next code before the previous answer is back. Codes are handled strictly one after
+  // another (a queue), and the field is cleared only if it still holds the code we just handled, so the
+  // next scanned code is never wiped by the previous one finishing.
+  const scanQueue = useRef(createScanQueue());
+  const clearIfStill = (clean) => setBarcode((cur) => clearedIfStill(cur, clean));
+
+  function submitBarcode() {
     const clean = barcode.trim();
     if (!clean) return;
+    scanQueue.current.push(() => handleBarcode(clean));
+  }
+
+  async function handleBarcode(clean) {
     // 1) a barcode scan is answered by the backend, 2) otherwise it is a name / code search.
     try {
       const scan = await sale.scan(clean);
@@ -150,7 +161,7 @@ function PosScreen({ user, session }) {
       if (hit) {
         if (addVariant(hit)) {
           setScanError("");
-          setBarcode("");
+          clearIfStill(clean);
           toast.success(`تمت إضافة ${hit.productName}`);
         }
         return;
@@ -162,7 +173,7 @@ function PosScreen({ user, session }) {
     if (matches.length === 1) {
       if (addVariant(matches[0])) {
         setScanError("");
-        setBarcode("");
+        clearIfStill(clean);
         toast.success(`تمت إضافة ${matches[0].productName}`);
       }
       return;
