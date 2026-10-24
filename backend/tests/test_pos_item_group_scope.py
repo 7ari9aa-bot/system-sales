@@ -16,6 +16,7 @@ import sqlalchemy as sa
 from app.modules.errors import ValidationError
 from app.modules.pos.profiles import PosProfileService
 from app.modules.pos.service import PosService
+from tests._pos_sell import sell as pos_sell
 from tests.test_pos_phase6 import _customer, _register, _sellable_variant, _warehouse
 
 pytestmark = pytest.mark.asyncio
@@ -105,7 +106,7 @@ async def test_sell_refuses_a_variant_outside_the_categories_and_writes_nothing(
     customer = await _customer(db, tenant_ctx)
     before = await _orders(db, tenant_ctx)
     with pytest.raises(ValidationError, match=OUTSIDE):
-        await PosService.sell(
+        await pos_sell(
             db,
             tenant_ctx.tenant_id,
             shift.id,
@@ -121,7 +122,7 @@ async def test_sell_refuses_a_variant_with_no_category(db, tenant_ctx):
     shift, _in, _out, v_none = await _scoped_till(db, tenant_ctx)
     customer = await _customer(db, tenant_ctx)
     with pytest.raises(ValidationError, match=OUTSIDE):
-        await PosService.sell(
+        await pos_sell(
             db,
             tenant_ctx.tenant_id,
             shift.id,
@@ -137,7 +138,7 @@ async def test_a_manager_override_does_not_open_the_catalog(db, tenant_ctx):
     shift, _in, v_out, _none = await _scoped_till(db, tenant_ctx)
     customer = await _customer(db, tenant_ctx)
     with pytest.raises(ValidationError, match=OUTSIDE):
-        await PosService.sell(
+        await pos_sell(
             db,
             tenant_ctx.tenant_id,
             shift.id,
@@ -152,7 +153,7 @@ async def test_a_manager_override_does_not_open_the_catalog(db, tenant_ctx):
 async def test_sell_still_works_for_a_variant_the_till_serves(db, tenant_ctx):
     shift, v_in, _out, _none = await _scoped_till(db, tenant_ctx)
     customer = await _customer(db, tenant_ctx)
-    out = await PosService.sell(
+    out = await pos_sell(
         db,
         tenant_ctx.tenant_id,
         shift.id,
@@ -165,10 +166,9 @@ async def test_sell_still_works_for_a_variant_the_till_serves(db, tenant_ctx):
 
 
 async def test_a_held_cart_cannot_smuggle_a_variant_past_the_scope(db, tenant_ctx):
-    """Resuming a parked cart replaces ``items`` inside sell, so the check must run after that."""
+    """A parked cart is only a basket: when it is rung up, its lines face the same scope check."""
     shift, v_in, v_out, _none = await _scoped_till(db, tenant_ctx)
     customer = await _customer(db, tenant_ctx)
-    # Park a cart while the till still served both, by widening then narrowing the scope.
     held = await PosService.hold_cart(
         db, tenant_ctx.tenant_id, shift.id, items=[_line(v_in)], customer_id=customer.id
     )
@@ -176,15 +176,15 @@ async def test_a_held_cart_cannot_smuggle_a_variant_past_the_scope(db, tenant_ct
         sa.text("UPDATE pos_held_carts SET items = CAST(:i AS jsonb) WHERE id = :h"),
         {"i": f'[{{"variant_id": "{v_out.id}", "quantity": 1}}]', "h": held.id},
     )
-    await db.refresh(held)  # the ORM still holds the cart it parked; read what the row says now
+    await db.refresh(held)  # read what the row says now
     with pytest.raises(ValidationError, match=OUTSIDE):
-        await PosService.sell(
+        await pos_sell(
             db,
             tenant_ctx.tenant_id,
             shift.id,
-            held_cart_id=held.id,
+            items=held.items,
+            customer_id=customer.id,
             actor_user_id=tenant_ctx.user.id,
-            tenders=[{"method": "cash", "amount": "50.00"}],
         )
 
 
@@ -194,7 +194,7 @@ async def test_a_held_cart_cannot_smuggle_a_variant_past_the_scope(db, tenant_ct
 async def test_an_exchange_cannot_take_a_variant_outside_the_categories(db, tenant_ctx):
     shift, v_in, v_out, _none = await _scoped_till(db, tenant_ctx)
     customer = await _customer(db, tenant_ctx)
-    sold = await PosService.sell(
+    sold = await pos_sell(
         db,
         tenant_ctx.tenant_id,
         shift.id,

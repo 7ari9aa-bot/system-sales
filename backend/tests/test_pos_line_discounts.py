@@ -14,6 +14,8 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import select
 
+from tests._pos_sell import sell as pos_sell
+
 SELL_PATH = "/api/v1/pos/sessions/{session_id}/sell"
 
 
@@ -95,7 +97,7 @@ async def test_line_discount_charges_the_net_and_persists(db, tenant_ctx):
     pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
     variant = await _sellable_variant(db, tenant_ctx)
     customer = await _customer(db, tenant_ctx)
-    result = await PosService.sell(
+    result = await pos_sell(
         db,
         tenant_ctx.tenant_id,
         pos_session.id,
@@ -124,8 +126,9 @@ async def test_line_discount_charges_the_net_and_persists(db, tenant_ctx):
     assert Decimal(str(order.subtotal)) == Decimal("50.00")
     assert Decimal(str(order.discount_total)) == Decimal("10.00")
 
+    # The invoice total is recorded; no payment or drawer movement exists.
     detail = await PosService.get_session(db, tenant_ctx.tenant_id, pos_session.id)
-    assert detail["inflow"] == Decimal("40.00")
+    assert detail["inflow"] == Decimal("0.00")
 
 
 async def test_quote_composes_line_and_invoice_discounts(db, tenant_ctx):
@@ -156,7 +159,7 @@ async def test_line_discount_refuses_out_of_bounds(db, tenant_ctx):
     variant = await _sellable_variant(db, tenant_ctx)
     customer = await _customer(db, tenant_ctx)
     with pytest.raises(ValidationError):
-        await PosService.sell(
+        await pos_sell(
             db,
             tenant_ctx.tenant_id,
             pos_session.id,
@@ -181,7 +184,7 @@ async def test_exchange_of_a_discounted_line_credits_its_net(db, tenant_ctx):
     sold_variant = await _sellable_variant(db, tenant_ctx)
     new_variant = await _sellable_variant(db, tenant_ctx, price="15.00")
     customer = await _customer(db, tenant_ctx)
-    sold = await PosService.sell(
+    sold = await pos_sell(
         db,
         tenant_ctx.tenant_id,
         pos_session.id,

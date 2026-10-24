@@ -8,7 +8,7 @@
  *     `Idempotency-Key`. The same intent re-sent = the same key = the server replays
  *     the first answer. A new deliberate sale = a new intent. (Backend allow-list:
  *     /api/v1/pos in core/idempotency.py.)
- *  3. SHAPE: obviously-wrong input (empty cart, qty <= 0, unknown tender method)
+ *  3. SHAPE: obviously-wrong input (empty cart, qty <= 0)
  *     is rejected locally with a clear message.
  */
 import { api } from "@/lib/api";
@@ -16,7 +16,6 @@ import { toWire } from "./money";
 
 export const BALANCES_LIMIT = 5000;
 export const MAX_REORDER_LEVEL = 1_000_000;
-const METHODS = ["cash", "card", "wallet", "bank_transfer"];
 
 /** One user intention (one Pay tap). Keep it until the call SUCCEEDS, then drop it. */
 export function newIntent() {
@@ -35,11 +34,6 @@ function needIntent(intent) {
   return { "Idempotency-Key": intent.key };
 }
 
-function method(m) {
-  if (!METHODS.includes(m)) throw new RangeError(`posApi: unknown payment method "${m}"`);
-  return m;
-}
-
 function lines(list, what = "item") {
   if (!Array.isArray(list) || list.length === 0) throw new RangeError(`posApi: at least one ${what} is required`);
   return list.map((l) => {
@@ -47,12 +41,6 @@ function lines(list, what = "item") {
     if (!Number.isInteger(l.quantity) || l.quantity < 1) throw new RangeError(`posApi: ${what} quantity must be an integer >= 1`);
     return { ...l, variant_id: String(l.variant_id) };
   });
-}
-
-function tenders(list) {
-  if (list == null) return undefined;
-  if (!Array.isArray(list) || list.length === 0) throw new RangeError("posApi: tenders must be a non-empty list");
-  return list.map((t) => ({ method: method(t.method), amount: toWire(t.amount) }));
 }
 
 const compact = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
@@ -202,7 +190,7 @@ export const posApi = {
       { order_id: orderId, lines: lines(l, "return line"), restock },
       needIntent(intent),
     ),
-  exchange: async (id, { orderId, returnLines, newLines, restock = true, tenders: t, tenderedCash }, intent) =>
+  exchange: async (id, { orderId, returnLines, newLines, restock = true }, intent) =>
     post(
       `/pos/sessions/${seg(id)}/exchanges`,
       compact({
@@ -210,8 +198,6 @@ export const posApi = {
         return_lines: lines(returnLines, "return line"),
         new_lines: lines(newLines, "new line"),
         restock,
-        tenders: tenders(t),
-        tendered_cash: opt(tenderedCash),
       }),
       needIntent(intent),
     ),

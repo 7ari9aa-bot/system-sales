@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 413,
-    "sha256": "ba24882969704d677e4e69b4f9890a9faee9b76d6f1bae7c7b22fedd5d6f006e",
+    "sha256": "1e6cf3c7656c72b01b54d8320f9673e5f22d21bd7900125c9628df28fb8c259d",
     "typed_operations": 257
   },
   "spec": {
@@ -7390,32 +7390,8 @@
           "type": "object"
         },
         "ExchangeRequest": {
-          "description": "The one-transaction exchange: return lines and their replacement sale\nsettle together, and only the net difference moves money.",
+          "description": "The one-transaction exchange: return lines and their replacement sale are recorded\ntogether. No payment fields exist: the cashier layer does not move money.",
           "properties": {
-            "amount": {
-              "anyOf": [
-                {
-                  "pattern": "^\\d+(\\.\\d{1,2})?$",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Amount"
-            },
-            "method": {
-              "anyOf": [
-                {
-                  "pattern": "^(cash|card|wallet|bank_transfer)$",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Method"
-            },
             "new_lines": {
               "items": {
                 "$ref": "#/components/schemas/ExchangeLine"
@@ -7441,32 +7417,6 @@
               "minItems": 1,
               "title": "Return Lines",
               "type": "array"
-            },
-            "tendered_cash": {
-              "anyOf": [
-                {
-                  "pattern": "^\\d+(\\.\\d{1,2})?$",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Tendered Cash"
-            },
-            "tenders": {
-              "anyOf": [
-                {
-                  "items": {
-                    "$ref": "#/components/schemas/TenderLine"
-                  },
-                  "type": "array"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Tenders"
             }
           },
           "required": [
@@ -16915,26 +16865,6 @@
             }
           },
           "title": "TenantTimezoneRequest",
-          "type": "object"
-        },
-        "TenderLine": {
-          "properties": {
-            "amount": {
-              "pattern": "^\\d+(\\.\\d{1,2})?$",
-              "title": "Amount",
-              "type": "string"
-            },
-            "method": {
-              "pattern": "^(cash|card|wallet|bank_transfer)$",
-              "title": "Method",
-              "type": "string"
-            }
-          },
-          "required": [
-            "method",
-            "amount"
-          ],
-          "title": "TenderLine",
           "type": "object"
         },
         "TextBlock": {
@@ -51839,7 +51769,7 @@
       },
       "/api/v1/pos/sessions/{session_id}/exchanges": {
         "post": {
-          "description": "One-transaction exchange: the return funds its replacement, and only\nthe net difference moves money — two receipts, one commit.",
+          "description": "One-transaction exchange: record the returned goods and the replacement sale. No money\nmoves; the value difference is only reported. Two receipts, one commit.",
           "operationId": "exchange_api_v1_pos_sessions__session_id__exchanges_post",
           "parameters": [
             {

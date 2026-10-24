@@ -11,6 +11,7 @@ import uuid
 from decimal import Decimal
 
 from app.main import create_app
+from tests._pos_sell import sell as pos_sell
 
 ITEMS_PATH = "/api/v1/pos/sessions/{session_id}/items"
 REPORT_PATH = "/api/v1/pos/sessions/{session_id}/report"
@@ -126,7 +127,7 @@ async def test_report_reconciles_the_day(db, tenant_ctx):
     )
     variant = await _sellable_variant(db, tenant_ctx)
     customer = await _customer(db, tenant_ctx)
-    sold = await PosService.sell(
+    sold = await pos_sell(
         db,
         tenant_ctx.tenant_id,
         pos_session.id,

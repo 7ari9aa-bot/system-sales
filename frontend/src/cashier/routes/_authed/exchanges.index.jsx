@@ -10,7 +10,6 @@ import ReturnTotalsBar from "@/cashier/components/returns/ReturnTotalsBar";
 import ExchangeNewItemsTable from "@/cashier/components/exchanges/ExchangeNewItemsTable";
 import ExchangeSettlementBar from "@/cashier/components/exchanges/ExchangeSettlementBar";
 import ExchangeActionsBar from "@/cashier/components/exchanges/ExchangeActionsBar";
-import PaymentDialog from "@/cashier/components/pos/PaymentDialog";
 import ConfirmDialog from "@/cashier/components/ui-kit/ConfirmDialog";
 import useFillRowCount from "@/cashier/hooks/use-fill-row-count";
 import { fmtMoney } from "@/cashier/lib/format";
@@ -21,7 +20,7 @@ import { RECEIPT_SEARCH_MIN, useReceiptSearch, useReturnableSales, useSessionCat
 import { searchCatalog } from "@/cashier/api/catalogAdapter";
 import { estimateRefund, returnableLines, sendReturn, setQty, tableLine } from "@/cashier/api/returnPlan";
 import { addReplacement, previewTotal, removeReplacement, setReplacementQty, useExchangeQuote } from "@/cashier/api/exchangeCart";
-import { differenceMinor, exchangeErrorMessage, exchangePayment, exchangeRequest, needsPayment } from "@/cashier/api/exchangePlan";
+import { differenceMinor, exchangeErrorMessage, exchangeRequest } from "@/cashier/api/exchangePlan";
 
 
 const asInvoice = (d) => ({
@@ -57,8 +56,7 @@ function ExchangeScreen({ session }) {
   const [termError, setTermError] = useState("");
   const [restock, setRestock] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [payError, setPayError] = useState(null);
-  const [dialog, setDialog] = useState(null); // payment | cancel
+  const [dialog, setDialog] = useState(null); // cancel
   const intentRef = useRef(null); // one intent per deliberate exchange (+ its payment): a retry replays, never double-charges
   const intentFor = useRef("");
   const gridRef = useRef(null);
@@ -89,9 +87,6 @@ function ExchangeScreen({ session }) {
   const quote = useExchangeQuote(session.id, newLines);
   const quoteReady = newLines.length > 0 && !quote.loading && !quote.error;
   const diffMinor = invoice && quoteReady ? differenceMinor(invoice.detail, lines, quote.total) : 0;
-  // Only an old sale that took payments settles a difference. A sale recorded with no payment never
-  // asks for one: the difference is shown, not charged.
-  const takesPayment = invoice ? needsPayment(invoice.detail, diffMinor) : false;
   const shownNew = newLines.length ? Number(quote.total) : 0;
   const hasDraft = !!invoice || newLines.length > 0;
   const canComplete = !!invoice && backTotals.pieces > 0 && newLines.length > 0 && quoteReady && !busy;
@@ -162,17 +157,16 @@ function ExchangeScreen({ session }) {
     setNewLines((p) => setReplacementQty(p, id, l.qty + d));
   };
 
-  async function send(payment) {
+  async function send() {
     if (busy) return;
     setBusy(true);
-    setPayError(null);
     try {
-      const req = exchangeRequest(invoice.detail, lines, newLines, { restock, tenders: payment.tenders, tenderedCash: payment.tenderedCash });
+      const req = exchangeRequest(invoice.detail, lines, newLines, { restock });
       intentRef.current ??= newIntent();
       const res = await sendReturn(() => posApi.exchange(session.id, req, intentRef.current)); // same intent re-sent while the first is still running -> wait, then replay
       const net = Number(res.net);
       toast.success(
-        res.by_method?.length ? (net > 0 ? `تم الاستبدال ${res.new_receipt_number}. تم تحصيل ${fmtMoney(net)}` : net < 0 ? `تم الاستبدال ${res.new_receipt_number}. رد ${fmtMoney(Math.abs(net))} للعميل` : `تم الاستبدال ${res.new_receipt_number} بدون فرق`) : (net > 0 ? `تم الاستبدال ${res.new_receipt_number}. الفرق لصالح المحل ${fmtMoney(net)}` : net < 0 ? `تم الاستبدال ${res.new_receipt_number}. الفرق لصالح العميل ${fmtMoney(Math.abs(net))}` : `تم الاستبدال ${res.new_receipt_number} بدون فرق`),
+        net > 0 ? `تم الاستبدال ${res.new_receipt_number}. الفرق لصالح المحل ${fmtMoney(net)}` : net < 0 ? `تم الاستبدال ${res.new_receipt_number}. الفرق لصالح العميل ${fmtMoney(Math.abs(net))}` : `تم الاستبدال ${res.new_receipt_number} بدون فرق`,
       );
       intentRef.current = null;
       setDialog(null);
@@ -180,7 +174,6 @@ function ExchangeScreen({ session }) {
       resetDraft();
     } catch (e) {
       const m = exchangeErrorMessage(e);
-      setPayError(m);
       setError(m);
       toast.error(m);
     } finally {
@@ -189,15 +182,8 @@ function ExchangeScreen({ session }) {
   }
   function onComplete() {
     if (!canComplete) return;
-    if (takesPayment) return setDialog("payment");
-    send({});
+    send();
   }
-  function onPay(rows) {
-    const p = exchangePayment(diffMinor, rows);
-    if (!p.ok) return setPayError(p.reason);
-    send(p);
-  }
-
   const paramSearch = useReceiptSearch(invoiceParam ?? "");
   useEffect(() => {
     if (!invoiceParam || invoice) return;
@@ -268,17 +254,8 @@ function ExchangeScreen({ session }) {
         </div>
       </div>
       <div ref={actionsRef}>
-        <ExchangeActionsBar canComplete={canComplete} hasDraft={hasDraft} busy={busy} label={takesPayment ? "الدفع وإتمام الاستبدال" : "إتمام الاستبدال"} onComplete={onComplete} onCancel={() => setDialog("cancel")} />
+        <ExchangeActionsBar canComplete={canComplete} hasDraft={hasDraft} busy={busy} label="إتمام الاستبدال" onComplete={onComplete} onCancel={() => setDialog("cancel")} />
       </div>
-      <PaymentDialog
-        open={dialog === "payment"}
-        onOpenChange={(o) => { setDialog(o ? "payment" : null); if (!o) setPayError(null); }}
-        total={fromMinor(Math.max(diffMinor, 0))}
-        customerName="فرق الاستبدال"
-        onConfirm={onPay}
-        pending={busy}
-        error={payError}
-      />
       <ConfirmDialog
         open={dialog === "cancel"}
         onOpenChange={(o) => setDialog(o ? "cancel" : null)}

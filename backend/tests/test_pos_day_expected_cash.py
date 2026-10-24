@@ -13,6 +13,7 @@ import pytest
 
 from app.modules.pos.service import PosService
 from tests._pos_helpers import till
+from tests._pos_sell import sell as pos_sell
 
 pytestmark = pytest.mark.asyncio
 
@@ -70,7 +71,7 @@ async def test_a_sale_from_the_paid_flow_is_not_counted_twice(db, tenant_ctx) ->
     shift, variant, _c = await till(db, tenant_ctx)
     base = await _expected(db, tenant_ctx, shift)
 
-    await PosService.sell(
+    await pos_sell(
         db,
         tenant_ctx.tenant_id,
         shift.id,
@@ -93,7 +94,7 @@ async def test_every_invoice_counts_in_the_closing_balance_whatever_the_tender(
     variant = await _sellable_variant(db, tenant_ctx)
     base = await _expected(db, tenant_ctx, shift)
 
-    await PosService.sell(
+    await pos_sell(
         db,
         tenant_ctx.tenant_id,
         shift.id,

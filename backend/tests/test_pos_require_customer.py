@@ -11,6 +11,7 @@ import sqlalchemy as sa
 from app.modules.errors import ValidationError
 from app.modules.pos.profiles import PosProfileService
 from app.modules.pos.service import PosService
+from tests._pos_sell import sell as pos_sell
 from tests.test_pos_phase6 import _customer, _register, _sellable_variant, _warehouse
 
 pytestmark = pytest.mark.asyncio
@@ -50,7 +51,7 @@ async def _order_count(db, tenant_ctx):
 
 
 async def _sell(db, tenant_ctx, shift, variant, **kw):
-    return await PosService.sell(
+    return await pos_sell(
         db,
         tenant_ctx.tenant_id,
         shift.id,

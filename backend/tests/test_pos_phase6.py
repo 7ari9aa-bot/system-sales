@@ -15,6 +15,7 @@ import pytest
 from sqlalchemy import select
 
 from app.main import create_app
+from tests._pos_sell import sell as pos_sell
 
 EMAIL_PATH = "/api/v1/pos/receipts/{receipt_id}/email"
 DAILY_PATH = "/api/v1/pos/reports/daily"
@@ -160,7 +161,7 @@ async def test_receipts_carry_derived_return_state(db, tenant_ctx):
     pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
     variant = await _sellable_variant(db, tenant_ctx, price="25.00")
     customer = await _customer(db, tenant_ctx)
-    sold = await PosService.sell(
+    sold = await pos_sell(
         db,
         tenant_ctx.tenant_id,
         pos_session.id,
@@ -209,7 +210,7 @@ async def test_receipt_email_queues_an_event_and_refuses_when_unconfigured(
     pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
     variant = await _sellable_variant(db, tenant_ctx, price="10.00")
     customer = await _customer(db, tenant_ctx)
-    sold = await PosService.sell(
+    sold = await pos_sell(
         db,
         tenant_ctx.tenant_id,
         pos_session.id,
@@ -270,7 +271,7 @@ async def test_daily_projection_is_idempotent(db, tenant_ctx):
     )
     variant = await _sellable_variant(db, tenant_ctx, price="30.00")
     customer = await _customer(db, tenant_ctx)
-    sold = await PosService.sell(
+    sold = await pos_sell(
         db,
         tenant_ctx.tenant_id,
         pos_session.id,

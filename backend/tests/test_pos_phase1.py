@@ -19,6 +19,7 @@ import pytest
 from sqlalchemy import select
 
 from app.main import create_app
+from tests._pos_sell import sell as pos_sell
 
 SESSIONS_PATH = "/api/v1/pos/sessions"
 CLOSE_PREVIEW_PATH = "/api/v1/pos/sessions/{session_id}/close-preview"
@@ -229,18 +230,18 @@ async def test_stale_session_refuses_to_sell(db, tenant_ctx):
 
     pos_session.opened_at = datetime.now(UTC) - timedelta(days=2)
     await db.flush()
+    # A sale on a day left open from before is refused: that day is closed on the way and a new
+    # day must be started with its own opening balance.
     with pytest.raises(ConflictError):
-        await PosService.sell(
+        await pos_sell(
             db,
             tenant_ctx.tenant_id,
             pos_session.id,
             customer_id=customer.id,
             items=[{"variant_id": str(variant.id), "quantity": 1}],
         )
-    # Reading and closing a stale session stay allowed — the day must close.
-    preview = await PosService.close_preview(db, tenant_ctx.tenant_id, pos_session.id)
-    assert preview["status"] == "OPEN"
-    await PosService.close_session(db, tenant_ctx.tenant_id, pos_session.id)
+    await db.refresh(pos_session)
+    assert pos_session.status == "CLOSED"
 
 
 async def test_close_preview_shows_the_days_figures_and_closing_balance(db, tenant_ctx):
@@ -252,7 +253,7 @@ async def test_close_preview_shows_the_days_figures_and_closing_balance(db, tena
     )
     variant = await _sellable_variant(db, tenant_ctx)
     customer = await _customer(db, tenant_ctx)
-    await PosService.sell(
+    await pos_sell(
         db,
         tenant_ctx.tenant_id,
         pos_session.id,
@@ -269,40 +270,6 @@ async def test_close_preview_shows_the_days_figures_and_closing_balance(db, tena
     assert "by_method" not in preview
     assert preview["invoice_count"] == 1
     assert Decimal(preview["sales_total"]) == Decimal("25.00")
-
-
-async def test_held_cart_resume_is_atomic(db, tenant_ctx):
-    from app.modules.errors import ConflictError
-    from app.modules.pos.service import PosService
-
-    register = await _register(db, tenant_ctx)
-    pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
-    variant = await _sellable_variant(db, tenant_ctx)
-    customer = await _customer(db, tenant_ctx)
-    held = await PosService.hold_cart(
-        db,
-        tenant_ctx.tenant_id,
-        pos_session.id,
-        items=[{"variant_id": str(variant.id), "quantity": 2}],
-        customer_id=customer.id,
-    )
-
-    result = await PosService.sell(
-        db,
-        tenant_ctx.tenant_id,
-        pos_session.id,
-        held_cart_id=held.id,
-    )
-    assert result["receipt_number"].startswith("POS-")
-    with pytest.raises(ConflictError):
-        # A second resume of the same cart is refused — it is already sold.
-        await PosService.sell(
-            db,
-            tenant_ctx.tenant_id,
-            pos_session.id,
-            held_cart_id=held.id,
-            items=[{"variant_id": str(variant.id), "quantity": 1}],
-        )
 
 
 async def test_profile_cannot_be_disabled_with_open_session(db, tenant_ctx):
@@ -340,86 +307,6 @@ async def test_profile_cannot_be_disabled_with_open_session(db, tenant_ctx):
     )
     updated = await PosProfileService.update(db, tenant_ctx.tenant_id, profile.id, is_active=False)
     assert updated.is_active is False
-
-
-async def test_profile_default_method_charges_the_whole_total(db, tenant_ctx):
-
-    from app.modules.orders.models import OrderPayment
-    from app.modules.pos.profiles import PosProfileService
-    from app.modules.pos.service import PosService
-
-    warehouse = await _warehouse(db, tenant_ctx)
-    profile = await PosProfileService.create(
-        db,
-        tenant_ctx.tenant_id,
-        name="كارت الافتراضي",
-        code=f"P-{uuid.uuid4().hex[:6]}",
-        warehouse_id=warehouse.id,
-        default_payment_method="card",
-    )
-    register = await _register(db, tenant_ctx)
-    pos_session = await PosService.open_session(
-        db,
-        tenant_ctx.tenant_id,
-        register.id,
-        profile_id=profile.id,
-        opened_by=tenant_ctx.user.id,
-    )
-    variant = await _sellable_variant(db, tenant_ctx)
-    customer = await _customer(db, tenant_ctx)
-    result = await PosService.sell(
-        db,
-        tenant_ctx.tenant_id,
-        pos_session.id,
-        customer_id=customer.id,
-        items=[{"variant_id": str(variant.id), "quantity": 1}],
-        actor_user_id=tenant_ctx.user.id,
-    )
-    payment = (
-        (await db.execute(select(OrderPayment).where(OrderPayment.order_id == result["order_id"])))
-        .scalars()
-        .one()
-    )
-    assert payment.method == "card"
-    assert payment.status == "captured"
-
-
-async def test_tenders_must_settle_the_whole_order(db, tenant_ctx):
-    """ERPNext `validate_pos`: a split that does not total the order is refused.
-
-    Overpaying with a card would silently credit the order; shorting it would
-    print a receipt for a sale it did not settle. Cash over-tender goes
-    through ``tendered_cash`` instead, where the change is computed.
-    """
-    from app.modules.errors import ValidationError
-    from app.modules.pos.service import PosService
-
-    register = await _register(db, tenant_ctx)
-    pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
-    variant = await _sellable_variant(db, tenant_ctx)
-    customer = await _customer(db, tenant_ctx)
-
-    with pytest.raises(ValidationError):
-        await PosService.sell(
-            db,
-            tenant_ctx.tenant_id,
-            pos_session.id,
-            customer_id=customer.id,
-            items=[{"variant_id": str(variant.id), "quantity": 1}],  # 25.00
-            tenders=[
-                {"method": "cash", "amount": "20.00"},
-                {"method": "card", "amount": "30.00"},  # 50 on a 25 order
-            ],
-        )
-    with pytest.raises(ValidationError):
-        await PosService.sell(
-            db,
-            tenant_ctx.tenant_id,
-            pos_session.id,
-            customer_id=customer.id,
-            items=[{"variant_id": str(variant.id), "quantity": 1}],  # 25.00
-            tenders=[{"method": "card", "amount": "20.00"}],  # short
-        )
 
 
 async def test_closing_a_shift_clears_its_parked_carts_and_only_its_own(db, tenant_ctx):

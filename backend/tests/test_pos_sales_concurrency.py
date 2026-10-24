@@ -19,6 +19,7 @@ from app.core.errors import InsufficientStockError
 from app.core.security import hash_password
 from app.modules.identity.models import Role, Tenant, TenantUser, User
 from app.modules.pos.service import PosService
+from tests._pos_sell import sell as pos_sell
 
 RACERS = 6
 
@@ -204,7 +205,7 @@ def _one_sale(factory, tenant_id, shift_id, variant_id):
     return _in_tx(
         factory,
         tenant_id,
-        lambda s: PosService.sell(
+        lambda s: pos_sell(
             s,
             tenant_id,
             shift_id,

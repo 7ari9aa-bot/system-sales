@@ -15,6 +15,7 @@ import pytest
 
 from app.modules.errors import ValidationError
 from app.modules.pos.service import PosService
+from tests._pos_sell import sell as pos_sell
 from tests.test_pos_returns import _customer, _register, _sellable_variant
 
 pytestmark = pytest.mark.asyncio
@@ -30,7 +31,7 @@ async def _sale_on_a_closed_shift(db, tenant_ctx, *, qty=3):
     variant = await _sellable_variant(db, tenant_ctx, price="25.00", stock=20)
     customer = await _customer(db, tenant_ctx)
     paid = str(Decimal("25.00") * qty)
-    sold = await PosService.sell(
+    sold = await pos_sell(
         db,
         tenant_ctx.tenant_id,
         first.id,

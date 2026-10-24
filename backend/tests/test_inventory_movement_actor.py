@@ -16,6 +16,7 @@ from app.modules.inventory.models import InventoryMovement
 from app.modules.inventory.service import InventoryService
 from app.modules.inventory.services import StocktakeService
 from app.modules.purchasing.service import PurchaseService
+from tests._pos_sell import sell as pos_sell
 from tests.test_inventory_stock_view import _variant
 from tests.test_purchasing import _po, _supplier
 from tests.test_purchasing import _variant as _po_variant
@@ -100,7 +101,7 @@ async def test_sale_and_return_record_the_cashier(db, tenant_ctx):
     variant = await _sellable_variant(db, tenant_ctx)
     customer = await _customer(db, tenant_ctx)
     cashier = tenant_ctx.user.id
-    sold = await PosService.sell(
+    sold = await pos_sell(
         db,
         tenant_ctx.tenant_id,
         pos_session.id,

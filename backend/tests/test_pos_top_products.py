@@ -11,6 +11,7 @@ from decimal import Decimal
 
 from sqlalchemy import text
 
+from tests._pos_sell import sell as pos_sell
 from tests.test_pos_exchange import _customer, _register, _sellable_variant
 
 WIDE = {"since": date(2000, 1, 1), "until": date(2100, 1, 1)}
@@ -25,7 +26,7 @@ async def _till(db, tenant_ctx):
 
 
 async def _sell(db, tenant_ctx, PosService, pos_session, customer, variant, qty, price):
-    return await PosService.sell(
+    return await pos_sell(
         db,
         tenant_ctx.tenant_id,
         pos_session.id,
@@ -133,7 +134,7 @@ async def test_an_invoice_level_discount_is_shared_over_the_lines_and_the_total_
     a = await _sellable_variant(db, tenant_ctx, price="33.33", stock=50)
     b = await _sellable_variant(db, tenant_ctx, price="33.33", stock=50)
     c = await _sellable_variant(db, tenant_ctx, price="33.34", stock=50)
-    sold = await PosService.sell(
+    sold = await pos_sell(
         db,
         tenant_ctx.tenant_id,
         pos_session.id,

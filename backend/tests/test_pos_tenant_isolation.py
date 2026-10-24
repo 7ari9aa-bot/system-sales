@@ -17,6 +17,7 @@ from app.modules.pos.service import PosService
 from tests._pos_helpers import in_tx as _in_tx
 from tests._pos_helpers import make_tenant as _make_tenant
 from tests._pos_helpers import purge_test_tenant as _purge_test_tenant
+from tests._pos_sell import sell as pos_sell
 
 RACERS = 2
 
@@ -61,7 +62,7 @@ async def _a_shop(factory, tenant_id):
         await InventoryService.move(
             s, tenant_id, variant.id, wh.id, direction="in", quantity=10, reason="purchase"
         )
-        sold = await PosService.sell(
+        sold = await pos_sell(
             s,
             tenant_id,
             shift.id,
@@ -102,7 +103,7 @@ async def test_b_cannot_touch_a_through_the_pos_services(two_tenants) -> None:
 
     attacks = {
         "read A's shift": lambda s: PosService.get_session(s, tb, a["shift"]),
-        "sell on A's shift": lambda s: PosService.sell(
+        "sell on A's shift": lambda s: pos_sell(
             s,
             tb,
             a["shift"],

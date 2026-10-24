@@ -16,7 +16,7 @@ from app.modules.inventory.service import InventoryService
 from app.modules.pos.models import PosCashMovement
 from app.modules.pos.profiles import PosProfileService
 from app.modules.pos.service import PosService
-from tests._pos_helpers import till
+from tests._pos_sell import sell as pos_sell
 from tests.test_pos_returns import _customer, _register, _sellable_variant, _warehouse
 
 pytestmark = pytest.mark.asyncio
@@ -43,7 +43,7 @@ async def _sale(db, tenant_ctx, shift, *, price="100.00", qty=1, tenders=None):
     variant = await _sellable_variant(db, tenant_ctx, price=price, stock=50)
     customer = await _customer(db, tenant_ctx)
     total = str(Decimal(price) * qty)
-    sold = await PosService.sell(
+    sold = await pos_sell(
         db,
         tenant_ctx.tenant_id,
         shift.id,
@@ -72,55 +72,3 @@ async def _cash_refund_total(db, shift) -> Decimal:
             ).scalar_one()
         )
     )
-
-
-async def test_a_partial_money_refund_with_restock_flag_leaves_the_shelf_alone(db, tenant_ctx):
-    shift, _, _ = await till(db, tenant_ctx)
-    variant, order_id = await _sale(db, tenant_ctx, shift, price="10.00", qty=5)
-    before = await _on_hand(db, tenant_ctx, variant)
-
-    done = await PosService.refund(
-        db,
-        tenant_ctx.tenant_id,
-        shift.id,
-        order_id=order_id,
-        amount="10.00",  # one unit's worth of the five
-        restock=True,
-    )
-
-    assert done["restocked"] is False
-    assert await _on_hand(db, tenant_ctx, variant) == before  # not +5
-
-
-async def test_drawer_follows_the_cash_legs_not_the_claimed_method(db, tenant_ctx):
-    """Paid 60 cash + 40 card. A 100 refund claimed as "card" still takes 60 out of the drawer."""
-    shift = await _mixed_till(db, tenant_ctx)
-    _, order_id = await _sale(
-        db,
-        tenant_ctx,
-        shift,
-        tenders=[{"method": "cash", "amount": "60.00"}, {"method": "card", "amount": "40.00"}],
-    )
-
-    done = await PosService.refund(
-        db, tenant_ctx.tenant_id, shift.id, order_id=order_id, amount="100.00", method="card"
-    )
-
-    assert Decimal(done["cash_out"]) == Decimal("60.00")
-    assert await _cash_refund_total(db, shift) == Decimal("60.00")
-
-
-async def test_a_card_only_sale_takes_nothing_from_the_drawer_even_if_cash_is_claimed(
-    db, tenant_ctx
-):
-    shift = await _mixed_till(db, tenant_ctx)
-    _, order_id = await _sale(
-        db, tenant_ctx, shift, tenders=[{"method": "card", "amount": "100.00"}]
-    )
-
-    done = await PosService.refund(
-        db, tenant_ctx.tenant_id, shift.id, order_id=order_id, amount="100.00", method="cash"
-    )
-
-    assert Decimal(done["cash_out"]) == Decimal("0")
-    assert await _cash_refund_total(db, shift) == Decimal("0")

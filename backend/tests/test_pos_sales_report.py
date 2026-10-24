@@ -12,6 +12,7 @@ from decimal import Decimal
 
 from sqlalchemy import text
 
+from tests._pos_sell import sell as pos_sell
 from tests.test_pos_exchange import _customer, _register, _sellable_variant
 
 
@@ -23,7 +24,7 @@ async def _shift_with_sale(db, tenant_ctx, qty=2, price="50.00"):
     variant = await _sellable_variant(db, tenant_ctx, price=price, stock=20)
     customer = await _customer(db, tenant_ctx)
     total = Decimal(price) * qty
-    sold = await PosService.sell(
+    sold = await pos_sell(
         db,
         tenant_ctx.tenant_id,
         pos_session.id,

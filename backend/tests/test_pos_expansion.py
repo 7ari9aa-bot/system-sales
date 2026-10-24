@@ -13,12 +13,11 @@ Two test classes, per AGENT_BRIEF §7:
 from __future__ import annotations
 
 import uuid
-from decimal import Decimal
 
 import pytest
 
 from app.main import create_app
-from app.modules.errors import ConflictError, ValidationError
+from app.modules.errors import ConflictError
 
 PROFILES_PATH = "/api/v1/pos/profiles"
 PROFILE_PATH = "/api/v1/pos/profiles/{profile_id}"
@@ -50,41 +49,6 @@ def test_close_takes_no_counted_figure() -> None:
     import app.modules.pos.router as router
 
     assert not hasattr(router, "CloseSessionRequest")
-
-
-def test_change_arithmetic_is_exact() -> None:
-    from app.modules.pos.service import PosService
-
-    settle = PosService._settle_change
-    # Exact cash — no change.
-    assert settle(Decimal("50.00"), None) == (Decimal("50.00"), Decimal("0.00"))
-    # Over-tender — change returned.
-    assert settle(Decimal("50.00"), "100.00") == (Decimal("100.00"), Decimal("50.00"))
-    # No cash in the sale (card only) — no tender/change pair at all.
-    assert settle(Decimal("0"), None) == (None, None)
-
-
-def test_change_refuses_under_tender() -> None:
-    from app.modules.pos.service import PosService
-
-    with pytest.raises(ConflictError):
-        PosService._settle_change(Decimal("50.00"), "30.00")
-
-
-def test_tender_shapes_are_mutually_exclusive() -> None:
-    from app.modules.pos.service import PosService
-
-    with pytest.raises(ValidationError):
-        PosService._normalise_tenders(
-            [{"method": "cash", "amount": "10.00"}], method="cash", amount="10.00"
-        )
-
-
-def test_tender_rejects_unknown_method() -> None:
-    from app.modules.pos.service import PosService
-
-    with pytest.raises(ValidationError):
-        PosService._normalise_tenders([{"method": "crypto", "amount": "10.00"}], None, None)
 
 
 # ----------------------------------------------------------- DB-backed ----
@@ -177,70 +141,3 @@ async def test_scan_resolves_a_registered_identifier(db, tenant_ctx):
         value="NOPE-NOT-A-CODE",
     )
     assert missing["found"] is False
-
-
-async def test_split_tender_settles_the_whole_order(db, tenant_ctx):
-    import uuid as _uuid
-
-    from sqlalchemy import func, select
-
-    from app.modules.catalog.service import CatalogService
-    from app.modules.inventory.service import InventoryService
-    from app.modules.orders.models import OrderPayment
-    from app.modules.pos.service import PosService
-
-    warehouse = await InventoryService.get_default_warehouse(db, tenant_ctx.tenant_id)
-    product = await CatalogService.create_product(
-        db, tenant_ctx.tenant_id, title="قهوة", slug=f"c-{_uuid.uuid4().hex[:10]}"
-    )
-    product = await CatalogService.update_product(
-        db, tenant_ctx.tenant_id, product.id, status="active"
-    )
-    variant = await CatalogService.add_variant(
-        db, tenant_ctx.tenant_id, product.id, title="كيس", price="100.00"
-    )
-    await InventoryService.move(
-        db,
-        tenant_ctx.tenant_id,
-        variant.id,
-        warehouse.id,
-        direction="in",
-        quantity=3,
-        reason="purchase",
-    )
-    from app.modules.customers.service import CustomerService
-
-    customer = await CustomerService.create_from_import(
-        db, tenant_ctx.tenant_id, name="زبون", source="pos"
-    )
-    register = await PosService.create_register(
-        db,
-        tenant_ctx.tenant_id,
-        name="REG",
-        code=f"REG-{_uuid.uuid4().hex[:6]}",
-        warehouse_id=warehouse.id,
-    )
-    pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
-
-    result = await PosService.sell(
-        db,
-        tenant_ctx.tenant_id,
-        pos_session.id,
-        customer_id=customer.id,
-        items=[{"variant_id": str(variant.id), "quantity": 1}],
-        tenders=[
-            {"method": "cash", "amount": "60.00"},
-            {"method": "card", "amount": "40.00"},
-        ],
-        tendered_cash="60.00",
-    )
-    assert result["payment_count"] == 2
-
-    total = (
-        await db.execute(
-            select(func.count())
-            .select_from(OrderPayment)
-            .where(OrderPayment.order_id == result["order_id"])
-        )
-    ).scalar_one()
-    assert total == 2

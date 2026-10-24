@@ -14,6 +14,7 @@ from decimal import Decimal
 import pytest
 
 from app.main import create_app
+from tests._pos_sell import sell as pos_sell
 
 RETURNS_PATH = "/api/v1/pos/sessions/{session_id}/returns"
 
@@ -166,16 +167,12 @@ async def test_line_return_records_value_without_refunding_the_original_tenders(
     pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
     variant = await _sellable_variant(db, tenant_ctx)
     customer = await _customer(db, tenant_ctx)
-    sold = await PosService.sell(
+    sold = await pos_sell(
         db,
         tenant_ctx.tenant_id,
         pos_session.id,
         customer_id=customer.id,
         items=[{"variant_id": str(variant.id), "quantity": 2}],
-        tenders=[
-            {"method": "cash", "amount": "30.00"},
-            {"method": "card", "amount": "20.00"},
-        ],
     )
 
     result = await PosService.return_sale(
@@ -187,7 +184,6 @@ async def test_line_return_records_value_without_refunding_the_original_tenders(
     )
     # 25 gross, no discount. The value is recorded; the old sale's tenders are not refunded.
     assert Decimal(result["refunded_total"]) == Decimal("25.00")
-    assert result["by_method"] == []
     assert result["receipt_number"].startswith("POS-RET-")
 
     return_receipt = (
@@ -209,9 +205,8 @@ async def test_line_return_records_value_without_refunding_the_original_tenders(
         .scalars()
         .all()
     )
-    # The old sale's own cash row stays; the return adds no drawer movement.
-    reasons = {r.reason for r in cash_rows}
-    assert reasons == {"cash_sale"}
+    # Recording a sale or a return never creates a drawer movement.
+    assert cash_rows == []
 
 
 async def test_discounted_return_takes_its_proportional_share(db, tenant_ctx):
@@ -221,7 +216,7 @@ async def test_discounted_return_takes_its_proportional_share(db, tenant_ctx):
     pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
     variant = await _sellable_variant(db, tenant_ctx)
     customer = await _customer(db, tenant_ctx)
-    sold = await PosService.sell(
+    sold = await pos_sell(
         db,
         tenant_ctx.tenant_id,
         pos_session.id,
@@ -251,7 +246,7 @@ async def test_returning_a_line_discounted_item_refunds_what_was_paid(db, tenant
     cheap = await _sellable_variant(db, tenant_ctx, price="100.00")
     full = await _sellable_variant(db, tenant_ctx, price="100.00")
     customer = await _customer(db, tenant_ctx)
-    sold = await PosService.sell(
+    sold = await pos_sell(
         db,
         tenant_ctx.tenant_id,
         pos_session.id,
@@ -284,7 +279,7 @@ async def test_return_is_capped_at_what_was_sold(db, tenant_ctx):
     pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
     variant = await _sellable_variant(db, tenant_ctx)
     customer = await _customer(db, tenant_ctx)
-    sold = await PosService.sell(
+    sold = await pos_sell(
         db,
         tenant_ctx.tenant_id,
         pos_session.id,
@@ -316,7 +311,7 @@ async def test_restock_moves_only_the_returned_quantities(db, tenant_ctx):
     pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
     variant = await _sellable_variant(db, tenant_ctx, stock=5)
     customer = await _customer(db, tenant_ctx)
-    sold = await PosService.sell(
+    sold = await pos_sell(
         db,
         tenant_ctx.tenant_id,
         pos_session.id,
@@ -359,22 +354,20 @@ async def test_card_only_return_leaves_the_drawer_alone(db, tenant_ctx):
     )
     variant = await _sellable_variant(db, tenant_ctx)
     customer = await _customer(db, tenant_ctx)
-    sold = await PosService.sell(
+    sold = await pos_sell(
         db,
         tenant_ctx.tenant_id,
         pos_session.id,
         customer_id=customer.id,
         items=[{"variant_id": str(variant.id), "quantity": 2}],
-        method="card",
     )
-    result = await PosService.return_sale(
+    await PosService.return_sale(
         db,
         tenant_ctx.tenant_id,
         pos_session.id,
         order_id=sold["order_id"],
         lines=[{"variant_id": str(variant.id), "quantity": 1}],
     )
-    assert result["by_method"] == []
 
     preview = await PosService.close_preview(db, tenant_ctx.tenant_id, pos_session.id)
     # opening 10 + invoice 50 - return 25 = 35; the close has no per-method split or variance.

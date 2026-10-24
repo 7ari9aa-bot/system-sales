@@ -12,6 +12,7 @@ from app.core.security import hash_password
 from app.modules.identity.models import Role, Tenant, TenantUser, User
 from app.modules.pos.profiles import PosProfileService
 from app.modules.pos.service import PosService
+from tests._pos_sell import sell  # noqa: F401  (re-exported)
 from tests.test_pos_returns import _customer, _register, _sellable_variant, _warehouse
 
 
@@ -41,9 +42,7 @@ async def start_day(db, tenant_ctx, register_id, opening="0.00"):
     A sale is refused until this has happened, so every test that sells on a till without an
     open shift calls it first.
     """
-    return await PosService.open_day(
-        db, tenant_ctx.tenant_id, register_id, opening_float=opening
-    )
+    return await PosService.open_day(db, tenant_ctx.tenant_id, register_id, opening_float=opening)
 
 
 async def ctx_for(db, tenant_ctx, role_code):

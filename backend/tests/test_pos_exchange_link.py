@@ -10,6 +10,7 @@ from __future__ import annotations
 import pytest
 from sqlalchemy.exc import IntegrityError
 
+from tests._pos_sell import sell as pos_sell
 from tests.test_pos_exchange import (
     _customer,
     _register,
@@ -25,7 +26,7 @@ async def _exchanged(db, tenant_ctx):
     old = await _sellable_variant(db, tenant_ctx)
     new = await _sellable_variant(db, tenant_ctx)
     customer = await _customer(db, tenant_ctx)
-    sold = await PosService.sell(
+    sold = await pos_sell(
         db,
         tenant_ctx.tenant_id,
         pos_session.id,

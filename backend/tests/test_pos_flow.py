@@ -22,6 +22,7 @@ from app.modules.inventory.service import InventoryService
 from app.modules.orders.models import Order, OrderPayment
 from app.modules.platform.models import OutboxEvent
 from app.modules.pos.service import PosService
+from tests._pos_sell import sell as pos_sell
 
 
 async def _register(db, tenant_ctx):
@@ -83,7 +84,7 @@ async def test_sell_runs_the_whole_commerce_chain(db, tenant_ctx):
     variant = await _sellable_variant(db, tenant_ctx)
     customer = await _customer(db, tenant_ctx)
 
-    result = await PosService.sell(
+    result = await pos_sell(
         db,
         tenant_ctx.tenant_id,
         pos_session.id,
@@ -95,12 +96,14 @@ async def test_sell_runs_the_whole_commerce_chain(db, tenant_ctx):
     order = (await db.execute(select(Order).where(Order.id == result["order_id"]))).scalar_one()
     assert order.channel == "pos"
     assert order.grand_total == Decimal("25.00")
-    payment = (
-        await db.execute(select(OrderPayment).where(OrderPayment.order_id == order.id))
-    ).scalar_one()
-    assert payment.status == "captured"
-    # §140: the captured payment settled the reservation — the POS never
-    # touched the balance itself.
+    # Recording a sale takes no payment at all.
+    payments = (
+        (await db.execute(select(OrderPayment).where(OrderPayment.order_id == order.id)))
+        .scalars()
+        .all()
+    )
+    assert payments == []
+    # The confirmed sale converted the reservation — the POS never touched the balance itself.
     (reservation,) = (
         (
             await db.execute(
@@ -114,9 +117,9 @@ async def test_sell_runs_the_whole_commerce_chain(db, tenant_ctx):
     balance = await InventoryService.list_balances(db, tenant_ctx.tenant_id)
     mine = [b for b in balance if b.variant_id == variant.id]
     assert mine and mine[0].on_hand == 4
-    # The drawer booked the cash, in the same transaction.
+    # No drawer movement: nothing was paid into it.
     detail = await PosService.get_session(db, tenant_ctx.tenant_id, pos_session.id)
-    assert detail["inflow"] == Decimal("25.00")
+    assert detail["inflow"] == Decimal("0.00")
 
 
 async def test_close_stores_the_closing_balance_and_publishes_once(db, tenant_ctx):
@@ -126,7 +129,7 @@ async def test_close_stores_the_closing_balance_and_publishes_once(db, tenant_ct
     pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
     variant = await _sellable_variant(db, tenant_ctx)
     customer = await _customer(db, tenant_ctx)
-    await PosService.sell(
+    await pos_sell(
         db,
         tenant_ctx.tenant_id,
         pos_session.id,
@@ -169,7 +172,7 @@ async def test_sell_on_a_closed_session_is_refused(db, tenant_ctx):
     customer = await _customer(db, tenant_ctx)
     await PosService.close_session(db, tenant_ctx.tenant_id, pos_session.id)
     with pytest.raises(ConflictError):
-        await PosService.sell(
+        await pos_sell(
             db,
             tenant_ctx.tenant_id,
             pos_session.id,
@@ -189,7 +192,7 @@ async def test_sell_with_a_non_positive_quantity_is_a_validation_error_not_a_500
     pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
     variant = await _sellable_variant(db, tenant_ctx)
     with pytest.raises(ValidationError):
-        await PosService.sell(
+        await pos_sell(
             db,
             tenant_ctx.tenant_id,
             pos_session.id,
@@ -205,7 +208,7 @@ async def test_sell_validates_every_line_before_touching_anything(db, tenant_ctx
     pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
     variant = await _sellable_variant(db, tenant_ctx)
     with pytest.raises(ValidationError):
-        await PosService.sell(
+        await pos_sell(
             db,
             tenant_ctx.tenant_id,
             pos_session.id,
@@ -227,7 +230,7 @@ async def test_close_records_the_day_never_a_count_or_a_shortage(db, tenant_ctx)
     pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
     variant = await _sellable_variant(db, tenant_ctx)
     customer = await _customer(db, tenant_ctx)
-    await PosService.sell(
+    await pos_sell(
         db,
         tenant_ctx.tenant_id,
         pos_session.id,

@@ -181,11 +181,6 @@ class QuoteRequest(BaseModel):
     discount_total: str | None = Field(default=None, pattern=_MONEY)
 
 
-class TenderLine(BaseModel):
-    method: str = Field(pattern="^(cash|card|wallet|bank_transfer)$")
-    amount: str = Field(pattern=_MONEY)
-
-
 class RecordSaleRequest(BaseModel):
     """A counter sale. The cashier records WHAT was sold; how it was paid is not part of it.
 
@@ -249,19 +244,13 @@ class ExchangeLine(BaseModel):
 
 
 class ExchangeRequest(BaseModel):
-    """The one-transaction exchange: return lines and their replacement sale
-    settle together, and only the net difference moves money."""
+    """The one-transaction exchange: return lines and their replacement sale are recorded
+    together. No payment fields exist: the cashier layer does not move money."""
 
     order_id: UUID
     return_lines: list[ExchangeLine] = Field(min_length=1)
     new_lines: list[ExchangeLine] = Field(min_length=1)
     restock: bool = True
-    # Only the NET amount the customer still owes is tendered through these;
-    # a net refund needs no tenders at all.
-    tenders: list[TenderLine] | None = None
-    method: str | None = Field(default=None, pattern="^(cash|card|wallet|bank_transfer)$")
-    amount: str | None = Field(default=None, pattern=_MONEY)
-    tendered_cash: str | None = Field(default=None, pattern=_MONEY)
 
 
 def _session_out(pos_session, inflow=None, outflow=None, expected_now=None) -> dict:
@@ -685,11 +674,8 @@ async def return_sale(
 async def exchange(
     session_id: UUID, body: ExchangeRequest, ctx: PosWriteCtx, override: OverrideDep
 ):
-    """One-transaction exchange: the return funds its replacement, and only
-    the net difference moves money — two receipts, one commit."""
-    tenders = (
-        [{"method": t.method, "amount": t.amount} for t in body.tenders] if body.tenders else None
-    )
+    """One-transaction exchange: record the returned goods and the replacement sale. No money
+    moves; the value difference is only reported. Two receipts, one commit."""
     result = await PosService.exchange(
         ctx.session,
         ctx.tenant_id,
@@ -704,10 +690,6 @@ async def exchange(
             for line in body.new_lines
         ],
         restock=body.restock,
-        tenders=tenders,
-        method=body.method,
-        amount=body.amount,
-        tendered_cash=body.tendered_cash,
         actor_user_id=ctx.user.id,
         shift_override=override.active,
     )

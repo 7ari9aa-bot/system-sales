@@ -17,6 +17,7 @@ from app.modules.pos.service import PosService
 from tests._pos_helpers import in_tx as _in_tx
 from tests._pos_helpers import make_tenant as _make_tenant
 from tests._pos_helpers import purge_test_tenant as _purge_test_tenant
+from tests._pos_sell import sell as pos_sell
 
 pytestmark = pytest.mark.asyncio
 
@@ -66,7 +67,7 @@ async def test_receipt_carries_line_discount_and_server_refunds_what_was_paid(sh
     sold = await _in_tx(
         factory,
         t,
-        lambda s: PosService.sell(
+        lambda s: pos_sell(
             s,
             t,
             shift,
@@ -103,7 +104,7 @@ async def test_old_receipts_without_a_line_discount_read_as_zero(shop) -> None:
     sold = await _in_tx(
         factory,
         t,
-        lambda s: PosService.sell(
+        lambda s: pos_sell(
             s,
             t,
             shift,

@@ -68,7 +68,6 @@ async def test_returning_a_sale_with_no_payment_restocks_and_records_the_value(
     assert out["refunded_total"] == "100.00", (
         "the value of the returned unit, at the sale's own price"
     )
-    assert out["by_method"] == [], "there is no tender to name: nothing was paid"
     assert out["restocked"] is True
     assert await _on_hand(db, variant) - before == 1
     assert await _count(db, PosReturnLine, tid) == 1
@@ -158,7 +157,6 @@ async def test_exchange_of_an_unpaid_sale_shows_the_difference_and_settles_nothi
     assert out["return_total"] == "100.00"
     assert out["new_total"] == "150.00"
     assert out["net"] == "50.00", "the difference is reported"
-    assert out["by_method"] == []
     assert await _on_hand(db, a) - a_before == 1, "the returned item is back on the shelf"
     assert b_before - await _on_hand(db, b) == 1, "the new item left the shelf"
     assert await _count(db, OrderPayment, tid) == 0, "nothing is charged, not even the difference"
@@ -195,8 +193,6 @@ async def test_tenders_sent_on_an_unpaid_exchange_are_ignored_not_booked(db, ten
         return_lines=[{"variant_id": str(a.id), "quantity": 1}],
         new_lines=[{"variant_id": str(b.id), "quantity": 1}],
         restock=True,
-        tenders=[{"method": "cash", "amount": "50.00"}],
-        tendered_cash="50.00",
         actor_user_id=tenant_ctx.user.id,
     )
     assert out["net"] == "50.00"

@@ -20,6 +20,7 @@ from app.core.security import hash_password
 from app.modules.errors import ConflictError
 from app.modules.identity.models import Role, Tenant, TenantUser, User
 from app.modules.pos.service import PosService
+from tests._pos_sell import sell as pos_sell
 
 RACERS = 6
 
@@ -167,7 +168,7 @@ async def _sell(factory, tenant_id, qty_sold: int):
         await InventoryService.move(
             s, tenant_id, variant.id, wh.id, direction="in", quantity=50, reason="purchase"
         )
-        sold = await PosService.sell(
+        sold = await pos_sell(
             s,
             tenant_id,
             shift.id,

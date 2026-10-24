@@ -12,6 +12,7 @@ from decimal import Decimal
 
 import pytest
 
+from tests._pos_sell import sell as pos_sell
 from tests.test_pos_returns import _customer, _register, _sellable_variant
 
 pytestmark = pytest.mark.asyncio
@@ -25,13 +26,12 @@ async def _sale_then_next_day(db, tenant_ctx, *, qty=2, price="25.00"):
     first = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
     variant = await _sellable_variant(db, tenant_ctx, price=price, stock=10)
     customer = await _customer(db, tenant_ctx)
-    sold = await PosService.sell(
+    sold = await pos_sell(
         db,
         tenant_ctx.tenant_id,
         first.id,
         customer_id=customer.id,
         items=[{"variant_id": str(variant.id), "quantity": qty}],
-        tenders=[{"method": "cash", "amount": str(Decimal(price) * qty)}],
     )
     await PosService.close_session(db, tenant_ctx.tenant_id, first.id)
     second = await PosService.open_session(
@@ -118,20 +118,3 @@ async def test_an_exchange_works_across_shifts_too(db, tenant_ctx):
     assert today["session"].status == "OPEN"
     # the return (25) funds the replacement (25): nothing physically leaves today's drawer
     assert today["expected_now"] == Decimal("100.00")
-
-
-async def test_a_plain_refund_still_belongs_to_the_sales_own_shift(db, tenant_ctx):
-    """`refund` (money back, no goods) books against the shift that took the money, by design."""
-    from app.modules.errors import ConflictError
-    from app.modules.pos.service import PosService
-
-    first, second, variant, sold = await _sale_then_next_day(db, tenant_ctx)
-    with pytest.raises(ConflictError, match="different session"):
-        await PosService.refund(
-            db,
-            tenant_ctx.tenant_id,
-            second.id,
-            order_id=sold["order_id"],
-            method="cash",
-            amount="10.00",
-        )

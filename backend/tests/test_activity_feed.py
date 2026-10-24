@@ -14,6 +14,7 @@ from app.main import create_app
 from app.modules.activity.service import KINDS, ActivityService, Cursor
 from app.modules.expenses.service import ExpenseService
 from app.modules.pos.service import PosService
+from tests._pos_sell import sell as pos_sell
 
 
 async def _shift(db, tenant_ctx, opening="100.00"):
@@ -187,7 +188,7 @@ async def test_a_partial_return_shows_the_money_handed_back_not_the_order_total(
     shift = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
     variant = await _sellable_variant(db, tenant_ctx)
     customer = await _customer(db, tenant_ctx)
-    sold = await PosService.sell(
+    sold = await pos_sell(
         db,
         tenant_ctx.tenant_id,
         shift.id,

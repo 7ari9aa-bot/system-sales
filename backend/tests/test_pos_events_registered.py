@@ -16,11 +16,7 @@ import pathlib
 from app.core.events.schemas import DOMAIN_EVENT_TYPES
 
 POS_SERVICE = (
-    pathlib.Path(__file__).resolve().parent.parent
-    / "app"
-    / "modules"
-    / "pos"
-    / "service.py"
+    pathlib.Path(__file__).resolve().parent.parent / "app" / "modules" / "pos" / "service.py"
 )
 
 

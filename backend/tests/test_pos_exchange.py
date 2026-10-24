@@ -14,6 +14,7 @@ import pytest
 from sqlalchemy import select
 
 from app.main import create_app
+from tests._pos_sell import sell as pos_sell
 
 EXCHANGES_PATH = "/api/v1/pos/sessions/{session_id}/exchanges"
 
@@ -41,7 +42,6 @@ def test_exchange_wire_requires_both_halves() -> None:
         order_id=uuid.uuid4(),
         return_lines=[{"variant_id": str(uuid.uuid4()), "quantity": 1}],
         new_lines=[{"variant_id": str(uuid.uuid4()), "quantity": 2}],
-        tenders=[{"method": "cash", "amount": "15.00"}],
     )
     assert body.new_lines[0].quantity == 2
 
@@ -110,16 +110,12 @@ async def test_equal_value_swap_moves_no_money(db, tenant_ctx):
     sold_variant = await _sellable_variant(db, tenant_ctx)
     new_variant = await _sellable_variant(db, tenant_ctx, price="25.00")
     customer = await _customer(db, tenant_ctx)
-    sold = await PosService.sell(
+    sold = await pos_sell(
         db,
         tenant_ctx.tenant_id,
         pos_session.id,
         customer_id=customer.id,
         items=[{"variant_id": str(sold_variant.id), "quantity": 1}],
-        tenders=[
-            {"method": "cash", "amount": "15.00"},
-            {"method": "card", "amount": "10.00"},
-        ],
     )
 
     result = await PosService.exchange(
@@ -138,12 +134,10 @@ async def test_equal_value_swap_moves_no_money(db, tenant_ctx):
     assert result["return_receipt_number"].startswith("POS-RET-")
     assert result["new_receipt_number"].startswith("POS-")
 
-    # The exchange records goods and values only. The old sale keeps its own payments (30 in), but
-    # the exchange adds no refund, no payment and no drawer movement.
+    # The exchange records goods and values only: no refund, no payment, no drawer movement.
     detail = await PosService.get_session(db, tenant_ctx.tenant_id, pos_session.id)
-    assert detail["inflow"] == Decimal("15.00")
+    assert detail["inflow"] == Decimal("0.00")
     assert detail["outflow"] == Decimal("0.00")
-    assert result["by_method"] == []
 
     preview = await PosService.close_preview(db, tenant_ctx.tenant_id, pos_session.id)
     # The close records the day, not payment methods: opening 0 + invoices (25 + 25)
@@ -162,13 +156,12 @@ async def test_exchange_for_a_pricier_item_charges_the_difference(db, tenant_ctx
     sold_variant = await _sellable_variant(db, tenant_ctx)
     new_variant = await _sellable_variant(db, tenant_ctx, price="40.00")
     customer = await _customer(db, tenant_ctx)
-    sold = await PosService.sell(
+    sold = await pos_sell(
         db,
         tenant_ctx.tenant_id,
         pos_session.id,
         customer_id=customer.id,
         items=[{"variant_id": str(sold_variant.id), "quantity": 1}],
-        method="cash",
     )
     result = await PosService.exchange(
         db,
@@ -177,13 +170,11 @@ async def test_exchange_for_a_pricier_item_charges_the_difference(db, tenant_ctx
         order_id=sold["order_id"],
         return_lines=[{"variant_id": str(sold_variant.id), "quantity": 1}],
         new_lines=[{"variant_id": str(new_variant.id), "quantity": 1}],
-        tenders=[{"method": "cash", "amount": "15.00"}],
-        tendered_cash="20.00",
     )
     assert Decimal(result["net"]) == Decimal("15.00")
     detail = await PosService.get_session(db, tenant_ctx.tenant_id, pos_session.id)
-    # The 15 difference is shown, never settled: only the old sale's own 25 is in the drawer.
-    assert detail["inflow"] == Decimal("25.00")
+    # The 15 difference is shown, never settled: the drawer is untouched.
+    assert detail["inflow"] == Decimal("0.00")
     assert detail["outflow"] == Decimal("0.00")
 
 
@@ -195,13 +186,12 @@ async def test_exchange_never_demands_or_takes_tenders_for_the_difference(db, te
     sold_variant = await _sellable_variant(db, tenant_ctx)
     new_variant = await _sellable_variant(db, tenant_ctx, price="40.00")
     customer = await _customer(db, tenant_ctx)
-    sold = await PosService.sell(
+    sold = await pos_sell(
         db,
         tenant_ctx.tenant_id,
         pos_session.id,
         customer_id=customer.id,
         items=[{"variant_id": str(sold_variant.id), "quantity": 1}],
-        method="cash",
     )
     # The cashier does not settle money: tenders that do not match the difference are not an
     # error, they are simply not used. The difference is reported and nothing is charged.
@@ -212,12 +202,10 @@ async def test_exchange_never_demands_or_takes_tenders_for_the_difference(db, te
         order_id=sold["order_id"],
         return_lines=[{"variant_id": str(sold_variant.id), "quantity": 1}],
         new_lines=[{"variant_id": str(new_variant.id), "quantity": 1}],
-        tenders=[{"method": "cash", "amount": "20.00"}],  # net is 15
     )
     assert Decimal(result["net"]) == Decimal("15.00")
-    assert result["by_method"] == []
     detail = await PosService.get_session(db, tenant_ctx.tenant_id, pos_session.id)
-    assert detail["inflow"] == Decimal("25.00")  # only the old sale's own payment
+    assert detail["inflow"] == Decimal("0.00")  # nothing was paid or put in a drawer
 
 
 async def test_exchange_for_a_cheaper_item_refunds_nothing_new(db, tenant_ctx):
@@ -230,16 +218,12 @@ async def test_exchange_for_a_cheaper_item_refunds_nothing_new(db, tenant_ctx):
     sold_variant = await _sellable_variant(db, tenant_ctx)
     new_variant = await _sellable_variant(db, tenant_ctx, price="10.00")
     customer = await _customer(db, tenant_ctx)
-    sold = await PosService.sell(
+    sold = await pos_sell(
         db,
         tenant_ctx.tenant_id,
         pos_session.id,
         customer_id=customer.id,
         items=[{"variant_id": str(sold_variant.id), "quantity": 2}],
-        tenders=[
-            {"method": "cash", "amount": "30.00"},
-            {"method": "card", "amount": "20.00"},
-        ],
     )
     result = await PosService.exchange(
         db,
@@ -252,7 +236,6 @@ async def test_exchange_for_a_cheaper_item_refunds_nothing_new(db, tenant_ctx):
     # The value difference (-40) is shown, never settled: no refund leg is written against the
     # old sale's tenders and no cash leaves the drawer.
     assert Decimal(result["net"]) == Decimal("-40.00")
-    assert result["by_method"] == []
     detail = await PosService.get_session(db, tenant_ctx.tenant_id, pos_session.id)
     assert detail["outflow"] == Decimal("0.00")
 
@@ -270,7 +253,7 @@ async def test_exchange_is_capped_like_a_return(db, tenant_ctx):
     sold_variant = await _sellable_variant(db, tenant_ctx)
     new_variant = await _sellable_variant(db, tenant_ctx)
     customer = await _customer(db, tenant_ctx)
-    sold = await PosService.sell(
+    sold = await pos_sell(
         db,
         tenant_ctx.tenant_id,
         pos_session.id,
@@ -305,7 +288,7 @@ async def test_exchange_event_is_staged(db, tenant_ctx):
     sold_variant = await _sellable_variant(db, tenant_ctx)
     new_variant = await _sellable_variant(db, tenant_ctx)
     customer = await _customer(db, tenant_ctx)
-    sold = await PosService.sell(
+    sold = await pos_sell(
         db,
         tenant_ctx.tenant_id,
         pos_session.id,
