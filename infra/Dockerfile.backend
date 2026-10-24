@@ -23,5 +23,8 @@ USER appuser
 
 EXPOSE 8000
 HEALTHCHECK --start-period=15s --interval=30s --timeout=5s --retries=3 \
-  CMD python -c "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/healthz')" || exit 1
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+  CMD python -c "import urllib.request;urllib.request.urlopen('http://127.0.0.1:'+__import__('os').environ.get('PORT','8000')+'/healthz')" || exit 1
+# HTTP worker count and port are overridable so a small host (512 MB) can run one worker.
+# The default stays 2 / 8000, so Railway and docker-compose behave exactly as before.
+ENV WEB_CONCURRENCY=2 PORT=8000
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT} --workers ${WEB_CONCURRENCY}"]
